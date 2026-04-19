@@ -11,9 +11,16 @@ Consistent style across code, docs, UI, and public communication.
 
 ## Tagline
 
-> Open-source project management + AI agent platform.
+**Primary:**
+> Remote-control your local Claude Code.
 
-One line. Leads with "open-source" (the differentiator) before the function.
+**Secondary (developer-facing, community posts):**
+> GitHub self-hosted runners, for Claude Code.
+
+**Rhythmic (tables, feature lists, footer):**
+> Webhook in. Pipeline out. Every job on record.
+
+Lead with the action ("remote-control") — it's the concrete value. Avoid "open-source project management + AI agent platform" which under-sells what we actually do.
 
 ## Writing voice
 
@@ -26,17 +33,20 @@ One line. Leads with "open-source" (the differentiator) before the function.
 
 Avoid these — they signal marketing bloat:
 
-- "AI-powered" — we're an AI platform, of course we use AI
+- "AI-powered" — we orchestrate the user's AI, we don't power it
 - "Revolutionary", "seamless", "cutting-edge"
 - "Unlock", "leverage", "synergy"
-- "Game-changing"
+- "Game-changing", "unleash"
 - Fake urgency: "now", "finally", "at last"
+- "Autonomous" as marketing adjective (OK as literal technical descriptor)
 
 ### Preferred phrases
 
-- "Ship", "run", "track", "review" — concrete verbs
-- "Teams", "developers", "maintainers" — specific actors
-- "Issue", "project", "agent session" — the domain language
+- **Action verbs:** pair, route, dispatch, run, stream, replay, revoke, audit, resume
+- **Domain:** device, job, pipeline stage, skill, webhook, session
+- **Actors:** engineer, maintainer, team, developer (specific, not "user" or "customer")
+
+Use "job" for individual agent runs (CI-style). "Session" is acceptable colloquially but less precise.
 
 ## Naming conventions across code
 
@@ -61,7 +71,7 @@ Format: `type(scope): description`
 
 Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`, `build`, `style`, `revert`.
 
-Scopes (required unless root-level change): the package touched — `strapi`, `web`, `dev`, `app`, `docs`, `ci`.
+Scopes (required unless root-level change): the package touched — `strapi`, `web`, `dev`, `forged`, `agent-core`, `app` (paused), `docs`, `ci`.
 
 Examples:
 ```

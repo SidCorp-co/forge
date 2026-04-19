@@ -2,88 +2,143 @@
 
 How Jarvis Agents is put together, and why.
 
+The architectural foundation is [RFC 0001: Device-runner architecture](rfcs/0001-device-runner-architecture.md). This doc summarizes and explains; the RFC is authoritative.
+
 ## One-paragraph summary
 
-Jarvis Agents is a Strapi 5 backend (REST + WebSocket + embedded MCP server) wrapped by three independent frontends (Next.js web, Tauri desktop, Expo mobile). Agents run inside Strapi via a pipeline of `forge-*` skills that mutate the same data the UIs read. Postgres stores structured data; Qdrant stores vector embeddings for memory/knowledge search.
+Jarvis Agents splits into two planes:
+
+- **Control plane** — a Strapi 5 backend exposing REST, WebSocket, and MCP. Hosts project and issue state, queues jobs, and streams events. **Never holds Claude credentials.**
+- **Runtime plane** — **device agents** running on users' own machines. Two form factors share a Rust `agent-core` crate: `dev` (Tauri GUI) and `forged` (CLI daemon). Devices pair into the account, receive job dispatches over WebSocket, spawn the `claude` CLI locally in a git worktree, and stream JobEvents back.
+
+Two principals interact with the system — **user** (JWT) and **device** (long-lived revocable token). Both pass through a shared policy layer so access checks live in one place.
 
 ## Component map
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│                    Clients (any of three)                  │
-│  web (Next.js) ── app (Expo) ── dev (Tauri desktop+Rust)   │
-└──────────────────────┬─────────────────────────────────────┘
-                       │ Bearer token auth
-                       │ REST (HTTP)  +  WebSocket (/ws)
+┌─────────────────────────────────────────────────────────┐
+│                   Your browser / phone                  │
+│           web (Next.js)     ── app (Expo, v0.2+)        │
+└──────────────────────┬──────────────────────────────────┘
+                       │ REST + WebSocket (user JWT)
+                       │ MCP (user token or device token)
                        ▼
-┌────────────────────────────────────────────────────────────┐
-│              Strapi 5 backend  (forge/strapi)              │
-│  ┌─────────────┐  ┌───────────────┐  ┌──────────────────┐  │
-│  │ REST API    │  │ WebSocket hub │  │ MCP server (/mcp)│  │
-│  │ /api/*      │  │ /ws           │  │ Streamable HTTP  │  │
-│  └──────┬──────┘  └───────┬───────┘  └────────┬─────────┘  │
-│         │                 │                   │            │
-│         └────────┬────────┴───────────────────┘            │
-│                  │                                         │
-│         ┌────────▼─────────┐   ┌──────────────────┐        │
-│         │ Lifecycle hooks  │   │ Agent Runner     │        │
-│         │ (broadcast,      │   │ Claude CLI       │        │
-│         │  audit, index)   │   │ / Antigravity    │        │
-│         └────────┬─────────┘   └────────┬─────────┘        │
-└──────────────────┼──────────────────────┼──────────────────┘
-                   │                      │
-         ┌─────────▼──────┐      ┌────────▼──────┐
-         │  Postgres 17   │      │  Qdrant 1.13  │
-         │  structured    │      │  embeddings   │
-         └────────────────┘      └───────────────┘
+┌─────────────────────────────────────────────────────────┐
+│               Control plane — Strapi                    │
+│  ┌───────────┐ ┌───────────┐ ┌────────────────────────┐ │
+│  │ REST /api │ │ WS /ws    │ │ MCP /mcp               │ │
+│  └─────┬─────┘ └─────┬─────┘ └───────────┬────────────┘ │
+│        └───────┬─────┴───────────────────┘              │
+│                │ shared policy layer                    │
+│                │ (user ▷ project member,                │
+│                │  device ▷ project pool)                │
+│        ┌───────▼────────┐   ┌────────────────────┐      │
+│        │ Job dispatcher │   │ Lifecycle hooks    │      │
+│        │ (pg-boss queue)│   │ (broadcast, index) │      │
+│        └───────┬────────┘   └─────────┬──────────┘      │
+│                │                      │                 │
+│                ▼                      ▼                 │
+│        ┌───────────────┐       ┌─────────────────┐      │
+│        │ Postgres 17   │       │ Qdrant 1.13     │      │
+│        │ state + jobs  │       │ embeddings      │      │
+│        └───────────────┘       └─────────────────┘      │
+└──────────────┬──────────────────────────────────────────┘
+               │ WebSocket (device token)
+               ▼
+┌─────────────────────────────────────────────────────────┐
+│       Runtime plane — Your machine(s)                   │
+│  ┌──────────────────┐       ┌──────────────────┐        │
+│  │ dev (Tauri GUI)  │   OR  │ forged (CLI)     │        │
+│  │ for developers   │       │ for CI / daemons │        │
+│  └────────┬─────────┘       └────────┬─────────┘        │
+│           └──────────┬─────────────────┘                │
+│                      ▼                                  │
+│           ┌──────────────────────┐                      │
+│           │ agent-core (Rust)    │                      │
+│           │ pair / ws / keychain │                      │
+│           │ git / job_runner     │                      │
+│           └──────────┬───────────┘                      │
+│                      ▼                                  │
+│           ┌──────────────────────┐                      │
+│           │ spawns `claude` CLI  │                      │
+│           │ in git worktree      │                      │
+│           └──────────────────────┘                      │
+│           (Claude credentials in OS keychain, here)     │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ## Why this shape
 
-### Strapi as the backend
+### Split control plane from runtime
 
-- **Schema-first** — content types are declarative; generates REST + admin UI for free.
-- **Lifecycle hooks** — natural place to broadcast WebSocket events when data changes.
-- **Extensibility** — custom services and routes for agent orchestration sit alongside CRUD cleanly.
-- **Tradeoff** — less control than a handwritten Express/Fastify app; heavier than we'd write from scratch.
+The server has the wrong lifetime to run agents. HTTP requests live for milliseconds; Claude Code jobs run for minutes to hours. Running agent execution in the same process that serves HTTP creates two problems:
 
-### Four clients, shared REST API
+1. Subprocess lifetime outlives requests — complex state management
+2. Credentials for a powerful CLI sit next to all the HTTP attack surface
 
-- Web, desktop, mobile share **one API contract**. No BFF, no GraphQL layer.
-- Forces the backend to be the single source of truth. Clients are interchangeable.
-- Tauri desktop adds local capabilities the web can't have: filesystem access, git worktrees, Claude CLI spawn.
-- Mobile (Expo) is last in the priority order — parity, not innovation.
+Pushing execution to paired devices solves both. The server becomes a thin coordinator. Claude credentials never leave the user's keychain.
 
-### WebSocket for real-time
+### Two device form factors, one Rust core
 
-- Strapi broadcasts `issue:*`, `comment:*`, `chat:*`, `agent:*` events on lifecycle.
-- All connected clients subscribe. No polling.
-- Tauri uses an IPC proxy to the Strapi WS so the Rust side can forward events to the UI.
+The same `agent-core` crate handles pairing, WebSocket protocol, job dispatch, keychain access, and `claude` spawning. Two thin wrappers add the form-factor-specific bits:
 
-### MCP embedded in Strapi
+- **`dev` (Tauri)** — desktop GUI with project picker, pairing UI, live job viewer. First-class for developer workstations.
+- **`forged` (CLI daemon)** — headless, for CI runners, long-running dev boxes, or power users who prefer the terminal.
 
-- Same data layer, different surface. MCP clients (Claude Code, Cline, etc.) reach Strapi at `/mcp`.
-- The MCP tools (`forge_issues`, `forge_skills`, `forge_memory`) are thin wrappers around existing REST controllers.
-- Allows agents to manipulate the same data they were created to work on.
+Both share the protocol. A team can use either, or both.
 
-## Data flow — a typical issue
+### Dual-principal authorization
+
+Two actors call the API, and they deserve different trust:
+
+- **User** (JWT, 7-day TTL, refresh rotation) — can read/write projects they own or are members of, enqueue jobs, revoke devices.
+- **Device** (long-lived device token, revocable) — can accept jobs for projects where the device is pooled, submit JobEvents for jobs it's running, heartbeat. **Cannot** read user PII or enumerate projects outside its pool.
+
+A single policy module exports helpers (`assertUserIsProjectMember`, `assertDeviceBelongsToProject`, `assertJobAccessibleByPrincipal`). REST, WebSocket, and MCP all call these helpers. No code path bypasses the policy layer.
+
+### WebSocket with room-scoped broadcasts
+
+Older versions broadcast every event to every connected client. The new model subscribes each socket to specific rooms on authentication:
+
+- User socket → `user:<id>` + `project:<id>` for every project they're in
+- Device socket → `device:<id>` + `project:<id>` for every project pool it's in
+
+Clients cannot choose their own rooms. Events publish to rooms; fan-out is scoped.
+
+### MCP on the same data layer
+
+MCP clients (Claude Code itself, Cline, custom tools) reach the same data via `/mcp`. Tools are thin wrappers around REST controllers — same validation, same policy checks, same audit. User MCP tokens are **account-wide** (tool call must include `projectId`; policy enforces access); device MCP tokens are device-scoped.
+
+## Data flow — a typical job
 
 ```
-1. User types "fix the chat reconnect bug" in web UI
-2. POST /api/issues  with {title, projectId, priority, ...}
-3. Strapi persists row in Postgres
-4. Lifecycle hook fires:
-     - embed title+description → insert into Qdrant
-     - WS broadcast `issue:created` to all subscribers
-     - if auto-triage enabled: enqueue agent run
-5. Agent Runner spawns Claude CLI / calls Antigravity
-     - Session streams chunks back via WS `agent:chunk`
-     - Tools called: forge_issues.update, forge_comments.create
-     - On complete: WS `agent:complete` with summary
-6. UI receives updates, re-renders
+1. Webhook fires: GitHub issue opened (or Sentry alert, or Stripe event)
+   → POST /api/webhooks/<project-id>
+   → Server creates a Jarvis issue in status `open`
+
+2. Pipeline triggers `forge-triage` job (if auto-triage is enabled for this project)
+   → Job row inserted: {project, issue, type: 'triage', status: 'queued'}
+   → Dispatcher picks the project's activeDevice
+   → WS event `job.assigned` sent to the device's room
+
+3. Device agent receives job:
+   → agent-core spawns `claude` in the project's git worktree
+   → Passes skill prompt + issue context
+   → Streams stdout / stderr / tool calls back over WS
+
+4. For each stream chunk:
+   → Device POSTs batched JobEvent records to /api/jobs/:id/events
+   → Server persists + broadcasts on project room
+   → Web dashboard renders live
+
+5. Claude finishes:
+   → Device POSTs /api/jobs/:id/complete with exitCode + summary
+   → Job status → `done` (or `failed`)
+   → If pipeline has a next stage and that stage is auto-enabled, another job is enqueued
+   → Otherwise issue waits for human approval
 ```
 
-## Agent pipeline
+## Pipeline state machine
 
 Issues move through 14 statuses:
 
@@ -97,7 +152,7 @@ with branches:
   on_hold, needs_info (manual)
 ```
 
-Each transition can trigger an agent:
+Each transition can map to a skill:
 
 | From → To | Triggering skill |
 |-----------|------------------|
@@ -105,28 +160,32 @@ Each transition can trigger an agent:
 | `confirmed → clarified` | `forge-clarify` — reproduce bugs, verify UX |
 | `clarified → approved` | `forge-plan` — write implementation plan |
 | `approved → deploying` | `forge-code` — implement, build, review, push |
-| `deploying → testing` | CI + `forge-review` — independent code review |
+| `deploying → testing` | `forge-review` — independent code review |
 | `testing → staging` | `forge-test` — QA against preview deployment |
-| `staging → released` | `forge-release` — merge to production, deploy |
+| `staging → released` | `forge-release` — merge to production |
+| `reopen → deploying` | `forge-fix` — address rejection feedback |
 
-Skills live in `.claude/skills/` (per-project) and `~/.claude/skills/` (global).
+Per-project config decides which transitions auto-trigger vs wait for human approval. User-authored skills can also register to stages.
 
 ## Security boundaries
 
-- **Authentication:** Bearer token in `Authorization` header. Tokens are per-user, project-scoped.
-- **MCP auth:** `X-Forge-API-Key` header — project-scoped, reduced scope.
-- **Widget/chat public endpoints:** accessible with project API key (no user auth) — only for embedded widgets.
-- **CORS:** whitelist-based, `CORS_ORIGINS` env var. Pattern-based via `CORS_ORIGIN_PATTERNS` for dynamic domains.
-- **Agent execution:** sessions are logged; each run has an audit trail in `agent_sessions` table.
+- **Claude credentials never on the server.** They live in each device's OS keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service).
+- **User JWT:** 7-day TTL, refresh-token rotation, `httpOnly` cookies on web.
+- **Device token:** long-lived, stored in OS keychain, revocable from the web UI.
+- **Rate limits** on `/api/auth/*` and `/api/devices/pair`.
+- **Email verification** required before creating the first project.
+- **CORS:** whitelist + regex patterns via `CORS_ORIGINS` / `CORS_ORIGIN_PATTERNS`.
+- **MCP `crossProjectAccess` flag removed** — every tool call must include `projectId` and pass the policy check.
 
 ## Non-goals
 
-- **Not multi-tenant SaaS.** One Strapi instance = one workspace. Host multiple copies for multiple workspaces (Phase v0.4+ may revisit).
-- **Not optimized for >100 concurrent users** in single deployment — scale by running multiple Strapi replicas + Postgres read replicas.
-- **Not plugin-based** today. Skills are extensibility for agents; code extensibility is via forking.
+- **Not multi-tenant SaaS.** One Strapi instance = one tenant. Run multiple instances for multiple tenants.
+- **Not optimized for >~1000 concurrent WS sockets** in a single instance. Beyond that, a Redis pub/sub layer will be added (v0.5+).
+- **Not a Linux headless agent in v0.x.** Secret Service + D-Bus needs a follow-up RFC.
+- **Not using the Anthropic API.** We orchestrate Claude Code CLI, the user's subscription.
 
 ## Evolution
 
-The architecture is stable but opinionated. Significant changes (new service, schema migration, new client) go through the RFC process — see [proposal-drafter skill](../.claude/skills/oss-proposal-drafter/SKILL.md).
+Significant changes (new service, schema migration, new client form factor, new principal class) go through the RFC process. See [RFC 0001](rfcs/0001-device-runner-architecture.md) as the template.
 
 See [ROADMAP.md](ROADMAP.md) for where we're headed.
