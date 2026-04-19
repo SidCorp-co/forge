@@ -1,0 +1,35 @@
+{
+  "kind": "collectionType",
+  "collectionName": "skill_evals",
+  "info": {
+    "singularName": "skill-eval",
+    "pluralName": "skill-evals",
+    "displayName": "SkillEval"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "project": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::project.project"
+    },
+    "period": {
+      "type": "enumeration",
+      "enum": ["d7", "d30", "d90"],
+      "required": true
+    },
+    "scorecard": {
+      "type": "json",
+      "required": true
+    },
+    "dreamInput": {
+      "type": "json"
+    },
+    "generatedAt": {
+      "type": "datetime",
+      "required": true
+    }
+  }
+}

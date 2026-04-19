@@ -1,0 +1,1 @@
+export { enrichIssue } from './enrichment';

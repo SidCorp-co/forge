@@ -1,0 +1,41 @@
+{
+  "kind": "collectionType",
+  "collectionName": "devices",
+  "info": {
+    "singularName": "device",
+    "pluralName": "devices",
+    "displayName": "Device"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "name": {
+      "type": "string",
+      "required": true
+    },
+    "deviceId": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "lastSeen": {
+      "type": "datetime"
+    },
+    "projectsRoot": {
+      "type": "string"
+    },
+    "projectPaths": {
+      "type": "json",
+      "default": {}
+    },
+    "disabledUntil": {
+      "type": "datetime"
+    }
+  }
+}

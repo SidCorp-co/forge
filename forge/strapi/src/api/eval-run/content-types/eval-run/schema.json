@@ -1,0 +1,24 @@
+{
+  "kind": "collectionType",
+  "collectionName": "eval_runs",
+  "info": {
+    "singularName": "eval-run",
+    "pluralName": "eval-runs",
+    "displayName": "EvalRun"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "runId": { "type": "string", "required": true },
+    "runAt": { "type": "datetime", "required": true },
+    "totalTurns": { "type": "integer" },
+    "results": { "type": "json" },
+    "summary": { "type": "json" },
+    "status": {
+      "type": "enumeration",
+      "enum": ["running", "completed", "failed"],
+      "default": "running"
+    }
+  }
+}

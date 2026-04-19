@@ -1,0 +1,37 @@
+{
+  "project": "Forge: AI-powered project management with issue tracking, agent execution, and multi-client support",
+  "architecture": "Web/Desktop UIs → Strapi REST API + WebSocket → DB. Strapi runs AI agents via Claude CLI or cloud APIs. MCP server wraps Strapi for external Claude sessions.",
+  "paths": {
+    "api": "strapi/src/api/{name}/",
+    "frontend-feature": "web/src/features/{domain}/",
+    "frontend-page": "web/src/app/(protected)/{path}/",
+    "desktop-page": "dev/src/pages/{path}/",
+    "agent-tools": "strapi/src/services/agent/tools.ts",
+    "mcp-tools": "mcp/src/tools.ts"
+  },
+  "domains": {
+    "issues": ["issue", "comment"],
+    "tasks": ["task"],
+    "chat": ["chat", "chat-session"],
+    "agent": ["agent-session"],
+    "projects": ["project"],
+    "usage": ["usage-record"],
+    "auth": ["token"]
+  },
+  "conventions": {
+    "naming": "kebab-case dirs, camelCase TS, snake_case Rust. Feature-based organization in web/dev.",
+    "api": "Strapi v5 document service. REST at /api/<plural>. Bearer token auth. WebSocket at /ws for real-time.",
+    "state": "React Query for server state (web/dev). Zustand for client state (dev). Strapi lifecycles for cascading updates."
+  },
+  "recipes": {
+    "new-endpoint": "1) Create strapi/src/api/{name}/ with content-types/controllers/routes/services. 2) Register permissions in bootstrap. 3) Add WS broadcast if needed.",
+    "new-page-web": "1) Create web/src/app/(protected)/{path}/page.tsx. 2) Add feature module in web/src/features/{name}/ with api.ts, types.ts, hooks/.",
+    "new-agent-tool": "1) Add tool in strapi/src/services/agent/tools.ts. 2) Mirror in mcp/src/tools.ts for parity."
+  },
+  "commands": {
+    "dev-strapi": "cd strapi && npm run develop",
+    "dev-web": "cd web && npm run dev",
+    "dev-desktop": "cd dev && npm run tauri dev",
+    "build-mcp": "cd mcp && npm run build"
+  }
+}

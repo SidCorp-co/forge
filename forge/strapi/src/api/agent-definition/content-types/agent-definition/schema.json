@@ -1,0 +1,64 @@
+{
+  "kind": "collectionType",
+  "collectionName": "agent_definitions",
+  "info": {
+    "singularName": "agent-definition",
+    "pluralName": "agent-definitions",
+    "displayName": "Agent Definition"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "name": {
+      "type": "string",
+      "required": true
+    },
+    "type": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "description": {
+      "type": "text"
+    },
+    "promptTemplate": {
+      "type": "text",
+      "required": true
+    },
+    "reindexPromptTemplate": {
+      "type": "text"
+    },
+    "focusAreas": {
+      "type": "json",
+      "default": ["feature-gaps", "journey-completeness", "polish", "accessibility", "ux-improvements"]
+    },
+    "customInstructions": {
+      "type": "text"
+    },
+    "schedule": {
+      "type": "enumeration",
+      "enum": ["off", "weekly", "biweekly", "monthly"],
+      "default": "off"
+    },
+    "approvalMode": {
+      "type": "enumeration",
+      "enum": ["preview", "auto-create"],
+      "default": "preview"
+    },
+    "maxProposals": {
+      "type": "integer",
+      "default": 10
+    },
+    "excludeCategories": {
+      "type": "json",
+      "default": []
+    },
+    "agents": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::agent.agent",
+      "mappedBy": "definition"
+    }
+  }
+}

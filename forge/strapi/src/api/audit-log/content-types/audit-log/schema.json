@@ -1,0 +1,44 @@
+{
+  "kind": "collectionType",
+  "collectionName": "audit_logs",
+  "info": {
+    "singularName": "audit-log",
+    "pluralName": "audit-logs",
+    "displayName": "AuditLog"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "appId": {
+      "type": "string"
+    },
+    "userKey": {
+      "type": "string"
+    },
+    "toolName": {
+      "type": "string",
+      "required": true
+    },
+    "toolInput": {
+      "type": "json"
+    },
+    "toolResult": {
+      "type": "text"
+    },
+    "isError": {
+      "type": "boolean",
+      "default": false
+    },
+    "durationMs": {
+      "type": "integer"
+    },
+    "projectDocumentId": {
+      "type": "string"
+    },
+    "recordedAt": {
+      "type": "datetime",
+      "required": true
+    }
+  }
+}

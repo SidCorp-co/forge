@@ -1,0 +1,23 @@
+{
+    "_comment": "Copy to .mcp.json and fill with your own keys. Do not commit .mcp.json (gitignored).",
+    "mcpServers": {
+        "forge": {
+            "enabled": true,
+            "headers": {
+                "X-Forge-API-Key": "YOUR_FORGE_API_KEY",
+                "X-Forge-Project-Slug": "your-project-slug",
+                "X-Sentry-Project": ""
+            },
+            "type": "http",
+            "url": "http://localhost:1337/mcp"
+        },
+        "stitch": {
+            "enabled": false,
+            "headers": {
+                "X-Goog-Api-Key": "YOUR_GOOGLE_API_KEY"
+            },
+            "type": "http",
+            "url": "https://stitch.googleapis.com/mcp"
+        }
+    }
+}

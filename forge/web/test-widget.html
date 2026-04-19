@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head><title>Widget Test</title></head>
+<body style="background:#222;color:#fff;font-family:sans-serif;padding:40px;">
+<h2>Widget Test Page</h2>
+<p>Check browser console for [ForgeWidget] logs.</p>
+<script src="/forge-widget.js"></script>
+<script>
+  ForgeWidget.init({
+    apiKey: window.prompt('Enter API key:'),
+    apiUrl: 'http://localhost:1337',
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+{
+  "kind": "collectionType",
+  "collectionName": "app_configs",
+  "info": {
+    "singularName": "app-config",
+    "pluralName": "app-configs",
+    "displayName": "AppConfig"
+  },
+  "options": { "draftAndPublish": false },
+  "attributes": {
+    "appId": { "type": "string", "required": true, "unique": true },
+    "displayName": { "type": "string" },
+    "enabled": { "type": "boolean", "default": true },
+    "prompt": { "type": "json" },
+    "roles": { "type": "json", "default": {} },
+    "defaultRole": { "type": "string", "default": "user" },
+    "sensitivity": { "type": "json", "default": {} },
+    "channels": { "type": "json", "default": [] },
+    "auditEnabled": { "type": "boolean", "default": false },
+    "hrmBaseUrl": { "type": "string" },
+    "project": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::project.project"
+    }
+  }
+}

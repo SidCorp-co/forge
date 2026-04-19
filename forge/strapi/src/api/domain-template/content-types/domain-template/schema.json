@@ -1,0 +1,60 @@
+{
+  "kind": "collectionType",
+  "collectionName": "domain_templates",
+  "info": {
+    "singularName": "domain-template",
+    "pluralName": "domain-templates",
+    "displayName": "DomainTemplate"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "key": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "label": {
+      "type": "string",
+      "required": true
+    },
+    "description": {
+      "type": "text"
+    },
+    "agentName": {
+      "type": "string"
+    },
+    "agentRole": {
+      "type": "text"
+    },
+    "statuses": {
+      "type": "json"
+    },
+    "priorities": {
+      "type": "json"
+    },
+    "categories": {
+      "type": "json"
+    },
+    "behaviorRules": {
+      "type": "json"
+    },
+    "queryStrategies": {
+      "type": "json"
+    },
+    "enabledTools": {
+      "type": "json"
+    },
+    "intentExamples": {
+      "type": "json"
+    },
+    "isBuiltIn": {
+      "type": "boolean",
+      "default": true
+    },
+    "contentHash": {
+      "type": "string"
+    }
+  }
+}

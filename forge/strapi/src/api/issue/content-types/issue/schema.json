@@ -1,0 +1,130 @@
+{
+  "kind": "collectionType",
+  "collectionName": "issues",
+  "info": {
+    "singularName": "issue",
+    "pluralName": "issues",
+    "displayName": "Issue"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "title": {
+      "type": "string",
+      "required": true
+    },
+    "description": {
+      "type": "richtext"
+    },
+    "attachments": {
+      "type": "media",
+      "multiple": true,
+      "allowedTypes": ["images", "files", "videos"]
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": ["draft", "open", "confirmed", "clarified", "waiting", "approved", "in_progress", "developed", "deploying", "testing", "staging", "released", "closed", "reopen", "on_hold", "needs_info"],
+      "default": "open"
+    },
+    "priority": {
+      "type": "enumeration",
+      "enum": ["critical", "high", "medium", "low", "none"],
+      "default": "none"
+    },
+    "category": {
+      "type": "string"
+    },
+    "reportedBy": {
+      "type": "string"
+    },
+    "acceptanceCriteria": {
+      "type": "text"
+    },
+    "suggestedSolution": {
+      "type": "text"
+    },
+    "aiSummary": {
+      "type": "text"
+    },
+    "aiSuggestedSolution": {
+      "type": "text"
+    },
+    "aiAcceptanceCriteria": {
+      "type": "json"
+    },
+    "aiConfidence": {
+      "type": "float"
+    },
+    "isAgentTask": {
+      "type": "boolean",
+      "default": false
+    },
+    "agentStatus": {
+      "type": "enumeration",
+      "enum": ["idle", "running", "completed", "failed"]
+    },
+    "agentLog": {
+      "type": "json"
+    },
+    "plan": {
+      "type": "text"
+    },
+    "changeHistory": {
+      "type": "json",
+      "default": []
+    },
+    "project": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::project.project",
+      "inversedBy": "issues"
+    },
+    "tasks": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::task.task",
+      "mappedBy": "issue"
+    },
+    "comments": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::comment.comment",
+      "mappedBy": "issue"
+    },
+    "relations": {
+      "type": "json",
+      "default": []
+    },
+    "agentSessions": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::agent-session.agent-session",
+      "mappedBy": "issues"
+    },
+    "labels": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::label.label",
+      "mappedBy": "issues"
+    },
+    "activities": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::activity.activity",
+      "mappedBy": "issue"
+    },
+    "complexity": {
+      "type": "enumeration",
+      "enum": ["Simple", "Medium", "Complex"]
+    },
+    "sessionContext": {
+      "type": "json",
+      "default": null
+    },
+    "manualHold": {
+      "type": "boolean",
+      "default": false
+    }
+  }
+}

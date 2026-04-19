@@ -1,0 +1,60 @@
+{
+  "kind": "collectionType",
+  "collectionName": "tasks",
+  "info": {
+    "singularName": "task",
+    "pluralName": "tasks",
+    "displayName": "Task"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "title": {
+      "type": "string",
+      "required": true
+    },
+    "description": {
+      "type": "text"
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": ["backlog", "todo", "in_progress", "in_review", "done"],
+      "default": "backlog"
+    },
+    "priority": {
+      "type": "enumeration",
+      "enum": ["critical", "high", "medium", "low", "none"],
+      "default": "none"
+    },
+    "assignee": {
+      "type": "string"
+    },
+    "isAgentTask": {
+      "type": "boolean",
+      "default": false
+    },
+    "agentStatus": {
+      "type": "enumeration",
+      "enum": ["idle", "running", "completed", "failed"]
+    },
+    "agentLog": {
+      "type": "json"
+    },
+    "acceptanceCriteria": {
+      "type": "json"
+    },
+    "issue": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::issue.issue",
+      "inversedBy": "tasks"
+    },
+    "project": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::project.project",
+      "inversedBy": "tasks"
+    }
+  }
+}

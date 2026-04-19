@@ -1,0 +1,62 @@
+{
+  "kind": "collectionType",
+  "collectionName": "usage_records",
+  "info": {
+    "singularName": "usage-record",
+    "pluralName": "usage-records",
+    "displayName": "Usage Record"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "source": {
+      "type": "enumeration",
+      "enum": ["cli", "api", "desktop"],
+      "required": true
+    },
+    "model": {
+      "type": "string",
+      "required": true
+    },
+    "inputTokens": {
+      "type": "integer",
+      "default": 0
+    },
+    "outputTokens": {
+      "type": "integer",
+      "default": 0
+    },
+    "cacheReadTokens": {
+      "type": "integer",
+      "default": 0
+    },
+    "cacheCreationTokens": {
+      "type": "integer",
+      "default": 0
+    },
+    "estimatedCost": {
+      "type": "float",
+      "default": 0
+    },
+    "requestCount": {
+      "type": "integer",
+      "default": 1
+    },
+    "sessionId": {
+      "type": "string"
+    },
+    "projectName": {
+      "type": "string"
+    },
+    "recordedAt": {
+      "type": "datetime",
+      "required": true
+    },
+    "project": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::project.project"
+    }
+  }
+}

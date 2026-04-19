@@ -1,0 +1,33 @@
+name: Close Stale Issues & PRs
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          days-before-issue-stale: 60
+          days-before-issue-close: 14
+          days-before-pr-stale: 30
+          days-before-pr-close: 10
+          stale-issue-label: "stale"
+          stale-pr-label: "stale"
+          exempt-issue-labels: "pinned,roadmap,security"
+          exempt-pr-labels: "pinned,in-progress"
+          stale-issue-message: |
+            Issue này không có hoạt động trong 60 ngày. Sẽ tự đóng sau 14 ngày nếu không có comment mới.
+          stale-pr-message: |
+            PR này không có hoạt động trong 30 ngày. Sẽ tự đóng sau 10 ngày nếu không có update.
+          close-issue-message: |
+            Đóng do không hoạt động. Mở lại nếu còn relevant.
+          close-pr-message: |
+            Đóng do không hoạt động. Mở PR mới khi sẵn sàng tiếp tục.

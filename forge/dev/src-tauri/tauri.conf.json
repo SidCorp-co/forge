@@ -1,0 +1,52 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicuveo/tauri-v2-config-schema/main/schema.json",
+  "productName": "Forge Dev",
+  "version": "0.2.27",
+  "identifier": "com.forge.dev",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Forge Dev",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600,
+        "decorations": true,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "icons/icon.png"
+      }
+    }
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFDODVGQjJDQzY5MkY1RDEKUldUUjlaTEdMUHVGSFBWK3BXQngwN3BaNHcraHM2MUpQYWxlSnpTUkxKaUUvdUhia05Ha2tjbmQK",
+      "endpoints": [
+        "http://localhost:1337/api/app-releases/check/{{target}}/{{current_version}}"
+      ]
+    }
+  }
+}

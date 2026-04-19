@@ -1,0 +1,11 @@
+# CODEOWNERS — tự động request review từ các owner khi PR chạm file họ sở hữu
+# Syntax: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-security/customizing-your-repository/about-code-owners
+
+# Mặc định: toàn bộ repo
+* @junixlabs
+
+# Ví dụ fine-grained (uncomment khi dự án có nhiều module):
+# /docs/          @junixlabs
+# /.github/       @junixlabs
+# /backend/       @junixlabs
+# /frontend/      @junixlabs

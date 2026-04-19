@@ -1,0 +1,103 @@
+import type { IssueStatus, IssuePriority, IssueComplexity } from '@/features/issue/types';
+
+export const STATUS_COLORS: Record<IssueStatus, string> = {
+  // — Pipeline flow —
+  draft: 'bg-zinc-700/50 text-zinc-400',
+  open: 'bg-blue-500/15 text-blue-400',
+  confirmed: 'bg-indigo-500/15 text-indigo-400',
+  clarified: 'bg-violet-500/15 text-violet-400',
+  waiting: 'bg-amber-500/15 text-amber-400',
+  approved: 'bg-cyan-500/15 text-cyan-400',
+  in_progress: 'bg-yellow-500/15 text-yellow-300',
+  developed: 'bg-teal-500/15 text-teal-400',
+  deploying: 'bg-orange-500/15 text-orange-400',
+  testing: 'bg-purple-500/15 text-purple-400',
+  staging: 'bg-lime-500/15 text-lime-400',
+  released: 'bg-green-500/20 text-green-400 font-medium',
+  closed: 'bg-zinc-600/30 text-zinc-500',
+  // — Side states —
+  reopen: 'bg-red-500/15 text-red-400',
+  on_hold: 'bg-stone-500/20 text-stone-400',
+  needs_info: 'bg-pink-500/15 text-pink-400',
+};
+
+export const PRIORITY_COLORS: Record<IssuePriority, string> = {
+  critical: 'bg-error-container/20 text-error',
+  high: 'bg-on-surface/15 text-on-surface',
+  medium: 'bg-outline-variant/40 text-on-surface-variant',
+  low: 'bg-surface-variant text-outline',
+  none: 'bg-surface-container-low text-primary-fixed',
+};
+
+export const COMPLEXITY_COLORS: Record<IssueComplexity, string> = {
+  Simple: 'bg-surface-variant text-on-surface-variant',
+  Medium: 'bg-outline-variant/40 text-tertiary',
+  Complex: 'bg-on-surface/15 text-on-surface',
+};
+
+export const ALL_COMPLEXITIES: { value: IssueComplexity; label: string }[] = [
+  { value: 'Simple', label: 'Simple' },
+  { value: 'Medium', label: 'Medium' },
+  { value: 'Complex', label: 'Complex' },
+];
+
+export const ALL_STATUSES: { value: IssueStatus; label: string }[] = [
+  { value: 'draft', label: 'Draft' },
+  { value: 'open', label: 'Open' },
+  { value: 'confirmed', label: 'Confirmed' },
+  { value: 'clarified', label: 'Clarified' },
+  { value: 'waiting', label: 'Waiting' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'in_progress', label: 'In Progress' },
+  { value: 'developed', label: 'Developed' },
+  { value: 'deploying', label: 'Deploying' },
+  { value: 'testing', label: 'Testing' },
+  { value: 'staging', label: 'Staging' },
+  { value: 'released', label: 'Released' },
+  { value: 'closed', label: 'Closed' },
+  { value: 'reopen', label: 'Reopen' },
+  { value: 'on_hold', label: 'On Hold' },
+  { value: 'needs_info', label: 'Needs Info' },
+];
+
+export const ALL_PRIORITIES: { value: IssuePriority; label: string }[] = [
+  { value: 'critical', label: 'Critical' },
+  { value: 'high', label: 'High' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'low', label: 'Low' },
+  { value: 'none', label: 'None' },
+];
+
+export const PRIORITY_ORDER: Record<string, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+  none: 4,
+};
+
+export const ALL_CATEGORIES: { value: string; label: string }[] = [
+  { value: 'bug', label: 'Bug' },
+  { value: 'feature', label: 'Feature' },
+  { value: 'improvement', label: 'Improvement' },
+  { value: 'task', label: 'Task' },
+  { value: 'epic', label: 'Epic' },
+];
+
+export const CLOSED_STATUSES: IssueStatus[] = ['released', 'closed'];
+
+export const TASK_STATUS_COLORS: Record<string, string> = {
+  done: 'bg-on-surface/20 text-on-surface',
+  in_review: 'bg-surface-variant text-secondary-text',
+  in_progress: 'bg-on-surface/10 text-on-surface',
+  todo: 'bg-surface-variant text-on-surface-variant',
+  backlog: 'bg-surface-container-low text-primary-fixed',
+};
+
+export const AGENT_STATUS_COLORS: Record<string, string> = {
+  idle: 'bg-surface-variant text-outline',
+  queued: 'bg-outline-variant/40 text-secondary-dim',
+  running: 'bg-on-surface/10 text-on-surface',
+  completed: 'bg-on-surface/20 text-on-surface',
+  failed: 'bg-error-container/20 text-error',
+};

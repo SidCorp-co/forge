@@ -1,0 +1,59 @@
+{
+  "kind": "collectionType",
+  "collectionName": "skills",
+  "info": {
+    "singularName": "skill",
+    "pluralName": "skills",
+    "displayName": "Skill"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "name": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "description": {
+      "type": "text",
+      "required": true
+    },
+    "version": {
+      "type": "string",
+      "required": true,
+      "default": "1.0.0"
+    },
+    "skillMd": {
+      "type": "richtext",
+      "required": true
+    },
+    "files": {
+      "type": "json"
+    },
+    "project": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::project.project"
+    },
+    "isGlobal": {
+      "type": "boolean",
+      "default": false
+    },
+    "target": {
+      "type": "enumeration",
+      "enum": ["dev", "cloud", "all"],
+      "default": "dev"
+    },
+    "contentHash": {
+      "type": "string"
+    },
+    "changelog": {
+      "type": "json",
+      "default": []
+    },
+    "localGuide": {
+      "type": "text"
+    }
+  }
+}

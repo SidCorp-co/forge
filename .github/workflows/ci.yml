@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      strapi: ${{ steps.filter.outputs.strapi }}
+      web: ${{ steps.filter.outputs.web }}
+      dev: ${{ steps.filter.outputs.dev }}
+      app: ${{ steps.filter.outputs.app }}
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            strapi:
+              - 'forge/strapi/**'
+              - 'forge/tests/strapi/**'
+            web:
+              - 'forge/web/**'
+            dev:
+              - 'forge/dev/**'
+            app:
+              - 'forge/app/**'
+            docs:
+              - 'docs/**'
+              - '**.md'
+
+  strapi:
+    needs: changes
+    if: needs.changes.outputs.strapi == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: forge/strapi
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: forge/strapi/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npx vitest run --passWithNoTests
+
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: forge/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: forge/web/package-lock.json
+      - run: npm ci
+      - run: npm run lint --if-present
+      - run: npx vitest run --passWithNoTests
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:1337/api
+
+  dev:
+    needs: changes
+    if: needs.changes.outputs.dev == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: forge/dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: forge/dev/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: forge/dev/src-tauri
+      - name: Install Linux deps for Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - run: npm ci
+      - run: npx vitest run --passWithNoTests
+      - name: Rust check
+        working-directory: forge/dev/src-tauri
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --all-targets -- -D warnings
+
+  app:
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: forge/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: forge/app/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+
+  docs:
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Markdown links
+        uses: gaurav-nelson/github-action-markdown-link-check@v1
+        with:
+          use-quiet-mode: yes
+          config-file: .github/mlc-config.json

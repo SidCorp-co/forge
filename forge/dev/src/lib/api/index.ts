@@ -1,0 +1,18 @@
+export { configureApi, strapiMediaUrl } from "./client";
+export { getProjects, getProject, updateProject } from "./projects";
+export { getAllIssues, getIssues, getIssue, createIssue, updateIssue, enrichIssue, getIssueCostSummary } from "./issues";
+export type { IssueCostSummary } from "./issues";
+export { getAllTasks, getTasks, updateTask } from "./tasks";
+export { getComments, createComment, updateComment, deleteComment } from "./comments";
+export { getChatSessions, getChatSession, sendChatMessage } from "./chat";
+export { getUsageSummary, createUsageRecord, ingestCliUsage } from "./usage";
+export {
+  startAgentSession, sendAgentSession,
+  registerDesktop, unregisterDesktop,
+  registerDevice, setDeviceProjectPath, setDeviceProjectsRoot,
+  relayAgentEvent, relayPromptBuilt,
+  getPipelineTelemetry,
+} from "./agent-sessions";
+export type { PipelineTelemetry } from "./agent-sessions";
+export { getAgents, updateAgent } from "./agents";
+export { uploadFile, getNotifications, getUnreadCount, markNotificationRead, markAllNotificationsRead, syncKnowledgeToStrapi, syncConventionsToStrapi, syncAgentFiles } from "./misc";

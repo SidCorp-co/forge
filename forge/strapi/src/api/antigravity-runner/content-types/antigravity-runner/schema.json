@@ -1,0 +1,56 @@
+{
+  "kind": "collectionType",
+  "collectionName": "antigravity_runners",
+  "info": {
+    "singularName": "antigravity-runner",
+    "pluralName": "antigravity-runners",
+    "displayName": "AntigravityRunner"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "name": {
+      "type": "string",
+      "required": true
+    },
+    "endpoint": {
+      "type": "string"
+    },
+    "agentId": {
+      "type": "string"
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": ["online", "offline", "error"],
+      "default": "offline"
+    },
+    "lastSeen": {
+      "type": "datetime"
+    },
+    "healthError": {
+      "type": "string"
+    },
+    "maxProjects": {
+      "type": "integer",
+      "default": 10,
+      "min": 1
+    },
+    "excluded": {
+      "type": "boolean",
+      "default": false
+    },
+    "depletedModels": {
+      "type": "json",
+      "default": {}
+    },
+    "disabledUntil": {
+      "type": "datetime"
+    },
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    }
+  }
+}

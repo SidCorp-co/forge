@@ -1,0 +1,28 @@
+# Dependencies
+node_modules
+
+# OS
+.DS_Store
+Thumbs.db
+*Zone.Identifier
+__pycache__
+*.pyc
+.claude/*
+skills/*
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Local MCP client config (may contain API keys)
+.mcp.json
+!.mcp.json.example
+
+# Logs
+*.log

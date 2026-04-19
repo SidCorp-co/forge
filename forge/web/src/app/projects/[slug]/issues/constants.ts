@@ -1,0 +1,25 @@
+import type { IssueStatus } from '@/features/issue/types';
+
+export const PAGE_SIZE = 10;
+
+export type ViewMode = 'table' | 'board';
+export type SortOption = 'newest' | 'oldest' | 'priority' | 'updated';
+
+export const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
+  { value: 'table', label: 'Table' },
+  { value: 'board', label: 'Board' },
+];
+
+export const BOARD_COLUMNS: {
+  key: string;
+  label: string;
+  statuses: IssueStatus[];
+  color: string;
+  bg: string;
+}[] = [
+  { key: 'open', label: 'Open', statuses: ['open', 'reopen', 'needs_info'], color: 'border-outline', bg: 'bg-surface' },
+  { key: 'triage', label: 'Triage', statuses: ['confirmed', 'approved'], color: 'border-on-surface-variant', bg: 'bg-surface' },
+  { key: 'in_progress', label: 'In Progress', statuses: ['in_progress', 'on_hold'], color: 'border-primary', bg: 'bg-surface' },
+  { key: 'deploying', label: 'Deploying', statuses: ['deploying', 'testing', 'staging'], color: 'border-secondary-dim', bg: 'bg-surface' },
+  { key: 'done', label: 'Done', statuses: ['released', 'closed'], color: 'border-outline-variant', bg: 'bg-surface' },
+];
