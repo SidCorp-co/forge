@@ -1,46 +1,47 @@
 # Contributing to jarvis-agents
 
-Cảm ơn bạn quan tâm. Dự án đang ở giai đoạn alpha — mọi feedback đều giá trị.
+Thanks for your interest. The project is in alpha — every piece of feedback is valuable.
 
-## Trước khi bắt đầu
+## Before you start
 
-- Đọc [Code of Conduct](CODE_OF_CONDUCT.md).
-- Check issue tồn tại chưa trước khi mở cái mới.
-- Với feature lớn: mở **discussion** hoặc issue `proposal` trước khi code.
+- Read the [Code of Conduct](CODE_OF_CONDUCT.md).
+- Search existing issues before opening a new one.
+- For large features: open a **discussion** or a `proposal` issue before writing code.
 
-## Quy trình đóng góp
+## Contribution workflow
 
-1. Fork repo, tạo branch từ `main`: `git checkout -b feat/xyz` hoặc `fix/xyz`.
-2. Code + test. CI phải pass local trước khi push.
-3. Commit theo [Conventional Commits](https://www.conventionalcommits.org/):
-   - `feat: add X` — feature mới
+1. Fork the repo and create a branch from `main`: `feat/xyz` or `fix/xyz`.
+2. Write code + tests. CI must pass locally before pushing.
+3. Commit using [Conventional Commits](https://www.conventionalcommits.org/):
+   - `feat: add X` — new feature
    - `fix: Y` — bug fix
-   - `docs: Z` — chỉ docs
+   - `docs: Z` — docs only
    - `refactor:`, `test:`, `chore:`, `perf:`
-4. Mở PR, fill template.
-5. Một maintainer review trong 3 ngày làm việc.
+4. Open a PR and fill out the template.
+5. A maintainer reviews within 3 business days.
 
 ## Coding standards
 
-- Lint + format phải pass CI.
-- Test coverage không giảm.
-- Breaking change → ghi rõ trong PR description + update CHANGELOG.
+- Lint + format must pass in CI.
+- Test coverage should not regress.
+- Breaking changes: document them in the PR description and update CHANGELOG.
 
-## Báo bug
+## Reporting bugs
 
-Dùng [issue template bug](.github/ISSUE_TEMPLATE/bug_report.yml). Tối thiểu cần:
-- Phiên bản dùng
-- Cách reproduce
-- Expected vs actual
+Use the [bug report template](.github/ISSUE_TEMPLATE/bug_report.yml). At minimum:
 
-## Đề xuất feature
+- Version in use
+- Steps to reproduce
+- Expected vs. actual behavior
 
-Dùng [issue template feature](.github/ISSUE_TEMPLATE/feature_request.yml). Mô tả **problem** trước, đừng mô tả **solution** ngay.
+## Proposing features
+
+Use the [feature request template](.github/ISSUE_TEMPLATE/feature_request.yml). Describe the **problem** first, not the solution — maintainers may suggest a better approach.
 
 ## Security
 
-**Không** mở public issue cho lỗ hổng bảo mật. Xem [SECURITY.md](SECURITY.md).
+**Do not open public issues** for security vulnerabilities. See [SECURITY.md](SECURITY.md).
 
 ## License
 
-Khi submit code, bạn đồng ý contribute dưới [Apache-2.0](LICENSE).
+By submitting code, you agree to contribute under [Apache-2.0](LICENSE).

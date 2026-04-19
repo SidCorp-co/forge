@@ -7,24 +7,25 @@
 | latest  | ✅        |
 | < latest| ❌        |
 
-Trong giai đoạn alpha, chỉ bản mới nhất được vá. Sau GA sẽ có chính sách cụ thể.
+During alpha, only the latest version receives security fixes. A formal support policy will be documented at GA.
 
-## Báo lỗ hổng
+## Reporting a vulnerability
 
-**Không mở public issue.**
+**Do not open a public issue.**
 
-Gửi email về **chuongld@sidcorp.co** với:
-- Mô tả lỗ hổng + impact
-- Cách reproduce
-- Phiên bản bị ảnh hưởng
-- (Tùy chọn) đề xuất fix
+Email **chuongld@sidcorp.co** with:
 
-### Cam kết phản hồi
+- A description of the vulnerability and its impact
+- Steps to reproduce
+- Affected versions
+- (Optional) a suggested fix
 
-- **72 giờ**: xác nhận đã nhận báo cáo
-- **7 ngày**: đánh giá mức độ + kế hoạch fix
-- **30 ngày**: release fix (tùy severity)
+### Response SLA
 
-### Disclosure
+- **72 hours** — acknowledgement of the report
+- **7 days** — severity assessment + remediation plan
+- **30 days** — fix released (timeline depends on severity)
 
-Chúng tôi theo coordinated disclosure: fix release xong mới công bố chi tiết. Reporter được credit (trừ khi yêu cầu ẩn danh).
+### Coordinated disclosure
+
+We follow coordinated disclosure: technical details are published only after a patched release is available. Reporters are credited by name unless they request anonymity.

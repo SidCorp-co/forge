@@ -1,40 +1,40 @@
-<!-- Cảm ơn bạn contribute! Fill các mục dưới để review nhanh hơn. -->
+<!-- Thanks for contributing! Fill the sections below so review moves fast. -->
 
-## Tóm tắt
+## Summary
 
-<!-- 1-3 câu: thay đổi gì, tại sao -->
+<!-- 1–3 sentences: what changed, why -->
 
-## Loại thay đổi
+## Type of change
 
 - [ ] Bug fix (non-breaking)
-- [ ] Feature mới (non-breaking)
-- [ ] Breaking change (cần bump major version)
-- [ ] Docs / chore / refactor (không ảnh hưởng hành vi)
+- [ ] New feature (non-breaking)
+- [ ] Breaking change (requires major version bump)
+- [ ] Docs / chore / refactor (no behavior change)
 
-## Issue liên quan
+## Related issue
 
 Closes #
 
 ## Test plan
 
-<!-- Liệt kê cách bạn đã test. Checklist cụ thể, không viết "đã test xong" -->
+<!-- Concrete checklist of what you tested. Do not write "tested it works". -->
 
-- [ ] Unit tests pass local
-- [ ] Integration tests pass local
-- [ ] Thử tay scenario: ...
+- [ ] Unit tests pass locally
+- [ ] Integration tests pass locally
+- [ ] Manual scenario: ...
 
 ## Checklist
 
-- [ ] Code tuân theo style guide của dự án
-- [ ] Đã tự review diff
-- [ ] Đã update docs liên quan
-- [ ] Đã thêm entry vào [CHANGELOG.md](../CHANGELOG.md) nếu thay đổi đáng kể
-- [ ] Commit message theo Conventional Commits
+- [ ] Code follows the project style guide
+- [ ] Self-reviewed the diff
+- [ ] Updated docs where relevant
+- [ ] Added a [CHANGELOG.md](../CHANGELOG.md) entry for meaningful changes
+- [ ] Commit messages follow Conventional Commits
 
 ## Breaking changes
 
-<!-- Nếu có: mô tả ảnh hưởng và migration path -->
+<!-- If any: describe impact and migration path -->
 
 ## Screenshots / demo
 
-<!-- Với UI changes -->
+<!-- For UI changes -->

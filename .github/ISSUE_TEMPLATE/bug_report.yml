@@ -1,38 +1,38 @@
 name: Bug Report
-description: Báo bug để giúp dự án cải thiện
+description: Report a bug to help the project improve
 title: "[Bug] "
 labels: ["bug", "triage"]
 body:
   - type: markdown
     attributes:
       value: |
-        Cảm ơn bạn dành thời gian báo bug. Thông tin càng chi tiết, fix càng nhanh.
+        Thanks for taking the time to report a bug. The more detail, the faster we can fix it.
 
   - type: textarea
     id: description
     attributes:
-      label: Mô tả bug
-      description: Bug là gì? Xảy ra khi nào?
-      placeholder: Khi tôi bấm X, Y xảy ra thay vì Z
+      label: Bug description
+      description: What is the bug? When does it happen?
+      placeholder: When I click X, Y happens instead of Z
     validations:
       required: true
 
   - type: textarea
     id: reproduce
     attributes:
-      label: Cách reproduce
-      description: Các bước cụ thể để tái hiện bug
+      label: Steps to reproduce
+      description: Concrete steps that trigger the bug
       placeholder: |
-        1. Chạy `...`
-        2. Mở `...`
-        3. Thấy lỗi `...`
+        1. Run `...`
+        2. Open `...`
+        3. See error `...`
     validations:
       required: true
 
   - type: textarea
     id: expected
     attributes:
-      label: Expected vs Actual
+      label: Expected vs actual
       placeholder: |
         Expected: ...
         Actual: ...
@@ -42,21 +42,21 @@ body:
   - type: input
     id: version
     attributes:
-      label: Phiên bản
-      placeholder: v0.1.2 hoặc commit SHA
+      label: Version
+      placeholder: v0.1.2 or commit SHA
     validations:
       required: true
 
   - type: dropdown
     id: environment
     attributes:
-      label: Môi trường
+      label: Environment
       options:
         - Linux
         - macOS
         - Windows
         - Docker
-        - Khác (mô tả ở dưới)
+        - Other (describe below)
     validations:
       required: true
 

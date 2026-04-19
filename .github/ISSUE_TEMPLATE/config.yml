@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Hỏi đáp / Thảo luận
+  - name: Questions & discussions
     url: https://github.com/junixlabs/jarvis-agents/discussions
-    about: Dùng Discussions cho câu hỏi và đề xuất chưa rõ scope
-  - name: Báo lỗ hổng bảo mật
+    about: Use Discussions for questions and proposals still taking shape
+  - name: Report a security vulnerability
     url: https://github.com/junixlabs/jarvis-agents/security/advisories/new
-    about: KHÔNG mở public issue — dùng private security advisory
+    about: DO NOT open a public issue — use the private security advisory form

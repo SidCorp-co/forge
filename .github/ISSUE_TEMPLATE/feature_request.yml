@@ -1,41 +1,41 @@
 name: Feature Request
-description: Đề xuất feature mới
+description: Suggest a new feature
 title: "[Feature] "
 labels: ["enhancement", "triage"]
 body:
   - type: markdown
     attributes:
       value: |
-        Mô tả **vấn đề** trước, đừng mô tả **giải pháp** ngay. Maintainer có thể đề xuất giải pháp khác tốt hơn.
+        Describe the **problem** first, not the solution. Maintainers may suggest a better approach.
 
   - type: textarea
     id: problem
     attributes:
-      label: Vấn đề bạn đang gặp
-      description: Bạn đang muốn làm gì mà hiện tại không làm được / khó làm?
-      placeholder: Tôi muốn X nhưng hiện tại phải Y vì thiếu Z
+      label: Problem you are facing
+      description: What are you trying to do that is hard or impossible today?
+      placeholder: I want to do X, but currently I have to do Y because Z is missing
     validations:
       required: true
 
   - type: textarea
     id: solution
     attributes:
-      label: Giải pháp bạn nghĩ đến (tùy chọn)
-      description: Nếu có idea cụ thể, mô tả ở đây. Không bắt buộc.
+      label: Proposed solution (optional)
+      description: If you have a specific idea, describe it here. Not required.
 
   - type: textarea
     id: alternatives
     attributes:
-      label: Giải pháp thay thế đã cân nhắc
-      description: Workaround hiện tại / tools khác đã thử
+      label: Alternatives considered
+      description: Current workarounds or other tools you have tried
 
   - type: dropdown
     id: impact
     attributes:
-      label: Mức độ ảnh hưởng đến bạn
+      label: Impact on you
       options:
         - Nice to have
-        - Cản trở workflow
-        - Blocker — không dùng được nếu thiếu
+        - Blocks my workflow
+        - Blocker — unusable without it
     validations:
       required: true
