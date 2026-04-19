@@ -9,7 +9,7 @@ Status: Alpha — expect breaking changes across `v0.x`
 
 ## 1. Positioning
 
-**Jarvis Agents** is an open-source project management + AI agent platform. It combines a Linear-style issue tracker with an agent orchestration layer that can plan, code, review, and ship work — driven by Claude CLI and cloud AI providers.
+**Jarvis Agents** is an open-source project management + AI agent platform. It combines a full-featured issue tracker with an agent orchestration layer that can plan, code, review, and ship work — driven by Claude CLI and cloud AI providers.
 
 **Target users:**
 
@@ -18,7 +18,7 @@ Status: Alpha — expect breaking changes across `v0.x`
 3. **Engineering managers** — want visibility into AI-assisted work, not a black box.
 
 **What we are NOT:**
-- Not a Jira/Linear replacement for enterprises (no complex RBAC, no Jira-grade reporting).
+- Not a replacement for enterprise PM tools (no complex RBAC, no enterprise-grade reporting).
 - Not a ChatGPT wrapper (agents are workflow-aware, not conversational).
 - Not a no-code tool (we expect users can run docker-compose).
 

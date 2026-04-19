@@ -1,6 +1,6 @@
 # Jarvis Agents
 
-> Open-source project management + AI agent platform. Linear-style issue tracker with agent orchestration driven by Claude CLI and cloud AI providers.
+> Open-source project management + AI agent platform. Full-featured issue tracker with agent orchestration driven by Claude CLI and cloud AI providers.
 
 [![CI](https://github.com/junixlabs/jarvis-agents/actions/workflows/ci.yml/badge.svg)](https://github.com/junixlabs/jarvis-agents/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -20,7 +20,7 @@ The agents are not a chat wrapper. They run through a documented pipeline (`forg
 
 ## What it is not
 
-- Not a Jira/Linear replacement for enterprises — no complex RBAC, no Jira-grade reporting
+- Not a replacement for enterprise PM tools — no complex RBAC, no enterprise-grade reporting
 - Not a ChatGPT wrapper — agents are workflow-aware, not conversational
 - Not a no-code tool — expect to run `docker compose`
 

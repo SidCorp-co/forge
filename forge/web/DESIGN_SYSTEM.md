@@ -1,6 +1,6 @@
 # Forge Design System — "The Mono-Engineered Interface"
 
-> Extracted from Stitch project `Forge - Linear Aesthetic` (ID: `3964809539190622327`)
+> Extracted from Stitch project `Forge - Technical Aesthetic` (ID: `3964809539190622327`)
 > Design System: **Mono Engineered** — Creative North Star: **The Precision Instrument**
 
 ---
