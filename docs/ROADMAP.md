@@ -9,21 +9,24 @@ Status: Alpha — expect breaking changes across `v0.x`
 
 ## 1. Positioning
 
-**Jarvis Agents** is an open-source control plane for Claude Code. Issues arrive via webhooks from any source, flow through an extensible pipeline of agent skills, and every Claude Code session is captured, resumable, and auditable. Self-hosted. Apache-2.0.
+**Jarvis Agents** lets you remote-control your local Claude Code from a web dashboard. You keep your Claude subscription and your code on your own machines; Jarvis pairs them as **devices**, routes incoming issues through a 14-status pipeline, and captures every job so teams have visibility, resumability, and audit.
 
-Think: "Jenkins for Claude Code" — the CLI does the work; Jarvis Agents makes the work visible and coordinatable.
+The architectural story: **the server never holds your Claude credentials.** Think GitHub Actions self-hosted runners, for Claude Code.
 
 **Target users:**
 
-1. **Engineering managers / tech leads (teams 3–20)** — need visibility into agent-driven work, audit trails, and shared pipeline discipline.
-2. **Developers running Claude Code across many projects** — want persistent session state, resumability, and webhook-driven triggers.
-3. **Regulated / agency teams** — need self-hosted Claude Code orchestration (cannot use cloud-only agents).
+1. **Engineering managers / tech leads (teams 3–20) already using Claude Code** — need visibility into agent-driven work, audit trails, multi-project coordination. Willing to self-host for control.
+2. **Developers who run Claude Code across many projects** — want persistent job state, resumability, webhook-driven triggers, multi-device pooling (laptop + desktop + CI).
+3. **Privacy-sensitive / regulated / agency teams** — cannot send code to third-party clouds. Jarvis's architecture guarantees Claude credentials and code never leave your devices.
 
 **What we are NOT:**
-- Not a replacement for Claude Code CLI — we orchestrate it.
-- Not a chat interface — the primary interface is a pipeline dashboard.
-- Not a replacement for enterprise PM tools — no complex RBAC in `v0.x`.
+- Not a replacement for Claude Code — we orchestrate, we don't reimplement.
+- Not a chat UI — the primary interface is a pipeline dashboard.
+- Not a tool that uses Anthropic's API — we spawn the `claude` CLI you already pay for.
+- Not enterprise PM — no complex RBAC in `v0.x`.
 - Not GitHub-only — webhook ingestion is source-agnostic.
+
+See [RFC 0001: Device-runner architecture](rfcs/0001-device-runner-architecture.md) for the foundational design decision.
 
 ---
 
@@ -34,83 +37,103 @@ Five parallel tracks. Each release ships a slice across multiple themes.
 | # | Theme | Question it answers |
 |---|-------|---------------------|
 | T1 | **Pipeline & orchestration** | Can issues flow through agent stages with gates and auto-triggers? |
-| T2 | **Session capture & execution** | Can every Claude Code run be recorded, resumed, and routed across devices? |
+| T2 | **Device-runner system** | Can devices pair, run jobs, and stream events reliably? |
 | T5 | **Observability & trust** | Can teams see what agents did, pause when broken, audit decisions? |
-| T3 | **Developer experience** | Desktop app, skill authoring, local MCP — does this feel native to a Claude Code user? |
-| T4 | **Collaboration & multi-surface** | Real-time sync, mobile review, multi-project dashboards |
+| T3 | **Developer experience** | Desktop GUI + CLI daemon, skill authoring — does this feel native to a Claude Code user? |
+| T4 | **Collaboration & multi-surface** | Real-time sync, multi-project dashboards, mobile (v0.2+) |
 
-T5 is elevated to core (not polish layer) because observability is a defining differentiator.
+T5 (observability) is core from v0.1, not a polish layer. T2 (device-runner) is the architectural center.
 
 ---
 
 ## 3. Release direction
 
-Versions are ship-when-ready. `v0.x` allows breaking changes.
+Versions ship when ready. `v0.x` allows breaking changes.
 
-### v0.1 — Control plane for Claude Code
+### v0.1 — Device-runner control plane
 
 **Focus:** T1 + T2 + T5.
 
+**Control plane:**
 - Projects, issues, 14-status pipeline with per-stage auto-run toggles
-- Webhook ingestion (GitHub, generic JSON endpoint, custom sources)
-- Claude Code session capture: streaming, resumable, token-tracked
-- Desktop Tauri runner (spawns Claude CLI locally with git worktree)
-- Optional Antigravity runner for browser-based tasks
-- Built-in pipeline skills: forge-triage, forge-clarify, forge-plan, forge-code, forge-review, forge-test, forge-release, forge-fix
-- User-authored skills (register into pipeline)
-- Pipeline health dashboard
-- MCP server at `/mcp` for external agent clients
-- `docker compose up` one-command setup
+- Webhook ingestion (GitHub, generic JSON, custom)
+- Job queue + dispatcher
+- JobEvent stream (30-day retention after terminal state)
+- WebSocket with room-scoped broadcasts
+- MCP server at `/mcp` with dual-principal auth
+- `docker compose up` quickstart
 
-### v0.2 — Onboarding + collaboration
+**Device agents:**
+- Tauri `dev` GUI (first-class)
+- `forged` CLI daemon (secondary form factor)
+- Shared `agent-core` Rust crate
+- Pair/revoke UI, pairing codes
+- OS keychain storage (macOS Keychain, Windows Credential Manager, Linux Secret Service)
+- Auto-update via GitHub Releases
+- Platform priority: Linux desktop first-class, macOS/Windows supported
+
+**Auth + policy:**
+- Dual-principal (user JWT + device token)
+- Shared policy layer — no ad-hoc controller checks
+- JWT 7d + refresh rotation
+- Rate limits on auth + pairing endpoints
+- Email verification at first project creation
+
+**Pipeline skills:**
+- Built-in: forge-triage, forge-clarify, forge-plan, forge-code, forge-review, forge-test, forge-release, forge-fix
+- User-authored skills register into pipeline stages
+
+**Observability:**
+- Pipeline health dashboard
+- Job event replay
+- Token usage tracking per project, per device
+
+### v0.2 — Mobile returns + polish
 
 **Focus:** T4 + T3.
 
-- Mobile app (React Native) — issue review + session monitoring
-- First-run onboarding wizard, example project, tutorial pipeline
+- Mobile app un-paused (read-only dashboard + job monitoring)
+- Device label routing (`gpu`, `macOS-arm64`, `has-docker`)
 - Skill library UI (search, install, rate, version)
 - Session replay with diff timeline and jump-to-tool-call
-- Webhook integration templates (Sentry, Stripe, GitHub events)
+- Webhook integration templates (Sentry, Stripe, GitHub event variants)
+- First-run onboarding wizard
 
 ### v0.3 — Ecosystem
 
-**Focus:** T3 + T2.
-
-- Deep GitHub/GitLab integration (PR linkage, status sync)
+- Deep GitHub / GitLab integration (PR linkage, status sync)
 - External MCP registry
 - User-contributed skill marketplace
 - Webhook-out to chat platforms
 
-### v0.4 — Team scale
+### v0.4 — Teams
 
-**Focus:** T1 + T4.
-
-- Multi-workspace / cross-project views
-- Roles: viewer, contributor, admin
-- @mentions, email notifications, digest
+- Multi-user projects
+- Roles (viewer, contributor, admin)
+- Shared devices (team principal)
+- Notifications, digests
 - Skill permissions
-- Rate limiting for agent execution
 
-### v0.5 — Trust
+### v0.5 — Trust & scale
 
-**Focus:** T5.
-
-- Metrics export (Prometheus)
+- Prometheus metrics export
 - OpenTelemetry traces
 - Audit log export
 - Backup/restore tooling
+- WebSocket → Redis pub/sub (for larger deployments)
 - Public security review
 
 ### v1.0 — Contract freeze
 
-- SemVer strict: breaking changes require deprecation cycle
+- SemVer strict, LTS policy
 - Skill format frozen
-- LTS policy documented
+- Device-agent protocol frozen
 
-**Post-1.0** (uncommitted):
+**Post-1.0 (uncommitted):**
 - Plugin marketplace
-- Optional managed SaaS tier (separate repo)
-- Enterprise features (SSO, SCIM)
+- Linux headless agent (separate RFC)
+- Team-device sharing
+- Optional managed tier
 
 ---
 
@@ -121,42 +144,49 @@ Idea → Proposal (RFC) → Accepted → Implemented → Released → Learned
 ```
 
 RFCs required for:
-- New public API surface (REST endpoint, MCP tool, UI route)
+- New public API surface (REST endpoint, MCP tool, WebSocket event)
 - Architecture changes (new service, schema migration)
 - Breaking changes
 - New pipeline stage or state machine change
-- Cross-theme features
+- Device-agent protocol changes
+- New principal class (team, shared device)
 
-FCP: 10 calendar days with disposition (merge / close / postpone).
+FCP: 10 calendar days.
+
+RFC template: see [rfcs/0001](rfcs/0001-device-runner-architecture.md) or adapt from [Rust RFC template](https://github.com/rust-lang/rfcs/blob/master/0000-template.md).
 
 ---
 
 ## 5. Prioritization framework
 
-Score each competing feature: (user pain × 3) + (leverage × 2) + (strategic fit × 2) − effort.
+Score: (user pain × 3) + (leverage × 2) + (strategic fit × 2) − effort.
 
-Non-quantitative veto rules:
-- **Security & data loss** always wins over features
-- **No migration path** = not ready
-- **Dogfood blocker** = not v0.1 material
+Non-quantitative vetoes:
+- **Security & data loss** always wins.
+- **Credential boundary violation** — if any feature would require the server to hold Claude credentials, it's rejected architecturally, not deprioritized.
+- **No migration path** = not ready.
+- **Dogfood blocker** = not v0.1.
 
 ---
 
 ## 6. What we are deliberately NOT doing
 
-These are firm non-goals.
-
-- **No multi-tenant SaaS** in core repo
-- **No replacing Claude Code itself** — we orchestrate, we don't build an agent loop
-- **No chat UI as primary interface** — this is a pipeline platform
-- **No vendor-specific issue-source integrations in core** — plugins only for Jira-import, Asana-sync, etc.
-- **No rich-text WYSIWYG editor** — markdown, always
-- **No built-in messaging** — agents communicate via issues and comments
-- **No feature-flag service** — env vars and config
-- **No built-in CI runner** — use the host's CI
-- **No language-specific tooling in core** — all features work across stacks
-- **No enterprise RBAC in v0.x** — deliberately out of scope
-- **No agent framework abstractions** — we don't reimplement LangGraph/CrewAI; we orchestrate anything that emits sessions
+- **No multi-tenant SaaS in core repo.**
+- **No Claude API usage.** We spawn the CLI, we don't call the API.
+- **No Claude credential storage on the server.** Architectural commitment.
+- **No replacing Claude Code itself.**
+- **No chat UI as primary interface.**
+- **No vendor-specific issue-source integrations in core** — plugins only.
+- **No rich-text WYSIWYG editor.**
+- **No built-in messaging.**
+- **No feature-flag service.**
+- **No built-in CI runner.**
+- **No enterprise RBAC in v0.x.**
+- **No team / organization model in v0.x** — separate RFC.
+- **No hosted (managed) runner** — contradicts device-runner spirit.
+- **No Linux headless agent in v0.x** — follow-up RFC planned.
+- **No mobile app in v0.x** — paused, returns v0.2+.
+- **No agent framework abstractions** — we orchestrate, not reimplement LangGraph/CrewAI.
 
 ---
 
@@ -171,5 +201,6 @@ These are firm non-goals.
 ## 8. References
 
 - [Architecture](architecture.md)
-- [BRAND.md](BRAND.md) — naming + style conventions
+- [RFC 0001: Device-runner architecture](rfcs/0001-device-runner-architecture.md)
+- [BRAND.md](BRAND.md)
 - [Contributing](../CONTRIBUTING.md)

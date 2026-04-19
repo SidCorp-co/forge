@@ -1,6 +1,6 @@
 # Jarvis Agents
 
-> Open-source control plane for Claude Code. Webhook in. Pipeline out. Every session on record.
+> Remote-control your local Claude Code. Webhook in. Pipeline out. Every job on record.
 
 [![CI](https://github.com/junixlabs/jarvis-agents/actions/workflows/ci.yml/badge.svg)](https://github.com/junixlabs/jarvis-agents/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -10,23 +10,23 @@
 
 ## What it is
 
-Jarvis Agents sits between your team and Claude Code CLI. It adds:
+Jarvis Agents is an open-source **control plane** for Claude Code. You keep using `claude` on your own machine with your own Claude Pro/Max subscription. Jarvis adds the layer around it: a web dashboard to trigger work, a pipeline that routes issues through agent stages, and a full audit trail of every job.
 
-- **Webhook ingestion** — issues arrive from GitHub, Sentry, Stripe, or your own API
-- **A 14-status pipeline** — triage, plan, code, review, release (auto-run or human-gated per stage)
-- **Session capture** — every Claude Code run recorded with messages, tool calls, diffs, token usage
-- **Multi-device execution** — desktop app runs Claude CLI locally with git worktree isolation; optional cloud runner for browser tasks
-- **Extensible skills** — built-in pipeline skills plus your own, versioned per project
-- **MCP-native data layer** — same backend exposes REST (for UIs) and MCP (for agents)
+- **Devices pair into your account.** Your laptop, desktop, or CI box runs the Jarvis agent, which spawns `claude` locally. The server never holds Claude credentials.
+- **Issues flow in from anywhere.** GitHub webhooks, Sentry alerts, Stripe events, your own API — create a webhook, point it at Jarvis, it becomes an issue.
+- **A 14-status pipeline routes work.** Triage → clarify → plan → code → review → test → release. Per stage: auto-run or human gate.
+- **Every job is captured.** stdout, stderr, tool calls, diffs, token usage — streamed to the dashboard in real time, resumable on disconnect, replayable later.
+- **Extensible by design.** Write your own skills, define your own pipeline stages, bring your own runner.
+- **Multi-project, multi-device.** One Jarvis instance coordinates many projects. Each project binds to devices from a pool; one active at a time.
 
-Think of it as **Jenkins for Claude Code**: the CLI does the work; Jarvis Agents makes the work visible, resumable, and coordinatable across a team.
+Think of it as **GitHub Actions self-hosted runners, for Claude Code.** The devices are yours. The compute is yours. The orchestration is open-source.
 
 ## What it is NOT
 
-- Not a replacement for Claude Code — we orchestrate it, we don't replace it
-- Not a chat interface — this is a pipeline, not a conversation
-- Not a Jira replacement for enterprises — no complex RBAC in `v0.x`
-- Not a no-code tool — expect to run `docker compose`
+- Not a replacement for Claude Code — we orchestrate the CLI, we don't reimplement it.
+- Not a chat UI — the primary interface is a pipeline dashboard.
+- Not a tool that uses the Anthropic API — we never hold your Claude credentials.
+- Not a replacement for enterprise PM — no complex RBAC in `v0.x`.
 
 ## Quickstart
 
@@ -34,88 +34,102 @@ Think of it as **Jenkins for Claude Code**: the CLI does the work; Jarvis Agents
 git clone https://github.com/junixlabs/jarvis-agents.git
 cd jarvis-agents
 cp .env.example .env
-# Fill .env with Strapi secrets (see comments in .env.example)
 docker compose up -d
 ```
 
 - Server admin: <http://localhost:1337/admin>
 - Web dashboard: <http://localhost:3000>
-- Vector store: <http://localhost:6333/dashboard>
 
-Install the desktop runner (Claude CLI spawner) from [GitHub Releases](https://github.com/junixlabs/jarvis-agents/releases) once available.
+Then install the desktop agent (spawns `claude` on your machine) from [Releases](https://github.com/junixlabs/jarvis-agents/releases), or run `forged pair <code>` if you prefer the CLI daemon.
 
 Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
 
 ## Architecture
 
 ```
-┌──────────────┐   ┌─────────┐   ┌────────────────┐
-│ web          │   │ app     │   │ dev (Tauri)    │
-│ (Next.js)    │   │ (Expo)  │   │ Claude runner  │
-└──────┬───────┘   └────┬────┘   └────────┬───────┘
-       │                │                 │
-       └──── REST ──────┼─── WebSocket ───┘
-                        ▼
-              ┌─────────────────────┐
-              │  strapi (Node)      │
-              │  REST + WS + MCP    │
-              │  + Pipeline Engine  │
-              └──────────┬──────────┘
-                         │
-     ┌───────────────────┼──────────────────────┐
-     ▼                   ▼                      ▼
-┌─────────┐         ┌──────────┐         ┌──────────────┐
-│Postgres │         │ Qdrant   │         │ Claude Code  │
-│ state   │         │ memory   │         │ (via Tauri)  │
-└─────────┘         └──────────┘         └──────────────┘
-                                                │
-                                         (optional: Antigravity
-                                          for browser tasks)
+  Your browser / phone                 Your machine(s)
+  ┌──────────────┐                     ┌──────────────────────┐
+  │ web (Next.js)│                     │ Device agent         │
+  │ dashboard    │                     │ - Tauri GUI (dev), or│
+  │ + mobile     │                     │ - CLI daemon (forged)│
+  └──────┬───────┘                     │                      │
+         │ REST + WebSocket            │ runs `claude` locally│
+         ▼                             │ in a git worktree    │
+  ┌────────────────────────────────────┐└────────┬─────────────┘
+  │  Control plane (Strapi)            │         │
+  │  REST + WebSocket + MCP            │ WebSocket (events, jobs)
+  │  Pipeline engine, job dispatcher   │◄────────┘
+  │  NEVER holds Claude credentials    │
+  └──────────┬─────────────────────────┘
+             │
+    ┌────────┼────────┐
+    ▼        ▼        ▼
+┌───────┐┌───────┐┌──────────┐
+│Postgres││Qdrant ││ Pg-boss  │
+│ state  ││ memory││ job queue│
+└───────┘└───────┘└──────────┘
 ```
 
-See [docs/architecture.md](docs/architecture.md) for detail.
+Two key boundaries:
+
+1. **Control plane vs. runtime.** The server queues jobs and streams events. Devices run Claude Code. A server compromise never leaks Claude credentials — they live on your machines.
+2. **Dual-principal auth.** A user (JWT) and a device (long-lived revocable token) are two separate principals with separate permissions. Shared policy layer enforces every access.
+
+See [docs/architecture.md](docs/architecture.md) and [docs/rfcs/0001-device-runner-architecture.md](docs/rfcs/0001-device-runner-architecture.md) for detail.
 
 ## Packages
 
 | Package | Role | Dev command |
 |---------|------|-------------|
-| [`forge/strapi/`](forge/strapi/) | Backend: REST + WebSocket + MCP + Pipeline Engine | `npm run develop` |
-| [`forge/web/`](forge/web/) | Next.js dashboard: Kanban, session replay, pipeline health | `npm run dev` |
-| [`forge/dev/`](forge/dev/) | Tauri desktop runner: spawns Claude CLI locally | `npm run tauri dev` |
-| [`forge/app/`](forge/app/) | React Native (Expo) mobile: on-the-go review | `npm run start` |
+| [`forge/strapi/`](forge/strapi/) | Control plane: REST + WebSocket + MCP + job dispatcher | `npm run develop` |
+| [`forge/web/`](forge/web/) | Next.js dashboard: Kanban, job replay, pipeline health, device mgmt | `npm run dev` |
+| [`forge/dev/`](forge/dev/) | Tauri desktop device agent (GUI form factor) | `npm run tauri dev` |
+| `forge/forged/` | CLI daemon device agent (headless form factor) — coming soon | — |
+| `forge/agent-core/` | Shared Rust crate used by both device agents | — |
+
+> Mobile app (`forge/app/`) is paused for `v0.x`. Revisiting for `v0.2+` after the device-runner model stabilizes.
 
 ## How it works
 
-1. **An issue arrives.** Via webhook (GitHub, Sentry, custom) or created in the dashboard.
-2. **A pipeline routes it.** Each status maps to a skill. `open → forge-triage`, `approved → forge-code`, etc. Per-project config decides what auto-runs vs what's human-gated.
-3. **Claude Code executes.** The desktop app spawns a local Claude CLI session in a git worktree. Session state streams to the dashboard in real time.
-4. **You review and merge.** Diff, token usage, tool calls — all captured. Approve or reject. Status advances.
-5. **Next agent picks up.** Pipeline continues.
+1. **Pair a device.** Account → Devices → "Add device" generates a pairing code. Run `forged pair F9-3K7T-92XA` on your machine (or paste into the Tauri app). Token stored in the OS keychain. Device appears online in the dashboard.
+
+2. **Bind a project to a device.** Project → Settings → Runtime → pick a device from your pool. First bind prompts for the repo's local path and runs `git clone` if needed. One device is active at a time per project.
+
+3. **An issue arrives.** Via webhook or created in the dashboard. Pipeline enqueues the first stage (`forge-triage`) as a job.
+
+4. **The dispatcher picks a device.** Job is pushed over WebSocket to the project's active device. Device spawns `claude` locally, streams stdout / tool calls / diffs back to the server.
+
+5. **You watch and gate.** The dashboard streams events in real time. Approve the plan. Reject the diff. Move it along. Jobs that finish advance the pipeline.
+
+6. **The server keeps receipts.** Every job has a full event log, retained for 30 days after it terminates. Issues themselves are persistent.
 
 ## Extending
 
-- **Custom skills** — write your own skill in `.claude/skills/` and register it with a pipeline stage. See [how-to: author a skill](docs/how-to/author-a-skill.md) (coming soon).
-- **Custom pipeline stages** — modify the state machine for domain-specific flows.
-- **Custom runners** — Claude Code CLI is the default; other runners are pluggable.
+- **Custom skills** — author your own skill in `.claude/skills/` and register it with a pipeline stage.
+- **Custom pipeline stages** — modify the 14-status state machine for domain-specific flows (requires RFC for public releases).
+- **Custom runners** — the device agent is pluggable. Default runs `claude` CLI; future runners can be anything that emits the Jarvis event protocol.
 
 ## Roadmap
 
 See [docs/ROADMAP.md](docs/ROADMAP.md).
 
-Current focus: **v0.1** — control plane for Claude Code with session replay, webhook ingestion, and pipeline observability.
+Current focus: **v0.1** — device-runner architecture, job pipeline, session replay, webhook ingestion.
 
 ## Documentation
 
-- [Quickstart](docs/quickstart.md) — running in 5 minutes
+- [Quickstart](docs/quickstart.md) — 5-minute setup
 - [Architecture](docs/architecture.md) — system design
-- [Brand & style](docs/BRAND.md) — naming, voice, conventions
-- [Roadmap](docs/ROADMAP.md) — what we're building and why
+- [RFC 0001: Device-runner architecture](docs/rfcs/0001-device-runner-architecture.md) — the architectural foundation
+- [Brand & style](docs/BRAND.md)
+- [Roadmap](docs/ROADMAP.md)
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 First-time? Look for [`good-first-issue`](https://github.com/junixlabs/jarvis-agents/labels/good-first-issue).
+
+Significant changes require an RFC — see [docs/rfcs/](docs/rfcs/) for the format.
 
 Security vulnerabilities: **do not open public issues** — see [SECURITY.md](SECURITY.md).
 
