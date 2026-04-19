@@ -9,18 +9,21 @@ Status: Alpha — expect breaking changes across `v0.x`
 
 ## 1. Positioning
 
-**Jarvis Agents** is an open-source project management + AI agent platform. It combines a full-featured issue tracker with an agent orchestration layer that can plan, code, review, and ship work — driven by Claude CLI and cloud AI providers.
+**Jarvis Agents** is an open-source control plane for Claude Code. Issues arrive via webhooks from any source, flow through an extensible pipeline of agent skills, and every Claude Code session is captured, resumable, and auditable. Self-hosted. Apache-2.0.
+
+Think: "Jenkins for Claude Code" — the CLI does the work; Jarvis Agents makes the work visible and coordinatable.
 
 **Target users:**
 
-1. **Solo developers / small teams (1–5)** — want an integrated PM + AI assistant without stitching 5 SaaS tools.
-2. **Early-stage startups** — need traceable dev workflow with AI-assisted execution.
-3. **Engineering managers** — want visibility into AI-assisted work, not a black box.
+1. **Engineering managers / tech leads (teams 3–20)** — need visibility into agent-driven work, audit trails, and shared pipeline discipline.
+2. **Developers running Claude Code across many projects** — want persistent session state, resumability, and webhook-driven triggers.
+3. **Regulated / agency teams** — need self-hosted Claude Code orchestration (cannot use cloud-only agents).
 
 **What we are NOT:**
-- Not a replacement for enterprise PM tools (no complex RBAC, no enterprise-grade reporting).
-- Not a ChatGPT wrapper (agents are workflow-aware, not conversational).
-- Not a no-code tool (we expect users can run docker-compose).
+- Not a replacement for Claude Code CLI — we orchestrate it.
+- Not a chat interface — the primary interface is a pipeline dashboard.
+- Not a replacement for enterprise PM tools — no complex RBAC in `v0.x`.
+- Not GitHub-only — webhook ingestion is source-agnostic.
 
 ---
 
@@ -30,79 +33,84 @@ Five parallel tracks. Each release ships a slice across multiple themes.
 
 | # | Theme | Question it answers |
 |---|-------|---------------------|
-| T1 | **Core platform** | Can a team track work end-to-end here? |
-| T2 | **AI agent orchestration** | Can agents execute real work, not demos? |
-| T3 | **Developer experience** | Does this feel native to a dev's existing workflow? |
-| T4 | **Collaboration & real-time** | Do multiple users see the same state instantly? |
-| T5 | **Observability & trust** | Can maintainers see what agents do and why? |
+| T1 | **Pipeline & orchestration** | Can issues flow through agent stages with gates and auto-triggers? |
+| T2 | **Session capture & execution** | Can every Claude Code run be recorded, resumed, and routed across devices? |
+| T5 | **Observability & trust** | Can teams see what agents did, pause when broken, audit decisions? |
+| T3 | **Developer experience** | Desktop app, skill authoring, local MCP — does this feel native to a Claude Code user? |
+| T4 | **Collaboration & multi-surface** | Real-time sync, mobile review, multi-project dashboards |
+
+T5 is elevated to core (not polish layer) because observability is a defining differentiator.
 
 ---
 
 ## 3. Release direction
 
-Versions are ship-when-ready, not calendar-driven. `v0.x` means breaking changes are allowed.
+Versions are ship-when-ready. `v0.x` allows breaking changes.
 
-### v0.1 — Minimum viable public
+### v0.1 — Control plane for Claude Code
 
-**Focus:** T1 + T2.
+**Focus:** T1 + T2 + T5.
 
-- Projects, issues, comments, labels, activity log
-- 14-status issue pipeline with WebSocket real-time
-- Agent sessions (Claude CLI local + Antigravity cloud), streaming output
-- Core `forge-*` pipeline skills (triage, plan, code, review, release)
-- Desktop app (Tauri): local codebase access, git worktree, skill sync
-- Zero-friction `docker-compose up` from clean clone
+- Projects, issues, 14-status pipeline with per-stage auto-run toggles
+- Webhook ingestion (GitHub, generic JSON endpoint, custom sources)
+- Claude Code session capture: streaming, resumable, token-tracked
+- Desktop Tauri runner (spawns Claude CLI locally with git worktree)
+- Optional Antigravity runner for browser-based tasks
+- Built-in pipeline skills: forge-triage, forge-clarify, forge-plan, forge-code, forge-review, forge-test, forge-release, forge-fix
+- User-authored skills (register into pipeline)
+- Pipeline health dashboard
+- MCP server at `/mcp` for external agent clients
+- `docker compose up` one-command setup
 
-### v0.2 — Polish & mobile
+### v0.2 — Onboarding + collaboration
 
 **Focus:** T4 + T3.
 
-- Mobile app (React Native) parity with web for core flows
-- Skill library UX: search, install, rating
-- Onboarding flow: first-run wizard, example project
-- Eval framework: rate agent session quality
-- Saved filters, keyboard shortcuts, bulk operations
+- Mobile app (React Native) — issue review + session monitoring
+- First-run onboarding wizard, example project, tutorial pipeline
+- Skill library UI (search, install, rate, version)
+- Session replay with diff timeline and jump-to-tool-call
+- Webhook integration templates (Sentry, Stripe, GitHub events)
 
 ### v0.3 — Ecosystem
 
 **Focus:** T3 + T2.
 
-- GitHub/GitLab integration (link issues to PRs, auto-status from merge)
-- Webhook receivers (create issues from external events)
-- MCP server extensibility (bring-your-own-MCP)
-- Skill authoring from UI (not just filesystem)
-- Public API docs (OpenAPI + reference site)
+- Deep GitHub/GitLab integration (PR linkage, status sync)
+- External MCP registry
+- User-contributed skill marketplace
+- Webhook-out to chat platforms
 
-### v0.4 — Scale & teams
+### v0.4 — Team scale
 
 **Focus:** T1 + T4.
 
 - Multi-workspace / cross-project views
 - Roles: viewer, contributor, admin
 - @mentions, email notifications, digest
-- Permissions on skills (who can run what)
+- Skill permissions
 - Rate limiting for agent execution
 
-### v0.5 — Production readiness
+### v0.5 — Trust
 
 **Focus:** T5.
 
-- Metrics export (Prometheus), OpenTelemetry traces
-- Audit logs with filtering and export
+- Metrics export (Prometheus)
+- OpenTelemetry traces
+- Audit log export
 - Backup/restore tooling
-- Performance benchmarks published
 - Public security review
 
-### v1.0 — API contract frozen
+### v1.0 — Contract freeze
 
-- SemVer stable: breaking changes require deprecation cycle
+- SemVer strict: breaking changes require deprecation cycle
 - Skill format frozen
 - LTS policy documented
 
 **Post-1.0** (uncommitted):
 - Plugin marketplace
+- Optional managed SaaS tier (separate repo)
 - Enterprise features (SSO, SCIM)
-- Mobile offline mode
 
 ---
 
@@ -112,72 +120,51 @@ Versions are ship-when-ready, not calendar-driven. `v0.x` means breaking changes
 Idea → Proposal (RFC) → Accepted → Implemented → Released → Learned
 ```
 
-### Stage 1 — Idea capture
+RFCs required for:
+- New public API surface (REST endpoint, MCP tool, UI route)
+- Architecture changes (new service, schema migration)
+- Breaking changes
+- New pipeline stage or state machine change
+- Cross-theme features
 
-- Anyone can open `kind/feature` issue describing a **problem**, not a solution.
-- Triage: label, route to owning theme (T1–T5).
-- If clear and small → `kind/cleanup` or `good-first-issue`.
-- If unclear or large → RFC required.
-
-### Stage 2 — RFC (for significant changes)
-
-Required for:
-- New public API surface (REST endpoint, MCP tool, UI route).
-- Architectural changes (schema migration, new service).
-- Breaking changes.
-- Cross-theme features.
-
-RFCs live in `docs/rfcs/NNNN-name.md`. Final Comment Period: 10 calendar days.
-
-### Stage 3 — Implementation
-
-- Tracking issue created on accept.
-- Break into subtasks.
-- Follow pipeline: triage → plan → approved → code → review → tested → staging → released.
-
-### Stage 4 — Release
-
-- CHANGELOG entry per release.
-- Deprecations shipped ≥1 release before removal.
-- Migration guide if breaking.
+FCP: 10 calendar days with disposition (merge / close / postpone).
 
 ---
 
 ## 5. Prioritization framework
 
-When two features compete for the same release slot, weigh:
-
-- **User pain** (3×) — how many user-reported issues linked?
-- **Leverage** (2×) — how many downstream features unlock?
-- **Strategic fit** (2×) — T1/T2 > T3/T4 > T5 for early releases.
-- **Effort** (-1×) — week-person estimate.
+Score each competing feature: (user pain × 3) + (leverage × 2) + (strategic fit × 2) − effort.
 
 Non-quantitative veto rules:
-- **Security & data loss** always wins over features.
-- **No migration path** = not ready.
-- **Dogfood blocker** = not v0.1 material.
+- **Security & data loss** always wins over features
+- **No migration path** = not ready
+- **Dogfood blocker** = not v0.1 material
 
 ---
 
 ## 6. What we are deliberately NOT doing
 
-Saying "no" is how we ship. These are firm non-goals:
+These are firm non-goals.
 
-- **No multi-tenant SaaS** in core repo.
-- **No vendor-specific integrations in core** (plugins only for Jira-import, Asana-sync, etc.).
-- **No rich-text WYSIWYG editor** — markdown-first, always.
-- **No built-in chat/messaging** — Discord/Slack for humans, issues for work.
-- **No feature flag service** — env vars + config.
-- **No built-in CI runner** — use the host's CI.
-- **No language-specific tooling in core** — all features work across stacks.
+- **No multi-tenant SaaS** in core repo
+- **No replacing Claude Code itself** — we orchestrate, we don't build an agent loop
+- **No chat UI as primary interface** — this is a pipeline platform
+- **No vendor-specific issue-source integrations in core** — plugins only for Jira-import, Asana-sync, etc.
+- **No rich-text WYSIWYG editor** — markdown, always
+- **No built-in messaging** — agents communicate via issues and comments
+- **No feature-flag service** — env vars and config
+- **No built-in CI runner** — use the host's CI
+- **No language-specific tooling in core** — all features work across stacks
+- **No enterprise RBAC in v0.x** — deliberately out of scope
+- **No agent framework abstractions** — we don't reimplement LangGraph/CrewAI; we orchestrate anything that emits sessions
 
 ---
 
 ## 7. How to propose a change
 
-- Open an issue with `kind/feature` + `area/roadmap`.
-- Reference which theme + version target.
-- If it displaces scope from a release: state what it pushes out.
+- Open an issue with `kind/feature` + `area/roadmap`
+- Reference which theme + version target
+- If it displaces scope: state what it pushes out
 
 ---
 
