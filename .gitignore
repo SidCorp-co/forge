@@ -1,6 +1,12 @@
 # Dependencies
 node_modules
 
+# Turborepo cache
+.turbo
+
+# pnpm store (project-local, if used)
+.pnpm-store
+
 # OS
 .DS_Store
 Thumbs.db

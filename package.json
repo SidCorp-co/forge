@@ -1,0 +1,23 @@
+{
+  "name": "jarvis-agents",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open-source control plane for Claude Code. Monorepo root.",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  }
+}
