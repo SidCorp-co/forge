@@ -1,6 +1,8 @@
+import type { Server as HttpServer } from 'node:http';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { isBossStarted, startBoss, stopBoss } from './queue/boss.js';
+import { attachWs, closeWs, isWsListening } from './ws/server.js';
 
 export const app = new Hono();
 
@@ -8,6 +10,7 @@ app.get('/health', (c) =>
   c.json({
     ok: true,
     queue: { ok: isBossStarted() },
+    ws: { ok: isWsListening() },
   }),
 );
 
@@ -22,9 +25,15 @@ if (isMain) {
     console.log(`[@forge/core] listening on http://localhost:${info.port}`);
   });
 
+  // serve() is typed as a union that includes http2 variants, but we use the
+  // default HTTP/1 server. Narrow for ws's WebSocketServer which only accepts
+  // http/https servers.
+  attachWs(server as unknown as HttpServer);
+
   const shutdown = async (signal: string) => {
     console.log(`[@forge/core] ${signal} received, shutting down`);
     try {
+      await closeWs();
       await stopBoss();
     } finally {
       server.close();

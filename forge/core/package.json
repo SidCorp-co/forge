@@ -24,11 +24,13 @@
     "drizzle-orm": "^0.45.2",
     "hono": "^4.6.14",
     "pg-boss": "^10.1.5",
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "ws": "^8.20.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@types/node": "^20.17.10",
+    "@types/ws": "^8.18.1",
     "drizzle-kit": "^0.31.10",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
