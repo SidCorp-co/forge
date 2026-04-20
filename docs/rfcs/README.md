@@ -7,6 +7,7 @@ Request for Comments — long-form design proposals for significant changes. Eac
 | # | Title | Status | Date |
 |---|-------|--------|------|
 | [0001](0001-device-runner-architecture.md) | Device-runner architecture | Accepted | 2026-04-19 |
+| [0002](0002-replace-strapi-with-hono-drizzle.md) | Replace Strapi backbone with Hono + Drizzle service | Draft | 2026-04-20 |
 
 ## When an RFC is required
 

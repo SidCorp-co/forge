@@ -14,7 +14,7 @@ ADRs are **never edited after acceptance**. If a decision is reversed, write a n
 | # | Title | Status | Date |
 |---|-------|--------|------|
 | [0001](0001-device-runner-architecture.md) | Adopt device-runner architecture | Accepted | 2026-04-19 |
-| [0002](0002-replace-strapi-with-hono-drizzle.md) | Replace Strapi backbone with Hono + Drizzle service | Proposed | 2026-04-20 |
+| [0002](0002-replace-strapi-with-hono-drizzle.md) | Replace Strapi backbone with Hono + Drizzle service (full rewrite, no migration) | Proposed | 2026-04-20 |
 | [0003](0003-claude-code-cli-as-primary-runner.md) | Claude Code CLI as primary runner (not Anthropic API) | Accepted | 2026-04-19 |
 | [0004](0004-no-claude-credentials-on-server.md) | Server never holds Claude credentials | Accepted | 2026-04-19 |
 | [0005](0005-dual-principal-auth.md) | Dual-principal authorization (user + device) | Accepted | 2026-04-19 |
