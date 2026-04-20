@@ -2,7 +2,7 @@
 
 How Jarvis Agents is put together, and why.
 
-The architectural foundation is [RFC 0001: Device-runner architecture](rfcs/0001-device-runner-architecture.md). This doc summarizes and explains; the RFC is authoritative.
+The architectural foundation is [RFC 0001: Device-runner architecture](../rfcs/0001-device-runner-architecture.md). This doc summarizes and explains; the RFC is authoritative.
 
 ## One-paragraph summary
 
@@ -186,6 +186,6 @@ Per-project config decides which transitions auto-trigger vs wait for human appr
 
 ## Evolution
 
-Significant changes (new service, schema migration, new client form factor, new principal class) go through the RFC process. See [RFC 0001](rfcs/0001-device-runner-architecture.md) as the template.
+Significant changes (new service, schema migration, new client form factor, new principal class) go through the RFC process. See [RFC 0001](../rfcs/0001-device-runner-architecture.md) as the template.
 
 See [ROADMAP.md](ROADMAP.md) for where we're headed.

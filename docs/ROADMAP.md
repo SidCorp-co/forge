@@ -200,7 +200,7 @@ Non-quantitative vetoes:
 
 ## 8. References
 
-- [Architecture](architecture.md)
+- [Architecture](architecture/system-overview.md)
 - [RFC 0001: Device-runner architecture](rfcs/0001-device-runner-architecture.md)
 - [BRAND.md](BRAND.md)
 - [Contributing](../CONTRIBUTING.md)

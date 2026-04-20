@@ -75,7 +75,7 @@ Two key boundaries:
 1. **Control plane vs. runtime.** The server queues jobs and streams events. Devices run Claude Code. A server compromise never leaks Claude credentials — they live on your machines.
 2. **Dual-principal auth.** A user (JWT) and a device (long-lived revocable token) are two separate principals with separate permissions. Shared policy layer enforces every access.
 
-See [docs/architecture.md](docs/architecture.md) and [docs/rfcs/0001-device-runner-architecture.md](docs/rfcs/0001-device-runner-architecture.md) for detail.
+See [docs/architecture/system-overview.md](docs/architecture/system-overview.md) and [docs/rfcs/0001-device-runner-architecture.md](docs/rfcs/0001-device-runner-architecture.md) for detail.
 
 ## Packages
 
@@ -118,7 +118,7 @@ Current focus: **v0.1** — device-runner architecture, job pipeline, session re
 ## Documentation
 
 - [Quickstart](docs/quickstart.md) — 5-minute setup
-- [Architecture](docs/architecture.md) — system design
+- [Architecture](docs/architecture/system-overview.md) — system design
 - [RFC 0001: Device-runner architecture](docs/rfcs/0001-device-runner-architecture.md) — the architectural foundation
 - [Brand & style](docs/BRAND.md)
 - [Roadmap](docs/ROADMAP.md)

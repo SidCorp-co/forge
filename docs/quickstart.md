@@ -101,7 +101,7 @@ Watch the session in real time. When triage completes, the issue advances to `co
 
 ## What's next
 
-- Learn the full pipeline: [architecture.md → Pipeline state machine](architecture.md)
+- Learn the full pipeline: [architecture/system-overview.md](architecture/system-overview.md) and [modules/issues-pipeline/status-pipeline.md](modules/issues-pipeline/status-pipeline.md)
 - Read the RFC that shaped the device-runner model: [rfcs/0001-device-runner-architecture.md](rfcs/0001-device-runner-architecture.md)
 - Author a custom skill for a domain-specific pipeline step (how-to coming soon)
 - Integrate external sources via webhooks (GitHub events, Sentry alerts, custom)
