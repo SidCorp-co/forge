@@ -18,6 +18,7 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       dev: ${{ steps.filter.outputs.dev }}
       app: ${{ steps.filter.outputs.app }}
+      core: ${{ steps.filter.outputs.core }}
       docs: ${{ steps.filter.outputs.docs }}
     steps:
       - uses: actions/checkout@v4
@@ -34,6 +35,12 @@ jobs:
               - 'forge/dev/**'
             app:
               - 'forge/app/**'
+            core:
+              - 'forge/core/**'
+              - 'pnpm-workspace.yaml'
+              - 'pnpm-lock.yaml'
+              - 'package.json'
+              - '.github/workflows/ci.yml'
             docs:
               - 'docs/**'
               - '**.md'
@@ -123,6 +130,31 @@ jobs:
           cache-dependency-path: forge/app/package-lock.json
       - run: npm ci
       - run: npx tsc --noEmit
+
+  core:
+    needs: changes
+    if: needs.changes.outputs.core == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: forge/core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+      - run: pnpm --filter @forge/core lint
+      - run: pnpm --filter @forge/core test
+      - run: pnpm --filter @forge/core typecheck
+      - run: pnpm --filter @forge/core build
 
   docs:
     needs: changes
