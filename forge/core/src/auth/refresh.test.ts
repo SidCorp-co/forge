@@ -1,0 +1,278 @@
+import { Hono } from 'hono';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
+
+vi.mock('../config/env.js', () => ({
+  env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
+}));
+
+// Tx builder state — reset in beforeEach.
+type CandidateRow = {
+  id: string;
+  userId: string;
+  tokenPrefix: string;
+  tokenHash: string;
+  expiresAt: Date;
+  usedAt: Date | null;
+  createdAt: Date;
+};
+
+const txState: {
+  candidates: CandidateRow[];
+  claimReturning: { id: string }[];
+  selectCalls: number;
+  updateCalls: Array<{ setUsedAt: boolean; whereKind: 'byId' | 'massInvalidate' | 'other' }>;
+  insertValues: Array<Record<string, unknown>>;
+  verifyImpl: (hash: string, raw: string) => Promise<boolean>;
+} = {
+  candidates: [],
+  claimReturning: [],
+  selectCalls: 0,
+  updateCalls: [],
+  insertValues: [],
+  verifyImpl: async () => false,
+};
+
+function makeTx() {
+  const tx = {
+    select: vi.fn(() => ({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          for: vi.fn(async (_mode: string) => {
+            txState.selectCalls += 1;
+            return txState.candidates;
+          }),
+        })),
+      })),
+    })),
+    update: vi.fn(() => {
+      const call: { setUsedAt: boolean; whereKind: 'byId' | 'massInvalidate' | 'other' } = {
+        setUsedAt: false,
+        whereKind: 'other',
+      };
+      txState.updateCalls.push(call);
+      return {
+        set: vi.fn((patch: Record<string, unknown>) => {
+          if ('usedAt' in patch) call.setUsedAt = true;
+          return {
+            where: vi.fn((expr: unknown) => {
+              // Heuristic: mass-invalidate `where` composes userId + isNull(usedAt);
+              // claim `where` composes id + isNull(usedAt). We use the fact that
+              // the production code passes different and()-compositions, but from
+              // the test we can only observe via sequencing. Mark based on whether
+              // this update has .returning() called.
+              void expr;
+              const chain: {
+                returning: (..._args: unknown[]) => Promise<{ id: string }[]>;
+                then: <T>(cb: (v: undefined) => T) => Promise<T>;
+              } = {
+                returning: async () => {
+                  call.whereKind = 'byId';
+                  return txState.claimReturning;
+                },
+                // biome-ignore lint/suspicious/noThenProperty: thenable stub for await-without-returning
+                then: (cb) => {
+                  call.whereKind = 'massInvalidate';
+                  return Promise.resolve(cb(undefined));
+                },
+              };
+              return chain;
+            }),
+          };
+        }),
+      };
+    }),
+    insert: vi.fn(() => ({
+      values: vi.fn(async (v: Record<string, unknown>) => {
+        txState.insertValues.push(v);
+      }),
+    })),
+  };
+  return tx;
+}
+
+vi.mock('../db/client.js', () => ({
+  db: {
+    transaction: vi.fn(async (cb: (tx: ReturnType<typeof makeTx>) => Promise<unknown>) => {
+      return cb(makeTx());
+    }),
+  },
+}));
+
+vi.mock('./refresh-token.js', async () => {
+  const actual = await vi.importActual<typeof import('./refresh-token.js')>('./refresh-token.js');
+  return {
+    ...actual,
+    generateRefreshToken: vi.fn(() => ({ raw: 'NEWRAW__rest_of_token', prefix: 'NEWRAW__' })),
+    hashRefreshToken: vi.fn(async () => 'new-hash'),
+    verifyRefreshToken: vi.fn((hash: string, raw: string) => txState.verifyImpl(hash, raw)),
+  };
+});
+
+const { refreshRoutes } = await import('./refresh.js');
+const { verifyUserToken } = await import('./jwt.js');
+const { errorHandler } = await import('../middleware/error.js');
+const { requestId } = await import('../middleware/request-id.js');
+
+function buildApp() {
+  const app = new Hono<{ Variables: import('../middleware/request-id.js').RequestIdVars }>();
+  app.use('*', requestId());
+  app.route('/api/auth', refreshRoutes);
+  app.onError(errorHandler);
+  return app;
+}
+
+function post(body: unknown) {
+  return buildApp().request('/api/auth/refresh', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: typeof body === 'string' ? body : JSON.stringify(body),
+  });
+}
+
+function row(overrides: Partial<CandidateRow> = {}): CandidateRow {
+  return {
+    id: 'row-1',
+    userId: 'user-1',
+    tokenPrefix: 'PRESENTE',
+    tokenHash: 'stored-hash',
+    expiresAt: new Date(Date.now() + 60_000),
+    usedAt: null,
+    createdAt: new Date(),
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  txState.candidates = [];
+  txState.claimReturning = [];
+  txState.selectCalls = 0;
+  txState.updateCalls = [];
+  txState.insertValues = [];
+  txState.verifyImpl = async () => false;
+});
+
+describe('POST /api/auth/refresh', () => {
+  const presentedRaw = 'PRESENTEDtoken-valid';
+
+  it('valid refresh → 200 with new JWT + new refreshToken, old marked used, new inserted, cookie set', async () => {
+    const matched = row({ id: 'row-1', userId: 'user-1' });
+    txState.candidates = [matched];
+    txState.verifyImpl = async (_h, r) => r === presentedRaw;
+    txState.claimReturning = [{ id: 'row-1' }];
+
+    const res = await post({ refreshToken: presentedRaw });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { token: string; refreshToken: string };
+
+    const claims = await verifyUserToken(body.token);
+    expect(claims.sub).toBe('user-1');
+    expect(claims.typ).toBe('user');
+    expect(body.refreshToken).toBe('NEWRAW__rest_of_token');
+
+    // Cookie set.
+    const setCookie = res.headers.get('set-cookie') ?? '';
+    expect(setCookie).toContain('forge_auth=');
+    expect(setCookie).toContain('HttpOnly');
+
+    // Exactly one UPDATE (the claim-by-id).
+    expect(txState.updateCalls).toHaveLength(1);
+    expect(txState.updateCalls[0]?.setUsedAt).toBe(true);
+    expect(txState.updateCalls[0]?.whereKind).toBe('byId');
+
+    // New row inserted.
+    expect(txState.insertValues).toHaveLength(1);
+    expect(txState.insertValues[0]).toMatchObject({
+      userId: 'user-1',
+      tokenPrefix: 'NEWRAW__',
+      tokenHash: 'new-hash',
+    });
+    expect(txState.insertValues[0]?.expiresAt).toBeInstanceOf(Date);
+  });
+
+  it('replay (usedAt already set) → 401 REFRESH_TOKEN_REUSED + mass-invalidate, no insert', async () => {
+    txState.candidates = [row({ usedAt: new Date(Date.now() - 1000) })];
+    txState.verifyImpl = async () => true;
+
+    const res = await post({ refreshToken: presentedRaw });
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('REFRESH_TOKEN_REUSED');
+
+    // Exactly one UPDATE: mass-invalidate.
+    expect(txState.updateCalls).toHaveLength(1);
+    expect(txState.updateCalls[0]?.setUsedAt).toBe(true);
+    expect(txState.updateCalls[0]?.whereKind).toBe('massInvalidate');
+    expect(txState.insertValues).toHaveLength(0);
+    expect(res.headers.get('set-cookie')).toBeNull();
+  });
+
+  it('expired refresh → 401 REFRESH_TOKEN_EXPIRED, no update, no insert', async () => {
+    txState.candidates = [row({ expiresAt: new Date(Date.now() - 1000) })];
+    txState.verifyImpl = async () => true;
+
+    const res = await post({ refreshToken: presentedRaw });
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('REFRESH_TOKEN_EXPIRED');
+
+    expect(txState.updateCalls).toHaveLength(0);
+    expect(txState.insertValues).toHaveLength(0);
+  });
+
+  it('unknown token (no prefix match) → 401 INVALID_REFRESH_TOKEN', async () => {
+    txState.candidates = [];
+
+    const res = await post({ refreshToken: presentedRaw });
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('INVALID_REFRESH_TOKEN');
+    expect(txState.updateCalls).toHaveLength(0);
+    expect(txState.insertValues).toHaveLength(0);
+  });
+
+  it('hash mismatch on all candidates → 401 INVALID_REFRESH_TOKEN', async () => {
+    txState.candidates = [row(), row({ id: 'row-2' })];
+    txState.verifyImpl = async () => false;
+
+    const res = await post({ refreshToken: presentedRaw });
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('INVALID_REFRESH_TOKEN');
+    expect(txState.updateCalls).toHaveLength(0);
+  });
+
+  it('concurrent race (claim UPDATE returns 0 rows) → 401 REFRESH_TOKEN_REUSED + mass-invalidate', async () => {
+    txState.candidates = [row()];
+    txState.verifyImpl = async () => true;
+    txState.claimReturning = []; // someone else claimed it
+
+    const res = await post({ refreshToken: presentedRaw });
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('REFRESH_TOKEN_REUSED');
+
+    // Two UPDATEs: claim-by-id (0 rows) + mass-invalidate.
+    expect(txState.updateCalls).toHaveLength(2);
+    expect(txState.updateCalls[0]?.whereKind).toBe('byId');
+    expect(txState.updateCalls[1]?.whereKind).toBe('massInvalidate');
+    expect(txState.insertValues).toHaveLength(0);
+  });
+
+  it('malformed body (missing refreshToken) → 400 BAD_REQUEST', async () => {
+    const res = await post({});
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('BAD_REQUEST');
+    expect(txState.selectCalls).toBe(0);
+  });
+
+  it('empty refreshToken → 400 BAD_REQUEST', async () => {
+    const res = await post({ refreshToken: '' });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('BAD_REQUEST');
+    expect(txState.selectCalls).toBe(0);
+  });
+});

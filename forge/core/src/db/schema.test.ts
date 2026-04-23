@@ -6,6 +6,7 @@ import {
   projectMembers,
   projects,
   projectsRelations,
+  refreshTokens,
   users,
 } from './schema.js';
 
@@ -13,7 +14,8 @@ type AnyTable =
   | typeof users
   | typeof emailVerificationTokens
   | typeof projects
-  | typeof projectMembers;
+  | typeof projectMembers
+  | typeof refreshTokens;
 
 function columnByName(table: AnyTable, name: string) {
   const cfg = getTableConfig(table);
@@ -212,5 +214,58 @@ describe('db/schema — project_members', () => {
     expect(c.notNull).toBe(true);
     expect(c.hasDefault).toBe(true);
     expect(withTimezone(c)).toBe(true);
+  });
+});
+
+describe('db/schema — refresh_tokens', () => {
+  it('has the seven documented columns', () => {
+    const names = getTableConfig(refreshTokens).columns.map((c) => c.name);
+    expect(names.sort()).toEqual(
+      ['created_at', 'expires_at', 'id', 'token_hash', 'token_prefix', 'used_at', 'user_id'].sort(),
+    );
+  });
+
+  it('id is uuid PK with defaultRandom', () => {
+    const id = columnByName(refreshTokens, 'id');
+    expect(id.primary).toBe(true);
+    expect(id.hasDefault).toBe(true);
+    expect(id.columnType).toBe('PgUUID');
+  });
+
+  it('user_id references users.id with onDelete cascade', () => {
+    const cfg = getTableConfig(refreshTokens);
+    expect(cfg.foreignKeys).toHaveLength(1);
+    const fk = cfg.foreignKeys[0];
+    if (!fk) throw new Error('expected FK');
+    const ref = fk.reference();
+    expect(ref.columns[0]?.name).toBe('user_id');
+    expect(ref.foreignColumns[0]?.name).toBe('id');
+    expect(fk.onDelete).toBe('cascade');
+  });
+
+  it('token_prefix and token_hash are notNull text', () => {
+    for (const name of ['token_prefix', 'token_hash']) {
+      expect(columnByName(refreshTokens, name).notNull).toBe(true);
+    }
+  });
+
+  it('expires_at is notNull timestamptz', () => {
+    const c = columnByName(refreshTokens, 'expires_at');
+    expect(c.notNull).toBe(true);
+    expect(withTimezone(c)).toBe(true);
+  });
+
+  it('used_at is nullable timestamptz', () => {
+    const c = columnByName(refreshTokens, 'used_at');
+    expect(c.notNull).toBe(false);
+    expect(withTimezone(c)).toBe(true);
+  });
+
+  it('has composite index on (user_id, used_at) and index on token_prefix', () => {
+    const cfg = getTableConfig(refreshTokens);
+    expect(cfg.indexes.some((i) => i.config.name === 'refresh_tokens_user_id_used_at_idx')).toBe(
+      true,
+    );
+    expect(cfg.indexes.some((i) => i.config.name === 'refresh_tokens_token_prefix_idx')).toBe(true);
   });
 });

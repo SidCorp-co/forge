@@ -11,9 +11,17 @@ const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 
+const txInsertValues = vi.fn(async () => undefined);
+
 vi.mock('../db/client.js', () => ({
   db: {
     select: vi.fn(() => ({ from: selectFrom })),
+    transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        insert: vi.fn(() => ({ values: txInsertValues })),
+      };
+      return cb(tx);
+    }),
   },
 }));
 
@@ -47,6 +55,7 @@ function post(body: unknown) {
 beforeEach(() => {
   vi.clearAllMocks();
   selectLimit.mockReset();
+  txInsertValues.mockClear();
 });
 
 describe('POST /api/auth/local', () => {
@@ -66,12 +75,16 @@ describe('POST /api/auth/local', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       token: string;
+      refreshToken: string;
       user: { id: string; email: string; emailVerified: boolean };
       emailVerificationRequired: boolean;
     };
     expect(body.user).toEqual({ id: 'uuid-1', email: 'a@b.co', emailVerified: true });
     expect(body.emailVerificationRequired).toBe(false);
     expect(typeof body.token).toBe('string');
+    expect(typeof body.refreshToken).toBe('string');
+    expect(body.refreshToken.length).toBeGreaterThan(0);
+    expect(txInsertValues).toHaveBeenCalledTimes(1);
 
     const setCookie = res.headers.get('set-cookie') ?? '';
     expect(setCookie).toContain('forge_auth=');

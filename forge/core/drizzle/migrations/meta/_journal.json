@@ -15,6 +15,13 @@
       "when": 1776957777942,
       "tag": "0001_gifted_madelyne_pryor",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776962564887,
+      "tag": "0002_wooden_pestilence",
+      "breakpoints": true
     }
   ]
 }

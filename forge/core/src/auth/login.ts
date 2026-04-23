@@ -8,6 +8,7 @@ import { users } from '../db/schema.js';
 import { setAuthCookie } from './cookie.js';
 import { signUserToken } from './jwt.js';
 import { verifyPassword } from './password.js';
+import { issueRefreshToken } from './refresh.js';
 
 const loginSchema = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email().max(254)),
@@ -43,10 +44,12 @@ loginRoutes.post(
     if (!ok) throw invalidCredentials();
 
     const token = await signUserToken(user.id);
+    const { raw: refreshToken } = await db.transaction((tx) => issueRefreshToken(tx, user.id));
     setAuthCookie(c, token);
 
     return c.json({
       token,
+      refreshToken,
       user: {
         id: user.id,
         email: user.email,
