@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
+    "@hono/zod-validator": "^0.7.6",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "argon2": "^0.44.0",
     "drizzle-orm": "^0.45.2",
