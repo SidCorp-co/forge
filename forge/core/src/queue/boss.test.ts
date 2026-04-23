@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const startMock = vi.fn(async () => {});
 const stopMock = vi.fn(async () => {});
@@ -10,12 +10,30 @@ vi.mock('pg-boss', () => ({
   })),
 }));
 
+const VALID_ENV = {
+  DATABASE_URL: 'postgres://test:test@localhost:5432/test',
+  JWT_SECRET: 'x'.repeat(32),
+  DEVICE_TOKEN_PEPPER: 'y'.repeat(32),
+  SMTP_HOST: 'smtp.example.com',
+  SMTP_PORT: '587',
+  SMTP_USER: 'user',
+  SMTP_PASS: 'pass',
+  SMTP_FROM: 'noreply@example.com',
+  CORS_ORIGINS: 'http://localhost:3000',
+};
+
 describe('queue/boss', () => {
+  const originalEnv = { ...process.env };
+
   beforeEach(() => {
     vi.resetModules();
     startMock.mockClear();
     stopMock.mockClear();
-    process.env.DATABASE_URL = 'postgres://test:test@localhost:5432/test';
+    process.env = { ...originalEnv, ...VALID_ENV };
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
   });
 
   it('exports the singleton and lifecycle helpers', async () => {
@@ -56,8 +74,6 @@ describe('queue/boss', () => {
     // biome-ignore lint/performance/noDelete: assigning undefined to process.env coerces to the string "undefined"
     delete process.env.DATABASE_URL;
 
-    await expect(import('./boss.js')).rejects.toThrow(
-      'DATABASE_URL environment variable is required',
-    );
+    await expect(import('./boss.js')).rejects.toThrow(/DATABASE_URL/);
   });
 });

@@ -25,7 +25,8 @@
     "hono": "^4.6.14",
     "pg-boss": "^10.1.5",
     "postgres": "^3.4.9",
-    "ws": "^8.20.0"
+    "ws": "^8.20.0",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

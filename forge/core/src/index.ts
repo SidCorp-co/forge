@@ -1,6 +1,7 @@
 import type { Server as HttpServer } from 'node:http';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
+import { env } from './config/env.js';
 import { isBossStarted, startBoss, stopBoss } from './queue/boss.js';
 import { attachWs, closeWs, isWsListening } from './ws/server.js';
 
@@ -17,7 +18,7 @@ app.get('/health', (c) =>
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 
 if (isMain) {
-  const port = Number(process.env.PORT ?? 8080);
+  const port = env.PORT;
 
   await startBoss();
 

@@ -1,13 +1,7 @@
 import PgBoss from 'pg-boss';
+import { env } from '../config/env.js';
 
-const url = process.env.DATABASE_URL;
-if (!url) {
-  throw new Error('DATABASE_URL environment variable is required');
-}
-
-// Singleton pg-boss instance. Construction is side-effect-free; the connection
-// pool and `pgboss.*` schema are created lazily on `start()`.
-export const boss = new PgBoss(url);
+export const boss = new PgBoss(env.DATABASE_URL);
 
 let started = false;
 
