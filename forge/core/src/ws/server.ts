@@ -84,6 +84,8 @@ export function isWsListening(): boolean {
   return wss !== null;
 }
 
+const WS_CLOSE_FALLBACK_MS = 2_000;
+
 export async function closeWs(): Promise<void> {
   if (heartbeatTimer) {
     clearInterval(heartbeatTimer);
@@ -92,7 +94,17 @@ export async function closeWs(): Promise<void> {
   if (!wss) return;
   const server = wss;
   wss = null;
-  // Force-close clients so `server.close()` resolves promptly within SIGTERM grace.
-  for (const client of server.clients) client.terminate();
-  await new Promise<void>((resolve) => server.close(() => resolve()));
+  // Notify clients with 1001 (going away); fall back to terminate if any
+  // client fails to close within the grace window so `server.close()` resolves.
+  for (const client of server.clients) client.close(1001, 'server shutting down');
+  const closed = new Promise<void>((resolve) => server.close(() => resolve()));
+  const fallback = new Promise<void>((resolve) => {
+    const t = setTimeout(() => {
+      for (const client of server.clients) client.terminate();
+      resolve();
+    }, WS_CLOSE_FALLBACK_MS);
+    t.unref?.();
+  });
+  await Promise.race([closed, fallback]);
+  await closed;
 }

@@ -3,7 +3,7 @@ import { serve } from '@hono/node-server';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { env } from './config/env.js';
-import { db } from './db/client.js';
+import { closeDb, db } from './db/client.js';
 import { logger } from './logger.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
@@ -43,6 +43,40 @@ app.get('/health', async (c) => {
 app.notFound(notFoundHandler);
 app.onError(errorHandler);
 
+const SHUTDOWN_TIMEOUT_MS = 30_000;
+
+export async function runShutdown(
+  signal: string,
+  server: { close: (cb?: (err?: Error) => void) => void },
+): Promise<number> {
+  logger.info({ signal }, '@forge/core shutdown initiated');
+
+  // server.close() stops accepting new connections immediately and resolves
+  // once all in-flight requests have finished.
+  const httpClosed = new Promise<void>((resolve, reject) => {
+    server.close((err) => (err ? reject(err) : resolve()));
+  });
+
+  const sequence = (async () => {
+    await closeWs();
+    await stopBoss();
+    await httpClosed;
+    await closeDb();
+  })();
+
+  const timeout = new Promise<'timeout'>((resolve) => {
+    const t = setTimeout(() => resolve('timeout'), SHUTDOWN_TIMEOUT_MS);
+    t.unref?.();
+  });
+
+  const outcome = await Promise.race([sequence.then(() => 'ok' as const), timeout]);
+  if (outcome === 'timeout') {
+    logger.error('@forge/core shutdown timed out after 30s, forcing exit');
+    return 1;
+  }
+  return 0;
+}
+
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 
 if (isMain) {
@@ -59,15 +93,12 @@ if (isMain) {
   // http/https servers.
   attachWs(server as unknown as HttpServer);
 
+  let shuttingDown = false;
   const shutdown = async (signal: string) => {
-    logger.info({ signal }, '@forge/core shutting down');
-    try {
-      await closeWs();
-      await stopBoss();
-    } finally {
-      server.close();
-      process.exit(0);
-    }
+    if (shuttingDown) return;
+    shuttingDown = true;
+    const code = await runShutdown(signal, server);
+    process.exit(code);
   };
 
   process.on('SIGTERM', () => void shutdown('SIGTERM'));

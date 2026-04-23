@@ -26,12 +26,13 @@ vi.mock('./db/client.js', () => ({
   db: {
     execute: vi.fn(async () => [{ '?column?': 1 }]),
   },
+  closeDb: vi.fn(async () => {}),
 }));
 
-const { app } = await import('./index.js');
-const { isBossStarted } = await import('./queue/boss.js');
-const { isWsListening } = await import('./ws/server.js');
-const { db } = await import('./db/client.js');
+const { app, runShutdown } = await import('./index.js');
+const { isBossStarted, stopBoss } = await import('./queue/boss.js');
+const { isWsListening, closeWs } = await import('./ws/server.js');
+const { db, closeDb } = await import('./db/client.js');
 
 describe('@forge/core health endpoint', () => {
   beforeEach(() => {
@@ -86,5 +87,61 @@ describe('@forge/core health endpoint', () => {
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('NOT_FOUND');
     expect(body.message).toContain('/no-such-route');
+  });
+});
+
+describe('@forge/core runShutdown', () => {
+  it('runs closeWs, stopBoss, server.close, closeDb in order and returns 0', async () => {
+    const order: string[] = [];
+    vi.mocked(closeWs).mockImplementationOnce(async () => {
+      order.push('ws');
+    });
+    vi.mocked(stopBoss).mockImplementationOnce(async () => {
+      order.push('boss');
+    });
+    vi.mocked(closeDb).mockImplementationOnce(async () => {
+      order.push('db');
+    });
+
+    const server = {
+      close: vi.fn((cb?: (err?: Error) => void) => {
+        order.push('http');
+        cb?.();
+      }),
+    };
+
+    const code = await runShutdown('SIGTERM', server);
+
+    expect(code).toBe(0);
+    // server.close() is called to stop accepting new connections
+    expect(server.close).toHaveBeenCalledTimes(1);
+    // All shutdown stages ran, and DB pool closes last (after everything else).
+    expect(order).toContain('ws');
+    expect(order).toContain('boss');
+    expect(order).toContain('http');
+    expect(order[order.length - 1]).toBe('db');
+    // WS clients are notified before pg-boss drains so in-flight jobs don't
+    // try to broadcast to closing sockets.
+    expect(order.indexOf('ws')).toBeLessThan(order.indexOf('boss'));
+  });
+
+  it('returns 1 when the shutdown sequence exceeds the timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(closeWs).mockImplementationOnce(
+        () => new Promise(() => {}), // never resolves
+      );
+      const server = {
+        close: vi.fn((cb?: (err?: Error) => void) => {
+          cb?.();
+        }),
+      };
+
+      const p = runShutdown('SIGTERM', server);
+      await vi.advanceTimersByTimeAsync(31_000);
+      await expect(p).resolves.toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
