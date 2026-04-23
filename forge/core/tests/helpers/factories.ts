@@ -3,46 +3,35 @@ import { sql } from 'drizzle-orm';
 import type { TestDb } from './db.js';
 
 /**
- * Factory defaults intentionally do NOT touch `src/db/schema.ts` — that schema
- * is still an empty `export const schema = {}` placeholder (Phase 2.1-A/B will
- * add the real `users` / `projects` tables per RFC 0002 §Schema).
- *
- * Each factory checks for the target table at call time:
- * - Table missing → throw with a clear pointer to the owning phase.
- * - Table present → insert a deterministic row and return it.
- *
- * Keeping the public signatures stable now lets every downstream integration
- * test be written today; once the schema lands, fill in the real inserts
- * without touching the call sites.
+ * `createTestUser` inserts against the real `users` table (Phase 2.1-C).
+ * `createTestProject` still stubs until Phase 2.1 (ISS-147) lands the
+ * `projects` table.
  */
 
 export interface TestUser {
   id: string;
   email: string;
-  name: string;
 }
 
 export interface CreateTestUserOverrides {
   id?: string;
   email?: string;
-  name?: string;
+  passwordHash?: string;
 }
 
 export async function createTestUser(
   db: TestDb,
   overrides: CreateTestUserOverrides = {},
 ): Promise<TestUser> {
-  await requireTable(db, 'users', 'Phase 2.1-A/B (users table)');
-
   const user: TestUser = {
     id: overrides.id ?? randomUUID(),
     email: overrides.email ?? `user-${randomUUID()}@test.forge.local`,
-    name: overrides.name ?? 'Test User',
   };
+  const passwordHash = overrides.passwordHash ?? '!test-not-a-real-hash';
 
   await db.execute(sql`
-    INSERT INTO users (id, email, name)
-    VALUES (${user.id}, ${user.email}, ${user.name})
+    INSERT INTO users (id, email, password_hash)
+    VALUES (${user.id}, ${user.email}, ${passwordHash})
   `);
 
   return user;
@@ -64,7 +53,7 @@ export async function createTestProject(
   ownerId: string,
   overrides: CreateTestProjectOverrides = {},
 ): Promise<TestProject> {
-  await requireTable(db, 'projects', 'Phase 2.1-C (projects table)');
+  await requireTable(db, 'projects', 'Phase 2.1 (projects table, ISS-147)');
 
   const project: TestProject = {
     id: overrides.id ?? randomUUID(),
