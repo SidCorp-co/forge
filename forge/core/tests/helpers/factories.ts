@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
+import type { ProjectMemberRole } from '../../src/db/schema.js';
 import type { TestDb } from './db.js';
 
 /**
- * `createTestUser` inserts against the real `users` table (Phase 2.1-C).
- * `createTestProject` still stubs until Phase 2.1 (ISS-147) lands the
- * `projects` table.
+ * Inserts against the real `users`, `projects`, and `project_members` tables
+ * (Phase 2.1-C + 2.1-D). All factories are deterministic and return the row
+ * shape they inserted.
  */
 
 export interface TestUser {
@@ -39,12 +40,14 @@ export async function createTestUser(
 
 export interface TestProject {
   id: string;
+  slug: string;
   name: string;
   ownerId: string;
 }
 
 export interface CreateTestProjectOverrides {
   id?: string;
+  slug?: string;
   name?: string;
 }
 
@@ -53,36 +56,46 @@ export async function createTestProject(
   ownerId: string,
   overrides: CreateTestProjectOverrides = {},
 ): Promise<TestProject> {
-  await requireTable(db, 'projects', 'Phase 2.1 (projects table, ISS-147)');
-
+  const id = overrides.id ?? randomUUID();
   const project: TestProject = {
-    id: overrides.id ?? randomUUID(),
-    name: overrides.name ?? `Test Project ${randomUUID().slice(0, 8)}`,
+    id,
+    slug: overrides.slug ?? `test-${id.slice(0, 8)}`,
+    name: overrides.name ?? `Test Project ${id.slice(0, 8)}`,
     ownerId,
   };
 
   await db.execute(sql`
-    INSERT INTO projects (id, name, owner_id)
-    VALUES (${project.id}, ${project.name}, ${project.ownerId})
+    INSERT INTO projects (id, slug, name, owner_id)
+    VALUES (${project.id}, ${project.slug}, ${project.name}, ${project.ownerId})
   `);
 
   return project;
 }
 
-async function requireTable(db: TestDb, tableName: string, ownerPhase: string): Promise<void> {
-  const rows = await db.execute<{ exists: boolean }>(sql`
-    SELECT EXISTS (
-      SELECT 1
-      FROM information_schema.tables
-      WHERE table_schema = current_schema()
-        AND table_name = ${tableName}
-    ) AS exists
+export interface TestProjectMember {
+  userId: string;
+  projectId: string;
+  role: ProjectMemberRole;
+}
+
+export interface CreateTestProjectMemberOverrides {
+  role?: ProjectMemberRole;
+}
+
+export async function createTestProjectMember(
+  db: TestDb,
+  args: { userId: string; projectId: string } & CreateTestProjectMemberOverrides,
+): Promise<TestProjectMember> {
+  const member: TestProjectMember = {
+    userId: args.userId,
+    projectId: args.projectId,
+    role: args.role ?? 'member',
+  };
+
+  await db.execute(sql`
+    INSERT INTO project_members (user_id, project_id, role)
+    VALUES (${member.userId}, ${member.projectId}, ${member.role})
   `);
 
-  const first = rows[0] as { exists?: unknown } | undefined;
-  if (!first || first.exists !== true) {
-    throw new Error(
-      `Test factory expected "${tableName}" table, but it is not defined yet. This table lands in ${ownerPhase}. Until then, either stub the table in your test or skip this factory.`,
-    );
-  }
+  return member;
 }
