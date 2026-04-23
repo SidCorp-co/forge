@@ -2,8 +2,10 @@ import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
+import { rateLimit } from '../middleware/rate-limit.js';
 import { hashPassword } from './password.js';
 
 const registerSchema = z.object({
@@ -12,6 +14,8 @@ const registerSchema = z.object({
 });
 
 export const authRoutes = new Hono();
+
+authRoutes.use('/register', rateLimit(RULES.authRegister, { name: 'authRegister' }));
 
 authRoutes.post(
   '/register',

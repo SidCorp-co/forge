@@ -3,11 +3,13 @@ import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
+import { rateLimit } from '../middleware/rate-limit.js';
 import { setAuthCookie } from './cookie.js';
 import { signUserToken } from './jwt.js';
-import { verifyPassword } from './password.js';
+import { getDummyPasswordHash, verifyPassword } from './password.js';
 import { issueRefreshToken } from './refresh.js';
 
 const loginSchema = z.object({
@@ -16,6 +18,8 @@ const loginSchema = z.object({
 });
 
 export const loginRoutes = new Hono();
+
+loginRoutes.use('/local', rateLimit(RULES.authLocal, { name: 'authLocal' }));
 
 loginRoutes.post(
   '/local',
@@ -38,7 +42,12 @@ loginRoutes.post(
       });
 
     const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-    if (!user) throw invalidCredentials();
+    if (!user) {
+      // Equalize timing with the wrong-password path by running a verify
+      // against a dummy hash before throwing.
+      await verifyPassword(password, await getDummyPasswordHash());
+      throw invalidCredentials();
+    }
 
     const ok = await verifyPassword(password, user.passwordHash);
     if (!ok) throw invalidCredentials();

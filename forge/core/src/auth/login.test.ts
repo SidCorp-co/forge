@@ -27,6 +27,7 @@ vi.mock('../db/client.js', () => ({
 
 vi.mock('./password.js', () => ({
   verifyPassword: vi.fn(),
+  getDummyPasswordHash: vi.fn(async () => 'dummy-hash'),
 }));
 
 const { loginRoutes } = await import('./login.js');
@@ -110,6 +111,7 @@ describe('POST /api/auth/local', () => {
 
   it('returns 401 INVALID_CREDENTIALS on unknown email, no Set-Cookie', async () => {
     selectLimit.mockResolvedValueOnce([]);
+    vi.mocked(verifyPassword).mockResolvedValueOnce(false);
 
     const res = await post({ email: 'nobody@b.co', password: 'x' });
 
@@ -117,7 +119,10 @@ describe('POST /api/auth/local', () => {
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('INVALID_CREDENTIALS');
     expect(res.headers.get('set-cookie')).toBeNull();
-    expect(verifyPassword).not.toHaveBeenCalled();
+    // Unknown-email path runs a dummy verify to equalize timing and prevent
+    // user enumeration — it must be called, against the dummy hash.
+    expect(verifyPassword).toHaveBeenCalledTimes(1);
+    expect(verifyPassword).toHaveBeenCalledWith('x', 'dummy-hash');
   });
 
   it('returns 401 INVALID_CREDENTIALS on wrong password, no Set-Cookie', async () => {

@@ -12,6 +12,12 @@ const EnvSchema = z.object({
   CORS_ORIGINS: z.string().min(1),
   PORT: z.coerce.number().int().positive().default(8080),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  RATE_LIMIT_AUTH_LOCAL_MAX: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_AUTH_LOCAL_WINDOW_MS: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_AUTH_REGISTER_MAX: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_AUTH_REGISTER_WINDOW_MS: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_DEVICES_PAIR_MAX: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_DEVICES_PAIR_WINDOW_MS: z.coerce.number().int().positive().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

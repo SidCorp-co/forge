@@ -1,6 +1,10 @@
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('../config/env.js', () => ({
+  env: {},
+}));
+
 const insertValues = vi.fn();
 const insertReturning = vi.fn();
 
