@@ -10,7 +10,7 @@ Feature documentation organized by business domain. Each module answers "where d
 | [agents-jobs](agents-jobs/) | Job queue, dispatch, JobEvent streaming, session capture. The execution orchestration layer. |
 | [devices](devices/) | Device pairing, revocation, project binding, heartbeat. The runtime plane connection point. |
 | [skills](skills/) | Built-in `forge-*` pipeline skills + user-authored skills. Registration into pipeline stages. |
-| [memory-knowledge](memory-knowledge/) | Qdrant-backed semantic memory, project knowledge graph, RAG retrieval. |
+| [memory-knowledge](memory-knowledge/) | Postgres `pgvector` semantic memory, project knowledge graph, RAG retrieval. |
 | [chat](chat/) | Interactive chat sessions with agents. Separate from pipeline jobs — this is conversation. |
 
 ## Shared concerns (cross-module)

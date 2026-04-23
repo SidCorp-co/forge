@@ -3,6 +3,8 @@
 - **Status:** Accepted
 - **Date:** 2026-04-19
 
+> **Reader note (2026-04-23):** This ADR's "docker-compose stays at Postgres + Qdrant + Jarvis" line is **superseded by [ADR 0011](0011-pgvector-replaces-qdrant.md)** — Qdrant is removed; vector storage moves into Postgres via `pgvector`. The pg-boss decision itself is unchanged.
+
 ## Context
 
 The control plane needs a reliable job queue for:

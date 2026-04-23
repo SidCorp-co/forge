@@ -5,9 +5,9 @@ Get Jarvis Agents running end-to-end — server + one paired device + first job 
 ## Requirements
 
 - **Docker** 24+ with Docker Compose v2
-- **Node** 20+ (for local dev against the Strapi API)
+- **Node** 20+ (for local dev against the `forge/core` API)
 - **Claude Code CLI** installed on at least one machine (`claude`) with a working Claude Pro or Max subscription
-- ~2 GB free disk for the server (Postgres + Qdrant + node_modules)
+- ~1.5 GB free disk for the server (Postgres + `forge/core` + node_modules)
 
 ## 1. Run the server
 
@@ -40,16 +40,17 @@ docker compose up -d
 
 Wait ~30 seconds for services to become healthy.
 
-- Server admin: <http://localhost:1337/admin>
+- Core API + health: <http://localhost:8080/health>
 - Web dashboard: <http://localhost:3000>
-- Vector store: <http://localhost:6333/dashboard>
+- DB inspector (dev only): `pnpm --filter @forge/core db:studio` → opens Drizzle Studio
 
-## 2. Create an admin user and first project
+## 2. Create your first user and project
 
-1. Open <http://localhost:1337/admin> — create the Strapi admin user.
-2. Open <http://localhost:3000> — register a regular user for the web dashboard.
-3. **Verify your email.** Jarvis requires email verification before you can create your first project. Check the verification email; click the link.
-4. Create a project. Note its slug — you'll use it when pairing a device.
+1. Open <http://localhost:3000> — register a user for the web dashboard.
+2. **Verify your email.** Jarvis requires email verification before you can create your first project. Check the verification email; click the link.
+3. Create a project. Note its slug — you'll use it when pairing a device.
+
+> Admin operations (user list, device list, audit log) are exposed at `/admin` in the web app once Phase 2.6 ships. Until then, use Drizzle Studio + REST.
 
 ## 3. Pair a device
 
@@ -59,7 +60,7 @@ A device is any machine that will run `claude` for your projects. Most teams sta
 
 1. Download the desktop app for your OS from [GitHub Releases](https://github.com/junixlabs/jarvis-agents/releases).
 2. Install and open it.
-3. Point it at your server: `http://localhost:1337` (or your deployed URL).
+3. Point it at your server: `http://localhost:8080` (or your deployed URL).
 4. In the web dashboard: **Account → Devices → Add device** → copy the pairing code.
 5. In the desktop app: **Settings → Pair** → paste the code.
 

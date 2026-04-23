@@ -4,6 +4,8 @@
 - **Date:** 2026-04-19
 - **Full design:** [RFC 0001](../rfcs/0001-device-runner-architecture.md)
 
+> **Reader note (2026-04-23):** This ADR mentions "Strapi" because that was the backend at the time the decision was taken. The control-plane is now `forge/core` per [RFC 0002](../rfcs/0002-replace-strapi-with-hono-drizzle.md). The principle (split orchestration from credentials) is unchanged — only the implementation. Treat any "Strapi" reference here as "the control-plane backend" = `forge/core`.
+
 ## Context
 
 The original monolith ran the agent runner in-process inside the Strapi backend. A security audit (2026-04-19) surfaced critical findings:

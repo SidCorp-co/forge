@@ -22,6 +22,8 @@ ADRs are **never edited after acceptance**. If a decision is reversed, write a n
 | [0007](0007-apache-2-license.md) | Apache-2.0 license for the project | Accepted | 2026-04-18 |
 | [0008](0008-english-as-primary-language.md) | English as the primary language for public docs | Accepted | 2026-04-19 |
 | [0009](0009-mobile-app-paused-for-v0x.md) | Mobile app paused for v0.x | Accepted | 2026-04-19 |
+| [0010](0010-clean-break-from-strapi.md) | Clean break from Strapi to `forge/core` (no parity, no dual-run) | Accepted | 2026-04-23 |
+| [0011](0011-pgvector-replaces-qdrant.md) | Postgres `pgvector` replaces Qdrant for vector storage | Accepted | 2026-04-23 |
 
 ## Status values
 

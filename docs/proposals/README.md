@@ -7,6 +7,7 @@ Planned features that are not yet implemented. When a proposal ships, its doc mo
 | Proposal | Status | Target |
 |----------|--------|--------|
 | [cost-aware-model-routing.md](cost-aware-model-routing.md) | Draft | v0.2 (manual hint) → v0.3 (auto-classify) → v1.0 (budget) |
+| [core-strapi-decoupling.md](core-strapi-decoupling.md) | Resolved (pending acceptance) | Clean break — no Strapi parity, single flip PR at Phase 2.5 |
 
 ## Naming convention
 

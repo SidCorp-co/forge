@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://junixlabs.github.io/jarvis-agents/system.graph.schema.json",
+  "title": "Jarvis Agents — system graph",
+  "description": "Single-file graph of planes, services, modules, features, datastores, and externals. Nodes are identified by stable slugs; edges describe containment, dependencies, and broadcast/exposure relations.",
+  "type": "object",
+  "required": ["version", "root", "nodes", "edges"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "generated": { "type": "string", "format": "date" },
+    "root": { "type": "string", "description": "id of the top-level node" },
+    "legend": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kinds": { "type": "array", "items": { "type": "string" } },
+        "statuses": { "type": "array", "items": { "type": "string" } },
+        "relations": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/edge" }
+    }
+  },
+
+  "$defs": {
+    "kind": {
+      "type": "string",
+      "enum": ["plane", "service", "module", "feature", "datastore", "external"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "legacy", "paused", "proposed", "planned"]
+    },
+    "relation": {
+      "type": "string",
+      "enum": ["contains", "depends_on", "exposes", "broadcasts_to", "replaced_by"]
+    },
+    "node": {
+      "type": "object",
+      "required": ["id", "kind", "purpose", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._/-]*$" },
+        "kind": { "$ref": "#/$defs/kind" },
+        "purpose": { "type": "string", "maxLength": 140 },
+        "status": { "$ref": "#/$defs/status" },
+        "stack": { "type": "array", "items": { "type": "string" } },
+        "decisions": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^ADR-\\d{4}$" }
+        },
+        "docs": { "type": "string", "description": "Relative path to canonical markdown doc" }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["from"],
+      "additionalProperties": false,
+      "oneOf": [
+        { "required": ["to", "relation"] },
+        { "required": ["to", "exposes", "at"] }
+      ],
+      "properties": {
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "relation": { "$ref": "#/$defs/relation" },
+        "exposes": { "type": "string", "enum": ["REST", "WebSocket", "MCP", "CLI"] },
+        "at": { "type": "string", "description": "Endpoint path or pattern, e.g. /api/*" },
+        "note": { "type": "string", "maxLength": 200 }
+      }
+    }
+  }
+}

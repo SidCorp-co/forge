@@ -2,6 +2,13 @@
 
 Tauri desktop app with React frontend. Local codebase access, agent execution, MCP server support.
 
+## Authoritative docs
+
+- Device-runner architecture: [ADR 0001](../../docs/decisions/0001-device-runner-architecture.md), [docs/modules/devices/](../../docs/modules/devices/)
+- Claude CLI as runner: [ADR 0003](../../docs/decisions/0003-claude-code-cli-as-primary-runner.md); credential boundary: [ADR 0004](../../docs/decisions/0004-no-claude-credentials-on-server.md)
+- Agent + job flow: [docs/modules/agents-jobs/](../../docs/modules/agents-jobs/)
+- Backend is moving Strapi → `forge/core` per [RFC 0002](../../docs/rfcs/0002-replace-strapi-with-hono-drizzle.md). `src/lib/api.ts` will switch base URL in the Phase 2.5 flip — write any new code against `core`'s response shape, not Strapi's envelope.
+
 ## Architecture
 
 - `src-tauri/src/` — Rust backend: CLI spawning, config, WebSocket proxy

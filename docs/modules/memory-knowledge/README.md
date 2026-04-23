@@ -1,10 +1,10 @@
 # Memory & Knowledge
 
-Qdrant-backed semantic memory, project knowledge graph, RAG retrieval.
+Postgres `pgvector` semantic memory, project knowledge graph, RAG retrieval.
 
 ## Overview
 
-Claude Code has no memory between sessions by default. Jarvis Agents adds persistent memory: the system captures issue content, agent session outputs, decisions, and resolved errors; embeds them to Qdrant; and surfaces relevant context to agents at the start of each session.
+Claude Code has no memory between sessions by default. Jarvis Agents adds persistent memory: the system captures issue content, agent session outputs, decisions, and resolved errors; embeds them and stores the vectors in Postgres via `pgvector` (same connection as the rest of the data); and surfaces relevant context to agents at the start of each session.
 
 ## Data Flow
 
@@ -23,7 +23,7 @@ Claude Code has no memory between sessions by default. Jarvis Agents adds persis
            │
            ▼
   ┌────────────────────┐
-  │ Qdrant upsert      │ point with payload metadata
+  │ pgvector upsert    │ row in `memories` with metadata cols + vector
   └────────────────────┘
 
   Retrieval:
@@ -56,9 +56,9 @@ Claude Code has no memory between sessions by default. Jarvis Agents adds persis
 
 | Input | Transform | Stored as |
 |-------|-----------|-----------|
-| Issue/comment/job text | Embedding (model per project config) | Qdrant point vector |
-| Source type | Tag in payload | `type: 'issue' \| 'comment' \| 'job' \| 'note'` |
-| Project scope | Tag in payload | `project: <documentId>` |
+| Issue/comment/job text | Embedding (model per project config) | `vector` column in `memories` table |
+| Source type | Column | `source: 'issue' \| 'comment' \| 'job' \| 'note' \| 'knowledge'` |
+| Project scope | Column | `project_id: <uuid>` (indexed) |
 
 ## Core Entities
 
@@ -72,13 +72,15 @@ Claude Code has no memory between sessions by default. Jarvis Agents adds persis
 | `sourceRef` | Reference to the source record |
 | `text` | The content embedded |
 | `metadata` | Additional tags (priority, status, tools used, etc.) |
-| `embeddedAt` | Timestamp of Qdrant upsert |
+| `embeddedAt` | Timestamp of vector upsert |
 
-### Qdrant collection layout
+### `memories` table layout (Postgres + pgvector)
 
-- One collection per project (keeps retrieval scoped + fast)
-- Vector dimension: per project config (default: 1536 for OpenAI-like models)
-- Payload: `{ type, sourceRef, project, metadata, ts }`
+- Single table for all projects, partitioned by `project_id` filter on every query (project scope enforced in the policy layer)
+- `vector vector(N)` column — N matches the embedding model dimension (default 1536)
+- Index: HNSW on `vector` (`USING hnsw (vector vector_cosine_ops)`) per [ADR 0011](../../decisions/0011-pgvector-replaces-qdrant.md)
+- Indexed columns: `(project_id, source)`, `(project_id, source_ref)`
+- Payload columns: `source`, `source_ref`, `project_id`, `metadata jsonb`, `embedded_at`
 
 ## Key Business Flows
 
@@ -87,15 +89,15 @@ Claude Code has no memory between sessions by default. Jarvis Agents adds persis
 1. User creates issue → `issue:created` hook fires
 2. Embeddings service normalizes text (strip markdown, canonicalize whitespace)
 3. POST to embedding provider (LiteLLM)
-4. Qdrant upsert with payload
-5. `Memory` record saved with `embeddedAt`
+4. INSERT/UPDATE into `memories` (vector + metadata) in one statement
+5. `embeddedAt` set; broadcast `memory:indexed` over ws to subscribed clients
 
 ### Retrieval at session start
 
 1. Agent session starts on device
 2. System prompt builder calls `forge_memory.search(query, projectId)` via MCP
-3. Server queries Qdrant with embedded query
-4. Top-K results filtered by project, sorted by relevance
+3. Server runs `SELECT ... FROM memories WHERE project_id = $1 ORDER BY vector <=> $2 LIMIT K` (cosine distance via HNSW index)
+4. Top-K results returned, sorted by relevance
 5. Returned as context snippets in system prompt
 6. Session runs with context
 

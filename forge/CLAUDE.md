@@ -1,28 +1,37 @@
 # Forge Monorepo
 
-Forge is a project management + AI agent platform. Four independent packages, no shared workspaces.
+Forge is a project management + AI agent platform. See repo-root [CLAUDE.md](../CLAUDE.md) for current state, ongoing migrations, and the "before you start a task" reading map.
 
 ## Packages
 
-- **strapi/** — Strapi 5 backend: REST API, WebSocket, AI agent execution
-- **web/** — Next.js cloud UI: project management, issue tracking, chat
-- **dev/** — Tauri desktop app: local codebase access, agent execution, MCP support
-- MCP server is embedded in Strapi at `/mcp` (Streamable HTTP transport)
+- **core/** — Hono + Drizzle backend (Phase 2 replacement for Strapi, in build)
+- **strapi/** — Strapi 5 backend (legacy, being removed per [RFC 0002](../docs/rfcs/0002-replace-strapi-with-hono-drizzle.md))
+- **web/** — Next.js cloud UI
+- **dev/** — Tauri desktop app
+- **app/** — React Native (Expo) mobile — **paused per [ADR 0009](../docs/decisions/0009-mobile-app-paused-for-v0x.md)**
+
+## Authoritative docs
+
+- System overview + flows: [../docs/architecture/](../docs/architecture/)
+- Per-feature module docs: [../docs/modules/](../docs/modules/)
+- Decisions that bind every package: [../docs/decisions/](../docs/decisions/)
+- In-flight changes: [../docs/proposals/](../docs/proposals/)
 
 ## Data Flow
 
 ```
-web/dev UI → Strapi REST API (/api/*) → Database (SQLite/Postgres)
-             Strapi WebSocket (/ws)   → Real-time broadcasts to UIs
-             Strapi Agent Runner      → Claude CLI / Cloud APIs
-MCP Server → Strapi REST API          → Same data layer
+web/dev → core REST (/api/*) → Postgres (data + jobs + pgvector)
+          core WebSocket (/ws) → room-scoped real-time broadcasts
+          core Job dispatcher  → device-runner (forge/dev) → Claude CLI
+MCP clients → core /mcp → same handlers as REST
 ```
+
+`forge/strapi/` is the legacy backend, scheduled for deletion. Do not extend it.
 
 ## Shared Conventions
 
 - TypeScript everywhere (Rust for Tauri backend)
-- Issue lifecycle: draft (agent-created) → open → confirmed → clarified (Simple auto-skips) → waiting (Complex only) → approved → in_progress → developed → deploying → testing → staging → released → forge-release (merge ISS-* to productionBranch) → closed (reopen → fix → developed, max 5 cycles)
-- Branching: ISS-* branch kept alive through pipeline. Merges to baseBranch (staging) for testing. Squash-merges to productionBranch (master) at release. Never merge baseBranch → productionBranch directly.
+- Issue lifecycle: open → confirmed → clarified → approved → in_progress → developed → deploying → testing → tested → pass → staging → released → closed (reopen → fix → developed, max 5 cycles). Detail in [../docs/modules/issues-pipeline/status-pipeline.md](../docs/modules/issues-pipeline/status-pipeline.md). Local-only mode (no Coolify, no preview) stops at `developed` for human review.
+- Branching: ISS-* branch lives across the pipeline. Merges to baseBranch (staging) for testing. Squash-merges to productionBranch at release. Never merge baseBranch → productionBranch directly.
 - Task statuses: backlog → todo → in_progress → in_review → done
-- All packages use the same Strapi REST API contract
 - Auth via Bearer token in Authorization header

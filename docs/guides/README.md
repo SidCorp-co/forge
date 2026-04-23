@@ -15,7 +15,7 @@ _(None yet. The Diátaxis quickstart lives at [../quickstart.md](../quickstart.m
 | Integrate a webhook source (GitHub, Sentry, custom) | Planned | Self-hosters connecting external event sources |
 | Set up a CI runner as a device | Planned | Teams running jobs on headless boxes |
 | Migrate from the agent-session model (pre-v0.1) | Planned | Early adopters upgrading |
-| Backup and restore Postgres + Qdrant | Planned | Operators |
+| Backup and restore Postgres (incl. `pgvector` embeddings) | Planned | Operators |
 | Debug a failing job | Planned | Anyone hitting a stuck job |
 
 ## How to add a guide

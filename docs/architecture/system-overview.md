@@ -4,11 +4,13 @@ How Jarvis Agents is put together, and why.
 
 The architectural foundation is [RFC 0001: Device-runner architecture](../rfcs/0001-device-runner-architecture.md). This doc summarizes and explains; the RFC is authoritative.
 
+> **Note (2026-04-23):** The control plane is `forge/core` (Hono + Drizzle + pg-boss + ws + MCP) per [RFC 0002](../rfcs/0002-replace-strapi-with-hono-drizzle.md) and [proposals/core-strapi-decoupling.md](../proposals/core-strapi-decoupling.md). Vector storage lives in Postgres `pgvector`. Mobile (`forge/app/`) is paused per [ADR 0009](../decisions/0009-mobile-app-paused-for-v0x.md).
+
 ## One-paragraph summary
 
 Jarvis Agents splits into two planes:
 
-- **Control plane** — a Strapi 5 backend exposing REST, WebSocket, and MCP. Hosts project and issue state, queues jobs, and streams events. **Never holds Claude credentials.**
+- **Control plane** — `forge/core`, a Hono + Drizzle service exposing REST, WebSocket, and MCP. Hosts project and issue state, queues jobs (pg-boss), stores embeddings (pgvector), and streams events. **Never holds Claude credentials.**
 - **Runtime plane** — **device agents** running on users' own machines. Two form factors share a Rust `agent-core` crate: `dev` (Tauri GUI) and `forged` (CLI daemon). Devices pair into the account, receive job dispatches over WebSocket, spawn the `claude` CLI locally in a git worktree, and stream JobEvents back.
 
 Two principals interact with the system — **user** (JWT) and **device** (long-lived revocable token). Both pass through a shared policy layer so access checks live in one place.
@@ -17,14 +19,14 @@ Two principals interact with the system — **user** (JWT) and **device** (long-
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                   Your browser / phone                  │
-│           web (Next.js)     ── app (Expo, v0.2+)        │
+│                       Your browser                      │
+│   web (Next.js)       dev (Tauri)    [app paused, 0.2+] │
 └──────────────────────┬──────────────────────────────────┘
                        │ REST + WebSocket (user JWT)
                        │ MCP (user token or device token)
                        ▼
 ┌─────────────────────────────────────────────────────────┐
-│               Control plane — Strapi                    │
+│           Control plane — forge/core (Hono)             │
 │  ┌───────────┐ ┌───────────┐ ┌────────────────────────┐ │
 │  │ REST /api │ │ WS /ws    │ │ MCP /mcp               │ │
 │  └─────┬─────┘ └─────┬─────┘ └───────────┬────────────┘ │
@@ -33,15 +35,16 @@ Two principals interact with the system — **user** (JWT) and **device** (long-
 │                │ (user ▷ project member,                │
 │                │  device ▷ project pool)                │
 │        ┌───────▼────────┐   ┌────────────────────┐      │
-│        │ Job dispatcher │   │ Lifecycle hooks    │      │
-│        │ (pg-boss queue)│   │ (broadcast, index) │      │
+│        │ Job dispatcher │   │ Event broadcaster  │      │
+│        │ (pg-boss)      │   │ (room-scoped ws)   │      │
 │        └───────┬────────┘   └─────────┬──────────┘      │
-│                │                      │                 │
-│                ▼                      ▼                 │
-│        ┌───────────────┐       ┌─────────────────┐      │
-│        │ Postgres 17   │       │ Qdrant 1.13     │      │
-│        │ state + jobs  │       │ embeddings      │      │
-│        └───────────────┘       └─────────────────┘      │
+│                └──────────┬───────────┘                 │
+│                           ▼                             │
+│              ┌──────────────────────────┐               │
+│              │ Postgres 17              │               │
+│              │ state + jobs (pg-boss)   │               │
+│              │ embeddings (pgvector)    │               │
+│              └──────────────────────────┘               │
 └──────────────┬──────────────────────────────────────────┘
                │ WebSocket (device token)
                ▼
@@ -179,7 +182,7 @@ Per-project config decides which transitions auto-trigger vs wait for human appr
 
 ## Non-goals
 
-- **Not multi-tenant SaaS.** One Strapi instance = one tenant. Run multiple instances for multiple tenants.
+- **Not multi-tenant SaaS.** One control-plane instance = one tenant. Run multiple instances for multiple tenants.
 - **Not optimized for >~1000 concurrent WS sockets** in a single instance. Beyond that, a Redis pub/sub layer will be added (v0.5+).
 - **Not a Linux headless agent in v0.x.** Secret Service + D-Bus needs a follow-up RFC.
 - **Not using the Anthropic API.** We orchestrate Claude Code CLI, the user's subscription.

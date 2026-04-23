@@ -6,6 +6,13 @@
 - Status: Draft — open for comment
 - Related ADR: [0002](../decisions/0002-replace-strapi-with-hono-drizzle.md)
 
+> **Reader note (2026-04-23):** Three items in this RFC are superseded:
+> 1. **Vector DB row in §Stack** ("Qdrant — unchanged") and the docker-compose `qdrant:` service → superseded by **[ADR 0011](../decisions/0011-pgvector-replaces-qdrant.md)** (Postgres `pgvector`, single connection).
+> 2. **Cutover model** (parity-implied throughout) → superseded by **[ADR 0010](../decisions/0010-clean-break-from-strapi.md)** (clean break, no parity, single flip PR).
+> 3. **Mobile mentions** → `forge/app/` is paused per [ADR 0009](../decisions/0009-mobile-app-paused-for-v0x.md); it is not a Phase 2.5 client.
+>
+> The RFC body is preserved as the historical proposal. For current implementation guidance, follow the ADRs above and [proposals/core-strapi-decoupling.md](../proposals/core-strapi-decoupling.md).
+
 # Summary
 
 Replace the Strapi 5 backbone with a purpose-built Node service on **Hono + Drizzle + pg-boss**, **rebuilt from scratch** rather than migrated. The new service is designed around the control-plane workload (device-runner orchestration, dual-principal auth, event streaming, MCP exposure) instead of Strapi's CMS-shaped lifecycle. Existing Strapi-coupled code in `forge/strapi/` is deleted after the new service reaches functional parity. No runtime data migration is attempted — the internal alpha deployment is recreated fresh.

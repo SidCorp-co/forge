@@ -21,7 +21,7 @@ Trigger: external system (GitHub, Sentry, custom) POSTs to `/api/webhooks/<proje
 
 Cross-cutting:
 - Every job creates `agent-session` → `audit-log` entries
-- Memory embeddings (issue description, job output) indexed to Qdrant for future retrieval
+- Memory embeddings (issue description, job output) indexed to Postgres `pgvector` for future retrieval
 
 ## Flow: Pair a new device
 

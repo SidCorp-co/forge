@@ -240,7 +240,7 @@ Post comment with:
 
 ## Pipeline Orchestrator
 
-The orchestrator (`forge/strapi/src/services/pipeline-orchestrator.ts`) watches issue status changes and dispatches the appropriate skill.
+The orchestrator (`forge/core/src/pipeline/orchestrator.ts`) watches issue status changes and dispatches the appropriate skill.
 
 ### Skill Mapping
 
@@ -340,7 +340,7 @@ Each step toggle supports both boolean and object form:
 
 ### Startup Recovery
 
-On Strapi startup, `cleanupStaleSessions()` finds crashed "running" sessions and reverts their issues to the trigger status so they can be re-triggered.
+On `forge/core` startup, `cleanupStaleSessions()` finds crashed "running" sessions and reverts their issues to the trigger status so they can be re-triggered.
 
 ## Pipeline Skills Summary
 

@@ -1,5 +1,13 @@
 # Forge Strapi Backend
 
+> ⚠️ **Legacy — being removed.** Strapi is replaced by `forge/core` per [RFC 0002](../../docs/rfcs/0002-replace-strapi-with-hono-drizzle.md) and [docs/proposals/core-strapi-decoupling.md](../../docs/proposals/core-strapi-decoupling.md). Do not add new content types, endpoints, or features here. Bug fixes only until the Phase 2.5 flip PR deletes this package.
+
+## Authoritative docs
+
+- Replacement plan: [../../docs/rfcs/0002](../../docs/rfcs/0002-replace-strapi-with-hono-drizzle.md), [../../docs/proposals/core-strapi-decoupling.md](../../docs/proposals/core-strapi-decoupling.md)
+- Decisions bound to current behavior: [ADR 0004](../../docs/decisions/0004-no-claude-credentials-on-server.md), [ADR 0005](../../docs/decisions/0005-dual-principal-auth.md), [ADR 0006](../../docs/decisions/0006-pg-boss-for-job-queue.md)
+- Module docs (canonical for behavior, not file layout): [../../docs/modules/](../../docs/modules/)
+
 Strapi 5 headless CMS with custom APIs, WebSocket, and multi-provider AI agent execution.
 
 ## Architecture

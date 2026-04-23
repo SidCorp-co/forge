@@ -1,5 +1,12 @@
 # Forge Mobile App
 
+> ⛔ **Paused for v0.x — no development.** See [ADR 0009](../../docs/decisions/0009-mobile-app-paused-for-v0x.md). Code stays in the repo as a learning artefact; do not add features, fix non-critical bugs, or update dependencies. Re-entry criteria are in the ADR.
+
+## Authoritative docs
+
+- Pause decision + re-entry criteria: [ADR 0009](../../docs/decisions/0009-mobile-app-paused-for-v0x.md)
+- When mobile resumes (v0.2+), it returns as a **read-only dashboard**, not an execution surface — see ADR 0009 §Decision.
+
 React Native (Expo) cross-platform mobile app for project management and AI chat.
 
 ## Architecture

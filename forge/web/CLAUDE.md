@@ -2,6 +2,13 @@
 
 Next.js App Router cloud UI for project management, issue tracking, and AI chat.
 
+## Authoritative docs
+
+- Module docs (canonical behavior — features, flows, statuses): [../../docs/modules/](../../docs/modules/)
+- Architecture + cross-module flows: [../../docs/architecture/](../../docs/architecture/)
+- Backend contract is moving from Strapi → `forge/core` per [RFC 0002](../../docs/rfcs/0002-replace-strapi-with-hono-drizzle.md). New API client work should target `core`'s shape (no Strapi `{ data, meta }` envelope). See [../../docs/proposals/core-strapi-decoupling.md](../../docs/proposals/core-strapi-decoupling.md) §"Phase 2.5 — the single flip PR".
+- Mobile parity is **not a concern** — `forge/app/` is paused per [ADR 0009](../../docs/decisions/0009-mobile-app-paused-for-v0x.md).
+
 ## Architecture
 
 - `src/app/` — App Router pages (auth, projects, settings, usage)

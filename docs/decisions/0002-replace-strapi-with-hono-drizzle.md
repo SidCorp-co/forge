@@ -2,7 +2,9 @@
 
 - **Status:** Proposed — pending RFC 0002 acceptance
 - **Date:** 2026-04-20
-- **Full design:** RFC 0002 (to be drafted)
+- **Full design:** [RFC 0002](../rfcs/0002-replace-strapi-with-hono-drizzle.md)
+
+> **Reader note (2026-04-23):** Statements in this ADR that "Qdrant is unchanged" (and the docker-compose service-count claim) are **superseded by [ADR 0011](0011-pgvector-replaces-qdrant.md)** — vector storage moves into Postgres via `pgvector`. The cutover model is formalized in [ADR 0010](0010-clean-break-from-strapi.md).
 
 ## Context
 
