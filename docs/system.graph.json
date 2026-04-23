@@ -6,43 +6,208 @@
   "legend": {
     "kinds": ["plane", "service", "module", "feature", "datastore", "external"],
     "statuses": ["active", "legacy", "paused", "proposed", "planned"],
-    "relations": ["contains", "depends_on", "exposes", "broadcasts_to", "replaced_by"]
+    "relations": [
+      "contains",
+      "depends_on",
+      "exposes",
+      "broadcasts_to",
+      "replaced_by"
+    ]
   },
 
   "nodes": [
-    { "id": "jarvis-agents", "kind": "plane", "purpose": "Project management + AI agent platform", "status": "active" },
+    {
+      "id": "jarvis-agents",
+      "kind": "plane",
+      "purpose": "Project management + AI agent platform",
+      "status": "active"
+    },
 
-    { "id": "client-plane", "kind": "plane", "purpose": "User-facing surfaces", "status": "active" },
-    { "id": "control-plane", "kind": "plane", "purpose": "Orchestration, persistence, broadcast", "status": "active" },
-    { "id": "runtime-plane", "kind": "plane", "purpose": "Device-side agent execution (Claude credentials live here)", "status": "active" },
+    {
+      "id": "client-plane",
+      "kind": "plane",
+      "purpose": "User-facing surfaces",
+      "status": "active"
+    },
+    {
+      "id": "control-plane",
+      "kind": "plane",
+      "purpose": "Orchestration, persistence, broadcast",
+      "status": "active"
+    },
+    {
+      "id": "runtime-plane",
+      "kind": "plane",
+      "purpose": "Device-side agent execution (Claude credentials live here)",
+      "status": "active"
+    },
 
-    { "id": "forge/web", "kind": "service", "purpose": "Next.js 16 cloud UI", "status": "active", "stack": ["next", "react-query", "tailwind"], "docs": "forge/web/CLAUDE.md" },
-    { "id": "forge/dev", "kind": "service", "purpose": "Tauri desktop app — local codebase + agent runner", "status": "active", "stack": ["tauri", "rust", "react"], "docs": "forge/dev/CLAUDE.md" },
-    { "id": "forge/app", "kind": "service", "purpose": "React Native mobile (paused)", "status": "paused", "decisions": ["ADR-0009"], "docs": "forge/app/CLAUDE.md" },
-    { "id": "forge/core", "kind": "service", "purpose": "Hono + Drizzle backend (REST + WS + MCP)", "status": "active", "stack": ["hono", "drizzle", "pg-boss", "ws"], "docs": "forge/core/", "decisions": ["ADR-0002", "ADR-0010"] },
-    { "id": "forge/strapi", "kind": "service", "purpose": "Strapi 5 backend (frozen, scheduled for deletion)", "status": "legacy", "decisions": ["ADR-0010"], "docs": "forge/strapi/CLAUDE.md" },
-    { "id": "forged", "kind": "service", "purpose": "Headless CLI device agent (CI runners, daemons)", "status": "planned", "decisions": ["ADR-0001"] },
+    {
+      "id": "forge/web",
+      "kind": "service",
+      "purpose": "Next.js 16 cloud UI",
+      "status": "active",
+      "stack": ["next", "react-query", "tailwind"],
+      "docs": "forge/web/CLAUDE.md"
+    },
+    {
+      "id": "forge/dev",
+      "kind": "service",
+      "purpose": "Tauri desktop app — local codebase + agent runner",
+      "status": "active",
+      "stack": ["tauri", "rust", "react"],
+      "docs": "forge/dev/CLAUDE.md"
+    },
+    {
+      "id": "forge/app",
+      "kind": "service",
+      "purpose": "React Native mobile (paused)",
+      "status": "paused",
+      "decisions": ["ADR-0009"],
+      "docs": "forge/app/CLAUDE.md"
+    },
+    {
+      "id": "forge/core",
+      "kind": "service",
+      "purpose": "Hono + Drizzle backend (REST + WS + MCP)",
+      "status": "active",
+      "stack": ["hono", "drizzle", "pg-boss", "ws"],
+      "docs": "forge/core/",
+      "decisions": ["ADR-0002", "ADR-0010"]
+    },
+    {
+      "id": "forge/strapi",
+      "kind": "service",
+      "purpose": "Strapi 5 backend (frozen, scheduled for deletion)",
+      "status": "legacy",
+      "decisions": ["ADR-0010"],
+      "docs": "forge/strapi/CLAUDE.md"
+    },
+    {
+      "id": "forged",
+      "kind": "service",
+      "purpose": "Headless CLI device agent (CI runners, daemons)",
+      "status": "planned",
+      "decisions": ["ADR-0001"]
+    },
 
-    { "id": "issues-pipeline", "kind": "module", "purpose": "14-status issue lifecycle, projects, comments, labels", "status": "active", "docs": "docs/modules/issues-pipeline/" },
-    { "id": "agents-jobs", "kind": "module", "purpose": "Job queue, dispatch, JobEvent streaming, session capture", "status": "active", "docs": "docs/modules/agents-jobs/" },
-    { "id": "devices", "kind": "module", "purpose": "Pairing, revocation, project binding, heartbeat", "status": "active", "docs": "docs/modules/devices/" },
-    { "id": "skills", "kind": "module", "purpose": "Built-in forge-* skills + user-authored skill registry", "status": "active", "docs": "docs/modules/skills/" },
-    { "id": "memory-knowledge", "kind": "module", "purpose": "pgvector semantic memory + RAG retrieval", "status": "active", "decisions": ["ADR-0011"], "docs": "docs/modules/memory-knowledge/" },
-    { "id": "chat", "kind": "module", "purpose": "Interactive agent chat sessions (separate from pipeline jobs)", "status": "active", "docs": "docs/modules/chat/" },
-    { "id": "auth", "kind": "module", "purpose": "Dual-principal JWT (user) + revocable token (device) + policy layer", "status": "active", "decisions": ["ADR-0005"] },
-    { "id": "admin-ui", "kind": "module", "purpose": "User/project/device/audit UI at /admin", "status": "planned" },
+    {
+      "id": "issues-pipeline",
+      "kind": "module",
+      "purpose": "14-status issue lifecycle, projects, comments, labels",
+      "status": "active",
+      "docs": "docs/modules/issues-pipeline/"
+    },
+    {
+      "id": "agents-jobs",
+      "kind": "module",
+      "purpose": "Job queue, dispatch, JobEvent streaming, session capture",
+      "status": "active",
+      "docs": "docs/modules/agents-jobs/"
+    },
+    {
+      "id": "devices",
+      "kind": "module",
+      "purpose": "Pairing, revocation, project binding, heartbeat",
+      "status": "active",
+      "docs": "docs/modules/devices/"
+    },
+    {
+      "id": "skills",
+      "kind": "module",
+      "purpose": "Built-in forge-* skills + user-authored skill registry",
+      "status": "active",
+      "docs": "docs/modules/skills/"
+    },
+    {
+      "id": "memory-knowledge",
+      "kind": "module",
+      "purpose": "pgvector semantic memory + RAG retrieval",
+      "status": "active",
+      "decisions": ["ADR-0011"],
+      "docs": "docs/modules/memory-knowledge/"
+    },
+    {
+      "id": "chat",
+      "kind": "module",
+      "purpose": "Interactive agent chat sessions (separate from pipeline jobs)",
+      "status": "active",
+      "docs": "docs/modules/chat/"
+    },
+    {
+      "id": "auth",
+      "kind": "module",
+      "purpose": "Dual-principal JWT (user) + revocable token (device) + policy layer",
+      "status": "active",
+      "decisions": ["ADR-0005"]
+    },
+    {
+      "id": "admin-ui",
+      "kind": "module",
+      "purpose": "User/project/device/audit UI at /admin",
+      "status": "planned"
+    },
 
-    { "id": "feature.issue-pipeline-14status", "kind": "feature", "purpose": "open → confirmed → clarified → … → closed (max 5 reopen cycles)", "status": "active", "docs": "docs/modules/issues-pipeline/status-pipeline.md" },
-    { "id": "feature.device-pairing", "kind": "feature", "purpose": "Pairing-code handshake, token issuance, project pool binding", "status": "active" },
-    { "id": "feature.session-replay", "kind": "feature", "purpose": "Append-only JobEvent log, deterministic replay on reconnect", "status": "active" },
-    { "id": "feature.cost-aware-routing", "kind": "feature", "purpose": "Route jobs to thrifty/standard/premium model tier", "status": "proposed", "docs": "docs/proposals/cost-aware-model-routing.md" },
+    {
+      "id": "feature.issue-pipeline-14status",
+      "kind": "feature",
+      "purpose": "open → confirmed → clarified → … → closed (max 5 reopen cycles)",
+      "status": "active",
+      "docs": "docs/modules/issues-pipeline/status-pipeline.md"
+    },
+    {
+      "id": "feature.device-pairing",
+      "kind": "feature",
+      "purpose": "Pairing-code handshake, token issuance, project pool binding",
+      "status": "active"
+    },
+    {
+      "id": "feature.session-replay",
+      "kind": "feature",
+      "purpose": "Append-only JobEvent log, deterministic replay on reconnect",
+      "status": "active"
+    },
+    {
+      "id": "feature.cost-aware-routing",
+      "kind": "feature",
+      "purpose": "Route jobs to thrifty/standard/premium model tier",
+      "status": "proposed",
+      "docs": "docs/proposals/cost-aware-model-routing.md"
+    },
 
-    { "id": "postgres", "kind": "datastore", "purpose": "Single store: rows + pg-boss jobs + pgvector embeddings", "status": "active", "decisions": ["ADR-0006", "ADR-0011"] },
+    {
+      "id": "postgres",
+      "kind": "datastore",
+      "purpose": "Single store: rows + pg-boss jobs + pgvector embeddings",
+      "status": "active",
+      "decisions": ["ADR-0006", "ADR-0011"]
+    },
 
-    { "id": "claude-cli", "kind": "external", "purpose": "Anthropic Claude Code CLI (runs on device, holds credentials)", "status": "active", "decisions": ["ADR-0003", "ADR-0004"] },
-    { "id": "litellm", "kind": "external", "purpose": "Embedding + chat model proxy (optional)", "status": "active" },
-    { "id": "smtp", "kind": "external", "purpose": "Email verification + password reset", "status": "active" },
-    { "id": "github-webhook", "kind": "external", "purpose": "Inbound webhooks for issue / PR sync", "status": "active" }
+    {
+      "id": "claude-cli",
+      "kind": "external",
+      "purpose": "Anthropic Claude Code CLI (runs on device, holds credentials)",
+      "status": "active",
+      "decisions": ["ADR-0003", "ADR-0004"]
+    },
+    {
+      "id": "litellm",
+      "kind": "external",
+      "purpose": "Embedding + chat model proxy (optional)",
+      "status": "active"
+    },
+    {
+      "id": "smtp",
+      "kind": "external",
+      "purpose": "Email verification + password reset",
+      "status": "active"
+    },
+    {
+      "id": "github-webhook",
+      "kind": "external",
+      "purpose": "Inbound webhooks for issue / PR sync",
+      "status": "active"
+    }
   ],
 
   "edges": [
@@ -55,9 +220,19 @@
     { "from": "client-plane", "to": "forge/app", "relation": "contains" },
 
     { "from": "control-plane", "to": "forge/core", "relation": "contains" },
-    { "from": "control-plane", "to": "forge/strapi", "relation": "contains", "note": "frozen — replaced_by forge/core" },
+    {
+      "from": "control-plane",
+      "to": "forge/strapi",
+      "relation": "contains",
+      "note": "frozen — replaced_by forge/core"
+    },
 
-    { "from": "runtime-plane", "to": "forge/dev", "relation": "contains", "note": "dev is both client (UI) and runtime (agent)" },
+    {
+      "from": "runtime-plane",
+      "to": "forge/dev",
+      "relation": "contains",
+      "note": "dev is both client (UI) and runtime (agent)"
+    },
     { "from": "runtime-plane", "to": "forged", "relation": "contains" },
 
     { "from": "forge/strapi", "to": "forge/core", "relation": "replaced_by" },
@@ -71,31 +246,112 @@
     { "from": "forge/core", "to": "auth", "relation": "contains" },
     { "from": "forge/web", "to": "admin-ui", "relation": "contains" },
 
-    { "from": "issues-pipeline", "to": "feature.issue-pipeline-14status", "relation": "contains" },
-    { "from": "devices", "to": "feature.device-pairing", "relation": "contains" },
-    { "from": "agents-jobs", "to": "feature.session-replay", "relation": "contains" },
-    { "from": "agents-jobs", "to": "feature.cost-aware-routing", "relation": "contains" },
+    {
+      "from": "issues-pipeline",
+      "to": "feature.issue-pipeline-14status",
+      "relation": "contains"
+    },
+    {
+      "from": "devices",
+      "to": "feature.device-pairing",
+      "relation": "contains"
+    },
+    {
+      "from": "agents-jobs",
+      "to": "feature.session-replay",
+      "relation": "contains"
+    },
+    {
+      "from": "agents-jobs",
+      "to": "feature.cost-aware-routing",
+      "relation": "contains"
+    },
 
     { "from": "forge/core", "to": "postgres", "relation": "depends_on" },
-    { "from": "memory-knowledge", "to": "postgres", "relation": "depends_on", "note": "pgvector column on memories table" },
-    { "from": "agents-jobs", "to": "postgres", "relation": "depends_on", "note": "pg-boss queue tables" },
+    {
+      "from": "memory-knowledge",
+      "to": "postgres",
+      "relation": "depends_on",
+      "note": "pgvector column on memories table"
+    },
+    {
+      "from": "agents-jobs",
+      "to": "postgres",
+      "relation": "depends_on",
+      "note": "pg-boss queue tables"
+    },
     { "from": "auth", "to": "smtp", "relation": "depends_on" },
-    { "from": "memory-knowledge", "to": "litellm", "relation": "depends_on", "note": "embedding generation" },
+    {
+      "from": "memory-knowledge",
+      "to": "litellm",
+      "relation": "depends_on",
+      "note": "embedding generation"
+    },
     { "from": "chat", "to": "litellm", "relation": "depends_on" },
-    { "from": "issues-pipeline", "to": "github-webhook", "relation": "depends_on" },
+    {
+      "from": "issues-pipeline",
+      "to": "github-webhook",
+      "relation": "depends_on"
+    },
 
-    { "from": "forge/dev", "to": "claude-cli", "relation": "depends_on", "note": "spawned in git worktree per job" },
+    {
+      "from": "forge/dev",
+      "to": "claude-cli",
+      "relation": "depends_on",
+      "note": "spawned in git worktree per job"
+    },
     { "from": "forged", "to": "claude-cli", "relation": "depends_on" },
 
-    { "from": "forge/web", "to": "forge/core", "relation": "depends_on", "note": "REST + WS" },
-    { "from": "forge/dev", "to": "forge/core", "relation": "depends_on", "note": "REST + WS for control; receives job dispatches" },
-    { "from": "forge/app", "to": "forge/core", "relation": "depends_on", "note": "inactive — paused" },
+    {
+      "from": "forge/web",
+      "to": "forge/core",
+      "relation": "depends_on",
+      "note": "REST + WS"
+    },
+    {
+      "from": "forge/dev",
+      "to": "forge/core",
+      "relation": "depends_on",
+      "note": "REST + WS for control; receives job dispatches"
+    },
+    {
+      "from": "forge/app",
+      "to": "forge/core",
+      "relation": "depends_on",
+      "note": "inactive — paused"
+    },
 
-    { "from": "forge/core", "to": "forge/web", "relation": "broadcasts_to", "note": "user JWT room" },
-    { "from": "forge/core", "to": "forge/dev", "relation": "broadcasts_to", "note": "user + device rooms" },
+    {
+      "from": "forge/core",
+      "to": "forge/web",
+      "relation": "broadcasts_to",
+      "note": "user JWT room"
+    },
+    {
+      "from": "forge/core",
+      "to": "forge/dev",
+      "relation": "broadcasts_to",
+      "note": "user + device rooms"
+    },
 
-    { "from": "forge/core", "exposes": "REST", "at": "/api/*", "to": "client-plane" },
-    { "from": "forge/core", "exposes": "WebSocket", "at": "/ws", "to": "client-plane" },
-    { "from": "forge/core", "exposes": "MCP", "at": "/mcp", "to": "claude-cli", "note": "Streamable HTTP" }
+    {
+      "from": "forge/core",
+      "exposes": "REST",
+      "at": "/api/*",
+      "to": "client-plane"
+    },
+    {
+      "from": "forge/core",
+      "exposes": "WebSocket",
+      "at": "/ws",
+      "to": "client-plane"
+    },
+    {
+      "from": "forge/core",
+      "exposes": "MCP",
+      "at": "/mcp",
+      "to": "claude-cli",
+      "note": "Streamable HTTP"
+    }
   ]
 }
