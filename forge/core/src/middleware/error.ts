@@ -1,0 +1,79 @@
+import type { Context, ErrorHandler, NotFoundHandler } from 'hono';
+import { HTTPException } from 'hono/http-exception';
+import type { StatusCode } from 'hono/utils/http-status';
+import { getLogger } from '../logger.js';
+import type { RequestIdVars } from './request-id.js';
+
+type ErrorBody = { code: string; message: string; details?: unknown };
+
+const isProd = process.env.NODE_ENV === 'production';
+
+function statusToCode(status: number): string {
+  switch (status) {
+    case 400:
+      return 'BAD_REQUEST';
+    case 401:
+      return 'UNAUTHORIZED';
+    case 403:
+      return 'FORBIDDEN';
+    case 404:
+      return 'NOT_FOUND';
+    case 409:
+      return 'CONFLICT';
+    case 422:
+      return 'UNPROCESSABLE_ENTITY';
+    case 429:
+      return 'TOO_MANY_REQUESTS';
+    default:
+      return status >= 500 ? 'INTERNAL_ERROR' : 'ERROR';
+  }
+}
+
+function extractCause(cause: unknown): { code?: string; details?: unknown } {
+  if (cause && typeof cause === 'object') {
+    const obj = cause as Record<string, unknown>;
+    const out: { code?: string; details?: unknown } = {};
+    if (typeof obj.code === 'string') out.code = obj.code;
+    if ('details' in obj) out.details = obj.details;
+    return out;
+  }
+  return {};
+}
+
+export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c) => {
+  const log = getLogger(c);
+
+  if (err instanceof HTTPException) {
+    const status = err.status;
+    const { code: causeCode, details } = extractCause(err.cause);
+    const body: ErrorBody = {
+      code: causeCode ?? statusToCode(status),
+      message: err.message || statusToCode(status),
+    };
+    if (details !== undefined) body.details = details;
+
+    const logPayload = { status, code: body.code, err: err.message };
+    if (status >= 500) log.error(logPayload, 'http.error');
+    else log.warn(logPayload, 'http.error');
+
+    return c.json(body, status);
+  }
+
+  const body: ErrorBody = {
+    code: 'INTERNAL_ERROR',
+    message: 'Internal Server Error',
+  };
+  if (!isProd && err instanceof Error) {
+    body.details = { name: err.name, message: err.message, stack: err.stack };
+  }
+
+  log.error({ err }, 'http.unhandled');
+  return c.json(body, 500);
+};
+
+export const notFoundHandler: NotFoundHandler<{ Variables: RequestIdVars }> = (c: Context) => {
+  return c.json<ErrorBody>(
+    { code: 'NOT_FOUND', message: `Not Found: ${c.req.method} ${c.req.path}` },
+    404,
+  );
+};

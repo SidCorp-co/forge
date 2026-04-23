@@ -4,10 +4,17 @@ import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { env } from './config/env.js';
 import { db } from './db/client.js';
+import { logger } from './logger.js';
+import { errorHandler, notFoundHandler } from './middleware/error.js';
+import { requestLogger } from './middleware/logger.js';
+import { type RequestIdVars, requestId } from './middleware/request-id.js';
 import { isBossStarted, startBoss, stopBoss } from './queue/boss.js';
 import { attachWs, closeWs, isWsListening } from './ws/server.js';
 
-export const app = new Hono();
+export const app = new Hono<{ Variables: RequestIdVars }>();
+
+app.use('*', requestId());
+app.use('*', requestLogger());
 
 app.get('/health', async (c) => {
   let dbOk = false;
@@ -33,6 +40,9 @@ app.get('/health', async (c) => {
   );
 });
 
+app.notFound(notFoundHandler);
+app.onError(errorHandler);
+
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 
 if (isMain) {
@@ -41,7 +51,7 @@ if (isMain) {
   await startBoss();
 
   const server = serve({ fetch: app.fetch, port }, (info) => {
-    console.log(`[@forge/core] listening on http://localhost:${info.port}`);
+    logger.info({ port: info.port }, '@forge/core listening');
   });
 
   // serve() is typed as a union that includes http2 variants, but we use the
@@ -50,7 +60,7 @@ if (isMain) {
   attachWs(server as unknown as HttpServer);
 
   const shutdown = async (signal: string) => {
-    console.log(`[@forge/core] ${signal} received, shutting down`);
+    logger.info({ signal }, '@forge/core shutting down');
     try {
       await closeWs();
       await stopBoss();

@@ -74,4 +74,17 @@ describe('@forge/core health endpoint', () => {
       ws: { ok: true },
     });
   });
+
+  it('sets x-request-id on every response', async () => {
+    const res = await app.request('/health');
+    expect(res.headers.get('x-request-id')).toBeTruthy();
+  });
+
+  it('returns { code, message } JSON for unknown routes', async () => {
+    const res = await app.request('/no-such-route');
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('NOT_FOUND');
+    expect(body.message).toContain('/no-such-route');
+  });
 });
