@@ -1,19 +1,37 @@
 import type { Server as HttpServer } from 'node:http';
 import { serve } from '@hono/node-server';
+import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { env } from './config/env.js';
+import { db } from './db/client.js';
 import { isBossStarted, startBoss, stopBoss } from './queue/boss.js';
 import { attachWs, closeWs, isWsListening } from './ws/server.js';
 
 export const app = new Hono();
 
-app.get('/health', (c) =>
-  c.json({
-    ok: true,
-    queue: { ok: isBossStarted() },
-    ws: { ok: isWsListening() },
-  }),
-);
+app.get('/health', async (c) => {
+  let dbOk = false;
+  try {
+    await db.execute(sql`select 1`);
+    dbOk = true;
+  } catch {
+    dbOk = false;
+  }
+
+  const queueOk = isBossStarted();
+  const wsOk = isWsListening();
+  const allOk = dbOk && queueOk && wsOk;
+
+  return c.json(
+    {
+      ok: allOk,
+      db: { ok: dbOk },
+      queue: { ok: queueOk },
+      ws: { ok: wsOk },
+    },
+    allOk ? 200 : 503,
+  );
+});
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 
