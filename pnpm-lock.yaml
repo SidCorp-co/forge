@@ -135,6 +135,9 @@ importers:
       hono:
         specifier: ^4.6.14
         version: 4.12.14
+      jose:
+        specifier: ^6.2.2
+        version: 6.2.2
       pg-boss:
         specifier: ^10.1.5
         version: 10.4.2

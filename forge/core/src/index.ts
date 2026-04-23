@@ -2,6 +2,7 @@ import type { Server as HttpServer } from 'node:http';
 import { serve } from '@hono/node-server';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { loginRoutes } from './auth/login.js';
 import { authRoutes } from './auth/register.js';
 import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
@@ -84,6 +85,7 @@ app.get('/mcp', mcpHandler);
 app.delete('/mcp', mcpHandler);
 
 app.route('/api/auth', authRoutes);
+app.route('/api/auth', loginRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 
