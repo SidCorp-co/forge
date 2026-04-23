@@ -12,6 +12,7 @@ import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
 import { isBossStarted, startBoss, stopBoss } from './queue/boss.js';
+import { projectRoutes } from './routes/projects.js';
 import { attachWs, closeWs, isWsListening } from './ws/server.js';
 
 export const app = new Hono<{ Variables: RequestIdVars }>();
@@ -86,6 +87,7 @@ app.delete('/mcp', mcpHandler);
 
 app.route('/api/auth', authRoutes);
 app.route('/api/auth', loginRoutes);
+app.route('/api/projects', projectRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 
