@@ -40,9 +40,10 @@ const reused = () =>
   });
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type InvalidateRunner = Pick<Tx, 'update'>;
 
-async function invalidateAllForUser(tx: Tx, userId: string): Promise<void> {
-  await tx
+async function invalidateAllForUser(runner: InvalidateRunner, userId: string): Promise<void> {
+  await runner
     .update(refreshTokens)
     .set({ usedAt: sql`now()` })
     .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.usedAt)));
@@ -60,6 +61,12 @@ export async function issueRefreshToken(tx: Tx, userId: string): Promise<{ raw: 
   return { raw };
 }
 
+type RefreshOutcome =
+  | { kind: 'ok'; userId: string; refreshToken: string }
+  | { kind: 'invalid' }
+  | { kind: 'expired' }
+  | { kind: 'replay'; userId: string };
+
 refreshRoutes.post(
   '/refresh',
   zValidator('json', refreshSchema, (result) => {
@@ -74,7 +81,12 @@ refreshRoutes.post(
     const { refreshToken: raw } = c.req.valid('json');
     const prefix = refreshTokenPrefix(raw);
 
-    const result = await db.transaction(async (tx) => {
+    // The rotation transaction only mutates the matched row + inserts the new
+    // row. Replay/race detection returns a sentinel so the mass-invalidate can
+    // happen AFTER this transaction commits — otherwise throwing inside the
+    // transaction rolls the invalidation back and the replay defense silently
+    // does nothing.
+    const outcome: RefreshOutcome = await db.transaction(async (tx) => {
       const candidates = await tx
         .select()
         .from(refreshTokens)
@@ -88,15 +100,14 @@ refreshRoutes.post(
           break;
         }
       }
-      if (!matched) throw invalid();
+      if (!matched) return { kind: 'invalid' };
 
       if (matched.usedAt !== null) {
-        await invalidateAllForUser(tx, matched.userId);
-        throw reused();
+        return { kind: 'replay', userId: matched.userId };
       }
 
       if (matched.expiresAt.getTime() <= Date.now()) {
-        throw expired();
+        return { kind: 'expired' };
       }
 
       const claimed = await tx
@@ -106,16 +117,24 @@ refreshRoutes.post(
         .returning({ id: refreshTokens.id });
 
       if (claimed.length === 0) {
-        await invalidateAllForUser(tx, matched.userId);
-        throw reused();
+        return { kind: 'replay', userId: matched.userId };
       }
 
       const { raw: newRaw } = await issueRefreshToken(tx, matched.userId);
-      return { userId: matched.userId, refreshToken: newRaw };
+      return { kind: 'ok', userId: matched.userId, refreshToken: newRaw };
     });
 
-    const token = await signUserToken(result.userId);
+    if (outcome.kind === 'invalid') throw invalid();
+    if (outcome.kind === 'expired') throw expired();
+    if (outcome.kind === 'replay') {
+      // Runs as its own auto-committed statement on the pool so the
+      // invalidation persists independently of the rotation transaction.
+      await invalidateAllForUser(db, outcome.userId);
+      throw reused();
+    }
+
+    const token = await signUserToken(outcome.userId);
     setAuthCookie(c, token);
-    return c.json({ token, refreshToken: result.refreshToken });
+    return c.json({ token, refreshToken: outcome.refreshToken });
   },
 );

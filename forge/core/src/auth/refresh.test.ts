@@ -22,16 +22,20 @@ const txState: {
   candidates: CandidateRow[];
   claimReturning: { id: string }[];
   selectCalls: number;
-  updateCalls: Array<{ setUsedAt: boolean; whereKind: 'byId' | 'massInvalidate' | 'other' }>;
+  txUpdateCalls: Array<{ setUsedAt: boolean; kind: 'byId' | 'other' }>;
+  outerInvalidateCalls: number;
   insertValues: Array<Record<string, unknown>>;
   verifyImpl: (hash: string, raw: string) => Promise<boolean>;
+  txCommitted: number;
 } = {
   candidates: [],
   claimReturning: [],
   selectCalls: 0,
-  updateCalls: [],
+  txUpdateCalls: [],
+  outerInvalidateCalls: 0,
   insertValues: [],
   verifyImpl: async () => false,
+  txCommitted: 0,
 };
 
 function makeTx() {
@@ -47,38 +51,21 @@ function makeTx() {
       })),
     })),
     update: vi.fn(() => {
-      const call: { setUsedAt: boolean; whereKind: 'byId' | 'massInvalidate' | 'other' } = {
+      const call: { setUsedAt: boolean; kind: 'byId' | 'other' } = {
         setUsedAt: false,
-        whereKind: 'other',
+        kind: 'other',
       };
-      txState.updateCalls.push(call);
+      txState.txUpdateCalls.push(call);
       return {
         set: vi.fn((patch: Record<string, unknown>) => {
           if ('usedAt' in patch) call.setUsedAt = true;
           return {
-            where: vi.fn((expr: unknown) => {
-              // Heuristic: mass-invalidate `where` composes userId + isNull(usedAt);
-              // claim `where` composes id + isNull(usedAt). We use the fact that
-              // the production code passes different and()-compositions, but from
-              // the test we can only observe via sequencing. Mark based on whether
-              // this update has .returning() called.
-              void expr;
-              const chain: {
-                returning: (..._args: unknown[]) => Promise<{ id: string }[]>;
-                then: <T>(cb: (v: undefined) => T) => Promise<T>;
-              } = {
-                returning: async () => {
-                  call.whereKind = 'byId';
-                  return txState.claimReturning;
-                },
-                // biome-ignore lint/suspicious/noThenProperty: thenable stub for await-without-returning
-                then: (cb) => {
-                  call.whereKind = 'massInvalidate';
-                  return Promise.resolve(cb(undefined));
-                },
-              };
-              return chain;
-            }),
+            where: vi.fn((_expr: unknown) => ({
+              returning: vi.fn(async () => {
+                call.kind = 'byId';
+                return txState.claimReturning;
+              }),
+            })),
           };
         }),
       };
@@ -92,11 +79,25 @@ function makeTx() {
   return tx;
 }
 
+// The outer db.update() path is only hit by the post-rollback mass-invalidate
+// (replay / concurrent-race). Counting it proves the invalidation is committed
+// OUTSIDE the rotation transaction.
+const outerDbUpdate = vi.fn(() => ({
+  set: vi.fn(() => ({
+    where: vi.fn(async (_expr: unknown) => {
+      txState.outerInvalidateCalls += 1;
+    }),
+  })),
+}));
+
 vi.mock('../db/client.js', () => ({
   db: {
     transaction: vi.fn(async (cb: (tx: ReturnType<typeof makeTx>) => Promise<unknown>) => {
-      return cb(makeTx());
+      const result = await cb(makeTx());
+      txState.txCommitted += 1;
+      return result;
     }),
+    update: outerDbUpdate,
   },
 }));
 
@@ -148,9 +149,12 @@ beforeEach(() => {
   txState.candidates = [];
   txState.claimReturning = [];
   txState.selectCalls = 0;
-  txState.updateCalls = [];
+  txState.txUpdateCalls = [];
+  txState.outerInvalidateCalls = 0;
   txState.insertValues = [];
   txState.verifyImpl = async () => false;
+  txState.txCommitted = 0;
+  outerDbUpdate.mockClear();
 });
 
 describe('POST /api/auth/refresh', () => {
@@ -176,10 +180,11 @@ describe('POST /api/auth/refresh', () => {
     expect(setCookie).toContain('forge_auth=');
     expect(setCookie).toContain('HttpOnly');
 
-    // Exactly one UPDATE (the claim-by-id).
-    expect(txState.updateCalls).toHaveLength(1);
-    expect(txState.updateCalls[0]?.setUsedAt).toBe(true);
-    expect(txState.updateCalls[0]?.whereKind).toBe('byId');
+    // Exactly one tx UPDATE (the claim-by-id). No outer mass-invalidate.
+    expect(txState.txUpdateCalls).toHaveLength(1);
+    expect(txState.txUpdateCalls[0]?.setUsedAt).toBe(true);
+    expect(txState.txUpdateCalls[0]?.kind).toBe('byId');
+    expect(txState.outerInvalidateCalls).toBe(0);
 
     // New row inserted.
     expect(txState.insertValues).toHaveLength(1);
@@ -191,7 +196,7 @@ describe('POST /api/auth/refresh', () => {
     expect(txState.insertValues[0]?.expiresAt).toBeInstanceOf(Date);
   });
 
-  it('replay (usedAt already set) → 401 REFRESH_TOKEN_REUSED + mass-invalidate, no insert', async () => {
+  it('replay (usedAt already set) → 401 REFRESH_TOKEN_REUSED + mass-invalidate committed OUTSIDE rotation tx, no insert', async () => {
     txState.candidates = [row({ usedAt: new Date(Date.now() - 1000) })];
     txState.verifyImpl = async () => true;
 
@@ -200,15 +205,17 @@ describe('POST /api/auth/refresh', () => {
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('REFRESH_TOKEN_REUSED');
 
-    // Exactly one UPDATE: mass-invalidate.
-    expect(txState.updateCalls).toHaveLength(1);
-    expect(txState.updateCalls[0]?.setUsedAt).toBe(true);
-    expect(txState.updateCalls[0]?.whereKind).toBe('massInvalidate');
+    // No UPDATE inside the rotation tx (so nothing can be rolled back with it).
+    expect(txState.txUpdateCalls).toHaveLength(0);
+    // Rotation tx still committed (returned a sentinel).
+    expect(txState.txCommitted).toBe(1);
+    // Mass-invalidate ran on the outer db, committed independently.
+    expect(txState.outerInvalidateCalls).toBe(1);
     expect(txState.insertValues).toHaveLength(0);
     expect(res.headers.get('set-cookie')).toBeNull();
   });
 
-  it('expired refresh → 401 REFRESH_TOKEN_EXPIRED, no update, no insert', async () => {
+  it('expired refresh → 401 REFRESH_TOKEN_EXPIRED, no update anywhere, no insert', async () => {
     txState.candidates = [row({ expiresAt: new Date(Date.now() - 1000) })];
     txState.verifyImpl = async () => true;
 
@@ -217,18 +224,20 @@ describe('POST /api/auth/refresh', () => {
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('REFRESH_TOKEN_EXPIRED');
 
-    expect(txState.updateCalls).toHaveLength(0);
+    expect(txState.txUpdateCalls).toHaveLength(0);
+    expect(txState.outerInvalidateCalls).toBe(0);
     expect(txState.insertValues).toHaveLength(0);
   });
 
-  it('unknown token (no prefix match) → 401 INVALID_REFRESH_TOKEN', async () => {
+  it('unknown token (no prefix match) → 401 INVALID_REFRESH_TOKEN, no mass-invalidate', async () => {
     txState.candidates = [];
 
     const res = await post({ refreshToken: presentedRaw });
     expect(res.status).toBe(401);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('INVALID_REFRESH_TOKEN');
-    expect(txState.updateCalls).toHaveLength(0);
+    expect(txState.txUpdateCalls).toHaveLength(0);
+    expect(txState.outerInvalidateCalls).toBe(0);
     expect(txState.insertValues).toHaveLength(0);
   });
 
@@ -240,10 +249,11 @@ describe('POST /api/auth/refresh', () => {
     expect(res.status).toBe(401);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('INVALID_REFRESH_TOKEN');
-    expect(txState.updateCalls).toHaveLength(0);
+    expect(txState.txUpdateCalls).toHaveLength(0);
+    expect(txState.outerInvalidateCalls).toBe(0);
   });
 
-  it('concurrent race (claim UPDATE returns 0 rows) → 401 REFRESH_TOKEN_REUSED + mass-invalidate', async () => {
+  it('concurrent race (claim UPDATE returns 0 rows) → 401 REFRESH_TOKEN_REUSED + mass-invalidate committed OUTSIDE rotation tx', async () => {
     txState.candidates = [row()];
     txState.verifyImpl = async () => true;
     txState.claimReturning = []; // someone else claimed it
@@ -253,10 +263,11 @@ describe('POST /api/auth/refresh', () => {
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('REFRESH_TOKEN_REUSED');
 
-    // Two UPDATEs: claim-by-id (0 rows) + mass-invalidate.
-    expect(txState.updateCalls).toHaveLength(2);
-    expect(txState.updateCalls[0]?.whereKind).toBe('byId');
-    expect(txState.updateCalls[1]?.whereKind).toBe('massInvalidate');
+    // One tx UPDATE (claim-by-id returning 0 rows), mass-invalidate is outer.
+    expect(txState.txUpdateCalls).toHaveLength(1);
+    expect(txState.txUpdateCalls[0]?.kind).toBe('byId');
+    expect(txState.txCommitted).toBe(1);
+    expect(txState.outerInvalidateCalls).toBe(1);
     expect(txState.insertValues).toHaveLength(0);
   });
 
