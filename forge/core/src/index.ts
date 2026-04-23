@@ -5,6 +5,7 @@ import { Hono } from 'hono';
 import { loginRoutes } from './auth/login.js';
 import { refreshRoutes } from './auth/refresh.js';
 import { authRoutes } from './auth/register.js';
+import { verifyRoutes } from './auth/verify.js';
 import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
 import { logger } from './logger.js';
@@ -89,6 +90,7 @@ app.delete('/mcp', mcpHandler);
 app.route('/api/auth', authRoutes);
 app.route('/api/auth', loginRoutes);
 app.route('/api/auth', refreshRoutes);
+app.route('/api/auth', verifyRoutes);
 app.route('/api/projects', projectRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;

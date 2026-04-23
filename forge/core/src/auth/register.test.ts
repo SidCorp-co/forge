@@ -20,11 +20,21 @@ vi.mock('./password.js', () => ({
   hashPassword: vi.fn(async (plain: string) => `hashed:${plain}`),
 }));
 
+vi.mock('./verification-token.js', () => ({
+  issueVerificationToken: vi.fn(async () => 'tok-mock'),
+}));
+
+vi.mock('./email.js', () => ({
+  sendVerificationEmail: vi.fn(async () => undefined),
+}));
+
 const { authRoutes } = await import('./register.js');
 const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
 const { db } = await import('../db/client.js');
 const { hashPassword } = await import('./password.js');
+const { issueVerificationToken } = await import('./verification-token.js');
+const { sendVerificationEmail } = await import('./email.js');
 
 function buildApp() {
   const app = new Hono<{ Variables: import('../middleware/request-id.js').RequestIdVars }>();
@@ -62,6 +72,23 @@ describe('POST /api/auth/register', () => {
     // emailVerifiedAt not set — DB default (null) applies.
     const values = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(values.emailVerifiedAt).toBeUndefined();
+    expect(issueVerificationToken).toHaveBeenCalledWith('uuid-1');
+    expect(sendVerificationEmail).toHaveBeenCalledWith('a@b.co', 'tok-mock');
+  });
+
+  it('still returns 201 when sending the verification email fails', async () => {
+    insertReturning.mockResolvedValueOnce([{ userId: 'uuid-flaky', email: 'f@b.co' }]);
+    vi.mocked(sendVerificationEmail).mockRejectedValueOnce(new Error('smtp down'));
+
+    const res = await buildApp().request('/api/auth/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'f@b.co', password: 'password1' }),
+    });
+
+    expect(res.status).toBe(201);
+    await expect(res.json()).resolves.toEqual({ userId: 'uuid-flaky', email: 'f@b.co' });
+    expect(sendVerificationEmail).toHaveBeenCalled();
   });
 
   it('returns 409 when email already exists (pg unique_violation)', async () => {

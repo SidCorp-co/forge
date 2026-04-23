@@ -9,6 +9,8 @@ const EnvSchema = z.object({
   SMTP_USER: z.string().min(1),
   SMTP_PASS: z.string().min(1),
   SMTP_FROM: z.email(),
+  SMTP_DEBUG: z.coerce.boolean().default(false),
+  APP_BASE_URL: z.url(),
   CORS_ORIGINS: z.string().min(1),
   PORT: z.coerce.number().int().positive().default(8080),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),

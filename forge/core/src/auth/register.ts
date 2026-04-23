@@ -5,8 +5,11 @@ import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
+import { logger } from '../logger.js';
 import { rateLimit } from '../middleware/rate-limit.js';
+import { sendVerificationEmail } from './email.js';
 import { hashPassword } from './password.js';
+import { issueVerificationToken } from './verification-token.js';
 
 const registerSchema = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email().max(254)),
@@ -32,10 +35,24 @@ authRoutes.post(
     const passwordHash = await hashPassword(password);
 
     try {
-      const [row] = await db
+      const inserted = await db
         .insert(users)
         .values({ email, passwordHash })
         .returning({ userId: users.id, email: users.email });
+      const row = inserted[0];
+      if (!row) {
+        throw new Error('register: insert returned no row');
+      }
+
+      try {
+        const token = await issueVerificationToken(row.userId);
+        await sendVerificationEmail(row.email, token);
+      } catch (sendErr) {
+        // Email delivery failure must not roll back registration. User can
+        // still log in; resend endpoint is planned as a follow-up.
+        logger.error({ err: sendErr, userId: row.userId }, 'failed to send verification email');
+      }
+
       return c.json(row, 201);
     } catch (err: unknown) {
       if (isUniqueViolation(err)) {

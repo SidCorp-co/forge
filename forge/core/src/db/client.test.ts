@@ -19,6 +19,7 @@ const VALID_ENV = {
   SMTP_USER: 'user',
   SMTP_PASS: 'pass',
   SMTP_FROM: 'noreply@example.com',
+  APP_BASE_URL: 'http://localhost:8080',
   CORS_ORIGINS: 'http://localhost:3000',
 };
 
