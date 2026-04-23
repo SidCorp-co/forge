@@ -155,6 +155,8 @@ jobs:
       - run: pnpm --filter @forge/core test
       - run: pnpm --filter @forge/core typecheck
       - run: pnpm --filter @forge/core build
+      - name: Integration tests (Testcontainers)
+        run: pnpm --filter @forge/core test:integration:ci
 
   docs:
     needs: changes

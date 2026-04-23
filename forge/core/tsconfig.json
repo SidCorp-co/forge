@@ -16,9 +16,13 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "outDir": "dist",
-    "rootDir": "src",
     "declaration": true,
     "sourceMap": true
   },
-  "include": ["src/**/*"]
+  "include": [
+    "src/**/*",
+    "tests/**/*",
+    "vitest.config.ts",
+    "vitest.integration.config.ts"
+  ]
 }
