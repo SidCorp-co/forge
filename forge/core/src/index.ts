@@ -5,6 +5,7 @@ import { Hono } from 'hono';
 import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
 import { logger } from './logger.js';
+import { mcpHandler } from './mcp/handler.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
@@ -76,6 +77,10 @@ export async function runShutdown(
   }
   return 0;
 }
+
+app.post('/mcp', mcpHandler);
+app.get('/mcp', mcpHandler);
+app.delete('/mcp', mcpHandler);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 
