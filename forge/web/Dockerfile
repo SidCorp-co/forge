@@ -5,12 +5,11 @@ FROM node:22-alpine AS base
 RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /repo
 
-# Copy entire workspace (forge/contracts + forge/web + lockfile + workspace yaml)
+# Copy whole repo so pnpm workspace resolves (small footprint vs build correctness tradeoff)
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
-COPY forge/contracts ./forge/contracts
-COPY forge/web ./forge/web
+COPY forge ./forge
 
-# Install deps (web + transitive workspace deps)
+# Install only web's transitive deps
 RUN pnpm install --frozen-lockfile --filter @forge/web...
 
 # Build
