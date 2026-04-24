@@ -8,6 +8,10 @@ import { comments, issues } from '../db/schema.js';
 import { paginationSchema, setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { safeRecordActivity } from '../pipeline/activity.js';
+
+const MAX_BODY_SNIPPET = 240;
+const snippet = (s: string) => s.slice(0, MAX_BODY_SNIPPET);
 
 const commentBodySchema = z
   .object({
@@ -42,6 +46,7 @@ async function loadComment(commentId: string) {
       id: comments.id,
       issueId: comments.issueId,
       authorId: comments.authorId,
+      body: comments.body,
       projectId: issues.projectId,
     })
     .from(comments)
@@ -83,6 +88,12 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
           updatedAt: comments.updatedAt,
         });
       if (!inserted) throw new Error('comments: insert returned no row');
+      await safeRecordActivity({
+        issueId,
+        actor: { type: 'user', id: userId },
+        action: 'comment.created',
+        payload: { commentId: inserted.id, body: snippet(inserted.body) },
+      });
       return c.json(inserted, 201);
     },
   );
@@ -167,6 +178,16 @@ commentRoutes.patch(
         updatedAt: comments.updatedAt,
       });
     if (!updated) throw notFound('comment not found');
+    await safeRecordActivity({
+      issueId: updated.issueId,
+      actor: { type: 'user', id: userId },
+      action: 'comment.updated',
+      payload: {
+        commentId: updated.id,
+        before: snippet(comment.body ?? ''),
+        after: snippet(updated.body),
+      },
+    });
     return c.json(updated);
   },
 );
@@ -189,6 +210,12 @@ commentRoutes.delete(
     }
 
     await db.delete(comments).where(eq(comments.id, id));
+    await safeRecordActivity({
+      issueId: comment.issueId,
+      actor: { type: 'user', id: userId },
+      action: 'comment.deleted',
+      payload: { commentId: comment.id },
+    });
     return c.body(null, 204);
   },
 );

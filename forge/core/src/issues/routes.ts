@@ -16,6 +16,7 @@ import {
 import { paginationSchema, setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { recordActivityTx } from '../pipeline/activity.js';
 
 const issueCreateSchema = z
   .object({
@@ -155,6 +156,23 @@ issueProjectRoutes.post(
           .insert(issueLabels)
           .values(input.labels.map((labelId) => ({ issueId: inserted.id, labelId })));
       }
+
+      await recordActivityTx(tx, {
+        issueId: inserted.id,
+        actor: { type: 'user', id: userId },
+        action: 'issue.created',
+        payload: {
+          snapshot: {
+            title: inserted.title,
+            description: inserted.description,
+            priority: inserted.priority,
+            category: inserted.category,
+            assigneeId: inserted.assigneeId,
+            labels: input.labels ?? [],
+          },
+        },
+      });
+
       return inserted as IssueRow;
     });
 
@@ -260,16 +278,56 @@ issueRoutes.patch(
       await assertLabelsInProject(issue.projectId, patch.labels);
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
-    if (patch.title !== undefined) updates.title = patch.title;
-    if (patch.description !== undefined) updates.description = patch.description;
-    if (patch.priority !== undefined) updates.priority = patch.priority;
-    if (patch.category !== undefined) updates.category = patch.category;
-    if (patch.assigneeId !== undefined) updates.assigneeId = patch.assigneeId;
+    const changedFields: string[] = [];
+    const before: Record<string, unknown> = {};
+    const after: Record<string, unknown> = {};
+    const track = (field: keyof IssueRow, next: unknown) => {
+      const prev = issue[field];
+      if (prev !== next) {
+        changedFields.push(field);
+        before[field] = prev;
+        after[field] = next;
+      }
+    };
+    if (patch.title !== undefined) {
+      updates.title = patch.title;
+      track('title', patch.title);
+    }
+    if (patch.description !== undefined) {
+      updates.description = patch.description;
+      track('description', patch.description);
+    }
+    if (patch.priority !== undefined) {
+      updates.priority = patch.priority;
+      track('priority', patch.priority);
+    }
+    if (patch.category !== undefined) {
+      updates.category = patch.category;
+      track('category', patch.category);
+    }
+    if (patch.assigneeId !== undefined) {
+      updates.assigneeId = patch.assigneeId;
+      track('assigneeId', patch.assigneeId);
+    }
+
+    const actor = { type: 'user' as const, id: userId };
 
     const updated = await db.transaction(async (tx) => {
       const [row] = await tx.update(issues).set(updates).where(eq(issues.id, id)).returning();
       if (!row) throw notFound('issue not found');
+
+      let labelsAdded: string[] = [];
+      let labelsRemoved: string[] = [];
       if (patch.labels !== undefined) {
+        const existing = await tx
+          .select({ labelId: issueLabels.labelId })
+          .from(issueLabels)
+          .where(eq(issueLabels.issueId, id));
+        const oldSet = new Set(existing.map((r) => r.labelId));
+        const newSet = new Set(patch.labels);
+        labelsAdded = [...newSet].filter((l) => !oldSet.has(l));
+        labelsRemoved = [...oldSet].filter((l) => !newSet.has(l));
+
         await tx.delete(issueLabels).where(eq(issueLabels.issueId, id));
         if (patch.labels.length > 0) {
           await tx
@@ -277,6 +335,51 @@ issueRoutes.patch(
             .values(patch.labels.map((labelId) => ({ issueId: id, labelId })));
         }
       }
+
+      const nonLabelFields = changedFields.filter((f) => f !== 'assigneeId');
+      if (nonLabelFields.length > 0) {
+        const filteredBefore: Record<string, unknown> = {};
+        const filteredAfter: Record<string, unknown> = {};
+        for (const f of nonLabelFields) {
+          filteredBefore[f] = before[f];
+          filteredAfter[f] = after[f];
+        }
+        await recordActivityTx(tx, {
+          issueId: id,
+          actor,
+          action: 'issue.updated',
+          payload: {
+            fields: nonLabelFields,
+            before: filteredBefore,
+            after: filteredAfter,
+          },
+        });
+      }
+      if (changedFields.includes('assigneeId')) {
+        await recordActivityTx(tx, {
+          issueId: id,
+          actor,
+          action: 'issue.assigned',
+          payload: { before: before.assigneeId, after: after.assigneeId },
+        });
+      }
+      for (const labelId of labelsAdded) {
+        await recordActivityTx(tx, {
+          issueId: id,
+          actor,
+          action: 'issue.labeled',
+          payload: { labelId },
+        });
+      }
+      for (const labelId of labelsRemoved) {
+        await recordActivityTx(tx, {
+          issueId: id,
+          actor,
+          action: 'issue.unlabeled',
+          payload: { labelId },
+        });
+      }
+
       return row as IssueRow;
     });
 

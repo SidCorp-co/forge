@@ -9,6 +9,7 @@ import { verifyRoutes } from './auth/verify.js';
 import { commentRoutes } from './comments/routes.js';
 import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
+import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-routes.js';
 import { issueProjectRoutes, issueRoutes } from './issues/routes.js';
 import { transitionRoutes } from './issues/transition.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
@@ -98,8 +99,10 @@ app.route('/api/auth', verifyRoutes);
 app.route('/api/projects', projectRoutes);
 app.route('/api/projects', issueProjectRoutes);
 app.route('/api/projects', labelProjectRoutes);
+app.route('/api/projects', projectActivityRoutes);
 app.route('/api/issues', issueRoutes);
 app.route('/api/issues', transitionRoutes);
+app.route('/api/issues', issueActivityRoutes);
 app.route('/api/comments', commentRoutes);
 app.route('/api/labels', labelRoutes);
 
