@@ -57,6 +57,13 @@
       "when": 1777017589329,
       "tag": "0007_curved_loa",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1777017921106,
+      "tag": "0008_smooth_karen_page",
+      "breakpoints": true
     }
   ]
 }

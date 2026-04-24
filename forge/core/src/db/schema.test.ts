@@ -649,7 +649,7 @@ describe('db/schema — issues', () => {
     expect(issuePriorities).toEqual(['critical', 'high', 'medium', 'low', 'none']);
   });
 
-  it('has the fourteen documented columns', () => {
+  it('has the sixteen documented columns (14 base + 2 F4 source/external_id)', () => {
     const names = getTableConfig(issues).columns.map((c) => c.name);
     expect(names.sort()).toEqual(
       [
@@ -658,12 +658,14 @@ describe('db/schema — issues', () => {
         'created_at',
         'created_by_id',
         'description',
+        'external_id',
         'id',
         'iss_seq',
         'parent_issue_id',
         'priority',
         'project_id',
         'reopen_count',
+        'source',
         'status',
         'title',
         'updated_at',

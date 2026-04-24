@@ -322,6 +322,9 @@ export type IssueStatus = (typeof issueStatuses)[number];
 export const issuePriorities = ['critical', 'high', 'medium', 'low', 'none'] as const;
 export type IssuePriority = (typeof issuePriorities)[number];
 
+export const issueSources = ['manual', 'github'] as const;
+export type IssueSource = (typeof issueSources)[number];
+
 export const projectIssCounters = pgTable('project_iss_counters', {
   projectId: uuid('project_id')
     .primaryKey()
@@ -348,6 +351,8 @@ export const issues = pgTable(
       .references(() => users.id, { onDelete: 'restrict' }),
     parentIssueId: uuid('parent_issue_id'),
     reopenCount: integer('reopen_count').notNull().default(0),
+    source: text('source', { enum: issueSources }).notNull().default('manual'),
+    externalId: text('external_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -355,6 +360,9 @@ export const issues = pgTable(
     projectIssSeqUq: uniqueIndex('issues_project_iss_seq_uq').on(t.projectId, t.issSeq),
     projectStatusIdx: index('issues_project_status_idx').on(t.projectId, t.status),
     assigneeIdx: index('issues_assignee_idx').on(t.assigneeId),
+    projectSourceExternalIdUq: uniqueIndex('issues_project_source_external_id_uq')
+      .on(t.projectId, t.source, t.externalId)
+      .where(sql`external_id IS NOT NULL`),
     parentFk: foreignKey({
       columns: [t.parentIssueId],
       foreignColumns: [t.id],
@@ -362,6 +370,28 @@ export const issues = pgTable(
     }).onDelete('set null'),
   }),
 );
+
+export const projectWebhooks = pgTable(
+  'project_webhooks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    url: text('url').notNull(),
+    secret: text('secret').notNull(),
+    events: text('events').array().notNull().default(sql`ARRAY['issue.statusChanged']::text[]`),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectIdIdx: index('project_webhooks_project_id_idx').on(t.projectId),
+  }),
+);
+
+export const projectWebhooksRelations = relations(projectWebhooks, ({ one }) => ({
+  project: one(projects, { fields: [projectWebhooks.projectId], references: [projects.id] }),
+}));
 
 export const comments = pgTable(
   'comments',

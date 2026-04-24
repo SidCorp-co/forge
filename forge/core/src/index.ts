@@ -30,6 +30,9 @@ import { invitationRoutes } from './projects/invitations-routes.js';
 import { memberRoutes } from './projects/members-routes.js';
 import { projectRoutes } from './projects/routes.js';
 import { isBossStarted, startBoss, stopBoss } from './queue/boss.js';
+import { webhookInboundRoutes } from './webhooks/inbound-routes.js';
+import { registerOutboundDeliveryWorker } from './webhooks/outbound.js';
+import { registerWebhookSubscribers } from './webhooks/subscribers.js';
 import { attachWs, closeWs, isWsListening } from './ws/server.js';
 
 export const app = new Hono<{ Variables: RequestIdVars }>();
@@ -126,6 +129,7 @@ app.route('/api/jobs', jobRoutes);
 app.route('/api/jobs', jobEventsRoutes);
 app.route('/api/jobs', jobLifecycleDeviceRoutes);
 app.route('/api/jobs', jobLifecycleUserRoutes);
+app.route('/api/webhooks', webhookInboundRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 
@@ -135,6 +139,8 @@ if (isMain) {
   await startBoss();
   await registerDispatcher();
   await registerStaleDetector();
+  await registerOutboundDeliveryWorker();
+  registerWebhookSubscribers(hooks);
 
   const server = serve({ fetch: app.fetch, port }, (info) => {
     logger.info({ port: info.port }, '@forge/core listening');
