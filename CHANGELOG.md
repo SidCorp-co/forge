@@ -18,6 +18,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+## [0.1.0-rc.2] - 2026-04-24
+
+### Fixed
+- `docker compose up` now works out of the box: `core` service receives full env via `env_file: .env`
+- pg-boss v10: explicit `boss.createQueue()` before `work()`/`schedule()` (jobs dispatcher, jobs/devices stale detectors, JobEvent retention sweeper, webhooks outbound)
+- Core Dockerfile runs migrations programmatically at startup (`dist/db/migrate.js`); no `drizzle-kit` needed in runtime image
+- Web Dockerfile rewritten to use pnpm + workspace context (npm ci can't resolve `workspace:*` for `@forge/contracts`)
+- SMTP env vars now optional: when `SMTP_HOST` is empty, email send is skipped (logged instead). Email verification still enforced server-side
+- `APP_BASE_URL` and `CORS_ORIGINS` default to `http://localhost:3000` when unset
+- Broken `[ROADMAP.md](ROADMAP.md)` link in `docs/architecture/system-overview.md` (resolved to `../ROADMAP.md`)
+- Added `docs/rfcs/0001-device-runner-architecture.md` stub (canonical content remains in [ADR 0001](docs/decisions/0001-device-runner-architecture.md))
+- Test mocks updated for pg-boss `createQueue` API
+- `pipeline-e2e.test.ts` multi-line `typeof import(...)` syntax (TS 5.7 strict)
+
 ## [0.1.0-rc.1] - 2026-04-24
 
 ### Added
