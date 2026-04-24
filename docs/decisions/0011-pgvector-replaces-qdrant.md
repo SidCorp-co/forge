@@ -2,7 +2,7 @@
 
 - **Status:** Implemented
 - **Date:** 2026-04-23
-- **Implemented:** 2026-04-XX
+- **Implemented:** 2026-04-24
 - **Promotes:** D4 in [proposals/core-strapi-decoupling.md](../proposals/core-strapi-decoupling.md)
 - **Supersedes:** vector-DB statements in [ADR 0002](0002-replace-strapi-with-hono-drizzle.md), [ADR 0006](0006-pg-boss-for-job-queue.md), and [RFC 0002](../rfcs/0002-replace-strapi-with-hono-drizzle.md) §Stack ("Qdrant — unchanged")
 

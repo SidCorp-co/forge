@@ -122,6 +122,7 @@ Current focus: **v0.1** — device-runner architecture, job pipeline, session re
 - [RFC 0001: Device-runner architecture](docs/rfcs/0001-device-runner-architecture.md) — the architectural foundation
 - [Brand & style](docs/BRAND.md)
 - [Roadmap](docs/ROADMAP.md)
+- [Security audits](docs/security/) — per-release closure trail
 
 ## Contributing
 

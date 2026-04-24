@@ -2,7 +2,7 @@
 
 - **Status:** Implemented
 - **Date:** 2026-04-23
-- **Implemented:** 2026-04-XX
+- **Implemented:** 2026-04-24
 - **Full design:** [RFC 0002](../rfcs/0002-replace-strapi-with-hono-drizzle.md), [proposals/core-strapi-decoupling.md](../proposals/core-strapi-decoupling.md)
 - **Supersedes (in spirit):** none — formalizes the cutover model that ADR 0002 left open.
 
