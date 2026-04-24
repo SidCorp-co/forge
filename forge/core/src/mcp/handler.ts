@@ -1,9 +1,11 @@
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import type { Context } from 'hono';
+import type { DeviceVars } from '../middleware/require-device.js';
 import { createMcpServer } from './server.js';
 
-export async function mcpHandler(c: Context): Promise<Response> {
-  const server = createMcpServer();
+export async function mcpHandler(c: Context<{ Variables: DeviceVars }>): Promise<Response> {
+  const device = c.get('device');
+  const server = createMcpServer(device);
   // Stateless mode: omit sessionIdGenerator so no session tracking occurs.
   const transport = new WebStandardStreamableHTTPServerTransport({
     enableJsonResponse: true,

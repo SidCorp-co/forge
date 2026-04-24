@@ -3,12 +3,11 @@ import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { memorySources, projectMembers, projects } from '../db/schema.js';
-import { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError, embed } from '../embeddings/index.js';
+import { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError } from '../embeddings/index.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { searchMemories } from './search.js';
+import { runMemorySearch } from './search-service.js';
 
 const searchBodySchema = z.object({
   projectId: z.uuid(),
@@ -57,10 +56,14 @@ memorySearchRoutes.post(
 
     await assertProjectMember(body.projectId, userId);
 
-    const startedAt = Date.now();
-    let queryVec: number[];
     try {
-      queryVec = await embed(body.query);
+      const result = await runMemorySearch({
+        projectId: body.projectId,
+        query: body.query,
+        topK: body.topK,
+        sourceFilter: body.sourceFilter,
+      });
+      return c.json(result);
     } catch (err) {
       if (err instanceof EmbeddingUnavailableError) {
         throw new HTTPException(503, {
@@ -70,18 +73,5 @@ memorySearchRoutes.post(
       }
       throw err;
     }
-
-    const hits = await searchMemories({
-      projectId: body.projectId,
-      queryVec,
-      topK: body.topK,
-      sourceFilter: body.sourceFilter,
-    });
-
-    return c.json({
-      hits,
-      model: env.EMBEDDINGS_MODEL,
-      took_ms: Date.now() - startedAt,
-    });
   },
 );

@@ -1,12 +1,35 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import pkg from '../../package.json' with { type: 'json' };
+import type { Device } from '../auth/deviceToken.js';
+import { forgeMemorySearchTool } from './tools/forge-memory.js';
+import {
+  forgeSkillsGetTool,
+  forgeSkillsListTool,
+  forgeSkillsRegisterTool,
+} from './tools/forge-skills.js';
 import { type McpTool, forgeVersionTool } from './tools/forge-version.js';
 
-const tools: McpTool[] = [forgeVersionTool];
-const toolMap = new Map(tools.map((t) => [t.name, t]));
+/**
+ * Build an MCP server wired to the per-request authenticated device. Tool
+ * factories receive the device to close over project-scope enforcement.
+ *
+ * Tools:
+ *  - `forge_version` — no device needed (uptime/version).
+ *  - `forge_memory.search` — wraps `runMemorySearch` (ISS-198).
+ *  - `forge_skills.list` / `.get` / `.register` — wrap ISS-196 REST logic
+ *    via the shared `skills/service.ts` helpers.
+ */
+export function createMcpServer(device: Device): Server {
+  const tools: McpTool[] = [
+    forgeVersionTool,
+    forgeMemorySearchTool(device),
+    forgeSkillsListTool(device),
+    forgeSkillsGetTool(device),
+    forgeSkillsRegisterTool(device),
+  ];
+  const toolMap = new Map(tools.map((t) => [t.name, t]));
 
-export function createMcpServer(): Server {
   const server = new Server(
     { name: '@forge/core', version: pkg.version },
     { capabilities: { tools: {} } },

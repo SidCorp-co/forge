@@ -1,19 +1,14 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import {
-  issueStatuses,
-  projectMembers,
-  projects,
-  skillRegistrations,
-  skills,
-} from '../db/schema.js';
+import { issueStatuses, projectMembers, projects, skills } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { hooks } from '../pipeline/hooks.js';
+import { getSkillForProject, registerSkillForProject } from './service.js';
 import { computeSkillDiff } from './sync.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
@@ -222,53 +217,21 @@ skillRegisterRoutes.post(
     const isAdmin = ctx.role === 'admin';
     if (!isOwner && !isAdmin) throw forbidden('requires owner or admin');
 
-    // Skill must exist AND be either global or scoped to this project.
-    const [skill] = await db
-      .select({ id: skills.id, scope: skills.scope, projectId: skills.projectId })
-      .from(skills)
-      .where(eq(skills.id, skillId))
-      .limit(1);
+    const skill = await getSkillForProject(skillId, projectId);
     if (!skill) throw notFound('NOT_FOUND', 'skill not found');
-    if (skill.scope === 'project' && skill.projectId !== projectId) {
-      throw notFound('NOT_FOUND', 'skill not found');
-    }
 
-    if (stage === null) {
-      await db
-        .delete(skillRegistrations)
-        .where(
-          and(eq(skillRegistrations.projectId, projectId), eq(skillRegistrations.skillId, skillId)),
-        );
-      void hooks.emit('skillRegistered', {
-        projectId,
-        skillId,
-        actorUserId: userId,
-        stage: null,
-      });
-      return c.json({ projectId, skillId, stage: null });
-    }
-
-    // Upsert: if a registration exists at (projectId, stage), update; else insert.
-    // The unique index is on (projectId, stage), so re-registering a different
-    // skill to the same stage would collide. Clear any prior binding for this
-    // skill in this project first, then insert on conflict update.
-    await db.transaction(async (tx) => {
-      await tx
-        .delete(skillRegistrations)
-        .where(
-          and(eq(skillRegistrations.projectId, projectId), eq(skillRegistrations.skillId, skillId)),
-        );
-      await tx
-        .insert(skillRegistrations)
-        .values({ projectId, skillId, stage, registeredBy: userId })
-        .onConflictDoUpdate({
-          target: [skillRegistrations.projectId, skillRegistrations.stage],
-          set: { skillId, registeredBy: userId },
-        });
+    const result = await registerSkillForProject({
+      projectId,
+      skillId,
+      stage,
+      actorUserId: userId,
     });
-
-    void hooks.emit('skillRegistered', { projectId, skillId, actorUserId: userId, stage });
-
-    return c.json({ projectId, skillId, stage });
+    await hooks.emit('skillRegistered', {
+      projectId,
+      skillId,
+      actorUserId: userId,
+      stage: result.stage,
+    });
+    return c.json(result);
   },
 );

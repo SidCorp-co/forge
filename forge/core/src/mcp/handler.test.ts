@@ -1,8 +1,40 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('../config/env.js', () => ({
+  env: {
+    JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',
+    NODE_ENV: 'test',
+    DATABASE_URL: 'postgres://localhost/stub',
+    EMBEDDINGS_MODEL: 'test-model',
+    EMBEDDINGS_DIM: 4,
+    EMBEDDINGS_TIMEOUT_MS: 1000,
+  },
+}));
+
+vi.mock('../db/client.js', () => ({
+  db: {} as unknown,
+}));
+
+import type { Device } from '../auth/deviceToken.js';
 import { createMcpServer } from './server.js';
 import { forgeVersionTool } from './tools/forge-version.js';
+
+const fakeDevice: Device = {
+  id: '00000000-0000-4000-8000-000000000001',
+  ownerId: '00000000-0000-4000-8000-000000000002',
+  name: 'fake',
+  platform: 'linux',
+  agentVersion: null,
+  tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
+  tokenPrefix: 'fake0001',
+  status: 'online',
+  lastSeenAt: null,
+  pairedAt: new Date(),
+  capabilities: null,
+  createdAt: new Date(),
+};
 
 describe('forgeVersionTool', () => {
   it('returns version and uptime', async () => {
@@ -20,7 +52,7 @@ describe('forgeVersionTool', () => {
 describe('@forge/core MCP server', () => {
   async function connectClient() {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    const server = createMcpServer();
+    const server = createMcpServer(fakeDevice);
     await server.connect(serverTransport);
     const client = new Client({ name: 'test', version: '0.0.0' });
     await client.connect(clientTransport);

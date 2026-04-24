@@ -27,6 +27,7 @@ import { memorySearchRoutes } from './memory/search-routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
+import { requireDevice } from './middleware/require-device.js';
 import { hooks } from './pipeline/hooks.js';
 import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
 import { registerActivitySubscribers } from './pipeline/subscribers.js';
@@ -111,6 +112,11 @@ export async function runShutdown(
 registerActivitySubscribers(hooks);
 registerMemoryIndexer(hooks);
 
+// MCP endpoint requires device authentication (ISS-202). Tool handlers
+// close over the authenticated Device to enforce project-scope. This is a
+// breaking change for MCP clients — forge/dev must send
+// `Authorization: Bearer <deviceToken>` instead of `X-Forge-API-Key`.
+app.use('/mcp', requireDevice());
 app.post('/mcp', mcpHandler);
 app.get('/mcp', mcpHandler);
 app.delete('/mcp', mcpHandler);
