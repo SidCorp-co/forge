@@ -11,6 +11,7 @@ import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
 import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-routes.js';
 import { issueProjectRoutes, issueRoutes } from './issues/routes.js';
+import { searchRoutes } from './issues/search.js';
 import { transitionRoutes } from './issues/transition.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
 import { logger } from './logger.js';
@@ -18,6 +19,8 @@ import { mcpHandler } from './mcp/handler.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
+import { hooks } from './pipeline/hooks.js';
+import { registerActivitySubscribers } from './pipeline/subscribers.js';
 import { projectRoutes } from './projects/routes.js';
 import { isBossStarted, startBoss, stopBoss } from './queue/boss.js';
 import { attachWs, closeWs, isWsListening } from './ws/server.js';
@@ -88,6 +91,8 @@ export async function runShutdown(
   return 0;
 }
 
+registerActivitySubscribers(hooks);
+
 app.post('/mcp', mcpHandler);
 app.get('/mcp', mcpHandler);
 app.delete('/mcp', mcpHandler);
@@ -98,6 +103,7 @@ app.route('/api/auth', refreshRoutes);
 app.route('/api/auth', verifyRoutes);
 app.route('/api/projects', projectRoutes);
 app.route('/api/projects', issueProjectRoutes);
+app.route('/api/projects', searchRoutes);
 app.route('/api/projects', labelProjectRoutes);
 app.route('/api/projects', projectActivityRoutes);
 app.route('/api/issues', issueRoutes);

@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { type IssueStatus, issueStatuses, issues, projectMembers, projects } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { safeRecordActivity } from '../pipeline/activity.js';
+import { hooks } from '../pipeline/hooks.js';
 import {
   REOPEN_CAP,
   canTransition,
@@ -141,16 +141,14 @@ transitionRoutes.post(
       });
     }
 
-    await safeRecordActivity({
+    await hooks.emit('transition', {
       issueId: updated.id,
+      projectId: issue.projectId,
       actor: { type: 'user', id: userId },
-      action: 'issue.statusChanged',
-      payload: {
-        from: fromStatus,
-        to: toStatus,
-        reopenCount: updated.reopenCount,
-        ...(reason ? { reason } : {}),
-      },
+      from: fromStatus,
+      to: toStatus,
+      reopenCount: updated.reopenCount,
+      ...(reason ? { reason } : {}),
     });
 
     roomManager.publish(projectRoom(issue.projectId), {

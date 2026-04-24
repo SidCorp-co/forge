@@ -12,6 +12,9 @@ export interface TestDatabase {
   mode: 'container' | 'schema';
   /** Raw postgres-js client — exposed for `end()` and advanced uses. */
   client: Sql;
+  /** Connection URL the harness is pinned to — useful for wiring
+   * `process.env.DATABASE_URL` before importing the app under test. */
+  url: string;
   /** Stop the connection + tear down the container / drop the schema. */
   cleanup: () => Promise<void>;
 }
@@ -70,6 +73,7 @@ export async function setupTestDatabase(): Promise<TestDatabase> {
     db,
     mode,
     client,
+    url,
     cleanup: async () => {
       try {
         await client.end({ timeout: 5 });

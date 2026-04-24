@@ -8,10 +8,7 @@ import { comments, issues } from '../db/schema.js';
 import { paginationSchema, setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { safeRecordActivity } from '../pipeline/activity.js';
-
-const MAX_BODY_SNIPPET = 240;
-const snippet = (s: string) => s.slice(0, MAX_BODY_SNIPPET);
+import { hooks } from '../pipeline/hooks.js';
 
 const commentBodySchema = z
   .object({
@@ -88,11 +85,12 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
           updatedAt: comments.updatedAt,
         });
       if (!inserted) throw new Error('comments: insert returned no row');
-      await safeRecordActivity({
+      await hooks.emit('commentCreated', {
         issueId,
+        projectId: issue.projectId,
         actor: { type: 'user', id: userId },
-        action: 'comment.created',
-        payload: { commentId: inserted.id, body: snippet(inserted.body) },
+        commentId: inserted.id,
+        body: inserted.body,
       });
       return c.json(inserted, 201);
     },
@@ -178,15 +176,13 @@ commentRoutes.patch(
         updatedAt: comments.updatedAt,
       });
     if (!updated) throw notFound('comment not found');
-    await safeRecordActivity({
+    await hooks.emit('commentUpdated', {
       issueId: updated.issueId,
+      projectId: comment.projectId,
       actor: { type: 'user', id: userId },
-      action: 'comment.updated',
-      payload: {
-        commentId: updated.id,
-        before: snippet(comment.body ?? ''),
-        after: snippet(updated.body),
-      },
+      commentId: updated.id,
+      before: comment.body ?? '',
+      after: updated.body,
     });
     return c.json(updated);
   },
@@ -210,11 +206,11 @@ commentRoutes.delete(
     }
 
     await db.delete(comments).where(eq(comments.id, id));
-    await safeRecordActivity({
+    await hooks.emit('commentDeleted', {
       issueId: comment.issueId,
+      projectId: comment.projectId,
       actor: { type: 'user', id: userId },
-      action: 'comment.deleted',
-      payload: { commentId: comment.id },
+      commentId: comment.id,
     });
     return c.body(null, 204);
   },
