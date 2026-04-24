@@ -5,6 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { labels, projectMembers, projects } from '../db/schema.js';
+import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
 const createProjectSchema = z.object({
@@ -227,12 +228,3 @@ projectRoutes.delete(
     return c.body(null, 204);
   },
 );
-
-function isUniqueViolation(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'code' in err &&
-    (err as { code: unknown }).code === '23505'
-  );
-}

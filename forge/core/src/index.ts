@@ -6,8 +6,11 @@ import { loginRoutes } from './auth/login.js';
 import { refreshRoutes } from './auth/refresh.js';
 import { authRoutes } from './auth/register.js';
 import { verifyRoutes } from './auth/verify.js';
+import { commentRoutes } from './comments/routes.js';
 import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
+import { issueProjectRoutes, issueRoutes } from './issues/routes.js';
+import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
 import { logger } from './logger.js';
 import { mcpHandler } from './mcp/handler.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
@@ -92,6 +95,11 @@ app.route('/api/auth', loginRoutes);
 app.route('/api/auth', refreshRoutes);
 app.route('/api/auth', verifyRoutes);
 app.route('/api/projects', projectRoutes);
+app.route('/api/projects', issueProjectRoutes);
+app.route('/api/projects', labelProjectRoutes);
+app.route('/api/issues', issueRoutes);
+app.route('/api/comments', commentRoutes);
+app.route('/api/labels', labelRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 
