@@ -14,6 +14,7 @@ import { issueProjectRoutes, issueRoutes } from './issues/routes.js';
 import { searchRoutes } from './issues/search.js';
 import { transitionRoutes } from './issues/transition.js';
 import { registerDispatcher, unregisterDispatcher } from './jobs/dispatcher.js';
+import { jobEventsRoutes } from './jobs/events-routes.js';
 import { jobProjectRoutes, jobRoutes } from './jobs/routes.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
 import { logger } from './logger.js';
@@ -120,6 +121,7 @@ app.route('/api/issues', issueActivityRoutes);
 app.route('/api/comments', commentRoutes);
 app.route('/api/labels', labelRoutes);
 app.route('/api/jobs', jobRoutes);
+app.route('/api/jobs', jobEventsRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 

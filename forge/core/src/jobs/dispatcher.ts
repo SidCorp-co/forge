@@ -3,6 +3,8 @@ import { db } from '../db/client.js';
 import { devices, jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
+import { deviceRoom } from '../ws/rooms.js';
+import { roomManager } from '../ws/server.js';
 import { getActiveDeviceId } from './active-device.js';
 import { JOB_QUEUE_NAME } from './queue-name.js';
 
@@ -48,9 +50,10 @@ export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched'
   }
 
   // Atomic transition; the where-clause wins races with concurrent dispatchers.
+  const dispatchedAt = new Date();
   const updated = await db
     .update(jobs)
-    .set({ status: 'dispatched', deviceId, dispatchedAt: new Date() })
+    .set({ status: 'dispatched', deviceId, dispatchedAt })
     .where(and(eq(jobs.id, jobId), eq(jobs.status, 'queued')))
     .returning({ id: jobs.id });
 
@@ -58,6 +61,18 @@ export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched'
     logger.debug({ jobId }, 'dispatcher: lost race to another dispatcher');
     return 'skipped';
   }
+
+  // F2: push `job.assigned` to the device's room so the device-runner can spawn Claude.
+  roomManager.publish(deviceRoom(deviceId), {
+    event: 'job.assigned',
+    data: {
+      jobId: job.id,
+      projectId: job.projectId,
+      type: job.type,
+      payload: job.payload,
+      dispatchedAt: dispatchedAt.toISOString(),
+    },
+  });
 
   logger.info({ jobId, deviceId }, 'dispatcher: dispatched');
   return 'dispatched';

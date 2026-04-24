@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { RoomManager, type Subscriber } from './rooms.js';
+import { RoomManager, type Subscriber, deviceRoom, projectRoom } from './rooms.js';
 
 const OPEN = 1;
 const CLOSED = 3;
@@ -126,5 +126,28 @@ describe('RoomManager', () => {
       rm.unsubscribe(sub, room);
       expect(rm.roomSize(room)).toBe(0);
     }
+  });
+
+  describe('room key helpers', () => {
+    it('projectRoom and deviceRoom use distinct prefixes so shared UUIDs do not collide', () => {
+      const id = '11111111-1111-1111-1111-111111111111';
+      expect(projectRoom(id)).toBe(`project:${id}`);
+      expect(deviceRoom(id)).toBe(`device:${id}`);
+      expect(projectRoom(id)).not.toBe(deviceRoom(id));
+    });
+
+    it('deviceRoom publish is isolated from projectRoom subscribers with the same UUID', () => {
+      const rm = new RoomManager();
+      const id = '22222222-2222-2222-2222-222222222222';
+      const projSub = makeSub();
+      const devSub = makeSub();
+      rm.subscribe(projSub, projectRoom(id));
+      rm.subscribe(devSub, deviceRoom(id));
+
+      rm.publish(deviceRoom(id), { event: 'job.assigned', data: null });
+
+      expect(devSub.send).toHaveBeenCalledTimes(1);
+      expect(projSub.send).not.toHaveBeenCalled();
+    });
   });
 });

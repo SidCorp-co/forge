@@ -20,11 +20,18 @@ vi.mock('../queue/boss.js', () => ({
   },
 }));
 
+vi.mock('../ws/server.js', () => ({
+  roomManager: {
+    publish: vi.fn(() => 0),
+  },
+}));
+
 const { db } = await import('../db/client.js');
 const { getActiveDeviceId } = await import('./active-device.js');
 const { handleDispatch, registerDispatcher, unregisterDispatcher, isDispatcherRegistered } =
   await import('./dispatcher.js');
 const { boss } = await import('../queue/boss.js');
+const { roomManager } = await import('../ws/server.js');
 
 type Row = Record<string, unknown>;
 
@@ -95,8 +102,8 @@ describe('jobs/dispatcher', () => {
     expect(result).toBe('skipped');
   });
 
-  it('transitions job to dispatched when device is online', async () => {
-    mockSelectOnce([{ id: 'j1', status: 'queued', projectId: 'p1' }]);
+  it('transitions job to dispatched when device is online and publishes job.assigned', async () => {
+    mockSelectOnce([{ id: 'j1', status: 'queued', projectId: 'p1', type: 'plan', payload: {} }]);
     (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
     mockSelectOnce([{ id: 'd1', status: 'online' }]);
     mockUpdateReturn([{ id: 'j1' }]);
@@ -105,16 +112,26 @@ describe('jobs/dispatcher', () => {
     expect(result).toBe('dispatched');
     // biome-ignore lint/suspicious/noExplicitAny: test-only mock chain
     expect((db as any).update).toHaveBeenCalledTimes(1);
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock
+    expect((roomManager as any).publish).toHaveBeenCalledWith(
+      'device:d1',
+      expect.objectContaining({
+        event: 'job.assigned',
+        data: expect.objectContaining({ jobId: 'j1', projectId: 'p1', type: 'plan' }),
+      }),
+    );
   });
 
-  it('skips when racing UPDATE returns zero rows', async () => {
-    mockSelectOnce([{ id: 'j1', status: 'queued', projectId: 'p1' }]);
+  it('skips when racing UPDATE returns zero rows and does NOT publish', async () => {
+    mockSelectOnce([{ id: 'j1', status: 'queued', projectId: 'p1', type: 'plan', payload: {} }]);
     (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
     mockSelectOnce([{ id: 'd1', status: 'online' }]);
     mockUpdateReturn([]);
 
     const result = await handleDispatch({ jobId: 'j1' });
     expect(result).toBe('skipped');
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock
+    expect((roomManager as any).publish).not.toHaveBeenCalled();
   });
 
   it('register/unregister is idempotent and toggles state', async () => {

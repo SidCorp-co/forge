@@ -1,0 +1,114 @@
+import { zValidator } from '@hono/zod-validator';
+import { eq, sql } from 'drizzle-orm';
+import { Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
+import { z } from 'zod';
+import { db } from '../db/client.js';
+import { jobEventKinds, jobEvents, jobs } from '../db/schema.js';
+import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { projectRoom } from '../ws/rooms.js';
+import { roomManager } from '../ws/server.js';
+
+const badRequest = (details: unknown) =>
+  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
+
+const notFound = (message: string) =>
+  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
+
+const forbidden = (message: string) =>
+  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
+
+const conflict = (message: string, code: string) =>
+  new HTTPException(409, { message, cause: { code } });
+
+const jobIdParamSchema = z.object({ id: z.uuid() });
+
+const eventInputSchema = z.object({
+  kind: z.enum(jobEventKinds),
+  data: z.record(z.string(), z.unknown()).default({}),
+  ts: z.iso.datetime().optional(),
+});
+
+const eventBatchSchema = z
+  .object({
+    events: z.array(eventInputSchema).min(1).max(100),
+  })
+  .strict();
+
+const TERMINAL_STATUSES = new Set(['done', 'failed', 'cancelled'] as const);
+
+export const jobEventsRoutes = new Hono<{ Variables: DeviceVars }>();
+
+jobEventsRoutes.post(
+  '/:id/events',
+  requireDevice(),
+  zValidator('param', jobIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('json', eventBatchSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id: jobId } = c.req.valid('param');
+    const { events } = c.req.valid('json');
+    const device = c.get('device');
+
+    const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+    if (!job) throw notFound('job not found');
+    if (job.deviceId !== device.id) {
+      throw forbidden('job is not dispatched to this device');
+    }
+    if (
+      TERMINAL_STATUSES.has(job.status as typeof TERMINAL_STATUSES extends Set<infer T> ? T : never)
+    ) {
+      throw conflict('job is in a terminal state', 'JOB_TERMINATED');
+    }
+
+    // Server-assigned monotonic seq via FOR UPDATE on MAX(seq).
+    const inserted = await db.transaction(async (tx) => {
+      const maxRows = await tx.execute<{ max_seq: number | null }>(sql`
+        SELECT COALESCE(MAX(seq), 0) AS max_seq
+        FROM job_events
+        WHERE job_id = ${jobId}
+        FOR UPDATE
+      `);
+      const first = maxRows[0] as { max_seq: number | string | null } | undefined;
+      const baseSeq = Number(first?.max_seq ?? 0);
+
+      const values = events.map((e, i) => ({
+        jobId,
+        kind: e.kind,
+        data: e.data,
+        seq: baseSeq + i + 1,
+        ...(e.ts ? { ts: new Date(e.ts) } : {}),
+      }));
+
+      return tx.insert(jobEvents).values(values).returning();
+    });
+
+    // Post-commit broadcast. Iterate and publish; failures bubble (fail-fast).
+    for (const row of inserted) {
+      roomManager.publish(projectRoom(job.projectId), {
+        event: 'job.event',
+        data: {
+          jobId,
+          seq: row.seq,
+          kind: row.kind,
+          ts: row.ts,
+          data: row.data,
+        },
+      });
+    }
+
+    const first = inserted[0];
+    const last = inserted[inserted.length - 1];
+    return c.json(
+      {
+        accepted: inserted.length,
+        firstSeq: first?.seq ?? null,
+        lastSeq: last?.seq ?? null,
+      },
+      200,
+    );
+  },
+);
