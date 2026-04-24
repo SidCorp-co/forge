@@ -56,6 +56,20 @@ export interface HookPayloads {
     actor: Actor;
     commentId: string;
   };
+  skillSynced: {
+    projectId: string;
+    deviceId: string;
+    added: string[];
+    updated: string[];
+    unchanged: string[];
+    removed: string[];
+  };
+  skillRegistered: {
+    projectId: string;
+    skillId: string;
+    actorUserId: string;
+    stage: string | null;
+  };
 }
 
 export type HookTopic = keyof HookPayloads;
