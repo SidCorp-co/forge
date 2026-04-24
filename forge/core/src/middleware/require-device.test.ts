@@ -36,9 +36,7 @@ function makeApp() {
   const app = new Hono<{ Variables: DeviceVars & { user?: unknown } }>();
   app.use('*', requireDevice());
   app.get('/me', (c) => c.json(c.get('device')));
-  app.get('/principals', (c) =>
-    c.json({ device: c.get('device'), user: c.get('user') ?? null }),
-  );
+  app.get('/principals', (c) => c.json({ device: c.get('device'), user: c.get('user') ?? null }));
   app.onError(errorHandler as unknown as Parameters<typeof app.onError>[0]);
   return app;
 }

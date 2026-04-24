@@ -210,9 +210,13 @@ describe('verifyDeviceToken', () => {
   });
 
   it('resolves prefix collisions and returns the correct device', async () => {
-    insertReturning.mockImplementationOnce(async () => [rowFromInsert({ id: 'dev-a', status: 'online' })]);
+    insertReturning.mockImplementationOnce(async () => [
+      rowFromInsert({ id: 'dev-a', status: 'online' }),
+    ]);
     const a = await issueDeviceToken(validInput());
-    insertReturning.mockImplementationOnce(async () => [rowFromInsert({ id: 'dev-b', status: 'online' })]);
+    insertReturning.mockImplementationOnce(async () => [
+      rowFromInsert({ id: 'dev-b', status: 'online' }),
+    ]);
     const b = await issueDeviceToken(validInput());
 
     const sharedPrefix = b.plaintext.slice(0, 8);

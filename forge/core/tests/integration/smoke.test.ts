@@ -1,6 +1,13 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { type TestDatabase, setupTestDatabase, truncateAll } from '../helpers/index.js';
+import {
+  type TestDatabase,
+  createTestProject,
+  createTestProjectMember,
+  createTestUser,
+  setupTestDatabase,
+  truncateAll,
+} from '../helpers/index.js';
 
 // End-to-end smoke test for the Phase 2.1-I testing infrastructure.
 //
@@ -48,8 +55,97 @@ describe('integration smoke', () => {
     await truncateAll(harness.db);
   });
 
-  it('factories throw a clear error until the schema lands', async () => {
-    const { createTestUser } = await import('../helpers/factories.js');
-    await expect(createTestUser(harness.db)).rejects.toThrow(/"users" table.*Phase 2\.1/);
+  it('factories insert into the real users table', async () => {
+    const user = await createTestUser(harness.db);
+    const rows = await harness.db.execute<{ count: string }>(
+      sql`SELECT count(*)::text AS count FROM users WHERE id = ${user.id}`,
+    );
+    expect((rows[0] as { count?: string } | undefined)?.count).toBe('1');
+  });
+
+  it('ISS-* generator: parallel inserts produce contiguous, unique iss_seq per project', async () => {
+    const owner = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, owner.id);
+    await createTestProjectMember(harness.db, {
+      userId: owner.id,
+      projectId: project.id,
+      role: 'owner',
+    });
+
+    const N = 50;
+    await Promise.all(
+      Array.from({ length: N }, (_, i) =>
+        harness.db.execute(sql`
+          INSERT INTO issues (project_id, title, created_by_id)
+          VALUES (${project.id}, ${`Issue ${i}`}, ${owner.id})
+        `),
+      ),
+    );
+
+    const rows = await harness.db.execute<{ iss_seq: number }>(sql`
+      SELECT iss_seq FROM issues WHERE project_id = ${project.id} ORDER BY iss_seq
+    `);
+    const seqs = rows.map((r) => Number((r as { iss_seq: number }).iss_seq));
+    expect(seqs).toEqual(Array.from({ length: N }, (_, i) => i + 1));
+
+    const counter = await harness.db.execute<{ next_seq: number }>(sql`
+      SELECT next_seq FROM project_iss_counters WHERE project_id = ${project.id}
+    `);
+    expect(Number((counter[0] as { next_seq: number }).next_seq)).toBe(N + 1);
+  });
+
+  it('ISS-* generator: counters are independent per project', async () => {
+    const owner = await createTestUser(harness.db);
+    const projectA = await createTestProject(harness.db, owner.id, { slug: 'proj-a' });
+    const projectB = await createTestProject(harness.db, owner.id, { slug: 'proj-b' });
+
+    for (let i = 0; i < 3; i++) {
+      await harness.db.execute(sql`
+        INSERT INTO issues (project_id, title, created_by_id)
+        VALUES (${projectA.id}, ${`A-${i}`}, ${owner.id})
+      `);
+    }
+    await harness.db.execute(sql`
+      INSERT INTO issues (project_id, title, created_by_id)
+      VALUES (${projectB.id}, 'B-only', ${owner.id})
+    `);
+
+    const aRows = await harness.db.execute<{ iss_seq: number }>(
+      sql`SELECT iss_seq FROM issues WHERE project_id = ${projectA.id} ORDER BY iss_seq`,
+    );
+    const bRows = await harness.db.execute<{ iss_seq: number }>(
+      sql`SELECT iss_seq FROM issues WHERE project_id = ${projectB.id} ORDER BY iss_seq`,
+    );
+    expect(aRows.map((r) => Number((r as { iss_seq: number }).iss_seq))).toEqual([1, 2, 3]);
+    expect(bRows.map((r) => Number((r as { iss_seq: number }).iss_seq))).toEqual([1]);
+  });
+
+  it('cascading deletes: removing a project wipes its issues, comments, labels, counter', async () => {
+    const owner = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, owner.id);
+
+    const issueRows = await harness.db.execute<{ id: string }>(sql`
+      INSERT INTO issues (project_id, title, created_by_id)
+      VALUES (${project.id}, 'doomed', ${owner.id})
+      RETURNING id
+    `);
+    const issueId = (issueRows[0] as { id: string }).id;
+
+    await harness.db.execute(sql`
+      INSERT INTO comments (issue_id, author_id, body)
+      VALUES (${issueId}, ${owner.id}, 'hi')
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO labels (project_id, name, color) VALUES (${project.id}, 'bug', '#f00')
+    `);
+
+    await harness.db.execute(sql`DELETE FROM projects WHERE id = ${project.id}`);
+
+    for (const table of ['issues', 'comments', 'labels', 'project_iss_counters']) {
+      const rows = await harness.db.execute<{ count: string }>(
+        sql`SELECT count(*)::text AS count FROM ${sql.identifier(table)}`,
+      );
+      expect((rows[0] as { count?: string } | undefined)?.count).toBe('0');
+    }
   });
 });

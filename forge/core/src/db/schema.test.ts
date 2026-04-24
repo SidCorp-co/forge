@@ -1,17 +1,26 @@
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
 import {
+  activityLog,
+  actorTypes,
+  comments,
   devicePlatforms,
   deviceStatuses,
   devices,
   emailVerificationTokens,
+  issueLabels,
+  issuePriorities,
+  issueStatuses,
+  issues,
   jobEventKinds,
   jobEvents,
   jobStatuses,
   jobTypes,
   jobs,
+  labels,
   modelTiers,
   pairingCodes,
+  projectIssCounters,
   projectMemberRoles,
   projectMembers,
   projects,
@@ -29,7 +38,13 @@ type AnyTable =
   | typeof devices
   | typeof pairingCodes
   | typeof jobs
-  | typeof jobEvents;
+  | typeof jobEvents
+  | typeof issues
+  | typeof comments
+  | typeof labels
+  | typeof issueLabels
+  | typeof activityLog
+  | typeof projectIssCounters;
 
 function columnByName(table: AnyTable, name: string) {
   const cfg = getTableConfig(table);
@@ -460,18 +475,19 @@ describe('db/schema — jobs', () => {
     expect(id.columnType).toBe('PgUUID');
   });
 
-  it('project_id cascades, device_id set null, created_by restricts', () => {
+  it('project_id cascades, device_id set null, created_by restricts, issue_id set null', () => {
     const cfg = getTableConfig(jobs);
-    expect(cfg.foreignKeys).toHaveLength(3);
+    expect(cfg.foreignKeys).toHaveLength(4);
     const byCol = new Map(
       cfg.foreignKeys.map((fk) => [fk.reference().columns[0]?.name ?? '', fk] as const),
     );
     expect(byCol.get('project_id')?.onDelete).toBe('cascade');
     expect(byCol.get('device_id')?.onDelete).toBe('set null');
     expect(byCol.get('created_by')?.onDelete).toBe('restrict');
+    expect(byCol.get('issue_id')?.onDelete).toBe('set null');
   });
 
-  it('issue_id is nullable uuid with no FK (Phase 2.3 will add)', () => {
+  it('issue_id is nullable uuid referencing issues.id', () => {
     const c = columnByName(jobs, 'issue_id');
     expect(c.notNull).toBe(false);
     expect(c.columnType).toBe('PgUUID');
@@ -600,5 +616,227 @@ describe('db/schema — job_events', () => {
   it('has index on ts for retention sweeper', () => {
     const cfg = getTableConfig(jobEvents);
     expect(cfg.indexes.some((i) => i.config.name === 'job_events_ts_idx')).toBe(true);
+  });
+});
+
+describe('db/schema — issues', () => {
+  it('exports the status and priority enum values', () => {
+    expect(issueStatuses).toEqual([
+      'open',
+      'confirmed',
+      'waiting',
+      'approved',
+      'in_progress',
+      'developed',
+      'deploying',
+      'testing',
+      'tested',
+      'pass',
+      'staging',
+      'released',
+      'closed',
+      'reopen',
+      'on_hold',
+      'needs_info',
+    ]);
+    expect(issuePriorities).toEqual(['critical', 'high', 'medium', 'low', 'none']);
+  });
+
+  it('has the thirteen documented columns', () => {
+    const names = getTableConfig(issues).columns.map((c) => c.name);
+    expect(names.sort()).toEqual(
+      [
+        'assignee_id',
+        'category',
+        'created_at',
+        'created_by_id',
+        'description',
+        'id',
+        'iss_seq',
+        'parent_issue_id',
+        'priority',
+        'project_id',
+        'status',
+        'title',
+        'updated_at',
+      ].sort(),
+    );
+  });
+
+  it('id is uuid PK with defaultRandom', () => {
+    const id = columnByName(issues, 'id');
+    expect(id.primary).toBe(true);
+    expect(id.hasDefault).toBe(true);
+    expect(id.columnType).toBe('PgUUID');
+  });
+
+  it('iss_seq is notNull integer with default 0 (trigger overwrites)', () => {
+    const c = columnByName(issues, 'iss_seq');
+    expect(c.notNull).toBe(true);
+    expect(c.columnType).toBe('PgInteger');
+    expect(c.hasDefault).toBe(true);
+    expect(c.default).toBe(0);
+  });
+
+  it('status defaults to open and enum matches issueStatuses', () => {
+    const s = columnByName(issues, 'status');
+    expect(s.notNull).toBe(true);
+    expect(s.default).toBe('open');
+    expect(s.enumValues).toEqual([...issueStatuses]);
+  });
+
+  it('priority defaults to medium and enum matches issuePriorities', () => {
+    const p = columnByName(issues, 'priority');
+    expect(p.notNull).toBe(true);
+    expect(p.default).toBe('medium');
+    expect(p.enumValues).toEqual([...issuePriorities]);
+  });
+
+  it('description, category, assignee_id, parent_issue_id are nullable', () => {
+    for (const name of ['description', 'category', 'assignee_id', 'parent_issue_id']) {
+      expect(columnByName(issues, name).notNull).toBe(false);
+    }
+  });
+
+  it('FKs: project cascade, assignee set null, created_by restrict, parent self set null', () => {
+    const cfg = getTableConfig(issues);
+    expect(cfg.foreignKeys).toHaveLength(4);
+    const byCol = new Map(
+      cfg.foreignKeys.map((fk) => [fk.reference().columns[0]?.name ?? '', fk] as const),
+    );
+    expect(byCol.get('project_id')?.onDelete).toBe('cascade');
+    expect(byCol.get('assignee_id')?.onDelete).toBe('set null');
+    expect(byCol.get('created_by_id')?.onDelete).toBe('restrict');
+    expect(byCol.get('parent_issue_id')?.onDelete).toBe('set null');
+    expect(byCol.get('parent_issue_id')?.reference().foreignTable).toBe(issues);
+  });
+
+  it('has unique index on (project_id, iss_seq) and named indexes', () => {
+    const cfg = getTableConfig(issues);
+    const uq = cfg.indexes.find((i) => i.config.name === 'issues_project_iss_seq_uq');
+    if (!uq) throw new Error('expected issues_project_iss_seq_uq');
+    expect(uq.config.unique).toBe(true);
+    expect(cfg.indexes.some((i) => i.config.name === 'issues_project_status_idx')).toBe(true);
+    expect(cfg.indexes.some((i) => i.config.name === 'issues_assignee_idx')).toBe(true);
+  });
+});
+
+describe('db/schema — project_iss_counters', () => {
+  it('has project_id PK and next_seq integer default 1', () => {
+    const names = getTableConfig(projectIssCounters).columns.map((c) => c.name);
+    expect(names.sort()).toEqual(['next_seq', 'project_id'].sort());
+    expect(columnByName(projectIssCounters, 'project_id').primary).toBe(true);
+    const seq = columnByName(projectIssCounters, 'next_seq');
+    expect(seq.notNull).toBe(true);
+    expect(seq.default).toBe(1);
+  });
+
+  it('project_id cascades on project delete', () => {
+    const cfg = getTableConfig(projectIssCounters);
+    expect(cfg.foreignKeys).toHaveLength(1);
+    expect(cfg.foreignKeys[0]?.onDelete).toBe('cascade');
+  });
+});
+
+describe('db/schema — comments', () => {
+  it('has the six documented columns', () => {
+    const names = getTableConfig(comments).columns.map((c) => c.name);
+    expect(names.sort()).toEqual(
+      ['author_id', 'body', 'created_at', 'id', 'issue_id', 'updated_at'].sort(),
+    );
+  });
+
+  it('issue_id cascades, author_id restricts', () => {
+    const cfg = getTableConfig(comments);
+    expect(cfg.foreignKeys).toHaveLength(2);
+    const byCol = new Map(
+      cfg.foreignKeys.map((fk) => [fk.reference().columns[0]?.name ?? '', fk] as const),
+    );
+    expect(byCol.get('issue_id')?.onDelete).toBe('cascade');
+    expect(byCol.get('author_id')?.onDelete).toBe('restrict');
+  });
+
+  it('body is notNull text', () => {
+    expect(columnByName(comments, 'body').notNull).toBe(true);
+  });
+
+  it('has index on issue_id', () => {
+    const cfg = getTableConfig(comments);
+    expect(cfg.indexes.some((i) => i.config.name === 'comments_issue_id_idx')).toBe(true);
+  });
+});
+
+describe('db/schema — labels', () => {
+  it('has the five documented columns', () => {
+    const names = getTableConfig(labels).columns.map((c) => c.name);
+    expect(names.sort()).toEqual(['color', 'created_at', 'id', 'name', 'project_id'].sort());
+  });
+
+  it('project_id cascades', () => {
+    const cfg = getTableConfig(labels);
+    expect(cfg.foreignKeys).toHaveLength(1);
+    expect(cfg.foreignKeys[0]?.onDelete).toBe('cascade');
+  });
+
+  it('has unique composite index on (project_id, name)', () => {
+    const cfg = getTableConfig(labels);
+    const idx = cfg.indexes.find((i) => i.config.name === 'labels_project_id_name_uq');
+    if (!idx) throw new Error('expected labels_project_id_name_uq');
+    expect(idx.config.unique).toBe(true);
+  });
+});
+
+describe('db/schema — issue_labels', () => {
+  it('has composite primary key over (issue_id, label_id)', () => {
+    const cfg = getTableConfig(issueLabels);
+    expect(cfg.primaryKeys).toHaveLength(1);
+    const pk = cfg.primaryKeys[0];
+    if (!pk) throw new Error('expected composite PK');
+    expect(pk.columns.map((c) => c.name)).toEqual(['issue_id', 'label_id']);
+  });
+
+  it('both FKs cascade', () => {
+    const cfg = getTableConfig(issueLabels);
+    expect(cfg.foreignKeys).toHaveLength(2);
+    for (const fk of cfg.foreignKeys) expect(fk.onDelete).toBe('cascade');
+  });
+});
+
+describe('db/schema — activity_log', () => {
+  it('exports the actor type enum', () => {
+    expect(actorTypes).toEqual(['user', 'device']);
+  });
+
+  it('has the seven documented columns', () => {
+    const names = getTableConfig(activityLog).columns.map((c) => c.name);
+    expect(names.sort()).toEqual(
+      ['action', 'actor_id', 'actor_type', 'created_at', 'id', 'issue_id', 'payload'].sort(),
+    );
+  });
+
+  it('actor_id is notNull uuid with no FK (polymorphic to user/device)', () => {
+    const cfg = getTableConfig(activityLog);
+    expect(cfg.foreignKeys).toHaveLength(1);
+    expect(cfg.foreignKeys[0]?.reference().columns[0]?.name).toBe('issue_id');
+    const c = columnByName(activityLog, 'actor_id');
+    expect(c.notNull).toBe(true);
+    expect(c.columnType).toBe('PgUUID');
+  });
+
+  it('actor_type enum matches actorTypes', () => {
+    const t = columnByName(activityLog, 'actor_type');
+    expect(t.enumValues).toEqual([...actorTypes]);
+  });
+
+  it('payload is notNull jsonb with default', () => {
+    const c = columnByName(activityLog, 'payload');
+    expect(c.notNull).toBe(true);
+    expect(c.columnType).toBe('PgJsonb');
+    expect(c.hasDefault).toBe(true);
+  });
+
+  it('has composite index on (issue_id, created_at)', () => {
+    const cfg = getTableConfig(activityLog);
+    expect(cfg.indexes.some((i) => i.config.name === 'activity_log_issue_created_idx')).toBe(true);
   });
 });

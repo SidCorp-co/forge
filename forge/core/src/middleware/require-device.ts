@@ -1,6 +1,6 @@
 import type { MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { verifyDeviceToken, type Device } from '../auth/deviceToken.js';
+import { type Device, verifyDeviceToken } from '../auth/deviceToken.js';
 
 export type AuthedDevice = Device;
 

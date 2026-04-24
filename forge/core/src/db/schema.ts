@@ -1,5 +1,7 @@
 import { relations } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -183,8 +185,7 @@ export const jobs = pgTable(
     projectId: uuid('project_id')
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
-    // TODO(ISS-phase-2.3): add FK to issues.id once that table exists
-    issueId: uuid('issue_id'),
+    issueId: uuid('issue_id').references((): AnyPgColumn => issues.id, { onDelete: 'set null' }),
     deviceId: uuid('device_id').references(() => devices.id, { onDelete: 'set null' }),
     createdBy: uuid('created_by')
       .notNull()
@@ -255,4 +256,173 @@ export const jobsRelations = relations(jobs, ({ one, many }) => ({
 
 export const jobEventsRelations = relations(jobEvents, ({ one }) => ({
   job: one(jobs, { fields: [jobEvents.jobId], references: [jobs.id] }),
+}));
+
+export const issueStatuses = [
+  'open',
+  'confirmed',
+  'waiting',
+  'approved',
+  'in_progress',
+  'developed',
+  'deploying',
+  'testing',
+  'tested',
+  'pass',
+  'staging',
+  'released',
+  'closed',
+  'reopen',
+  'on_hold',
+  'needs_info',
+] as const;
+export type IssueStatus = (typeof issueStatuses)[number];
+
+export const issuePriorities = ['critical', 'high', 'medium', 'low', 'none'] as const;
+export type IssuePriority = (typeof issuePriorities)[number];
+
+export const projectIssCounters = pgTable('project_iss_counters', {
+  projectId: uuid('project_id')
+    .primaryKey()
+    .references(() => projects.id, { onDelete: 'cascade' }),
+  nextSeq: integer('next_seq').notNull().default(1),
+});
+
+export const issues = pgTable(
+  'issues',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    issSeq: integer('iss_seq').notNull().default(0),
+    title: text('title').notNull(),
+    description: text('description'),
+    status: text('status', { enum: issueStatuses }).notNull().default('open'),
+    priority: text('priority', { enum: issuePriorities }).notNull().default('medium'),
+    category: text('category'),
+    assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
+    createdById: uuid('created_by_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    parentIssueId: uuid('parent_issue_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectIssSeqUq: uniqueIndex('issues_project_iss_seq_uq').on(t.projectId, t.issSeq),
+    projectStatusIdx: index('issues_project_status_idx').on(t.projectId, t.status),
+    assigneeIdx: index('issues_assignee_idx').on(t.assigneeId),
+    parentFk: foreignKey({
+      columns: [t.parentIssueId],
+      foreignColumns: [t.id],
+      name: 'issues_parent_issue_id_fk',
+    }).onDelete('set null'),
+  }),
+);
+
+export const comments = pgTable(
+  'comments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references(() => issues.id, { onDelete: 'cascade' }),
+    authorId: uuid('author_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    body: text('body').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    issueIdx: index('comments_issue_id_idx').on(t.issueId),
+  }),
+);
+
+export const labels = pgTable(
+  'labels',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    color: text('color').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectNameUq: uniqueIndex('labels_project_id_name_uq').on(t.projectId, t.name),
+  }),
+);
+
+export const issueLabels = pgTable(
+  'issue_labels',
+  {
+    issueId: uuid('issue_id')
+      .notNull()
+      .references(() => issues.id, { onDelete: 'cascade' }),
+    labelId: uuid('label_id')
+      .notNull()
+      .references(() => labels.id, { onDelete: 'cascade' }),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.issueId, t.labelId] }),
+    labelIdx: index('issue_labels_label_id_idx').on(t.labelId),
+  }),
+);
+
+export const actorTypes = ['user', 'device'] as const;
+export type ActorType = (typeof actorTypes)[number];
+
+export const activityLog = pgTable(
+  'activity_log',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references(() => issues.id, { onDelete: 'cascade' }),
+    actorType: text('actor_type', { enum: actorTypes }).notNull(),
+    actorId: uuid('actor_id').notNull(),
+    action: text('action').notNull(),
+    payload: jsonb('payload').notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    issueCreatedIdx: index('activity_log_issue_created_idx').on(t.issueId, t.createdAt),
+  }),
+);
+
+export const issuesRelations = relations(issues, ({ one, many }) => ({
+  project: one(projects, { fields: [issues.projectId], references: [projects.id] }),
+  assignee: one(users, { fields: [issues.assigneeId], references: [users.id] }),
+  createdBy: one(users, { fields: [issues.createdById], references: [users.id] }),
+  parent: one(issues, {
+    fields: [issues.parentIssueId],
+    references: [issues.id],
+    relationName: 'issue_parent',
+  }),
+  children: many(issues, { relationName: 'issue_parent' }),
+  comments: many(comments),
+  labels: many(issueLabels),
+  activity: many(activityLog),
+}));
+
+export const commentsRelations = relations(comments, ({ one }) => ({
+  issue: one(issues, { fields: [comments.issueId], references: [issues.id] }),
+  author: one(users, { fields: [comments.authorId], references: [users.id] }),
+}));
+
+export const labelsRelations = relations(labels, ({ one, many }) => ({
+  project: one(projects, { fields: [labels.projectId], references: [projects.id] }),
+  issues: many(issueLabels),
+}));
+
+export const issueLabelsRelations = relations(issueLabels, ({ one }) => ({
+  issue: one(issues, { fields: [issueLabels.issueId], references: [issues.id] }),
+  label: one(labels, { fields: [issueLabels.labelId], references: [labels.id] }),
+}));
+
+export const activityLogRelations = relations(activityLog, ({ one }) => ({
+  issue: one(issues, { fields: [activityLog.issueId], references: [issues.id] }),
 }));

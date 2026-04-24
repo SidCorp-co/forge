@@ -13,8 +13,8 @@ import { mcpHandler } from './mcp/handler.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
-import { isBossStarted, startBoss, stopBoss } from './queue/boss.js';
 import { projectRoutes } from './projects/routes.js';
+import { isBossStarted, startBoss, stopBoss } from './queue/boss.js';
 import { attachWs, closeWs, isWsListening } from './ws/server.js';
 
 export const app = new Hono<{ Variables: RequestIdVars }>();
