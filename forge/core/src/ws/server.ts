@@ -84,6 +84,10 @@ export function isWsListening(): boolean {
   return wss !== null;
 }
 
+export function wsClientCount(): number {
+  return wss ? wss.clients.size : 0;
+}
+
 const WS_CLOSE_FALLBACK_MS = 2_000;
 
 export async function closeWs(): Promise<void> {
