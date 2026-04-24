@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils/cn';
+import type { Project } from '@forge/contracts';
 import { useProjects } from '@/features/project/hooks/use-projects';
-import { useGateIssues } from '@/features/issue/hooks/use-issues';
 import { useWebSocket } from '@/hooks/use-websocket';
 import { useAuth } from '@/providers/auth-provider';
 import {
@@ -125,9 +125,10 @@ function ThemeToggle() {
   );
 }
 
-function ProjectSubLinks({ href, pathname, projectSlug }: { href: string; pathname: string; projectSlug: string }) {
-  const { data: gateData } = useGateIssues(projectSlug);
-  const gateCount = gateData?.data?.length ?? 0;
+function ProjectSubLinks({ href, pathname, projectSlug: _projectSlug }: { href: string; pathname: string; projectSlug: string }) {
+  // useGateIssues was a Strapi-only aggregate. Phase 2.6-F2 hides the badge
+  // until the admin/gate aggregation ships on forge/core.
+  const gateCount = 0;
 
   return (
     <div className="ml-7 border-l-2 border-surface-container-high pl-2 mt-1 mb-2">
@@ -167,7 +168,7 @@ export function SidebarNav({ onClose }: SidebarNavProps) {
   const { connected } = useWebSocket();
   const [projectsOpen, setProjectsOpen] = useState(true);
 
-  const projects = projectsData?.data ?? [];
+  const projects: Project[] = projectsData ?? [];
 
   return (
     <div className="flex h-full flex-col bg-surface font-['Inter'] tracking-tight text-sm antialiased overflow-hidden">

@@ -31,14 +31,17 @@ export function CreateProjectModal({ open, onClose }: CreateProjectModalProps) {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '');
 
+    // Core's create-project schema accepts { slug, name } only — description
+    // is captured here for UX but not persisted until core grows the field.
+    void description;
     createProject.mutate(
-      { name: trimmedName, slug, description: description.trim() || undefined },
+      { name: trimmedName, slug },
       {
-        onSuccess: (res) => {
+        onSuccess: (project) => {
           onClose();
           setName('');
           setDescription('');
-          router.push(`/projects/${res.data.slug || slug}`);
+          router.push(`/projects/${project.slug || slug}`);
         },
       },
     );

@@ -182,7 +182,7 @@ function CommentItem({
             onChange={onReplyBodyChange}
             placeholder={`Reply to ${comment.author}...`}
             rows={2}
-            onKeyDown={(e) => {
+            onKeyDown={(e: React.KeyboardEvent) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) onSubmitReply();
               if (e.key === 'Escape') onCancelReply();
             }}
@@ -292,7 +292,7 @@ export function IssueComments({ comments, currentUser, onAddComment, onEditComme
           onChange={setCommentBody}
           placeholder="Add a comment... (use @ to mention)"
           rows={2}
-          onKeyDown={(e) => {
+          onKeyDown={(e: React.KeyboardEvent) => {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
               e.preventDefault();
               if (commentBody.trim()) {

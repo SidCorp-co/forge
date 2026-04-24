@@ -1,91 +1,32 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button, Skeleton } from '@/components/ui';
-import { BulkActionBar } from '@/components/issue/bulk-action-bar';
-import { IssueDetailModal } from '@/components/issue/issue-detail-modal';
+import type { Issue } from '@forge/contracts';
 import { useIssuesPage } from '../hooks';
-import { agentApi } from '@/features/agent/api';
-import { IssuesToolbar } from './issues-toolbar';
-import { IssuesTable } from './issues-table';
-import { IssuesBoardView } from './issues-board-view';
 
+/**
+ * Phase 2.6-F2: a minimal issue list view. The rich toolbar + bulk actions
+ * + board toggle from the legacy Strapi page is deferred to a follow-up so
+ * this file stays reviewable. The list shows displayId, title, status,
+ * priority and links through to the detail page which now does its own
+ * rewire against forge/core.
+ */
 export function IssuesView() {
   const router = useRouter();
-  const [previewIssueId, setPreviewIssueId] = useState<string | null>(null);
-  const {
-    slug,
-    issues,
-    isLoading,
-    viewMode,
-    setViewMode,
-    statusFilter,
-    priorityFilter,
-    categoryFilter,
-    sortBy,
-    searchQuery,
-    categories,
-    activeFilterCount,
-    filtersOpen,
-    setFiltersOpen,
-    setParam,
-    checked,
-    setChecked,
-    toggleCheck,
-    filtered,
-    paginated,
-    pageCount,
-    safePage,
-    total,
-    handleUpdate,
-    handleBulkUpdate,
-    handleStartSession,
-    desktopConnected,
-    isBuildingPrompt,
-  } = useIssuesPage();
-
-  function handleViewChange(v: string) {
-    if (v === 'table' || v === 'board') setViewMode(v);
-  }
-
-  function navigateToIssue(docId: string) {
-    router.push(`/projects/${slug}/issues/${docId}`);
-  }
-
-  async function handleStartSingle(docId: string) {
-    await agentApi.triggerPipeline(docId);
-  }
-
-  function handleSelectAll() {
-    const allChecked = paginated.every((i) => checked.has(i.documentId));
-    setChecked(allChecked ? new Set() : new Set(paginated.map((i) => i.documentId)));
-  }
+  const { slug, issues, isLoading, total } = useIssuesPage();
 
   return (
-    <div>
-      <IssuesToolbar
-        slug={slug}
-        searchQuery={searchQuery}
-        statusFilter={statusFilter}
-        priorityFilter={priorityFilter}
-        categoryFilter={categoryFilter}
-        categories={categories}
-        sortBy={sortBy}
-        viewMode={viewMode}
-        setParam={(key, value) => {
-          if (key === 'view') { handleViewChange(value); return; }
-          setParam(key, value);
-        }}
-        activeFilterCount={activeFilterCount}
-        filtersOpen={filtersOpen}
-        checkedCount={checked.size}
-        desktopConnected={desktopConnected}
-        isBuildingPrompt={isBuildingPrompt}
-        onToggleFilters={() => setFiltersOpen((p) => !p)}
-        onStartSession={() => handleStartSession()}
-      />
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] uppercase tracking-widest text-outline">
+          {total} issue{total === 1 ? '' : 's'}
+        </div>
+        <Link href={`/projects/${slug}/issues/new`}>
+          <Button>New issue</Button>
+        </Link>
+      </div>
 
       {isLoading ? (
         <div className="space-y-2">
@@ -93,55 +34,33 @@ export function IssuesView() {
             <Skeleton key={i} className="h-12 w-full" />
           ))}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : issues.length === 0 ? (
         <div className="rounded-sm border border-outline-variant/20 bg-surface p-12 text-center">
-          <p className="text-sm text-outline">
-            {issues.length === 0
-              ? 'No issues yet. Create your first issue to get started.'
-              : 'No issues match your filters.'}
-          </p>
-          {issues.length === 0 && (
-            <Link href={`/projects/${slug}/issues/new`} className="mt-3 inline-block">
-              <Button>Create Issue</Button>
-            </Link>
-          )}
+          <p className="text-sm text-outline">No issues yet.</p>
         </div>
-      ) : viewMode === 'table' ? (
-        <IssuesTable
-          paginated={paginated}
-          total={total}
-          checked={checked}
-          pageCount={pageCount}
-          safePage={safePage}
-          slug={slug}
-          desktopConnected={desktopConnected}
-          isBuildingPrompt={isBuildingPrompt}
-          onToggleCheck={toggleCheck}
-          onSelectAll={handleSelectAll}
-          onSelectIssue={navigateToIssue}
-          onPreviewIssue={setPreviewIssueId}
-          onUpdate={handleUpdate}
-          onStartSingle={handleStartSingle}
-          setParam={setParam}
-        />
       ) : (
-        <IssuesBoardView
-          filtered={issues}
-          onUpdate={handleUpdate}
-          onSelect={navigateToIssue}
-        />
-      )}
-
-      {checked.size > 0 && (
-        <BulkActionBar
-          count={checked.size}
-          onApply={handleBulkUpdate}
-          onClear={() => setChecked(new Set())}
-        />
-      )}
-
-      {previewIssueId && (
-        <IssueDetailModal issueId={previewIssueId} onClose={() => setPreviewIssueId(null)} />
+        <ul className="divide-y divide-outline-variant/20 overflow-hidden rounded-sm border border-outline-variant/20 bg-surface">
+          {issues.map((issue: Issue) => (
+            <li
+              key={issue.id}
+              onClick={() => router.push(`/projects/${slug}/issues/${issue.id}`)}
+              className="flex cursor-pointer items-center gap-4 px-4 py-3 text-sm transition-colors hover:bg-surface-container-low"
+            >
+              <span className="w-20 font-mono text-[11px] text-primary">
+                {issue.displayId}
+              </span>
+              <span className="flex-1 truncate font-medium text-on-surface">
+                {issue.title}
+              </span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                {issue.status}
+              </span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                {issue.priority}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

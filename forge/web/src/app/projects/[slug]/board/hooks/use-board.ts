@@ -1,77 +1,83 @@
 'use client';
 
-import { useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
-import { useTasks, useUpdateTask } from '@/features/task/hooks/use-tasks';
-import { useAllIssues, useUpdateIssue } from '@/features/issue/hooks/use-issues';
-import { useToast } from '@/hooks/use-toast';
+import { useCallback, useState } from 'react';
+import { useIssueSearch, useTransitionIssue } from '@/features/issue/hooks/use-issues';
+import { useProjectBySlug } from '@/features/project/hooks/use-projects';
 import { useChangedIds } from '@/hooks/use-changed-ids';
-import { useCountChangeToast, useChangedItemsToast } from '@/hooks/use-board-toasts';
+import { useToast } from '@/hooks/use-toast';
+import { formatApiError } from '@/lib/api/error';
+import type { Issue } from '@forge/contracts';
 import { DEFAULT_VISIBLE } from '../constants';
 import type { IssueStatus } from '@/features/issue/types';
-import type { TaskStatus } from '@/features/task/types';
 
+/**
+ * Board view: one search-call fetches all issues for the visible statuses
+ * (core's `/projects/:id/issues/search` supports repeated `status` params).
+ * Transitions happen via the dedicated transition endpoint, not a PATCH —
+ * the state machine rejects illegal moves with a 409.
+ */
 export function useBoard() {
   const { slug } = useParams<{ slug: string }>();
+  const project = useProjectBySlug(slug);
+  const projectId = project?.id;
 
   const [viewMode, setViewMode] = useState<'issues' | 'tasks'>('issues');
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
-  const [visibleCols, setVisibleCols] = useState<Record<IssueStatus, boolean>>(DEFAULT_VISIBLE);
+  const [visibleCols, setVisibleCols] = useState<Record<IssueStatus, boolean>>(
+    DEFAULT_VISIBLE,
+  );
   const [showColPicker, setShowColPicker] = useState(false);
   const [assigneeFilter, setAssigneeFilter] = useState<string>('all');
   const [agentFilter, setAgentFilter] = useState<string>('all');
 
-  const { data, isLoading } = useTasks(slug);
-  const { data: issuesData, isLoading: issuesLoading } = useAllIssues(slug);
-  const updateIssue = useUpdateIssue();
-  const updateTask = useUpdateTask();
+  const visibleStatuses = Object.entries(visibleCols)
+    .filter(([, v]) => v)
+    .map(([k]) => k);
 
-  const tasks = data?.data ?? [];
-  const issues = issuesData?.data ?? [];
-
-  const changedIssueIds = useChangedIds(issues);
-  const changedTaskIds = useChangedIds(tasks);
-
-  const { toasts, addToast } = useToast();
-  useCountChangeToast(issues.length, 'issue', addToast);
-  useCountChangeToast(tasks.length, 'task', addToast);
-  useChangedItemsToast(changedIssueIds, issues, addToast);
-  useChangedItemsToast(changedTaskIds, tasks, addToast);
-
-  const assignees = Array.from(new Set(tasks.map((t) => t.assignee).filter(Boolean))) as string[];
-
-  const filteredTasks = tasks.filter((t) => {
-    if (assigneeFilter !== 'all' && t.assignee !== assigneeFilter) return false;
-    if (agentFilter !== 'all' && t.agentStatus !== agentFilter) return false;
-    return true;
+  const { data, isLoading } = useIssueSearch({
+    projectId: projectId ?? '',
+    status: visibleStatuses,
+    limit: 200,
   });
+
+  const issues: Issue[] = data?.items ?? [];
+
+  const transitionIssue = useTransitionIssue();
+  const { toasts, addToast } = useToast();
+
+  // useChangedIds predates the core rewire; adapt the new Issue shape onto
+  // the old { id: number, documentId, status, updatedAt } signature so we
+  // can keep the highlight-on-change behaviour without rewriting the hook.
+  const changedIssueIds = useChangedIds(
+    issues.map((i) => ({
+      id: 0,
+      documentId: i.id,
+      status: i.status,
+      updatedAt: String(i.updatedAt ?? ''),
+    })),
+  );
 
   const handleIssueDrop = useCallback(
     (issueId: string, status: string) => {
-      updateIssue.mutate({ id: issueId, data: { status: status as IssueStatus } });
+      transitionIssue.mutate(
+        { id: issueId, toStatus: status },
+        {
+          onError: (err) => addToast(formatApiError(err)),
+        },
+      );
     },
-    [updateIssue],
-  );
-
-  const handleTaskDrop = useCallback(
-    (taskId: string, status: string) => {
-      updateTask.mutate({ id: taskId, data: { status: status as TaskStatus } });
-    },
-    [updateTask],
+    [transitionIssue, addToast],
   );
 
   const toggleCol = (status: IssueStatus) => {
     setVisibleCols((prev) => ({ ...prev, [status]: !prev[status] }));
   };
 
-  const loading = viewMode === 'tasks' ? isLoading : issuesLoading;
-
   return {
-    // view state
     viewMode,
     setViewMode,
-    loading,
-    // issues
+    loading: isLoading,
     issues,
     selectedIssueId,
     setSelectedIssueId,
@@ -81,17 +87,16 @@ export function useBoard() {
     setShowColPicker,
     toggleCol,
     handleIssueDrop,
-    // tasks
-    tasks,
-    filteredTasks,
-    changedTaskIds,
-    assignees,
+    // Tasks view is out of scope for F2 — core has no tasks endpoint yet.
+    tasks: [] as unknown[],
+    filteredTasks: [] as unknown[],
+    changedTaskIds: new Set<string>(),
+    assignees: [] as string[],
     assigneeFilter,
     setAssigneeFilter,
     agentFilter,
     setAgentFilter,
-    handleTaskDrop,
-    // toasts
+    handleTaskDrop: () => {},
     toasts,
   };
 }

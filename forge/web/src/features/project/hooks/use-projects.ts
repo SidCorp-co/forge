@@ -1,60 +1,90 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+'use client';
+
+import type { CreateProjectInput, Project, UpdateProjectInput } from '@forge/contracts';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { projectApi } from '../api/project-api';
+
+/**
+ * Stable React Query keys — F3's WS event router assumes this exact shape
+ * when invalidating on project/issue events. Do not rename without also
+ * updating the corresponding event router in `src/lib/ws/event-router.ts`.
+ */
+export const projectKeys = {
+  all: ['projects'] as const,
+  detail: (id: string | undefined) => ['project', id] as const,
+};
 
 export function useProjects() {
   return useQuery({
-    queryKey: ['projects'],
-    queryFn: projectApi.getAll,
+    queryKey: projectKeys.all,
+    queryFn: projectApi.list,
   });
 }
 
-export function useProject(slug: string) {
+export function useProject(projectId: string | undefined) {
   return useQuery({
-    queryKey: ['projects', slug],
-    queryFn: () => projectApi.getBySlug(slug),
-    enabled: !!slug,
+    queryKey: projectKeys.detail(projectId),
+    queryFn: () => projectApi.getById(projectId as string),
+    enabled: !!projectId,
   });
+}
+
+export function useProjectBySlug(slug: string | undefined | null): Project | null {
+  const { data: projects } = useProjects();
+  return useMemo(() => {
+    if (!slug || !projects) return null;
+    return projects.find((p) => p.slug === slug) ?? null;
+  }, [projects, slug]);
 }
 
 export function useCreateProject() {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; slug: string; description?: string }) => projectApi.create(data),
+    mutationFn: (input: CreateProjectInput) => projectApi.create(input),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-    },
-  });
-}
-
-export function useAddMember() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ projectDocId, userDocId }: { projectDocId: string; userDocId: string }) =>
-      projectApi.addMember(projectDocId, userDocId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-    },
-  });
-}
-
-export function useRemoveMember() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ projectDocId, userDocId }: { projectDocId: string; userDocId: string }) =>
-      projectApi.removeMember(projectDocId, userDocId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      qc.invalidateQueries({ queryKey: projectKeys.all });
     },
   });
 }
 
 export function useUpdateProject() {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof projectApi.update>[1] }) =>
-      projectApi.update(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
+    mutationFn: ({ id, patch }: { id: string; patch: UpdateProjectInput }) =>
+      projectApi.update(id, patch),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: projectKeys.all });
+      qc.invalidateQueries({ queryKey: projectKeys.detail(id) });
+    },
+  });
+}
+
+export function useAddProjectMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      projectId,
+      userId,
+      role,
+    }: {
+      projectId: string;
+      userId: string;
+      role?: 'member' | 'owner';
+    }) => projectApi.addMember(projectId, { userId, ...(role ? { role } : {}) }),
+    onSuccess: (_data, { projectId }) => {
+      qc.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+    },
+  });
+}
+
+export function useRemoveProjectMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, userId }: { projectId: string; userId: string }) =>
+      projectApi.removeMember(projectId, userId),
+    onSuccess: (_data, { projectId }) => {
+      qc.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
     },
   });
 }

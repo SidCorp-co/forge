@@ -69,7 +69,7 @@ export function CommentInput({ onAddComment }: CommentInputProps) {
         placeholder="Add a comment... (use @ to mention, paste images)"
         rows={2}
         onPaste={handlePaste}
-        onKeyDown={(e) => {
+        onKeyDown={(e: React.KeyboardEvent) => {
           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
             submit();

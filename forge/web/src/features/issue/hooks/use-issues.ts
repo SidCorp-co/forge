@@ -1,90 +1,136 @@
-import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { issueApi } from '../api/issue-api';
-import type { IssueListParams } from '../api/issue-api';
-import type { Issue, IssueFormData } from '../types';
+'use client';
 
-export function useIssues(params: IssueListParams = {}) {
+import type { Issue, IssueCreateInput, IssuePatchInput } from '@forge/contracts';
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import {
+  type IssueListParams,
+  type IssueSearchParams,
+  issueApi,
+} from '../api/issue-api';
+
+/**
+ * Stable React Query keys — F3's WS event router uses these exact tuples.
+ * Do not rename without syncing `src/lib/ws/event-router.ts`.
+ */
+export const issueKeys = {
+  all: ['issues'] as const,
+  lists: ['issues', 'list'] as const,
+  list: (params: IssueListParams) => ['issues', 'list', params] as const,
+  searches: ['issues', 'search'] as const,
+  search: (params: IssueSearchParams) => ['issues', 'search', params] as const,
+  detail: (id: string | undefined) => ['issue', id] as const,
+};
+
+type ListPage = { items: Issue[]; totalCount: number };
+
+export function useIssues(params: IssueListParams) {
   return useQuery({
-    queryKey: ['issues', params],
-    queryFn: () => issueApi.getAll(params),
-    enabled: params.projectSlug === undefined ? true : !!params.projectSlug,
+    queryKey: issueKeys.list(params),
+    queryFn: () => issueApi.list(params),
+    enabled: !!params.projectId,
     placeholderData: keepPreviousData,
   });
 }
 
-export function useAllIssues(projectSlug?: string) {
+export function useIssueSearch(params: IssueSearchParams) {
   return useQuery({
-    queryKey: ['issues', 'all', projectSlug],
-    queryFn: () => issueApi.getAllUnpaginated(projectSlug),
-    enabled: projectSlug === undefined ? true : !!projectSlug,
+    queryKey: issueKeys.search(params),
+    queryFn: () => issueApi.search(params),
+    enabled: !!params.projectId,
+    placeholderData: keepPreviousData,
   });
 }
 
-export function useIssue(id: string) {
+export function useIssue(id: string | undefined) {
   return useQuery({
-    queryKey: ['issue', id],
-    queryFn: () => issueApi.getById(id),
+    queryKey: issueKeys.detail(id),
+    queryFn: () => issueApi.get(id as string),
     enabled: !!id,
   });
 }
 
-export function useCreateIssue() {
-  const queryClient = useQueryClient();
+export function useCreateIssue(projectId: string | undefined) {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: IssueFormData) => issueApi.create(data),
+    mutationFn: (input: IssueCreateInput) => {
+      if (!projectId) throw new Error('projectId is required to create an issue');
+      return issueApi.create(projectId, input);
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['issues'] });
+      qc.invalidateQueries({ queryKey: issueKeys.lists });
+      qc.invalidateQueries({ queryKey: issueKeys.searches });
     },
   });
 }
 
-export function useUpdateIssue() {
-  const queryClient = useQueryClient();
+export function usePatchIssue() {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Issue> }) =>
-      issueApi.update(id, data),
-    onMutate: async ({ id, data }) => {
-      await queryClient.cancelQueries({ queryKey: ['issues'] });
-      const queries = queryClient.getQueriesData<{ data: Issue[] }>({ queryKey: ['issues'] });
-      for (const [key, old] of queries) {
-        if (!old?.data) continue;
-        queryClient.setQueryData(key, {
+    mutationFn: ({ id, patch }: { id: string; patch: IssuePatchInput }) =>
+      issueApi.patch(id, patch),
+    onMutate: async ({ id, patch }) => {
+      await qc.cancelQueries({ queryKey: issueKeys.lists });
+      const snapshots = qc.getQueriesData<ListPage>({ queryKey: issueKeys.lists });
+      for (const [key, old] of snapshots) {
+        if (!old) continue;
+        qc.setQueryData<ListPage>(key, {
           ...old,
-          data: old.data.map((i) => (i.documentId === id ? { ...i, ...data } : i)),
+          items: old.items.map((i) => (i.id === id ? { ...i, ...patch } : i)),
         });
       }
-      return { queries };
+      return { snapshots };
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.queries) {
-        for (const [key, old] of ctx.queries) {
-          queryClient.setQueryData(key, old);
-        }
-      }
+      ctx?.snapshots?.forEach(([key, old]) => qc.setQueryData(key, old));
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['issues'] });
-      queryClient.invalidateQueries({ queryKey: ['issue'] });
+    onSettled: (_data, _err, { id }) => {
+      qc.invalidateQueries({ queryKey: issueKeys.lists });
+      qc.invalidateQueries({ queryKey: issueKeys.searches });
+      qc.invalidateQueries({ queryKey: issueKeys.detail(id) });
     },
   });
 }
 
-export function useGateIssues(projectSlug?: string) {
-  return useQuery({
-    queryKey: ['issues', 'gate', projectSlug],
-    queryFn: () => issueApi.getGateIssues(projectSlug!),
-    enabled: !!projectSlug,
-    staleTime: 10_000,
-  });
-}
-
-export function useEnrichIssue() {
-  const queryClient = useQueryClient();
+export function useTransitionIssue() {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => issueApi.enrich(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['issues'] });
-      queryClient.invalidateQueries({ queryKey: ['issue'] });
+    mutationFn: ({
+      id,
+      toStatus,
+      reason,
+      override,
+    }: {
+      id: string;
+      toStatus: string;
+      reason?: string;
+      override?: boolean;
+    }) =>
+      issueApi.transition(id, {
+        toStatus,
+        ...(reason !== undefined ? { reason } : {}),
+        ...(override !== undefined ? { override } : {}),
+      }),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: issueKeys.lists });
+      qc.invalidateQueries({ queryKey: issueKeys.searches });
+      qc.invalidateQueries({ queryKey: issueKeys.detail(id) });
+    },
+  });
+}
+
+export function useDeleteIssue() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => issueApi.remove(id),
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: issueKeys.lists });
+      qc.invalidateQueries({ queryKey: issueKeys.searches });
+      qc.invalidateQueries({ queryKey: issueKeys.detail(id) });
     },
   });
 }

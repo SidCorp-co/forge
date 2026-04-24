@@ -54,7 +54,7 @@ export function BoardView(props: BoardState) {
       {viewMode === 'issues' && (
         <div className="flex gap-3 overflow-x-auto pb-4">
           {activeCols.map((col) => {
-            const colIssues = issues.filter((i) => i.status === col.status);
+            const colIssues = issues.filter((i: { status: string }) => i.status === col.status);
             return (
               <DropColumn
                 key={col.status}
@@ -66,12 +66,12 @@ export function BoardView(props: BoardState) {
                 onDrop={handleIssueDrop}
                 dragType="issueId"
               >
-                {colIssues.map((issue) => (
+                {colIssues.map((issue: { id: string }) => (
                   <DraggableIssueCard
                     key={issue.id}
-                    issue={issue}
+                    issue={issue as never}
                     onSelect={setSelectedIssueId}
-                    highlight={changedIssueIds.has(issue.documentId)}
+                    highlight={changedIssueIds.has(issue.id)}
                   />
                 ))}
                 {colIssues.length === 0 && (
@@ -84,34 +84,9 @@ export function BoardView(props: BoardState) {
       )}
 
       {viewMode === 'tasks' && (
-        <div className="flex gap-3 overflow-x-auto pb-4">
-          {TASK_COLS.map((col) => {
-            const colTasks = filteredTasks.filter((t) => t.status === col.status);
-            return (
-              <DropColumn
-                key={col.status}
-                label={col.label}
-                color={col.color}
-                bg={col.bg}
-                count={colTasks.length}
-                status={col.status}
-                onDrop={handleTaskDrop}
-                dragType="taskId"
-              >
-                {colTasks.map((task) => (
-                  <DraggableTaskCard
-                    key={task.id}
-                    task={task}
-                    highlight={changedTaskIds.has(task.documentId)}
-                  />
-                ))}
-                {colTasks.length === 0 && (
-                  <p className="py-8 text-center text-xs text-outline">No tasks</p>
-                )}
-              </DropColumn>
-            );
-          })}
-        </div>
+        <p className="py-8 text-center text-xs text-outline">
+          Tasks view is not available on forge/core yet.
+        </p>
       )}
 
       {selectedIssueId && (

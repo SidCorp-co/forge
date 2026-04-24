@@ -1,73 +1,66 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { useIssues, useAllIssues, useUpdateIssue } from '@/features/issue/hooks/use-issues';
-import { useAgentStreamContext } from '@/hooks/agent-stream-context';
-import { agentApi } from '@/features/agent/api';
+import { useCallback, useMemo, useState } from 'react';
+import { useIssueSearch, usePatchIssue } from '@/features/issue/hooks/use-issues';
+import { useProjectBySlug } from '@/features/project/hooks/use-projects';
+import type { Issue, IssuePatchInput } from '@forge/contracts';
 import { PAGE_SIZE, type SortOption, type ViewMode } from '../constants';
-import type { Issue, IssueStatus, IssuePriority } from '@/features/issue/types';
-
-const SORT_MAP: Record<SortOption, string> = {
-  newest: 'createdAt:desc',
-  oldest: 'createdAt:asc',
-  priority: 'priority:asc',
-  updated: 'updatedAt:desc',
-};
 
 export function useIssuesPage() {
   const { slug } = useParams<{ slug: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const project = useProjectBySlug(slug);
+  const projectId = project?.id;
 
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  const { desktopConnected, requestBuildPrompt, isBuildingPrompt } = useAgentStreamContext();
-
   const statusParam = searchParams.get('status') ?? '';
-  const statusFilter = statusParam ? statusParam.split(',') as IssueStatus[] : [] as IssueStatus[];
-  const priorityFilter = (searchParams.get('priority') ?? 'all') as IssuePriority | 'all';
-  const categoryFilter = searchParams.get('category') ?? 'all';
+  const statusFilter = statusParam ? statusParam.split(',') : [];
+  const priorityParam = searchParams.get('priority') ?? 'all';
+  const priorityFilter = priorityParam === 'all' ? [] : [priorityParam];
   const sortBy = (searchParams.get('sort') ?? 'newest') as SortOption;
   const searchQuery = searchParams.get('q') ?? '';
   const currentPage = Number(searchParams.get('page') ?? '1');
 
-  // Server-side paginated query for table view
-  const { data: paginatedData, isLoading } = useIssues({
-    projectSlug: slug,
-    page: currentPage,
-    pageSize: PAGE_SIZE,
-    status: statusFilter.length > 0 ? statusFilter.join(',') : 'all',
-    priority: priorityFilter,
-    category: categoryFilter,
-    search: searchQuery,
-    sort: SORT_MAP[sortBy] ?? 'createdAt:desc',
+  // Use `search` endpoint since it accepts multi-value status/priority and
+  // supports `q` (ILIKE on title + description).
+  const { data: paginatedData, isLoading } = useIssueSearch({
+    projectId: projectId ?? '',
+    ...(searchQuery ? { q: searchQuery } : {}),
+    ...(statusFilter.length > 0 ? { status: statusFilter } : {}),
+    ...(priorityFilter.length > 0 ? { priority: priorityFilter } : {}),
+    limit: PAGE_SIZE,
+    offset: (currentPage - 1) * PAGE_SIZE,
   });
 
-  // Unpaginated query for board view + categories
-  const { data: allData } = useAllIssues(slug);
-  const allIssues = allData?.data ?? [];
-
-  const updateIssue = useUpdateIssue();
-
-  const issues = paginatedData?.data ?? [];
-  const pagination = paginatedData?.meta?.pagination;
-  const pageCount = pagination?.pageCount ?? 1;
-  const total = pagination?.total ?? 0;
+  const issues: Issue[] = paginatedData?.items ?? [];
+  const total = paginatedData?.totalCount ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const safePage = Math.min(currentPage, pageCount);
 
+  const patchIssue = usePatchIssue();
+
+  // `category` filter is not a first-class server filter on core yet. Core
+  // exposes free-form `category` as a column; the old Strapi `$eq` path has
+  // no direct equivalent without a dedicated endpoint. We keep the list
+  // derived from visible issues so the filter dropdown still works against
+  // what the user can see.
   const categories = useMemo(
-    () => [...new Set(allIssues.map((i) => i.category).filter(Boolean))].sort() as string[],
-    [allIssues],
+    () =>
+      [
+        ...new Set(issues.map((i) => i.category).filter((c): c is string => !!c)),
+      ].sort(),
+    [issues],
   );
 
   const activeFilterCount = [
     statusFilter.length > 0,
-    priorityFilter !== 'all',
-    categoryFilter !== 'all',
+    priorityFilter.length > 0,
   ].filter(Boolean).length;
 
   const setParam = useCallback(
@@ -86,68 +79,49 @@ export function useIssuesPage() {
   );
 
   const handleUpdate = useCallback(
-    (id: string, data: Partial<Issue>) => {
-      updateIssue.mutate({ id, data });
+    (id: string, patch: IssuePatchInput) => {
+      patchIssue.mutate({ id, patch });
     },
-    [updateIssue],
+    [patchIssue],
   );
 
   const handleBulkUpdate = useCallback(
-    (data: Partial<Issue>) => {
+    (patch: IssuePatchInput) => {
       for (const id of checked) {
-        updateIssue.mutate({ id, data });
+        patchIssue.mutate({ id, patch });
       }
       setChecked(new Set());
     },
-    [checked, updateIssue],
+    [checked, patchIssue],
   );
 
-  function toggleCheck(docId: string) {
+  function toggleCheck(id: string) {
     setChecked((prev) => {
       const next = new Set(prev);
-      if (next.has(docId)) next.delete(docId);
-      else next.add(docId);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }
 
   async function handleStartSession() {
-    if (checked.size === 0) return;
-    const ids = Array.from(checked);
-
-    // Always trigger via server pipeline — server determines the correct skill
-    // based on each issue's status and routes to Antigravity or desktop.
-    for (const docId of ids) {
-      try {
-        await agentApi.triggerPipeline(docId);
-      } catch (err: any) {
-        // Surface blocked dependency errors to user
-        try {
-          const body = JSON.parse(err?.message || '{}');
-          if (body?.blocked) {
-            alert(`Blocked by dependencies: ${body.pendingDependencies?.join(', ') || 'unknown'}. Will resume automatically when resolved.`);
-            continue;
-          }
-        } catch { /* not JSON, ignore */ }
-      }
-    }
+    // No-op: the old agentApi.triggerPipeline has no core equivalent.
+    // Server-side pipeline/orchestrator dispatches jobs on transitions,
+    // so this action is covered automatically once transitions happen.
     setChecked(new Set());
   }
 
   return {
     slug,
-    issues: allIssues, // for board view (all unpaginated)
+    issues,
     isLoading,
-    // view
     viewMode,
     setViewMode,
-    // selection/modal
     selectedIssueId,
     setSelectedIssueId,
-    // filters
     statusFilter,
-    priorityFilter,
-    categoryFilter,
+    priorityFilter: (priorityFilter[0] ?? 'all') as string,
+    categoryFilter: 'all',
     sortBy,
     searchQuery,
     categories,
@@ -155,22 +129,18 @@ export function useIssuesPage() {
     filtersOpen,
     setFiltersOpen,
     setParam,
-    // checked
     checked,
     setChecked,
     toggleCheck,
-    // pagination - server-side
-    filtered: issues, // table view: server-paginated results
-    paginated: issues, // same - already paginated by server
+    filtered: issues,
+    paginated: issues,
     pageCount,
     safePage,
     total,
-    // handlers
     handleUpdate,
     handleBulkUpdate,
     handleStartSession,
-    // agent
-    desktopConnected,
-    isBuildingPrompt,
+    desktopConnected: false,
+    isBuildingPrompt: false,
   };
 }
