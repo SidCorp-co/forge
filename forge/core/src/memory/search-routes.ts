@@ -56,14 +56,14 @@ memorySearchRoutes.post(
 
     await assertProjectMember(body.projectId, userId);
 
+    let result: Awaited<ReturnType<typeof runMemorySearch>>;
     try {
-      const result = await runMemorySearch({
+      result = await runMemorySearch({
         projectId: body.projectId,
         query: body.query,
         topK: body.topK,
         sourceFilter: body.sourceFilter,
       });
-      return c.json(result);
     } catch (err) {
       if (err instanceof EmbeddingUnavailableError) {
         throw new HTTPException(503, {
@@ -73,5 +73,6 @@ memorySearchRoutes.post(
       }
       throw err;
     }
+    return c.json(result);
   },
 );

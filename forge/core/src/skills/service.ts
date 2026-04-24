@@ -1,6 +1,7 @@
-import { and, eq, ne, or, sql } from 'drizzle-orm';
+import { and, eq, ne, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, skillRegistrations, skills } from '../db/schema.js';
+import { hooks } from '../pipeline/hooks.js';
 
 /**
  * Pure-ish helpers shared between the F2 REST routes and the F4 MCP tools.
@@ -104,6 +105,7 @@ export async function registerSkillForProject(
       .where(
         and(eq(skillRegistrations.projectId, projectId), eq(skillRegistrations.skillId, skillId)),
       );
+    await hooks.emit('skillRegistered', { projectId, skillId, actorUserId, stage: null });
     return { projectId, skillId, stage: null };
   }
 
@@ -113,7 +115,7 @@ export async function registerSkillForProject(
       .values({ projectId, skillId, stage, registeredBy: actorUserId })
       .onConflictDoUpdate({
         target: [skillRegistrations.projectId, skillRegistrations.stage],
-        set: { skillId: sql`excluded.skill_id`, registeredBy: sql`excluded.registered_by` },
+        set: { skillId, registeredBy: actorUserId },
       });
     await tx
       .delete(skillRegistrations)
@@ -126,5 +128,6 @@ export async function registerSkillForProject(
       );
   });
 
+  await hooks.emit('skillRegistered', { projectId, skillId, actorUserId, stage });
   return { projectId, skillId, stage };
 }

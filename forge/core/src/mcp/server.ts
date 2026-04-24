@@ -54,7 +54,14 @@ export function createMcpServer(device: Device): Server {
     }
     try {
       const result = await tool.handler((args ?? {}) as Record<string, unknown>);
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+      const structured =
+        result && typeof result === 'object' && !Array.isArray(result)
+          ? (result as Record<string, unknown>)
+          : { value: result };
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result) }],
+        structuredContent: structured,
+      };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return {

@@ -226,12 +226,6 @@ skillRegisterRoutes.post(
       stage,
       actorUserId: userId,
     });
-    await hooks.emit('skillRegistered', {
-      projectId,
-      skillId,
-      actorUserId: userId,
-      stage: result.stage,
-    });
     return c.json(result);
   },
 );
