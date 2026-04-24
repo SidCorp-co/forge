@@ -26,6 +26,8 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:19450:8080"
+    env_file:
+      - .env
     environment:
       NODE_ENV: production
       PORT: "8080"
@@ -51,8 +53,8 @@ services:
 
   web:
     build:
-      context: ./forge/web
-      dockerfile: Dockerfile
+      context: ./forge
+      dockerfile: web/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: https://jarvis-agent.thejunix.com/api
     restart: unless-stopped

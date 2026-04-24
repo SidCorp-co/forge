@@ -6,6 +6,9 @@ let transport: Transporter | null = null;
 
 function getTransport(): Transporter {
   if (!transport) {
+    if (!env.SMTP_HOST || !env.SMTP_PORT || !env.SMTP_USER || !env.SMTP_PASS) {
+      throw new Error('SMTP not configured');
+    }
     transport = nodemailer.createTransport({
       host: env.SMTP_HOST,
       port: env.SMTP_PORT,
@@ -38,8 +41,8 @@ export interface InvitationEmailContext {
 export async function sendInvitationEmail(to: string, ctx: InvitationEmailContext): Promise<void> {
   const link = buildInvitationLink(ctx.token);
 
-  if (env.SMTP_DEBUG) {
-    logger.info({ to, link }, 'project invitation (debug — not sent)');
+  if (env.SMTP_DEBUG || !env.SMTP_HOST) {
+    logger.info({ to, link }, 'project invitation (debug/no-SMTP — not sent)');
     return;
   }
 
@@ -51,7 +54,7 @@ export async function sendInvitationEmail(to: string, ctx: InvitationEmailContex
   const bodyHtml = `<p><strong>${safeInviterEmail}</strong> invited you to join the "<strong>${safeProjectName}</strong>" project on Forge.</p><p>Accept the invitation by opening this link (valid for 7 days):</p><p><a href="${safeLink}">${safeLink}</a></p>`;
 
   await getTransport().sendMail({
-    from: env.SMTP_FROM,
+    from: env.SMTP_FROM ?? 'noreply@localhost',
     to,
     subject,
     text: bodyText,

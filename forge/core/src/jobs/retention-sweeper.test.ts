@@ -6,7 +6,11 @@ vi.mock('../db/client.js', () => ({
 }));
 
 vi.mock('../queue/boss.js', () => ({
-  boss: { schedule: vi.fn(async () => {}), work: vi.fn(async () => {}) },
+  boss: {
+    createQueue: vi.fn(async () => {}),
+    schedule: vi.fn(async () => {}),
+    work: vi.fn(async () => {}),
+  },
 }));
 
 const { runRetentionSweep } = await import('./retention-sweeper.js');

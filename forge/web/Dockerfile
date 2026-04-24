@@ -1,23 +1,31 @@
+# Multi-stage Dockerfile for forge/web
+# Uses pnpm because the package depends on @forge/contracts via workspace:*
 FROM node:22-alpine AS base
-WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@9 --activate
+WORKDIR /repo
 
-# Install dependencies
-COPY package.json package-lock.json ./
-RUN npm ci
+# Copy workspace manifests so pnpm can resolve workspace deps
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
+COPY contracts/package.json ./contracts/
+COPY web/package.json ./web/
 
-# Build
-COPY . .
+RUN pnpm install --frozen-lockfile --filter @forge/web... --prod=false
+
+# Copy source + build
+COPY contracts ./contracts
+COPY web ./web
+WORKDIR /repo/web
 ARG NEXT_PUBLIC_API_URL=http://localhost:8080/api
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-RUN npm run build
+RUN pnpm build
 
-# Production
+# Production runtime
 FROM node:22-alpine AS production
 WORKDIR /app
 
-COPY --from=base /app/.next/standalone ./
-COPY --from=base /app/.next/static ./.next/static
-COPY --from=base /app/public ./public
+COPY --from=base /repo/web/.next/standalone ./
+COPY --from=base /repo/web/.next/static ./.next/static
+COPY --from=base /repo/web/public ./public
 
 EXPOSE 3000
 ENV HOSTNAME=0.0.0.0

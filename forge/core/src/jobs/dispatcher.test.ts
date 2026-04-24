@@ -14,9 +14,11 @@ vi.mock('./active-device.js', () => ({
 
 vi.mock('../queue/boss.js', () => ({
   boss: {
+    createQueue: vi.fn(async () => {}),
     work: vi.fn(async () => 'worker-id-1'),
     offWork: vi.fn(async () => {}),
     send: vi.fn(async () => 'msg-1'),
+    schedule: vi.fn(async () => {}),
   },
 }));
 

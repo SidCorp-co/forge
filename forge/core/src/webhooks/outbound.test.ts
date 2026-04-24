@@ -28,7 +28,7 @@ const sendMock = vi.fn(async () => 'msg-1');
 const workMock = vi.fn(async () => {});
 
 vi.mock('../queue/boss.js', () => ({
-  boss: { send: sendMock, work: workMock },
+  boss: { createQueue: vi.fn(async () => {}), send: sendMock, work: workMock },
 }));
 
 // Manual fetch mock

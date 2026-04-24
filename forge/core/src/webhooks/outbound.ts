@@ -84,6 +84,9 @@ let registered = false;
 
 export async function registerOutboundDeliveryWorker(): Promise<void> {
   if (registered) return;
+  // pg-boss v10 requires explicit createQueue before work().
+  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
+  await (boss as any).createQueue(WEBHOOK_DELIVERY_QUEUE);
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).work(WEBHOOK_DELIVERY_QUEUE, { batchSize: 1 }, async (arg: unknown) => {
     const entries = Array.isArray(arg) ? arg : [arg];

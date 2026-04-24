@@ -19,7 +19,8 @@ COPY --from=builder /app/drizzle/ drizzle/
 
 EXPOSE 8080
 
-HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \
+HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 \
   CMD wget -qO- http://localhost:8080/health || exit 1
 
-CMD ["node", "dist/index.js"]
+# Run migrations via runtime migrator (uses drizzle-orm, no drizzle-kit needed)
+CMD ["sh", "-c", "node dist/db/migrate.js && node dist/index.js"]

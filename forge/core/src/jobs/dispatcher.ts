@@ -80,6 +80,9 @@ export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched'
 
 export async function registerDispatcher(): Promise<void> {
   if (workerId) return;
+  // pg-boss v10 requires explicit createQueue before work().
+  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
+  await (boss as any).createQueue(JOB_QUEUE_NAME);
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions; the runtime contract (handler receives an array) is stable.
   const id = (await (boss as any).work(JOB_QUEUE_NAME, { batchSize: 1 }, async (arg: any) => {
     const entries = Array.isArray(arg) ? arg : [arg];

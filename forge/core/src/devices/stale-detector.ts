@@ -42,8 +42,9 @@ let registered = false;
 
 export async function registerDeviceStaleDetector(): Promise<void> {
   if (registered) return;
+  // pg-boss v10 requires explicit createQueue before schedule/work can reference it.
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(DEVICE_STALE_DETECTOR_QUEUE, '*/2 * * * *');
+  await (boss as any).createQueue(DEVICE_STALE_DETECTOR_QUEUE);
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).work(DEVICE_STALE_DETECTOR_QUEUE, async () => {
     try {
@@ -54,6 +55,8 @@ export async function registerDeviceStaleDetector(): Promise<void> {
       throw err;
     }
   });
+  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
+  await (boss as any).schedule(DEVICE_STALE_DETECTOR_QUEUE, '*/2 * * * *');
   registered = true;
 }
 

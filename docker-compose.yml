@@ -28,6 +28,8 @@ services:
         condition: service_healthy
     ports:
       - "8080:8080"
+    env_file:
+      - .env
     environment:
       NODE_ENV: production
       PORT: "8080"
@@ -42,8 +44,8 @@ services:
   # === Web Frontend ===
   web:
     build:
-      context: ./forge/web
-      dockerfile: Dockerfile
+      context: ./forge
+      dockerfile: web/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8080/api
     restart: unless-stopped
