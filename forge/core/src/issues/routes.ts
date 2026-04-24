@@ -19,7 +19,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { recordActivityTx } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 
-const issueCreateSchema = z
+export const issueCreateSchema = z
   .object({
     title: z.string().trim().min(1).max(500),
     description: z.string().max(100_000).nullable().optional(),
@@ -31,8 +31,10 @@ const issueCreateSchema = z
   })
   .strict();
 
+export type IssueCreateInput = z.infer<typeof issueCreateSchema>;
+
 // status is NOT accepted here — F4 transition endpoint owns status changes.
-const issuePatchSchema = z
+export const issuePatchSchema = z
   .object({
     title: z.string().trim().min(1).max(500).optional(),
     description: z.string().max(100_000).nullable().optional(),
@@ -44,11 +46,15 @@ const issuePatchSchema = z
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
 
-const issueFiltersSchema = paginationSchema.extend({
+export type IssuePatchInput = z.infer<typeof issuePatchSchema>;
+
+export const issueFiltersSchema = paginationSchema.extend({
   status: z.enum(issueStatuses).optional(),
   priority: z.enum(issuePriorities).optional(),
   assigneeId: z.uuid().optional(),
 });
+
+export type IssueFilters = z.infer<typeof issueFiltersSchema>;
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
 const issueIdParamSchema = z.object({ id: z.uuid() });

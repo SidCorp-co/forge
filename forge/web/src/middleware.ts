@@ -5,7 +5,7 @@ const PUBLIC_ROUTES = ['/', '/login', '/register'];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const jwt = request.cookies.get('forge-jwt')?.value;
+  const jwt = request.cookies.get('forge_auth')?.value;
 
   // Landing page: redirect authenticated users to dashboard
   if (pathname === '/') {

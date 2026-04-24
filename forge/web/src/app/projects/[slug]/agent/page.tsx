@@ -137,7 +137,10 @@ export default function AgentPage() {
 
   // Determine if current user owns the active session
   const activeSession = sessions.find((s) => s.documentId === (sessionId || activeSessionId));
-  const isMySession = !sessionId || !activeSession?.user || activeSession.user.id === user?.id;
+  const isMySession =
+    !sessionId ||
+    !activeSession?.user ||
+    String(activeSession.user.id) === String(user?.id ?? '');
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">

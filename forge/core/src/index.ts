@@ -2,7 +2,10 @@ import type { Server as HttpServer } from 'node:http';
 import { serve } from '@hono/node-server';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import { loginRoutes } from './auth/login.js';
+import { logoutRoutes } from './auth/logout.js';
+import { meRoutes } from './auth/me.js';
 import { refreshRoutes } from './auth/refresh.js';
 import { authRoutes } from './auth/register.js';
 import { verifyRoutes } from './auth/verify.js';
@@ -46,6 +49,23 @@ export const app = new Hono<{ Variables: RequestIdVars }>();
 
 app.use('*', requestId());
 app.use('*', requestLogger());
+
+// Cookie-based auth from browsers requires Access-Control-Allow-Credentials
+// with an explicit origin (never `*`). `CORS_ORIGINS` is a comma-separated
+// allow-list; requests from unlisted origins receive no CORS headers.
+const CORS_ORIGINS = env.CORS_ORIGINS.split(',')
+  .map((s) => s.trim())
+  .filter((s) => s.length > 0);
+app.use(
+  '/api/*',
+  cors({
+    origin: (origin) => (CORS_ORIGINS.includes(origin) ? origin : null),
+    credentials: true,
+    allowHeaders: ['Content-Type', 'Authorization', 'X-Device-Token'],
+    allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    exposeHeaders: ['X-Total-Count'],
+  }),
+);
 
 app.get('/health', async (c) => {
   let dbOk = false;
@@ -125,6 +145,8 @@ app.route('/api/auth', authRoutes);
 app.route('/api/auth', loginRoutes);
 app.route('/api/auth', refreshRoutes);
 app.route('/api/auth', verifyRoutes);
+app.route('/api/auth', meRoutes);
+app.route('/api/auth', logoutRoutes);
 app.route('/api/projects', projectRoutes);
 app.route('/api/projects', memberRoutes);
 app.route('/api/projects', skillSyncRoutes);

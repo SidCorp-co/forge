@@ -21,8 +21,10 @@ export default function RegisterPage() {
     setError('');
     setLoading(true);
     try {
-      await register(username, email, password);
-      router.push('/dashboard');
+      // username is ignored in core registration (email + password only).
+      void username;
+      await register({ email, password });
+      router.push('/login');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
     } finally {

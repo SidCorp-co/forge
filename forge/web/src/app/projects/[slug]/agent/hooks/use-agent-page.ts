@@ -179,7 +179,13 @@ export function useAgentPage() {
   const hasMessages = messages.length > 0;
   const showChangesTab = hasMessages && !isRunning && isCompleted;
   // No active session = new chat (user can send); active session = check ownership
-  const isSessionOwner = !activeSession || !activeSession.user || activeSession.user.id === user?.id;
+  // F2 rewires this page onto forge/core jobs. In F1 we only need the
+  // typecheck to pass — legacy session.user.id is numeric; core user.id is
+  // a uuid string. Compare loosely; this call site is rewritten in F2.
+  const isSessionOwner =
+    !activeSession ||
+    !activeSession.user ||
+    String(activeSession.user.id) === String(user?.id ?? '');
 
   return {
     slug,

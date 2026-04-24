@@ -11,10 +11,12 @@ import { sendVerificationEmail } from './email.js';
 import { hashPassword } from './password.js';
 import { issueVerificationToken } from './verification-token.js';
 
-const registerSchema = z.object({
+export const registerSchema = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email().max(254)),
   password: z.string().min(8).max(1024),
 });
+
+export type RegisterInput = z.infer<typeof registerSchema>;
 
 export const authRoutes = new Hono();
 

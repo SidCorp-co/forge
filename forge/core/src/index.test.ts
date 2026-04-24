@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // Mock the env loader so importing `./index.js` does not require a full env
 // (JWT_SECRET, SMTP_*, etc). Only PORT is used downstream.
 vi.mock('./config/env.js', () => ({
-  env: { PORT: 8080 },
+  env: { PORT: 8080, CORS_ORIGINS: 'http://localhost:3000' },
 }));
 
 // Mock the pg-boss wrapper so importing `./index.js` does not construct a real

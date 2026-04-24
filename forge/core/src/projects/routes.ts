@@ -8,7 +8,7 @@ import { labels, projectMembers, projects } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
-const createProjectSchema = z.object({
+export const createProjectSchema = z.object({
   slug: z
     .string()
     .trim()
@@ -18,13 +18,17 @@ const createProjectSchema = z.object({
   name: z.string().trim().min(1).max(200),
 });
 
-const updateProjectSchema = z
+export type CreateProjectInput = z.infer<typeof createProjectSchema>;
+
+export const updateProjectSchema = z
   .object({
     name: z.string().trim().min(1).max(200).optional(),
     agentConfig: z.record(z.string(), z.unknown()).nullable().optional(),
     webhookSecret: z.string().min(16).max(128).nullable().optional(),
   })
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
+
+export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 
 const idParamSchema = z.object({
   id: z.uuid(),

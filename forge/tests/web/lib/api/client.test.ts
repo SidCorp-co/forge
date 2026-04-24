@@ -1,15 +1,10 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { apiClient, ApiError } from '@/lib/api/client';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError, apiClient, apiClientList } from '@/lib/api/client';
 
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
 beforeEach(() => {
-  vi.stubGlobal('localStorage', {
-    getItem: vi.fn(),
-    setItem: vi.fn(),
-    removeItem: vi.fn(),
-  });
   mockFetch.mockReset();
 });
 
@@ -17,83 +12,116 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function makeJwt(exp: number): string {
-  const header = btoa(JSON.stringify({ alg: 'HS256' }));
-  const payload = btoa(JSON.stringify({ exp }));
-  return `${header}.${payload}.signature`;
-}
-
 describe('apiClient', () => {
-  it('sends correct headers and attaches auth token', async () => {
-    const token = makeJwt(Math.floor(Date.now() / 1000) + 3600);
-    (localStorage.getItem as ReturnType<typeof vi.fn>).mockReturnValue(token);
+  it('sends credentials:include and Content-Type when a body is present', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
+      status: 200,
+      headers: new Headers(),
       json: () => Promise.resolve({ data: 'ok' }),
     });
 
-    await apiClient('/test');
+    await apiClient('/test', { method: 'POST', body: JSON.stringify({ a: 1 }) });
 
     expect(mockFetch).toHaveBeenCalledWith(
       expect.stringContaining('/test'),
       expect.objectContaining({
+        credentials: 'include',
         headers: expect.objectContaining({
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         }),
-      })
+      }),
     );
   });
 
-  it('throws ApiError with status on error response', async () => {
-    (localStorage.getItem as ReturnType<typeof vi.fn>).mockReturnValue(null);
+  it('omits Content-Type for GET requests (no body)', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: () => Promise.resolve({}),
+    });
+
+    await apiClient('/test');
+
+    const headers = mockFetch.mock.calls[0][1].headers;
+    expect(headers).not.toHaveProperty('Content-Type');
+  });
+
+  it('returns undefined on 204 No Content', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 204,
+      headers: new Headers(),
+      json: () => Promise.reject(new Error('should not be called')),
+    });
+
+    const result = await apiClient('/test');
+    expect(result).toBeUndefined();
+  });
+
+  it('throws ApiError carrying status + code + details from a JSON error body', async () => {
     mockFetch.mockResolvedValue({
       ok: false,
       status: 404,
-      text: () => Promise.resolve('Not Found'),
+      statusText: 'Not Found',
+      headers: new Headers(),
+      json: () =>
+        Promise.resolve({
+          message: 'issue not found',
+          code: 'NOT_FOUND',
+          details: { id: 'abc' },
+        }),
     });
 
     await expect(apiClient('/missing')).rejects.toThrow(ApiError);
-    await expect(apiClient('/missing')).rejects.toMatchObject({ status: 404 });
+    await expect(apiClient('/missing')).rejects.toMatchObject({
+      status: 404,
+      message: 'issue not found',
+      code: 'NOT_FOUND',
+      details: { id: 'abc' },
+    });
   });
 
-  it('sends request without Authorization header when no token', async () => {
-    (localStorage.getItem as ReturnType<typeof vi.fn>).mockReturnValue(null);
+  it('falls back to statusText when the error body is not JSON', async () => {
     mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({}),
+      ok: false,
+      status: 500,
+      statusText: 'Internal Server Error',
+      headers: new Headers(),
+      json: () => Promise.reject(new Error('not json')),
     });
 
-    await apiClient('/test');
+    await expect(apiClient('/boom')).rejects.toMatchObject({
+      status: 500,
+      message: 'Internal Server Error',
+    });
+  });
+});
 
-    const headers = mockFetch.mock.calls[0][1].headers;
-    expect(headers).not.toHaveProperty('Authorization');
+describe('apiClientList', () => {
+  it('reads X-Total-Count and wraps the array into { items, totalCount }', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'X-Total-Count': '42' }),
+      json: () => Promise.resolve([{ id: '1' }, { id: '2' }]),
+    });
+
+    const res = await apiClientList<{ id: string }>('/issues');
+    expect(res.items).toHaveLength(2);
+    expect(res.totalCount).toBe(42);
   });
 
-  it('does not attach expired token', async () => {
-    const expired = makeJwt(Math.floor(Date.now() / 1000) - 100);
-    (localStorage.getItem as ReturnType<typeof vi.fn>).mockReturnValue(expired);
+  it('falls back to items.length when X-Total-Count is missing', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({}),
+      status: 200,
+      headers: new Headers(),
+      json: () => Promise.resolve([{ id: '1' }]),
     });
 
-    await apiClient('/test');
-
-    const headers = mockFetch.mock.calls[0][1].headers;
-    expect(headers).not.toHaveProperty('Authorization');
-  });
-
-  it('treats malformed token as expired', async () => {
-    (localStorage.getItem as ReturnType<typeof vi.fn>).mockReturnValue('not-a-jwt');
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({}),
-    });
-
-    await apiClient('/test');
-
-    const headers = mockFetch.mock.calls[0][1].headers;
-    expect(headers).not.toHaveProperty('Authorization');
+    const res = await apiClientList<{ id: string }>('/issues');
+    expect(res.totalCount).toBe(1);
   });
 });

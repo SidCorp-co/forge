@@ -1,88 +1,106 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
-import { authApi } from '@/lib/api/auth-api';
+import type { LoginInput, RegisterInput, User as CoreUser } from '@forge/contracts';
 
-interface User {
-  id: number;
-  username: string;
-  email: string;
-  chatLogAccess?: boolean;
+/**
+ * Legacy Strapi-era fields surfaced as optional so F2-bound call sites
+ * (dashboards, CEO pages, sidebar flags) keep compiling. Every reader falls
+ * back to the `undefined` branch. These keys are removed once F2 finishes
+ * the feature-module rewire and ISS-211 introduces the real `roles` model.
+ */
+export type User = CoreUser & {
+  username?: string;
   isCEO?: boolean;
-}
+  chatLogAccess?: boolean;
+};
+import { useRouter } from 'next/navigation';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from 'react';
+import { authApi } from '@/lib/api/auth-api';
+import { ApiError } from '@/lib/api/client';
 
 interface AuthState {
   user: User | null;
-  token: string | null;
   isLoading: boolean;
-  login: (identifier: string, password: string) => Promise<void>;
-  register: (username: string, email: string, password: string) => Promise<void>;
-  logout: () => void;
+  login: (input: LoginInput) => Promise<void>;
+  register: (input: RegisterInput) => Promise<void>;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
 
-function setJwtCookie(token: string | null) {
-  if (token) {
-    document.cookie = `forge-jwt=${token}; path=/; samesite=lax; max-age=2592000`;
-  } else {
-    document.cookie = 'forge-jwt=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-  }
+const REFRESH_TOKEN_KEY = 'forge_refresh_token';
+
+function storeRefreshToken(token: string | null) {
+  if (typeof window === 'undefined') return;
+  if (token) window.localStorage.setItem(REFRESH_TOKEN_KEY, token);
+  else window.localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const jwt = localStorage.getItem('jwt');
-    if (!jwt) {
-      setIsLoading(false);
-      return;
-    }
-    authApi.verify(jwt)
-      .then((data) => {
-        setUser(data);
-        setToken(jwt);
-        setJwtCookie(jwt);
-      })
-      .catch(() => {
-        localStorage.removeItem('jwt');
-        setJwtCookie(null);
-      })
-      .finally(() => setIsLoading(false));
-  }, []);
-
-  const login = useCallback(async (identifier: string, password: string) => {
-    const data = await authApi.login(identifier, password);
-    localStorage.setItem('jwt', data.jwt);
-    setJwtCookie(data.jwt);
-    setToken(data.jwt);
-    setUser(data.user);
-  }, []);
-
-  const register = useCallback(async (username: string, email: string, password: string) => {
-    const data = await authApi.register(username, email, password);
-    localStorage.setItem('jwt', data.jwt);
-    setJwtCookie(data.jwt);
-    setToken(data.jwt);
-    setUser(data.user);
-  }, []);
-
   const router = useRouter();
 
-  const logout = useCallback(() => {
-    localStorage.removeItem('jwt');
-    setJwtCookie(null);
-    setToken(null);
+  // On mount, hydrate from /auth/me (cookie may be set from a prior session).
+  useEffect(() => {
+    let cancelled = false;
+    authApi
+      .me()
+      .then((me) => {
+        if (!cancelled) setUser(me);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        // Unauthenticated on mount is the common case on first load.
+        if (!(err instanceof ApiError && err.status === 401)) {
+          // Log unexpected errors; do not block render.
+          console.warn('auth hydration failed', err);
+        }
+        storeRefreshToken(null);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const login = useCallback(async (input: LoginInput) => {
+    const res = await authApi.login(input);
+    storeRefreshToken(res.refreshToken);
+    // /auth/me returns the canonical shape including createdAt — use it as the
+    // source of truth rather than constructing a partial user from the login
+    // response body.
+    const me = await authApi.me();
+    setUser(me);
+  }, []);
+
+  const register = useCallback(async (input: RegisterInput) => {
+    await authApi.register(input);
+    // Registration does not sign the user in — caller should navigate to /login.
+  }, []);
+
+  const logout = useCallback(async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      // Server-side logout is best-effort; always clear client state.
+    }
+    storeRefreshToken(null);
     setUser(null);
     router.push('/login');
   }, [router]);
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );
@@ -90,11 +108,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 const defaultAuth: AuthState = {
   user: null,
-  token: null,
   isLoading: true,
   login: async () => {},
   register: async () => {},
-  logout: () => {},
+  logout: async () => {},
 };
 
 export function useAuth() {
