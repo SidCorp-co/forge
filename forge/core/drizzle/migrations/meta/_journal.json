@@ -36,6 +36,13 @@
       "when": 1777004179844,
       "tag": "0004_issues_phase23_f1",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1777005808575,
+      "tag": "0005_issues_reopen_count",
+      "breakpoints": true
     }
   ]
 }

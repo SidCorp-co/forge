@@ -8,6 +8,8 @@ export interface PublishEnvelope {
   data: unknown;
 }
 
+export const projectRoom = (projectId: string): string => `project:${projectId}`;
+
 const OPEN = 1;
 
 export class RoomManager {

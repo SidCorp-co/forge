@@ -642,7 +642,7 @@ describe('db/schema — issues', () => {
     expect(issuePriorities).toEqual(['critical', 'high', 'medium', 'low', 'none']);
   });
 
-  it('has the thirteen documented columns', () => {
+  it('has the fourteen documented columns', () => {
     const names = getTableConfig(issues).columns.map((c) => c.name);
     expect(names.sort()).toEqual(
       [
@@ -656,11 +656,20 @@ describe('db/schema — issues', () => {
         'parent_issue_id',
         'priority',
         'project_id',
+        'reopen_count',
         'status',
         'title',
         'updated_at',
       ].sort(),
     );
+  });
+
+  it('reopen_count is notNull integer with default 0 (F4 reopen-cap tracking)', () => {
+    const c = columnByName(issues, 'reopen_count');
+    expect(c.notNull).toBe(true);
+    expect(c.columnType).toBe('PgInteger');
+    expect(c.hasDefault).toBe(true);
+    expect(c.default).toBe(0);
   });
 
   it('id is uuid PK with defaultRandom', () => {

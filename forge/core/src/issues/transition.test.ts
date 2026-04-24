@@ -1,0 +1,211 @@
+import { Hono } from 'hono';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
+
+vi.mock('../config/env.js', () => ({
+  env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
+}));
+
+const selectLimit = vi.fn();
+const selectWhere = vi.fn(() => ({ limit: selectLimit }));
+const selectFrom = vi.fn(() => ({ where: selectWhere }));
+
+const updateReturning = vi.fn();
+const updateWhere = vi.fn(() => ({ returning: updateReturning }));
+const updateSet = vi.fn(() => ({ where: updateWhere }));
+const dbUpdate = vi.fn(() => ({ set: updateSet }));
+
+vi.mock('../db/client.js', () => ({
+  db: {
+    select: vi.fn(() => ({ from: selectFrom })),
+    update: dbUpdate,
+  },
+}));
+
+const publish = vi.fn();
+vi.mock('../ws/server.js', () => ({
+  roomManager: { publish: (...args: unknown[]) => publish(...args) },
+}));
+
+const { transitionRoutes } = await import('./transition.js');
+const { signUserToken } = await import('../auth/jwt.js');
+const { errorHandler } = await import('../middleware/error.js');
+const { requestId } = await import('../middleware/request-id.js');
+
+function buildApp() {
+  const app = new Hono<{ Variables: import('../middleware/request-id.js').RequestIdVars }>();
+  app.use('*', requestId());
+  app.route('/api/issues', transitionRoutes);
+  app.onError(errorHandler);
+  return app;
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  selectLimit.mockReset();
+  updateReturning.mockReset();
+  publish.mockReset();
+});
+
+const ISSUE_ID = '11111111-1111-4111-8111-111111111111';
+const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
+const USER_ID = '33333333-3333-4333-8333-333333333333';
+
+function req(body: unknown, token?: string) {
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (token) headers.authorization = `Bearer ${token}`;
+  return buildApp().request(`/api/issues/${ISSUE_ID}/transition`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+}
+
+function queueAuthAndIssue(row: {
+  status: string;
+  reopenCount?: number;
+  verified?: boolean;
+  member?: boolean;
+}) {
+  // 1) assertEmailVerified select
+  selectLimit.mockResolvedValueOnce([
+    { emailVerifiedAt: row.verified === false ? null : new Date() },
+  ]);
+  // 2) issue row lookup
+  selectLimit.mockResolvedValueOnce([
+    { id: ISSUE_ID, projectId: PROJECT_ID, status: row.status, reopenCount: row.reopenCount ?? 0 },
+  ]);
+  // 3) project membership lookup
+  selectLimit.mockResolvedValueOnce(row.member === false ? [] : [{ role: 'member' }]);
+}
+
+describe('POST /api/issues/:id/transition', () => {
+  it('401 without bearer token', async () => {
+    const res = await req({ toStatus: 'confirmed' });
+    expect(res.status).toBe(401);
+  });
+
+  it('404 when issue does not exist', async () => {
+    const token = await signUserToken(USER_ID);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    selectLimit.mockResolvedValueOnce([]);
+    const res = await req({ toStatus: 'confirmed' }, token);
+    expect(res.status).toBe(404);
+  });
+
+  it('403 when user is not a project member', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'open', member: false });
+    const res = await req({ toStatus: 'confirmed' }, token);
+    expect(res.status).toBe(403);
+  });
+
+  it('400 on unknown body field (strict)', async () => {
+    const token = await signUserToken(USER_ID);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    const res = await req({ toStatus: 'confirmed', bogus: 1 }, token);
+    expect(res.status).toBe(400);
+  });
+
+  it('400 on invalid toStatus', async () => {
+    const token = await signUserToken(USER_ID);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    const res = await req({ toStatus: 'nonsense' }, token);
+    expect(res.status).toBe(400);
+  });
+
+  it('409 NO_OP when toStatus equals current status', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'open' });
+    const res = await req({ toStatus: 'open' }, token);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('NO_OP');
+  });
+
+  it('409 ILLEGAL_TRANSITION includes allowed list', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'open' });
+    const res = await req({ toStatus: 'released' }, token);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string; details: { allowed: string[] } };
+    expect(body.code).toBe('ILLEGAL_TRANSITION');
+    expect(body.details.allowed).toEqual(['confirmed', 'needs_info', 'on_hold']);
+    expect(dbUpdate).not.toHaveBeenCalled();
+  });
+
+  it('422 REOPEN_CAP_EXCEEDED at 5 without override', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'closed', reopenCount: 5 });
+    const res = await req({ toStatus: 'reopen' }, token);
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { code: string; details: { max: number } };
+    expect(body.code).toBe('REOPEN_CAP_EXCEEDED');
+    expect(body.details.max).toBe(5);
+  });
+
+  it('403 OVERRIDE_DENIED when non-owner requests override', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'closed', reopenCount: 5 });
+    selectLimit.mockResolvedValueOnce([{ ownerId: 'someone-else' }]);
+    const res = await req({ toStatus: 'reopen', override: true }, token);
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('OVERRIDE_DENIED');
+  });
+
+  it('200 when owner overrides the reopen cap', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'closed', reopenCount: 5 });
+    selectLimit.mockResolvedValueOnce([{ ownerId: USER_ID }]);
+    updateReturning.mockResolvedValueOnce([
+      { id: ISSUE_ID, status: 'reopen', reopenCount: 6, updatedAt: new Date() },
+    ]);
+    const res = await req({ toStatus: 'reopen', override: true }, token);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: string; reopenCount: number };
+    expect(body.status).toBe('reopen');
+    expect(body.reopenCount).toBe(6);
+    expect(publish).toHaveBeenCalledOnce();
+  });
+
+  it('200 closed → reopen increments reopen_count', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'closed', reopenCount: 0 });
+    updateReturning.mockResolvedValueOnce([
+      { id: ISSUE_ID, status: 'reopen', reopenCount: 1, updatedAt: new Date() },
+    ]);
+    const res = await req({ toStatus: 'reopen' }, token);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { reopenCount: number };
+    expect(body.reopenCount).toBe(1);
+  });
+
+  it('200 non-reopen transition does not touch reopen_count', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'reopen', reopenCount: 2 });
+    updateReturning.mockResolvedValueOnce([
+      { id: ISSUE_ID, status: 'developed', reopenCount: 2, updatedAt: new Date() },
+    ]);
+    const res = await req({ toStatus: 'developed', reason: 'fix pushed' }, token);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { reopenCount: number };
+    expect(body.reopenCount).toBe(2);
+    expect(publish).toHaveBeenCalledOnce();
+    const [room, envelope] = publish.mock.calls[0] as [string, { event: string; data: unknown }];
+    expect(room).toBe(`project:${PROJECT_ID}`);
+    expect(envelope.event).toBe('issue.statusChanged');
+  });
+
+  it('409 STALE_TRANSITION when conditional UPDATE finds no matching row', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'open' });
+    updateReturning.mockResolvedValueOnce([]); // concurrent writer won
+    const res = await req({ toStatus: 'confirmed' }, token);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('STALE_TRANSITION');
+    expect(publish).not.toHaveBeenCalled();
+  });
+});

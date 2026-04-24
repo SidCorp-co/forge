@@ -8,6 +8,7 @@ import { authRoutes } from './auth/register.js';
 import { verifyRoutes } from './auth/verify.js';
 import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
+import { transitionRoutes } from './issues/transition.js';
 import { logger } from './logger.js';
 import { mcpHandler } from './mcp/handler.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
@@ -92,6 +93,7 @@ app.route('/api/auth', loginRoutes);
 app.route('/api/auth', refreshRoutes);
 app.route('/api/auth', verifyRoutes);
 app.route('/api/projects', projectRoutes);
+app.route('/api/issues', transitionRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 
