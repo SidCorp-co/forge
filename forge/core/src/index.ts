@@ -15,7 +15,9 @@ import { searchRoutes } from './issues/search.js';
 import { transitionRoutes } from './issues/transition.js';
 import { registerDispatcher, unregisterDispatcher } from './jobs/dispatcher.js';
 import { jobEventsRoutes } from './jobs/events-routes.js';
+import { jobLifecycleDeviceRoutes, jobLifecycleUserRoutes } from './jobs/lifecycle-routes.js';
 import { jobProjectRoutes, jobRoutes } from './jobs/routes.js';
+import { registerStaleDetector } from './jobs/stale-detector.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
 import { logger } from './logger.js';
 import { mcpHandler } from './mcp/handler.js';
@@ -122,6 +124,8 @@ app.route('/api/comments', commentRoutes);
 app.route('/api/labels', labelRoutes);
 app.route('/api/jobs', jobRoutes);
 app.route('/api/jobs', jobEventsRoutes);
+app.route('/api/jobs', jobLifecycleDeviceRoutes);
+app.route('/api/jobs', jobLifecycleUserRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 
@@ -130,6 +134,7 @@ if (isMain) {
 
   await startBoss();
   await registerDispatcher();
+  await registerStaleDetector();
 
   const server = serve({ fetch: app.fetch, port }, (info) => {
     logger.info({ port: info.port }, '@forge/core listening');

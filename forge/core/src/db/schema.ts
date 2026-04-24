@@ -1,6 +1,7 @@
 import { relations, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
+  boolean,
   foreignKey,
   index,
   integer,
@@ -235,6 +236,10 @@ export const jobs = pgTable(
     exitCode: integer('exit_code'),
     error: text('error'),
     modelTier: text('model_tier', { enum: modelTiers }),
+    attempts: integer('attempts').notNull().default(1),
+    maxAttempts: integer('max_attempts').notNull().default(3),
+    cancellationRequested: boolean('cancellation_requested').notNull().default(false),
+    retryOf: uuid('retry_of').references((): AnyPgColumn => jobs.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -242,6 +247,7 @@ export const jobs = pgTable(
     deviceIdIdx: index('jobs_device_id_idx').on(t.deviceId),
     issueIdIdx: index('jobs_issue_id_idx').on(t.issueId),
     statusIdx: index('jobs_status_idx').on(t.status),
+    retryOfIdx: index('jobs_retry_of_idx').on(t.retryOf),
   }),
 );
 
