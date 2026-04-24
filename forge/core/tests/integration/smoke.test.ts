@@ -120,6 +120,76 @@ describe('integration smoke', () => {
     expect(bRows.map((r) => Number((r as { iss_seq: number }).iss_seq))).toEqual([1]);
   });
 
+  it('project invitation flow: partial-unique blocks duplicate pending invites', async () => {
+    const owner = await createTestUser(harness.db);
+    const invitee = await createTestUser(harness.db, { email: 'invitee@test.local' });
+    const project = await createTestProject(harness.db, owner.id);
+    await createTestProjectMember(harness.db, {
+      userId: owner.id,
+      projectId: project.id,
+      role: 'owner',
+    });
+
+    await harness.db.execute(sql`
+      INSERT INTO project_invitations (token, project_id, email, role, inviter_id, expires_at)
+      VALUES ('tok-1', ${project.id}, 'invitee@test.local', 'member', ${owner.id}, now() + interval '60 seconds')
+    `);
+
+    let dupErr: unknown;
+    try {
+      await harness.db.execute(sql`
+        INSERT INTO project_invitations (token, project_id, email, role, inviter_id, expires_at)
+        VALUES ('tok-2', ${project.id}, 'invitee@test.local', 'member', ${owner.id}, now() + interval '60 seconds')
+      `);
+    } catch (err) {
+      dupErr = err;
+    }
+    expect(dupErr).toBeDefined();
+    const pgCode =
+      (dupErr as { code?: string })?.code ?? (dupErr as { cause?: { code?: string } })?.cause?.code;
+    expect(pgCode).toBe('23505');
+
+    await harness.db.execute(sql`
+      UPDATE project_invitations SET accepted_at = now() WHERE token = 'tok-1'
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO project_invitations (token, project_id, email, role, inviter_id, expires_at)
+      VALUES ('tok-3', ${project.id}, 'invitee@test.local', 'member', ${owner.id}, now() + interval '60 seconds')
+    `);
+
+    await harness.db.execute(sql`
+      INSERT INTO project_members (user_id, project_id, role)
+      VALUES (${invitee.id}, ${project.id}, 'member')
+    `);
+
+    const members = await harness.db.execute<{ count: string }>(
+      sql`SELECT count(*)::text AS count FROM project_members WHERE project_id = ${project.id}`,
+    );
+    expect((members[0] as { count: string }).count).toBe('2');
+  });
+
+  it('project_invitations cascade when project is deleted', async () => {
+    const owner = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, owner.id);
+    await createTestProjectMember(harness.db, {
+      userId: owner.id,
+      projectId: project.id,
+      role: 'owner',
+    });
+
+    await harness.db.execute(sql`
+      INSERT INTO project_invitations (token, project_id, email, role, inviter_id, expires_at)
+      VALUES ('tok-x', ${project.id}, 'x@e.co', 'member', ${owner.id}, now() + interval '60 seconds')
+    `);
+
+    await harness.db.execute(sql`DELETE FROM projects WHERE id = ${project.id}`);
+
+    const rows = await harness.db.execute<{ count: string }>(
+      sql`SELECT count(*)::text AS count FROM project_invitations`,
+    );
+    expect((rows[0] as { count: string }).count).toBe('0');
+  });
+
   it('cascading deletes: removing a project wipes its issues, comments, labels, counter', async () => {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);

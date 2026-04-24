@@ -20,6 +20,7 @@ import {
   labels,
   modelTiers,
   pairingCodes,
+  projectInvitations,
   projectIssCounters,
   projectMemberRoles,
   projectMembers,
@@ -44,7 +45,8 @@ type AnyTable =
   | typeof labels
   | typeof issueLabels
   | typeof activityLog
-  | typeof projectIssCounters;
+  | typeof projectIssCounters
+  | typeof projectInvitations;
 
 function columnByName(table: AnyTable, name: string) {
   const cfg = getTableConfig(table);
@@ -808,6 +810,65 @@ describe('db/schema — issue_labels', () => {
     const cfg = getTableConfig(issueLabels);
     expect(cfg.foreignKeys).toHaveLength(2);
     for (const fk of cfg.foreignKeys) expect(fk.onDelete).toBe('cascade');
+  });
+});
+
+describe('db/schema — project_invitations', () => {
+  it('has the eight documented columns', () => {
+    const names = getTableConfig(projectInvitations).columns.map((c) => c.name);
+    expect(names.sort()).toEqual(
+      [
+        'accepted_at',
+        'created_at',
+        'email',
+        'expires_at',
+        'inviter_id',
+        'project_id',
+        'role',
+        'token',
+      ].sort(),
+    );
+  });
+
+  it('token is the primary key', () => {
+    expect(columnByName(projectInvitations, 'token').primary).toBe(true);
+  });
+
+  it('FKs: project cascades, inviter cascades', () => {
+    const cfg = getTableConfig(projectInvitations);
+    expect(cfg.foreignKeys).toHaveLength(2);
+    const byCol = new Map(
+      cfg.foreignKeys.map((fk) => [fk.reference().columns[0]?.name ?? '', fk] as const),
+    );
+    expect(byCol.get('project_id')?.onDelete).toBe('cascade');
+    expect(byCol.get('inviter_id')?.onDelete).toBe('cascade');
+  });
+
+  it('role enum matches projectMemberRoles', () => {
+    const r = columnByName(projectInvitations, 'role');
+    expect(r.notNull).toBe(true);
+    expect(r.enumValues).toEqual([...projectMemberRoles]);
+  });
+
+  it('expires_at notNull timestamptz, accepted_at nullable timestamptz', () => {
+    const exp = columnByName(projectInvitations, 'expires_at');
+    expect(exp.notNull).toBe(true);
+    expect(withTimezone(exp)).toBe(true);
+    const acc = columnByName(projectInvitations, 'accepted_at');
+    expect(acc.notNull).toBe(false);
+    expect(withTimezone(acc)).toBe(true);
+  });
+
+  it('has index on (project_id, email) and partial-unique on same with accepted_at IS NULL', () => {
+    const cfg = getTableConfig(projectInvitations);
+    expect(cfg.indexes.some((i) => i.config.name === 'project_invitations_project_email_idx')).toBe(
+      true,
+    );
+    const uq = cfg.indexes.find(
+      (i) => i.config.name === 'project_invitations_project_email_pending_uq',
+    );
+    if (!uq) throw new Error('expected partial-unique index');
+    expect(uq.config.unique).toBe(true);
   });
 });
 

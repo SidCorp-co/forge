@@ -1,4 +1,4 @@
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   foreignKey,
@@ -103,6 +103,41 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
 export const projectMembersRelations = relations(projectMembers, ({ one }) => ({
   project: one(projects, { fields: [projectMembers.projectId], references: [projects.id] }),
   user: one(users, { fields: [projectMembers.userId], references: [users.id] }),
+}));
+
+export const projectInvitations = pgTable(
+  'project_invitations',
+  {
+    token: text('token').primaryKey(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    role: text('role', { enum: projectMemberRoles }).notNull(),
+    inviterId: uuid('inviter_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectEmailIdx: index('project_invitations_project_email_idx').on(t.projectId, t.email),
+    projectEmailPendingUq: uniqueIndex('project_invitations_project_email_pending_uq')
+      .on(t.projectId, t.email)
+      .where(sql`accepted_at IS NULL`),
+  }),
+);
+
+export const projectInvitationsRelations = relations(projectInvitations, ({ one }) => ({
+  project: one(projects, {
+    fields: [projectInvitations.projectId],
+    references: [projects.id],
+  }),
+  inviter: one(users, {
+    fields: [projectInvitations.inviterId],
+    references: [users.id],
+  }),
 }));
 
 export const devicePlatforms = ['macos', 'linux', 'windows'] as const;
