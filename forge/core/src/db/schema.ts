@@ -248,6 +248,9 @@ export const jobs = pgTable(
     issueIdIdx: index('jobs_issue_id_idx').on(t.issueId),
     statusIdx: index('jobs_status_idx').on(t.status),
     retryOfIdx: index('jobs_retry_of_idx').on(t.retryOf),
+    activeUniqueIdx: uniqueIndex('jobs_active_unique')
+      .on(t.issueId, t.type)
+      .where(sql`status IN ('queued','dispatched','running') AND issue_id IS NOT NULL`),
   }),
 );
 

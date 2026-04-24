@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "jobs_active_unique" ON "jobs" USING btree ("issue_id","type") WHERE status IN ('queued','dispatched','running') AND issue_id IS NOT NULL;

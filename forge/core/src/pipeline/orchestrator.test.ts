@@ -45,6 +45,13 @@ type TransitionPayload = {
   reopenCount: number;
 };
 
+type CreatedPayload = {
+  issueId: string;
+  projectId: string;
+  actor: { type: 'user' | 'device'; id: string };
+  snapshot: Record<string, unknown>;
+};
+
 function makeBus() {
   const bus = new HooksBus();
   registerPipelineOrchestrator(bus);
@@ -59,6 +66,16 @@ function transition(overrides: Partial<TransitionPayload> = {}): TransitionPaylo
     from: 'open',
     to: 'confirmed',
     reopenCount: 0,
+    ...overrides,
+  };
+}
+
+function issueCreated(overrides: Partial<CreatedPayload> = {}): CreatedPayload {
+  return {
+    issueId: 'iss-1',
+    projectId: 'proj-1',
+    actor: { type: 'user', id: 'u-1' },
+    snapshot: {},
     ...overrides,
   };
 }
@@ -133,6 +150,17 @@ describe('pipeline/orchestrator', () => {
     expect(enqueueMock).not.toHaveBeenCalled();
   });
 
+  it('treats a unique-index violation on insert as a dedupe skip', async () => {
+    cfgResolved({ enabled: true, autoPlan: true });
+    nextSelect.mockResolvedValueOnce([]); // no existing in read path
+    insertReturning.mockRejectedValueOnce(Object.assign(new Error('dup'), { code: '23505' }));
+
+    const bus = makeBus();
+    await bus.emit('transition', transition() as never);
+
+    expect(enqueueMock).not.toHaveBeenCalled();
+  });
+
   it('falls back to project owner for createdBy on device-triggered transitions', async () => {
     cfgResolved({ enabled: true, autoReview: true });
     nextSelect.mockResolvedValueOnce([]); // no existing
@@ -150,5 +178,26 @@ describe('pipeline/orchestrator', () => {
 
     expect(dbInsert).toHaveBeenCalledTimes(1);
     expect(enqueueMock).toHaveBeenCalledWith('job-x');
+  });
+
+  it('enqueues a triage job on issueCreated when autoTriage is true', async () => {
+    cfgResolved({ enabled: true, autoTriage: true });
+    nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+    insertReturning.mockResolvedValueOnce([{ id: 'triage-job' }]);
+
+    const bus = makeBus();
+    await bus.emit('issueCreated', issueCreated() as never);
+
+    expect(dbInsert).toHaveBeenCalledTimes(1);
+    expect(enqueueMock).toHaveBeenCalledWith('triage-job');
+  });
+
+  it('does not enqueue on issueCreated when autoTriage is false', async () => {
+    cfgResolved({ enabled: true, autoTriage: false });
+
+    const bus = makeBus();
+    await bus.emit('issueCreated', issueCreated() as never);
+
+    expect(dbInsert).not.toHaveBeenCalled();
   });
 });

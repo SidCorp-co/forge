@@ -5,29 +5,42 @@ import { boss } from '../queue/boss.js';
 
 export const RETENTION_QUEUE = 'job-event-retention';
 
+const BATCH_SIZE = 10_000;
+
+function deletedCount(result: unknown): number {
+  // postgres-js returns `count`; node-pg returns `rowCount`. Other drivers
+  // without RETURNING cannot report a deletion count — treat as 0 and rely
+  // on the batch loop terminating when we see a short batch.
+  const r = result as { count?: unknown; rowCount?: unknown } | null;
+  if (typeof r?.count === 'number') return r.count;
+  if (typeof r?.rowCount === 'number') return r.rowCount;
+  return 0;
+}
+
 /**
  * Delete job_events rows older than 30 days for jobs in terminal states.
  * Preserves the parent jobs row for audit; only trims event history.
+ * Runs in 10k-row batches to avoid long locks on large tables.
  */
 export async function runRetentionSweep(): Promise<{ deleted: number; durationMs: number }> {
   const t0 = Date.now();
-  const result = await db.execute(sql`
-    DELETE FROM job_events
-    WHERE ts < now() - interval '30 days'
-      AND job_id IN (SELECT id FROM jobs WHERE status IN ('done', 'failed', 'cancelled'))
-  `);
-  // postgres-js returns `count` on the Result; different shapes across versions.
-  // biome-ignore lint/suspicious/noExplicitAny: postgres-js result shape varies
-  const anyResult = result as any;
-  const deleted =
-    typeof anyResult?.count === 'number'
-      ? anyResult.count
-      : typeof anyResult?.rowCount === 'number'
-        ? anyResult.rowCount
-        : Array.isArray(anyResult)
-          ? anyResult.length
-          : 0;
-  return { deleted, durationMs: Date.now() - t0 };
+  let total = 0;
+  // Cap iterations defensively so a buggy count never spins forever.
+  for (let i = 0; i < 1000; i++) {
+    const result = await db.execute(sql`
+      DELETE FROM job_events
+      WHERE id IN (
+        SELECT id FROM job_events
+        WHERE ts < now() - interval '30 days'
+          AND job_id IN (SELECT id FROM jobs WHERE status IN ('done', 'failed', 'cancelled'))
+        LIMIT ${BATCH_SIZE}
+      )
+    `);
+    const batch = deletedCount(result);
+    total += batch;
+    if (batch < BATCH_SIZE) break;
+  }
+  return { deleted: total, durationMs: Date.now() - t0 };
 }
 
 let registered = false;
