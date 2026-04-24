@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+// Empty strings from `${VAR}` in docker-compose collapse to "" not undefined.
+// Treat empty as missing so optional fields don't trip on coercion.
+const cleanedEnv = Object.fromEntries(
+  Object.entries(process.env).map(([k, v]) => [k, v === '' ? undefined : v]),
+);
+
 const EnvSchema = z.object({
   DATABASE_URL: z.url(),
   JWT_SECRET: z.string().min(32),
@@ -40,7 +46,7 @@ const EnvSchema = z.object({
 
 export type Env = z.infer<typeof EnvSchema>;
 
-const parsed = EnvSchema.safeParse(process.env);
+const parsed = EnvSchema.safeParse(cleanedEnv);
 if (!parsed.success) {
   const issues = parsed.error.issues
     .map((i) => `  - ${i.path.join('.') || '(root)'}: ${i.message}`)

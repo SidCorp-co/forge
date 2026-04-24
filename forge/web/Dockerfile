@@ -18,14 +18,15 @@ ARG NEXT_PUBLIC_API_URL=http://localhost:8080/api
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN pnpm build
 
-# Production runtime
+# Production runtime — Next.js monorepo standalone places server.js at forge/web/
 FROM node:22-alpine AS production
 WORKDIR /app
 
 COPY --from=base /repo/forge/web/.next/standalone ./
-COPY --from=base /repo/forge/web/.next/static ./.next/static
-COPY --from=base /repo/forge/web/public ./public
+COPY --from=base /repo/forge/web/.next/static ./forge/web/.next/static
+COPY --from=base /repo/forge/web/public ./forge/web/public
 
+WORKDIR /app/forge/web
 EXPOSE 3000
 ENV HOSTNAME=0.0.0.0
 CMD ["node", "server.js"]
