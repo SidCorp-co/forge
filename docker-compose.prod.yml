@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg17
     restart: unless-stopped
     environment:
       POSTGRES_DB: forge
@@ -37,8 +37,8 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
       SMTP_FROM: ${SMTP_FROM}
-      APP_BASE_URL: https://jarvis-agent.thejunix.com
-      CORS_ORIGINS: https://jarvis-agent.thejunix.com
+      APP_BASE_URL: ${APP_BASE_URL:-https://jarvis-agent.thejunix.com}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://jarvis-agent.thejunix.com}
       LITELLM_API_URL: ${LITELLM_API_URL:-}
       LITELLM_API_KEY: ${LITELLM_API_KEY:-}
       LITELLM_MODEL: ${LITELLM_MODEL:-}

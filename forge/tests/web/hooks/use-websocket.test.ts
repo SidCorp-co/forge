@@ -57,7 +57,7 @@ describe('useWebSocket', () => {
     renderHook(() => useWebSocket(), { wrapper });
 
     expect(mockInstances).toHaveLength(1);
-    expect(mockInstances[0].url).toBe('ws://localhost:1337/ws');
+    expect(mockInstances[0].url).toBe('ws://localhost:8080/ws');
   });
 
   it('reconnects with exponential backoff', async () => {

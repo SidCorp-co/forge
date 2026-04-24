@@ -1,7 +1,7 @@
 services:
   # === Database (pgvector for embeddings — ADR 0011) ===
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg17
     restart: unless-stopped
     environment:
       POSTGRES_DB: forge

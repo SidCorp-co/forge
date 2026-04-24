@@ -7,7 +7,6 @@ Project management + AI agent platform.
 | You are about to... | Required reading |
 |---|---|
 | Touch `forge/core/` (the new Hono+Drizzle backend) | [docs/rfcs/0002](docs/rfcs/0002-replace-strapi-with-hono-drizzle.md) + [docs/proposals/core-strapi-decoupling.md](docs/proposals/core-strapi-decoupling.md) |
-| Add or change anything in `forge/strapi/` | **STOP** — Strapi is being removed (RFC 0002). Ask before extending. |
 | Touch `forge/app/` (mobile) | **STOP** — paused per [ADR 0009](docs/decisions/0009-mobile-app-paused-for-v0x.md). Ask before changing. |
 | Change auth, queue, vector storage, license, or any cross-cutting choice | Find the matching ADR in [docs/decisions/](docs/decisions/). Do not contradict. |
 | Build a feature in an existing module (issues, agents, devices, chat, skills, memory) | The matching `docs/modules/<name>/README.md` |
@@ -19,7 +18,7 @@ If a doc disagrees with the code, **trust the code, then propose a doc fix** —
 ## Current state (2026-04)
 
 - **Backend:** `forge/core` (Hono + Drizzle + pg-boss + ws + MCP). Single process, single Postgres for data + jobs + vectors (`pgvector`). See [RFC 0002](docs/rfcs/0002-replace-strapi-with-hono-drizzle.md) + [docs/proposals/core-strapi-decoupling.md](docs/proposals/core-strapi-decoupling.md).
-- **`forge/strapi/`** — legacy package, scheduled for deletion at the Phase 2.5 flip PR. Do not add features, endpoints, or content types.
+- **`forge/strapi/`** — removed at Phase 2.8-F1 (ISS-219); archive preserved at `legacy/strapi-v0` tag.
 - **`forge/app/`** — paused per [ADR 0009](docs/decisions/0009-mobile-app-paused-for-v0x.md). No development.
 
 ## Packages
@@ -27,7 +26,6 @@ If a doc disagrees with the code, **trust the code, then propose a doc fix** —
 - **forge/core/** — Hono + Drizzle backend (the backend)
 - **forge/web/** — Next.js 16 cloud UI
 - **forge/dev/** — Tauri desktop app
-- **forge/strapi/** — legacy, being deleted
 - **forge/app/** — paused (ADR 0009)
 
 `forge/core/`, `forge/web/`, `forge/dev/` join a pnpm workspace at `forge/`. Each other package is independent.

@@ -2,11 +2,11 @@ import * as SecureStore from 'expo-secure-store';
 import { toByteArray } from 'base64-js';
 import { API_URL } from './constants';
 
-const STRAPI_URL = API_URL.replace(/\/api\/?$/, '');
+const API_ORIGIN = API_URL.replace(/\/api\/?$/, '');
 
-export function strapiMediaUrl(url: string): string {
+export function mediaUrl(url: string): string {
   if (url.startsWith('http')) return url;
-  return `${STRAPI_URL}${url}`;
+  return `${API_ORIGIN}${url}`;
 }
 
 export class ApiError extends Error {

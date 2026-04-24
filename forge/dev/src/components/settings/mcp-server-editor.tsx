@@ -150,7 +150,7 @@ export function McpServerEditor({ name: initialName, server, onSave, onCancel, i
               type="text"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="e.g. http://localhost:1337/mcp"
+              placeholder="e.g. http://localhost:8080/mcp"
               className="w-full rounded border border-gray-200 bg-white px-2 py-1 text-sm focus:border-blue-400 focus:outline-none"
             />
           </div>

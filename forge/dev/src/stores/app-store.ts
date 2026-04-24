@@ -83,7 +83,7 @@ export const useAppStore = create<AppState>((set) => ({
     set({ agentUsage: EMPTY_USAGE }),
 
   config: {
-    coreUrl: "http://localhost:1337",
+    coreUrl: "http://localhost:8080",
     authToken: "",
     projects: {},
     deviceId: "",

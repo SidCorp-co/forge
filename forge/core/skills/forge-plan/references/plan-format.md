@@ -28,7 +28,7 @@ Write it so all three audiences can use it without needing additional context.
 1. **<Test name>**
    - `<METHOD> <path>` — <body/params if any>
    - Expected: <status code> + <key response fields and values that QA will verify>
-   - Example: `curl -X POST http://localhost:1337/api/... -H 'Authorization: Bearer $TOKEN' -d '...'`
+   - Example: `curl -X POST http://localhost:8080/api/... -H 'Authorization: Bearer $TOKEN' -d '...'`
 
 ## QA Scenarios
 <Test scenarios for forge-test to execute against the preview/staging deployment.

@@ -12,7 +12,7 @@ export function LoginPage() {
   const location = useLocation();
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/";
 
-  const [coreUrl, setStrapiUrl] = useState(config.coreUrl || "http://localhost:1337");
+  const [coreUrl, setStrapiUrl] = useState(config.coreUrl || "http://localhost:8080");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");

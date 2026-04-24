@@ -1,4 +1,4 @@
-let baseUrl = "http://localhost:1337";
+let baseUrl = "http://localhost:8080";
 let authToken = "";
 
 export function configureApi(url: string, token: string) {

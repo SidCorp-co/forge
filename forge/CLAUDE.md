@@ -4,8 +4,7 @@ Forge is a project management + AI agent platform. See repo-root [CLAUDE.md](../
 
 ## Packages
 
-- **core/** — Hono + Drizzle backend (Phase 2 replacement for Strapi, in build)
-- **strapi/** — Strapi 5 backend (legacy, being removed per [RFC 0002](../docs/rfcs/0002-replace-strapi-with-hono-drizzle.md))
+- **core/** — Hono + Drizzle backend (the control plane per [RFC 0002](../docs/rfcs/0002-replace-strapi-with-hono-drizzle.md))
 - **web/** — Next.js cloud UI
 - **dev/** — Tauri desktop app
 - **app/** — React Native (Expo) mobile — **paused per [ADR 0009](../docs/decisions/0009-mobile-app-paused-for-v0x.md)**
@@ -25,8 +24,6 @@ web/dev → core REST (/api/*) → Postgres (data + jobs + pgvector)
           core Job dispatcher  → device-runner (forge/dev) → Claude CLI
 MCP clients → core /mcp → same handlers as REST
 ```
-
-`forge/strapi/` is the legacy backend, scheduled for deletion. Do not extend it.
 
 ## Shared Conventions
 

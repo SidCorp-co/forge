@@ -7,7 +7,7 @@ vi.stubGlobal("fetch", mockFetch);
 describe("api client", () => {
   beforeEach(() => {
     mockFetch.mockReset();
-    configureApi("http://localhost:1337", "test-token");
+    configureApi("http://localhost:8080", "test-token");
   });
 
   it("GET request: correct URL and auth header", async () => {
@@ -19,7 +19,7 @@ describe("api client", () => {
     await getProjects();
 
     expect(mockFetch).toHaveBeenCalledWith(
-      "http://localhost:1337/api/projects?populate=*",
+      "http://localhost:8080/api/projects?populate=*",
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: "Bearer test-token",
@@ -38,7 +38,7 @@ describe("api client", () => {
     await updateTask("task-doc-1", { agentStatus: "running" } as any);
 
     expect(mockFetch).toHaveBeenCalledWith(
-      "http://localhost:1337/api/tasks/task-doc-1",
+      "http://localhost:8080/api/tasks/task-doc-1",
       expect.objectContaining({
         method: "PUT",
         body: JSON.stringify({ data: { agentStatus: "running" } }),

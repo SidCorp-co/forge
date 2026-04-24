@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { apiClient, apiUpload, strapiMediaUrl } from '@/lib/api-client';
+import { apiClient, apiUpload, mediaUrl } from '@/lib/api-client';
 import { WS_URL } from '@/lib/constants';
 import { ChatMessageList } from '@/components/chat/chat-message-list';
 import { ChatInput } from '@/components/chat/chat-input';
@@ -100,7 +100,7 @@ export default function ProjectChatScreen() {
 
     // Append file info to message for the agent
     const messageText = uploaded.length > 0
-      ? `${text}\n\n[Attached files (uploaded to Strapi media): ${uploaded.map((f) => `${f.name} (media ID: ${f.id}, url: ${strapiMediaUrl(f.url)})`).join(', ')}]`
+      ? `${text}\n\n[Attached files (uploaded media): ${uploaded.map((f) => `${f.name} (media ID: ${f.id}, url: ${mediaUrl(f.url)})`).join(', ')}]`
       : text;
 
     try {

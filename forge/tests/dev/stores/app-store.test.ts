@@ -11,7 +11,7 @@ describe("app-store", () => {
       agentMessages: [],
       agentRunning: false,
       agentSessionId: null,
-      config: { strapiUrl: "http://localhost:1337", authToken: "", projects: {} },
+      config: { strapiUrl: "http://localhost:8080", authToken: "", projects: {} },
       sidebarOpen: true,
     });
   });
@@ -22,7 +22,7 @@ describe("app-store", () => {
     expect(state.wsConnected).toBe(false);
     expect(state.agentMessages).toEqual([]);
     expect(state.agentRunning).toBe(false);
-    expect(state.config.strapiUrl).toBe("http://localhost:1337");
+    expect(state.config.strapiUrl).toBe("http://localhost:8080");
     expect(state.sidebarOpen).toBe(true);
   });
 

@@ -21,7 +21,7 @@ vi.mock("@/hooks/use-tauri-ipc", () => ({
 const mockSetWsConnected = vi.fn();
 vi.mock("@/stores/app-store", () => ({
   useAppStore: () => ({
-    config: { strapiUrl: "http://localhost:1337" },
+    config: { strapiUrl: "http://localhost:8080" },
     wsConnected: false,
     setWsConnected: mockSetWsConnected,
   }),
@@ -48,7 +48,7 @@ describe("useWebSocket", () => {
 
     // Verify invoke was called with the correct WebSocket URL
     expect(mockInvoke).toHaveBeenCalledWith("connect_ws", {
-      url: "ws://localhost:1337/ws",
+      url: "ws://localhost:8080/ws",
     });
   });
 

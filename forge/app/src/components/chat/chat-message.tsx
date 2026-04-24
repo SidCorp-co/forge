@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { View, Text, Image, Pressable, Modal } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { ChatToolCall } from './chat-tool-call';
-import { strapiMediaUrl } from '@/lib/api-client';
+import { mediaUrl } from '@/lib/api-client';
 
 export interface ToolCallData {
   id: string;
@@ -58,9 +58,9 @@ export function ChatMessage({ message }: { message: ChatMessageData }) {
         {message.attachments && message.attachments.length > 0 && (
           <View className="flex-row flex-wrap gap-2 mb-1 justify-end">
             {message.attachments.map((a, i) => (
-              <Pressable key={i} onPress={() => setPreviewUrl(strapiMediaUrl(a.url))}>
+              <Pressable key={i} onPress={() => setPreviewUrl(mediaUrl(a.url))}>
                 <Image
-                  source={{ uri: strapiMediaUrl(a.url) }}
+                  source={{ uri: mediaUrl(a.url) }}
                   className="h-20 w-20 rounded-lg"
                   resizeMode="cover"
                 />
