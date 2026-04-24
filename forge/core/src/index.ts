@@ -22,6 +22,8 @@ import { registerStaleDetector } from './jobs/stale-detector.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
 import { logger } from './logger.js';
 import { mcpHandler } from './mcp/handler.js';
+import { registerMemoryIndexer } from './memory/indexer.js';
+import { memorySearchRoutes } from './memory/search-routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
@@ -106,6 +108,7 @@ export async function runShutdown(
 }
 
 registerActivitySubscribers(hooks);
+registerMemoryIndexer(hooks);
 
 app.post('/mcp', mcpHandler);
 app.get('/mcp', mcpHandler);
@@ -133,6 +136,7 @@ app.route('/api/jobs', jobEventsRoutes);
 app.route('/api/jobs', jobLifecycleDeviceRoutes);
 app.route('/api/jobs', jobLifecycleUserRoutes);
 app.route('/api/webhooks', webhookInboundRoutes);
+app.route('/api/memory', memorySearchRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 

@@ -20,6 +20,15 @@ const EnvSchema = z.object({
   RATE_LIMIT_AUTH_REGISTER_WINDOW_MS: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_DEVICES_PAIR_MAX: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_DEVICES_PAIR_WINDOW_MS: z.coerce.number().int().positive().optional(),
+  // LiteLLM-compatible embeddings service (ADR 0011, Phase 2.5-F3).
+  // Required only when memory indexing / semantic search is exercised; the
+  // singleton defers client creation until first use.
+  EMBEDDINGS_BASE_URL: z.url().optional(),
+  EMBEDDINGS_API_KEY: z.string().min(1).optional(),
+  EMBEDDINGS_MODEL: z.string().min(1).default('text-embedding-3-small'),
+  EMBEDDINGS_DIM: z.coerce.number().int().positive().default(1536),
+  EMBEDDINGS_FALLBACK_MODEL: z.string().min(1).optional(),
+  EMBEDDINGS_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
