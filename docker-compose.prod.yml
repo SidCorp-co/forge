@@ -53,10 +53,10 @@ services:
 
   web:
     build:
-      context: ./forge
-      dockerfile: web/Dockerfile
+      context: .
+      dockerfile: forge/web/Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: https://jarvis-agent.thejunix.com/api
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://jarvis-agent.thejunix.com/api}
     restart: unless-stopped
     depends_on:
       - core

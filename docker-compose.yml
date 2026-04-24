@@ -44,8 +44,8 @@ services:
   # === Web Frontend ===
   web:
     build:
-      context: ./forge
-      dockerfile: web/Dockerfile
+      context: .
+      dockerfile: forge/web/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8080/api
     restart: unless-stopped
