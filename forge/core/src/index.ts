@@ -16,6 +16,7 @@ import { transitionRoutes } from './issues/transition.js';
 import { registerDispatcher, unregisterDispatcher } from './jobs/dispatcher.js';
 import { jobEventsRoutes } from './jobs/events-routes.js';
 import { jobLifecycleDeviceRoutes, jobLifecycleUserRoutes } from './jobs/lifecycle-routes.js';
+import { registerRetentionSweeper } from './jobs/retention-sweeper.js';
 import { jobProjectRoutes, jobRoutes } from './jobs/routes.js';
 import { registerStaleDetector } from './jobs/stale-detector.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
@@ -25,6 +26,7 @@ import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
 import { hooks } from './pipeline/hooks.js';
+import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
 import { registerActivitySubscribers } from './pipeline/subscribers.js';
 import { invitationRoutes } from './projects/invitations-routes.js';
 import { memberRoutes } from './projects/members-routes.js';
@@ -139,8 +141,10 @@ if (isMain) {
   await startBoss();
   await registerDispatcher();
   await registerStaleDetector();
+  await registerRetentionSweeper();
   await registerOutboundDeliveryWorker();
   registerWebhookSubscribers(hooks);
+  registerPipelineOrchestrator(hooks);
 
   const server = serve({ fetch: app.fetch, port }, (info) => {
     logger.info({ port: info.port }, '@forge/core listening');
