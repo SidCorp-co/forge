@@ -169,3 +169,80 @@ jobs:
         with:
           use-quiet-mode: yes
           config-file: .github/mlc-config.json
+
+  e2e-web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true' || needs.changes.outputs.core == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: forge_e2e
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/forge_e2e
+      JWT_SECRET: e2e-jwt-secret-at-least-32-characters-long
+      DEVICE_TOKEN_PEPPER: e2e-device-pepper-at-least-32-characters-long
+      SMTP_HOST: localhost
+      SMTP_PORT: "2525"
+      SMTP_USER: e2e
+      SMTP_PASS: e2e
+      SMTP_FROM: e2e@test.local
+      APP_BASE_URL: http://localhost:3000
+      CORS_ORIGINS: http://localhost:3000
+      PORT: "8080"
+      NODE_ENV: test
+      NEXT_PUBLIC_API_URL: /api
+      E2E_CORE_PROXY_URL: http://localhost:8080
+      E2E_WEB_URL: http://localhost:3000
+      E2E_CORE_API_URL: http://localhost:8080/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Apply Drizzle migrations
+        run: pnpm --filter @forge/core db:migrate
+      - name: Build core
+        run: pnpm --filter @forge/core build
+      - name: Start core
+        run: pnpm --filter @forge/core start &
+      - name: Wait for core health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/health > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          echo "core did not become healthy" && exit 1
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install Playwright browsers
+        run: pnpm --filter web exec playwright install --with-deps chromium
+      - name: Build web
+        run: pnpm --filter web build
+      - name: Run Playwright
+        run: pnpm --filter web exec playwright test
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: forge/web/playwright-report
