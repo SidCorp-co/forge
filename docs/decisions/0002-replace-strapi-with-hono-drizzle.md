@@ -1,7 +1,8 @@
 # ADR 0002 — Replace Strapi backbone with Hono + Drizzle service
 
-- **Status:** Proposed — pending RFC 0002 acceptance
+- **Status:** Implemented
 - **Date:** 2026-04-20
+- **Implemented:** 2026-04-XX
 - **Full design:** [RFC 0002](../rfcs/0002-replace-strapi-with-hono-drizzle.md)
 
 > **Reader note (2026-04-23):** Statements in this ADR that "Qdrant is unchanged" (and the docker-compose service-count claim) are **superseded by [ADR 0011](0011-pgvector-replaces-qdrant.md)** — vector storage moves into Postgres via `pgvector`. The cutover model is formalized in [ADR 0010](0010-clean-break-from-strapi.md).
@@ -83,6 +84,14 @@ Admin UI strategy:
 | 2.5 | 1 week | Remove Strapi from docker-compose; update docs |
 
 Detail: RFC 0002 (to be drafted).
+
+## Implementation notes
+
+- RFC 0002 accepted and executed across Phase 2.0–2.7.
+- `forge/core` ships Hono + Drizzle + pg-boss + `ws` + `@modelcontextprotocol/sdk` as specified, plus `jose` + `argon2` + shared policy module for dual-principal auth.
+- Vector-storage decision updated to `pgvector` per [ADR 0011](0011-pgvector-replaces-qdrant.md) (supersedes the "Qdrant — unchanged" language in the Decision section).
+- Cutover model formalized in [ADR 0010](0010-clean-break-from-strapi.md) and executed via ISS-219 at Phase 2.8-F1: `forge/strapi/` archived to `legacy/strapi-v0` tag and deleted from main; `docker-compose.yml` slimmed to postgres + core + web.
+- Admin UI delivered via `/admin` routes in `forge/web/` (Phase 2.6).
 
 ## Related
 

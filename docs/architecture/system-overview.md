@@ -4,8 +4,6 @@ How Jarvis Agents is put together, and why.
 
 The architectural foundation is [RFC 0001: Device-runner architecture](../rfcs/0001-device-runner-architecture.md). This doc summarizes and explains; the RFC is authoritative.
 
-> **Note (2026-04-23):** The control plane is `forge/core` (Hono + Drizzle + pg-boss + ws + MCP) per [RFC 0002](../rfcs/0002-replace-strapi-with-hono-drizzle.md) and [proposals/core-strapi-decoupling.md](../proposals/core-strapi-decoupling.md). Vector storage lives in Postgres `pgvector`. Mobile (`forge/app/`) is paused per [ADR 0009](../decisions/0009-mobile-app-paused-for-v0x.md).
-
 ## One-paragraph summary
 
 Jarvis Agents splits into two planes:

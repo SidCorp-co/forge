@@ -56,18 +56,18 @@ Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
          │ REST + WebSocket            │ runs `claude` locally│
          ▼                             │ in a git worktree    │
   ┌────────────────────────────────────┐└────────┬─────────────┘
-  │  Control plane (Strapi)            │         │
-  │  REST + WebSocket + MCP            │ WebSocket (events, jobs)
-  │  Pipeline engine, job dispatcher   │◄────────┘
+  │  Control plane (forge/core)        │         │
+  │  Hono + Drizzle + pg-boss + ws     │ WebSocket (events, jobs)
+  │  + MCP                             │◄────────┘
+  │  Pipeline engine, job dispatcher   │
   │  NEVER holds Claude credentials    │
   └──────────┬─────────────────────────┘
              │
-    ┌────────┼────────┐
-    ▼        ▼        ▼
-┌───────┐┌───────┐┌──────────┐
-│Postgres││Qdrant ││ Pg-boss  │
-│ state  ││ memory││ job queue│
-└───────┘└───────┘└──────────┘
+             ▼
+       ┌──────────────────────┐
+       │ Postgres             │
+       │ state + jobs + vectors│
+       └──────────────────────┘
 ```
 
 Two key boundaries:
@@ -81,7 +81,7 @@ See [docs/architecture/system-overview.md](docs/architecture/system-overview.md)
 
 | Package | Role | Dev command |
 |---------|------|-------------|
-| [`forge/core/`](forge/core/) | Control plane: Hono + Drizzle + pg-boss + WebSocket + MCP (RFC 0002 replacement) | `pnpm dev` |
+| [`forge/core/`](forge/core/) | Control plane: Hono + Drizzle + pg-boss + WebSocket + MCP | `pnpm dev` |
 | [`forge/web/`](forge/web/) | Next.js dashboard: Kanban, job replay, pipeline health, device mgmt | `npm run dev` |
 | [`forge/dev/`](forge/dev/) | Tauri desktop device agent (GUI form factor) | `npm run tauri dev` |
 | `forge/forged/` | CLI daemon device agent (headless form factor) — coming soon | — |

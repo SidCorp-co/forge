@@ -1,7 +1,8 @@
 # ADR 0011 — Postgres `pgvector` replaces Qdrant for vector storage
 
-- **Status:** Accepted
+- **Status:** Implemented
 - **Date:** 2026-04-23
+- **Implemented:** 2026-04-XX
 - **Promotes:** D4 in [proposals/core-strapi-decoupling.md](../proposals/core-strapi-decoupling.md)
 - **Supersedes:** vector-DB statements in [ADR 0002](0002-replace-strapi-with-hono-drizzle.md), [ADR 0006](0006-pg-boss-for-job-queue.md), and [RFC 0002](../rfcs/0002-replace-strapi-with-hono-drizzle.md) §Stack ("Qdrant — unchanged")
 
@@ -77,6 +78,14 @@ Switch back to a dedicated vector DB only if **all** are true:
 - Postgres connection pool shows contention attributable to vector queries.
 
 Until then, `pgvector` is the answer.
+
+## Implementation notes
+
+- `CREATE EXTENSION IF NOT EXISTS vector;` shipped as the first migration in `forge/core/migrations/`.
+- `memories` table uses `vector(1536)` column with HNSW index on `vector_cosine_ops` as specified.
+- `qdrant` service removed from `docker-compose.yml` and `docker-compose.prod.yml` in the ISS-219 flip.
+- Postgres image pinned to `pgvector/pgvector:pg17` in `docker-compose.yml`, `docker-compose.prod.yml`, and the CI e2e-web service.
+- Drizzle first-class `vector` column support used throughout `forge/core/src/db/schema/`.
 
 ## Related
 

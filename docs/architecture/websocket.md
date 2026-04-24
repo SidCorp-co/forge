@@ -190,13 +190,13 @@ sendToSession(sessionId, 'chat:error', { error: errorMessage });
 ### WS URL Configuration
 
 ```ts
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:1337/api';
-const STRAPI_URL = API_URL.replace(/\/api\/?$/, '');
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
+const API_ORIGIN = API_URL.replace(/\/api\/?$/, '');
 
 export const WS_URL =
   process.env.NEXT_PUBLIC_WS_URL ||
-  STRAPI_URL.replace(/^http/, 'ws') + '/ws';
-// http://localhost:1337 -> ws://localhost:1337/ws
+  API_ORIGIN.replace(/^http/, 'ws') + '/ws';
+// http://localhost:8080 -> ws://localhost:8080/ws
 ```
 
 ### Hook 1: `useWebSocket()` — Global Cache Invalidation

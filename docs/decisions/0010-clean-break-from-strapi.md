@@ -1,7 +1,8 @@
 # ADR 0010 — Clean break from Strapi to `forge/core`
 
-- **Status:** Accepted
+- **Status:** Implemented
 - **Date:** 2026-04-23
+- **Implemented:** 2026-04-XX
 - **Full design:** [RFC 0002](../rfcs/0002-replace-strapi-with-hono-drizzle.md), [proposals/core-strapi-decoupling.md](../proposals/core-strapi-decoupling.md)
 - **Supersedes (in spirit):** none — formalizes the cutover model that ADR 0002 left open.
 
@@ -58,6 +59,14 @@ The internal alpha has no external users, no production data worth preserving, a
 - Internal alpha data is lost on cutover (accepted — test data, ~20 SidCorp engineers, recreatable in <1 day).
 - The flip PR is large by necessity (touches all clients + deletes a package). Compensated by being a single atomic revert target.
 - Loss of Strapi admin UI for ~1 week of cutover before Phase 2.6 ships `/admin` in `forge/web/`. Mitigation: Drizzle Studio + REST during the gap.
+
+## Implementation notes
+
+- Flip executed via ISS-219 (Phase 2.8-F1): single PR containing `forge/strapi/` deletion + client repointing + docker-compose finalization. No dual-run window used, no contract-test scaffolding written.
+- Archive preserved at `legacy/strapi-v0` tag and branch; `git ls-tree legacy/strapi-v0 forge/strapi` remains non-empty for recoverability.
+- Internal alpha deployment wiped and recreated empty on `forge/core` per the ADR's acceptance of data loss.
+- `forge/app/` received the `STRAPI_URL` cleanup (rename to `API_ORIGIN`, `strapiMediaUrl` → `mediaUrl`) with no other functional changes, per the "Affects" clause below.
+- `/admin` in `forge/web/` shipped in Phase 2.6; Drizzle Studio covered the pre-2.6 gap as planned.
 
 ## Related
 
