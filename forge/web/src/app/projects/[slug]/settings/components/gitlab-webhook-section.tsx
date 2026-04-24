@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Input, Label } from '@/components/ui';
 import { Check, Copy, RefreshCw, Plus, Trash2 } from 'lucide-react';
 
-const STRAPI_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:1337/api').replace(/\/api\/?$/, '');
+const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api').replace(/\/api\/?$/, '');
 
 interface GitlabWebhookSectionProps {
   gitRepoUrl: string;
@@ -24,7 +24,7 @@ function generateToken(): string {
 }
 
 export function GitlabWebhookSection({ gitRepoUrl, setGitRepoUrl, webhookSecret, setWebhookSecret, useRegistry, setUseRegistry, previewEnvVars, setPreviewEnvVars }: GitlabWebhookSectionProps) {
-  const webhookUrl = `${STRAPI_URL}/api/preview-deploy/webhook`;
+  const webhookUrl = `${API_ORIGIN}/api/preview-deploy/webhook`;
   const [copied, setCopied] = useState<'url' | 'secret' | null>(null);
 
   const copy = (text: string, key: 'url' | 'secret') => {

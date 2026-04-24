@@ -9,7 +9,6 @@
         "build/**",
         ".next/**",
         "!.next/cache/**",
-        ".strapi/**",
         "src-tauri/target/**"
       ],
       "env": ["NODE_ENV"]

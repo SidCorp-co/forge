@@ -37,7 +37,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-- Server admin: <http://localhost:1337/admin>
+- Core API: <http://localhost:8080>
 - Web dashboard: <http://localhost:3000>
 
 Then install the desktop agent (spawns `claude` on your machine) from [Releases](https://github.com/junixlabs/jarvis-agents/releases), or run `forged pair <code>` if you prefer the CLI daemon.
@@ -82,7 +82,6 @@ See [docs/architecture/system-overview.md](docs/architecture/system-overview.md)
 | Package | Role | Dev command |
 |---------|------|-------------|
 | [`forge/core/`](forge/core/) | Control plane: Hono + Drizzle + pg-boss + WebSocket + MCP (RFC 0002 replacement) | `pnpm dev` |
-| [`forge/strapi/`](forge/strapi/) | Control plane (legacy, being removed — see [RFC 0002](docs/rfcs/0002-replace-strapi-with-hono-drizzle.md)) | `npm run develop` |
 | [`forge/web/`](forge/web/) | Next.js dashboard: Kanban, job replay, pipeline health, device mgmt | `npm run dev` |
 | [`forge/dev/`](forge/dev/) | Tauri desktop device agent (GUI form factor) | `npm run tauri dev` |
 | `forge/forged/` | CLI daemon device agent (headless form factor) — coming soon | — |

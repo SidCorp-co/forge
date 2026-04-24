@@ -1,7 +1,7 @@
 services:
-  # === Database ===
+  # === Database (pgvector for embeddings — ADR 0011) ===
   postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
       POSTGRES_DB: forge
@@ -17,53 +17,7 @@ services:
       timeout: 3s
       retries: 5
 
-  # === Vector DB (optional - for RAG/embeddings) ===
-  qdrant:
-    image: qdrant/qdrant:v1.13.2
-    restart: unless-stopped
-    volumes:
-      - qdrant_data:/qdrant/storage
-    ports:
-      - "6333:6333"
-
-  # === Strapi Backend ===
-  strapi:
-    build:
-      context: ./forge/strapi
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-    ports:
-      - "1337:1337"
-    environment:
-      HOST: 0.0.0.0
-      PORT: 1337
-      # Database
-      DATABASE_CLIENT: postgres
-      DATABASE_HOST: postgres
-      DATABASE_PORT: 5432
-      DATABASE_NAME: forge
-      DATABASE_USERNAME: forge
-      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-forge_secret}
-      # Secrets (override in .env)
-      APP_KEYS: ${APP_KEYS}
-      API_TOKEN_SALT: ${API_TOKEN_SALT}
-      ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET}
-      TRANSFER_TOKEN_SALT: ${TRANSFER_TOKEN_SALT}
-      JWT_SECRET: ${JWT_SECRET}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
-      # CORS
-      CORS_ORIGINS: ${CORS_ORIGINS:-}
-      # Qdrant (optional)
-      QDRANT_URL: http://qdrant:6333
-      # LiteLLM (optional - set in .env)
-      LITELLM_API_URL: ${LITELLM_API_URL:-}
-      LITELLM_API_KEY: ${LITELLM_API_KEY:-}
-      LITELLM_MODEL: ${LITELLM_MODEL:-}
-
-  # === Core API (RFC 0002 — runs alongside Strapi until Phase 2.8) ===
+  # === Core API (Hono + Drizzle — RFC 0002) ===
   core:
     build:
       context: ./forge/core
@@ -72,15 +26,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      qdrant:
-        condition: service_started
     ports:
       - "8080:8080"
     environment:
       NODE_ENV: production
       PORT: "8080"
       DATABASE_URL: postgres://forge:${POSTGRES_PASSWORD:-forge_secret}@postgres:5432/forge
-      QDRANT_URL: http://qdrant:6333
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 10s
@@ -94,15 +45,14 @@ services:
       context: ./forge/web
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: http://localhost:1337/api
+        NEXT_PUBLIC_API_URL: http://localhost:8080/api
     restart: unless-stopped
     depends_on:
-      - strapi
+      - core
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:1337/api}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080/api}
 
 volumes:
   postgres_data:
-  qdrant_data:
