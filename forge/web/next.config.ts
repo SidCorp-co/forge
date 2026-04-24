@@ -8,15 +8,19 @@ import type { NextConfig } from "next";
  */
 const coreProxy = process.env.E2E_CORE_PROXY_URL;
 
-const nextConfig: NextConfig = coreProxy
-  ? {
-      async rewrites() {
-        return [
-          { source: "/api/:path*", destination: `${coreProxy}/api/:path*` },
-          { source: "/ws", destination: `${coreProxy}/ws` },
-        ];
-      },
-    }
-  : {};
+const nextConfig: NextConfig = {
+  // Required for Docker production image (server.js + .next/standalone).
+  output: "standalone",
+  ...(coreProxy
+    ? {
+        async rewrites() {
+          return [
+            { source: "/api/:path*", destination: `${coreProxy}/api/:path*` },
+            { source: "/ws", destination: `${coreProxy}/ws` },
+          ];
+        },
+      }
+    : {}),
+};
 
 export default nextConfig;
