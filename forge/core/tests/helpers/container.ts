@@ -8,9 +8,14 @@ export interface StartedContainer {
 /**
  * Boot a throwaway Postgres 17 container for the current test run.
  * Used when TEST_DB_MODE=container (CI, fresh clones).
+ *
+ * Uses `pgvector/pgvector:pg17` so the ADR-0011 `vector` extension is
+ * available — required by migration 0010 (`CREATE EXTENSION vector`).
  */
 export async function startPostgresContainer(): Promise<StartedContainer> {
-  const container: StartedPostgreSqlContainer = await new PostgreSqlContainer('postgres:17-alpine')
+  const container: StartedPostgreSqlContainer = await new PostgreSqlContainer(
+    'pgvector/pgvector:pg17',
+  )
     .withDatabase('forge_test')
     .withUsername('forge')
     .withPassword('forge')

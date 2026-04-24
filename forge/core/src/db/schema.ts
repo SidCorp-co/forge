@@ -2,18 +2,38 @@ import { relations, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   boolean,
+  customType,
   foreignKey,
   index,
   integer,
   jsonb,
   pgTable,
   primaryKey,
+  real,
   text,
   timestamp,
   uniqueIndex,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
+
+/**
+ * pgvector column type. Dimension is fixed per column — the `memories.embedding`
+ * column below uses `vector(1536)` per ADR 0011. Stored as a bracketed string on
+ * the wire (`[0.1,0.2,...]`), deserialised to number[] by the driver.
+ */
+export const pgVector = (dim: number) =>
+  customType<{ data: number[]; driverData: string }>({
+    dataType() {
+      return `vector(${dim})`;
+    },
+    toDriver(v) {
+      return `[${v.join(',')}]`;
+    },
+    fromDriver(v) {
+      return typeof v === 'string' ? (JSON.parse(v) as number[]) : (v as number[]);
+    },
+  });
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -500,4 +520,112 @@ export const issueLabelsRelations = relations(issueLabels, ({ one }) => ({
 
 export const activityLogRelations = relations(activityLog, ({ one }) => ({
   issue: one(issues, { fields: [activityLog.issueId], references: [issues.id] }),
+}));
+
+export const skillScopes = ['global', 'project'] as const;
+export type SkillScope = (typeof skillScopes)[number];
+
+export const skillSources = ['builtin', 'user'] as const;
+export type SkillSource = (typeof skillSources)[number];
+
+export const skills = pgTable(
+  'skills',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    description: text('description').notNull(),
+    scope: text('scope', { enum: skillScopes }).notNull(),
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    prompt: text('prompt').notNull(),
+    tools: jsonb('tools').notNull().default([]),
+    manifest: jsonb('manifest').notNull().default({}),
+    source: text('source', { enum: skillSources }).notNull(),
+    version: integer('version').notNull().default(1),
+    contentHash: text('content_hash').notNull(),
+    evalScore: real('eval_score'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectIdx: index('skills_project_id_idx').on(t.projectId),
+    scopeIdx: index('skills_scope_idx').on(t.scope),
+    globalNameUq: uniqueIndex('skills_name_global_uq').on(t.name).where(sql`scope = 'global'`),
+    projectNameUq: uniqueIndex('skills_project_name_uq')
+      .on(t.projectId, t.name)
+      .where(sql`scope = 'project'`),
+  }),
+);
+
+export const skillRegistrations = pgTable(
+  'skill_registrations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    skillId: uuid('skill_id')
+      .notNull()
+      .references(() => skills.id, { onDelete: 'cascade' }),
+    stage: text('stage').notNull(),
+    registeredBy: uuid('registered_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectStageUq: uniqueIndex('skill_registrations_project_stage_uq').on(t.projectId, t.stage),
+    skillIdx: index('skill_registrations_skill_id_idx').on(t.skillId),
+  }),
+);
+
+export const memorySources = ['issue', 'comment', 'job', 'note', 'knowledge'] as const;
+export type MemorySource = (typeof memorySources)[number];
+
+export const MEMORY_EMBEDDING_DIM = 1536;
+
+export const memories = pgTable(
+  'memories',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    source: text('source', { enum: memorySources }).notNull(),
+    sourceRef: text('source_ref').notNull(),
+    textContent: text('text_content').notNull(),
+    embedding: pgVector(MEMORY_EMBEDDING_DIM)('embedding').notNull(),
+    metadata: jsonb('metadata').notNull().default({}),
+    embeddedAt: timestamp('embedded_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectSourceIdx: index('memories_project_source_idx').on(t.projectId, t.source),
+    projectSourceRefIdx: index('memories_project_source_ref_idx').on(t.projectId, t.sourceRef),
+    projectSourceRefUq: uniqueIndex('memories_project_source_ref_uq').on(
+      t.projectId,
+      t.source,
+      t.sourceRef,
+    ),
+    embeddingHnswIdx: index('memories_embedding_hnsw_idx').using(
+      'hnsw',
+      sql`"embedding" vector_cosine_ops`,
+    ),
+  }),
+);
+
+export const skillsRelations = relations(skills, ({ one, many }) => ({
+  project: one(projects, { fields: [skills.projectId], references: [projects.id] }),
+  registrations: many(skillRegistrations),
+}));
+
+export const skillRegistrationsRelations = relations(skillRegistrations, ({ one }) => ({
+  project: one(projects, { fields: [skillRegistrations.projectId], references: [projects.id] }),
+  skill: one(skills, { fields: [skillRegistrations.skillId], references: [skills.id] }),
+  registeredByUser: one(users, {
+    fields: [skillRegistrations.registeredBy],
+    references: [users.id],
+  }),
+}));
+
+export const memoriesRelations = relations(memories, ({ one }) => ({
+  project: one(projects, { fields: [memories.projectId], references: [projects.id] }),
 }));

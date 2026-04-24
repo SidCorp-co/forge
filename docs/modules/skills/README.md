@@ -48,16 +48,33 @@ Jarvis Agents ships 8 built-in pipeline skills (`forge-triage`, `forge-clarify`,
 
 | Field | Description |
 |-------|-------------|
-| `documentId` | Canonical ID |
-| `name` | Globally unique identifier (e.g., `forge-triage`, `custom-deploy-sanity`) |
+| `id` | Canonical UUID |
+| `name` | Unique per scope (`(name) WHERE scope='global'`, `(project_id, name) WHERE scope='project'`) |
 | `description` | What the skill does — shown in UI, used for routing |
 | `scope` | `global` (built-in) \| `project` (user-authored) |
-| `project` | Relation if scope is `project` |
-| `registeredStage` | Which pipeline transition this skill handles (optional for non-pipeline skills) |
-| `prompt` | The skill prompt body |
-| `tools` | Allow-list of tools the skill can invoke |
-| `version`, `hash` | For sync tracking |
+| `projectId` | FK to `projects.id`; NULL when `scope='global'` |
+| `source` | `builtin` (shipped with server) \| `user` (synced from device) |
+| `prompt` | The skill prompt body (SKILL.md body after frontmatter) |
+| `tools` | Allow-list of tools the skill can invoke (jsonb) |
+| `manifest` | Parsed frontmatter (`user_invocable`, `arguments`, …) as jsonb |
+| `version`, `contentHash` | For sync tracking — seeder bumps `version` when `contentHash` changes |
 | `evalScore` | Optional quality metric from Eval runs |
+
+### `SkillRegistration` (DB record)
+
+A registration binds one skill to a pipeline stage **per project**. A skill
+can be registered to different stages in different projects.
+
+| Field | Description |
+|-------|-------------|
+| `id` | Canonical UUID |
+| `projectId` | FK to `projects.id` |
+| `skillId` | FK to `skills.id` |
+| `stage` | Pipeline transition key (e.g. `open→confirmed`, `confirmed→clarified`) |
+| `registeredBy` | User who registered (FK to `users.id`, SET NULL on delete) |
+| `createdAt` | Registration timestamp |
+
+Unique constraint: `(projectId, stage)` — at most one skill per stage per project.
 
 ## Key Business Flows
 

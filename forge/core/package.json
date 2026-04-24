@@ -5,6 +5,11 @@
   "description": "Forge core API — Hono + Drizzle (RFC 0002 Strapi replacement).",
   "type": "module",
   "main": "dist/index.js",
+  "files": [
+    "dist",
+    "skills",
+    "drizzle"
+  ],
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.build.json",
