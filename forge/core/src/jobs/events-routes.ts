@@ -1,10 +1,12 @@
 import { zValidator } from '@hono/zod-validator';
-import { eq, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { jobEventKinds, jobEvents, jobs } from '../db/schema.js';
+import { loadProjectAccess } from '../lib/project-access.js';
+import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -37,7 +39,55 @@ const eventBatchSchema = z
 
 const TERMINAL_STATUSES = new Set(['done', 'failed', 'cancelled'] as const);
 
+const eventsListQuerySchema = z
+  .object({
+    sinceSeq: z.coerce.number().int().min(0).optional(),
+    limit: z.coerce.number().int().min(1).max(500).default(200),
+  })
+  .strict();
+
 export const jobEventsRoutes = new Hono<{ Variables: DeviceVars }>();
+
+// GET /api/jobs/:id/events — replay endpoint for the WS client. Members of
+// the job's project can read; device auth not required (reads are safe).
+export const jobEventsListRoutes = new Hono<{ Variables: AuthVars }>();
+jobEventsListRoutes.use('*', requireAuth(), assertEmailVerified());
+jobEventsListRoutes.get(
+  '/:id/events',
+  zValidator('param', jobIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('query', eventsListQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id: jobId } = c.req.valid('param');
+    const { sinceSeq, limit } = c.req.valid('query');
+    const userId = c.get('userId');
+
+    const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+    if (!job) throw notFound('job not found');
+
+    const access = await loadProjectAccess(job.projectId, userId);
+    if (!access.role && access.ownerId !== userId) {
+      throw forbidden('not a project member');
+    }
+
+    const whereClauses = [eq(jobEvents.jobId, jobId)];
+    if (sinceSeq !== undefined) whereClauses.push(gt(jobEvents.seq, sinceSeq));
+    const where = whereClauses.length === 1 ? whereClauses[0] : and(...whereClauses);
+
+    const items = await db
+      .select()
+      .from(jobEvents)
+      .where(where)
+      .orderBy(asc(jobEvents.seq))
+      .limit(limit);
+
+    const lastSeq = items.length > 0 ? Number(items[items.length - 1]?.seq ?? 0) : (sinceSeq ?? 0);
+    return c.json({ items, lastSeq });
+  },
+);
 
 jobEventsRoutes.post(
   '/:id/events',

@@ -4,6 +4,8 @@ import { useParams, usePathname } from 'next/navigation';
 import { type ReactNode } from 'react';
 import { Shell } from '@/components/layout/shell';
 import { useProjectBySlug } from '@/features/project/hooks/use-projects';
+import { projectRoom } from '@/lib/ws/rooms';
+import { useRoom } from '@/lib/ws/use-room';
 import { useSetPageTitle } from '@/hooks/use-page-title';
 import { cn } from '@/lib/utils/cn';
 
@@ -11,6 +13,7 @@ export default function ProjectLayout({ children }: { children: ReactNode }) {
   const { slug } = useParams<{ slug: string }>();
   const pathname = usePathname();
   const project = useProjectBySlug(slug);
+  useRoom(project ? projectRoom(project.id) : null);
   const base = `/projects/${slug}`;
   const isAgentPage = pathname === `${base}/agent`;
   useSetPageTitle(project?.name ?? '');

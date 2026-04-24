@@ -29,6 +29,10 @@ const EnvSchema = z.object({
   EMBEDDINGS_DIM: z.coerce.number().int().positive().default(1536),
   EMBEDDINGS_FALLBACK_MODEL: z.string().min(1).optional(),
   EMBEDDINGS_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
+  // Comma-separated allow-list of admin emails. When unset, all /api/admin/*
+  // requests 403. Intentionally NOT a role column on users — deferred until
+  // the admin surface stabilises.
+  ADMIN_EMAILS: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

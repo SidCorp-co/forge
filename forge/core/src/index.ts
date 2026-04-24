@@ -3,6 +3,7 @@ import { serve } from '@hono/node-server';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { adminRoutes } from './admin/routes.js';
 import { loginRoutes } from './auth/login.js';
 import { logoutRoutes } from './auth/logout.js';
 import { meRoutes } from './auth/me.js';
@@ -17,7 +18,7 @@ import { issueProjectRoutes, issueRoutes } from './issues/routes.js';
 import { searchRoutes } from './issues/search.js';
 import { transitionRoutes } from './issues/transition.js';
 import { registerDispatcher, unregisterDispatcher } from './jobs/dispatcher.js';
-import { jobEventsRoutes } from './jobs/events-routes.js';
+import { jobEventsListRoutes, jobEventsRoutes } from './jobs/events-routes.js';
 import { jobLifecycleDeviceRoutes, jobLifecycleUserRoutes } from './jobs/lifecycle-routes.js';
 import { registerRetentionSweeper } from './jobs/retention-sweeper.js';
 import { jobProjectRoutes, jobRoutes } from './jobs/routes.js';
@@ -43,6 +44,7 @@ import { skillRegisterRoutes, skillSyncRoutes } from './skills/routes.js';
 import { webhookInboundRoutes } from './webhooks/inbound-routes.js';
 import { registerOutboundDeliveryWorker } from './webhooks/outbound.js';
 import { registerWebhookSubscribers } from './webhooks/subscribers.js';
+import { registerWsBroadcastSubscribers } from './ws/broadcast-subscribers.js';
 import { attachWs, closeWs, isWsListening } from './ws/server.js';
 
 export const app = new Hono<{ Variables: RequestIdVars }>();
@@ -130,6 +132,7 @@ export async function runShutdown(
 }
 
 registerActivitySubscribers(hooks);
+registerWsBroadcastSubscribers(hooks);
 registerMemoryIndexer(hooks);
 
 // MCP endpoint requires device authentication (ISS-202). Tool handlers
@@ -164,10 +167,12 @@ app.route('/api/comments', commentRoutes);
 app.route('/api/labels', labelRoutes);
 app.route('/api/jobs', jobRoutes);
 app.route('/api/jobs', jobEventsRoutes);
+app.route('/api/jobs', jobEventsListRoutes);
 app.route('/api/jobs', jobLifecycleDeviceRoutes);
 app.route('/api/jobs', jobLifecycleUserRoutes);
 app.route('/api/webhooks', webhookInboundRoutes);
 app.route('/api/memory', memorySearchRoutes);
+app.route('/api/admin', adminRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 
