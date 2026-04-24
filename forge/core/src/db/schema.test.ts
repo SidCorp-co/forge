@@ -393,9 +393,11 @@ describe('db/schema — devices', () => {
 });
 
 describe('db/schema — pairing_codes', () => {
-  it('has the five documented columns', () => {
+  it('has the six documented columns', () => {
     const names = getTableConfig(pairingCodes).columns.map((c) => c.name);
-    expect(names.sort()).toEqual(['code', 'created_at', 'expires_at', 'used_at', 'user_id'].sort());
+    expect(names.sort()).toEqual(
+      ['code', 'created_at', 'expires_at', 'project_id', 'used_at', 'user_id'].sort(),
+    );
   });
 
   it('code is the primary key', () => {
@@ -404,13 +406,22 @@ describe('db/schema — pairing_codes', () => {
 
   it('user_id references users.id with onDelete cascade', () => {
     const cfg = getTableConfig(pairingCodes);
-    expect(cfg.foreignKeys).toHaveLength(1);
-    const fk = cfg.foreignKeys[0];
-    if (!fk) throw new Error('expected FK');
-    const ref = fk.reference();
-    expect(ref.columns[0]?.name).toBe('user_id');
+    const userFk = cfg.foreignKeys.find((fk) => fk.reference().columns[0]?.name === 'user_id');
+    if (!userFk) throw new Error('expected user_id FK');
+    const ref = userFk.reference();
     expect(ref.foreignColumns[0]?.name).toBe('id');
-    expect(fk.onDelete).toBe('cascade');
+    expect(userFk.onDelete).toBe('cascade');
+  });
+
+  it('project_id is nullable and references projects.id with onDelete cascade', () => {
+    const cfg = getTableConfig(pairingCodes);
+    const pid = columnByName(pairingCodes, 'project_id');
+    expect(pid.notNull).toBe(false);
+    const projFk = cfg.foreignKeys.find((fk) => fk.reference().columns[0]?.name === 'project_id');
+    if (!projFk) throw new Error('expected project_id FK');
+    const ref = projFk.reference();
+    expect(ref.foreignColumns[0]?.name).toBe('id');
+    expect(projFk.onDelete).toBe('cascade');
   });
 
   it('expires_at is notNull timestamptz, used_at is nullable', () => {
@@ -422,9 +433,10 @@ describe('db/schema — pairing_codes', () => {
     expect(withTimezone(used)).toBe(true);
   });
 
-  it('has named indexes on user_id and expires_at', () => {
+  it('has named indexes on user_id, project_id, and expires_at', () => {
     const cfg = getTableConfig(pairingCodes);
     expect(cfg.indexes.some((i) => i.config.name === 'pairing_codes_user_id_idx')).toBe(true);
+    expect(cfg.indexes.some((i) => i.config.name === 'pairing_codes_project_id_idx')).toBe(true);
     expect(cfg.indexes.some((i) => i.config.name === 'pairing_codes_expires_at_idx')).toBe(true);
   });
 });

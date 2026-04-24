@@ -12,7 +12,7 @@ export function LoginPage() {
   const location = useLocation();
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/";
 
-  const [strapiUrl, setStrapiUrl] = useState(config.strapiUrl || "http://localhost:1337");
+  const [coreUrl, setStrapiUrl] = useState(config.coreUrl || "http://localhost:1337");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -29,7 +29,7 @@ export function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const url = strapiUrl.replace(/\/$/, "");
+      const url = coreUrl.replace(/\/$/, "");
       const res = await fetch(`${url}/api/auth/local`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -41,7 +41,7 @@ export function LoginPage() {
         return;
       }
       const updated: AppConfig = {
-        strapiUrl: url,
+        coreUrl: url,
         authToken: data.jwt,
         projects: config.projects,
         deviceId: config.deviceId || "",
@@ -70,7 +70,7 @@ export function LoginPage() {
             <label className="mb-1 block text-xs text-gray-500">Server</label>
             <FormInput
               type="text"
-              value={strapiUrl}
+              value={coreUrl}
               onChange={(e) => setStrapiUrl(e.target.value)}
             />
           </div>

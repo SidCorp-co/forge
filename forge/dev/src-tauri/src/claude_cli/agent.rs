@@ -102,7 +102,13 @@ fn build_base_args(
 /// Always includes the built-in Forge MCP server with the given project slug.
 fn resolve_mcp_config(project_slug: &str, mcp_servers: Option<&Value>) -> Result<(Option<String>, Option<std::path::PathBuf>), String> {
     let cfg = config::load_config();
-    let path = write_mcp_config(&cfg.strapi_url, &cfg.auth_token, project_slug, mcp_servers)?;
+    // Forge MCP server now auths via device token (ISS-202 → `requireDevice()`);
+    // pre-Phase-2.7 it used a user JWT read from config.auth_token. Token is
+    // now sourced from the OS keychain — if not yet paired, fall back to an
+    // empty string; the MCP server will reject the request and the UI will
+    // surface the pair prompt.
+    let device_token = crate::keychain::load().ok().flatten().unwrap_or_default();
+    let path = write_mcp_config(&cfg.core_url, &device_token, project_slug, mcp_servers)?;
     let path_str = {
         #[cfg(target_os = "windows")]
         {

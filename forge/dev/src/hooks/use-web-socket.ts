@@ -21,9 +21,9 @@ export function useWebSocket() {
   const handleAgentCommandRef = useAgentCommandHandler(tracker);
 
   useEffect(() => {
-    if (!config.strapiUrl) return;
+    if (!config.coreUrl) return;
 
-    const wsUrl = config.strapiUrl.replace(/^http/, "ws") + "/ws";
+    const wsUrl = config.coreUrl.replace(/^http/, "ws") + "/ws";
 
     async function handleSkillsPush(data: any) {
       const skills: Array<{
@@ -371,7 +371,20 @@ export function useWebSocket() {
           },
         );
 
-        await invoke("connect_ws", { url: wsUrl, deviceId: config.deviceId || undefined });
+        // Load device token from the OS keychain (ISS-214 §5). Sent as
+        // `Authorization: Bearer <token>`. Anonymous sockets are still
+        // accepted server-side; Phase 2.2 enforcement flips that on.
+        let deviceToken: string | undefined;
+        try {
+          const tok = await invoke<string | null>("load_device_token");
+          if (tok) deviceToken = tok;
+        } catch { /* keychain unavailable — connect anonymously */ }
+
+        await invoke("connect_ws", {
+          url: wsUrl,
+          deviceToken,
+          deviceId: config.deviceId || undefined,
+        });
 
         return () => {
           if (flushTimer) clearTimeout(flushTimer);
@@ -411,5 +424,5 @@ export function useWebSocket() {
       cancelled = true;
       cleanup?.();
     };
-  }, [config.strapiUrl, config.deviceId, setWsConnected, queryClient]);
+  }, [config.coreUrl, config.deviceId, setWsConnected, queryClient]);
 }

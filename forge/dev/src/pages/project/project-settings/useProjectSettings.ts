@@ -186,7 +186,7 @@ export function useProjectSettings() {
       ...servers,
       forge: {
         type: "http",
-        url: `${config.strapiUrl}/mcp`,
+        url: `${config.coreUrl}/mcp`,
         headers,
         enabled: existing?.enabled ?? true,
       },

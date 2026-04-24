@@ -15,14 +15,14 @@ export function useLocalConfig() {
     invoke<AppConfig>("get_config").then((diskConfig) => {
       if (diskConfig) {
         setConfig(diskConfig);
-        configureApi(diskConfig.strapiUrl, diskConfig.authToken);
+        configureApi(diskConfig.coreUrl, diskConfig.authToken);
       }
     });
   }, [setConfig]);
 
   async function saveConfig(newConfig: AppConfig) {
     setConfig(newConfig);
-    configureApi(newConfig.strapiUrl, newConfig.authToken);
+    configureApi(newConfig.coreUrl, newConfig.authToken);
     await invoke("save_config", { config: newConfig });
   }
 

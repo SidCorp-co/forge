@@ -16,7 +16,7 @@ export function useLogout() {
 
     const updated: AppConfig = { ...config, authToken: "" };
     setConfig(updated);
-    configureApi(config.strapiUrl, "");
+    configureApi(config.coreUrl, "");
     await invoke("save_config", { config: updated });
     navigate("/login", { replace: true });
   };

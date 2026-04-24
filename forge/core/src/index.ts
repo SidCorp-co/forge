@@ -13,6 +13,8 @@ import { verifyRoutes } from './auth/verify.js';
 import { commentRoutes } from './comments/routes.js';
 import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
+import { deviceAuthRoutes, devicePublicRoutes, deviceUserRoutes } from './devices/routes.js';
+import { registerDeviceStaleDetector } from './devices/stale-detector.js';
 import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-routes.js';
 import { issueProjectRoutes, issueRoutes } from './issues/routes.js';
 import { searchRoutes } from './issues/search.js';
@@ -173,6 +175,9 @@ app.route('/api/jobs', jobLifecycleUserRoutes);
 app.route('/api/webhooks', webhookInboundRoutes);
 app.route('/api/memory', memorySearchRoutes);
 app.route('/api/admin', adminRoutes);
+app.route('/api/devices', devicePublicRoutes);
+app.route('/api/devices', deviceAuthRoutes);
+app.route('/api/projects', deviceUserRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 
@@ -183,6 +188,7 @@ if (isMain) {
   await seedBuiltinSkills(db);
   await registerDispatcher();
   await registerStaleDetector();
+  await registerDeviceStaleDetector();
   await registerRetentionSweeper();
   await registerOutboundDeliveryWorker();
   registerWebhookSubscribers(hooks);

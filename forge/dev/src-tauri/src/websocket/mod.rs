@@ -1,20 +1,53 @@
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
 use tauri::{AppHandle, Emitter};
-use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tokio::sync::watch;
+use tokio_tungstenite::{
+    connect_async, tungstenite::client::IntoClientRequest, tungstenite::http::header,
+    tungstenite::Message,
+};
 use std::time::Duration;
 
 const PING_INTERVAL: Duration = Duration::from_secs(25);
 const PONG_TIMEOUT: Duration = Duration::from_secs(15);
 
-pub async fn connect_ws(app: AppHandle, url: String, device_id: Option<String>, mut cancel: watch::Receiver<bool>) {
+/// Connect to forge/core `/ws` with optional device-token authentication and
+/// automatic reconnect (1s→30s jittered backoff). On successful connect the
+/// client subscribes to its `device:<id>` room so the server can route
+/// dispatched-job events.
+///
+/// `device_token` — when present, sent as `Authorization: Bearer <token>`.
+///   Server auth is a placeholder today (Phase 2.2 enforcement flip);
+///   including it now is a no-op on the server but correct on the client.
+/// `device_id` — used to subscribe to the `device:<id>` room.
+pub async fn connect_ws(
+    app: AppHandle,
+    url: String,
+    device_token: Option<String>,
+    device_id: Option<String>,
+    mut cancel: watch::Receiver<bool>,
+) {
     let mut retry_delay = 1u64;
     loop {
-        // Check cancellation before each connection attempt
         if *cancel.borrow() { break; }
 
-        match connect_async(&url).await {
+        // Build a request so we can attach the Authorization header.
+        let request = match url.as_str().into_client_request() {
+            Ok(mut req) => {
+                if let Some(ref tok) = device_token {
+                    if let Ok(v) = format!("Bearer {tok}").parse() {
+                        req.headers_mut().insert(header::AUTHORIZATION, v);
+                    }
+                }
+                req
+            }
+            Err(e) => {
+                let _ = app.emit("ws:error", format!("bad url: {e}"));
+                break;
+            }
+        };
+
+        match connect_async(request).await {
             Ok((ws_stream, _)) => {
                 retry_delay = 1;
                 if let Err(e) = app.emit("ws:connected", ()) {
@@ -22,16 +55,15 @@ pub async fn connect_ws(app: AppHandle, url: String, device_id: Option<String>, 
                 }
                 let (mut write, mut read) = ws_stream.split();
 
-                // Register as desktop client so Strapi routes agent commands to this device.
-                // Also re-sent on every ping tick as a keepalive identity beacon, so the
-                // server-side deviceClients map is restored after Strapi restarts or if
-                // the initial register message was dropped by a reverse proxy.
-                let register_msg = if let Some(ref did) = device_id {
-                    serde_json::json!({"type": "desktop:register", "deviceId": did}).to_string()
-                } else {
-                    serde_json::json!({"type": "desktop:register"}).to_string()
-                };
-                let _ = write.send(Message::Text(register_msg.clone())).await;
+                // Subscribe to device room so server broadcasts route here.
+                if let Some(ref did) = device_id {
+                    let subscribe = serde_json::json!({
+                        "type": "subscribe",
+                        "room": format!("device:{did}")
+                    })
+                    .to_string();
+                    let _ = write.send(Message::Text(subscribe)).await;
+                }
 
                 let mut ping_interval = tokio::time::interval(PING_INTERVAL);
                 ping_interval.tick().await; // skip immediate first tick
@@ -42,7 +74,6 @@ pub async fn connect_ws(app: AppHandle, url: String, device_id: Option<String>, 
                     let timeout = if awaiting_pong {
                         tokio::time::sleep_until(pong_deadline)
                     } else {
-                        // Far future — effectively disabled
                         tokio::time::sleep_until(tokio::time::Instant::now() + Duration::from_secs(86400))
                     };
 
@@ -50,7 +81,6 @@ pub async fn connect_ws(app: AppHandle, url: String, device_id: Option<String>, 
                         msg = read.next() => {
                             match msg {
                                 Some(Ok(Message::Text(text))) => {
-                                    // Any data from server means connection is alive
                                     awaiting_pong = false;
                                     if let Ok(json) = serde_json::from_str::<Value>(&text) {
                                         if let Err(e) = app.emit("ws:message", json) {
@@ -71,20 +101,13 @@ pub async fn connect_ws(app: AppHandle, url: String, device_id: Option<String>, 
                             }
                         }
                         _ = ping_interval.tick() => {
-                            // Client-side keepalive ping
                             if write.send(Message::Ping(vec![])).await.is_err() {
-                                break; // connection dead
-                            }
-                            // Re-send desktop:register so the server restores its
-                            // deviceClients entry after a restart or dropped frame.
-                            if write.send(Message::Text(register_msg.clone())).await.is_err() {
                                 break;
                             }
                             awaiting_pong = true;
                             pong_deadline = tokio::time::Instant::now() + PONG_TIMEOUT;
                         }
                         _ = timeout => {
-                            // Pong not received in time — connection is dead
                             eprintln!("[ws] Pong timeout — reconnecting");
                             break;
                         }
@@ -101,13 +124,21 @@ pub async fn connect_ws(app: AppHandle, url: String, device_id: Option<String>, 
                 }
             }
             Err(e) => {
-                if let Err(emit_err) = app.emit("ws:error", e.to_string()) {
+                // 401 during handshake means the device token is invalid or revoked.
+                // Surface as ws:auth-failed so the UI can direct the user to re-pair
+                // rather than busy-looping reconnects.
+                let msg = e.to_string();
+                if msg.contains("401") {
+                    let _ = app.emit("ws:auth-failed", msg.clone());
+                    break;
+                }
+                if let Err(emit_err) = app.emit("ws:error", msg) {
                     eprintln!("Failed to emit ws:error: {emit_err}");
                 }
             }
         }
 
-        // Wait with jitter to avoid thundering herd
+        // Jittered backoff 1s → 30s.
         let jitter_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()

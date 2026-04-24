@@ -38,10 +38,10 @@ export function McpServerList({
   const [installedCli, setInstalledCli] = useState<Record<string, "ok" | "err">>({});
   const { config } = useAppStore();
 
-  const forgeServer: McpServerConfig | null = config.strapiUrl
+  const forgeServer: McpServerConfig | null = config.coreUrl
     ? {
         type: "http",
-        url: `${config.strapiUrl}/mcp`,
+        url: `${config.coreUrl}/mcp`,
         headers: {
           ...(projectApiKey ? { "X-Forge-API-Key": projectApiKey } : {}),
           ...(projectSlug ? { "X-Forge-Project-Slug": projectSlug } : {}),

@@ -198,12 +198,17 @@ export const pairingCodes = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    // Nullable — user-scoped pairing codes leave this null. Set when the code
+    // is minted via `POST /api/projects/:id/devices/pairing-codes` so the
+    // redeemer can auto-bind the new device to the project.
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     usedAt: timestamp('used_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     userIdIdx: index('pairing_codes_user_id_idx').on(t.userId),
+    projectIdIdx: index('pairing_codes_project_id_idx').on(t.projectId),
     expiresAtIdx: index('pairing_codes_expires_at_idx').on(t.expiresAt),
   }),
 );

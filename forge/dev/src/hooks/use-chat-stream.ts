@@ -29,7 +29,7 @@ export function useChatStream(
   }, []);
 
   useEffect(() => {
-    const wsUrl = config.strapiUrl.replace(/^http/, "ws") + "/ws";
+    const wsUrl = config.coreUrl.replace(/^http/, "ws") + "/ws";
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

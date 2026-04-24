@@ -84,7 +84,7 @@ export function Settings() {
           <div className="flex items-center gap-2">
             <span className={`h-2.5 w-2.5 rounded-full ${wsConnected ? "bg-green-500" : "bg-red-400"}`} />
             <span className="text-sm font-medium text-gray-700">
-              {wsConnected ? "Connected to" : "Disconnected from"} {config.strapiUrl}
+              {wsConnected ? "Connected to" : "Disconnected from"} {config.coreUrl}
             </span>
           </div>
           <button

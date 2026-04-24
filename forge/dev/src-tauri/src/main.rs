@@ -2,6 +2,9 @@
 
 mod claude_cli;
 mod config;
+mod devices;
+mod jobs;
+mod keychain;
 mod websocket;
 
 use claude_cli::{new_sessions, Sessions, WorktreeInfo};
@@ -17,7 +20,13 @@ struct AppState {
 }
 
 #[tauri::command]
-async fn connect_ws(app: tauri::AppHandle, state: State<'_, AppState>, url: String, device_id: Option<String>) -> Result<(), String> {
+async fn connect_ws(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    url: String,
+    device_token: Option<String>,
+    device_id: Option<String>,
+) -> Result<(), String> {
     // Cancel previous WS connection if any
     let mut guard = state.ws_cancel.lock().await;
     if let Some(old_tx) = guard.take() {
@@ -26,8 +35,61 @@ async fn connect_ws(app: tauri::AppHandle, state: State<'_, AppState>, url: Stri
     let (tx, rx) = watch::channel(false);
     *guard = Some(tx);
     drop(guard);
-    tokio::spawn(websocket::connect_ws(app, url, device_id, rx));
+    tokio::spawn(websocket::connect_ws(app, url, device_token, device_id, rx));
     Ok(())
+}
+
+#[tauri::command]
+fn load_device_token() -> Result<Option<String>, String> {
+    keychain::load()
+}
+
+#[tauri::command]
+fn clear_device_token() -> Result<(), String> {
+    keychain::clear()
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PairDeviceResponse {
+    device_id: String,
+    project_id: Option<String>,
+}
+
+#[tauri::command]
+async fn pair_device(
+    core_url: String,
+    code: String,
+    name: String,
+) -> Result<PairDeviceResponse, String> {
+    let platform = devices::detected_platform();
+    let agent_version = Some(env!("CARGO_PKG_VERSION"));
+    let pair = devices::pair(&core_url, &code, &name, platform, agent_version).await?;
+    keychain::store(&pair.device_token)?;
+    Ok(PairDeviceResponse {
+        device_id: pair.device_id,
+        project_id: pair.project_id,
+    })
+}
+
+#[tauri::command]
+async fn heartbeat(core_url: String, device_token: String) -> Result<(), String> {
+    devices::heartbeat(
+        &core_url,
+        &device_token,
+        Some(env!("CARGO_PKG_VERSION")),
+    )
+    .await
+}
+
+#[tauri::command]
+async fn post_job_events(
+    core_url: String,
+    device_token: String,
+    job_id: String,
+    events: Vec<jobs::JobEventInput>,
+) -> Result<usize, String> {
+    jobs::post_job_events(&core_url, &device_token, &job_id, events).await
 }
 
 #[tauri::command]
@@ -320,6 +382,11 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             connect_ws,
+            load_device_token,
+            clear_device_token,
+            pair_device,
+            heartbeat,
+            post_job_events,
             run_agent,
             abort_agent,
             get_agent_status,

@@ -203,7 +203,7 @@ export interface ProjectConfig {
 }
 
 export interface AppConfig {
-  strapiUrl: string;
+  coreUrl: string;
   authToken: string;
   deviceId: string;
   /** Parent directory for auto-created project folders (e.g. ~/forge-projects) */

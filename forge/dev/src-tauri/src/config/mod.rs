@@ -93,11 +93,40 @@ pub struct ProjectConfig {
     pub enabled_mcp_servers: Option<Vec<String>>,
 }
 
+/// Legacy AppConfig shape used by pre-Phase-2.7 installs. Loaded permissively
+/// then converted to `AppConfig` on read; the Strapi-era `authToken` is
+/// dropped (user JWT has no home on-disk; device auth lives in the keychain).
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+struct LegacyAppConfig {
+    #[serde(alias = "strapiUrl")]
+    core_url: Option<String>,
+    /// Accepted for backwards-compat; dropped on load (secret does not belong
+    /// on disk in plaintext — ADR 0004).
+    #[allow(dead_code)]
+    auth_token: Option<String>,
+    device_id: Option<String>,
+    projects_root: Option<String>,
+    claude_mode: Option<String>,
+    projects: HashMap<String, ProjectConfig>,
+    skill_library: Option<HashMap<String, SkillLibraryEntry>>,
+    mcp_library: Option<HashMap<String, McpServerConfig>>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
-    pub strapi_url: String,
+    /// URL of `forge/core` (the Hono+Drizzle backend). Replaces the
+    /// pre-Phase-2.7 `strapiUrl` field; legacy configs are migrated on load.
+    pub core_url: String,
+    /// Kept in-memory for legacy code paths (login page, pre-Phase-2.7
+    /// helpers). Never persisted — `save_config` skips it when empty, and
+    /// `load_config` drops it on read. Device-scoped auth lives in the OS
+    /// keychain (ADR 0004 / ISS-214 §5).
+    #[serde(default, skip_serializing)]
     pub auth_token: String,
+    /// Non-secret device identifier assigned by the server at pair time.
+    /// The actual device token lives in the OS keychain (ADR 0004).
     #[serde(default)]
     pub device_id: String,
     /// Parent directory for auto-created project folders (e.g. ~/forge-projects)
@@ -113,10 +142,33 @@ pub struct AppConfig {
     pub mcp_library: Option<HashMap<String, McpServerConfig>>,
 }
 
+impl AppConfig {
+    fn from_legacy(legacy: LegacyAppConfig) -> Self {
+        let core_url = legacy
+            .core_url
+            .unwrap_or_else(|| "http://localhost:1337".to_string());
+        Self {
+            core_url,
+            // Legacy auth_token is intentionally dropped on load — the user
+            // JWT does not belong on disk. Runtime code will re-populate via
+            // the login flow if still used.
+            auth_token: String::new(),
+            device_id: legacy
+                .device_id
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+            projects_root: legacy.projects_root,
+            claude_mode: legacy.claude_mode,
+            projects: legacy.projects,
+            skill_library: legacy.skill_library,
+            mcp_library: legacy.mcp_library,
+        }
+    }
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            strapi_url: "http://localhost:1337".to_string(),
+            core_url: "http://localhost:1337".to_string(),
             auth_token: String::new(),
             device_id: uuid::Uuid::new_v4().to_string(),
             projects_root: None,
@@ -142,7 +194,17 @@ fn config_path() -> PathBuf {
 pub fn load_config() -> AppConfig {
     let path = config_path();
     let mut config = match fs::read_to_string(&path) {
-        Ok(data) => serde_json::from_str(&data).unwrap_or_default(),
+        Ok(data) => match serde_json::from_str::<LegacyAppConfig>(&data) {
+            Ok(legacy) => {
+                if legacy.auth_token.is_some() {
+                    eprintln!(
+                        "[config] dropping legacy authToken on load — credentials belong in the OS keychain"
+                    );
+                }
+                AppConfig::from_legacy(legacy)
+            }
+            Err(_) => AppConfig::default(),
+        },
         Err(_) => AppConfig::default(),
     };
     // Ensure device_id is always set (backfill for existing configs)

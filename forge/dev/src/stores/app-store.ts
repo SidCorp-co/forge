@@ -83,7 +83,7 @@ export const useAppStore = create<AppState>((set) => ({
     set({ agentUsage: EMPTY_USAGE }),
 
   config: {
-    strapiUrl: "http://localhost:1337",
+    coreUrl: "http://localhost:1337",
     authToken: "",
     projects: {},
     deviceId: "",
