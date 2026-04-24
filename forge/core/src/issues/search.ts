@@ -97,9 +97,7 @@ searchRoutes.get(
           db
             .select({ one: sql`1` })
             .from(issueLabels)
-            .where(
-              and(eq(issueLabels.issueId, issues.id), inArray(issueLabels.labelId, labelIds)),
-            ),
+            .where(and(eq(issueLabels.issueId, issues.id), inArray(issueLabels.labelId, labelIds))),
         ),
       );
     }

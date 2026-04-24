@@ -99,3 +99,54 @@ export async function createTestProjectMember(
 
   return member;
 }
+
+export interface TestDevice {
+  id: string;
+  ownerId: string;
+  name: string;
+  platform: 'macos' | 'linux' | 'windows';
+  status: 'online' | 'offline' | 'revoked';
+}
+
+export interface CreateTestDeviceOverrides {
+  id?: string;
+  name?: string;
+  platform?: TestDevice['platform'];
+  status?: TestDevice['status'];
+}
+
+export async function createTestDevice(
+  db: TestDb,
+  ownerId: string,
+  overrides: CreateTestDeviceOverrides = {},
+): Promise<TestDevice> {
+  const device: TestDevice = {
+    id: overrides.id ?? randomUUID(),
+    ownerId,
+    name: overrides.name ?? `device-${randomUUID().slice(0, 8)}`,
+    platform: overrides.platform ?? 'linux',
+    status: overrides.status ?? 'online',
+  };
+  const tokenHash = `!test-device-hash-${device.id}`;
+  const tokenPrefix = device.id.slice(0, 8);
+
+  await db.execute(sql`
+    INSERT INTO devices (id, owner_id, name, platform, token_hash, token_prefix, status)
+    VALUES (${device.id}, ${device.ownerId}, ${device.name}, ${device.platform}, ${tokenHash}, ${tokenPrefix}, ${device.status})
+  `);
+
+  return device;
+}
+
+export async function setProjectActiveDevice(
+  db: TestDb,
+  projectId: string,
+  deviceId: string | null,
+): Promise<void> {
+  const cfg = deviceId === null ? null : { activeDeviceId: deviceId };
+  await db.execute(sql`
+    UPDATE projects
+    SET agent_config = ${cfg === null ? sql`NULL` : sql`${JSON.stringify(cfg)}::jsonb`}
+    WHERE id = ${projectId}
+  `);
+}

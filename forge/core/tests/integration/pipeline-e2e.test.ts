@@ -22,7 +22,9 @@ import {
 
 type PipelineMods = {
   HooksBus: typeof import('../../src/pipeline/hooks.js').HooksBus;
-  registerActivitySubscribers: typeof import('../../src/pipeline/subscribers.js').registerActivitySubscribers;
+  registerActivitySubscribers: typeof import(
+    '../../src/pipeline/subscribers.js',
+  ).registerActivitySubscribers;
   searchRoutes: typeof import('../../src/issues/search.js').searchRoutes;
   signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
   errorHandler: typeof import('../../src/middleware/error.js').errorHandler;

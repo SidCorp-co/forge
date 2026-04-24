@@ -13,6 +13,8 @@ import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-ro
 import { issueProjectRoutes, issueRoutes } from './issues/routes.js';
 import { searchRoutes } from './issues/search.js';
 import { transitionRoutes } from './issues/transition.js';
+import { registerDispatcher, unregisterDispatcher } from './jobs/dispatcher.js';
+import { jobProjectRoutes, jobRoutes } from './jobs/routes.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
 import { logger } from './logger.js';
 import { mcpHandler } from './mcp/handler.js';
@@ -75,6 +77,7 @@ export async function runShutdown(
 
   const sequence = (async () => {
     await closeWs();
+    await unregisterDispatcher();
     await stopBoss();
     await httpClosed;
     await closeDb();
@@ -110,11 +113,13 @@ app.route('/api/projects', issueProjectRoutes);
 app.route('/api/projects', searchRoutes);
 app.route('/api/projects', labelProjectRoutes);
 app.route('/api/projects', projectActivityRoutes);
+app.route('/api/projects', jobProjectRoutes);
 app.route('/api/issues', issueRoutes);
 app.route('/api/issues', transitionRoutes);
 app.route('/api/issues', issueActivityRoutes);
 app.route('/api/comments', commentRoutes);
 app.route('/api/labels', labelRoutes);
+app.route('/api/jobs', jobRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 
@@ -122,6 +127,7 @@ if (isMain) {
   const port = env.PORT;
 
   await startBoss();
+  await registerDispatcher();
 
   const server = serve({ fetch: app.fetch, port }, (info) => {
     logger.info({ port: info.port }, '@forge/core listening');

@@ -117,7 +117,6 @@ describe('GET /api/projects/:id/issues/search', () => {
     const res = await req('', t);
     expect(res.status).toBe(403);
   });
-
 });
 
 describe('buildIlikePattern', () => {

@@ -59,9 +59,7 @@ export interface HookPayloads {
 }
 
 export type HookTopic = keyof HookPayloads;
-export type HookHandler<T extends HookTopic> = (
-  payload: HookPayloads[T],
-) => void | Promise<void>;
+export type HookHandler<T extends HookTopic> = (payload: HookPayloads[T]) => void | Promise<void>;
 
 type AnyHandler = (payload: unknown) => void | Promise<void>;
 
