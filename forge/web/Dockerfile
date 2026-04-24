@@ -9,8 +9,8 @@ WORKDIR /repo
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY forge ./forge
 
-# Install only web's transitive deps
-RUN pnpm install --frozen-lockfile --filter @forge/web...
+# Install only web's transitive deps (web package name is "web", not "@forge/web")
+RUN pnpm install --frozen-lockfile --filter web...
 
 # Build
 WORKDIR /repo/forge/web
