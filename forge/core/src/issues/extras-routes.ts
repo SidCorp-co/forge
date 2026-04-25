@@ -4,7 +4,8 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { activityLog, issues, jobs } from '../db/schema.js';
+import { activityLog, issues, jobs, usageRecords } from '../db/schema.js';
+import { sql } from 'drizzle-orm';
 import { enqueueJob } from '../jobs/enqueue.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { loadProjectAccess } from '../lib/project-access.js';
@@ -172,5 +173,59 @@ issueExtrasRoutes.get(
     stats.sort((a, b) => a.status.localeCompare(b.status));
 
     return c.json({ projectId, stats });
+  },
+);
+
+// GET /api/issues/:id/cost-summary
+// Joins usage_records.session_id ↔ jobs.id to roll up estimated cost +
+// token totals for any usage row tagged with one of this issue's job ids.
+issueExtrasRoutes.get(
+  '/:id/cost-summary',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id: issueId } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const [issue] = await db
+      .select({ id: issues.id, projectId: issues.projectId })
+      .from(issues)
+      .where(eq(issues.id, issueId))
+      .limit(1);
+    if (!issue) throw notFound('issue not found');
+
+    const access = await loadProjectAccess(issue.projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+
+    const [totals] = await db
+      .select({
+        estimatedCost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
+        inputTokens: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
+        outputTokens: sql<number>`coalesce(sum(${usageRecords.outputTokens}), 0)`.mapWith(Number),
+        cacheReadTokens:
+          sql<number>`coalesce(sum(${usageRecords.cacheReadTokens}), 0)`.mapWith(Number),
+        cacheCreationTokens:
+          sql<number>`coalesce(sum(${usageRecords.cacheCreationTokens}), 0)`.mapWith(Number),
+        requests: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
+        sampleCount: sql<number>`count(${usageRecords.id})`.mapWith(Number),
+      })
+      .from(usageRecords)
+      .innerJoin(jobs, eq(jobs.id, sql`${usageRecords.sessionId}::uuid`))
+      .where(eq(jobs.issueId, issueId));
+
+    return c.json({
+      issueId,
+      projectId: issue.projectId,
+      ...(totals ?? {
+        estimatedCost: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        requests: 0,
+        sampleCount: 0,
+      }),
+    });
   },
 );
