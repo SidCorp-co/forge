@@ -51,6 +51,7 @@ import { isBossStarted, startBoss, stopBoss } from './queue/boss.js';
 import { scheduleRoutes } from './schedules/routes.js';
 import { registerScheduleTicker, unregisterScheduleTicker } from './schedules/runner.js';
 import { seedBuiltinSkills } from './skills/builtin-seed.js';
+import { skillCrudRoutes } from './skills/crud-routes.js';
 import { skillRegisterRoutes, skillSyncRoutes } from './skills/routes.js';
 import { taskIssueRoutes, taskRoutes } from './tasks/routes.js';
 import { webhookInboundRoutes } from './webhooks/inbound-routes.js';
@@ -205,6 +206,7 @@ app.route('/api/projects', deviceUserRoutes);
 app.route('/api/schedules', scheduleRoutes);
 app.route('/api/knowledge', knowledgeIngestRoutes);
 app.route('/api/knowledge-edges', knowledgeEdgeRoutes);
+app.route('/api/skills', skillCrudRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 

@@ -561,6 +561,9 @@ export type SkillScope = (typeof skillScopes)[number];
 export const skillSources = ['builtin', 'user'] as const;
 export type SkillSource = (typeof skillSources)[number];
 
+export const skillTargets = ['dev', 'cloud', 'all'] as const;
+export type SkillTarget = (typeof skillTargets)[number];
+
 export const skills = pgTable(
   'skills',
   {
@@ -576,6 +579,11 @@ export const skills = pgTable(
     version: integer('version').notNull().default(1),
     contentHash: text('content_hash').notNull(),
     evalScore: real('eval_score'),
+    skillMd: text('skill_md'),
+    target: text('target', { enum: skillTargets }),
+    files: jsonb('files').notNull().default([]),
+    changelog: jsonb('changelog').notNull().default([]),
+    localGuide: text('local_guide'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

@@ -2,20 +2,13 @@ import { apiClient } from '@/lib/api/client';
 import type { Skill, SkillSyncStatus, BulkPushResult } from './types';
 
 export const skillApi = {
-  getAll: async (projectDocumentId?: string) => {
-    // Strapi 5 REST doesn't allow relation filters in query params.
-    // Fetch all with populate, filter client-side.
-    const res = await apiClient<{ data: Skill[] }>('/skills?populate=project&pagination[pageSize]=100');
-    if (!projectDocumentId) return res;
-    return {
-      data: res.data.filter(
-        (s) => s.isGlobal || s.project?.documentId === projectDocumentId,
-      ),
-    };
+  getAll: (projectId?: string) => {
+    const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '?scope=global';
+    return apiClient<Skill[]>(`/skills${qs}`).then((data) => ({ data }));
   },
 
-  getOne: (documentId: string) =>
-    apiClient<{ data: Skill }>(`/skills/${documentId}?populate=project`),
+  getOne: (id: string) =>
+    apiClient<Skill>(`/skills/${id}`).then((data) => ({ data })),
 
   create: (data: {
     name: string;
@@ -24,31 +17,34 @@ export const skillApi = {
     target?: 'dev' | 'cloud' | 'all';
     isGlobal?: boolean;
     files?: Array<{ path: string; content: string; encoding: string }>;
-    project?: { documentId: string };
+    projectId?: string;
   }) =>
-    apiClient<{ data: Skill }>('/skills', {
+    apiClient<Skill>('/skills', {
       method: 'POST',
-      body: JSON.stringify({ data }),
-    }),
+      body: JSON.stringify(data),
+    }).then((res) => ({ data: res })),
 
-  update: (documentId: string, data: Partial<Pick<Skill, 'name' | 'description' | 'skillMd' | 'target' | 'isGlobal' | 'files'>>) =>
-    apiClient<{ data: Skill }>(`/skills/${documentId}`, {
+  update: (
+    id: string,
+    data: Partial<Pick<Skill, 'name' | 'description' | 'skillMd' | 'target' | 'isGlobal' | 'files' | 'localGuide'>>,
+  ) =>
+    apiClient<Skill>(`/skills/${id}`, {
       method: 'PUT',
-      body: JSON.stringify({ data }),
-    }),
+      body: JSON.stringify(data),
+    }).then((res) => ({ data: res })),
 
-  delete: (documentId: string) =>
-    apiClient(`/skills/${documentId}`, { method: 'DELETE' }),
+  delete: (id: string) =>
+    apiClient<null>(`/skills/${id}`, { method: 'DELETE' }),
 
-  syncStatus: (projectDocumentId: string) =>
-    apiClient<{ data: SkillSyncStatus[] }>('/skills/sync-status', {
+  syncStatus: (projectId: string) =>
+    apiClient<SkillSyncStatus[]>('/skills/sync-status', {
       method: 'POST',
-      body: JSON.stringify({ projectDocumentId }),
-    }),
+      body: JSON.stringify({ projectId }),
+    }).then((data) => ({ data })),
 
-  bulkPush: (targets: string[], projectDocumentId: string, skillNames?: string[]) =>
-    apiClient<{ data: { results: BulkPushResult[] } }>('/skills/bulk-push', {
+  bulkPush: (targets: string[], projectId: string, skillNames?: string[]) =>
+    apiClient<{ results: BulkPushResult[] }>('/skills/bulk-push', {
       method: 'POST',
-      body: JSON.stringify({ targets, projectDocumentId, skillNames }),
-    }),
+      body: JSON.stringify({ targets, projectId, skillNames }),
+    }).then((res) => ({ data: res })),
 };

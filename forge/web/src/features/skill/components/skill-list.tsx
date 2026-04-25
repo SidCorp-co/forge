@@ -92,7 +92,7 @@ export function SkillList({ skills, onSelect, onDelete, selectedId, sortField, s
               </tr>
             ) : (
               skills.map((skill) => {
-                const target = TARGET_CONFIG[skill.target] || TARGET_CONFIG.dev;
+                const target = TARGET_CONFIG[skill.target ?? 'dev'] || TARGET_CONFIG.dev;
                 const TargetIcon = target.icon;
                 const isSelected = skill.documentId === selectedId;
                 return (
