@@ -105,7 +105,7 @@ projectHealthRoutes.get('/health', async (c) => {
     .where(
       and(
         inArray(issues.projectId, projectIds),
-        sql`${activityLog.action} LIKE 'transition.%'`,
+        eq(activityLog.action, 'issue.statusChanged'),
         sql`${activityLog.payload} ->> 'to' IN ('closed','released')`,
         sql`${activityLog.createdAt} >= ${sevenDaysAgo}`,
       ),
