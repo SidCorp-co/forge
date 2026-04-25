@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { Shell } from '@/components/layout/shell';
 import { AlertBanner } from '@/components/ui/alert-banner';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,14 @@ import { ApiError } from '@/lib/api/client';
 import { formatApiError } from '@/lib/api/error';
 
 export default function ProjectsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ProjectsPageInner />
+    </Suspense>
+  );
+}
+
+function ProjectsPageInner() {
   useSetPageTitle('Projects');
   const { data: projects, isLoading, isError, error } = useProjects();
   const router = useRouter();
