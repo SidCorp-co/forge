@@ -1,37 +1,24 @@
-import { apiClient } from '@/lib/api/client';
 import type { Notification } from '../types';
 
+// TODO(notifications-port): /api/notifications is not yet mounted in
+// forge/core (audit Table A). Until the endpoint lands, every notification
+// call is short-circuited to an empty/no-op response so the bell + page
+// don't throw 404s on every navigation. Re-enable real apiClient calls
+// when forge/core mounts /api/notifications/*.
 export const notificationApi = {
-  getAll: (projectSlug?: string) => {
-    const params = new URLSearchParams({ 'sort': 'createdAt:desc', 'pagination[pageSize]': '50' });
-    if (projectSlug) {
-      params.set('filters[project][slug][$eq]', projectSlug);
-    }
-    return apiClient<{ data: Notification[] }>(`/notifications?${params}`);
+  getAll: async (_projectSlug?: string): Promise<{ data: Notification[] }> => ({ data: [] }),
+
+  unreadCount: async (_projectSlug?: string): Promise<{ data: { count: number } }> => ({
+    data: { count: 0 },
+  }),
+
+  markAsRead: async (_id: string): Promise<{ data: Notification | null }> => ({ data: null }),
+
+  markAllRead: async (_projectDocumentId?: string): Promise<{ data: { updated: number } }> => ({
+    data: { updated: 0 },
+  }),
+
+  delete: async (_id: string): Promise<void> => {
+    /* no-op until /api/notifications/:id lands in core */
   },
-
-  unreadCount: (projectSlug?: string) => {
-    const params = new URLSearchParams();
-    if (projectSlug) {
-      params.set('project', projectSlug);
-    }
-    return apiClient<{ data: { count: number } }>(`/notifications/unread-count?${params}`);
-  },
-
-  markAsRead: (id: string) =>
-    apiClient<{ data: Notification }>(`/notifications/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify({ data: { read: true } }),
-    }),
-
-  markAllRead: (projectDocumentId?: string) => {
-    const params = new URLSearchParams();
-    if (projectDocumentId) params.set('project', projectDocumentId);
-    return apiClient<{ data: { updated: number } }>(`/notifications/mark-all-read?${params}`, {
-      method: 'POST',
-    });
-  },
-
-  delete: (id: string) =>
-    apiClient(`/notifications/${id}`, { method: 'DELETE' }),
 };
