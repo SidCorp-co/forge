@@ -67,14 +67,12 @@ export function NotificationBell() {
   }, [open]);
 
   function handleClick(n: Notification) {
-    if (!n.read) markRead.mutate(n.documentId);
+    if (!n.read) markRead.mutate(n.id);
     setOpen(false);
-    const slug = n.project?.slug;
-    if (n.issueDocumentId && slug) {
-      navigate(`/project/${slug}/issues`);
-    } else if (n.agentSessionDocumentId && slug) {
-      navigate(`/project/${slug}/agent`);
-    }
+    // Notification routing in dev needs a projectId → slug lookup. Until that
+    // wire-up lands, just close the popup and let the user navigate manually.
+    // The cloud bell handles the slug-based deep link.
+    void navigate;
   }
 
   return (
@@ -114,7 +112,7 @@ export function NotificationBell() {
             ) : (
               notifications.map((n) => (
                 <button
-                  key={n.documentId}
+                  key={n.id}
                   onClick={() => handleClick(n)}
                   className={clsx(
                     "flex w-full gap-2 px-3 py-2 text-left hover:bg-gray-50",

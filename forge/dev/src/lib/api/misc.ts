@@ -22,24 +22,29 @@ export async function uploadFile(file: File): Promise<{ id: number; url: string;
 }
 
 // --- Notifications ---
-// TODO(notifications-port): /api/notifications is not yet mounted in
-// forge/core (audit Table A). Short-circuit until the endpoint lands so
-// the desktop app stops 404-ing on every poll.
+// Backed by `/api/notifications/*` in forge/core (mounted by ISS-258 phase 1).
 
 export async function getNotifications(): Promise<Notification[]> {
-  return [];
+  return request<Notification[]>('/notifications');
 }
 
 export async function getUnreadCount(): Promise<number> {
-  return 0;
+  const r = await request<{ count: number }>('/notifications/unread-count');
+  return r.count;
 }
 
-export async function markNotificationRead(_id: string): Promise<Notification | null> {
-  return null;
+export async function markNotificationRead(id: string): Promise<Notification | null> {
+  return request<Notification>(`/notifications/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ read: true }),
+  });
 }
 
 export async function markAllNotificationsRead(): Promise<void> {
-  /* no-op until /api/notifications/mark-all-read lands in core */
+  await request<{ updated: number }>('/notifications/mark-all-read', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
 }
 
 // --- Knowledge ---

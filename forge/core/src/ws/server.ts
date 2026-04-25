@@ -95,6 +95,11 @@ async function canSubscribe(principal: Principal, room: string): Promise<boolean
       .limit(1);
     return !!row;
   }
+  if (room.startsWith('user:')) {
+    const userId = room.slice('user:'.length);
+    const principalUserId = principal.type === 'user' ? principal.userId : principal.ownerId;
+    return principalUserId === userId;
+  }
   return false;
 }
 

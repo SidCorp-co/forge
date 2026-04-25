@@ -840,3 +840,162 @@ export const chatLogs = pgTable(
     qaRatingIdx: index('chat_logs_qa_rating_idx').on(t.qaRating),
   }),
 );
+
+export const notificationTypes = [
+  'issue_status_changed',
+  'comment_added',
+  'agent_completed',
+  'mention',
+] as const;
+export type NotificationType = (typeof notificationTypes)[number];
+
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    type: text('type', { enum: notificationTypes }).notNull(),
+    title: text('title').notNull(),
+    body: text('body'),
+    read: boolean('read').notNull().default(false),
+    issueId: uuid('issue_id').references(() => issues.id, { onDelete: 'set null' }),
+    // agent_session_id is intentionally a bare uuid (no FK) until the agent_sessions
+    // table lands in a later B2 migration — adding the FK then is additive.
+    agentSessionId: uuid('agent_session_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userReadCreatedIdx: index('notifications_user_read_created_idx').on(
+      t.userId,
+      t.read,
+      t.createdAt,
+    ),
+    projectCreatedIdx: index('notifications_project_created_idx').on(t.projectId, t.createdAt),
+  }),
+);
+
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, { fields: [notifications.userId], references: [users.id] }),
+  project: one(projects, { fields: [notifications.projectId], references: [projects.id] }),
+  issue: one(issues, { fields: [notifications.issueId], references: [issues.id] }),
+}));
+
+export const agentSchedules = ['off', 'weekly', 'biweekly', 'monthly'] as const;
+export type AgentSchedule = (typeof agentSchedules)[number];
+
+export const agentApprovalModes = ['preview', 'auto-create'] as const;
+export type AgentApprovalMode = (typeof agentApprovalModes)[number];
+
+// Folds the legacy `agent-definition` template into the agent row itself —
+// no template inheritance per Tier B2 plan.
+export const agents = pgTable(
+  'agents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    type: text('type').notNull(),
+    description: text('description'),
+    enabled: boolean('enabled').notNull().default(false),
+    focusAreas: jsonb('focus_areas')
+      .notNull()
+      .default(
+        sql`'["feature-gaps","journey-completeness","polish","accessibility","ux-improvements"]'::jsonb`,
+      ),
+    customInstructions: text('custom_instructions'),
+    schedule: text('schedule', { enum: agentSchedules }).notNull().default('off'),
+    approvalMode: text('approval_mode', { enum: agentApprovalModes }).notNull().default('preview'),
+    maxProposals: integer('max_proposals').notNull().default(10),
+    excludeCategories: jsonb('exclude_categories').notNull().default(sql`'[]'::jsonb`),
+    promptTemplate: text('prompt_template'),
+    reindexPromptTemplate: text('reindex_prompt_template'),
+    knowledge: text('knowledge'),
+    memory: text('memory'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectTypeIdx: index('agents_project_type_idx').on(t.projectId, t.type),
+  }),
+);
+
+export const agentsRelations = relations(agents, ({ one }) => ({
+  project: one(projects, { fields: [agents.projectId], references: [projects.id] }),
+}));
+
+export const chatSessionSources = ['web', 'widget', 'rocketchat', 'telegram'] as const;
+export type ChatSessionSource = (typeof chatSessionSources)[number];
+
+export const chatSessions = pgTable(
+  'chat_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    widgetUserId: text('widget_user_id'),
+    userKey: text('user_key'),
+    title: text('title'),
+    source: text('source', { enum: chatSessionSources }).notNull().default('web'),
+    messages: jsonb('messages').notNull().default(sql`'[]'::jsonb`),
+    metadata: jsonb('metadata'),
+    summary: text('summary'),
+    summarizedAt: timestamp('summarized_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectUpdatedIdx: index('chat_sessions_project_updated_idx').on(t.projectId, t.updatedAt),
+    userIdx: index('chat_sessions_user_idx').on(t.userId),
+  }),
+);
+
+export const chatSessionsRelations = relations(chatSessions, ({ one }) => ({
+  project: one(projects, { fields: [chatSessions.projectId], references: [projects.id] }),
+  user: one(users, { fields: [chatSessions.userId], references: [users.id] }),
+}));
+
+export const agentSessionStatuses = ['idle', 'queued', 'running', 'completed', 'failed'] as const;
+export type AgentSessionStatus = (typeof agentSessionStatuses)[number];
+
+export const agentSessions = pgTable(
+  'agent_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    deviceId: uuid('device_id').references(() => devices.id, { onDelete: 'set null' }),
+    title: text('title'),
+    status: text('status', { enum: agentSessionStatuses }).notNull().default('idle'),
+    messages: jsonb('messages').notNull().default(sql`'[]'::jsonb`),
+    claudeSessionId: text('claude_session_id'),
+    repoPath: text('repo_path'),
+    usage: jsonb('usage'),
+    metadata: jsonb('metadata'),
+    diff: jsonb('diff'),
+    pipelineControl: jsonb('pipeline_control'),
+    pipelineTelemetry: jsonb('pipeline_telemetry'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectStatusIdx: index('agent_sessions_project_status_idx').on(t.projectId, t.status),
+    deviceIdx: index('agent_sessions_device_idx').on(t.deviceId),
+    userIdx: index('agent_sessions_user_idx').on(t.userId),
+  }),
+);
+
+export const agentSessionsRelations = relations(agentSessions, ({ one }) => ({
+  project: one(projects, { fields: [agentSessions.projectId], references: [projects.id] }),
+  user: one(users, { fields: [agentSessions.userId], references: [users.id] }),
+  device: one(devices, { fields: [agentSessions.deviceId], references: [devices.id] }),
+}));
+

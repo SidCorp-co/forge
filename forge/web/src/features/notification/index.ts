@@ -1,5 +1,4 @@
-// Notifications endpoints (`/api/notifications/*`) are not yet implemented in
-// forge/core. Keep the feature module wired up but flagged off so the web
-// client doesn't generate 404s on every page load. Flip to `true` once the
-// core endpoints land. See ISS-243.
-export const NOTIFICATIONS_ENABLED = false;
+// Notifications endpoints (`/api/notifications/*`) are mounted in forge/core
+// as of ISS-258 (Tier B2 phase 1). This flag is kept as a kill-switch in case
+// the backend has to be temporarily disabled, but should stay `true` in v0.1+.
+export const NOTIFICATIONS_ENABLED = true;
