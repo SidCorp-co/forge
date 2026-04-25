@@ -340,12 +340,12 @@ export function useWebSocket() {
 
                 // Sync .forge/knowledge.json → project.knowledgeIndex + Qdrant
                 const knowledge = await invoke<Record<string, unknown> | null>("read_knowledge_index", { repoPath: trackedSession.repoPath });
-                if (knowledge && project?.apiKey) {
+                if (knowledge && project?.documentId) {
                   // Wrap flat KnowledgeIndex in repo-keyed map if not already wrapped
                   // Display expects Record<string, KnowledgeIndex>, local file is flat KnowledgeIndex
                   const isFlat = 'project' in knowledge || 'architecture' in knowledge || 'domains' in knowledge;
                   const wrapped = isFlat ? { [trackedSession.slug]: knowledge } : knowledge;
-                  await syncKnowledgeToStrapi(project.apiKey, wrapped, project.documentId);
+                  await syncKnowledgeToStrapi(project.documentId, wrapped, project.documentId);
                 }
 
                 // Sync agent-specific files (e.g. .forge/po-agent/) → agent record

@@ -45,16 +45,16 @@ export async function markAllNotificationsRead(): Promise<void> {
 // --- Knowledge ---
 
 export async function syncKnowledgeToStrapi(
-  projectApiKey: string,
+  projectId: string,
   knowledge: Record<string, unknown>,
   projectDocumentId?: string,
-): Promise<{ ok: boolean; processed: number }> {
+): Promise<{ ok: boolean; processed: number; totalChunks?: number }> {
   // 1. Save structured knowledge to project.knowledgeIndex field
   if (projectDocumentId) {
     await updateProject(projectDocumentId, { knowledgeIndex: knowledge });
   }
 
-  // 2. Ingest into Qdrant embeddings for semantic search
+  // 2. Ingest into vector embeddings for semantic search via core
   const documents = Object.entries(knowledge)
     .filter(([, v]) => v != null)
     .map(([key, value]) => ({
@@ -67,13 +67,14 @@ export async function syncKnowledgeToStrapi(
   if (documents.length === 0) return { ok: true, processed: 0 };
 
   const baseUrl = getBaseUrl();
+  const authToken = getAuthToken();
   const res = await fetch(`${baseUrl}/api/knowledge/ingest`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Forge-API-Key": projectApiKey,
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
     },
-    body: JSON.stringify({ documents }),
+    body: JSON.stringify({ projectId, documents }),
   });
   if (!res.ok) throw new Error(`Knowledge sync failed: ${res.status}`);
   return res.json();
