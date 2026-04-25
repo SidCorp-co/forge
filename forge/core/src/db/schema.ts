@@ -662,3 +662,44 @@ export const skillRegistrationsRelations = relations(skillRegistrations, ({ one 
 export const memoriesRelations = relations(memories, ({ one }) => ({
   project: one(projects, { fields: [memories.projectId], references: [projects.id] }),
 }));
+
+export const taskStatuses = ['backlog', 'todo', 'in_progress', 'in_review', 'done'] as const;
+export type TaskStatus = (typeof taskStatuses)[number];
+
+export const taskAgentStatuses = ['idle', 'running', 'completed', 'failed'] as const;
+export type TaskAgentStatus = (typeof taskAgentStatuses)[number];
+
+export const tasks = pgTable(
+  'tasks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references(() => issues.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    description: text('description'),
+    status: text('status', { enum: taskStatuses }).notNull().default('backlog'),
+    priority: text('priority', { enum: issuePriorities }).notNull().default('none'),
+    assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
+    isAgentTask: boolean('is_agent_task').notNull().default(false),
+    agentStatus: text('agent_status', { enum: taskAgentStatuses }),
+    agentLog: jsonb('agent_log'),
+    acceptanceCriteria: jsonb('acceptance_criteria'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    issueIdx: index('tasks_issue_id_idx').on(t.issueId),
+    projectStatusIdx: index('tasks_project_status_idx').on(t.projectId, t.status),
+    assigneeIdx: index('tasks_assignee_idx').on(t.assigneeId),
+  }),
+);
+
+export const tasksRelations = relations(tasks, ({ one }) => ({
+  issue: one(issues, { fields: [tasks.issueId], references: [issues.id] }),
+  project: one(projects, { fields: [tasks.projectId], references: [projects.id] }),
+  assignee: one(users, { fields: [tasks.assigneeId], references: [users.id] }),
+}));

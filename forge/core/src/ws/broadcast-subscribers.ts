@@ -37,4 +37,41 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
 
   // `issue.statusChanged` is already published inline in transition.ts to
   // keep the publish atomic with the UPDATE. Do not double-emit here.
+
+  bus.on('taskCreated', (p) => {
+    roomManager.publish(projectRoom(p.projectId), {
+      event: 'task.created',
+      data: {
+        taskId: p.taskId,
+        issueId: p.issueId,
+        projectId: p.projectId,
+        actorId: p.actor.id,
+      },
+    });
+  });
+
+  bus.on('taskUpdated', (p) => {
+    roomManager.publish(projectRoom(p.projectId), {
+      event: 'task.updated',
+      data: {
+        taskId: p.taskId,
+        issueId: p.issueId,
+        projectId: p.projectId,
+        fields: p.fields,
+        actorId: p.actor.id,
+      },
+    });
+  });
+
+  bus.on('taskDeleted', (p) => {
+    roomManager.publish(projectRoom(p.projectId), {
+      event: 'task.deleted',
+      data: {
+        taskId: p.taskId,
+        issueId: p.issueId,
+        projectId: p.projectId,
+        actorId: p.actor.id,
+      },
+    });
+  });
 }

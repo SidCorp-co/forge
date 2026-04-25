@@ -18,7 +18,7 @@ export function DraggableTaskCard({ task, highlight }: DraggableTaskCardProps) {
     <div
       draggable
       onDragStart={(e) => {
-        e.dataTransfer.setData('taskId', task.documentId);
+        e.dataTransfer.setData('taskId', task.id);
         e.dataTransfer.effectAllowed = 'move';
       }}
       className={cn(DRAGGABLE_CARD_CLASS, highlight && 'ring-2 ring-info animate-highlight-fade')}
@@ -35,18 +35,22 @@ export function DraggableTaskCard({ task, highlight }: DraggableTaskCardProps) {
         {task.isAgentTask && (
           <span className="rounded bg-info-surface/20 px-1.5 py-0.5 text-[10px] font-medium text-info">agent</span>
         )}
-        {task.assignee && (
-          <span className="rounded bg-surface-container-high px-1.5 py-0.5 text-[10px] text-on-surface-variant">{task.assignee}</span>
+        {task.assigneeId && (
+          <span className="rounded bg-surface-container-high px-1.5 py-0.5 text-[10px] text-on-surface-variant">
+            {task.assigneeId.slice(0, 8)}
+          </span>
         )}
       </div>
       {expanded && (
         <div className="mt-3 space-y-2 border-t pt-2 text-xs text-on-surface-variant">
           {task.description && <p>{task.description}</p>}
-          {task.acceptanceCriteria && task.acceptanceCriteria.length > 0 && (
+          {Array.isArray(task.acceptanceCriteria) && task.acceptanceCriteria.length > 0 && (
             <div>
               <span className="font-medium text-on-surface-variant">Acceptance criteria:</span>
               <ul className="mt-0.5 list-inside list-disc">
-                {task.acceptanceCriteria.map((c, i) => <li key={i}>{c}</li>)}
+                {(task.acceptanceCriteria as unknown[]).map((c, i) => (
+                  <li key={i}>{typeof c === 'string' ? c : JSON.stringify(c)}</li>
+                ))}
               </ul>
             </div>
           )}

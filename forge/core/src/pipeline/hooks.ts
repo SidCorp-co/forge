@@ -70,6 +70,25 @@ export interface HookPayloads {
     actorUserId: string;
     stage: string | null;
   };
+  taskCreated: {
+    taskId: string;
+    issueId: string;
+    projectId: string;
+    actor: Actor;
+  };
+  taskUpdated: {
+    taskId: string;
+    issueId: string;
+    projectId: string;
+    actor: Actor;
+    fields: string[];
+  };
+  taskDeleted: {
+    taskId: string;
+    issueId: string;
+    projectId: string;
+    actor: Actor;
+  };
 }
 
 export type HookTopic = keyof HookPayloads;

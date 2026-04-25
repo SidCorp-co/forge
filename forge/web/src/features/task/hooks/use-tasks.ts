@@ -1,28 +1,28 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { taskApi } from '../api/task-api';
-import type { Task } from '../types';
+import type { Task, TaskPatchInput } from '../types';
 
-export function useTasks(projectSlug?: string) {
+export function useIssueTasks(issueId: string | undefined) {
   return useQuery({
-    queryKey: ['tasks', projectSlug],
-    queryFn: () => taskApi.getByProject(projectSlug),
+    queryKey: ['tasks', 'issue', issueId],
+    queryFn: () => taskApi.listByIssue(issueId as string),
+    enabled: !!issueId,
   });
 }
 
 export function useUpdateTask() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Task> }) =>
-      taskApi.update(id, data),
+    mutationFn: ({ id, data }: { id: string; data: TaskPatchInput }) => taskApi.patch(id, data),
     onMutate: async ({ id, data }) => {
       await queryClient.cancelQueries({ queryKey: ['tasks'] });
-      const queries = queryClient.getQueriesData<{ data: Task[] }>({ queryKey: ['tasks'] });
+      const queries = queryClient.getQueriesData<Task[]>({ queryKey: ['tasks'] });
       for (const [key, old] of queries) {
-        if (!old?.data) continue;
-        queryClient.setQueryData(key, {
-          ...old,
-          data: old.data.map((t) => (t.documentId === id ? { ...t, ...data } : t)),
-        });
+        if (!Array.isArray(old)) continue;
+        queryClient.setQueryData(
+          key,
+          old.map((t) => (t.id === id ? { ...t, ...data } : t)),
+        );
       }
       return { queries };
     },
