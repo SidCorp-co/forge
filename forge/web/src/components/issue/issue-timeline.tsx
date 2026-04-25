@@ -93,7 +93,7 @@ function PikachuDecisionItem({ activity, issueDocumentId }: { activity: Activity
   async function handleEval(verdict: 'approve' | 'reject') {
     setSubmitting(true);
     try {
-      await activityApi.evaluate(activity.documentId, verdict);
+      await activityApi.evaluate(issueDocumentId, activity.documentId, verdict);
       queryClient.invalidateQueries({ queryKey: ['activities', issueDocumentId] });
     } finally {
       setSubmitting(false);
@@ -204,7 +204,7 @@ function DeleteButton({ activity, issueDocumentId }: { activity: Activity; issue
       onClick={async () => {
         setDeleting(true);
         try {
-          await activityApi.delete(activity.documentId);
+          await activityApi.delete(issueDocumentId, activity.documentId);
           queryClient.invalidateQueries({ queryKey: ['activities', issueDocumentId] });
         } finally {
           setDeleting(false);
