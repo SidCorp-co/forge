@@ -4,7 +4,7 @@ import { useState, useEffect, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils/cn';
 import { SidebarNav } from './sidebar-nav';
-import { MobileHeader } from './mobile-header';
+import { TopBar } from './top-bar';
 import { useIosViewport } from './hooks/use-ios-viewport';
 
 export function Shell({ children }: { children: ReactNode }) {
@@ -59,7 +59,7 @@ export function Shell({ children }: { children: ReactNode }) {
         'relative min-w-0 flex-1 flex flex-col overflow-hidden overflow-x-hidden transition-[margin] duration-200',
         collapsed ? 'md:ml-0' : 'md:ml-64'
       )}>
-        <MobileHeader onMenuOpen={() => setMobileOpen(true)} />
+        <TopBar onMenuOpen={() => setMobileOpen(true)} />
         {children}
       </main>
     </div>

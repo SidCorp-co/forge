@@ -1,22 +1,45 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { agentApi, type Agent } from '../api';
 
-export function useAgents(projectSlug: string) {
+const agentsKey = (projectId: string | undefined) => ['agents', projectId] as const;
+
+export function useAgents(projectId: string | undefined) {
   return useQuery({
-    queryKey: ['agents', projectSlug],
-    queryFn: () => agentApi.getAgents(projectSlug),
-    enabled: !!projectSlug,
+    queryKey: agentsKey(projectId),
+    queryFn: () => agentApi.getAgents(projectId as string),
+    enabled: !!projectId,
     select: (res) => res.data || [],
   });
 }
 
-export function useUpdateAgent(projectSlug: string) {
+export function useCreateAgent(projectId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Partial<Agent> & { name: string; type: string }) =>
+      agentApi.createAgent({ ...data, projectId: projectId as string }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: agentsKey(projectId) });
+    },
+  });
+}
+
+export function useUpdateAgent(projectId: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<Agent> }) =>
       agentApi.updateAgent(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['agents', projectSlug] });
+      queryClient.invalidateQueries({ queryKey: agentsKey(projectId) });
+    },
+  });
+}
+
+export function useDeleteAgent(projectId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => agentApi.deleteAgent(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: agentsKey(projectId) });
     },
   });
 }

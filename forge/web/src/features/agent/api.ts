@@ -75,55 +75,89 @@ export interface AgentSession {
 
 export type AgentSessionSummary = Omit<AgentSession, 'messages'>;
 
+/**
+ * Interactive agent runs (start / send / abort) live on the device-runner job
+ * queue, which is not yet wired through forge/core's REST surface — the
+ * `/agent-sessions/start|send|abort` paths below 404 against the current core.
+ * The agent page is read-only for v0.1.0; gate any UI that triggers these
+ * endpoints behind this flag. Flip to `true` when the job-queue endpoints land.
+ */
+export const AGENT_INTERACTIVE_ENABLED = false;
+
+function adaptAgent(row: Record<string, unknown>): Agent {
+  // core returns flat rows with `id` (uuid). Existing components read `documentId` —
+  // mirror id → documentId so the rest of the agent UI keeps working unchanged.
+  // Keep the original uuid string on `id` too so callers that read either field
+  // get the canonical identifier instead of `0`.
+  const id = row['id'] as string;
+  return {
+    ...(row as object),
+    id: id as unknown as number,
+    documentId: id,
+  } as unknown as Agent;
+}
+
 export const agentApi = {
   // Agent CRUD
-  getAgents: (projectSlug: string) =>
-    apiClient<{ data: Agent[] }>(`/agents?filters[project][slug][$eq]=${projectSlug}`),
+  getAgents: (projectId: string) =>
+    apiClient<Record<string, unknown>[]>(`/agents?projectId=${encodeURIComponent(projectId)}`)
+      .then((rows) => ({ data: rows.map(adaptAgent) })),
 
   getAgent: (id: string) =>
-    apiClient<{ data: Agent }>(`/agents/${id}`),
+    apiClient<Record<string, unknown>>(`/agents/${id}`).then((row) => ({
+      data: adaptAgent(row),
+    })),
 
-  createAgent: (data: Partial<Agent> & { project: string }) =>
-    apiClient<{ data: Agent }>('/agents', {
+  createAgent: (
+    data: Partial<Agent> & { projectId: string; name: string; type: string },
+  ) =>
+    apiClient<Record<string, unknown>>('/agents', {
       method: 'POST',
-      body: JSON.stringify({ data }),
-    }),
+      body: JSON.stringify(data),
+    }).then((row) => ({ data: adaptAgent(row) })),
 
   updateAgent: (id: string, data: Partial<Agent>) =>
-    apiClient<{ data: Agent }>(`/agents/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify({ data }),
-    }),
+    apiClient<Record<string, unknown>>(`/agents/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }).then((row) => ({ data: adaptAgent(row) })),
 
   deleteAgent: (id: string) =>
-    apiClient<{ data: Agent }>(`/agents/${id}`, { method: 'DELETE' }),
+    apiClient<null>(`/agents/${id}`, { method: 'DELETE' }),
 
   // Agent sessions
-  getSessions: (projectSlug: string, search?: string) => {
-    const params = new URLSearchParams({
-      'filters[project][slug][$eq]': projectSlug,
-      'sort': 'updatedAt:desc',
-      'pagination[pageSize]': '50',
-    });
-    if (search?.trim()) params.set('search', search.trim());
-    return apiClient<{ data: AgentSessionSummary[] }>(`/agent-sessions?${params}`);
+  getSessions: (projectId: string, _search?: string) => {
+    const params = new URLSearchParams({ projectId, pageSize: '50' });
+    return apiClient<Record<string, unknown>[]>(`/agent-sessions?${params}`).then(
+      (rows) => ({
+        data: rows.map((r) => ({
+          ...(r as object),
+          documentId: r['id'] as string,
+        })) as unknown as AgentSessionSummary[],
+      }),
+    );
   },
 
   getSession: (id: string) =>
-    apiClient<{ data: AgentSession }>(`/agent-sessions/${id}?populate=*`),
+    apiClient<Record<string, unknown>>(`/agent-sessions/${id}`).then((row) => ({
+      data: { ...(row as object), documentId: row['id'] as string } as unknown as AgentSession,
+    })),
 
+  // TODO(v0.1.x): wire start/send/abort once core exposes these endpoints
   start: (projectSlug: string, prompt: string, repoPath?: string, preBuilt?: boolean, issueIds?: string[]) =>
     apiClient<{ data: AgentSession }>('/agent-sessions/start', {
       method: 'POST',
       body: JSON.stringify({ projectSlug, prompt, repoPath, preBuilt, issueIds }),
     }),
 
+  // TODO(v0.1.x): wire start/send/abort once core exposes these endpoints
   send: (sessionId: string, message: string, claudeSessionId?: string) =>
     apiClient<{ data: { ok: boolean } }>('/agent-sessions/send', {
       method: 'POST',
       body: JSON.stringify({ sessionId, message, claudeSessionId }),
     }),
 
+  // TODO(v0.1.x): wire start/send/abort once core exposes these endpoints
   abort: (sessionId: string) =>
     apiClient<{ data: { ok: boolean } }>('/agent-sessions/abort', {
       method: 'POST',
