@@ -961,3 +961,41 @@ export const chatSessionsRelations = relations(chatSessions, ({ one }) => ({
   user: one(users, { fields: [chatSessions.userId], references: [users.id] }),
 }));
 
+export const agentSessionStatuses = ['idle', 'queued', 'running', 'completed', 'failed'] as const;
+export type AgentSessionStatus = (typeof agentSessionStatuses)[number];
+
+export const agentSessions = pgTable(
+  'agent_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    deviceId: uuid('device_id').references(() => devices.id, { onDelete: 'set null' }),
+    title: text('title'),
+    status: text('status', { enum: agentSessionStatuses }).notNull().default('idle'),
+    messages: jsonb('messages').notNull().default(sql`'[]'::jsonb`),
+    claudeSessionId: text('claude_session_id'),
+    repoPath: text('repo_path'),
+    usage: jsonb('usage'),
+    metadata: jsonb('metadata'),
+    diff: jsonb('diff'),
+    pipelineControl: jsonb('pipeline_control'),
+    pipelineTelemetry: jsonb('pipeline_telemetry'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectStatusIdx: index('agent_sessions_project_status_idx').on(t.projectId, t.status),
+    deviceIdx: index('agent_sessions_device_idx').on(t.deviceId),
+    userIdx: index('agent_sessions_user_idx').on(t.userId),
+  }),
+);
+
+export const agentSessionsRelations = relations(agentSessions, ({ one }) => ({
+  project: one(projects, { fields: [agentSessions.projectId], references: [projects.id] }),
+  user: one(users, { fields: [agentSessions.userId], references: [users.id] }),
+  device: one(devices, { fields: [agentSessions.deviceId], references: [devices.id] }),
+}));
+
