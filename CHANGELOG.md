@@ -16,6 +16,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+## [0.1.1] - 2026-04-26
+
+Patch release that ships the long-deferred landing-page GSAP fix from ISS-269.
+
+### Removed
+- `gsap` dep + `forge/web/src/lib/gsap-client.ts` + `forge/tests/web/lib/gsap-client.test.ts` — replaced animation usage with framer-motion (already a dep)
+
+### Fixed
+- Landing page `_gsap` undefined TypeError eliminated (ISS-269) — 3 prior fix attempts (rc.7 / rc.8 / rc.9) couldn't unblock Next.js 16 chunk-init race; swapping the 4 landing impl files to framer-motion's `whileInView` + `viewport={{once:true}}` pattern removes the class of bug entirely. -319 lines net.
+
 ## [0.1.0] - 2026-04-26
 
 First v0.1 stable cut covering Phase 3.1 → 3.5 of the Strapi → `forge/core`
@@ -68,7 +78,7 @@ verified the 19 ported product surfaces. Landing-page GSAP animation issue
 - `UnimplementedBanner` audit pass on `forge/web/src/` (≈25 inline banners remain post-Phase-3.5)
 - Per-project notification scoping (FE slug → projectId resolution to drive `?projectId=` filter)
 - mark-all-read bulk WS emit (Lapras review minor #1 — currently single update bypasses per-row WS broadcast)
-- **Landing GSAP `_gsap` TypeError** (ISS-269) — cosmetic-only, animations dead on marketing landing. 3 fix attempts (rc.7/rc.8/rc.9) failed to address Next.js 16 chunk-splitting / module-init race. Real fix requires async dynamic import getter pattern across 4 impl files OR replacing GSAP with framer-motion. Functional product surfaces unaffected.
+- ~~Landing GSAP `_gsap` TypeError (ISS-269)~~ — **shipped in v0.1.1**, see below.
 
 ### Security
 
