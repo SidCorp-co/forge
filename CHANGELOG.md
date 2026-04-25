@@ -16,13 +16,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
-## [0.1.0] - 2026-04-25
+## [0.1.0] - 2026-04-26
 
-First v0.1 cut covering Phase 3.2 → 3.4 of the Strapi → `forge/core`
-control-plane migration: Tier A LIVE features, Tier B1 medium ports,
-and Tier B2 heavy/realtime ports. `forge/strapi` removal landed earlier
-in 0.1.0-rc.x; this release brings parity for the routes the web + dev
-clients call.
+First v0.1 stable cut covering Phase 3.1 → 3.5 of the Strapi → `forge/core`
+control-plane migration: UI batch + cleanup, Tier A LIVE features, Tier B1
+medium ports, Tier B2 heavy/realtime ports, and Phase 3.5 FE wireup that
+connects 13 placeholder/missing surfaces to the ported endpoints. `forge/strapi`
+removal landed earlier in 0.1.0-rc.x; this release brings parity for the routes
+the web + dev clients call and ships a fully functional UI on top of them.
+
+E2E walkthroughs across cycles 1–5 (`docs/release-tests/v0.1.0-stable-ui-ux.md`)
+verified the 19 ported product surfaces. Landing-page GSAP animation issue
+(ISS-269) deferred to v0.1.x as cosmetic-only.
 
 ### Added
 - Issue detail page: status transition dropdown + comment editor + live comments list backed by `GET/POST /api/issues/:id/comments` (ISS-247)
@@ -55,12 +60,15 @@ clients call.
 ### Fixed
 - `/notifications/*` API client (web + dev) short-circuits to empty/no-op responses while the endpoint is unported in `forge/core`; eliminates 1–4 console errors per page navigation (ISS-253)
 
-### Deferred to v0.1.x
+### Deferred to v0.1.x (tracked in ISS-259)
 - Chat: streaming LLM reply on `POST /chat-sessions/:id/message` (needs chat-prompt-builder + agent-runner services ported to core)
 - Agent-session: pg-boss-backed pipeline-control queue worker (current jsonb storage + WS broadcast is the wire-compatible interim; queue dispatch can be added additively without changing the request shape)
+- Agent-session interactive UI (start/send/abort) — Tier B2 phase 4 ported the read-only viewer + WS broadcasts; interactive endpoints await core dispatch surface
 - `notifications.agent_session_id` FK constraint to `agent_sessions(id)` with `ON DELETE SET NULL` — additive migration when the next schema change lands
-- `UnimplementedBanner` audit pass on `forge/web/src/` (≈25 banners remain across settings, devices, ceo, chat-logs, pipeline-health, agent-definition stubs)
+- `UnimplementedBanner` audit pass on `forge/web/src/` (≈25 inline banners remain post-Phase-3.5)
 - Per-project notification scoping (FE slug → projectId resolution to drive `?projectId=` filter)
+- mark-all-read bulk WS emit (Lapras review minor #1 — currently single update bypasses per-row WS broadcast)
+- **Landing GSAP `_gsap` TypeError** (ISS-269) — cosmetic-only, animations dead on marketing landing. 3 fix attempts (rc.7/rc.8/rc.9) failed to address Next.js 16 chunk-splitting / module-init race. Real fix requires async dynamic import getter pattern across 4 impl files OR replacing GSAP with framer-motion. Functional product surfaces unaffected.
 
 ### Security
 
