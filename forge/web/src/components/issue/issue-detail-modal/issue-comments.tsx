@@ -304,11 +304,9 @@ export function IssueComments({ comments, currentUser, onAddComment, onEditComme
             }
           }}
         />
-        <FileUpload
-          value={attachments}
-          onChange={setAttachments}
-          uploadFn={commentApi.uploadFile}
-        />
+        {/* Attachment upload disabled here — comment-attachments require a created
+          comment id (POST /comments/:id/attachments). Re-enable when the form
+          flow is "create comment first → upload" in a follow-up. */}
         <div className="mt-2 flex items-center justify-between">
           <span className="text-xs text-outline">Ctrl+Enter to submit</span>
           <button

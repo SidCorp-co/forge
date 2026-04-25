@@ -10,7 +10,7 @@ import type { schema } from '@forge/core/public';
 
 export type User = Pick<
   typeof schema.users.$inferSelect,
-  'id' | 'email' | 'emailVerifiedAt' | 'createdAt'
+  'id' | 'email' | 'emailVerifiedAt' | 'isCeo' | 'createdAt'
 >;
 
 export type Project = typeof schema.projects.$inferSelect;

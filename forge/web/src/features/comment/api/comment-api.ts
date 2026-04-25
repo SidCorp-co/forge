@@ -1,37 +1,77 @@
-import { apiClient, apiUpload } from '@/lib/api/client';
+import { apiClient, apiMultipart } from '@/lib/api/client';
 import type { Comment, CommentFormData } from '../types';
 
+export interface CommentAttachment {
+  id: string;
+  commentId: string;
+  name: string;
+  mime: string;
+  size: number;
+  url: string;
+  createdAt: string;
+}
+
+interface CoreComment {
+  id: string;
+  issueId: string;
+  authorId: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function toLegacy(row: CoreComment): Comment {
+  return {
+    id: 0,
+    documentId: row.id,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    body: row.body,
+    author: row.authorId,
+    isAI: false,
+    issue: { id: 0, documentId: row.issueId },
+    parent: null,
+    replies: [],
+    mentions: [],
+    attachments: [],
+  } as Comment;
+}
+
 export const commentApi = {
-  getByIssue: (issueDocumentId: string) =>
-    apiClient<{ data: Comment[] }>(
-      `/comments?filters[issue][documentId][$eq]=${issueDocumentId}&populate=*`
-    ),
+  getByIssue: async (issueId: string): Promise<{ data: Comment[] }> => {
+    const rows = await apiClient<CoreComment[]>(`/issues/${issueId}/comments?limit=200`);
+    return { data: rows.map(toLegacy) };
+  },
 
-  create: (data: CommentFormData) =>
-    apiClient<{ data: Comment }>('/comments', {
+  create: async (issueId: string, data: CommentFormData): Promise<{ data: Comment }> => {
+    const row = await apiClient<CoreComment>(`/issues/${issueId}/comments`, {
       method: 'POST',
-      body: JSON.stringify({ data }),
-    }),
+      body: JSON.stringify({ body: data.body }),
+    });
+    return { data: toLegacy(row) };
+  },
 
-  update: (documentId: string, data: { body: string }) =>
-    apiClient<{ data: Comment }>(`/comments/${documentId}`, {
-      method: 'PUT',
-      body: JSON.stringify({ data }),
-    }),
+  update: async (commentId: string, data: { body: string }): Promise<{ data: Comment }> => {
+    const row = await apiClient<CoreComment>(`/comments/${commentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    return { data: toLegacy(row) };
+  },
 
-  delete: (documentId: string) =>
-    apiClient<void>(`/comments/${documentId}`, {
+  delete: (commentId: string) =>
+    apiClient<void>(`/comments/${commentId}`, {
       method: 'DELETE',
     }),
 
-  uploadFile: async (file: File): Promise<{ id: number; url: string; name: string } | null> => {
+  uploadAttachment: async (commentId: string, file: File): Promise<CommentAttachment | null> => {
     const formData = new FormData();
-    formData.append('files', file);
+    formData.append('file', file);
     try {
-      const uploaded = await apiUpload(formData);
-      const first = uploaded[0];
-      if (!first?.id) return null;
-      return { id: first.id, url: first.url, name: file.name };
+      return await apiMultipart<CommentAttachment>(
+        `/comments/${commentId}/attachments`,
+        formData,
+      );
     } catch {
       return null;
     }

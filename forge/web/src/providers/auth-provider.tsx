@@ -3,11 +3,10 @@
 import type { LoginInput, RegisterInput, User as CoreUser } from '@forge/contracts';
 
 /**
- * Legacy Strapi-era flags (`isCEO`, `chatLogAccess`) kept as optional shim so
- * the inert nav blocks in the sidebar still compile. Every reader falls back
- * to the `undefined` branch. Removed once ISS-211 ships the real roles model.
+ * `isCEO` (alias of core `isCeo`) and the legacy `chatLogAccess` flag remain
+ * exposed as optional fields. `isCeo` is the canonical core column; `isCEO`
+ * is kept for the existing UPPER-case readers in the sidebar / dashboard.
  */
-// TODO(ISS-211): drop this shim once the roles model lands.
 export type User = CoreUser & {
   isCEO?: boolean;
   chatLogAccess?: boolean;
@@ -53,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     authApi
       .me()
       .then((me) => {
-        if (!cancelled) setUser(me);
+        if (!cancelled) setUser({ ...me, isCEO: me.isCeo });
       })
       .catch((err) => {
         if (cancelled) return;
@@ -79,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // source of truth rather than constructing a partial user from the login
     // response body.
     const me = await authApi.me();
-    setUser(me);
+    setUser({ ...me, isCEO: me.isCeo });
   }, []);
 
   const register = useCallback(async (input: RegisterInput) => {

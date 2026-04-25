@@ -85,6 +85,20 @@
       "when": 1777042626647,
       "tag": "0011_devices_pair_flow",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1777099983584,
+      "tag": "0012_comment_attachments",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1777100410493,
+      "tag": "0013_users_is_ceo",
+      "breakpoints": true
     }
   ]
 }
