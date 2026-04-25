@@ -1,10 +1,10 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, count, desc, eq, gte, inArray, lte, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { chatLogs, projects, qaRatings } from '../db/schema.js';
+import { chatLogs, projectMembers, projects, qaRatings, users } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
@@ -12,7 +12,7 @@ const idParamSchema = z.object({ id: z.uuid() });
 
 const listQuerySchema = z
   .object({
-    projectSlug: z.string().min(1).max(200),
+    projectSlug: z.string().min(1).max(200).optional(),
     intent: z.string().min(1).max(100).optional(),
     source: z.string().min(1).max(100).optional(),
     qaRating: z.enum(qaRatings).optional(),
@@ -90,9 +90,39 @@ chatLogRoutes.get(
       c.req.valid('query');
     const userId = c.get('userId');
 
-    await assertChatLogAccess(projectSlug, userId);
+    const conditions: SQL[] = [];
 
-    const conditions: SQL[] = [eq(chatLogs.projectSlug, projectSlug)];
+    if (projectSlug) {
+      await assertChatLogAccess(projectSlug, userId);
+      conditions.push(eq(chatLogs.projectSlug, projectSlug));
+    } else {
+      // Cross-project view: restrict to caller-visible projects.
+      // CEO sees all; everyone else sees owned + member projects.
+      // Pattern mirrors forge/core/src/projects/health-routes.ts.
+      const [me] = await db
+        .select({ id: users.id, isCeo: users.isCeo })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      const visible = me?.isCeo
+        ? await db.select({ slug: projects.slug }).from(projects)
+        : await db
+            .selectDistinct({ slug: projects.slug })
+            .from(projects)
+            .leftJoin(projectMembers, eq(projectMembers.projectId, projects.id))
+            .where(sql`${projects.ownerId} = ${userId} OR ${projectMembers.userId} = ${userId}`);
+
+      if (visible.length === 0) {
+        return c.json({
+          data: [],
+          meta: { pagination: { page, pageSize, pageCount: 0, total: 0 } },
+        });
+      }
+
+      conditions.push(inArray(chatLogs.projectSlug, visible.map((v) => v.slug)));
+    }
+
     if (intent) conditions.push(eq(chatLogs.queryIntent, intent));
     if (source) conditions.push(eq(chatLogs.source, source));
     if (qaRating) conditions.push(eq(chatLogs.qaRating, qaRating));
