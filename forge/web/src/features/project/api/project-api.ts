@@ -17,8 +17,26 @@ export interface ProjectDetail extends Project {
   labels: Array<{ id: string; name: string; color: string | null }>;
 }
 
+/**
+ * Mirrors the response of `GET /api/projects/health` (see
+ * `forge/core/src/projects/health-routes.ts`).
+ */
+export interface ProjectHealthRow {
+  projectName: string;
+  projectSlug: string;
+  projectMeta: Record<string, unknown>;
+  throughput: number;
+  totalActive: number;
+  statusDistribution: Record<string, number>;
+  blockers: Array<{ issueId: string; documentId: string; status: string }>;
+  pendingEscalations: number;
+  avgCycleTimeDays: number;
+}
+
 export const projectApi = {
   list: () => apiClient<Project[]>('/projects'),
+
+  health: () => apiClient<ProjectHealthRow[]>('/projects/health'),
 
   getById: (id: string) => apiClient<ProjectDetail>(`/projects/${id}`),
 

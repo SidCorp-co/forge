@@ -13,12 +13,20 @@ import { projectApi } from '../api/project-api';
 export const projectKeys = {
   all: ['projects'] as const,
   detail: (id: string | undefined) => ['project', id] as const,
+  health: ['projects', 'health'] as const,
 };
 
 export function useProjects() {
   return useQuery({
     queryKey: projectKeys.all,
     queryFn: projectApi.list,
+  });
+}
+
+export function useProjectsHealth() {
+  return useQuery({
+    queryKey: projectKeys.health,
+    queryFn: projectApi.health,
   });
 }
 
