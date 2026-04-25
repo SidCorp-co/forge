@@ -95,6 +95,19 @@ export interface HookPayloads {
     jobId: string;
     actorUserId: string;
   };
+  notificationCreated: {
+    notificationId: string;
+    userId: string;
+    projectId: string | null;
+    type: string;
+    title: string;
+    issueId: string | null;
+    agentSessionId: string | null;
+  };
+  notificationRead: {
+    notificationId: string;
+    userId: string;
+  };
 }
 
 export type HookTopic = keyof HookPayloads;

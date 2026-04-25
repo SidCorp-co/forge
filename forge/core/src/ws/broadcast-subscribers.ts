@@ -1,5 +1,5 @@
 import type { HooksBus } from '../pipeline/hooks.js';
-import { projectRoom } from './rooms.js';
+import { projectRoom, userRoom } from './rooms.js';
 import { roomManager } from './server.js';
 
 /**
@@ -83,6 +83,31 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
         projectId: p.projectId,
         jobId: p.jobId,
         actorId: p.actorUserId,
+      },
+    });
+  });
+
+  bus.on('notificationCreated', (p) => {
+    roomManager.publish(userRoom(p.userId), {
+      event: 'notification.created',
+      data: {
+        notificationId: p.notificationId,
+        userId: p.userId,
+        projectId: p.projectId,
+        type: p.type,
+        title: p.title,
+        issueId: p.issueId,
+        agentSessionId: p.agentSessionId,
+      },
+    });
+  });
+
+  bus.on('notificationRead', (p) => {
+    roomManager.publish(userRoom(p.userId), {
+      event: 'notification.read',
+      data: {
+        notificationId: p.notificationId,
+        userId: p.userId,
       },
     });
   });

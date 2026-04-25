@@ -30,8 +30,8 @@ export function NotificationBell({ align = 'right' }: { align?: 'left' | 'right'
   const params = useParams();
   const projectSlug = params?.slug as string | undefined;
 
-  const { data: countData } = useUnreadCount(projectSlug);
-  const { data: notifData, isLoading } = useNotifications(projectSlug, open);
+  const { data: countData } = useUnreadCount();
+  const { data: notifData, isLoading } = useNotifications(open);
   const markAsRead = useMarkAsRead();
   const markAllRead = useMarkAllRead();
   const router = useRouter();
@@ -52,12 +52,12 @@ export function NotificationBell({ align = 'right' }: { align?: 'left' | 'right'
   }, [open]);
 
   function handleClick(n: Notification) {
-    if (!n.read) markAsRead.mutate(n.documentId);
+    if (!n.read) markAsRead.mutate(n.id);
     setOpen(false);
-    if (n.issueDocumentId && projectSlug) {
-      router.push(`/projects/${projectSlug}/issues/${n.issueDocumentId}`);
-    } else if (n.agentSessionDocumentId && projectSlug) {
-      router.push(`/projects/${projectSlug}/agent?session=${n.agentSessionDocumentId}`);
+    if (n.issueId && projectSlug) {
+      router.push(`/projects/${projectSlug}/issues/${n.issueId}`);
+    } else if (n.agentSessionId && projectSlug) {
+      router.push(`/projects/${projectSlug}/agent?session=${n.agentSessionId}`);
     }
   }
 
@@ -105,7 +105,7 @@ export function NotificationBell({ align = 'right' }: { align?: 'left' | 'right'
             {!isLoading && notifications.length > 0 &&
               notifications.map((n) => (
                 <button
-                  key={n.documentId}
+                  key={n.id}
                   onClick={() => handleClick(n)}
                   className={cn(
                     'flex w-full gap-3 px-4 py-3 text-left hover:bg-surface-container-low',

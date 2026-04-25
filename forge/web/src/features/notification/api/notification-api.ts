@@ -1,24 +1,37 @@
+import { apiClient } from '@/lib/api/client';
 import type { Notification } from '../types';
 
-// TODO(notifications-port): /api/notifications is not yet mounted in
-// forge/core (audit Table A). Until the endpoint lands, every notification
-// call is short-circuited to an empty/no-op response so the bell + page
-// don't throw 404s on every navigation. Re-enable real apiClient calls
-// when forge/core mounts /api/notifications/*.
+// TODO(per-project scoping): notifications are currently user-scoped only.
+// When per-project filtering is needed, callers should resolve slug → projectId
+// client-side and the signatures below should accept `projectId?: string`.
 export const notificationApi = {
-  getAll: async (_projectSlug?: string): Promise<{ data: Notification[] }> => ({ data: [] }),
+  getAll: async (): Promise<{ data: Notification[] }> => {
+    const data = await apiClient<Notification[]>('/notifications');
+    return { data };
+  },
 
-  unreadCount: async (_projectSlug?: string): Promise<{ data: { count: number } }> => ({
-    data: { count: 0 },
-  }),
+  unreadCount: async (): Promise<{ data: { count: number } }> => {
+    const data = await apiClient<{ count: number }>('/notifications/unread-count');
+    return { data };
+  },
 
-  markAsRead: async (_id: string): Promise<{ data: Notification | null }> => ({ data: null }),
+  markAsRead: async (id: string): Promise<{ data: Notification }> => {
+    const data = await apiClient<Notification>(`/notifications/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ read: true }),
+    });
+    return { data };
+  },
 
-  markAllRead: async (_projectDocumentId?: string): Promise<{ data: { updated: number } }> => ({
-    data: { updated: 0 },
-  }),
+  markAllRead: async (projectId?: string): Promise<{ data: { updated: number } }> => {
+    const data = await apiClient<{ updated: number }>('/notifications/mark-all-read', {
+      method: 'POST',
+      body: JSON.stringify(projectId ? { projectId } : {}),
+    });
+    return { data };
+  },
 
-  delete: async (_id: string): Promise<void> => {
-    /* no-op until /api/notifications/:id lands in core */
+  delete: async (id: string): Promise<void> => {
+    await apiClient<void>(`/notifications/${id}`, { method: 'DELETE' });
   },
 };

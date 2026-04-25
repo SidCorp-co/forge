@@ -840,3 +840,45 @@ export const chatLogs = pgTable(
     qaRatingIdx: index('chat_logs_qa_rating_idx').on(t.qaRating),
   }),
 );
+
+export const notificationTypes = [
+  'issue_status_changed',
+  'comment_added',
+  'agent_completed',
+  'mention',
+] as const;
+export type NotificationType = (typeof notificationTypes)[number];
+
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    type: text('type', { enum: notificationTypes }).notNull(),
+    title: text('title').notNull(),
+    body: text('body'),
+    read: boolean('read').notNull().default(false),
+    issueId: uuid('issue_id').references(() => issues.id, { onDelete: 'set null' }),
+    // agent_session_id is intentionally a bare uuid (no FK) until the agent_sessions
+    // table lands in a later B2 migration — adding the FK then is additive.
+    agentSessionId: uuid('agent_session_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userReadCreatedIdx: index('notifications_user_read_created_idx').on(
+      t.userId,
+      t.read,
+      t.createdAt,
+    ),
+    projectCreatedIdx: index('notifications_project_created_idx').on(t.projectId, t.createdAt),
+  }),
+);
+
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, { fields: [notifications.userId], references: [users.id] }),
+  project: one(projects, { fields: [notifications.projectId], references: [projects.id] }),
+  issue: one(issues, { fields: [notifications.issueId], references: [issues.id] }),
+}));

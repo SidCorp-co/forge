@@ -4,18 +4,18 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notificationApi } from '../api/notification-api';
 import { NOTIFICATIONS_ENABLED } from '..';
 
-export function useNotifications(projectSlug?: string, enabled = true) {
+export function useNotifications(enabled = true) {
   return useQuery({
-    queryKey: ['notifications', projectSlug],
-    queryFn: () => notificationApi.getAll(projectSlug),
+    queryKey: ['notifications'],
+    queryFn: () => notificationApi.getAll(),
     enabled: enabled && NOTIFICATIONS_ENABLED,
   });
 }
 
-export function useUnreadCount(projectSlug?: string) {
+export function useUnreadCount() {
   return useQuery({
-    queryKey: ['notifications-unread', projectSlug],
-    queryFn: () => notificationApi.unreadCount(projectSlug),
+    queryKey: ['notifications-unread'],
+    queryFn: () => notificationApi.unreadCount(),
     refetchInterval: 30_000,
     enabled: NOTIFICATIONS_ENABLED,
   });
