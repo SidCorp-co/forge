@@ -33,15 +33,15 @@ export const PIPELINE_STAGES: PipelineStage[] = [
 
 export const STEP_LABELS: Record<string, string> = {
   'open→confirmed': 'Triage',
-  'confirmed→clarified': 'Clarify',
-  'clarified→waiting': 'Plan',
   'waiting→approved': 'Approval',
   'confirmed→approved': 'Approval',
   'approved→in_progress': 'Start Dev',
   'in_progress→developed': 'Development',
   'developed→deploying': 'Deploy',
   'deploying→testing': 'Deploy Wait',
-  'testing→staging': 'Testing',
+  'testing→tested': 'Testing',
+  'tested→pass': 'QA Pass',
+  'pass→staging': 'Promote',
   'staging→released': 'Release',
   'released→closed': 'Close',
   'reopen→in_progress': 'Fix Loop',
