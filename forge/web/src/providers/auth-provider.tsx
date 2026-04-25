@@ -3,13 +3,12 @@
 import type { LoginInput, RegisterInput, User as CoreUser } from '@forge/contracts';
 
 /**
- * Legacy Strapi-era fields surfaced as optional so F2-bound call sites
- * (dashboards, CEO pages, sidebar flags) keep compiling. Every reader falls
- * back to the `undefined` branch. These keys are removed once F2 finishes
- * the feature-module rewire and ISS-211 introduces the real `roles` model.
+ * Legacy Strapi-era flags (`isCEO`, `chatLogAccess`) kept as optional shim so
+ * the inert nav blocks in the sidebar still compile. Every reader falls back
+ * to the `undefined` branch. Removed once ISS-211 ships the real roles model.
  */
+// TODO(ISS-211): drop this shim once the roles model lands.
 export type User = CoreUser & {
-  username?: string;
   isCEO?: boolean;
   chatLogAccess?: boolean;
 };
