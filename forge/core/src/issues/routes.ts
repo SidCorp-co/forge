@@ -185,6 +185,48 @@ issueProjectRoutes.post(
   },
 );
 
+const displayIdParamSchema = z.object({
+  id: z.uuid(),
+  displayId: z.string().regex(/^ISS-\d+$/i),
+});
+
+issueProjectRoutes.get(
+  '/:id/issues/by-display/:displayId',
+  zValidator('param', displayIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id: projectId, displayId } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const access = await loadProjectAccess(projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+
+    const issSeq = Number(displayId.slice(4));
+    const [row] = await db
+      .select()
+      .from(issues)
+      .where(and(eq(issues.projectId, projectId), eq(issues.issSeq, issSeq)))
+      .limit(1);
+    if (!row) throw notFound('issue not found');
+
+    const issue = row as IssueRow;
+
+    const labelRows = await db
+      .select({ id: labels.id, name: labels.name, color: labels.color })
+      .from(issueLabels)
+      .innerJoin(labels, eq(labels.id, issueLabels.labelId))
+      .where(eq(issueLabels.issueId, issue.id));
+
+    return c.json({
+      ...serializeIssue(issue),
+      labels: labelRows,
+      comments: [],
+      activity: [],
+    });
+  },
+);
+
 issueProjectRoutes.get(
   '/:id/issues',
   zValidator('param', projectIdParamSchema, (r) => {

@@ -3,8 +3,15 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { UnimplementedBanner } from '@/components/common/unimplemented-banner';
-import { useIssue, useTransitionIssue } from '@/features/issue/hooks/use-issues';
+import {
+  useIssue,
+  useIssueByDisplay,
+  useTransitionIssue,
+} from '@/features/issue/hooks/use-issues';
+import { useProjectBySlug } from '@/features/project/hooks/use-projects';
 import { formatApiError } from '@/lib/api/error';
+
+const DISPLAY_ID_RE = /^ISS-\d+$/i;
 
 /**
  * Phase 2.6-F2: minimum viable issue detail. Renders the core fields that
@@ -13,10 +20,30 @@ import { formatApiError } from '@/lib/api/error';
  * (comments, attachments, agent sessions, relations, AI analysis,
  * complexity, reportedBy, manualHold, changeHistory, plan markdown) land in
  * a follow-up — most of them have no core-backed data yet.
+ *
+ * The `[id]` segment accepts either a uuid (from internal list links) or a
+ * displayId like `ISS-12` (for shareable deep-links). DisplayId is resolved
+ * project-scoped via `/api/projects/:projectId/issues/by-display/:displayId`.
  */
 export default function IssueDetailPage() {
   const { slug, id } = useParams<{ slug: string; id: string }>();
-  const { data: issue, isLoading, error } = useIssue(id);
+  const isDisplayId = DISPLAY_ID_RE.test(id);
+
+  const project = useProjectBySlug(isDisplayId ? slug : undefined);
+  const projectId = project?.id;
+
+  const byUuid = useIssue(isDisplayId ? undefined : id);
+  const byDisplay = useIssueByDisplay(
+    isDisplayId ? projectId : undefined,
+    isDisplayId ? id : undefined,
+  );
+
+  const issue = isDisplayId ? byDisplay.data : byUuid.data;
+  const error = isDisplayId ? byDisplay.error : byUuid.error;
+  const isLoading = isDisplayId
+    ? byDisplay.isLoading || (!projectId && !!slug)
+    : byUuid.isLoading;
+
   const transitionIssue = useTransitionIssue();
 
   if (isLoading) {
@@ -98,6 +125,40 @@ export default function IssueDetailPage() {
         <div className="whitespace-pre-wrap p-5 text-sm text-on-surface">
           {issue.description || (
             <span className="text-outline">No description provided</span>
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-sm border border-outline-variant/20 bg-surface">
+        <div className="border-b border-outline-variant/20 bg-surface-container-low px-4 py-2">
+          <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">
+            Comments
+          </h3>
+        </div>
+        <div className="p-5 text-sm">
+          {issue.comments && issue.comments.length > 0 ? (
+            <span className="text-outline">
+              {issue.comments.length} comment{issue.comments.length === 1 ? '' : 's'}
+            </span>
+          ) : (
+            <span className="text-outline">No comments yet</span>
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-sm border border-outline-variant/20 bg-surface">
+        <div className="border-b border-outline-variant/20 bg-surface-container-low px-4 py-2">
+          <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">
+            Activity
+          </h3>
+        </div>
+        <div className="p-5 text-sm">
+          {issue.activity && issue.activity.length > 0 ? (
+            <span className="text-outline">
+              {issue.activity.length} entr{issue.activity.length === 1 ? 'y' : 'ies'}
+            </span>
+          ) : (
+            <span className="text-outline">No activity yet</span>
           )}
         </div>
       </section>

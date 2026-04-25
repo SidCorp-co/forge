@@ -24,6 +24,8 @@ export const issueKeys = {
   searches: ['issues', 'search'] as const,
   search: (params: IssueSearchParams) => ['issues', 'search', params] as const,
   detail: (id: string | undefined) => ['issue', id] as const,
+  detailByDisplay: (projectId: string | undefined, displayId: string | undefined) =>
+    ['issue', 'by-display', projectId, displayId] as const,
 };
 
 type ListPage = { items: Issue[]; totalCount: number };
@@ -51,6 +53,17 @@ export function useIssue(id: string | undefined) {
     queryKey: issueKeys.detail(id),
     queryFn: () => issueApi.get(id as string),
     enabled: !!id,
+  });
+}
+
+export function useIssueByDisplay(
+  projectId: string | undefined,
+  displayId: string | undefined,
+) {
+  return useQuery({
+    queryKey: issueKeys.detailByDisplay(projectId, displayId),
+    queryFn: () => issueApi.getByDisplay(projectId as string, displayId as string),
+    enabled: !!projectId && !!displayId,
   });
 }
 
