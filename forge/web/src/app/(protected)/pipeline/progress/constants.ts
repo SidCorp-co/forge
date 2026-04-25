@@ -22,10 +22,10 @@ export interface PipelineStage {
 
 export const PIPELINE_STAGES: PipelineStage[] = [
   { key: 'intake', label: 'Intake', statuses: ['open', 'needs_info'], icon: Inbox, color: 'border-blue-500', bg: 'bg-blue-500/5' },
-  { key: 'triage', label: 'Triage', statuses: ['confirmed', 'clarified', 'waiting'], icon: Filter, color: 'border-indigo-500', bg: 'bg-indigo-500/5' },
+  { key: 'triage', label: 'Triage', statuses: ['confirmed', 'waiting'], icon: Filter, color: 'border-indigo-500', bg: 'bg-indigo-500/5' },
   { key: 'approved', label: 'Ready', statuses: ['approved'], icon: CheckCircle, color: 'border-cyan-500', bg: 'bg-cyan-500/5' },
   { key: 'development', label: 'Development', statuses: ['in_progress', 'developed'], icon: Code, color: 'border-yellow-500', bg: 'bg-yellow-500/5' },
-  { key: 'deploy_test', label: 'Deploy & Test', statuses: ['deploying', 'testing'], icon: Rocket, color: 'border-orange-500', bg: 'bg-orange-500/5' },
+  { key: 'deploy_test', label: 'Deploy & Test', statuses: ['deploying', 'testing', 'tested', 'pass'], icon: Rocket, color: 'border-orange-500', bg: 'bg-orange-500/5' },
   { key: 'review', label: 'Review', statuses: ['staging'], icon: Eye, color: 'border-purple-500', bg: 'bg-purple-500/5' },
   { key: 'done', label: 'Done', statuses: ['released', 'closed'], icon: Flag, color: 'border-green-500', bg: 'bg-green-500/5' },
   { key: 'blocked', label: 'Blocked', statuses: ['reopen', 'on_hold'], icon: AlertTriangle, color: 'border-red-500', bg: 'bg-red-500/5' },
