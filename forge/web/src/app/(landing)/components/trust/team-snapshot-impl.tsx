@@ -1,46 +1,30 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { gsap, ScrollTrigger } from '@/lib/gsap-client';
+import { motion } from 'framer-motion';
 import { teamMembers, teamCapability, teamCount } from '../../constants';
 
 export function TeamSnapshot() {
-  const gridRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    gsap.registerPlugin(ScrollTrigger);
-    if (!gridRef.current) return;
-
-    const ctx = gsap.context(() => {
-      const cards = gridRef.current!.querySelectorAll('[data-team-card]');
-      gsap.from(cards, {
-        y: 30,
-        opacity: 0,
-        stagger: 0.1,
-        duration: 0.6,
-        ease: 'power2.out',
-        scrollTrigger: {
-          trigger: gridRef.current,
-          start: 'top 80%',
-          once: true,
-          scroller: '[data-theme]',
-        },
-      });
-    }, gridRef);
-
-    return () => ctx.revert();
-  }, []);
-
   return (
     <div className="py-12">
-      <div
-        ref={gridRef}
+      <motion.div
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, margin: '-20%' }}
+        variants={{
+          hidden: {},
+          visible: {
+            transition: { staggerChildren: 0.1 },
+          },
+        }}
         className="mx-auto grid max-w-2xl grid-cols-2 gap-6 md:grid-cols-3"
       >
         {teamMembers.map((member) => (
-          <div
+          <motion.div
             key={member.name}
-            data-team-card
+            variants={{
+              hidden: { y: 30, opacity: 0 },
+              visible: { y: 0, opacity: 1, transition: { duration: 0.6, ease: 'easeOut' } },
+            }}
             className="flex flex-col items-center gap-2"
           >
             <div
@@ -50,9 +34,9 @@ export function TeamSnapshot() {
             </div>
             <span className="text-sm font-medium text-on-surface">{member.name}</span>
             <span className="text-xs text-primary-fixed">{member.role}</span>
-          </div>
+          </motion.div>
         ))}
-      </div>
+      </motion.div>
 
       <div className="mt-8 text-center">
         <p className="text-lg font-medium text-on-surface">{teamCount}</p>

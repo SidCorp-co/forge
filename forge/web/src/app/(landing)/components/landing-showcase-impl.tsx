@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ExternalLink, Play } from 'lucide-react';
-import { gsap, ScrollTrigger } from '@/lib/gsap-client';
 import { showcaseDomains, showcaseProjects, type ShowcaseProject } from '../constants';
 
 function ShowcaseCard({ project }: { project: ShowcaseProject }) {
@@ -98,71 +97,13 @@ function ShowcaseCard({ project }: { project: ShowcaseProject }) {
 
 export function LandingShowcase() {
   const [activeDomain, setActiveDomain] = useState<string>('All');
-  const sectionRef = useRef<HTMLElement>(null);
-  const gridRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<ScrollTrigger | null>(null);
-  const hasMounted = useRef(false);
 
   const filtered = activeDomain === 'All'
     ? showcaseProjects
     : showcaseProjects.filter((p) => p.domain === activeDomain);
 
-  useEffect(() => {
-    gsap.registerPlugin(ScrollTrigger);
-    if (!gridRef.current || !sectionRef.current) return;
-
-    const cards = gridRef.current.querySelectorAll('[data-showcase-card]');
-    if (cards.length === 0) return;
-
-    gsap.set(cards, { y: 60, opacity: 0 });
-
-    const tween = gsap.to(cards, {
-      y: 0,
-      opacity: 1,
-      duration: 0.6,
-      stagger: 0.12,
-      ease: 'power2.out',
-      scrollTrigger: {
-        trigger: sectionRef.current,
-        start: 'top 80%',
-        once: true,
-        scroller: '[data-theme]',
-      },
-    });
-
-    triggerRef.current = tween.scrollTrigger as ScrollTrigger;
-
-    return () => {
-      if (triggerRef.current) {
-        triggerRef.current.kill();
-        triggerRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!hasMounted.current) {
-      hasMounted.current = true;
-      return;
-    }
-    if (!gridRef.current) return;
-
-    // Delay to let AnimatePresence finish layout
-    const timeout = setTimeout(() => {
-      if (!gridRef.current) return;
-      const cards = gridRef.current.querySelectorAll('[data-showcase-card]');
-      gsap.fromTo(
-        cards,
-        { y: 30, opacity: 0 },
-        { y: 0, opacity: 1, duration: 0.4, stagger: 0.08, ease: 'power2.out' },
-      );
-    }, 50);
-
-    return () => clearTimeout(timeout);
-  }, [activeDomain]);
-
   return (
-    <section ref={sectionRef} id="showcase" className="max-w-5xl mx-auto px-6 py-24">
+    <section id="showcase" className="max-w-5xl mx-auto px-6 py-24">
       <p className="font-mono text-xs tracking-[0.15em] uppercase text-warning mb-3">
         Case Studies
       </p>
@@ -191,13 +132,28 @@ export function LandingShowcase() {
       </div>
 
       {/* Card grid */}
-      <div ref={gridRef} className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <motion.div
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, margin: '-15%' }}
+        variants={{
+          hidden: {},
+          visible: { transition: { staggerChildren: 0.12 } },
+        }}
+        className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6"
+      >
         <AnimatePresence mode="popLayout">
           {filtered.length > 0 ? (
             filtered.map((project) => (
-              <div key={project.title} data-showcase-card>
+              <motion.div
+                key={project.title}
+                variants={{
+                  hidden: { y: 60, opacity: 0 },
+                  visible: { y: 0, opacity: 1, transition: { duration: 0.6, ease: 'easeOut' } },
+                }}
+              >
                 <ShowcaseCard project={project} />
-              </div>
+              </motion.div>
             ))
           ) : (
             <motion.p
@@ -209,7 +165,7 @@ export function LandingShowcase() {
             </motion.p>
           )}
         </AnimatePresence>
-      </div>
+      </motion.div>
     </section>
   );
 }
