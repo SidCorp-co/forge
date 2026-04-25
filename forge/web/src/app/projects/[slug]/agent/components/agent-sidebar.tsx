@@ -4,6 +4,7 @@ import { Plus, Monitor, MonitorOff } from 'lucide-react';
 import { SessionList } from '@/components/chat/session-list';
 import { Button, StatusDot } from '@/components/ui';
 import { cn } from '@/lib/utils/cn';
+import { AGENT_INTERACTIVE_ENABLED } from '@/features/agent/api';
 import type { AgentSessionSummary } from '@/features/agent/api';
 
 interface AgentSidebarProps {
@@ -41,10 +42,12 @@ export function AgentSidebar({
     >
       <div className="flex items-center justify-between border-b border-surface-variant px-4 py-3">
         <h3 className="text-sm font-semibold text-on-surface-variant">Sessions</h3>
-        <Button size="xs" onClick={onNewChat} className="flex items-center gap-1">
-          <Plus className="h-3 w-3" />
-          New
-        </Button>
+        {AGENT_INTERACTIVE_ENABLED && (
+          <Button size="xs" onClick={onNewChat} className="flex items-center gap-1">
+            <Plus className="h-3 w-3" />
+            New
+          </Button>
+        )}
       </div>
 
       <div className="flex items-center gap-2 px-4 py-2 border-b border-surface-variant text-xs">

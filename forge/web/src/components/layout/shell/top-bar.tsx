@@ -8,7 +8,7 @@ interface TopBarProps {
   onMenuOpen: () => void;
 }
 
-export function MobileHeader({ onMenuOpen }: TopBarProps) {
+export function TopBar({ onMenuOpen }: TopBarProps) {
   const title = usePageTitle();
   const action = usePageHeaderAction();
   return (

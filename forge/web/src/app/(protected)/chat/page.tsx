@@ -9,13 +9,12 @@ import {
   useChatSession,
   useCreateChatSession,
   useDeleteChatSession,
+  useSendChatMessage,
 } from '@/features/chat-session/hooks/use-chat-sessions';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSetPageTitle } from '@/hooks/use-page-title';
 import { formatApiError } from '@/lib/api/error';
 import { cn } from '@/lib/utils/cn';
-import { chatSessionApi } from '@/features/chat-session/api';
-import { useQueryClient } from '@tanstack/react-query';
 import type { ChatMessage } from '@/features/chat-session/types';
 
 function MessageBubble({ msg }: { msg: ChatMessage }) {
@@ -51,12 +50,12 @@ export default function ChatPage() {
     }
   }, [projects, projectId]);
 
-  const qc = useQueryClient();
   const sessionsQuery = useChatSessions(projectId);
   const sessions = sessionsQuery.data ?? [];
   const sessionDetail = useChatSession(activeSessionId);
   const createSession = useCreateChatSession(projectId);
   const deleteSession = useDeleteChatSession(projectId);
+  const sendMessage = useSendChatMessage(projectId);
   const [sendError, setSendError] = useState<unknown>(null);
   const [sending, setSending] = useState(false);
 
@@ -75,8 +74,7 @@ export default function ChatPage() {
     );
   }
 
-  async function handleSend(e: React.FormEvent) {
-    e.preventDefault();
+  async function submitMessage() {
     const text = input.trim();
     if (!text || !projectId || sending) return;
     setSendError(null);
@@ -88,15 +86,18 @@ export default function ChatPage() {
         sessionId = created.id;
         setActiveSessionId(sessionId);
       }
-      await chatSessionApi.sendMessage(sessionId, { content: text });
+      await sendMessage.mutateAsync({ sessionId, content: text });
       setInput('');
-      qc.invalidateQueries({ queryKey: ['chat-session', sessionId] });
-      qc.invalidateQueries({ queryKey: ['chat-sessions', projectId] });
     } catch (err) {
       setSendError(err);
     } finally {
       setSending(false);
     }
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    void submitMessage();
   }
 
   function handleDelete(id: string) {
@@ -214,7 +215,7 @@ export default function ChatPage() {
             </div>
 
             <form
-              onSubmit={handleSend}
+              onSubmit={handleSubmit}
               className="flex items-end gap-2 border-t border-outline-variant/30 bg-surface-container-low p-3"
             >
               <textarea
@@ -227,7 +228,7 @@ export default function ChatPage() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
-                    void handleSend(e as unknown as React.FormEvent);
+                    void submitMessage();
                   }
                 }}
               />

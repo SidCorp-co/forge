@@ -2,9 +2,14 @@ import { apiClient } from '@/lib/api/client';
 import type { ChatMessage, ChatSession, ChatSessionListFilters } from './types';
 
 export const chatSessionApi = {
-  list: ({ projectId, page = 1, pageSize = 50 }: ChatSessionListFilters) => {
+  list: async ({ projectId, page = 1, pageSize = 50 }: ChatSessionListFilters) => {
     const qs = new URLSearchParams({ projectId, page: String(page), pageSize: String(pageSize) });
-    return apiClient<ChatSession[]>(`/chat-sessions?${qs.toString()}`);
+    const rows = await apiClient<ChatSession[]>(`/chat-sessions?${qs.toString()}`);
+    // Core's list returns full session rows including the entire `messages` JSON
+    // blob, which can be megabytes per session. Strip it client-side so React
+    // Query doesn't keep it in cache; the detail call (`get`) brings it back
+    // when a session is opened.
+    return rows.map((row) => ({ ...row, messages: [] as ChatMessage[] }));
   },
 
   get: (id: string) => apiClient<ChatSession>(`/chat-sessions/${id}`),

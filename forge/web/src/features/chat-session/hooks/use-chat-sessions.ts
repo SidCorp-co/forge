@@ -31,13 +31,13 @@ export function useCreateChatSession(projectId: string | undefined) {
   });
 }
 
-export function useSendChatMessage(sessionId: string | undefined, projectId: string | undefined) {
+export function useSendChatMessage(projectId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (content: string) =>
-      chatSessionApi.sendMessage(sessionId as string, { content }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: sessionKey(sessionId) });
+    mutationFn: ({ sessionId, content }: { sessionId: string; content: string }) =>
+      chatSessionApi.sendMessage(sessionId, { content }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: sessionKey(vars.sessionId) });
       qc.invalidateQueries({ queryKey: sessionsKey(projectId) });
     },
   });

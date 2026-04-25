@@ -8,7 +8,7 @@ import { PromptEditor } from './prompt-editor';
 import { formatTokens, CONTEXT_LIMIT } from '@/lib/utils/format-tokens';
 import { cn } from '@/lib/utils/cn';
 import type { ViewTab } from '../hooks';
-import type { BranchDiff } from '@/features/agent/api';
+import { AGENT_INTERACTIVE_ENABLED, type BranchDiff } from '@/features/agent/api';
 import type { ChatMessageData } from '@/components/chat/chat-message';
 import { ChatSendProvider } from '@/components/chat/chat-message/chat-send-context';
 
@@ -90,7 +90,7 @@ export function AgentChatArea({
       </div>
 
       {/* Body */}
-      {showDraftEditor ? (
+      {showDraftEditor && AGENT_INTERACTIVE_ENABLED ? (
         <div className="flex-1 min-h-0 flex flex-col">
           <PromptEditor
             isBuildingPrompt={isBuildingPrompt}
@@ -138,12 +138,14 @@ export function AgentChatArea({
               <ChatSendProvider send={onSend}>
               <ChatMessages messages={messages} />
               </ChatSendProvider>
-              <ChatInput
-                onSend={(text, _files) => onSend(text)}
-                isRunning={isRunning}
-                onStop={isSessionOwner ? onStop : undefined}
-                disabled={!isSessionOwner}
-              />
+              {AGENT_INTERACTIVE_ENABLED && (
+                <ChatInput
+                  onSend={(text, _files) => onSend(text)}
+                  isRunning={isRunning}
+                  onStop={isSessionOwner ? onStop : undefined}
+                  disabled={!isSessionOwner}
+                />
+              )}
             </>
           )}
         </>
