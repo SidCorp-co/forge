@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useId } from 'react';
-import { useUsageSummary, useIngestCliUsage } from '../../hooks/use-usage';
+import { useUsageSummary } from '../../hooks/use-usage';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StatCard } from '@/components/ui/stat-card';
 import { SourceChips } from './source-chips';
@@ -34,7 +34,6 @@ export function UsageDashboard({ projectId }: { projectId?: string }) {
   const [days, setDays] = useState(7);
   const [activeSources, setActiveSources] = useState<Set<string>>(new Set());
   const { data: summary, isLoading, isError } = useUsageSummary(projectId, days);
-  const ingest = useIngestCliUsage();
 
   const toggleSource = (s: string) => {
     setActiveSources((prev) => {
@@ -88,13 +87,12 @@ export function UsageDashboard({ projectId }: { projectId?: string }) {
           <SourceChips sources={summary.bySource} active={activeSources} onToggle={toggleSource} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => projectId && ingest.mutate({ projectId, records: [] })}
-            disabled={ingest.isPending}
-            className="rounded-md border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-[11px] font-medium text-on-surface-variant transition-all hover:border-outline-variant hover:text-on-surface disabled:opacity-50"
-          >
-            {ingest.isPending ? 'Syncing...' : ingest.isError ? 'Retry Sync' : 'Sync CLI'}
-          </button>
+          {/*
+            Sync-CLI requires CLI-collected records from the desktop app — the
+            web dashboard has no source of those records, and the backend
+            `bulkSchema` rejects empty `records: []` with 400. The button is
+            hidden until forge/dev wires the real ingest path.
+          */}
           <DayChips value={days} onChange={setDays} />
         </div>
       </div>

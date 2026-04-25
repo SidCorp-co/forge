@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, desc, eq, type SQL } from 'drizzle-orm';
+import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -87,6 +87,29 @@ knowledgeEdgeRoutes.post(
     if (access.ownerId !== userId && access.role !== 'owner' && access.role !== 'admin') {
       throw forbidden('only project owner or admin can create edges');
     }
+
+    // Application-layer dedup on (project_id, subject, predicate, object, value).
+    // Without this an extraction pipeline that re-runs on the same source memory
+    // accumulates duplicate triples and skews graph queries. A unique index
+    // would be stricter but requires a follow-up migration; this guard keeps
+    // the contract idempotent today.
+    const valueCond = input.value
+      ? eq(knowledgeEdges.value, input.value)
+      : sql`${knowledgeEdges.value} IS NULL`;
+    const [existing] = await db
+      .select()
+      .from(knowledgeEdges)
+      .where(
+        and(
+          eq(knowledgeEdges.projectId, input.projectId),
+          eq(knowledgeEdges.subject, input.subject),
+          eq(knowledgeEdges.predicate, input.predicate),
+          eq(knowledgeEdges.object, input.object),
+          valueCond,
+        ),
+      )
+      .limit(1);
+    if (existing) return c.json(existing, 200);
 
     const [inserted] = await db
       .insert(knowledgeEdges)

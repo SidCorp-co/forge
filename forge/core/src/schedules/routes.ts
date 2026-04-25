@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, asc, eq, lte } from 'drizzle-orm';
+import { and, asc, eq, lte, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -277,6 +277,12 @@ scheduleRoutes.post(
 );
 
 // Test-only: runs the tick scanner once and dispatches due schedules.
+//
+// Concurrency model: each due row is claimed atomically by an UPDATE that
+// asserts the previously-observed nextRunAt. If a parallel ticker (pg-boss
+// redelivery, app restart overlap, second instance) claims it first, the
+// rowcount will be 0 and we skip without enqueueing — preventing duplicate
+// dispatches.
 export async function runScheduleTickOnce(now: Date = new Date()): Promise<string[]> {
   const due = await db
     .select()
@@ -286,6 +292,26 @@ export async function runScheduleTickOnce(now: Date = new Date()): Promise<strin
   const dispatched: string[] = [];
   for (const schedule of due) {
     try {
+      // Atomic claim: only one ticker wins for this (id, nextRunAt) pair.
+      const claimed = await db
+        .update(schedules)
+        .set({
+          lastRunAt: now,
+          lastStatus: 'running',
+          nextRunAt: nextRunFor(schedule.cron, now),
+        })
+        .where(
+          and(
+            eq(schedules.id, schedule.id),
+            eq(schedules.enabled, true),
+            schedule.nextRunAt
+              ? eq(schedules.nextRunAt, schedule.nextRunAt)
+              : sql`${schedules.nextRunAt} IS NULL`,
+          ),
+        )
+        .returning({ id: schedules.id });
+      if (claimed.length === 0) continue; // another ticker won the race
+
       const [project] = await db
         .select({ ownerId: projects.ownerId })
         .from(projects)
@@ -296,6 +322,11 @@ export async function runScheduleTickOnce(now: Date = new Date()): Promise<strin
         .insert(jobs)
         .values({
           projectId: schedule.projectId,
+          // FIXME(iss-257): system-initiated jobs attribute to project.ownerId
+          // because jobs.createdBy is NOT NULL. Adding a sentinel system user
+          // requires a separate migration — tracked for follow-up. Consumers
+          // can detect schedule-driven jobs by payload.kind === 'schedule.run'
+          // && payload.tick === true.
           createdBy: project.ownerId,
           type: 'custom',
           payload: {
@@ -312,12 +343,7 @@ export async function runScheduleTickOnce(now: Date = new Date()): Promise<strin
       if (!job) continue;
       await db
         .update(schedules)
-        .set({
-          lastRunAt: now,
-          lastSessionId: job.id,
-          lastStatus: 'running',
-          nextRunAt: nextRunFor(schedule.cron, now),
-        })
+        .set({ lastSessionId: job.id })
         .where(eq(schedules.id, schedule.id));
       try {
         await enqueueJob(job.id);

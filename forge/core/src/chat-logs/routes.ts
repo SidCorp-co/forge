@@ -5,6 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { chatLogs, projectMembers, projects, qaRatings, users } from '../db/schema.js';
+import { setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
@@ -145,18 +146,8 @@ chatLogRoutes.get(
         .where(and(...conditions)),
     ]);
 
-    const total = totalRow?.n ?? 0;
-    return c.json({
-      data: rows,
-      meta: {
-        pagination: {
-          page,
-          pageSize,
-          pageCount: Math.ceil(total / pageSize),
-          total,
-        },
-      },
-    });
+    setTotalCount(c, totalRow?.n ?? 0);
+    return c.json(rows);
   },
 );
 

@@ -96,6 +96,7 @@ describe('POST /api/knowledge-edges', () => {
   it('201 inserts edge', async () => {
     authVerified();
     projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'owner' });
+    selectLimit.mockResolvedValueOnce([]); // dedup pre-check: no existing edge
     insertReturning.mockResolvedValueOnce([
       { id: EDGE_ID, projectId: PROJECT_ID, subject: 's', predicate: 'p', object: 'o' },
     ]);
@@ -105,6 +106,21 @@ describe('POST /api/knowledge-edges', () => {
       body: JSON.stringify({ projectId: PROJECT_ID, subject: 's', predicate: 'p', object: 'o' }),
     });
     expect(res.status).toBe(201);
+  });
+
+  it('200 returns existing edge on duplicate', async () => {
+    authVerified();
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'owner' });
+    selectLimit.mockResolvedValueOnce([
+      { id: EDGE_ID, projectId: PROJECT_ID, subject: 's', predicate: 'p', object: 'o' },
+    ]);
+    const res = await buildApp().request('/api/knowledge-edges', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ projectId: PROJECT_ID, subject: 's', predicate: 'p', object: 'o' }),
+    });
+    expect(res.status).toBe(200);
+    expect(insertReturning).not.toHaveBeenCalled();
   });
 });
 

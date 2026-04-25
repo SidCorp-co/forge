@@ -23,9 +23,13 @@ export const usageApi = {
         .filter(([, v]) => v !== undefined)
         .map(([k, v]) => [k, String(v)]),
     );
+    // Backend exposes the true total via the X-Total-Count header. The
+    // current apiClient discards headers, so we report only the page slice
+    // length here. Wire `X-Total-Count` through the client to surface the
+    // real total to the UI.
     return apiClient<UsageRecord[]>(`/usage-records?${query.toString()}`).then((data) => ({
       data,
-      meta: { pagination: { total: data.length } },
+      meta: { pagination: { pageLength: data.length } },
     }));
   },
 

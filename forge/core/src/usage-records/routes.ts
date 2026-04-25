@@ -50,7 +50,13 @@ const recordCreateSchema = z
 
 const bulkSchema = z
   .object({
-    records: z.array(recordCreateSchema).min(1).max(500),
+    // Bulk + ingest-cli paths require an explicit projectId on every record
+    // so the per-record auth gate can run; a null projectId would silently
+    // bypass the loadProjectAccess loop and pollute the global pool.
+    records: z
+      .array(recordCreateSchema.extend({ projectId: z.uuid() }))
+      .min(1)
+      .max(500),
   })
   .strict();
 

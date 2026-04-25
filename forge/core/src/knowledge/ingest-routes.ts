@@ -40,8 +40,23 @@ interface RateLimitEntry {
 }
 
 const rateLimits = new Map<string, RateLimitEntry>();
+let lastSweep = Date.now();
+const SWEEP_INTERVAL_MS = 5 * 60_000;
+
+// Note: this limiter is in-memory and per-process. The deployment is
+// single-process today (see CLAUDE.md "Current state"); behind a load
+// balancer the effective limit becomes N × RATE_LIMIT_PER_MIN. Move into
+// Postgres or a shared cache before scaling out.
+function sweepExpired(now: number): void {
+  if (now - lastSweep < SWEEP_INTERVAL_MS) return;
+  lastSweep = now;
+  for (const [key, entry] of rateLimits) {
+    if (now > entry.resetAt) rateLimits.delete(key);
+  }
+}
 
 export function checkRateLimit(key: string, limit = RATE_LIMIT_PER_MIN, now = Date.now()): boolean {
+  sweepExpired(now);
   const entry = rateLimits.get(key);
   if (!entry || now > entry.resetAt) {
     rateLimits.set(key, { count: 1, resetAt: now + 60_000 });
@@ -54,6 +69,7 @@ export function checkRateLimit(key: string, limit = RATE_LIMIT_PER_MIN, now = Da
 
 export function resetRateLimits(): void {
   rateLimits.clear();
+  lastSweep = Date.now();
 }
 
 export const knowledgeIngestRoutes = new Hono<{ Variables: AuthVars }>();

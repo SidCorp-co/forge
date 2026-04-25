@@ -46,7 +46,6 @@ const skillUpdateSchema = z
     description: z.string().max(2000).optional(),
     skillMd: z.string().min(1).optional(),
     target: z.enum(skillTargets).optional(),
-    isGlobal: z.boolean().optional(),
     files: z.array(fileSchema).optional(),
     localGuide: z.string().max(20_000).nullable().optional(),
   })
@@ -180,15 +179,20 @@ skillCrudRoutes.post(
     const isGlobal = input.isGlobal ?? false;
     const scope = isGlobal ? 'global' : 'project';
 
-    if (!isGlobal && !input.projectId) {
+    // Mirror PUT/DELETE: global skills are managed via the admin route only.
+    // Without this gate any authenticated user could broadcast a skill to
+    // every project by sending isGlobal=true.
+    if (isGlobal) {
+      throw forbidden('global skills cannot be created via this endpoint');
+    }
+
+    if (!input.projectId) {
       throw badRequest({ projectId: 'required when isGlobal=false' });
     }
 
-    if (input.projectId) {
-      const ctx = await loadCallerRole(input.projectId, userId);
-      if (ctx.ownerId !== userId && ctx.role !== 'owner' && ctx.role !== 'admin') {
-        throw forbidden('only project owner or admin can create skills');
-      }
+    const ctx = await loadCallerRole(input.projectId, userId);
+    if (ctx.ownerId !== userId && ctx.role !== 'owner' && ctx.role !== 'admin') {
+      throw forbidden('only project owner or admin can create skills');
     }
 
     const contentHash = hashSkillBody(input.skillMd, input.files);
@@ -253,14 +257,16 @@ skillCrudRoutes.put(
     if (patch.target !== undefined) updates.target = patch.target;
     if (patch.files !== undefined) updates.files = patch.files;
     if (patch.localGuide !== undefined) updates.localGuide = patch.localGuide;
-    if (patch.isGlobal !== undefined) {
-      updates.scope = patch.isGlobal ? 'global' : 'project';
-    }
     if (patch.skillMd !== undefined || patch.files !== undefined) {
-      updates.contentHash = hashSkillBody(
-        patch.skillMd ?? row.skillMd ?? row.prompt,
-        patch.files ?? row.files,
-      );
+      // skillMd is canonical for v0.1+ skills. Legacy skills migrated from
+      // skillSync only have `prompt`; backfill skillMd on first user-CRUD edit
+      // so future reads + hashes stay consistent.
+      const canonicalSkillMd = patch.skillMd ?? row.skillMd ?? row.prompt;
+      if (patch.skillMd === undefined && row.skillMd === null) {
+        updates.skillMd = canonicalSkillMd;
+        updates.prompt = canonicalSkillMd;
+      }
+      updates.contentHash = hashSkillBody(canonicalSkillMd, patch.files ?? row.files);
       updates.version = (row.version ?? 1) + 1;
     }
 
