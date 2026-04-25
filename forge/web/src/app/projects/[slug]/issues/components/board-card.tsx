@@ -18,7 +18,7 @@ export function BoardCard({ issue, onUpdate, onSelect }: BoardCardProps) {
         onClick={() => onSelect(issue.documentId)}
         className="block text-left text-sm font-medium text-on-surface hover:text-on-surface focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-outline rounded-sm"
       >
-        <span className="mr-1 font-mono text-[10px] text-primary-fixed">ISS-{issue.id}</span>
+        <span className="mr-1 font-mono text-[10px] text-primary-fixed">{issue.displayId ?? `ISS-${issue.id}`}</span>
         {issue.title}
       </button>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
