@@ -625,3 +625,38 @@ useEffect(() => {
 7. **`waitForSubscriber()`** — Server-side race condition prevention. Ensures a client is listening before streaming begins.
 
 8. **Reconnect strategies** — Exponential backoff (1s-30s, 10 max) for the global hook; fixed 2s delay for session hooks (simpler, session-scoped).
+
+---
+
+## Edge / Reverse Proxy Requirements
+
+Real-world deploys put `core` behind a reverse proxy (nginx) and usually
+behind Cloudflare too. The WebSocket upgrade only survives the full path
+when every hop preserves it:
+
+1. **nginx** — `location /ws` must set `proxy_http_version 1.1` and
+   forward `Upgrade` + `Connection` headers. Without those, nginx
+   downgrades the request to a plain HTTP GET and the Hono catch-all
+   returns `{"code":"NOT_FOUND","message":"Not Found: GET /ws"}`. See
+   `infra/nginx/stg-jarvis-a2.thejunix.com.conf` for a working snapshot.
+
+2. **Cloudflare** — `Network -> WebSockets` must be **On** at the zone
+   level. CF only proxies WebSockets over HTTP/1.1; with the toggle off,
+   the upgrade is stripped and origin returns the same 404. RFC 6455
+   clients (browsers, `wscat`, the `ws` npm package) negotiate HTTP/1.1
+   automatically — `curl` does not, so verifying with a default `curl`
+   call requires `--http1.1` to mimic browser behaviour. SSL/TLS mode
+   must be `Full` or `Full (strict)`; `Flexible` breaks WS.
+
+3. **Auth on upgrade** — `core`'s WS server requires a Bearer token or
+   `forge_auth` cookie at upgrade time (see
+   `forge/core/src/ws/server.ts`). An unauthenticated handshake returns
+   `401 Unauthorized` *after* the upgrade is accepted, which is a useful
+   signal that routing is healthy. `404` at any layer means routing is
+   broken there. The "no auth on WS" note in design decision #1 above is
+   historical — room-scoping in v0.1 introduced auth on upgrade
+   (ISS-110); the channel remains a notification channel for the
+   authenticated principal.
+
+For the full diagnostic/verification recipe, see
+[`infra/nginx/README.md`](../../infra/nginx/README.md).
