@@ -173,7 +173,7 @@ Per-project config decides which transitions auto-trigger vs wait for human appr
 - **Claude credentials never on the server.** They live in each device's OS keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service).
 - **User JWT:** 7-day TTL, refresh-token rotation, `httpOnly` cookies on web.
 - **Device token:** long-lived, stored in OS keychain, revocable from the web UI.
-- **Rate limits** on `/api/auth/*` and `/api/devices/pair`.
+- **Rate limits** on `/api/auth/*` and `/api/devices/pair`. Defaults: `/api/auth/local` 5 attempts / 15 min / IP, `/api/auth/register` 3 / hour / IP, `/api/devices/pair` 10 / hour / IP — all configurable via `RATE_LIMIT_*` env vars. Source of truth: `forge/core/src/config/rate-limits.ts`.
 - **Email verification** required before creating the first project.
 - **CORS:** whitelist + regex patterns via `CORS_ORIGINS` / `CORS_ORIGIN_PATTERNS`.
 - **MCP `crossProjectAccess` flag removed** — every tool call must include `projectId` and pass the policy check.

@@ -32,7 +32,11 @@ export default function NewIssuePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!project || !title.trim()) return;
+    if (!project) return;
+    if (!title.trim()) {
+      setError('Title is required.');
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -123,7 +127,7 @@ export default function NewIssuePage() {
         <div className="flex flex-col gap-3 border-t border-outline-variant/30 pt-4 sm:flex-row">
           <button
             type="submit"
-            disabled={submitting || !title.trim() || !project}
+            disabled={submitting || !project}
             className="flex items-center justify-center gap-2 rounded-sm bg-primary px-8 py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-on-primary shadow-lg transition-all hover:bg-on-surface-variant active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100"
           >
             {submitting ? 'SAVING…' : (

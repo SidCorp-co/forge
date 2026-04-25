@@ -30,6 +30,7 @@ import { useThemePreference } from '@/hooks/use-theme-preference';
 import Image from 'next/image';
 import logoImg from '../../../../public/180x180.png';
 import { NotificationBell } from '@/features/notification/components/notification-bell';
+import { NOTIFICATIONS_ENABLED } from '@/features/notification';
 
 const PROJECT_SUB_LINKS = [
   { path: '', label: 'Overview' },
@@ -177,7 +178,7 @@ export function SidebarNav({ onClose }: SidebarNavProps) {
     <div className="flex h-full flex-col bg-surface font-['Inter'] tracking-tight text-sm antialiased overflow-hidden">
       {/* Mobile Header elements (X button and Bell) */}
       <div className="flex items-center justify-between px-4 py-2 md:hidden">
-        <NotificationBell align="left" />
+        {NOTIFICATIONS_ENABLED ? <NotificationBell align="left" /> : <span />}
         <button
           onClick={onClose}
           className="rounded p-2 text-outline hover:text-on-surface"
@@ -196,7 +197,7 @@ export function SidebarNav({ onClose }: SidebarNavProps) {
       </div>
 
       <div className="px-4 mb-6 hidden md:block">
-        <Link href="/dashboard" className="w-full bg-primary text-on-primary py-2 px-4 rounded-sm flex items-center justify-center gap-2 font-semibold text-xs transition-all active:scale-[0.98] hover:bg-tertiary">
+        <Link href="/projects?new=1" className="w-full bg-primary text-on-primary py-2 px-4 rounded-sm flex items-center justify-center gap-2 font-semibold text-xs transition-all active:scale-[0.98] hover:bg-tertiary">
           <Plus className="h-4 w-4" />
           New Project
         </Link>
