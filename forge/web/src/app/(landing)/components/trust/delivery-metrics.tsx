@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { gsap } from '@/lib/gsap-client';
+import { gsap, ScrollTrigger } from '@/lib/gsap-client';
 import { deliveryMetrics } from '../../constants';
 
 export function DeliveryMetrics() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    gsap.registerPlugin(ScrollTrigger);
     if (!containerRef.current) return;
 
     const ctx = gsap.context(() => {
