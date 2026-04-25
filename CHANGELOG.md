@@ -18,6 +18,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+## [0.1.0-rc.5] - 2026-04-25
+
+### Added
+- Branded 404 page (`forge/web/src/app/not-found.tsx`) with "Back to projects" CTA (ISS-243 #7)
+- `NOTIFICATIONS_ENABLED` feature flag in `forge/web/src/features/notification/` to gate UI until backend ships (ISS-243 #1)
+
+### Changed
+- Web `IssueStatus` union + Kanban column constants synced to canonical `forge/core/src/db/schema.ts` 16-status enum: dropped `draft`/`clarified`, added `tested`/`pass` (ISS-242)
+- Sidebar "+ New Project" CTA now opens the create-project modal at `/projects?new=1` (was dead-link to `/dashboard`) (ISS-243 #5)
+- `/dashboard` wrapped in `<Shell>` for layout parity with other top-level routes (ISS-243 #3)
+- New-issue form: empty submit now shows inline `Title is required.` error (was silent no-op) (ISS-243 #6)
+- `/projects` empty/error: 401/403 surfaces sign-in CTA; other errors render `<AlertBanner>` instead of red text line (ISS-243 #4)
+- `docs/architecture/system-overview.md` rate-limit blurb reconciled with `forge/core/src/config/rate-limits.ts` (5 / 15 min) (ISS-243 #8)
+
+### Fixed
+- `forge_auth` cookie now sets `Secure` in `staging` + `production` (was missing in `staging` because predicate compared `=== 'production'`) (ISS-240)
+- Removed Strapi-flavoured `/api/notifications/unread-count` polling generating 404 every 30s (ISS-243 #1)
+- Removed Strapi-flavoured `/api/user-preferences?filters[userKey][$eq]=...` calls; theme persists via next-themes localStorage only (ISS-243 #2)
+
+### Validation
+- ISS-238 `/ws` 404 confirmed false positive: after enabling Cloudflare Network → WebSockets, full handshake returns `101 Switching Protocols` with auth cookie (verified 2026-04-25)
+
 ## [0.1.0-rc.4] - 2026-04-25
 
 ### Added
