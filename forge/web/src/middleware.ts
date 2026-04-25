@@ -10,14 +10,14 @@ export function middleware(request: NextRequest) {
   // Landing page: redirect authenticated users to dashboard
   if (pathname === '/') {
     if (jwt) {
-      return NextResponse.redirect(new URL('/dashboard', request.url));
+      return NextResponse.redirect(new URL('/projects', request.url));
     }
     return NextResponse.next();
   }
 
   if (PUBLIC_ROUTES.includes(pathname)) {
     if (jwt) {
-      return NextResponse.redirect(new URL('/dashboard', request.url));
+      return NextResponse.redirect(new URL('/projects', request.url));
     }
     return NextResponse.next();
   }
