@@ -1,9 +1,13 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useQueries } from '@tanstack/react-query';
 import { useIssueSearch, useTransitionIssue } from '@/features/issue/hooks/use-issues';
 import { useProjectBySlug } from '@/features/project/hooks/use-projects';
+import { useUpdateTask } from '@/features/task/hooks/use-tasks';
+import { taskApi } from '@/features/task/api/task-api';
+import type { Task, TaskStatus } from '@/features/task/types';
 import { useChangedIds } from '@/hooks/use-changed-ids';
 import { useToast } from '@/hooks/use-toast';
 import { formatApiError } from '@/lib/api/error';
@@ -74,10 +78,58 @@ export function useBoard() {
     setVisibleCols((prev) => ({ ...prev, [status]: !prev[status] }));
   };
 
+  // Tasks view: fetch tasks per visible issue and flatten. Only enabled when
+  // viewMode === 'tasks' so the issues view stays cheap. Core has no
+  // project-level tasks endpoint, so the N+1 is intentional for v0.1.0.
+  const taskQueries = useQueries({
+    queries: issues.map((i) => ({
+      queryKey: ['tasks', 'issue', i.id],
+      queryFn: () => taskApi.listByIssue(i.id),
+      enabled: viewMode === 'tasks' && !!i.id,
+    })),
+  });
+  const tasks = useMemo<Task[]>(
+    () => taskQueries.flatMap((q) => (q.data ?? []) as Task[]),
+    [taskQueries],
+  );
+  const tasksLoading = viewMode === 'tasks' && taskQueries.some((q) => q.isLoading);
+
+  const assignees = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of tasks) {
+      if (t.assigneeId) set.add(t.assigneeId);
+    }
+    return Array.from(set).sort();
+  }, [tasks]);
+
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((t) => {
+      if (assigneeFilter !== 'all' && t.assigneeId !== assigneeFilter) return false;
+      if (agentFilter === 'agent' && !t.isAgentTask) return false;
+      if (agentFilter === 'human' && t.isAgentTask) return false;
+      return true;
+    });
+  }, [tasks, assigneeFilter, agentFilter]);
+
+  const changedTaskIds = useChangedIds(
+    tasks.map((t) => ({ id: 0, documentId: t.id, status: t.status, updatedAt: t.updatedAt })),
+  );
+
+  const updateTask = useUpdateTask();
+  const handleTaskDrop = useCallback(
+    (taskId: string, status: string) => {
+      updateTask.mutate(
+        { id: taskId, data: { status: status as TaskStatus } },
+        { onError: (err) => addToast(formatApiError(err)) },
+      );
+    },
+    [updateTask, addToast],
+  );
+
   return {
     viewMode,
     setViewMode,
-    loading: isLoading,
+    loading: viewMode === 'issues' ? isLoading : tasksLoading,
     issues,
     selectedIssueId,
     setSelectedIssueId,
@@ -87,16 +139,15 @@ export function useBoard() {
     setShowColPicker,
     toggleCol,
     handleIssueDrop,
-    // Tasks view is out of scope for F2 — core has no tasks endpoint yet.
-    tasks: [] as unknown[],
-    filteredTasks: [] as unknown[],
-    changedTaskIds: new Set<string>(),
-    assignees: [] as string[],
+    tasks,
+    filteredTasks,
+    changedTaskIds,
+    assignees,
     assigneeFilter,
     setAssigneeFilter,
     agentFilter,
     setAgentFilter,
-    handleTaskDrop: () => {},
+    handleTaskDrop,
     toasts,
   };
 }

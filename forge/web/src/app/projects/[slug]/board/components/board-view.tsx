@@ -84,9 +84,34 @@ export function BoardView(props: BoardState) {
       )}
 
       {viewMode === 'tasks' && (
-        <p className="py-8 text-center text-xs text-outline">
-          Tasks view is not available on forge/core yet.
-        </p>
+        <div className="flex gap-3 overflow-x-auto pb-4">
+          {TASK_COLS.map((col) => {
+            const colTasks = filteredTasks.filter((t: { status: string }) => t.status === col.status);
+            return (
+              <DropColumn
+                key={col.status}
+                label={col.label}
+                color={col.color}
+                bg={col.bg}
+                count={colTasks.length}
+                status={col.status}
+                onDrop={handleTaskDrop}
+                dragType="taskId"
+              >
+                {colTasks.map((task: { id: string }) => (
+                  <DraggableTaskCard
+                    key={task.id}
+                    task={task as never}
+                    highlight={changedTaskIds.has(task.id)}
+                  />
+                ))}
+                {colTasks.length === 0 && (
+                  <p className="py-8 text-center text-xs text-outline">No tasks</p>
+                )}
+              </DropColumn>
+            );
+          })}
+        </div>
       )}
 
       {selectedIssueId && (
