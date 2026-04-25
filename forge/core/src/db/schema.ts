@@ -928,3 +928,36 @@ export const agentsRelations = relations(agents, ({ one }) => ({
   project: one(projects, { fields: [agents.projectId], references: [projects.id] }),
 }));
 
+export const chatSessionSources = ['web', 'widget', 'rocketchat', 'telegram'] as const;
+export type ChatSessionSource = (typeof chatSessionSources)[number];
+
+export const chatSessions = pgTable(
+  'chat_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    widgetUserId: text('widget_user_id'),
+    userKey: text('user_key'),
+    title: text('title'),
+    source: text('source', { enum: chatSessionSources }).notNull().default('web'),
+    messages: jsonb('messages').notNull().default(sql`'[]'::jsonb`),
+    metadata: jsonb('metadata'),
+    summary: text('summary'),
+    summarizedAt: timestamp('summarized_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectUpdatedIdx: index('chat_sessions_project_updated_idx').on(t.projectId, t.updatedAt),
+    userIdx: index('chat_sessions_user_idx').on(t.userId),
+  }),
+);
+
+export const chatSessionsRelations = relations(chatSessions, ({ one }) => ({
+  project: one(projects, { fields: [chatSessions.projectId], references: [projects.id] }),
+  user: one(users, { fields: [chatSessions.userId], references: [users.id] }),
+}));
+
