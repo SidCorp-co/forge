@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { gsap } from '@/lib/gsap-client';
 import { deliveryMetrics } from '../../constants';
 
 export function DeliveryMetrics() {
@@ -9,77 +10,58 @@ export function DeliveryMetrics() {
   useEffect(() => {
     if (!containerRef.current) return;
 
-    let cancelled = false;
-    let ctx: ReturnType<typeof import('gsap')['default']['context']> | undefined;
+    const ctx = gsap.context(() => {
+      gsap.from('[data-metric-card]', {
+        y: 40,
+        opacity: 0,
+        duration: 0.6,
+        stagger: 0.15,
+        ease: 'power2.out',
+        scrollTrigger: {
+          trigger: containerRef.current,
+          start: 'top 80%',
+          once: true,
+          scroller: '[data-theme]',
+        },
+      });
 
-    const init = async () => {
-      const gsap = (await import('gsap')).default;
-      if (cancelled) return;
-      const { ScrollTrigger } = await import('gsap/ScrollTrigger');
-      if (cancelled) return;
-      gsap.registerPlugin(ScrollTrigger);
-
-      ctx = gsap.context(() => {
-        // Card fly-in animation
-        gsap.from('[data-metric-card]', {
-          y: 40,
-          opacity: 0,
-          duration: 0.6,
-          stagger: 0.15,
+      const counters = containerRef.current!.querySelectorAll('[data-count]');
+      counters.forEach((el) => {
+        const target = parseInt(el.getAttribute('data-count') || '0', 10);
+        const obj = { val: 0 };
+        gsap.to(obj, {
+          val: target,
+          duration: 1.5,
           ease: 'power2.out',
+          snap: { val: 1 },
           scrollTrigger: {
             trigger: containerRef.current,
             start: 'top 80%',
             once: true,
             scroller: '[data-theme]',
           },
-        });
-
-        // Counter animation
-        const counters = containerRef.current!.querySelectorAll('[data-count]');
-        counters.forEach((el) => {
-          const target = parseInt(el.getAttribute('data-count') || '0', 10);
-          const obj = { val: 0 };
-          gsap.to(obj, {
-            val: target,
-            duration: 1.5,
-            ease: 'power2.out',
-            snap: { val: 1 },
-            scrollTrigger: {
-              trigger: containerRef.current,
-              start: 'top 80%',
-              once: true,
-              scroller: '[data-theme]',
-            },
-            onUpdate: () => {
-              el.textContent = Math.round(obj.val).toString();
-            },
-          });
-        });
-
-        // Loading bar animation
-        gsap.from('[data-bar-fill]', {
-          scaleX: 0,
-          transformOrigin: 'left',
-          duration: 1.2,
-          stagger: 0.15,
-          ease: 'power2.out',
-          scrollTrigger: {
-            trigger: containerRef.current,
-            start: 'top 80%',
-            once: true,
-            scroller: '[data-theme]',
+          onUpdate: () => {
+            el.textContent = Math.round(obj.val).toString();
           },
         });
-      }, containerRef);
-    };
+      });
 
-    init();
+      gsap.from('[data-bar-fill]', {
+        scaleX: 0,
+        transformOrigin: 'left',
+        duration: 1.2,
+        stagger: 0.15,
+        ease: 'power2.out',
+        scrollTrigger: {
+          trigger: containerRef.current,
+          start: 'top 80%',
+          once: true,
+          scroller: '[data-theme]',
+        },
+      });
+    }, containerRef);
 
-    return () => {
-      cancelled = true;
-      ctx?.revert();
-    };
+    return () => ctx.revert();
   }, []);
 
   return (

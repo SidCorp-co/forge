@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
+import { gsap } from '@/lib/gsap-client';
 import { ClientLogos } from './trust/client-logos';
 import { TeamSnapshot } from './trust/team-snapshot';
 import { VideoWalkthrough } from './trust/video-walkthrough';
@@ -17,51 +18,35 @@ export function LandingTrust() {
   useEffect(() => {
     if (!sectionRef.current) return;
 
-    let cancelled = false;
-    let ctx: ReturnType<typeof import('gsap')['default']['context']> | undefined;
+    const ctx = gsap.context(() => {
+      gsap.from('[data-trust-header]', {
+        y: 20,
+        opacity: 0,
+        duration: 0.8,
+        ease: 'power2.out',
+        scrollTrigger: {
+          trigger: sectionRef.current,
+          start: 'top 80%',
+          once: true,
+          scroller: '[data-theme]',
+        },
+      });
 
-    const init = async () => {
-      const gsap = (await import('gsap')).default;
-      if (cancelled) return;
-      const { ScrollTrigger } = await import('gsap/ScrollTrigger');
-      if (cancelled) return;
-      gsap.registerPlugin(ScrollTrigger);
+      gsap.from('[data-trust-logos]', {
+        x: -50,
+        opacity: 0,
+        duration: 0.8,
+        ease: 'power2.out',
+        scrollTrigger: {
+          trigger: '[data-trust-logos]',
+          start: 'top 85%',
+          once: true,
+          scroller: '[data-theme]',
+        },
+      });
+    }, sectionRef);
 
-      ctx = gsap.context(() => {
-        gsap.from('[data-trust-header]', {
-          y: 20,
-          opacity: 0,
-          duration: 0.8,
-          ease: 'power2.out',
-          scrollTrigger: {
-            trigger: sectionRef.current,
-            start: 'top 80%',
-            once: true,
-            scroller: '[data-theme]',
-          },
-        });
-
-        gsap.from('[data-trust-logos]', {
-          x: -50,
-          opacity: 0,
-          duration: 0.8,
-          ease: 'power2.out',
-          scrollTrigger: {
-            trigger: '[data-trust-logos]',
-            start: 'top 85%',
-            once: true,
-            scroller: '[data-theme]',
-          },
-        });
-      }, sectionRef);
-    };
-
-    init();
-
-    return () => {
-      cancelled = true;
-      ctx?.revert();
-    };
+    return () => ctx.revert();
   }, []);
 
   return (

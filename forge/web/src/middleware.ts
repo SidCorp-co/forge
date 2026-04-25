@@ -3,17 +3,22 @@ import type { NextRequest } from 'next/server';
 
 const PUBLIC_ROUTES = ['/', '/login', '/register'];
 
+// Mirror of top-level protected segments under src/app/ (incl. (protected) group children).
+// Unknown paths fall through to Next.js so not-found.tsx renders with a real 404.
+const PROTECTED_PREFIXES = [
+  '/admin',
+  '/ceo',
+  '/chat-logs',
+  '/dashboard',
+  '/devices',
+  '/pipeline',
+  '/projects',
+  '/settings',
+];
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const jwt = request.cookies.get('forge_auth')?.value;
-
-  // Landing page: redirect authenticated users to dashboard
-  if (pathname === '/') {
-    if (jwt) {
-      return NextResponse.redirect(new URL('/projects', request.url));
-    }
-    return NextResponse.next();
-  }
 
   if (PUBLIC_ROUTES.includes(pathname)) {
     if (jwt) {
@@ -22,7 +27,10 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (!jwt) {
+  const isProtected = PROTECTED_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`),
+  );
+  if (isProtected && !jwt) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 

@@ -2,12 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import gsap from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { ExternalLink, Play } from 'lucide-react';
+import { gsap, ScrollTrigger } from '@/lib/gsap-client';
 import { showcaseDomains, showcaseProjects, type ShowcaseProject } from '../constants';
-
-gsap.registerPlugin(ScrollTrigger);
 
 function ShowcaseCard({ project }: { project: ShowcaseProject }) {
   const link = project.demoUrl || project.videoUrl;

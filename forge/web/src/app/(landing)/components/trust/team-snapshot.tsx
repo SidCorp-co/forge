@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { gsap } from '@/lib/gsap-client';
 import { teamMembers, teamCapability, teamCount } from '../../constants';
 
 export function TeamSnapshot() {
@@ -9,40 +10,24 @@ export function TeamSnapshot() {
   useEffect(() => {
     if (!gridRef.current) return;
 
-    let cancelled = false;
-    let ctx: ReturnType<typeof import('gsap')['default']['context']> | undefined;
+    const ctx = gsap.context(() => {
+      const cards = gridRef.current!.querySelectorAll('[data-team-card]');
+      gsap.from(cards, {
+        y: 30,
+        opacity: 0,
+        stagger: 0.1,
+        duration: 0.6,
+        ease: 'power2.out',
+        scrollTrigger: {
+          trigger: gridRef.current,
+          start: 'top 80%',
+          once: true,
+          scroller: '[data-theme]',
+        },
+      });
+    }, gridRef);
 
-    const init = async () => {
-      const gsap = (await import('gsap')).default;
-      if (cancelled) return;
-      const { ScrollTrigger } = await import('gsap/ScrollTrigger');
-      if (cancelled) return;
-      gsap.registerPlugin(ScrollTrigger);
-
-      ctx = gsap.context(() => {
-        const cards = gridRef.current!.querySelectorAll('[data-team-card]');
-        gsap.from(cards, {
-          y: 30,
-          opacity: 0,
-          stagger: 0.1,
-          duration: 0.6,
-          ease: 'power2.out',
-          scrollTrigger: {
-            trigger: gridRef.current,
-            start: 'top 80%',
-            once: true,
-            scroller: '[data-theme]',
-          },
-        });
-      }, gridRef);
-    };
-
-    init();
-
-    return () => {
-      cancelled = true;
-      ctx?.revert();
-    };
+    return () => ctx.revert();
   }, []);
 
   return (
