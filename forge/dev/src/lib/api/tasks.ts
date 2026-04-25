@@ -17,16 +17,23 @@ export async function getTasks(_projectSlug: string): Promise<Task[]> {
   return [];
 }
 
+// TODO(iss-257): core returns flat `{ id, assigneeId, ... }` shape; the dev-side
+// `Task` type still mirrors the legacy Strapi shape (`documentId`, `assignee`).
+// Existing dev consumers (use-agent-stream.ts, project-board-view.tsx) will see
+// `t.documentId === undefined` at runtime until the dev type is aligned in a
+// follow-up. The casts below make the lie explicit so the next session can grep.
 export async function getTasksByIssue(issueId: string): Promise<Task[]> {
-  return request(`/issues/${issueId}/tasks`);
+  const rows = await request<unknown[]>(`/issues/${issueId}/tasks`);
+  return rows as unknown as Task[];
 }
 
 export async function updateTask(
   taskId: string,
   data: Partial<Task>,
 ): Promise<Task> {
-  return request(`/tasks/${taskId}`, {
+  const row = await request<unknown>(`/tasks/${taskId}`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
+  return row as unknown as Task;
 }

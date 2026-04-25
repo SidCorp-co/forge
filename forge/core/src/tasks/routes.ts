@@ -206,40 +206,45 @@ taskRoutes.patch(
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     const fields: string[] = [];
+    const track = (field: string, prev: unknown, next: unknown) => {
+      if (prev !== next) fields.push(field);
+    };
     if (patch.title !== undefined) {
       updates.title = patch.title;
-      fields.push('title');
+      track('title', task.title, patch.title);
     }
     if (patch.description !== undefined) {
       updates.description = patch.description;
-      fields.push('description');
+      track('description', task.description, patch.description);
     }
     if (patch.status !== undefined) {
       updates.status = patch.status;
-      fields.push('status');
+      track('status', task.status, patch.status);
     }
     if (patch.priority !== undefined) {
       updates.priority = patch.priority;
-      fields.push('priority');
+      track('priority', task.priority, patch.priority);
     }
     if (patch.assigneeId !== undefined) {
       updates.assigneeId = patch.assigneeId;
-      fields.push('assigneeId');
+      track('assigneeId', task.assigneeId, patch.assigneeId);
     }
     if (patch.isAgentTask !== undefined) {
       updates.isAgentTask = patch.isAgentTask;
-      fields.push('isAgentTask');
+      track('isAgentTask', task.isAgentTask, patch.isAgentTask);
     }
     if (patch.agentStatus !== undefined) {
       updates.agentStatus = patch.agentStatus;
-      fields.push('agentStatus');
+      track('agentStatus', task.agentStatus, patch.agentStatus);
     }
     if (patch.agentLog !== undefined) {
       updates.agentLog = patch.agentLog;
+      // jsonb: object identity differs each load, so any explicit set counts as a change.
       fields.push('agentLog');
     }
     if (patch.acceptanceCriteria !== undefined) {
       updates.acceptanceCriteria = patch.acceptanceCriteria;
+      // jsonb: object identity differs each load, so any explicit set counts as a change.
       fields.push('acceptanceCriteria');
     }
 

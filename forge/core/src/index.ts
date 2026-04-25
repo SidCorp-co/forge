@@ -173,10 +173,13 @@ app.route('/api/projects', searchRoutes);
 app.route('/api/projects', labelProjectRoutes);
 app.route('/api/projects', projectActivityRoutes);
 app.route('/api/projects', jobProjectRoutes);
+// issueExtrasRoutes mounts /pipeline-timing (static) and must register before
+// issueRoutes which has GET /:id with a z.uuid() validator that would
+// 400-reject the literal "pipeline-timing" segment.
+app.route('/api/issues', issueExtrasRoutes);
 app.route('/api/issues', issueRoutes);
 app.route('/api/issues', transitionRoutes);
 app.route('/api/issues', issueActivityRoutes);
-app.route('/api/issues', issueExtrasRoutes);
 app.route('/api/issues', taskIssueRoutes);
 app.route('/api/tasks', taskRoutes);
 app.route('/api/comments', commentRoutes);

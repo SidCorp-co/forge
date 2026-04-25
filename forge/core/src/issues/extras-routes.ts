@@ -3,9 +3,10 @@ import { and, asc, eq, gte, lte } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { enqueueJob } from '../jobs/enqueue.js';
 import { db } from '../db/client.js';
 import { activityLog, issues, jobs } from '../db/schema.js';
+import { enqueueJob } from '../jobs/enqueue.js';
+import { isUniqueViolation } from '../lib/db-errors.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { logger } from '../logger.js';
@@ -55,17 +56,29 @@ issueExtrasRoutes.post(
     const access = await loadProjectAccess(issue.projectId, userId);
     if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
 
-    const [job] = await db
-      .insert(jobs)
-      .values({
-        projectId: issue.projectId,
-        issueId: issue.id,
-        createdBy: userId,
-        type: 'custom',
-        payload: { kind: 'enrich', issueId: issue.id },
-        status: 'queued',
-      })
-      .returning({ id: jobs.id, status: jobs.status });
+    let job: { id: string; status: string } | undefined;
+    try {
+      const [row] = await db
+        .insert(jobs)
+        .values({
+          projectId: issue.projectId,
+          issueId: issue.id,
+          createdBy: userId,
+          type: 'custom',
+          payload: { kind: 'enrich', issueId: issue.id },
+          status: 'queued',
+        })
+        .returning({ id: jobs.id, status: jobs.status });
+      job = row;
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        throw new HTTPException(409, {
+          message: 'enrich already queued for this issue',
+          cause: { code: 'ENRICH_ALREADY_QUEUED' },
+        });
+      }
+      throw err;
+    }
     if (!job) throw new Error('jobs: insert returned no row');
 
     try {
