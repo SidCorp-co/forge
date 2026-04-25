@@ -29,11 +29,11 @@ function DayChips({ value, onChange }: { value: number; onChange: (v: number) =>
   );
 }
 
-export function UsageDashboard() {
+export function UsageDashboard({ projectId }: { projectId?: string }) {
   const gradientId = useId();
   const [days, setDays] = useState(7);
   const [activeSources, setActiveSources] = useState<Set<string>>(new Set());
-  const { data: summary, isLoading, isError } = useUsageSummary(days);
+  const { data: summary, isLoading, isError } = useUsageSummary(projectId, days);
   const ingest = useIngestCliUsage();
 
   const toggleSource = (s: string) => {
@@ -89,7 +89,7 @@ export function UsageDashboard() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => ingest.mutate()}
+            onClick={() => projectId && ingest.mutate({ projectId, records: [] })}
             disabled={ingest.isPending}
             className="rounded-md border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-[11px] font-medium text-on-surface-variant transition-all hover:border-outline-variant hover:text-on-surface disabled:opacity-50"
           >

@@ -1,12 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import type { Schedule, ScheduleFormData, ScheduleRunner } from '../api';
+import type { Schedule, ScheduleCreatePayload, ScheduleRunner } from '../api';
 
 interface ScheduleFormProps {
   initial?: Schedule | null;
-  projectDocumentId: string;
-  onSubmit: (data: ScheduleFormData) => void;
+  projectId: string;
+  onSubmit: (data: ScheduleCreatePayload) => void;
   onCancel: () => void;
   loading?: boolean;
 }
@@ -20,7 +20,7 @@ const CRON_PRESETS = [
   { label: 'Weekly (Monday 9 AM)', value: '0 9 * * 1' },
 ];
 
-export function ScheduleForm({ initial, projectDocumentId, onSubmit, onCancel, loading }: ScheduleFormProps) {
+export function ScheduleForm({ initial, projectId, onSubmit, onCancel, loading }: ScheduleFormProps) {
   const [name, setName] = useState(initial?.name || '');
   const [cron, setCron] = useState(initial?.cron || '0 */2 * * *');
   const [prompt, setPrompt] = useState(initial?.prompt || '');
@@ -31,13 +31,13 @@ export function ScheduleForm({ initial, projectDocumentId, onSubmit, onCancel, l
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit({
+      projectId,
       name,
       cron,
       prompt,
       runner,
       enabled,
-      targetProjectSlug: targetProjectSlug || undefined,
-      project: initial ? undefined : projectDocumentId,
+      targetProjectSlug: targetProjectSlug || null,
     });
   };
 

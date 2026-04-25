@@ -11,6 +11,7 @@ import { refreshRoutes } from './auth/refresh.js';
 import { authRoutes } from './auth/register.js';
 import { devForceVerifyRoutes } from './auth/dev-force-verify.js';
 import { verifyRoutes } from './auth/verify.js';
+import { chatLogRoutes } from './chat-logs/routes.js';
 import { commentRoutes } from './comments/routes.js';
 import { commentUploadRoutes } from './comments/upload.js';
 import { env } from './config/env.js';
@@ -18,11 +19,14 @@ import { closeDb, db } from './db/client.js';
 import { deviceAuthRoutes, devicePublicRoutes, deviceUserRoutes } from './devices/routes.js';
 import { registerDeviceStaleDetector } from './devices/stale-detector.js';
 import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-routes.js';
+import { issueExtrasRoutes } from './issues/extras-routes.js';
 import { issueProjectRoutes, issueRoutes } from './issues/routes.js';
 import { searchRoutes } from './issues/search.js';
 import { transitionRoutes } from './issues/transition.js';
 import { registerDispatcher, unregisterDispatcher } from './jobs/dispatcher.js';
 import { jobEventsListRoutes, jobEventsRoutes } from './jobs/events-routes.js';
+import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
+import { knowledgeIngestRoutes } from './knowledge/ingest-routes.js';
 import { jobLifecycleDeviceRoutes, jobLifecycleUserRoutes } from './jobs/lifecycle-routes.js';
 import { registerRetentionSweeper } from './jobs/retention-sweeper.js';
 import { jobProjectRoutes, jobRoutes } from './jobs/routes.js';
@@ -45,8 +49,13 @@ import { memberRoutes } from './projects/members-routes.js';
 import { projectHealthRoutes } from './projects/health-routes.js';
 import { projectRoutes } from './projects/routes.js';
 import { isBossStarted, startBoss, stopBoss } from './queue/boss.js';
+import { scheduleRoutes } from './schedules/routes.js';
+import { registerScheduleTicker, unregisterScheduleTicker } from './schedules/runner.js';
 import { seedBuiltinSkills } from './skills/builtin-seed.js';
+import { skillCrudRoutes } from './skills/crud-routes.js';
 import { skillRegisterRoutes, skillSyncRoutes } from './skills/routes.js';
+import { taskIssueRoutes, taskRoutes } from './tasks/routes.js';
+import { usageRecordRoutes } from './usage-records/routes.js';
 import { webhookInboundRoutes } from './webhooks/inbound-routes.js';
 import { registerOutboundDeliveryWorker } from './webhooks/outbound.js';
 import { registerWebhookSubscribers } from './webhooks/subscribers.js';
@@ -119,6 +128,7 @@ export async function runShutdown(
   const sequence = (async () => {
     await closeWs();
     await unregisterDispatcher();
+    await unregisterScheduleTicker();
     await stopBoss();
     await httpClosed;
     await closeDb();
@@ -171,9 +181,15 @@ app.route('/api/projects', searchRoutes);
 app.route('/api/projects', labelProjectRoutes);
 app.route('/api/projects', projectActivityRoutes);
 app.route('/api/projects', jobProjectRoutes);
+// issueExtrasRoutes mounts /pipeline-timing (static) and must register before
+// issueRoutes which has GET /:id with a z.uuid() validator that would
+// 400-reject the literal "pipeline-timing" segment.
+app.route('/api/issues', issueExtrasRoutes);
 app.route('/api/issues', issueRoutes);
 app.route('/api/issues', transitionRoutes);
 app.route('/api/issues', issueActivityRoutes);
+app.route('/api/issues', taskIssueRoutes);
+app.route('/api/tasks', taskRoutes);
 app.route('/api/comments', commentRoutes);
 app.route('/api/comments', commentUploadRoutes);
 app.route('/api/labels', labelRoutes);
@@ -189,6 +205,12 @@ app.route('/api/admin', adminRoutes);
 app.route('/api/devices', devicePublicRoutes);
 app.route('/api/devices', deviceAuthRoutes);
 app.route('/api/projects', deviceUserRoutes);
+app.route('/api/schedules', scheduleRoutes);
+app.route('/api/knowledge', knowledgeIngestRoutes);
+app.route('/api/knowledge-edges', knowledgeEdgeRoutes);
+app.route('/api/skills', skillCrudRoutes);
+app.route('/api/usage-records', usageRecordRoutes);
+app.route('/api/chat-logs', chatLogRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 
@@ -202,6 +224,7 @@ if (isMain) {
   await registerDeviceStaleDetector();
   await registerRetentionSweeper();
   await registerOutboundDeliveryWorker();
+  await registerScheduleTicker();
   registerWebhookSubscribers(hooks);
   registerPipelineOrchestrator(hooks);
 

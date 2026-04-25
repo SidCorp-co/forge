@@ -561,6 +561,9 @@ export type SkillScope = (typeof skillScopes)[number];
 export const skillSources = ['builtin', 'user'] as const;
 export type SkillSource = (typeof skillSources)[number];
 
+export const skillTargets = ['dev', 'cloud', 'all'] as const;
+export type SkillTarget = (typeof skillTargets)[number];
+
 export const skills = pgTable(
   'skills',
   {
@@ -576,6 +579,11 @@ export const skills = pgTable(
     version: integer('version').notNull().default(1),
     contentHash: text('content_hash').notNull(),
     evalScore: real('eval_score'),
+    skillMd: text('skill_md'),
+    target: text('target', { enum: skillTargets }),
+    files: jsonb('files').notNull().default([]),
+    changelog: jsonb('changelog').notNull().default([]),
+    localGuide: text('local_guide'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -662,3 +670,173 @@ export const skillRegistrationsRelations = relations(skillRegistrations, ({ one 
 export const memoriesRelations = relations(memories, ({ one }) => ({
   project: one(projects, { fields: [memories.projectId], references: [projects.id] }),
 }));
+
+export const taskStatuses = ['backlog', 'todo', 'in_progress', 'in_review', 'done'] as const;
+export type TaskStatus = (typeof taskStatuses)[number];
+
+export const taskAgentStatuses = ['idle', 'running', 'completed', 'failed'] as const;
+export type TaskAgentStatus = (typeof taskAgentStatuses)[number];
+
+export const tasks = pgTable(
+  'tasks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references(() => issues.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    description: text('description'),
+    status: text('status', { enum: taskStatuses }).notNull().default('backlog'),
+    priority: text('priority', { enum: issuePriorities }).notNull().default('none'),
+    assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
+    isAgentTask: boolean('is_agent_task').notNull().default(false),
+    agentStatus: text('agent_status', { enum: taskAgentStatuses }),
+    agentLog: jsonb('agent_log'),
+    acceptanceCriteria: jsonb('acceptance_criteria'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    issueIdx: index('tasks_issue_id_idx').on(t.issueId),
+    projectStatusIdx: index('tasks_project_status_idx').on(t.projectId, t.status),
+    assigneeIdx: index('tasks_assignee_idx').on(t.assigneeId),
+  }),
+);
+
+export const tasksRelations = relations(tasks, ({ one }) => ({
+  issue: one(issues, { fields: [tasks.issueId], references: [issues.id] }),
+  project: one(projects, { fields: [tasks.projectId], references: [projects.id] }),
+  assignee: one(users, { fields: [tasks.assigneeId], references: [users.id] }),
+}));
+
+export const scheduleRunners = ['desktop', 'antigravity'] as const;
+export type ScheduleRunner = (typeof scheduleRunners)[number];
+
+export const scheduleStatuses = ['success', 'failed', 'running', 'skipped'] as const;
+export type ScheduleStatus = (typeof scheduleStatuses)[number];
+
+export const schedules = pgTable(
+  'schedules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    cron: text('cron').notNull(),
+    prompt: text('prompt').notNull(),
+    runner: text('runner', { enum: scheduleRunners }).notNull().default('antigravity'),
+    enabled: boolean('enabled').notNull().default(true),
+    targetProjectSlug: text('target_project_slug'),
+    lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+    nextRunAt: timestamp('next_run_at', { withTimezone: true }),
+    lastStatus: text('last_status', { enum: scheduleStatuses }),
+    lastSessionId: text('last_session_id'),
+    metadata: jsonb('metadata'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectEnabledIdx: index('schedules_project_enabled_idx').on(t.projectId, t.enabled),
+    nextRunAtIdx: index('schedules_next_run_at_idx').on(t.nextRunAt).where(sql`enabled = true`),
+  }),
+);
+
+export const schedulesRelations = relations(schedules, ({ one }) => ({
+  project: one(projects, { fields: [schedules.projectId], references: [projects.id] }),
+}));
+
+export const knowledgeEdges = pgTable(
+  'knowledge_edges',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    subject: text('subject').notNull(),
+    predicate: text('predicate').notNull(),
+    object: text('object').notNull(),
+    value: text('value'),
+    sourceMemoryId: text('source_memory_id'),
+    confidence: real('confidence').notNull().default(1.0),
+    validFrom: timestamp('valid_from', { withTimezone: true }),
+    validUntil: timestamp('valid_until', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectSubjectIdx: index('knowledge_edges_project_subject_idx').on(t.projectId, t.subject),
+    projectPredicateIdx: index('knowledge_edges_project_predicate_idx').on(t.projectId, t.predicate),
+  }),
+);
+
+export const knowledgeEdgesRelations = relations(knowledgeEdges, ({ one }) => ({
+  project: one(projects, { fields: [knowledgeEdges.projectId], references: [projects.id] }),
+}));
+
+export const usageSources = ['cli', 'api', 'desktop'] as const;
+export type UsageSource = (typeof usageSources)[number];
+
+export const usageRecords = pgTable(
+  'usage_records',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    source: text('source', { enum: usageSources }).notNull(),
+    model: text('model').notNull(),
+    inputTokens: integer('input_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+    cacheReadTokens: integer('cache_read_tokens').notNull().default(0),
+    cacheCreationTokens: integer('cache_creation_tokens').notNull().default(0),
+    estimatedCost: real('estimated_cost').notNull().default(0),
+    requestCount: integer('request_count').notNull().default(1),
+    sessionId: text('session_id'),
+    projectName: text('project_name'),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectRecordedIdx: index('usage_records_project_recorded_idx').on(t.projectId, t.recordedAt),
+    sessionIdIdx: index('usage_records_session_id_idx').on(t.sessionId),
+  }),
+);
+
+export const usageRecordsRelations = relations(usageRecords, ({ one }) => ({
+  project: one(projects, { fields: [usageRecords.projectId], references: [projects.id] }),
+}));
+
+export const qaRatings = ['good', 'bad', 'flagged'] as const;
+export type QaRating = (typeof qaRatings)[number];
+
+export const chatLogs = pgTable(
+  'chat_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: text('session_id').notNull(),
+    projectSlug: text('project_slug').notNull(),
+    userKey: text('user_key'),
+    query: text('query').notNull(),
+    reply: text('reply'),
+    model: text('model'),
+    ragContext: jsonb('rag_context'),
+    toolCalls: jsonb('tool_calls'),
+    usage: jsonb('usage'),
+    iterations: integer('iterations').notNull().default(1),
+    durationMs: integer('duration_ms'),
+    error: text('error'),
+    queryIntent: text('query_intent'),
+    condensedQuery: text('condensed_query'),
+    source: text('source').notNull().default('web'),
+    qualitySignals: jsonb('quality_signals'),
+    qaRating: text('qa_rating', { enum: qaRatings }),
+    qaNotes: text('qa_notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectCreatedIdx: index('chat_logs_project_created_idx').on(t.projectSlug, t.createdAt),
+    sessionIdIdx: index('chat_logs_session_id_idx').on(t.sessionId),
+    qaRatingIdx: index('chat_logs_qa_rating_idx').on(t.qaRating),
+  }),
+);

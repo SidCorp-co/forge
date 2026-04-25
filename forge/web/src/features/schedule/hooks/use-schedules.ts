@@ -1,18 +1,22 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { scheduleApi, type ScheduleFormData } from '../api';
+import {
+  scheduleApi,
+  type ScheduleCreatePayload,
+  type ScheduleUpdatePayload,
+} from '../api';
 
-export function useSchedules(projectSlug: string | undefined) {
+export function useSchedules(projectId: string | undefined) {
   return useQuery({
-    queryKey: ['schedules', projectSlug],
-    queryFn: () => scheduleApi.getAll(projectSlug!),
-    enabled: !!projectSlug,
+    queryKey: ['schedules', projectId],
+    queryFn: () => scheduleApi.list(projectId!),
+    enabled: !!projectId,
   });
 }
 
 export function useCreateSchedule() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: ScheduleFormData) => scheduleApi.create(data),
+    mutationFn: (data: ScheduleCreatePayload) => scheduleApi.create(data),
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
     },
@@ -22,7 +26,7 @@ export function useCreateSchedule() {
 export function useUpdateSchedule() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<ScheduleFormData> }) =>
+    mutationFn: ({ id, data }: { id: string; data: ScheduleUpdatePayload }) =>
       scheduleApi.update(id, data),
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['schedules'] });

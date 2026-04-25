@@ -1,23 +1,22 @@
 import { apiClient } from '@/lib/api/client';
-import type { Task } from '../types';
+import type { Task, TaskCreateInput, TaskPatchInput } from '../types';
 
 export const taskApi = {
-  getAll: () =>
-    apiClient<{ data: Task[] }>('/tasks?populate=*'),
+  listByIssue: (issueId: string) => apiClient<Task[]>(`/issues/${issueId}/tasks`),
 
-  getByProject: (projectSlug?: string) => {
-    const filter = projectSlug
-      ? `?filters[issue][project][slug][$eq]=${projectSlug}&populate=*`
-      : '?populate=*';
-    return apiClient<{ data: Task[] }>(`/tasks${filter}`);
-  },
+  get: (taskId: string) => apiClient<Task>(`/tasks/${taskId}`),
 
-  getById: (id: string) =>
-    apiClient<{ data: Task }>(`/tasks/${id}?populate=*`),
-
-  update: (id: string, data: Partial<Task>) =>
-    apiClient<{ data: Task }>(`/tasks/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify({ data }),
+  create: (issueId: string, input: TaskCreateInput) =>
+    apiClient<Task>(`/issues/${issueId}/tasks`, {
+      method: 'POST',
+      body: JSON.stringify(input),
     }),
+
+  patch: (taskId: string, input: TaskPatchInput) =>
+    apiClient<Task>(`/tasks/${taskId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    }),
+
+  remove: (taskId: string) => apiClient<void>(`/tasks/${taskId}`, { method: 'DELETE' }),
 };

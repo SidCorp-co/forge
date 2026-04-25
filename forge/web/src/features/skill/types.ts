@@ -1,16 +1,24 @@
 export interface Skill {
-  id: number;
-  documentId: string;
+  id: string;
   name: string;
   description: string;
-  version: string;
-  skillMd: string;
-  files: SkillFile[];
-  isGlobal: boolean;
-  target: 'dev' | 'cloud' | 'all';
+  scope: 'global' | 'project';
+  projectId: string | null;
+  prompt: string;
+  tools: string[];
+  manifest: Record<string, unknown>;
+  source: 'builtin' | 'user';
+  version: number;
   contentHash: string | null;
+  evalScore: number | null;
+  skillMd: string | null;
+  target: 'dev' | 'cloud' | 'all' | null;
+  files: SkillFile[];
   changelog: ChangelogEntry[];
   localGuide: string | null;
+  isGlobal?: boolean;
+  // Legacy Strapi-shape aliases — TODO drop once consumers migrate.
+  documentId?: string;
   project?: { documentId: string };
   createdAt: string;
   updatedAt: string;
@@ -30,21 +38,22 @@ export interface ChangelogEntry {
 }
 
 export interface SkillSyncStatus {
+  skillId: string;
   skillName: string;
+  target: 'dev' | 'cloud' | 'all' | null;
+  scope: 'global' | 'project';
   currentHash: string | null;
-  currentVersion: string;
-  target: string;
-  isGlobal: boolean;
+  currentVersion: number;
   updatedAt: string;
-  devices: Array<{
-    deviceId: string;
-    inSync: boolean;
-  }>;
+  registeredStages: string[];
+  // Legacy field — devices breakdown not yet ported from Strapi. Empty array.
+  devices?: Array<{ deviceId: string; inSync: boolean }>;
+  isGlobal?: boolean;
 }
 
 export interface BulkPushResult {
   target: string;
-  pushed: string[];
-  skipped: string[];
-  errors: string[];
+  status: string;
+  jobId: string | null;
+  error?: string;
 }

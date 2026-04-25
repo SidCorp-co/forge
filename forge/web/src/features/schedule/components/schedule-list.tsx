@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Play, Trash2, Pencil, Clock, Loader2 } from 'lucide-react';
-import type { Schedule, ScheduleFormData } from '../api';
+import type { Schedule, ScheduleCreatePayload } from '../api';
 import { useUpdateSchedule, useDeleteSchedule, useRunSchedule } from '../hooks';
 import { ScheduleForm } from './schedule-form';
 
@@ -27,17 +27,17 @@ function formatRelativeTime(date: string | null): string {
 
 interface ScheduleListProps {
   schedules: Schedule[];
-  projectDocumentId: string;
+  projectId: string;
 }
 
-export function ScheduleList({ schedules, projectDocumentId }: ScheduleListProps) {
+export function ScheduleList({ schedules, projectId }: ScheduleListProps) {
   const [editing, setEditing] = useState<string | null>(null);
   const updateSchedule = useUpdateSchedule();
   const deleteSchedule = useDeleteSchedule();
   const runSchedule = useRunSchedule();
 
   const handleToggle = (schedule: Schedule) => {
-    updateSchedule.mutate({ id: schedule.documentId, data: { enabled: !schedule.enabled } });
+    updateSchedule.mutate({ id: schedule.id, data: { enabled: !schedule.enabled } });
   };
 
   const handleDelete = (id: string) => {
@@ -50,8 +50,9 @@ export function ScheduleList({ schedules, projectDocumentId }: ScheduleListProps
     runSchedule.mutate(id);
   };
 
-  const handleUpdate = (id: string, data: ScheduleFormData) => {
-    updateSchedule.mutate({ id, data }, { onSuccess: () => setEditing(null) });
+  const handleUpdate = (id: string, data: ScheduleCreatePayload) => {
+    const { projectId: _projectId, ...rest } = data;
+    updateSchedule.mutate({ id, data: rest }, { onSuccess: () => setEditing(null) });
   };
 
   if (schedules.length === 0) {
@@ -67,13 +68,13 @@ export function ScheduleList({ schedules, projectDocumentId }: ScheduleListProps
   return (
     <div className="space-y-2">
       {schedules.map((schedule) => (
-        <div key={schedule.documentId}>
-          {editing === schedule.documentId ? (
+        <div key={schedule.id}>
+          {editing === schedule.id ? (
             <div className="rounded-sm border border-primary/30 bg-surface-container-low p-4">
               <ScheduleForm
                 initial={schedule}
-                projectDocumentId={projectDocumentId}
-                onSubmit={(data) => handleUpdate(schedule.documentId, data)}
+                projectId={projectId}
+                onSubmit={(data) => handleUpdate(schedule.id, data)}
                 onCancel={() => setEditing(null)}
                 loading={updateSchedule.isPending}
               />
@@ -125,7 +126,7 @@ export function ScheduleList({ schedules, projectDocumentId }: ScheduleListProps
                     />
                   </button>
                   <button
-                    onClick={() => handleRun(schedule.documentId)}
+                    onClick={() => handleRun(schedule.id)}
                     disabled={runSchedule.isPending}
                     className="p-1.5 text-on-surface-variant hover:text-primary transition-colors"
                     title="Run now"
@@ -137,14 +138,14 @@ export function ScheduleList({ schedules, projectDocumentId }: ScheduleListProps
                     )}
                   </button>
                   <button
-                    onClick={() => setEditing(schedule.documentId)}
+                    onClick={() => setEditing(schedule.id)}
                     className="p-1.5 text-on-surface-variant hover:text-primary transition-colors"
                     title="Edit"
                   >
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
                   <button
-                    onClick={() => handleDelete(schedule.documentId)}
+                    onClick={() => handleDelete(schedule.id)}
                     className="p-1.5 text-on-surface-variant hover:text-danger transition-colors"
                     title="Delete"
                   >

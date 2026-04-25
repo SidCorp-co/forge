@@ -1,6 +1,6 @@
 export interface UsageRecord {
-  id: number;
-  documentId: string;
+  id: string;
+  projectId: string | null;
   source: 'cli' | 'api' | 'desktop';
   model: string;
   inputTokens: number;
@@ -9,9 +9,12 @@ export interface UsageRecord {
   cacheCreationTokens: number;
   estimatedCost: number;
   requestCount: number;
-  sessionId?: string;
-  projectName?: string;
+  sessionId?: string | null;
+  projectName?: string | null;
   recordedAt: string;
+  createdAt: string;
+  // Legacy alias.
+  documentId?: string;
 }
 
 export interface UsageTotals {

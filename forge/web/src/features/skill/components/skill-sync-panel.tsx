@@ -10,12 +10,12 @@ interface SkillSyncPanelProps {
 }
 
 export function SkillSyncPanel({ syncStatuses, onSyncAll, syncing }: SkillSyncPanelProps) {
-  const hasDevices = syncStatuses.some((s) => s.devices.length > 0);
+  const hasDevices = syncStatuses.some((s) => (s.devices ?? []).length > 0);
   const allInSync = syncStatuses.every((s) =>
-    s.devices.every((d) => d.inSync)
+    (s.devices ?? []).every((d) => d.inSync)
   );
   const outdatedCount = syncStatuses.filter((s) =>
-    s.devices.some((d) => !d.inSync)
+    (s.devices ?? []).some((d) => !d.inSync)
   ).length;
 
   return (
@@ -46,7 +46,7 @@ export function SkillSyncPanel({ syncStatuses, onSyncAll, syncing }: SkillSyncPa
       {hasDevices && !allInSync && (
         <div className="mt-3 space-y-1">
           {syncStatuses
-            .filter((s) => s.devices.some((d) => !d.inSync))
+            .filter((s) => (s.devices ?? []).some((d) => !d.inSync))
             .map((s) => (
               <div key={s.skillName} className="flex items-center justify-between rounded border border-warning/20 bg-warning-dim/10 px-2 py-1">
                 <span className="text-xs text-on-surface-variant">{s.skillName}</span>
