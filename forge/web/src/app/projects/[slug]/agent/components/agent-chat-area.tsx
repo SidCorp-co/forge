@@ -1,6 +1,6 @@
 'use client';
 
-import { List } from 'lucide-react';
+import { Info, List } from 'lucide-react';
 import { ChatMessages } from '@/components/chat/chat-messages';
 import { ChatInput } from '@/components/chat/chat-input';
 import { DiffSummary } from '@/components/chat/diff-summary';
@@ -88,6 +88,13 @@ export function AgentChatArea({
           {usage.turns > 0 && <ContextUsageBar usage={usage} />}
         </div>
       </div>
+
+      {!AGENT_INTERACTIVE_ENABLED && (
+        <div className="flex items-center gap-2 border-b border-warning-dim/30 bg-warning-dim/10 px-4 py-2 text-xs text-warning shrink-0">
+          <Info className="h-3.5 w-3.5 shrink-0" />
+          <span>Read-only session viewer. Start/send/abort coming v0.1.x.</span>
+        </div>
+      )}
 
       {/* Body */}
       {showDraftEditor && AGENT_INTERACTIVE_ENABLED ? (
