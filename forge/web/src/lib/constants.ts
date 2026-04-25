@@ -2,16 +2,16 @@ import type { IssueStatus, IssuePriority, IssueComplexity } from '@/features/iss
 
 export const STATUS_COLORS: Record<IssueStatus, string> = {
   // — Pipeline flow —
-  draft: 'bg-zinc-700/50 text-zinc-400',
   open: 'bg-blue-500/15 text-blue-400',
   confirmed: 'bg-indigo-500/15 text-indigo-400',
-  clarified: 'bg-violet-500/15 text-violet-400',
   waiting: 'bg-amber-500/15 text-amber-400',
   approved: 'bg-cyan-500/15 text-cyan-400',
   in_progress: 'bg-yellow-500/15 text-yellow-300',
   developed: 'bg-teal-500/15 text-teal-400',
   deploying: 'bg-orange-500/15 text-orange-400',
   testing: 'bg-purple-500/15 text-purple-400',
+  tested: 'bg-emerald-500/15 text-emerald-400',
+  pass: 'bg-emerald-500/20 text-emerald-300',
   staging: 'bg-lime-500/15 text-lime-400',
   released: 'bg-green-500/20 text-green-400 font-medium',
   closed: 'bg-zinc-600/30 text-zinc-500',
@@ -42,16 +42,16 @@ export const ALL_COMPLEXITIES: { value: IssueComplexity; label: string }[] = [
 ];
 
 export const ALL_STATUSES: { value: IssueStatus; label: string }[] = [
-  { value: 'draft', label: 'Draft' },
   { value: 'open', label: 'Open' },
   { value: 'confirmed', label: 'Confirmed' },
-  { value: 'clarified', label: 'Clarified' },
   { value: 'waiting', label: 'Waiting' },
   { value: 'approved', label: 'Approved' },
   { value: 'in_progress', label: 'In Progress' },
   { value: 'developed', label: 'Developed' },
   { value: 'deploying', label: 'Deploying' },
   { value: 'testing', label: 'Testing' },
+  { value: 'tested', label: 'Tested' },
+  { value: 'pass', label: 'Pass' },
   { value: 'staging', label: 'Staging' },
   { value: 'released', label: 'Released' },
   { value: 'closed', label: 'Closed' },

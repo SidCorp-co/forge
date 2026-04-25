@@ -47,8 +47,8 @@ export const SKIP_OPS = [
 ] as const;
 
 export const PIPELINE_STATUSES = [
-  'open', 'confirmed', 'clarified', 'approved', 'developed',
-  'deploying', 'testing', 'reopen', 'released',
+  'open', 'confirmed', 'waiting', 'approved', 'developed',
+  'deploying', 'testing', 'tested', 'pass', 'reopen', 'released',
 ] as const;
 
 export const PIPELINE_SKILLS = [

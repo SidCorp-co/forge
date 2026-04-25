@@ -1,16 +1,16 @@
 import type { BaseEntity } from '@/lib/types';
 
 export type IssueStatus =
-  | 'draft'
   | 'open'
   | 'confirmed'
-  | 'clarified'
   | 'waiting'
   | 'approved'
   | 'in_progress'
   | 'developed'
   | 'deploying'
   | 'testing'
+  | 'tested'
+  | 'pass'
   | 'staging'
   | 'released'
   | 'closed'
