@@ -138,9 +138,11 @@ export default function IssueDetailPage() {
           <select
             value={issue.status}
             disabled={transitionIssue.isPending}
-            onChange={(e) =>
-              transitionIssue.mutate({ id: issue.id, toStatus: e.currentTarget.value })
-            }
+            onChange={(e) => {
+              const next = e.currentTarget.value;
+              if (next === issue.status) return; // backend rejects no-op with 409
+              transitionIssue.mutate({ id: issue.id, toStatus: next });
+            }}
             className="rounded-sm border border-outline-variant/30 bg-surface-container-high px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-on-surface focus:outline-none focus:border-primary disabled:opacity-50"
           >
             {ALL_STATUSES.map((s) => (

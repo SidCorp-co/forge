@@ -87,14 +87,15 @@ export function useIssuesPage() {
   // Hydrate filters from localStorage on first mount when URL has no
   // filter params. Persist URL filter state on every change so the next
   // session restores it. Keys are project-scoped so switching projects
-  // does not leak filters.
-  const hydrated = useRef(false);
+  // does not leak filters; the ref tracks which slug has been hydrated
+  // so navigating between projects re-hydrates correctly.
+  const hydratedSlug = useRef<string | null>(null);
   useEffect(() => {
-    if (hydrated.current) return;
     if (typeof window === 'undefined') return;
     const key = storageKey(slug);
     if (!key) return;
-    hydrated.current = true;
+    if (hydratedSlug.current === slug) return;
+    hydratedSlug.current = slug;
     const hasUrlFilters = PERSISTED_KEYS.some((k) => searchParams.get(k));
     if (hasUrlFilters) return;
     try {
