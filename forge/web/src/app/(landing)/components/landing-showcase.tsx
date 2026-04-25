@@ -108,6 +108,7 @@ export function LandingShowcase() {
     : showcaseProjects.filter((p) => p.domain === activeDomain);
 
   useEffect(() => {
+    gsap.registerPlugin(ScrollTrigger);
     if (!gridRef.current || !sectionRef.current) return;
 
     const cards = gridRef.current.querySelectorAll('[data-showcase-card]');

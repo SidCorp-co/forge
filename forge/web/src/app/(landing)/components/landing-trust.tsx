@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { gsap } from '@/lib/gsap-client';
+import { gsap, ScrollTrigger } from '@/lib/gsap-client';
 import { ClientLogos } from './trust/client-logos';
 import { TeamSnapshot } from './trust/team-snapshot';
 import { VideoWalkthrough } from './trust/video-walkthrough';
@@ -16,6 +16,7 @@ export function LandingTrust() {
   const sectionRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
+    gsap.registerPlugin(ScrollTrigger);
     if (!sectionRef.current) return;
 
     const ctx = gsap.context(() => {

@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { gsap } from '@/lib/gsap-client';
+import { gsap, ScrollTrigger } from '@/lib/gsap-client';
 import { teamMembers, teamCapability, teamCount } from '../../constants';
 
 export function TeamSnapshot() {
   const gridRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    gsap.registerPlugin(ScrollTrigger);
     if (!gridRef.current) return;
 
     const ctx = gsap.context(() => {
