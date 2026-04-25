@@ -11,7 +11,7 @@ export const STATUS_COLORS: Record<IssueStatus, string> = {
   deploying: 'bg-orange-500/15 text-orange-400',
   testing: 'bg-purple-500/15 text-purple-400',
   tested: 'bg-emerald-500/15 text-emerald-400',
-  pass: 'bg-emerald-500/20 text-emerald-300',
+  pass: 'bg-green-500/30 text-green-200 font-medium',
   staging: 'bg-lime-500/15 text-lime-400',
   released: 'bg-green-500/20 text-green-400 font-medium',
   closed: 'bg-zinc-600/30 text-zinc-500',

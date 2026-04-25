@@ -2,24 +2,40 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { UnimplementedBanner } from '@/components/common/unimplemented-banner';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Markdown } from '@/components/ui/markdown';
 import {
+  issueKeys,
   useIssue,
   useIssueByDisplay,
   useTransitionIssue,
 } from '@/features/issue/hooks/use-issues';
 import { useProjectBySlug, useProjects } from '@/features/project/hooks/use-projects';
+import { apiClient } from '@/lib/api/client';
 import { formatApiError } from '@/lib/api/error';
+import { ALL_STATUSES } from '@/lib/constants';
 
 const DISPLAY_ID_RE = /^ISS-\d+$/i;
 
+interface CoreComment {
+  id: string;
+  issueId: string;
+  authorId: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const commentsKey = (issueId: string | undefined) =>
+  ['issue', issueId, 'comments'] as const;
+
 /**
- * Phase 2.6-F2: minimum viable issue detail. Renders the core fields that
- * `/api/issues/:id` actually returns (title, displayId, status, priority,
- * category, description, labels) plus a transition action. Rich features
- * (comments, attachments, agent sessions, relations, AI analysis,
- * complexity, reportedBy, manualHold, changeHistory, plan markdown) land in
- * a follow-up — most of them have no core-backed data yet.
+ * ISS-247: minimum interactive issue detail. Renders the core fields plus
+ * a status transition select, comment list (live from
+ * /api/issues/:id/comments), and a comment editor that POSTs to the same
+ * route. Activity, attachments, agent sessions and relations remain
+ * placeholder until their core endpoints populate real data.
  *
  * The `[id]` segment accepts either a uuid (from internal list links) or a
  * displayId like `ISS-12` (for shareable deep-links). DisplayId is resolved
@@ -50,6 +66,28 @@ export default function IssueDetailPage() {
     : byUuid.isLoading;
 
   const transitionIssue = useTransitionIssue();
+  const qc = useQueryClient();
+  const issueId = issue?.id;
+
+  const commentsQuery = useQuery({
+    queryKey: commentsKey(issueId),
+    queryFn: () => apiClient<CoreComment[]>(`/issues/${issueId}/comments?limit=100`),
+    enabled: !!issueId,
+  });
+
+  const [draft, setDraft] = useState('');
+  const createComment = useMutation({
+    mutationFn: (body: string) =>
+      apiClient<CoreComment>(`/issues/${issueId}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ body }),
+      }),
+    onSuccess: () => {
+      setDraft('');
+      qc.invalidateQueries({ queryKey: commentsKey(issueId) });
+      qc.invalidateQueries({ queryKey: issueKeys.details });
+    },
+  });
 
   if (isLoading) {
     return (
@@ -75,6 +113,10 @@ export default function IssueDetailPage() {
     );
   }
 
+  const transitionError = transitionIssue.error;
+  const commentError = createComment.error;
+  const comments = commentsQuery.data ?? [];
+
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-8 space-y-6">
       <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-outline">
@@ -91,9 +133,23 @@ export default function IssueDetailPage() {
       <h1 className="text-2xl font-bold text-primary">{issue.title}</h1>
 
       <div className="flex flex-wrap items-center gap-3">
-        <span className="inline-flex items-center rounded-sm border border-outline-variant/30 bg-surface-container-high px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest">
-          {issue.status}
-        </span>
+        <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-outline-variant">
+          Status
+          <select
+            value={issue.status}
+            disabled={transitionIssue.isPending}
+            onChange={(e) => {
+              const next = e.currentTarget.value;
+              if (next === issue.status) return; // backend rejects no-op with 409
+              transitionIssue.mutate({ id: issue.id, toStatus: next });
+            }}
+            className="rounded-sm border border-outline-variant/30 bg-surface-container-high px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-on-surface focus:outline-none focus:border-primary disabled:opacity-50"
+          >
+            {ALL_STATUSES.map((s) => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
+          </select>
+        </label>
         <span className="inline-flex items-center rounded-sm border border-outline-variant/30 bg-surface-container-high px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest">
           {issue.priority}
         </span>
@@ -103,6 +159,11 @@ export default function IssueDetailPage() {
           </span>
         )}
       </div>
+      {transitionError && (
+        <p className="text-[10px] uppercase tracking-widest text-error">
+          {formatApiError(transitionError)}
+        </p>
+      )}
 
       {issue.labels && issue.labels.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
@@ -127,8 +188,10 @@ export default function IssueDetailPage() {
             Description
           </h3>
         </div>
-        <div className="whitespace-pre-wrap p-5 text-sm text-on-surface">
-          {issue.description || (
+        <div className="p-5 text-sm text-on-surface">
+          {issue.description ? (
+            <Markdown>{issue.description}</Markdown>
+          ) : (
             <span className="text-outline">No description provided</span>
           )}
         </div>
@@ -140,14 +203,59 @@ export default function IssueDetailPage() {
             Comments
           </h3>
         </div>
-        <div className="p-5 text-sm">
-          {issue.comments && issue.comments.length > 0 ? (
-            <span className="text-outline">
-              {issue.comments.length} comment{issue.comments.length === 1 ? '' : 's'}
-            </span>
-          ) : (
+        <div className="space-y-4 p-5 text-sm">
+          {commentsQuery.isLoading ? (
+            <span className="text-outline">Loading comments…</span>
+          ) : comments.length === 0 ? (
             <span className="text-outline">No comments yet</span>
+          ) : (
+            <ul className="space-y-3">
+              {comments.map((c) => (
+                <li
+                  key={c.id}
+                  className="rounded-sm border border-outline-variant/20 bg-surface-container-low p-3"
+                >
+                  <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-widest text-outline">
+                    <span className="font-mono">{c.authorId.slice(0, 8)}</span>
+                    <time dateTime={c.createdAt}>{new Date(c.createdAt).toLocaleString()}</time>
+                  </div>
+                  <Markdown>{c.body}</Markdown>
+                </li>
+              ))}
+            </ul>
           )}
+
+          <form
+            className="space-y-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const body = draft.trim();
+              if (!body) return;
+              createComment.mutate(body);
+            }}
+          >
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Add a comment — markdown supported"
+              rows={3}
+              className="w-full resize-y rounded-sm border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface placeholder:text-outline focus:border-primary focus:outline-none"
+            />
+            {commentError && (
+              <p className="text-[10px] uppercase tracking-widest text-error">
+                {formatApiError(commentError)}
+              </p>
+            )}
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={createComment.isPending || !draft.trim()}
+                className="rounded-sm border border-outline-variant/30 bg-primary px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-on-primary hover:bg-primary/90 disabled:opacity-50"
+              >
+                {createComment.isPending ? 'Posting…' : 'Post comment'}
+              </button>
+            </div>
+          </form>
         </div>
       </section>
 
@@ -163,28 +271,12 @@ export default function IssueDetailPage() {
               {issue.activity.length} entr{issue.activity.length === 1 ? 'y' : 'ies'}
             </span>
           ) : (
-            <span className="text-outline">No activity yet</span>
+            <span className="text-outline">
+              Activity log + attachments + relations land in a follow-up.
+            </span>
           )}
         </div>
       </section>
-
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() =>
-            transitionIssue.mutate({ id: issue.id, toStatus: 'closed' })
-          }
-          disabled={transitionIssue.isPending}
-          className="rounded-sm border border-outline-variant/30 bg-surface-container-high px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest hover:bg-surface-container-highest disabled:opacity-50"
-        >
-          Close issue
-        </button>
-      </div>
-
-      <UnimplementedBanner
-        feature="Issue detail — rich view"
-        hint="Comments, activity log, attachments, agent sessions, and relations will return once their core endpoints populate real data (currently empty arrays)."
-      />
     </div>
   );
 }

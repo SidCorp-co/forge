@@ -1,10 +1,9 @@
 export const STEPS = [
   { key: 'autoTriage', label: 'Triage', desc: 'Validate completeness, classify complexity, set category/priority', status: 'open → confirmed' },
-  { key: 'autoClarify', label: 'Clarify', desc: 'Reproduce bugs, validate UX expectations, capture evidence', status: 'confirmed → clarified' },
-  { key: 'autoPlan', label: 'Plan', desc: 'Explore codebase, write implementation plan', status: 'clarified → approved' },
+  { key: 'autoPlan', label: 'Plan', desc: 'Explore codebase, write implementation plan', status: 'confirmed → approved / waiting' },
   { key: 'autoCode', label: 'Code', desc: 'Create branch, implement, build, push', status: 'approved → developed' },
   { key: 'autoReview', label: 'Review', desc: 'Independent code review, post findings', status: 'developed → deploying / reopen' },
-  { key: 'autoTest', label: 'QA Test', desc: 'Test against staging deployment', status: 'testing → staging' },
+  { key: 'autoTest', label: 'QA Test', desc: 'Test against staging deployment', status: 'testing → tested / pass' },
   { key: 'autoFix', label: 'Fix', desc: 'Read rejection feedback, apply scoped fix', status: 'reopen → developed' },
   { key: 'autoRelease', label: 'Release', desc: 'Squash merge to production branch, trigger deploy', status: 'released → closed' },
 ] as const;

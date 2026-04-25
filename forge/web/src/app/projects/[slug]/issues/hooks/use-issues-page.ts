@@ -1,11 +1,17 @@
 'use client';
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useIssueSearch, usePatchIssue } from '@/features/issue/hooks/use-issues';
 import { useProjectBySlug } from '@/features/project/hooks/use-projects';
 import type { Issue, IssuePatchInput } from '@forge/contracts';
 import { PAGE_SIZE, type SortOption, type ViewMode } from '../constants';
+
+const PERSISTED_KEYS = ['status', 'priority', 'sort', 'q', 'view'] as const;
+
+function storageKey(slug: string | undefined): string | null {
+  return slug ? `issues-filters:${slug}` : null;
+}
 
 export function useIssuesPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -77,6 +83,56 @@ export function useIssuesPage() {
     },
     [searchParams, router, slug],
   );
+
+  // Hydrate filters from localStorage on first mount when URL has no
+  // filter params. Persist URL filter state on every change so the next
+  // session restores it. Keys are project-scoped so switching projects
+  // does not leak filters; the ref tracks which slug has been hydrated
+  // so navigating between projects re-hydrates correctly.
+  const hydratedSlug = useRef<string | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const key = storageKey(slug);
+    if (!key) return;
+    if (hydratedSlug.current === slug) return;
+    hydratedSlug.current = slug;
+    const hasUrlFilters = PERSISTED_KEYS.some((k) => searchParams.get(k));
+    if (hasUrlFilters) return;
+    try {
+      const saved = window.localStorage.getItem(key);
+      if (!saved) return;
+      const parsed = JSON.parse(saved) as Record<string, string>;
+      const params = new URLSearchParams();
+      for (const k of PERSISTED_KEYS) {
+        const v = parsed[k];
+        if (typeof v === 'string' && v) params.set(k, v);
+      }
+      const qs = params.toString();
+      if (qs) router.replace(`/projects/${slug}/issues?${qs}`);
+    } catch {
+      /* ignore corrupt storage */
+    }
+  }, [slug, router, searchParams]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const key = storageKey(slug);
+    if (!key) return;
+    const snapshot: Record<string, string> = {};
+    for (const k of PERSISTED_KEYS) {
+      const v = searchParams.get(k);
+      if (v) snapshot[k] = v;
+    }
+    try {
+      if (Object.keys(snapshot).length === 0) {
+        window.localStorage.removeItem(key);
+      } else {
+        window.localStorage.setItem(key, JSON.stringify(snapshot));
+      }
+    } catch {
+      /* quota / disabled */
+    }
+  }, [slug, searchParams]);
 
   const handleUpdate = useCallback(
     (id: string, patch: IssuePatchInput) => {

@@ -3,8 +3,16 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { z } from 'zod';
 import { useAuth } from '@/providers/auth-provider';
 import { useSetPageTitle } from '@/hooks/use-page-title';
+
+const loginSchema = z.object({
+  identifier: z.string().trim().min(1, 'Email is required').email('Enter a valid email'),
+  password: z.string().min(1, 'Password is required'),
+});
+
+type FieldErrors = Partial<Record<'identifier' | 'password', string>>;
 
 export default function LoginPage() {
   useSetPageTitle('Login');
@@ -12,15 +20,27 @@ export default function LoginPage() {
   const router = useRouter();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    const parsed = loginSchema.safeParse({ identifier, password });
+    if (!parsed.success) {
+      const next: FieldErrors = {};
+      for (const issue of parsed.error.issues) {
+        const key = issue.path[0] as keyof FieldErrors | undefined;
+        if (key && !next[key]) next[key] = issue.message;
+      }
+      setFieldErrors(next);
+      return;
+    }
+    setFieldErrors({});
     setLoading(true);
     try {
-      await login({ email: identifier, password });
+      await login({ email: parsed.data.identifier, password: parsed.data.password });
       router.push('/projects');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
@@ -73,12 +93,21 @@ export default function LoginPage() {
               <input
                 id="identifier"
                 type="text"
-                required
                 value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
+                onChange={(e) => {
+                  setIdentifier(e.target.value);
+                  if (fieldErrors.identifier) setFieldErrors((p) => ({ ...p, identifier: undefined }));
+                }}
                 placeholder="name@domain.com"
+                aria-invalid={!!fieldErrors.identifier}
+                aria-describedby={fieldErrors.identifier ? 'identifier-error' : undefined}
                 className="w-full bg-transparent border-0 border-b border-outline/30 rounded-none py-3 text-sm text-on-surface placeholder:text-outline/40 focus:outline-none focus:border-b-primary focus:ring-0 transition-colors"
               />
+              {fieldErrors.identifier && (
+                <p id="identifier-error" className="mt-1 text-[10px] uppercase tracking-widest text-error">
+                  {fieldErrors.identifier}
+                </p>
+              )}
             </div>
 
             <div className="group">
@@ -96,12 +125,21 @@ export default function LoginPage() {
               <input
                 id="password"
                 type="password"
-                required
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (fieldErrors.password) setFieldErrors((p) => ({ ...p, password: undefined }));
+                }}
                 placeholder="••••••••"
+                aria-invalid={!!fieldErrors.password}
+                aria-describedby={fieldErrors.password ? 'password-error' : undefined}
                 className="w-full bg-transparent border-0 border-b border-outline/30 rounded-none py-3 text-sm text-on-surface placeholder:text-outline/40 focus:outline-none focus:border-b-primary focus:ring-0 transition-colors"
               />
+              {fieldErrors.password && (
+                <p id="password-error" className="mt-1 text-[10px] uppercase tracking-widest text-error">
+                  {fieldErrors.password}
+                </p>
+              )}
             </div>
           </div>
 

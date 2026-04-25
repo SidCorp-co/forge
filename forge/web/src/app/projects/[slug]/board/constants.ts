@@ -41,7 +41,7 @@ export const DEFAULT_VISIBLE: Record<IssueStatus, boolean> = {
   pass: true,
   staging: true,
   released: true,
-  closed: false,
+  closed: true,
   reopen: true,
   on_hold: true,
   needs_info: true,

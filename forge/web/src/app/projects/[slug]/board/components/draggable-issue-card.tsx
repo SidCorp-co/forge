@@ -22,6 +22,11 @@ export function DraggableIssueCard({ issue, onSelect, highlight }: DraggableIssu
       onClick={() => onSelect(issue.documentId)}
       className={cn(DRAGGABLE_CARD_CLASS, highlight && 'ring-2 ring-info animate-highlight-fade')}
     >
+      {issue.displayId && (
+        <div className="mb-1 font-mono text-[10px] tracking-widest text-primary-fixed">
+          {issue.displayId}
+        </div>
+      )}
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm font-medium leading-tight">{issue.title}</p>
         <AgentStatusIndicator status={issue.agentStatus} />

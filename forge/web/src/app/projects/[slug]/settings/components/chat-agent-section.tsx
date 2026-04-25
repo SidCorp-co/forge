@@ -3,22 +3,11 @@
 import { useEffect, useState } from 'react';
 import { Switch, Input, Label, Textarea } from '@/components/ui';
 import { apiClient } from '@/lib/api/client';
+import { DOMAIN_TEMPLATES, type DomainTemplate } from '@forge/contracts';
 
 interface Skill {
   name: string;
   description: string;
-}
-
-interface DomainTemplateItem {
-  documentId: string;
-  key: string;
-  label: string;
-  description: string;
-  isBuiltIn: boolean;
-  behaviorRules?: string[];
-  queryStrategies?: Record<string, string>;
-  agentName?: string;
-  agentRole?: string;
 }
 
 interface ChatAgentSectionProps {
@@ -66,21 +55,14 @@ export function ChatAgentSection({
   projectName,
 }: ChatAgentSectionProps) {
   const [skills, setSkills] = useState<Skill[]>([]);
-  const [templates, setTemplates] = useState<DomainTemplateItem[]>([]);
+  // Domain template catalog is static (ISS-255 — replaced /domain-templates fetch).
+  const templates: DomainTemplate[] = DOMAIN_TEMPLATES;
 
   useEffect(() => {
     apiClient<{ data: any[] }>(`/skills?fields[0]=name&fields[1]=description&fields[2]=target`)
       .then((res) => {
         const cloudSkills = res.data.filter((s) => s.target === 'cloud' || s.target === 'all');
         setSkills(cloudSkills.map((s) => ({ name: s.name, description: s.description || '' })));
-      })
-      .catch(() => {});
-
-    apiClient<{ data: DomainTemplateItem[] }>(
-      `/domain-templates?fields[0]=key&fields[1]=label&fields[2]=description&fields[3]=isBuiltIn&fields[4]=behaviorRules&fields[5]=queryStrategies&fields[6]=agentName&fields[7]=agentRole`,
-    )
-      .then((res) => {
-        setTemplates(res.data || []);
       })
       .catch(() => {});
   }, []);

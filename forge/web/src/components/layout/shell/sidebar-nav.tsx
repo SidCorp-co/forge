@@ -14,7 +14,6 @@ import {
   MessageSquare,
   FolderOpen,
   Smartphone,
-  Rocket,
   Settings,
   LogOut,
   ChevronDown,
@@ -24,7 +23,6 @@ import {
   Sun,
   Moon,
   Crown,
-  Cloud,
 } from 'lucide-react';
 import { useThemePreference } from '@/hooks/use-theme-preference';
 import Image from 'next/image';
@@ -350,27 +348,6 @@ export function SidebarNav({ onClose }: SidebarNavProps) {
               <span>Devices</span>
             </Link>
 
-            <Link
-              href="/antigravity"
-              className={cn(
-                'flex items-center gap-3 px-3 py-2 transition-all duration-150',
-                pathname === '/antigravity' ? 'bg-surface-variant text-primary font-semibold border-l-2 border-primary' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface border-l-2 border-transparent'
-              )}
-            >
-              <Rocket className="h-[18px] w-[18px]" />
-              <span>Antigravity</span>
-            </Link>
-
-            <Link
-              href="/cloudflare"
-              className={cn(
-                'flex items-center gap-3 px-3 py-2 transition-all duration-150',
-                pathname === '/cloudflare' ? 'bg-surface-variant text-primary font-semibold border-l-2 border-primary' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface border-l-2 border-transparent'
-              )}
-            >
-              <Cloud className="h-[18px] w-[18px]" />
-              <span>Cloudflare</span>
-            </Link>
           </>
         )}
       </nav>

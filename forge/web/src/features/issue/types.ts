@@ -31,6 +31,7 @@ export interface IssueHistoryEntry {
 }
 
 export interface Issue extends BaseEntity {
+  displayId?: string;
   title: string;
   description: string;
   status: IssueStatus;

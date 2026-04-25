@@ -23,7 +23,7 @@ export default function ProjectSettingsPage() {
       </h1>
       <UnimplementedBanner
         feature="Project settings"
-        hint="The full settings surface (members, invitations, labels, runtime) is being rewired onto forge/core. Members + invitations ship next; antigravity/cloudflare/devices remain gated until their core endpoints land."
+        hint="The full settings surface (members, invitations, labels, runtime) is being rewired onto forge/core. Members + invitations ship next; devices remain gated until their core endpoints land."
       />
     </div>
   );

@@ -1,22 +1,71 @@
 'use client';
 
 import Link from 'next/link';
-import { Button, Skeleton } from '@/components/ui';
+import { useEffect, useRef, useState } from 'react';
+import { Button, Input, Select, Skeleton } from '@/components/ui';
+import { ALL_PRIORITIES } from '@/lib/constants';
 import type { Issue } from '@forge/contracts';
 import { useIssuesPage } from '../hooks';
+import { StatusMultiSelect } from './status-multi-select';
+import type { IssueStatus } from '@/features/issue/types';
 
 /**
- * Phase 2.6-F2: a minimal issue list view. The rich toolbar + bulk actions
- * + board toggle from the legacy Strapi page is deferred to a follow-up so
- * this file stays reviewable. The list shows displayId, title, status,
- * priority and links through to the detail page which now does its own
- * rewire against forge/core.
+ * Phase 3.1 (ISS-248): adds a search box + status/priority filter
+ * dropdowns above the list. URL/localStorage persistence is handled
+ * inside useIssuesPage so reload + back/forward + cross-session restore
+ * work without extra bookkeeping here. The bulk action bar + board
+ * toggle from the legacy Strapi page is still deferred.
  */
 export function IssuesView() {
-  const { slug, issues, isLoading, total } = useIssuesPage();
+  const {
+    slug,
+    issues,
+    isLoading,
+    total,
+    statusFilter,
+    priorityFilter,
+    searchQuery,
+    setParam,
+  } = useIssuesPage();
+
+  const [localSearch, setLocalSearch] = useState(searchQuery);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => { setLocalSearch(searchQuery); }, [searchQuery]);
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  function handleSearchChange(value: string) {
+    setLocalSearch(value);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setParam('q', value), 300);
+  }
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-end gap-2">
+        <Input
+          type="text"
+          value={localSearch}
+          onChange={(e) => handleSearchChange(e.target.value)}
+          placeholder="Search issues…"
+          aria-label="Search issues"
+          className="min-w-[200px] flex-1"
+        />
+        <StatusMultiSelect
+          selected={statusFilter as IssueStatus[]}
+          onChange={(statuses) => setParam('status', statuses.join(','))}
+        />
+        <Select
+          value={priorityFilter}
+          onChange={(e) => setParam('priority', e.currentTarget.value)}
+          aria-label="Filter by priority"
+        >
+          <option value="all">All priorities</option>
+          {ALL_PRIORITIES.map((p) => (
+            <option key={p.value} value={p.value}>{p.label}</option>
+          ))}
+        </Select>
+      </div>
+
       <div className="flex items-center justify-between">
         <div className="text-[10px] uppercase tracking-widest text-outline">
           {total} issue{total === 1 ? '' : 's'}
