@@ -65,6 +65,11 @@ export const issueApi = {
 
   get: (id: string) => apiClient<IssueDetailResponse>(`/issues/${id}`),
 
+  getByDisplay: (projectId: string, displayId: string) =>
+    apiClient<IssueDetailResponse>(
+      `/projects/${projectId}/issues/by-display/${displayId}`,
+    ),
+
   create: (projectId: string, input: IssueCreateInput) =>
     apiClient<Issue>(`/projects/${projectId}/issues`, {
       method: 'POST',

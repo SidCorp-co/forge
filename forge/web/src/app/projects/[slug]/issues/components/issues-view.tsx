@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { Button, Skeleton } from '@/components/ui';
 import type { Issue } from '@forge/contracts';
 import { useIssuesPage } from '../hooks';
@@ -14,7 +13,6 @@ import { useIssuesPage } from '../hooks';
  * rewire against forge/core.
  */
 export function IssuesView() {
-  const router = useRouter();
   const { slug, issues, isLoading, total } = useIssuesPage();
 
   return (
@@ -41,23 +39,24 @@ export function IssuesView() {
       ) : (
         <ul className="divide-y divide-outline-variant/20 overflow-hidden rounded-sm border border-outline-variant/20 bg-surface">
           {issues.map((issue: Issue) => (
-            <li
-              key={issue.id}
-              onClick={() => router.push(`/projects/${slug}/issues/${issue.id}`)}
-              className="flex cursor-pointer items-center gap-4 px-4 py-3 text-sm transition-colors hover:bg-surface-container-low"
-            >
-              <span className="w-20 font-mono text-[11px] text-primary">
-                {issue.displayId}
-              </span>
-              <span className="flex-1 truncate font-medium text-on-surface">
-                {issue.title}
-              </span>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                {issue.status}
-              </span>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                {issue.priority}
-              </span>
+            <li key={issue.id}>
+              <Link
+                href={`/projects/${slug}/issues/${issue.displayId}`}
+                className="flex items-center gap-4 px-4 py-3 text-sm transition-colors hover:bg-surface-container-low"
+              >
+                <span className="w-20 font-mono text-[11px] text-primary">
+                  {issue.displayId}
+                </span>
+                <span className="flex-1 truncate font-medium text-on-surface">
+                  {issue.title}
+                </span>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                  {issue.status}
+                </span>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                  {issue.priority}
+                </span>
+              </Link>
             </li>
           ))}
         </ul>
