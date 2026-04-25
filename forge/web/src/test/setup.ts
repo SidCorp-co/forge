@@ -1,9 +1,8 @@
 import '@testing-library/jest-dom/vitest';
 
-// jsdom doesn't ship matchMedia. ScrollTrigger.register touches it during
-// gsap.registerPlugin() at module load (forge/web/src/lib/gsap-client.ts) —
-// stub it on both window and globalThis so any test that imports the
-// gsap-client (directly or transitively) doesn't throw.
+// jsdom doesn't ship matchMedia. framer-motion's `useInView` reads it on
+// client-only paths; stub on both window and globalThis so component tests
+// that import landing/trust components don't throw.
 const matchMediaStub = (query: string) => ({
   matches: false,
   media: query,
