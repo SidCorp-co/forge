@@ -75,28 +75,44 @@ export interface AgentSession {
 
 export type AgentSessionSummary = Omit<AgentSession, 'messages'>;
 
+function adaptAgent(row: Record<string, unknown>): Agent {
+  // core returns flat rows with `id` (uuid). Existing components read `documentId` —
+  // mirror id → documentId so the rest of the agent UI keeps working unchanged.
+  const id = row['id'] as string;
+  return {
+    ...(row as object),
+    id: 0,
+    documentId: id,
+  } as unknown as Agent;
+}
+
 export const agentApi = {
   // Agent CRUD
-  getAgents: (projectSlug: string) =>
-    apiClient<{ data: Agent[] }>(`/agents?filters[project][slug][$eq]=${projectSlug}`),
+  getAgents: (projectId: string) =>
+    apiClient<Record<string, unknown>[]>(`/agents?projectId=${encodeURIComponent(projectId)}`)
+      .then((rows) => ({ data: rows.map(adaptAgent) })),
 
   getAgent: (id: string) =>
-    apiClient<{ data: Agent }>(`/agents/${id}`),
+    apiClient<Record<string, unknown>>(`/agents/${id}`).then((row) => ({
+      data: adaptAgent(row),
+    })),
 
-  createAgent: (data: Partial<Agent> & { project: string }) =>
-    apiClient<{ data: Agent }>('/agents', {
+  createAgent: (
+    data: Partial<Agent> & { projectId: string; name: string; type: string },
+  ) =>
+    apiClient<Record<string, unknown>>('/agents', {
       method: 'POST',
-      body: JSON.stringify({ data }),
-    }),
+      body: JSON.stringify(data),
+    }).then((row) => ({ data: adaptAgent(row) })),
 
   updateAgent: (id: string, data: Partial<Agent>) =>
-    apiClient<{ data: Agent }>(`/agents/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify({ data }),
-    }),
+    apiClient<Record<string, unknown>>(`/agents/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }).then((row) => ({ data: adaptAgent(row) })),
 
   deleteAgent: (id: string) =>
-    apiClient<{ data: Agent }>(`/agents/${id}`, { method: 'DELETE' }),
+    apiClient<null>(`/agents/${id}`, { method: 'DELETE' }),
 
   // Agent sessions
   getSessions: (projectSlug: string, search?: string) => {
