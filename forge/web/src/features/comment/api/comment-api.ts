@@ -11,21 +11,53 @@ export interface CommentAttachment {
   createdAt: string;
 }
 
-export const commentApi = {
-  getByIssue: (issueId: string) =>
-    apiClient<Comment[]>(`/issues/${issueId}/comments?limit=200`),
+interface CoreComment {
+  id: string;
+  issueId: string;
+  authorId: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
-  create: (issueId: string, data: CommentFormData) =>
-    apiClient<Comment>(`/issues/${issueId}/comments`, {
+function toLegacy(row: CoreComment): Comment {
+  return {
+    id: 0,
+    documentId: row.id,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    body: row.body,
+    author: row.authorId,
+    isAI: false,
+    issue: { id: 0, documentId: row.issueId },
+    parent: null,
+    replies: [],
+    mentions: [],
+    attachments: [],
+  } as Comment;
+}
+
+export const commentApi = {
+  getByIssue: async (issueId: string): Promise<{ data: Comment[] }> => {
+    const rows = await apiClient<CoreComment[]>(`/issues/${issueId}/comments?limit=200`);
+    return { data: rows.map(toLegacy) };
+  },
+
+  create: async (issueId: string, data: CommentFormData): Promise<{ data: Comment }> => {
+    const row = await apiClient<CoreComment>(`/issues/${issueId}/comments`, {
       method: 'POST',
       body: JSON.stringify({ body: data.body }),
-    }),
+    });
+    return { data: toLegacy(row) };
+  },
 
-  update: (commentId: string, data: { body: string }) =>
-    apiClient<Comment>(`/comments/${commentId}`, {
+  update: async (commentId: string, data: { body: string }): Promise<{ data: Comment }> => {
+    const row = await apiClient<CoreComment>(`/comments/${commentId}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
-    }),
+    });
+    return { data: toLegacy(row) };
+  },
 
   delete: (commentId: string) =>
     apiClient<void>(`/comments/${commentId}`, {

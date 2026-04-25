@@ -64,13 +64,17 @@ projectHealthRoutes.get('/health', async (c) => {
     .where(inArray(issues.projectId, projectIds))
     .groupBy(issues.projectId, issues.status);
 
-  // Blockers — issues currently on_hold or needs_info.
-  const blockerRows = await db
+  // Blockers — issues currently on_hold or needs_info. ORDER BY (project, ts)
+  // is required so the per-project cap below picks the freshest blockers
+  // deterministically rather than letting one noisy project starve the rest.
+  const PER_PROJECT_BLOCKER_CAP = 5;
+  const blockerRowsAll = await db
     .select({
       projectId: issues.projectId,
       id: issues.id,
       issSeq: issues.issSeq,
       status: issues.status,
+      updatedAt: issues.updatedAt,
     })
     .from(issues)
     .where(
@@ -79,7 +83,15 @@ projectHealthRoutes.get('/health', async (c) => {
         inArray(issues.status, [...BLOCKED_STATUSES]),
       ),
     )
-    .limit(200);
+    .orderBy(issues.projectId, sql`${issues.updatedAt} DESC`);
+
+  const perProjectBlockerCount = new Map<string, number>();
+  const blockerRows = blockerRowsAll.filter((r) => {
+    const n = perProjectBlockerCount.get(r.projectId) ?? 0;
+    if (n >= PER_PROJECT_BLOCKER_CAP) return false;
+    perProjectBlockerCount.set(r.projectId, n + 1);
+    return true;
+  });
 
   // Throughput proxy = closed-or-released transitions in last 7 days.
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);

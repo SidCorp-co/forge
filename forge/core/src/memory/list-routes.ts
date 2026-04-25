@@ -123,13 +123,21 @@ memoryListRoutes.delete(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
+    // Idempotent delete. Always return 204 for any (id, caller) pair where the
+    // caller is not authorised — never reveal whether a memory id exists in a
+    // project the caller cannot see. Only members observe an actual delete.
     const [row] = await db
       .select({ projectId: memories.projectId })
       .from(memories)
       .where(eq(memories.id, id))
       .limit(1);
     if (!row) return c.body(null, 204);
-    await assertProjectMember(row.projectId, userId);
+
+    try {
+      await assertProjectMember(row.projectId, userId);
+    } catch {
+      return c.body(null, 204);
+    }
 
     await db.delete(memories).where(eq(memories.id, id));
     return c.body(null, 204);

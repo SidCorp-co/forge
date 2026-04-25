@@ -1,8 +1,11 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
+import { z } from 'zod';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { commentAttachments, comments, issues } from '../db/schema.js';
@@ -19,8 +22,8 @@ const ALLOWED_MIMES = new Set([
   'text/markdown',
 ]);
 
-const badRequest = (message: string, code = 'BAD_REQUEST') =>
-  new HTTPException(400, { message, cause: { code } });
+const badRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
+  new HTTPException(400, { message, cause: { code, details } });
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 const forbidden = (message: string) =>
@@ -32,94 +35,134 @@ function safeName(name: string): string {
   return cleaned.slice(0, 200) || 'file';
 }
 
+const commentIdParamSchema = z.object({ commentId: z.uuid() });
+const idParamSchema = z.object({ id: z.uuid() });
+
+function isEnoent(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { code?: string }).code === 'ENOENT'
+  );
+}
+
 export const commentUploadRoutes = new Hono<{ Variables: AuthVars }>();
 commentUploadRoutes.use('*', requireAuth(), assertEmailVerified());
 
-commentUploadRoutes.post('/:commentId/attachments', async (c) => {
-  const commentId = c.req.param('commentId');
-  if (!/^[0-9a-f-]{36}$/i.test(commentId)) throw badRequest('invalid commentId');
-  const userId = c.get('userId');
-
-  const [comment] = await db
-    .select({ id: comments.id, issueId: comments.issueId, projectId: issues.projectId })
-    .from(comments)
-    .innerJoin(issues, eq(issues.id, comments.issueId))
-    .where(eq(comments.id, commentId))
-    .limit(1);
-  if (!comment) throw notFound('comment not found');
-
-  const access = await loadProjectAccess(comment.projectId, userId);
-  if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
-
-  const body = await c.req.parseBody();
-  const file = body['file'];
-  if (!(file instanceof File)) throw badRequest('missing "file" field');
-  if (file.size <= 0) throw badRequest('empty file');
-  if (file.size > env.UPLOADS_MAX_BYTES) throw badRequest('file too large', 'FILE_TOO_LARGE');
-  const mime = file.type || 'application/octet-stream';
-  if (!ALLOWED_MIMES.has(mime)) throw badRequest(`mime not allowed: ${mime}`, 'MIME_NOT_ALLOWED');
-
-  const name = safeName(file.name || 'file');
-  const dir = resolve(env.UPLOADS_DIR, comment.projectId, comment.id);
-  await mkdir(dir, { recursive: true });
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const diskPath = join(dir, `${Date.now()}-${name}`);
-  await writeFile(diskPath, buffer);
-
-  const [inserted] = await db
-    .insert(commentAttachments)
-    .values({
-      commentId: comment.id,
-      uploaderId: userId,
-      name,
-      path: diskPath,
-      mime,
-      size: file.size,
-    })
-    .returning({
-      id: commentAttachments.id,
-      commentId: commentAttachments.commentId,
-      name: commentAttachments.name,
-      mime: commentAttachments.mime,
-      size: commentAttachments.size,
-      createdAt: commentAttachments.createdAt,
-    });
-  if (!inserted) throw new Error('comment_attachments: insert returned no row');
-
-  return c.json(
-    {
-      ...inserted,
-      url: `/api/comments/attachments/${inserted.id}`,
+commentUploadRoutes.post(
+  '/:commentId/attachments',
+  // Reject the request before parseBody buffers the entire payload — this
+  // caps memory regardless of file size.
+  bodyLimit({
+    maxSize: env.UPLOADS_MAX_BYTES,
+    onError: () => {
+      throw badRequest('file too large', 'FILE_TOO_LARGE');
     },
-    201,
-  );
-});
+  }),
+  zValidator('param', commentIdParamSchema, (r) => {
+    if (!r.success) throw badRequest('invalid commentId', 'BAD_REQUEST', z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { commentId } = c.req.valid('param');
+    const userId = c.get('userId');
 
-commentUploadRoutes.get('/attachments/:id', async (c) => {
-  const id = c.req.param('id');
-  if (!/^[0-9a-f-]{36}$/i.test(id)) throw badRequest('invalid id');
-  const userId = c.get('userId');
+    const [comment] = await db
+      .select({ id: comments.id, issueId: comments.issueId, projectId: issues.projectId })
+      .from(comments)
+      .innerJoin(issues, eq(issues.id, comments.issueId))
+      .where(eq(comments.id, commentId))
+      .limit(1);
+    if (!comment) throw notFound('comment not found');
 
-  const [row] = await db
-    .select({
-      id: commentAttachments.id,
-      path: commentAttachments.path,
-      mime: commentAttachments.mime,
-      name: commentAttachments.name,
-      projectId: issues.projectId,
-    })
-    .from(commentAttachments)
-    .innerJoin(comments, eq(comments.id, commentAttachments.commentId))
-    .innerJoin(issues, eq(issues.id, comments.issueId))
-    .where(eq(commentAttachments.id, id))
-    .limit(1);
-  if (!row) throw notFound('attachment not found');
+    const access = await loadProjectAccess(comment.projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
 
-  const access = await loadProjectAccess(row.projectId, userId);
-  if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    const body = await c.req.parseBody();
+    const file = body['file'];
+    if (!(file instanceof File)) throw badRequest('missing "file" field');
+    if (file.size <= 0) throw badRequest('empty file');
+    if (file.size > env.UPLOADS_MAX_BYTES) throw badRequest('file too large', 'FILE_TOO_LARGE');
+    const mime = file.type || 'application/octet-stream';
+    if (!ALLOWED_MIMES.has(mime)) throw badRequest(`mime not allowed: ${mime}`, 'MIME_NOT_ALLOWED');
 
-  const buffer = await readFile(row.path);
-  c.header('Content-Type', row.mime);
-  c.header('Content-Disposition', `inline; filename="${row.name}"`);
-  return c.body(new Uint8Array(buffer));
-});
+    const name = safeName(file.name || 'file');
+    const dir = resolve(env.UPLOADS_DIR, comment.projectId, comment.id);
+    await mkdir(dir, { recursive: true });
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const diskPath = join(dir, `${Date.now()}-${name}`);
+    await writeFile(diskPath, buffer);
+
+    const [inserted] = await db
+      .insert(commentAttachments)
+      .values({
+        commentId: comment.id,
+        uploaderId: userId,
+        name,
+        path: diskPath,
+        mime,
+        size: file.size,
+      })
+      .returning({
+        id: commentAttachments.id,
+        commentId: commentAttachments.commentId,
+        name: commentAttachments.name,
+        mime: commentAttachments.mime,
+        size: commentAttachments.size,
+        createdAt: commentAttachments.createdAt,
+      });
+    if (!inserted) throw new Error('comment_attachments: insert returned no row');
+
+    return c.json(
+      {
+        ...inserted,
+        url: `/api/comments/attachments/${inserted.id}`,
+      },
+      201,
+    );
+  },
+);
+
+commentUploadRoutes.get(
+  '/attachments/:id',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const [row] = await db
+      .select({
+        id: commentAttachments.id,
+        path: commentAttachments.path,
+        mime: commentAttachments.mime,
+        name: commentAttachments.name,
+        projectId: issues.projectId,
+      })
+      .from(commentAttachments)
+      .innerJoin(comments, eq(comments.id, commentAttachments.commentId))
+      .innerJoin(issues, eq(issues.id, comments.issueId))
+      .where(eq(commentAttachments.id, id))
+      .limit(1);
+    if (!row) throw notFound('attachment not found');
+
+    const access = await loadProjectAccess(row.projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+
+    let buffer: Buffer;
+    try {
+      buffer = await readFile(row.path);
+    } catch (err) {
+      if (isEnoent(err)) {
+        throw new HTTPException(410, {
+          message: 'attachment file missing on disk',
+          cause: { code: 'ATTACHMENT_FILE_MISSING' },
+        });
+      }
+      throw err;
+    }
+    c.header('Content-Type', row.mime);
+    c.header('Content-Disposition', `inline; filename="${row.name}"`);
+    return c.body(new Uint8Array(buffer));
+  },
+);

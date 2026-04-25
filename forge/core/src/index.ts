@@ -157,8 +157,11 @@ app.route('/api/auth', verifyRoutes);
 app.route('/api/auth', devForceVerifyRoutes);
 app.route('/api/auth', meRoutes);
 app.route('/api/auth', logoutRoutes);
-app.route('/api/projects', projectRoutes);
+// projectHealthRoutes mounts /health (static) and must register before
+// projectRoutes which has GET /:id with a z.uuid() validator that would
+// 400-reject the literal "health" segment.
 app.route('/api/projects', projectHealthRoutes);
+app.route('/api/projects', projectRoutes);
 app.route('/api/projects', memberRoutes);
 app.route('/api/projects', skillSyncRoutes);
 app.route('/api/projects', skillRegisterRoutes);
