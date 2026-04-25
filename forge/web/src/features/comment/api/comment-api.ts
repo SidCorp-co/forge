@@ -1,37 +1,45 @@
-import { apiClient, apiUpload } from '@/lib/api/client';
+import { apiClient, apiMultipart } from '@/lib/api/client';
 import type { Comment, CommentFormData } from '../types';
 
+export interface CommentAttachment {
+  id: string;
+  commentId: string;
+  name: string;
+  mime: string;
+  size: number;
+  url: string;
+  createdAt: string;
+}
+
 export const commentApi = {
-  getByIssue: (issueDocumentId: string) =>
-    apiClient<{ data: Comment[] }>(
-      `/comments?filters[issue][documentId][$eq]=${issueDocumentId}&populate=*`
-    ),
+  getByIssue: (issueId: string) =>
+    apiClient<Comment[]>(`/issues/${issueId}/comments?limit=200`),
 
-  create: (data: CommentFormData) =>
-    apiClient<{ data: Comment }>('/comments', {
+  create: (issueId: string, data: CommentFormData) =>
+    apiClient<Comment>(`/issues/${issueId}/comments`, {
       method: 'POST',
-      body: JSON.stringify({ data }),
+      body: JSON.stringify({ body: data.body }),
     }),
 
-  update: (documentId: string, data: { body: string }) =>
-    apiClient<{ data: Comment }>(`/comments/${documentId}`, {
-      method: 'PUT',
-      body: JSON.stringify({ data }),
+  update: (commentId: string, data: { body: string }) =>
+    apiClient<Comment>(`/comments/${commentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
     }),
 
-  delete: (documentId: string) =>
-    apiClient<void>(`/comments/${documentId}`, {
+  delete: (commentId: string) =>
+    apiClient<void>(`/comments/${commentId}`, {
       method: 'DELETE',
     }),
 
-  uploadFile: async (file: File): Promise<{ id: number; url: string; name: string } | null> => {
+  uploadAttachment: async (commentId: string, file: File): Promise<CommentAttachment | null> => {
     const formData = new FormData();
-    formData.append('files', file);
+    formData.append('file', file);
     try {
-      const uploaded = await apiUpload(formData);
-      const first = uploaded[0];
-      if (!first?.id) return null;
-      return { id: first.id, url: first.url, name: file.name };
+      return await apiMultipart<CommentAttachment>(
+        `/comments/${commentId}/attachments`,
+        formData,
+      );
     } catch {
       return null;
     }

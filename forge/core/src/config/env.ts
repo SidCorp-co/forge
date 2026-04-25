@@ -42,6 +42,11 @@ const EnvSchema = z.object({
   // requests 403. Intentionally NOT a role column on users — deferred until
   // the admin surface stabilises.
   ADMIN_EMAILS: z.string().optional(),
+  // Local filesystem root for comment attachment uploads. Files are written
+  // under <UPLOADS_DIR>/<projectId>/<commentId>/<filename>. Served back via
+  // GET /api/comments/attachments/:id (proxy reads + streams the file).
+  UPLOADS_DIR: z.string().default('./uploads'),
+  UPLOADS_MAX_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

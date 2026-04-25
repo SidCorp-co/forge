@@ -21,7 +21,7 @@ export function useComments(issueDocumentId: string) {
 export function useCreateComment(issueDocumentId: string) {
   const invalidate = useInvalidateComments(issueDocumentId);
   return useMutation({
-    mutationFn: (data: CommentFormData) => commentApi.create(data),
+    mutationFn: (data: CommentFormData) => commentApi.create(issueDocumentId, data),
     onSuccess: invalidate,
   });
 }

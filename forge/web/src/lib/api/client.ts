@@ -73,18 +73,34 @@ export function strapiMediaUrl(url: string): string {
 }
 
 /**
- * Transitional shim — Strapi upload. Always throws. Replaced in a later phase
- * with a real upload endpoint on `forge/core`.
+ * Transitional shim — legacy Strapi upload entry point. Always throws. Comment
+ * attachments now use `apiMultipart('/comments/:id/attachments', formData)`
+ * directly. Remove once no caller imports `apiUpload`.
  *
- * @deprecated removed in Phase 2.6-F2
+ * @deprecated use `apiMultipart` against the relevant feature endpoint.
  */
 // biome-ignore lint/suspicious/noExplicitAny: shim matches legacy return shape
 export async function apiUpload(_formData: FormData): Promise<any> {
   throw new ApiError(
     501,
-    'uploads are not implemented on forge/core yet (Phase 2.6-F2 removes every caller)',
+    'apiUpload is removed; use apiMultipart against the feature endpoint',
     'NOT_IMPLEMENTED',
   );
+}
+
+/** Multipart-aware client. Sends FormData without the JSON Content-Type. */
+export async function apiMultipart<T>(endpoint: string, formData: FormData): Promise<T> {
+  const res = await fetch(`${API_URL}${endpoint}`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
+  });
+  if (!res.ok) {
+    const { message, code, details } = await parseErrorBody(res);
+    throw new ApiError(res.status, message, code, details);
+  }
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
 }
 
 /** List-returning client. Core returns `T[]` with `X-Total-Count` header. */
