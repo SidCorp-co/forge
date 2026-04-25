@@ -24,6 +24,7 @@ import { searchRoutes } from './issues/search.js';
 import { transitionRoutes } from './issues/transition.js';
 import { registerDispatcher, unregisterDispatcher } from './jobs/dispatcher.js';
 import { jobEventsListRoutes, jobEventsRoutes } from './jobs/events-routes.js';
+import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
 import { knowledgeIngestRoutes } from './knowledge/ingest-routes.js';
 import { jobLifecycleDeviceRoutes, jobLifecycleUserRoutes } from './jobs/lifecycle-routes.js';
 import { registerRetentionSweeper } from './jobs/retention-sweeper.js';
@@ -203,6 +204,7 @@ app.route('/api/devices', deviceAuthRoutes);
 app.route('/api/projects', deviceUserRoutes);
 app.route('/api/schedules', scheduleRoutes);
 app.route('/api/knowledge', knowledgeIngestRoutes);
+app.route('/api/knowledge-edges', knowledgeEdgeRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 

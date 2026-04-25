@@ -740,3 +740,30 @@ export const schedules = pgTable(
 export const schedulesRelations = relations(schedules, ({ one }) => ({
   project: one(projects, { fields: [schedules.projectId], references: [projects.id] }),
 }));
+
+export const knowledgeEdges = pgTable(
+  'knowledge_edges',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    subject: text('subject').notNull(),
+    predicate: text('predicate').notNull(),
+    object: text('object').notNull(),
+    value: text('value'),
+    sourceMemoryId: text('source_memory_id'),
+    confidence: real('confidence').notNull().default(1.0),
+    validFrom: timestamp('valid_from', { withTimezone: true }),
+    validUntil: timestamp('valid_until', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectSubjectIdx: index('knowledge_edges_project_subject_idx').on(t.projectId, t.subject),
+    projectPredicateIdx: index('knowledge_edges_project_predicate_idx').on(t.projectId, t.predicate),
+  }),
+);
+
+export const knowledgeEdgesRelations = relations(knowledgeEdges, ({ one }) => ({
+  project: one(projects, { fields: [knowledgeEdges.projectId], references: [projects.id] }),
+}));
