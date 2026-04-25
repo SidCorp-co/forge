@@ -94,7 +94,10 @@ projectHealthRoutes.get('/health', async (c) => {
   });
 
   // Throughput proxy = closed-or-released transitions in last 7 days.
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  // The cutoff is computed in SQL (`now() - interval '7 days'`) rather than as
+  // a JS Date binding because postgres-js refuses to serialize Date instances
+  // through parameterized queries — it throws `ERR_INVALID_ARG_TYPE` from
+  // Buffer.byteLength at Bind time. See ISS-267.
   const throughputRows = await db
     .select({
       projectId: issues.projectId,
@@ -107,7 +110,7 @@ projectHealthRoutes.get('/health', async (c) => {
         inArray(issues.projectId, projectIds),
         eq(activityLog.action, 'issue.statusChanged'),
         sql`${activityLog.payload} ->> 'to' IN ('closed','released')`,
-        sql`${activityLog.createdAt} >= ${sevenDaysAgo}`,
+        sql`${activityLog.createdAt} >= now() - interval '7 days'`,
       ),
     )
     .groupBy(issues.projectId);
