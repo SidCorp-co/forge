@@ -22,7 +22,7 @@ const EnvSchema = z.object({
   APP_BASE_URL: z.url().default('http://localhost:3000'),
   CORS_ORIGINS: z.string().default('http://localhost:3000'),
   PORT: z.coerce.number().int().positive().default(8080),
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
   RATE_LIMIT_AUTH_LOCAL_MAX: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_AUTH_LOCAL_WINDOW_MS: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_AUTH_REGISTER_MAX: z.coerce.number().int().positive().optional(),
