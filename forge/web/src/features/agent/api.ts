@@ -115,18 +115,22 @@ export const agentApi = {
     apiClient<null>(`/agents/${id}`, { method: 'DELETE' }),
 
   // Agent sessions
-  getSessions: (projectSlug: string, search?: string) => {
-    const params = new URLSearchParams({
-      'filters[project][slug][$eq]': projectSlug,
-      'sort': 'updatedAt:desc',
-      'pagination[pageSize]': '50',
-    });
-    if (search?.trim()) params.set('search', search.trim());
-    return apiClient<{ data: AgentSessionSummary[] }>(`/agent-sessions?${params}`);
+  getSessions: (projectId: string, _search?: string) => {
+    const params = new URLSearchParams({ projectId, pageSize: '50' });
+    return apiClient<Record<string, unknown>[]>(`/agent-sessions?${params}`).then(
+      (rows) => ({
+        data: rows.map((r) => ({
+          ...(r as object),
+          documentId: r['id'] as string,
+        })) as unknown as AgentSessionSummary[],
+      }),
+    );
   },
 
   getSession: (id: string) =>
-    apiClient<{ data: AgentSession }>(`/agent-sessions/${id}?populate=*`),
+    apiClient<Record<string, unknown>>(`/agent-sessions/${id}`).then((row) => ({
+      data: { ...(row as object), documentId: row['id'] as string } as unknown as AgentSession,
+    })),
 
   start: (projectSlug: string, prompt: string, repoPath?: string, preBuilt?: boolean, issueIds?: string[]) =>
     apiClient<{ data: AgentSession }>('/agent-sessions/start', {

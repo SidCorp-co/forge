@@ -4,12 +4,15 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { useAgentStreamContext } from '@/hooks/agent-stream-context';
 import { useAuth } from '@/providers/auth-provider';
+import { useProjectBySlug } from '@/features/project/hooks/use-projects';
 import { agentApi, type AgentSessionSummary, type BranchDiff } from '@/features/agent/api';
 
 export type ViewTab = 'chat' | 'changes';
 
 export function useAgentPage() {
   const { slug } = useParams<{ slug: string }>();
+  const project = useProjectBySlug(slug);
+  const projectId = project?.id;
   const searchParams = useSearchParams();
   const router = useRouter();
   const sessionParam = searchParams.get('session');
@@ -46,20 +49,22 @@ export function useAgentPage() {
   } = streamCtx;
 
   const fetchSessions = useCallback(async (search?: string) => {
+    if (!projectId) return;
     try {
-      const res = await agentApi.getSessions(slug, search);
+      const res = await agentApi.getSessions(projectId, search);
       setSessions(res.data || []);
     } catch {
       setSessions([]);
     } finally {
       setLoadingSessions(false);
     }
-  }, [slug]);
+  }, [projectId]);
 
   // Initial load
   useEffect(() => {
+    if (!projectId) return;
     fetchSessions();
-  }, [fetchSessions]);
+  }, [fetchSessions, projectId]);
 
   // Refresh sessions list when a session completes
   useEffect(() => {

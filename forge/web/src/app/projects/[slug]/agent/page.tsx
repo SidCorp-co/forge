@@ -1,22 +1,17 @@
 'use client';
 
-import { UnimplementedBanner } from '@/components/common/unimplemented-banner';
+import { useParams } from 'next/navigation';
+import { AgentStreamProvider } from '@/hooks/agent-stream-context';
 import { useSetPageTitle } from '@/hooks/use-page-title';
+import { AgentView } from './components';
 
-/**
- * Phase 2.6-F2 replaces the agent session viewer with a jobs module. The
- * new `features/job/` package provides the data layer; a finished job viewer
- * UI lands in a follow-up. Until then this route renders a banner so
- * navigation does not break.
- */
 export default function AgentPage() {
-  useSetPageTitle('Agent (deprecated — jobs view coming)');
+  useSetPageTitle('Agent');
+  const { slug } = useParams<{ slug: string }>();
+
   return (
-    <div className="p-6">
-      <UnimplementedBanner
-        feature="Agent session viewer"
-        hint="Replaced by the jobs viewer (features/job). The rich UI ships next; the data layer (apiClient-backed hooks) is already in place."
-      />
-    </div>
+    <AgentStreamProvider projectSlug={slug}>
+      <AgentView />
+    </AgentStreamProvider>
   );
 }
