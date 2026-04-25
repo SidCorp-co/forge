@@ -16,6 +16,7 @@ meRoutes.get('/me', async (c) => {
       id: users.id,
       email: users.email,
       emailVerifiedAt: users.emailVerifiedAt,
+      isCeo: users.isCeo,
       createdAt: users.createdAt,
     })
     .from(users)

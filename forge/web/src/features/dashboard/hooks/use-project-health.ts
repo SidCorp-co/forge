@@ -7,6 +7,6 @@ export function useProjectHealth() {
     queryFn: () => dashboardApi.getProjectHealth(),
     refetchInterval: 5 * 60 * 1000, // 5 minutes
     staleTime: 2 * 60 * 1000,
-    select: (res) => res.data ?? [],
+    select: (res) => res ?? [],
   });
 }
