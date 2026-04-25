@@ -12,7 +12,7 @@ export function useMemories(projectDocumentId?: string) {
 export function useDeleteMemory() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (sourceId: string) => memoryApi.remove(sourceId),
+    mutationFn: (memoryId: string) => memoryApi.remove(memoryId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['memories'] });
     },
