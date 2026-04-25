@@ -11,6 +11,7 @@ import { refreshRoutes } from './auth/refresh.js';
 import { authRoutes } from './auth/register.js';
 import { devForceVerifyRoutes } from './auth/dev-force-verify.js';
 import { verifyRoutes } from './auth/verify.js';
+import { chatLogRoutes } from './chat-logs/routes.js';
 import { commentRoutes } from './comments/routes.js';
 import { commentUploadRoutes } from './comments/upload.js';
 import { env } from './config/env.js';
@@ -209,6 +210,7 @@ app.route('/api/knowledge', knowledgeIngestRoutes);
 app.route('/api/knowledge-edges', knowledgeEdgeRoutes);
 app.route('/api/skills', skillCrudRoutes);
 app.route('/api/usage-records', usageRecordRoutes);
+app.route('/api/chat-logs', chatLogRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 

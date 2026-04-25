@@ -806,3 +806,37 @@ export const usageRecords = pgTable(
 export const usageRecordsRelations = relations(usageRecords, ({ one }) => ({
   project: one(projects, { fields: [usageRecords.projectId], references: [projects.id] }),
 }));
+
+export const qaRatings = ['good', 'bad', 'flagged'] as const;
+export type QaRating = (typeof qaRatings)[number];
+
+export const chatLogs = pgTable(
+  'chat_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: text('session_id').notNull(),
+    projectSlug: text('project_slug').notNull(),
+    userKey: text('user_key'),
+    query: text('query').notNull(),
+    reply: text('reply'),
+    model: text('model'),
+    ragContext: jsonb('rag_context'),
+    toolCalls: jsonb('tool_calls'),
+    usage: jsonb('usage'),
+    iterations: integer('iterations').notNull().default(1),
+    durationMs: integer('duration_ms'),
+    error: text('error'),
+    queryIntent: text('query_intent'),
+    condensedQuery: text('condensed_query'),
+    source: text('source').notNull().default('web'),
+    qualitySignals: jsonb('quality_signals'),
+    qaRating: text('qa_rating', { enum: qaRatings }),
+    qaNotes: text('qa_notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectCreatedIdx: index('chat_logs_project_created_idx').on(t.projectSlug, t.createdAt),
+    sessionIdIdx: index('chat_logs_session_id_idx').on(t.sessionId),
+    qaRatingIdx: index('chat_logs_qa_rating_idx').on(t.qaRating),
+  }),
+);

@@ -134,6 +134,13 @@
 			"when": 1777107624617,
 			"tag": "0018_usage_records",
 			"breakpoints": true
+		},
+		{
+			"idx": 19,
+			"version": "7",
+			"when": 1777107859440,
+			"tag": "0019_chat_logs",
+			"breakpoints": true
 		}
 	]
 }
