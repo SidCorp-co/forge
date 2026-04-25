@@ -8,7 +8,7 @@ import {
   useIssueByDisplay,
   useTransitionIssue,
 } from '@/features/issue/hooks/use-issues';
-import { useProjectBySlug } from '@/features/project/hooks/use-projects';
+import { useProjectBySlug, useProjects } from '@/features/project/hooks/use-projects';
 import { formatApiError } from '@/lib/api/error';
 
 const DISPLAY_ID_RE = /^ISS-\d+$/i;
@@ -29,8 +29,13 @@ export default function IssueDetailPage() {
   const { slug, id } = useParams<{ slug: string; id: string }>();
   const isDisplayId = DISPLAY_ID_RE.test(id);
 
+  // useProjectBySlug returns null for both "still loading" and "not a member /
+  // unknown slug" — fall back to useProjects().isLoading to disambiguate so we
+  // don't sit on the loading spinner forever for a bad slug.
+  const projectsQuery = useProjects();
   const project = useProjectBySlug(isDisplayId ? slug : undefined);
   const projectId = project?.id;
+  const projectMissing = isDisplayId && !projectsQuery.isLoading && !projectId;
 
   const byUuid = useIssue(isDisplayId ? undefined : id);
   const byDisplay = useIssueByDisplay(
@@ -41,7 +46,7 @@ export default function IssueDetailPage() {
   const issue = isDisplayId ? byDisplay.data : byUuid.data;
   const error = isDisplayId ? byDisplay.error : byUuid.error;
   const isLoading = isDisplayId
-    ? byDisplay.isLoading || (!projectId && !!slug)
+    ? !projectMissing && (projectsQuery.isLoading || (!!projectId && byDisplay.isLoading))
     : byUuid.isLoading;
 
   const transitionIssue = useTransitionIssue();

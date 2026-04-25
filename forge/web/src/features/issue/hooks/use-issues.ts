@@ -23,6 +23,7 @@ export const issueKeys = {
   list: (params: IssueListParams) => ['issues', 'list', params] as const,
   searches: ['issues', 'search'] as const,
   search: (params: IssueSearchParams) => ['issues', 'search', params] as const,
+  details: ['issue'] as const,
   detail: (id: string | undefined) => ['issue', id] as const,
   detailByDisplay: (projectId: string | undefined, displayId: string | undefined) =>
     ['issue', 'by-display', projectId, displayId] as const,
@@ -104,7 +105,7 @@ export function usePatchIssue() {
     onSettled: (_data, _err, { id }) => {
       qc.invalidateQueries({ queryKey: issueKeys.lists });
       qc.invalidateQueries({ queryKey: issueKeys.searches });
-      qc.invalidateQueries({ queryKey: issueKeys.detail(id) });
+      qc.invalidateQueries({ queryKey: issueKeys.details });
     },
   });
 }
@@ -131,7 +132,7 @@ export function useTransitionIssue() {
     onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: issueKeys.lists });
       qc.invalidateQueries({ queryKey: issueKeys.searches });
-      qc.invalidateQueries({ queryKey: issueKeys.detail(id) });
+      qc.invalidateQueries({ queryKey: issueKeys.details });
     },
   });
 }
@@ -143,7 +144,7 @@ export function useDeleteIssue() {
     onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: issueKeys.lists });
       qc.invalidateQueries({ queryKey: issueKeys.searches });
-      qc.invalidateQueries({ queryKey: issueKeys.detail(id) });
+      qc.invalidateQueries({ queryKey: issueKeys.details });
     },
   });
 }
