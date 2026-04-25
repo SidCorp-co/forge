@@ -8,7 +8,7 @@ export const AUTH_COOKIE_NAME = 'forge_auth';
 export function setAuthCookie(c: Context, token: string): void {
   setCookie(c, AUTH_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: env.NODE_ENV === 'production',
+    secure: env.NODE_ENV !== 'development' && env.NODE_ENV !== 'test',
     sameSite: 'Lax',
     path: '/',
     maxAge: USER_JWT_TTL_SECONDS,
