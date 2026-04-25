@@ -54,6 +54,7 @@ import { seedBuiltinSkills } from './skills/builtin-seed.js';
 import { skillCrudRoutes } from './skills/crud-routes.js';
 import { skillRegisterRoutes, skillSyncRoutes } from './skills/routes.js';
 import { taskIssueRoutes, taskRoutes } from './tasks/routes.js';
+import { usageRecordRoutes } from './usage-records/routes.js';
 import { webhookInboundRoutes } from './webhooks/inbound-routes.js';
 import { registerOutboundDeliveryWorker } from './webhooks/outbound.js';
 import { registerWebhookSubscribers } from './webhooks/subscribers.js';
@@ -207,6 +208,7 @@ app.route('/api/schedules', scheduleRoutes);
 app.route('/api/knowledge', knowledgeIngestRoutes);
 app.route('/api/knowledge-edges', knowledgeEdgeRoutes);
 app.route('/api/skills', skillCrudRoutes);
+app.route('/api/usage-records', usageRecordRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 

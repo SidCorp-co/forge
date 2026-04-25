@@ -127,6 +127,13 @@
 			"when": 1777107364201,
 			"tag": "0017_skills_extend",
 			"breakpoints": true
+		},
+		{
+			"idx": 18,
+			"version": "7",
+			"when": 1777107624617,
+			"tag": "0018_usage_records",
+			"breakpoints": true
 		}
 	]
 }
