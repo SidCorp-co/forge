@@ -18,6 +18,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+## [0.1.0-rc.3] - 2026-04-25
+
+### Added
+- `POST /api/auth/dev/force-verify` (dev/staging only, ADMIN_EMAILS-gated) — unblocks QA on no-SMTP deploys per ISS-235 item H
+- `forge/web/src/app/projects/page.tsx` — projects list page accessible from post-login nav (ISS-235 item I)
+- WebSocket upgrade auth: `forge_auth` cookie (user) or `Authorization: Bearer` (device); 401 on missing/invalid; room subscribe gated by principal (ISS-235 item B)
+- pnpm overrides for React types — fixes web build with next-themes (ISS-235 item A)
+
+### Fixed
+- `NODE_ENV` enum accepts `staging` (was: development|test|production)
+- Logger uses pino-pretty only in NODE_ENV=development; staging/prod emit JSON for parity + runtime image compat
+- docker-compose.prod.yml NODE_ENV now overridable via .env
+
+### Validation
+- E2E test report: `docs/release-tests/v0.1.0-rc.2-staging.md` (ISS-236)
+- Bug #1 from rc.2 report (`/ws` 404) confirmed false positive — WS works through CF + nginx
+
 ## [0.1.0-rc.2] - 2026-04-24
 
 ### Fixed
