@@ -2,6 +2,7 @@
 
 import { usePageTitle, usePageHeaderAction } from '@/hooks/use-page-title';
 import { NotificationBell } from '@/features/notification/components/notification-bell';
+import { NOTIFICATIONS_ENABLED } from '@/features/notification';
 
 interface MobileHeaderProps {
   onMenuOpen: () => void;
@@ -14,7 +15,7 @@ export function MobileHeader({ onMenuOpen }: MobileHeaderProps) {
     <div className="shrink-0 z-30 flex h-10 items-center gap-2 border-b border-surface-container-high bg-surface px-3 md:hidden">
       <h1 className="min-w-0 flex-1 truncate text-sm font-semibold text-primary">{title}</h1>
       {action}
-      <NotificationBell />
+      {NOTIFICATIONS_ENABLED && <NotificationBell />}
       <button
         onClick={onMenuOpen}
         className="shrink-0 rounded-sm p-2 text-outline hover:text-on-surface hover:bg-surface-container-low transition-colors"
