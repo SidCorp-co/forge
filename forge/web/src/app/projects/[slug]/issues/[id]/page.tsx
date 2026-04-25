@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { UnimplementedBanner } from '@/components/common/unimplemented-banner';
+import { Markdown } from '@/components/ui/markdown';
 import {
   useIssue,
   useIssueByDisplay,
@@ -127,8 +128,10 @@ export default function IssueDetailPage() {
             Description
           </h3>
         </div>
-        <div className="whitespace-pre-wrap p-5 text-sm text-on-surface">
-          {issue.description || (
+        <div className="p-5 text-sm text-on-surface">
+          {issue.description ? (
+            <Markdown>{issue.description}</Markdown>
+          ) : (
             <span className="text-outline">No description provided</span>
           )}
         </div>
