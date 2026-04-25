@@ -703,3 +703,40 @@ export const tasksRelations = relations(tasks, ({ one }) => ({
   project: one(projects, { fields: [tasks.projectId], references: [projects.id] }),
   assignee: one(users, { fields: [tasks.assigneeId], references: [users.id] }),
 }));
+
+export const scheduleRunners = ['desktop', 'antigravity'] as const;
+export type ScheduleRunner = (typeof scheduleRunners)[number];
+
+export const scheduleStatuses = ['success', 'failed', 'running', 'skipped'] as const;
+export type ScheduleStatus = (typeof scheduleStatuses)[number];
+
+export const schedules = pgTable(
+  'schedules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    cron: text('cron').notNull(),
+    prompt: text('prompt').notNull(),
+    runner: text('runner', { enum: scheduleRunners }).notNull().default('antigravity'),
+    enabled: boolean('enabled').notNull().default(true),
+    targetProjectSlug: text('target_project_slug'),
+    lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+    nextRunAt: timestamp('next_run_at', { withTimezone: true }),
+    lastStatus: text('last_status', { enum: scheduleStatuses }),
+    lastSessionId: text('last_session_id'),
+    metadata: jsonb('metadata'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectEnabledIdx: index('schedules_project_enabled_idx').on(t.projectId, t.enabled),
+    nextRunAtIdx: index('schedules_next_run_at_idx').on(t.nextRunAt).where(sql`enabled = true`),
+  }),
+);
+
+export const schedulesRelations = relations(schedules, ({ one }) => ({
+  project: one(projects, { fields: [schedules.projectId], references: [projects.id] }),
+}));

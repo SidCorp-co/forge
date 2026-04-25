@@ -74,4 +74,16 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
       },
     });
   });
+
+  bus.on('scheduleRun', (p) => {
+    roomManager.publish(projectRoom(p.projectId), {
+      event: 'schedule.run',
+      data: {
+        scheduleId: p.scheduleId,
+        projectId: p.projectId,
+        jobId: p.jobId,
+        actorId: p.actorUserId,
+      },
+    });
+  });
 }

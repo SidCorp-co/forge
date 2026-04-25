@@ -1,10 +1,11 @@
 import { apiClient } from '@/lib/api/client';
-import type { BaseEntity } from '@/lib/types';
 
 export type ScheduleRunner = 'desktop' | 'antigravity';
 export type ScheduleStatus = 'success' | 'failed' | 'running' | 'skipped';
 
-export interface Schedule extends BaseEntity {
+export interface Schedule {
+  id: string;
+  projectId: string;
   name: string;
   cron: string;
   prompt: string;
@@ -16,45 +17,45 @@ export interface Schedule extends BaseEntity {
   lastStatus: ScheduleStatus | null;
   lastSessionId: string | null;
   metadata: Record<string, unknown> | null;
-  project?: { documentId: string; slug: string; name: string };
+  createdAt: string;
+  updatedAt: string;
 }
 
-export interface ScheduleFormData {
+export interface ScheduleCreatePayload {
+  projectId: string;
   name: string;
   cron: string;
   prompt: string;
-  runner: ScheduleRunner;
-  enabled: boolean;
-  targetProjectSlug?: string;
-  metadata?: Record<string, unknown>;
-  project?: string;
+  runner?: ScheduleRunner;
+  enabled?: boolean;
+  targetProjectSlug?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
+export type ScheduleUpdatePayload = Partial<Omit<ScheduleCreatePayload, 'projectId'>>;
+
 export const scheduleApi = {
-  getAll: (projectSlug: string) =>
-    apiClient<{ data: Schedule[]; meta: { pagination: { total: number } } }>(
-      `/schedules?filters[project][slug][$eq]=${projectSlug}&sort=createdAt:desc`,
-    ),
+  list: (projectId: string) =>
+    apiClient<Schedule[]>(`/schedules?projectId=${encodeURIComponent(projectId)}`),
 
-  get: (id: string) => apiClient<{ data: Schedule }>(`/schedules/${id}`),
+  get: (id: string) => apiClient<Schedule>(`/schedules/${id}`),
 
-  create: (data: ScheduleFormData) =>
-    apiClient<{ data: Schedule }>('/schedules', {
+  create: (data: ScheduleCreatePayload) =>
+    apiClient<Schedule>('/schedules', {
       method: 'POST',
-      body: JSON.stringify({ data }),
+      body: JSON.stringify(data),
     }),
 
-  update: (id: string, data: Partial<ScheduleFormData>) =>
-    apiClient<{ data: Schedule }>(`/schedules/${id}`, {
+  update: (id: string, data: ScheduleUpdatePayload) =>
+    apiClient<Schedule>(`/schedules/${id}`, {
       method: 'PUT',
-      body: JSON.stringify({ data }),
+      body: JSON.stringify(data),
     }),
 
-  delete: (id: string) =>
-    apiClient<{ data: Schedule }>(`/schedules/${id}`, { method: 'DELETE' }),
+  delete: (id: string) => apiClient<null>(`/schedules/${id}`, { method: 'DELETE' }),
 
   run: (id: string) =>
-    apiClient<{ data: { sessionId: string; message: string } }>(`/schedules/${id}/run`, {
+    apiClient<{ sessionId: string; jobId: string; message: string }>(`/schedules/${id}/run`, {
       method: 'POST',
     }),
 };

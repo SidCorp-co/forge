@@ -89,6 +89,12 @@ export interface HookPayloads {
     projectId: string;
     actor: Actor;
   };
+  scheduleRun: {
+    scheduleId: string;
+    projectId: string;
+    jobId: string;
+    actorUserId: string;
+  };
 }
 
 export type HookTopic = keyof HookPayloads;

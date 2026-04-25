@@ -38,6 +38,7 @@
     "@hono/zod-validator": "^0.7.6",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "argon2": "^0.44.0",
+    "cron-parser": "^4.9.0",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.6.14",
     "jose": "^6.2.2",

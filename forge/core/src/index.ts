@@ -46,6 +46,8 @@ import { memberRoutes } from './projects/members-routes.js';
 import { projectHealthRoutes } from './projects/health-routes.js';
 import { projectRoutes } from './projects/routes.js';
 import { isBossStarted, startBoss, stopBoss } from './queue/boss.js';
+import { scheduleRoutes } from './schedules/routes.js';
+import { registerScheduleTicker, unregisterScheduleTicker } from './schedules/runner.js';
 import { seedBuiltinSkills } from './skills/builtin-seed.js';
 import { skillRegisterRoutes, skillSyncRoutes } from './skills/routes.js';
 import { taskIssueRoutes, taskRoutes } from './tasks/routes.js';
@@ -121,6 +123,7 @@ export async function runShutdown(
   const sequence = (async () => {
     await closeWs();
     await unregisterDispatcher();
+    await unregisterScheduleTicker();
     await stopBoss();
     await httpClosed;
     await closeDb();
@@ -197,6 +200,7 @@ app.route('/api/admin', adminRoutes);
 app.route('/api/devices', devicePublicRoutes);
 app.route('/api/devices', deviceAuthRoutes);
 app.route('/api/projects', deviceUserRoutes);
+app.route('/api/schedules', scheduleRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 
@@ -210,6 +214,7 @@ if (isMain) {
   await registerDeviceStaleDetector();
   await registerRetentionSweeper();
   await registerOutboundDeliveryWorker();
+  await registerScheduleTicker();
   registerWebhookSubscribers(hooks);
   registerPipelineOrchestrator(hooks);
 
