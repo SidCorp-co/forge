@@ -45,7 +45,7 @@ const PROJECT_SUB_LINKS = [
 ];
 
 function AvatarDropdown({ user, connected, logout, pathname }: {
-  user: { username?: string } | null | undefined;
+  user: { email?: string } | null | undefined;
   connected: boolean;
   logout: () => void;
   pathname: string;
@@ -61,17 +61,20 @@ function AvatarDropdown({ user, connected, logout, pathname }: {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [open]);
 
+  const displayName = user?.email ? user.email.split('@')[0] : 'Signed in';
+
   return (
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
+        title={user?.email}
         className="w-full flex items-center gap-3 px-3 py-2 rounded-sm hover:bg-surface-container-low transition-colors"
       >
         <div className="w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant/30 flex items-center justify-center shrink-0">
-          <span className="text-xs font-bold text-primary uppercase">{user?.username?.[0] || 'U'}</span>
+          <span className="text-xs font-bold text-primary uppercase">{user?.email?.[0]?.toUpperCase() || 'U'}</span>
         </div>
         <div className="overflow-hidden flex-1 min-w-0 text-left">
-          <p className="text-xs font-semibold truncate text-primary">{user?.username ?? 'Agent User'}</p>
+          <p className="text-xs font-semibold truncate text-primary">{displayName}</p>
           <div className="flex items-center gap-1.5 mt-0.5">
             <span
               className={cn('inline-block h-1.5 w-1.5 rounded-full shrink-0', connected ? 'bg-success' : 'bg-danger')}
