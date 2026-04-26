@@ -353,3 +353,16 @@ export interface Notification {
   agentSessionId: string | null;
   createdAt: string;
 }
+
+// Mirror of forge/core's jobEventKinds enum (forge/core/src/db/schema.ts).
+export type JobEventKind = "stdout" | "stderr" | "tool_call" | "tool_result" | "progress" | "result";
+
+export type JobType = "plan" | "code" | "review" | "fix" | "triage";
+
+export interface JobAssignedPayload {
+  jobId: string;
+  projectId: string;
+  type: string;
+  payload?: { issueId?: string } & Record<string, unknown>;
+  dispatchedAt?: string;
+}

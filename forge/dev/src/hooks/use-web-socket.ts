@@ -2,12 +2,14 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "@/stores/app-store";
 import { invoke } from "./use-tauri-ipc";
-import { registerDesktop, unregisterDesktop, registerDevice, relayAgentEvent, relayPromptBuilt, getIssue, getComments, getProject, getAgents, syncKnowledgeToStrapi, syncAgentFiles } from "@/lib/api";
+import { registerDesktop, unregisterDesktop, registerDevice, relayAgentEvent, relayPromptBuilt, getIssue, getComments, getProject, getAgents, syncKnowledgeToStrapi, syncAgentFiles, postJobEvents, completeJob, failJob, type JobEventInput } from "@/lib/api";
 import { buildIssuePrompt, buildMultiIssuePrompt } from "@/lib/prompt-builders";
 import { buildAgentPrompt, buildAgentReindexPrompt, type AgentConfig } from "@/lib/agent-prompt";
 import { SessionTracker } from "@/lib/session-tracker";
 import { syncAllProjectSkills } from "@/lib/skill-sync";
 import { useAgentCommandHandler } from "./use-agent-commands";
+import { useJobAssignedHandler } from "./use-job-handler";
+import { mapStreamChunkToJobEvents } from "@/lib/job-event-mapper";
 
 // Single tracker instance shared across the hook lifecycle
 const tracker = new SessionTracker();
@@ -19,6 +21,7 @@ export function useWebSocket() {
 
   // Stable ref for agent command handling — avoids re-creating WS on config changes
   const handleAgentCommandRef = useAgentCommandHandler(tracker);
+  const { handlerRef: handleJobAssignedRef, jobSessionsRef } = useJobAssignedHandler(tracker);
 
   useEffect(() => {
     if (!config.coreUrl) return;
@@ -137,6 +140,27 @@ export function useWebSocket() {
       try {
         const msg = typeof data === "string" ? JSON.parse(data) : data;
         const event: string = msg.event ?? "";
+        // Trace via console.warn so fe_log forwarder relays to stdout for debugging
+        console.warn(`[ws-msg] ${event || "(no event)"}`, msg.data ? Object.keys(msg.data).join(",") : "");
+
+        if (event === "job.assigned") {
+          handleJobAssignedRef.current(msg.data);
+          return;
+        }
+        if (event === "job.cancel") {
+          const jobId = msg.data?.jobId;
+          if (jobId) {
+            // If abort fails (e.g. job.cancel arrived before send_chat
+            // registered the session locally), the agent will never emit
+            // agent:complete, so the job would sit dispatched forever on
+            // the core. Converge state by failing the job from here.
+            invoke("abort_agent", { sessionId: jobId }).catch(async () => {
+              jobSessionsRef.current.delete(jobId);
+              try { await failJob(jobId, "abort: no local session"); } catch { /* ignore */ }
+            });
+          }
+          return;
+        }
 
         if (
           event === "agent:start" ||
@@ -198,9 +222,38 @@ export function useWebSocket() {
         const { listen } = await import("@tauri-apps/api/event");
         if (cancelled) return undefined;
 
+        // Periodic heartbeat to keep device.status = 'online' on the core.
+        // /api/devices/heartbeat is the only path that flips status; without
+        // this loop the device stays 'offline' and dispatcher leaves jobs
+        // queued. 25s interval is well under the stale-detector grace window.
+        let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+        async function pingHeartbeat() {
+          try {
+            const tok = await invoke<string | null>("load_device_token");
+            if (!tok || !config.coreUrl) return;
+            await invoke("heartbeat", { coreUrl: config.coreUrl, deviceToken: tok });
+          } catch {
+            // ignore — keychain unavailable or device not yet paired
+          }
+        }
+        function startHeartbeat() {
+          if (heartbeatTimer) return;
+          void pingHeartbeat();
+          heartbeatTimer = setInterval(() => void pingHeartbeat(), 25_000);
+        }
+        function stopHeartbeat() {
+          if (heartbeatTimer) {
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = null;
+          }
+        }
+
+        console.warn("[ws-debug] tauri listen() registered — Rust WS path active");
         const unlisten1 = await listen("ws:connected", async () => {
+          console.warn("[ws-debug] ws:connected event fired");
           setWsConnected(true);
           queryClient.invalidateQueries();
+          startHeartbeat();
           const deviceId = config.deviceId || "";
           try {
             await registerDesktop(deviceId);
@@ -245,6 +298,7 @@ export function useWebSocket() {
         });
         const unlisten2 = await listen("ws:disconnected", async () => {
           setWsConnected(false);
+          stopHeartbeat();
           const deviceId = config.deviceId || "";
           try {
             await unregisterDesktop(deviceId);
@@ -294,13 +348,53 @@ export function useWebSocket() {
           }
         }
 
+        // Job event batch (parallel to relayQueue): chunks bound for forge/core's
+        // /api/jobs/:id/events. Same 100ms cadence; per-job batches are post.
+        const jobEventQueue = new Map<string, JobEventInput[]>();
+        let jobFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+        async function flushJobEvents() {
+          jobFlushTimer = null;
+          if (jobEventQueue.size === 0) return;
+          const drained: Array<[string, JobEventInput[]]> = Array.from(jobEventQueue.entries());
+          jobEventQueue.clear();
+          for (const [jobId, events] of drained) {
+            if (events.length === 0) continue;
+            try {
+              await postJobEvents(jobId, events);
+            } catch (err) {
+              console.error(`[job-events] flush failed for ${jobId}:`, err);
+            }
+          }
+        }
+
+        function enqueueJobEvents(jobId: string, events: JobEventInput[]) {
+          if (events.length === 0) return;
+          let arr = jobEventQueue.get(jobId);
+          if (!arr) {
+            arr = [];
+            jobEventQueue.set(jobId, arr);
+          }
+          arr.push(...events);
+          if (!jobFlushTimer) {
+            jobFlushTimer = setTimeout(flushJobEvents, FLUSH_INTERVAL);
+          }
+        }
+
         const unlisten5 = await listen<{ sessionId: string; data: any }>(
           "agent:message",
           (event) => {
             const { sessionId, data: agentData } = event.payload;
-            enqueueRelay(sessionId, "agent:message", agentData);
             // Update local session tracking (same merge logic as useAgentChat)
             tracker.handleStreamData(sessionId, agentData);
+            // Job-originated session: route stream to job_events instead of the
+            // user-facing relay (which would broadcast to chat UIs).
+            if (jobSessionsRef.current.has(sessionId)) {
+              const jobEvents = mapStreamChunkToJobEvents(agentData);
+              enqueueJobEvents(sessionId, jobEvents);
+              return;
+            }
+            enqueueRelay(sessionId, "agent:message", agentData);
           },
         );
 
@@ -308,6 +402,27 @@ export function useWebSocket() {
           "agent:complete",
           async (event) => {
             const { sessionId, ...rest } = event.payload;
+
+            // Job-originated session: drain job_event batch, finalize via
+            // /api/jobs/:id/complete, skip user-facing relay + knowledge sync.
+            //
+            // Keep the jobSessionsRef marker (don't delete) — the Rust spawn
+            // layer can emit late stream chunks after agent:complete, and we
+            // don't want those leaking through enqueueRelay to user chat UIs.
+            // jobId is a UUID, so the bounded growth is acceptable.
+            if (jobSessionsRef.current.has(sessionId)) {
+              await flushJobEvents();
+              try {
+                await completeJob(sessionId, rest.error ? 1 : 0, {
+                  error: rest.error ?? null,
+                });
+              } catch (err) {
+                console.error(`[job-events] completeJob failed for ${sessionId}:`, err);
+              }
+              tracker.complete(sessionId);
+              return;
+            }
+
             await flushRelay();
 
             // Try to compute branch diff and include it in the relay
@@ -392,6 +507,7 @@ export function useWebSocket() {
 
         return () => {
           if (flushTimer) clearTimeout(flushTimer);
+          if (jobFlushTimer) clearTimeout(jobFlushTimer);
           tracker.dispose();
           unlisten1();
           unlisten2();
@@ -400,14 +516,20 @@ export function useWebSocket() {
           unlisten5();
           unlisten6();
         };
-      } catch {
+      } catch (err) {
         // Not in Tauri — use native WebSocket as fallback
+        console.warn("[ws-debug] tauri listen() failed → browser fallback", err);
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
         ws.onopen = () => {
+          console.warn("[ws-debug] browser WS open — sending subscribe device:", config.deviceId);
           setWsConnected(true);
           queryClient.invalidateQueries();
           registerAsDesktop(ws);
+          // Subscribe to device room so dispatcher events reach us in browser fallback path
+          if (config.deviceId) {
+            ws.send(JSON.stringify({ type: "subscribe", room: `device:${config.deviceId}` }));
+          }
         };
         ws.onclose = () => setWsConnected(false);
         ws.onmessage = (e) => handleMessage(e.data);

@@ -1,3 +1,5 @@
+import { clearDeviceTokenCache } from "./jobs";
+
 let baseUrl = "http://localhost:8080";
 let authToken = "";
 
@@ -5,6 +7,9 @@ export function configureApi(url: string, token: string) {
   baseUrl = url.replace(/\/$/, "");
   authToken = token;
   clearProjectIdCache();
+  // The cached device token is bound to the previous coreUrl; wipe it so we
+  // don't send the old core's credentials to a newly-configured server.
+  clearDeviceTokenCache();
 }
 
 /** Resolve a Strapi media URL — returns absolute URL for both relative and absolute inputs. */
@@ -58,6 +63,16 @@ export async function resolveProjectId(slug: string): Promise<string> {
     if (!id) throw new Error(`project not found: ${slug}`);
   }
   return id;
+}
+
+// Reverse lookup for dispatcher payloads which carry projectId (uuid). Reuses
+// the same project index cache; refetches once on miss like resolveProjectId.
+export async function resolveProjectSlug(projectId: string): Promise<string> {
+  if (!projectIdCache) projectIdCache = await fetchProjectIndex();
+  for (const [slug, id] of projectIdCache) if (id === projectId) return slug;
+  projectIdCache = await fetchProjectIndex();
+  for (const [slug, id] of projectIdCache) if (id === projectId) return slug;
+  throw new Error(`project not found for id: ${projectId}`);
 }
 
 export function clearProjectIdCache() {
