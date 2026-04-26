@@ -1,0 +1,98 @@
+#!/bin/bash
+# pre-push hook — Trunk-Based Development discipline.
+#
+# Runs build + tests on the pnpm workspace packages that have files changed
+# in the commits being pushed. Aborts the push on any failure so main stays
+# green.
+#
+# Skip mechanisms (use sparingly):
+#   - SKIP_PREPUSH=1 git push     — bypass entirely (e.g. emergency revert)
+#   - PREPUSH_SKIP_TESTS=1        — build only, no tests (faster, less safe)
+
+set -e
+
+if [ "$SKIP_PREPUSH" = "1" ]; then
+  echo "[pre-push] SKIP_PREPUSH=1 — skipping all checks"
+  exit 0
+fi
+
+# Read pushed refs from stdin (format: <local-ref> <local-sha> <remote-ref> <remote-sha>)
+range=""
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
+    # Branch deletion — nothing to validate
+    continue
+  fi
+  if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+    # New branch — diff against main as the merge-base reference
+    base=$(git merge-base "$local_sha" main 2>/dev/null || echo "")
+    if [ -n "$base" ]; then
+      range="$range $base..$local_sha"
+    else
+      # No merge-base (truly fresh) — diff entire branch
+      range="$range $local_sha"
+    fi
+  else
+    range="$range $remote_sha..$local_sha"
+  fi
+done
+
+if [ -z "$range" ]; then
+  echo "[pre-push] no commits to validate"
+  exit 0
+fi
+
+# Collect changed files across all push ranges
+changed=$(git diff --name-only $range 2>/dev/null | sort -u)
+
+if [ -z "$changed" ]; then
+  echo "[pre-push] no file changes in pushed commits"
+  exit 0
+fi
+
+# Map changed files to affected packages
+packages=""
+echo "$changed" | grep -q '^forge/core/' && packages="$packages core"
+echo "$changed" | grep -q '^forge/web/' && packages="$packages web"
+echo "$changed" | grep -q '^forge/dev/' && packages="$packages dev"
+echo "$changed" | grep -q '^forge/widget/' && packages="$packages widget"
+echo "$changed" | grep -q '^forge/contracts/' && packages="$packages contracts"
+
+if [ -z "$packages" ]; then
+  echo "[pre-push] no source-package files changed (docs/skills/etc only) — skipping build/test"
+  exit 0
+fi
+
+echo "[pre-push] validating packages:$packages"
+
+repo_root=$(git rev-parse --show-toplevel)
+for pkg in $packages; do
+  pkg_dir="$repo_root/forge/$pkg"
+  if [ ! -d "$pkg_dir" ]; then
+    echo "[pre-push] skip $pkg — directory missing"
+    continue
+  fi
+  echo "[pre-push] $pkg → pnpm build"
+  (cd "$pkg_dir" && pnpm build) || {
+    echo "[pre-push] FAIL: $pkg build broke. Push aborted."
+    exit 1
+  }
+  if [ "$PREPUSH_SKIP_TESTS" = "1" ]; then
+    echo "[pre-push] $pkg → tests skipped (PREPUSH_SKIP_TESTS=1)"
+    continue
+  fi
+  # `dev` and `contracts` may not have a meaningful test command — skip if absent
+  if (cd "$pkg_dir" && grep -q '"test":' package.json); then
+    echo "[pre-push] $pkg → pnpm test"
+    (cd "$pkg_dir" && pnpm test) || {
+      echo "[pre-push] FAIL: $pkg tests broke. Push aborted."
+      echo "[pre-push] To bypass (e.g. emergency revert): SKIP_PREPUSH=1 git push"
+      exit 1
+    }
+  else
+    echo "[pre-push] $pkg → no test script, skipping"
+  fi
+done
+
+echo "[pre-push] all checks passed for:$packages"
+exit 0
