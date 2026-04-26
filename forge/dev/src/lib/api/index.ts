@@ -16,3 +16,6 @@ export {
 export type { PipelineTelemetry } from "./agent-sessions";
 export { getAgents, updateAgent } from "./agents";
 export { uploadFile, getNotifications, getUnreadCount, markNotificationRead, markAllNotificationsRead, syncKnowledgeToStrapi, syncConventionsToStrapi, syncAgentFiles } from "./misc";
+export { resolveProjectSlug } from "./client";
+export { postJobEvents, completeJob, failJob, clearDeviceTokenCache } from "./jobs";
+export type { JobEventInput } from "./jobs";
