@@ -1,8 +1,9 @@
 import { apiClient } from '@/lib/api/client';
-import type { ProjectHealth } from './types';
+import type { AttentionResponse, ProjectHealth } from './types';
 
-export type { ProjectHealth };
+export type { AttentionResponse, ProjectHealth };
 
 export const dashboardApi = {
   getProjectHealth: () => apiClient<ProjectHealth[]>('/projects/health'),
+  getAttention: () => apiClient<AttentionResponse>('/me/attention'),
 };

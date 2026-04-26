@@ -5,6 +5,7 @@ import { Activity, AlertTriangle, FolderKanban, TrendingUp } from 'lucide-react'
 import { Shell } from '@/components/layout/shell';
 import { useSetPageTitle } from '@/hooks/use-page-title';
 import { useProjectsHealth } from '@/features/project/hooks/use-projects';
+import { AttentionQueue } from '@/features/dashboard/components/attention-queue';
 import { StatCard } from '@/components/ui/stat-card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -92,6 +93,8 @@ function DashboardBody({ rows }: { rows: Row[] }) {
 
   return (
     <>
+      <AttentionQueue />
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard label="Projects" value={rows.length} />
         <StatCard label="Active issues" value={totals.active} />
