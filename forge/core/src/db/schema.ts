@@ -433,11 +433,18 @@ export const comments = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
     body: text('body').notNull(),
+    parentId: uuid('parent_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     issueIdx: index('comments_issue_id_idx').on(t.issueId),
+    parentIdx: index('comments_parent_id_idx').on(t.parentId),
+    parentFk: foreignKey({
+      columns: [t.parentId],
+      foreignColumns: [t.id],
+      name: 'comments_parent_id_fk',
+    }).onDelete('cascade'),
   }),
 );
 
@@ -512,6 +519,12 @@ export const issuesRelations = relations(issues, ({ one, many }) => ({
 export const commentsRelations = relations(comments, ({ one, many }) => ({
   issue: one(issues, { fields: [comments.issueId], references: [issues.id] }),
   author: one(users, { fields: [comments.authorId], references: [users.id] }),
+  parent: one(comments, {
+    fields: [comments.parentId],
+    references: [comments.id],
+    relationName: 'comment_parent',
+  }),
+  replies: many(comments, { relationName: 'comment_parent' }),
   attachments: many(commentAttachments),
 }));
 

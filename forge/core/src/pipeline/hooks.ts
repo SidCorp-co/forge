@@ -41,6 +41,9 @@ export interface HookPayloads {
     actor: Actor;
     commentId: string;
     body: string;
+    // Optional: existing emit sites pre-date threading. Treat undefined and
+    // null as "top-level". The activity logger only records this when set.
+    parentId?: string | null;
   };
   commentUpdated: {
     issueId: string;

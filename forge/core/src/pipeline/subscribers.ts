@@ -72,7 +72,11 @@ export function registerActivitySubscribers(bus: HooksBus): void {
       issueId: p.issueId,
       actor: p.actor,
       action: 'comment.created',
-      payload: { commentId: p.commentId, body: snippet(p.body) },
+      payload: {
+        commentId: p.commentId,
+        body: snippet(p.body),
+        ...(p.parentId ? { parentId: p.parentId } : {}),
+      },
     });
   });
 
