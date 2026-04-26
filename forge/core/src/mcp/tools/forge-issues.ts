@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, gte, ilike, lt, ne, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, ilike, lt, ne, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import {
@@ -56,9 +56,18 @@ const dataSchema = z
     suggestedSolution: z.string().max(100_000).nullable().optional(),
     plan: z.string().max(200_000).nullable().optional(),
     // sessionContext is opaque JSON the skill pipeline uses to persist
-    // accumulated context across sessions. Validated as a record here; deeper
-    // schema lives in the skill spec, not the DB.
-    sessionContext: z.record(z.string(), z.unknown()).nullable().optional(),
+    // accumulated context across sessions. Validated as a record here with a
+    // serialised-size ceiling matched to `plan` so a single issue cannot blow
+    // up TOAST or query plans (Postgres jsonb has no per-column limit, so we
+    // enforce one in app code). Deeper schema lives in the skill spec.
+    sessionContext: z
+      .record(z.string(), z.unknown())
+      .nullable()
+      .optional()
+      .refine(
+        (v) => v == null || JSON.stringify(v).length <= 200_000,
+        { message: 'sessionContext serialised size exceeds 200000 bytes' },
+      ),
   })
   .strict()
   .optional();
@@ -265,7 +274,10 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
 
         if (Object.keys(updates).length > 0) {
-          updates.updatedAt = new Date();
+          // Use sql`now()` (matching applyStatusTransition above) so a
+          // combined status+fields update has a single canonical timestamp
+          // source rather than mixing JS Date and DB now().
+          updates.updatedAt = sql`now()`;
           await db.update(issues).set(updates).where(eq(issues.id, issue.id));
         }
 
@@ -297,7 +309,11 @@ async function applyStatusTransition(
   device: DeviceLite,
 ): Promise<void> {
   const fromStatus = issue.status;
-  if (fromStatus === toStatus) return;
+  // Same-status calls are programmer error (the `update` action already
+  // pre-filters; `transition` callers must mean it). Mirrors REST 409 NO_OP.
+  if (fromStatus === toStatus) {
+    throw new Error(`NO_OP: issue already in status ${toStatus}`);
+  }
 
   if (!canTransition(fromStatus, toStatus)) {
     throw new Error(
@@ -354,7 +370,3 @@ async function applyStatusTransition(
   });
 }
 
-// Re-export for tests.
-export const __test__ = { applyStatusTransition };
-// Avoid an unused-import warning for `gt` if a future filter wants > vs >=.
-void gt;

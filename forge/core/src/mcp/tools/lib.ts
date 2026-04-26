@@ -41,6 +41,10 @@ export function zodToMcpSchema(schema: z.ZodTypeAny): Record<string, unknown> {
  * `null` when the project does not exist; otherwise `isMember` implies the
  * device owner is an owner of the project OR in `projectMembers`, and
  * `isAdmin` implies that membership has role owner|admin.
+ *
+ * Note: this treats project owner as a member even without a `projectMembers`
+ * row — REST `/transition` requires the row separately, so MCP is slightly
+ * laxer for owners. Intentional and consistent with `forge_skills.*`.
  */
 async function loadDeviceProjectRole(
   device: Device,

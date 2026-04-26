@@ -198,7 +198,7 @@ describe('forge_issues tool', () => {
 
     expect(result.plan).toBe('new plan');
     expect(updateSet).toHaveBeenCalledWith(
-      expect.objectContaining({ plan: 'new plan', updatedAt: expect.any(Date) }),
+      expect.objectContaining({ plan: 'new plan', updatedAt: expect.anything() }),
     );
   });
 

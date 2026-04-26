@@ -174,7 +174,11 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
         const comment = await loadCommentForAccess(input.documentId);
 
         // Author can always delete their own comment; otherwise require
-        // project owner. Mirrors REST `DELETE /api/comments/:id` semantics.
+        // project owner. Mirrors REST `DELETE /api/comments/:id` semantics
+        // with one tightening: an author who has since left the project can
+        // still delete on REST, but here we also require current membership
+        // — MCP traffic comes from device principals, so a stale device on
+        // an ex-member should not be able to mutate the project.
         if (comment.authorId !== device.ownerId) {
           await assertCommentDeletePermission(device.ownerId, comment.projectId);
         } else {
