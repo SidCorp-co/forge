@@ -101,4 +101,13 @@ export function registerActivitySubscribers(bus: HooksBus): void {
       payload: { commentId: p.commentId },
     });
   });
+
+  bus.on('commentMentioned', async (p) => {
+    await safeRecordActivity({
+      issueId: p.issueId,
+      actor: p.actor,
+      action: 'comment.mentioned',
+      payload: { commentId: p.commentId, mentionedUserIds: p.mentionedUserIds },
+    });
+  });
 }

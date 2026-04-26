@@ -59,6 +59,13 @@ export interface HookPayloads {
     actor: Actor;
     commentId: string;
   };
+  commentMentioned: {
+    issueId: string;
+    projectId: string;
+    commentId: string;
+    actor: Actor;
+    mentionedUserIds: string[];
+  };
   skillSynced: {
     projectId: string;
     deviceId: string;

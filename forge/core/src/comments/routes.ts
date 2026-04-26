@@ -4,12 +4,14 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { comments, issues } from '../db/schema.js';
+import { commentMentions, comments, issues } from '../db/schema.js';
 import { paginationSchema, setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess } from '../lib/project-access.js';
+import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { pgConstraintName, pgErrorCode } from './error-mapping.js';
+import { parseMentions, resolveMentions } from './mentions.js';
 import { type CommentRow, buildCommentTree } from './tree.js';
 
 const commentCreateSchema = z
@@ -143,6 +145,35 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         body: inserted.body,
         parentId: inserted.parentId,
       });
+
+      // Parse + persist mentions outside the insert transaction. A failure
+      // here must not roll back the comment — log and continue. The hook
+      // fan-out (notification rows + WS) is fire-and-forget the same way.
+      const insertedId = inserted.id;
+      try {
+        const handles = parseMentions(inserted.body);
+        if (handles.length > 0) {
+          const resolved = await resolveMentions(handles, issue.projectId);
+          // Skip self-mention. Unknown handles already dropped by resolver.
+          const targets = resolved.filter((r) => r.userId !== userId);
+          if (targets.length > 0) {
+            await db
+              .insert(commentMentions)
+              .values(targets.map((t) => ({ commentId: insertedId, userId: t.userId })))
+              .onConflictDoNothing();
+            await hooks.emit('commentMentioned', {
+              issueId,
+              projectId: issue.projectId,
+              commentId: insertedId,
+              actor: { type: 'user', id: userId },
+              mentionedUserIds: targets.map((t) => t.userId),
+            });
+          }
+        }
+      } catch (err) {
+        logger.error({ err, commentId: insertedId }, 'comment mention fan-out failed');
+      }
+
       return c.json(inserted, 201);
     },
   );
