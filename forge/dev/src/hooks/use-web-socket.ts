@@ -21,7 +21,7 @@ export function useWebSocket() {
 
   // Stable ref for agent command handling — avoids re-creating WS on config changes
   const handleAgentCommandRef = useAgentCommandHandler(tracker);
-  const { handlerRef: handleJobAssignedRef, jobSessionsRef } = useJobAssignedHandler(tracker);
+  const { handlerRef: handleJobAssignedRef, jobSessionsRef, cancelledJobsRef } = useJobAssignedHandler(tracker);
 
   useEffect(() => {
     if (!config.coreUrl) return;
@@ -150,13 +150,18 @@ export function useWebSocket() {
         if (event === "job.cancel") {
           const jobId = msg.data?.jobId;
           if (jobId) {
-            // If abort fails (e.g. job.cancel arrived before send_chat
-            // registered the session locally), the agent will never emit
-            // agent:complete, so the job would sit dispatched forever on
-            // the core. Converge state by failing the job from here.
+            // Tag the job as cancelled so the eventual agent:complete maps to
+            // exitCode -1 (cancelled), not 1 (failed → triggers retry).
+            cancelledJobsRef.current.add(jobId);
+            // If abort fails (e.g. cancel arrived before send_chat registered
+            // the session locally), agent:complete will never fire and the
+            // job would sit dispatched forever. Converge directly by posting
+            // /complete with exitCode -1 so the dispatcher records cancelled
+            // rather than failed (which would also trigger scheduleRetry).
             invoke("abort_agent", { sessionId: jobId }).catch(async () => {
               jobSessionsRef.current.delete(jobId);
-              try { await failJob(jobId, "abort: no local session"); } catch { /* ignore */ }
+              cancelledJobsRef.current.delete(jobId);
+              try { await completeJob(jobId, -1, { error: "cancelled before runner accepted job" }); } catch { /* ignore */ }
             });
           }
           return;
@@ -352,20 +357,30 @@ export function useWebSocket() {
         // /api/jobs/:id/events. Same 100ms cadence; per-job batches are post.
         const jobEventQueue = new Map<string, JobEventInput[]>();
         let jobFlushTimer: ReturnType<typeof setTimeout> | null = null;
+        // Chain in-flight flushes so agent:complete can `await` the tail
+        // before calling /complete — otherwise the timer-driven flush (which
+        // clears the queue immediately and awaits the POST) can finish AFTER
+        // /complete lands and the still-in-flight events get 409 JOB_TERMINATED.
+        let jobFlushInFlight: Promise<void> = Promise.resolve();
 
-        async function flushJobEvents() {
+        function flushJobEvents(): Promise<void> {
           jobFlushTimer = null;
-          if (jobEventQueue.size === 0) return;
+          if (jobEventQueue.size === 0) return jobFlushInFlight;
           const drained: Array<[string, JobEventInput[]]> = Array.from(jobEventQueue.entries());
           jobEventQueue.clear();
-          for (const [jobId, events] of drained) {
-            if (events.length === 0) continue;
-            try {
-              await postJobEvents(jobId, events);
-            } catch (err) {
-              console.error(`[job-events] flush failed for ${jobId}:`, err);
+          // Chain so back-to-back flushes serialize and `await jobFlushInFlight`
+          // from agent:complete waits for every queued POST to land.
+          jobFlushInFlight = jobFlushInFlight.then(async () => {
+            for (const [jobId, events] of drained) {
+              if (events.length === 0) continue;
+              try {
+                await postJobEvents(jobId, events);
+              } catch (err) {
+                console.error(`[job-events] flush failed for ${jobId}:`, err);
+              }
             }
-          }
+          });
+          return jobFlushInFlight;
         }
 
         function enqueueJobEvents(jobId: string, events: JobEventInput[]) {
@@ -411,11 +426,18 @@ export function useWebSocket() {
             // don't want those leaking through enqueueRelay to user chat UIs.
             // jobId is a UUID, so the bounded growth is acceptable.
             if (jobSessionsRef.current.has(sessionId)) {
-              await flushJobEvents();
+              // Trigger any pending batch and await the in-flight chain so
+              // every queued event POST lands BEFORE /complete moves the job
+              // to a terminal status (which would 409 in-flight POSTs).
+              flushJobEvents();
+              await jobFlushInFlight;
+              // Cancellation lands `cancelled` (exitCode -1), normal error
+              // lands `failed` (1), success lands `done` (0). See lifecycle
+              // routes mapping in forge/core/src/jobs/lifecycle-routes.ts.
+              const wasCancelled = cancelledJobsRef.current.delete(sessionId);
+              const exitCode = wasCancelled ? -1 : rest.error ? 1 : 0;
               try {
-                await completeJob(sessionId, rest.error ? 1 : 0, {
-                  error: rest.error ?? null,
-                });
+                await completeJob(sessionId, exitCode, { error: rest.error ?? null });
               } catch (err) {
                 console.error(`[job-events] completeJob failed for ${sessionId}:`, err);
               }
@@ -508,6 +530,9 @@ export function useWebSocket() {
         return () => {
           if (flushTimer) clearTimeout(flushTimer);
           if (jobFlushTimer) clearTimeout(jobFlushTimer);
+          // Stop the heartbeat interval — without this it survives unmount /
+          // coreUrl change and keeps pinging the previous core every 25 s.
+          stopHeartbeat();
           tracker.dispose();
           unlisten1();
           unlisten2();

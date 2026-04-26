@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { useAppStore } from "@/stores/app-store";
-import { invoke } from "./use-tauri-ipc";
+import { invoke, isTauri } from "./use-tauri-ipc";
 import { failJob, resolveProjectSlug } from "@/lib/api";
 import type { SessionTracker } from "@/lib/session-tracker";
 import type { AppConfig, JobAssignedPayload } from "@/lib/types";
@@ -39,6 +39,14 @@ export async function handleJobAssigned(
   if (!data?.jobId) return;
   const { jobId, projectId, type, payload } = data;
 
+  // Outside Tauri (browser/dev mode) `send_chat` is a logged no-op and no
+  // agent:* events ever fire, so the job would sit dispatched forever. Fail
+  // immediately so the dispatcher can move on.
+  if (!isTauri) {
+    try { await failJob(jobId, "device-runner unavailable in browser mode"); } catch { /* ignore */ }
+    return;
+  }
+
   let slug: string;
   try {
     slug = await resolveProjectSlug(projectId);
@@ -62,6 +70,10 @@ export async function handleJobAssigned(
 
   const mcpServers = pc.mcpServers && Object.keys(pc.mcpServers).length > 0 ? pc.mcpServers : undefined;
 
+  // Mark BEFORE invoke so any stream events emitted while invoke awaits land
+  // in the job-events path (not the user-relay path). On failure we keep the
+  // marker — late agent:* events for this jobId must not leak to chat UIs;
+  // jobId is a UUID so growth is bounded and won't collide with real sessions.
   ctx.jobSessions.add(jobId);
   ctx.tracker.start(jobId, slug, prompt, { repoPath: pc.repoPath });
 
@@ -75,7 +87,6 @@ export async function handleJobAssigned(
       mcpServers,
     });
   } catch (err) {
-    ctx.jobSessions.delete(jobId);
     console.error("[job.assigned] send_chat failed:", err);
     try { await failJob(jobId, `send_chat failed: ${String(err)}`); } catch { /* ignore */ }
   }
@@ -84,13 +95,15 @@ export async function handleJobAssigned(
 export interface JobAssignedHandlerRefs {
   handlerRef: React.MutableRefObject<(data: JobAssignedPayload) => Promise<void>>;
   jobSessionsRef: React.MutableRefObject<Set<string>>;
+  cancelledJobsRef: React.MutableRefObject<Set<string>>;
 }
 
 /**
  * React wrapper: keeps the handler ref fresh against the latest config without
  * recreating the WebSocket. The set of job-owned session IDs lives in a ref so
  * the agent:message/agent:complete listeners (in use-web-socket) can branch on
- * it cheaply.
+ * it cheaply. cancelledJobsRef tracks jobIds where job.cancel was received so
+ * the eventual agent:complete reports the right exitCode (-1 = cancelled).
  */
 export function useJobAssignedHandler(tracker: SessionTracker): JobAssignedHandlerRefs {
   const { config } = useAppStore();
@@ -98,6 +111,7 @@ export function useJobAssignedHandler(tracker: SessionTracker): JobAssignedHandl
   configRef.current = config;
 
   const jobSessionsRef = useRef(new Set<string>());
+  const cancelledJobsRef = useRef(new Set<string>());
   const handlerRef = useRef<(data: JobAssignedPayload) => Promise<void>>(async () => {});
 
   handlerRef.current = (data: JobAssignedPayload) =>
@@ -107,5 +121,5 @@ export function useJobAssignedHandler(tracker: SessionTracker): JobAssignedHandl
       jobSessions: jobSessionsRef.current,
     });
 
-  return { handlerRef, jobSessionsRef };
+  return { handlerRef, jobSessionsRef, cancelledJobsRef };
 }

@@ -2,8 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { buildJobPrompt, handleJobAssigned, type JobHandlerCtx } from "@/hooks/use-job-handler";
 
 const mockInvoke = vi.fn();
+let mockIsTauri = true;
 vi.mock("@/hooks/use-tauri-ipc", () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
+  get isTauri() { return mockIsTauri; },
 }));
 
 const mockResolveProjectSlug = vi.fn();
@@ -17,6 +19,7 @@ beforeEach(() => {
   mockInvoke.mockReset();
   mockResolveProjectSlug.mockReset();
   mockFailJob.mockReset();
+  mockIsTauri = true;
 });
 
 function makeCtx(projects: Record<string, { repoPath?: string; mcpServers?: Record<string, unknown> }>): JobHandlerCtx & { tracker: { start: ReturnType<typeof vi.fn> } } {
@@ -115,7 +118,7 @@ describe("handleJobAssigned", () => {
     expect(mockInvoke).not.toHaveBeenCalledWith("send_chat", expect.anything());
   });
 
-  it("removes the session from the set when send_chat throws and posts failJob", async () => {
+  it("on send_chat failure: keeps session marker (so late agent:* events don't leak to user relay) and posts failJob", async () => {
     mockResolveProjectSlug.mockResolvedValue("demo");
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "send_chat") throw new Error("CLI not found");
@@ -128,7 +131,24 @@ describe("handleJobAssigned", () => {
       ctx,
     );
 
-    expect(ctx.jobSessions.has("job-1")).toBe(false);
+    // Marker must persist — see comment in use-job-handler.ts and the
+    // matching invariant in use-web-socket.ts agent:complete branch.
+    expect(ctx.jobSessions.has("job-1")).toBe(true);
     expect(mockFailJob).toHaveBeenCalledWith("job-1", expect.stringContaining("send_chat failed"));
+  });
+
+  it("fails the job immediately when running outside Tauri (browser fallback has no agent listeners)", async () => {
+    mockIsTauri = false;
+    const ctx = makeCtx({ demo: { repoPath: "/repos/demo" } });
+
+    await handleJobAssigned(
+      { jobId: "job-1", projectId: "p", type: "plan", payload: { issueId: "ISS-7" } },
+      ctx,
+    );
+
+    expect(mockFailJob).toHaveBeenCalledWith("job-1", expect.stringContaining("browser mode"));
+    expect(mockResolveProjectSlug).not.toHaveBeenCalled();
+    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(ctx.jobSessions.has("job-1")).toBe(false);
   });
 });
