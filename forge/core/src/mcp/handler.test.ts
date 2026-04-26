@@ -98,4 +98,19 @@ describe('@forge/core MCP server', () => {
       await server.close();
     }
   });
+
+  it('exposes the full Chunk A+B toolset (legacy Strapi parity)', async () => {
+    const { client, server } = await connectClient();
+    try {
+      const res = await client.listTools();
+      const names = new Set(res.tools.map((t) => t.name));
+      expect(names.has('forge_issues')).toBe(true);
+      expect(names.has('forge_comments')).toBe(true);
+      expect(names.has('forge_config')).toBe(true);
+      expect(names.has('forge_tasks')).toBe(true);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
 });

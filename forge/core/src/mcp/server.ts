@@ -2,6 +2,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import pkg from '../../package.json' with { type: 'json' };
 import { forgeCommentsTool } from './tools/forge-comments.js';
+import { forgeConfigTool } from './tools/forge-config.js';
 import { forgeIssuesTool } from './tools/forge-issues.js';
 import { forgeMemorySearchTool } from './tools/forge-memory.js';
 import {
@@ -9,6 +10,7 @@ import {
   forgeSkillsListTool,
   forgeSkillsRegisterTool,
 } from './tools/forge-skills.js';
+import { forgeTasksTool } from './tools/forge-tasks.js';
 import { type McpTool, forgeVersionTool } from './tools/forge-version.js';
 import type { McpContext } from './tools/lib.js';
 
@@ -21,8 +23,9 @@ import type { McpContext } from './tools/lib.js';
  *  - `forge_version` — no context needed (uptime/version).
  *  - `forge_memory.search` — wraps `runMemorySearch` (ISS-198).
  *  - `forge_skills.list` / `.get` / `.register` — wrap ISS-196 REST logic.
- *  - `forge_issues` / `forge_comments` — action-based parity with the legacy
- *    Strapi MCP so existing `/forge-*` skills work unchanged (ISS-293).
+ *  - `forge_issues` / `forge_comments` / `forge_config` / `forge_tasks` —
+ *    action-based parity with the legacy Strapi MCP so existing `/forge-*`
+ *    skills work unchanged (ISS-293).
  */
 export function createMcpServer(ctx: McpContext): Server {
   const { device } = ctx;
@@ -34,6 +37,8 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeSkillsRegisterTool(device),
     forgeIssuesTool(ctx),
     forgeCommentsTool(ctx),
+    forgeConfigTool(ctx),
+    forgeTasksTool(ctx),
   ];
   const toolMap = new Map(tools.map((t) => [t.name, t]));
 
