@@ -38,10 +38,13 @@ import { jobLifecycleDeviceRoutes, jobLifecycleUserRoutes } from './jobs/lifecyc
 import { registerRetentionSweeper } from './jobs/retention-sweeper.js';
 import { jobProjectRoutes, jobRoutes } from './jobs/routes.js';
 import { registerStaleDetector } from './jobs/stale-detector.js';
+import { isEnabled } from './lib/feature-flags.js';
+import { bootstrapRunnerAdapters } from './runners/bootstrap.js';
+import { runnerCallbackRoutes, runnerRoutes } from './runners/routes.js';
+import { registerRunnerStaleDetector } from './runners/stale-detector.js';
 import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
 import { knowledgeIngestRoutes } from './knowledge/ingest-routes.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
-import { isEnabled } from './lib/feature-flags.js';
 import { logger } from './logger.js';
 import { mcpHandler } from './mcp/handler.js';
 import { meAttentionRoutes } from './me/attention-routes.js';
@@ -235,6 +238,8 @@ app.route('/api/usage-records', usageRecordRoutes);
 app.route('/api/chat-logs', chatLogRoutes);
 app.route('/api/app-config', appConfigRoutes);
 app.route('/api/domain-templates', domainTemplateRoutes);
+app.route('/api/runners', runnerRoutes);
+app.route('/api/runners', runnerCallbackRoutes);
 
 // v1 EPIC 1 (ISS-270) — chat support agent. Mount only when the flag is on
 // so a default `main` build behaves as if the route doesn't exist.
@@ -253,9 +258,13 @@ if (isMain) {
   if (isEnabled('chatProvider')) {
     bootstrapChatProviders();
   }
+  bootstrapRunnerAdapters();
   await registerDispatcher();
   await registerStaleDetector();
   await registerDeviceStaleDetector();
+  if (isEnabled('runnerFramework')) {
+    await registerRunnerStaleDetector();
+  }
   await registerRetentionSweeper();
   await registerOutboundDeliveryWorker();
   await registerScheduleTicker();

@@ -458,7 +458,7 @@ describe('db/schema — jobs', () => {
     expect(modelTiers).toEqual(['haiku', 'sonnet', 'opus']);
   });
 
-  it('has the twenty documented columns (16 base + 4 F3 retry/cancellation)', () => {
+  it('has the twenty-one documented columns (16 base + 4 F3 + runner_id)', () => {
     const names = getTableConfig(jobs).columns.map((c) => c.name);
     expect(names.sort()).toEqual(
       [
@@ -479,6 +479,7 @@ describe('db/schema — jobs', () => {
         'project_id',
         'queued_at',
         'retry_of',
+        'runner_id',
         'started_at',
         'status',
         'type',
@@ -493,9 +494,9 @@ describe('db/schema — jobs', () => {
     expect(id.columnType).toBe('PgUUID');
   });
 
-  it('project_id cascades, device_id/issue_id/retry_of set null, created_by restricts', () => {
+  it('project_id cascades, device_id/issue_id/retry_of/runner_id set null, created_by restricts', () => {
     const cfg = getTableConfig(jobs);
-    expect(cfg.foreignKeys).toHaveLength(5);
+    expect(cfg.foreignKeys).toHaveLength(6);
     const byCol = new Map(
       cfg.foreignKeys.map((fk) => [fk.reference().columns[0]?.name ?? '', fk] as const),
     );
@@ -504,6 +505,7 @@ describe('db/schema — jobs', () => {
     expect(byCol.get('created_by')?.onDelete).toBe('restrict');
     expect(byCol.get('issue_id')?.onDelete).toBe('set null');
     expect(byCol.get('retry_of')?.onDelete).toBe('set null');
+    expect(byCol.get('runner_id')?.onDelete).toBe('set null');
   });
 
   it('issue_id is nullable uuid referencing issues.id', () => {

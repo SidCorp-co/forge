@@ -84,6 +84,7 @@ export async function runStaleSweep(): Promise<{
         projectId: updatedRow.project_id,
         issueId: updatedRow.issue_id,
         deviceId: updatedRow.device_id,
+        runnerId: null,
         createdBy: updatedRow.created_by,
         type: updatedRow.type as never,
         payload: updatedRow.payload as never,
