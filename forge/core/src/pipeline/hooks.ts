@@ -80,6 +80,18 @@ export interface HookPayloads {
     actorUserId: string;
     stage: string | null;
   };
+  // v1 EPIC 6 — fired when a project skill override is created, updated, or
+  // deleted. The WS broadcaster bridges this to the `skill.updated` event in
+  // the project room so the web Skills page can invalidate its cache and the
+  // forge/dev sync engine (PR-c) can resync the affected SKILL.md file.
+  skillUpdated: {
+    projectId: string;
+    skillId: string;
+    name: string;
+    action: 'upsert' | 'delete';
+    contentHash: string | null;
+    actorUserId: string;
+  };
   taskCreated: {
     taskId: string;
     issueId: string;

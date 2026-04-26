@@ -662,6 +662,36 @@ export const skillRegistrations = pgTable(
   }),
 );
 
+// v1 EPIC 6 — per-project override of a global skill's `skill_md`. The CRUD
+// surface is `/api/projects/:projectId/skills/:skillId/override`; the merged
+// view is exposed via `/api/projects/:projectId/skills/effective`. The unique
+// (project_id, skill_id) constraint enforces "at most one override per
+// (project, global skill)" — clients PUT to upsert, DELETE to revert.
+export const projectSkillOverrides = pgTable(
+  'project_skill_overrides',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    skillId: uuid('skill_id')
+      .notNull()
+      .references(() => skills.id, { onDelete: 'cascade' }),
+    skillMdOverride: text('skill_md_override').notNull(),
+    contentHash: text('content_hash').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectSkillUq: uniqueIndex('project_skill_overrides_project_skill_uq').on(
+      t.projectId,
+      t.skillId,
+    ),
+    projectIdx: index('project_skill_overrides_project_id_idx').on(t.projectId),
+    skillIdx: index('project_skill_overrides_skill_id_idx').on(t.skillId),
+  }),
+);
+
 export const memorySources = ['issue', 'comment', 'job', 'note', 'knowledge'] as const;
 export type MemorySource = (typeof memorySources)[number];
 
@@ -710,6 +740,14 @@ export const skillRegistrationsRelations = relations(skillRegistrations, ({ one 
     fields: [skillRegistrations.registeredBy],
     references: [users.id],
   }),
+}));
+
+export const projectSkillOverridesRelations = relations(projectSkillOverrides, ({ one }) => ({
+  project: one(projects, {
+    fields: [projectSkillOverrides.projectId],
+    references: [projects.id],
+  }),
+  skill: one(skills, { fields: [projectSkillOverrides.skillId], references: [skills.id] }),
 }));
 
 export const memoriesRelations = relations(memories, ({ one }) => ({

@@ -122,4 +122,18 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
       },
     });
   });
+
+  bus.on('skillUpdated', (p) => {
+    roomManager.publish(projectRoom(p.projectId), {
+      event: 'skill.updated',
+      data: {
+        projectId: p.projectId,
+        skillId: p.skillId,
+        name: p.name,
+        action: p.action,
+        contentHash: p.contentHash,
+        actorId: p.actorUserId,
+      },
+    });
+  });
 }
