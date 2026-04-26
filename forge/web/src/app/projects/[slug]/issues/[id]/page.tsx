@@ -25,12 +25,31 @@ interface CoreComment {
   issueId: string;
   authorId: string;
   body: string;
+  parentId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
+interface CoreCommentNode extends CoreComment {
+  replies?: CoreCommentNode[];
+}
+
 const commentsKey = (issueId: string | undefined) =>
   ['issue', issueId, 'comments'] as const;
+
+// GET /issues/:id/comments returns a CommentNode tree (depth ≤ 3). Flatten so
+// this minimal list-view still renders all replies as siblings until ISS-247
+// builds proper threaded rendering. Order is roots-first DFS.
+function flattenCommentTree(nodes: CoreCommentNode[]): CoreComment[] {
+  const out: CoreComment[] = [];
+  const walk = (node: CoreCommentNode) => {
+    const { replies: _replies, ...row } = node;
+    out.push(row);
+    for (const child of node.replies ?? []) walk(child);
+  };
+  for (const root of nodes) walk(root);
+  return out;
+}
 
 /**
  * ISS-247: minimum interactive issue detail. Renders the core fields plus
@@ -73,7 +92,10 @@ export default function IssueDetailPage() {
 
   const commentsQuery = useQuery({
     queryKey: commentsKey(issueId),
-    queryFn: () => apiClient<CoreComment[]>(`/issues/${issueId}/comments?limit=100`),
+    queryFn: async () => {
+      const tree = await apiClient<CoreCommentNode[]>(`/issues/${issueId}/comments`);
+      return flattenCommentTree(tree);
+    },
     enabled: !!issueId,
   });
 

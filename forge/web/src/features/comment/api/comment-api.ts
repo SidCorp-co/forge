@@ -16,11 +16,17 @@ interface CoreComment {
   issueId: string;
   authorId: string;
   body: string;
+  parentId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
+interface CoreCommentNode extends CoreComment {
+  replies?: CoreCommentNode[];
+}
+
 function toLegacy(row: CoreComment): Comment {
+  const parentId = row.parentId ?? null;
   return {
     id: 0,
     documentId: row.id,
@@ -30,23 +36,38 @@ function toLegacy(row: CoreComment): Comment {
     author: row.authorId,
     isAI: false,
     issue: { id: 0, documentId: row.issueId },
-    parent: null,
+    parent: parentId ? { id: 0, documentId: parentId } : null,
     replies: [],
     mentions: [],
     attachments: [],
-  } as Comment;
+  };
+}
+
+function flattenTree(nodes: CoreCommentNode[]): Comment[] {
+  const out: Comment[] = [];
+  const walk = (node: CoreCommentNode) => {
+    out.push(toLegacy(node));
+    for (const child of node.replies ?? []) walk(child);
+  };
+  for (const root of nodes) walk(root);
+  return out;
 }
 
 export const commentApi = {
   getByIssue: async (issueId: string): Promise<{ data: Comment[] }> => {
-    const rows = await apiClient<CoreComment[]>(`/issues/${issueId}/comments?limit=200`);
-    return { data: rows.map(toLegacy) };
+    // Backend now returns a CommentNode tree (depth ≤ 3) instead of a flat
+    // list. Flatten so existing consumers that expect a flat array keep
+    // working; replies are still discoverable via `parent.documentId`.
+    const tree = await apiClient<CoreCommentNode[]>(`/issues/${issueId}/comments`);
+    return { data: flattenTree(tree) };
   },
 
   create: async (issueId: string, data: CommentFormData): Promise<{ data: Comment }> => {
+    const payload: { body: string; parentId?: string } = { body: data.body };
+    if (data.parent) payload.parentId = data.parent;
     const row = await apiClient<CoreComment>(`/issues/${issueId}/comments`, {
       method: 'POST',
-      body: JSON.stringify({ body: data.body }),
+      body: JSON.stringify(payload),
     });
     return { data: toLegacy(row) };
   },

@@ -769,30 +769,39 @@ describe('db/schema — project_iss_counters', () => {
 });
 
 describe('db/schema — comments', () => {
-  it('has the six documented columns', () => {
+  it('has the seven documented columns', () => {
     const names = getTableConfig(comments).columns.map((c) => c.name);
     expect(names.sort()).toEqual(
-      ['author_id', 'body', 'created_at', 'id', 'issue_id', 'updated_at'].sort(),
+      ['author_id', 'body', 'created_at', 'id', 'issue_id', 'parent_id', 'updated_at'].sort(),
     );
   });
 
-  it('issue_id cascades, author_id restricts', () => {
+  it('issue_id cascades, author_id restricts, parent_id cascades', () => {
     const cfg = getTableConfig(comments);
-    expect(cfg.foreignKeys).toHaveLength(2);
+    expect(cfg.foreignKeys).toHaveLength(3);
     const byCol = new Map(
       cfg.foreignKeys.map((fk) => [fk.reference().columns[0]?.name ?? '', fk] as const),
     );
     expect(byCol.get('issue_id')?.onDelete).toBe('cascade');
     expect(byCol.get('author_id')?.onDelete).toBe('restrict');
+    expect(byCol.get('parent_id')?.onDelete).toBe('cascade');
   });
 
   it('body is notNull text', () => {
     expect(columnByName(comments, 'body').notNull).toBe(true);
   });
 
-  it('has index on issue_id', () => {
+  it('parent_id is nullable uuid', () => {
+    const col = columnByName(comments, 'parent_id');
+    expect(col.notNull).toBe(false);
+    expect(col.dataType).toBe('string');
+  });
+
+  it('has indexes on issue_id and parent_id', () => {
     const cfg = getTableConfig(comments);
-    expect(cfg.indexes.some((i) => i.config.name === 'comments_issue_id_idx')).toBe(true);
+    const names = cfg.indexes.map((i) => i.config.name);
+    expect(names).toContain('comments_issue_id_idx');
+    expect(names).toContain('comments_parent_id_idx');
   });
 });
 

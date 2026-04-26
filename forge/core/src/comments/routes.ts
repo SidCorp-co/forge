@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { count, desc, eq } from 'drizzle-orm';
+import { asc, count, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -9,6 +9,15 @@ import { paginationSchema, setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
+import { pgConstraintName, pgErrorCode } from './error-mapping.js';
+import { type CommentRow, buildCommentTree } from './tree.js';
+
+const commentCreateSchema = z
+  .object({
+    body: z.string().trim().min(1).max(10_000),
+    parentId: z.uuid().optional(),
+  })
+  .strict();
 
 const commentBodySchema = z
   .object({
@@ -61,29 +70,70 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
     zValidator('param', idParamSchema, (r) => {
       if (!r.success) throw badRequest(z.flattenError(r.error));
     }),
-    zValidator('json', commentBodySchema, (r) => {
+    zValidator('json', commentCreateSchema, (r) => {
       if (!r.success) throw badRequest(z.flattenError(r.error));
     }),
     async (c) => {
       const { id: issueId } = c.req.valid('param');
-      const { body } = c.req.valid('json');
+      const { body, parentId } = c.req.valid('json');
       const userId = c.get('userId');
 
       const issue = await loadIssue(issueId);
       const access = await loadProjectAccess(issue.projectId, userId);
       if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
 
-      const [inserted] = await db
-        .insert(comments)
-        .values({ issueId, authorId: userId, body })
-        .returning({
-          id: comments.id,
-          issueId: comments.issueId,
-          authorId: comments.authorId,
-          body: comments.body,
-          createdAt: comments.createdAt,
-          updatedAt: comments.updatedAt,
-        });
+      if (parentId) {
+        const [parent] = await db
+          .select({ id: comments.id, issueId: comments.issueId })
+          .from(comments)
+          .where(eq(comments.id, parentId))
+          .limit(1);
+        if (!parent) throw notFound('parent comment not found');
+        if (parent.issueId !== issueId) {
+          throw new HTTPException(400, {
+            message: 'parent comment belongs to a different issue',
+            cause: { code: 'PARENT_MISMATCH' },
+          });
+        }
+      }
+
+      let inserted: CommentRow | undefined;
+      try {
+        const rows = await db
+          .insert(comments)
+          .values({ issueId, authorId: userId, body, parentId: parentId ?? null })
+          .returning({
+            id: comments.id,
+            issueId: comments.issueId,
+            authorId: comments.authorId,
+            body: comments.body,
+            parentId: comments.parentId,
+            createdAt: comments.createdAt,
+            updatedAt: comments.updatedAt,
+          });
+        inserted = rows[0];
+      } catch (err) {
+        const pgCode = pgErrorCode(err);
+        // 23514: depth-trigger check_violation (parent chain too deep).
+        if (pgCode === '23514') {
+          throw new HTTPException(400, {
+            message: 'comment depth exceeds 3',
+            cause: { code: 'DEPTH_EXCEEDED' },
+          });
+        }
+        // 23503: an FK violated. The comments INSERT touches three FKs
+        // (parent_id, issue_id, author_id) — only remap the parent_id case
+        // to 404 PARENT_NOT_FOUND (the TOCTOU window between our SELECT and
+        // INSERT). issue_id / author_id violations from concurrent deletes
+        // bubble up unchanged so callers see the real failure.
+        if (pgCode === '23503' && parentId) {
+          const constraint = pgConstraintName(err);
+          if (constraint === 'comments_parent_id_fk') {
+            throw notFound('parent comment not found');
+          }
+        }
+        throw err;
+      }
       if (!inserted) throw new Error('comments: insert returned no row');
       await hooks.emit('commentCreated', {
         issueId,
@@ -91,6 +141,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         actor: { type: 'user', id: userId },
         commentId: inserted.id,
         body: inserted.body,
+        parentId: inserted.parentId,
       });
       return c.json(inserted, 201);
     },
@@ -101,46 +152,99 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
     zValidator('param', idParamSchema, (r) => {
       if (!r.success) throw badRequest(z.flattenError(r.error));
     }),
+    // Validate (and ignore) legacy ?limit/?offset params. The endpoint now
+    // returns a tree, but pre-existing flat-list clients still send them and
+    // a contract break would 500-loop them. The HARD_CAP below replaces the
+    // old `limit` semantics; pagination on a tree happens via /:id/replies.
     zValidator('query', paginationSchema, (r) => {
       if (!r.success) throw badRequest(z.flattenError(r.error));
     }),
     async (c) => {
       const { id: issueId } = c.req.valid('param');
-      const { limit, offset } = c.req.valid('query');
       const userId = c.get('userId');
 
       const issue = await loadIssue(issueId);
       const access = await loadProjectAccess(issue.projectId, userId);
       if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
 
-      const [{ n } = { n: 0 }] = await db
+      // Single fetch of every comment on the issue. Depth is bounded to 3 by
+      // the DB trigger; cap breadth defensively so a runaway issue can't OOM
+      // the server. Pagination on a tree is awkward — if the cap is hit the
+      // client should switch to lazy-loading via /api/comments/:id/replies.
+      const COMMENT_TREE_HARD_CAP = 1000;
+      const [{ n: total } = { n: 0 }] = await db
         .select({ n: count() })
         .from(comments)
         .where(eq(comments.issueId, issueId));
-
       const rows = await db
         .select({
           id: comments.id,
           issueId: comments.issueId,
           authorId: comments.authorId,
           body: comments.body,
+          parentId: comments.parentId,
           createdAt: comments.createdAt,
           updatedAt: comments.updatedAt,
         })
         .from(comments)
         .where(eq(comments.issueId, issueId))
-        .orderBy(desc(comments.createdAt))
-        .limit(limit)
-        .offset(offset);
+        .orderBy(asc(comments.createdAt))
+        .limit(COMMENT_TREE_HARD_CAP);
 
-      setTotalCount(c, Number(n));
-      return c.json(rows);
+      const tree = buildCommentTree(rows);
+      // Report the true total so paginating clients see the real comment
+      // count even when the response payload was truncated to the cap.
+      setTotalCount(c, Number(total));
+      return c.json(tree);
     },
   );
 }
 
 export const commentRoutes = new Hono<{ Variables: AuthVars }>();
 commentRoutes.use('*', requireAuth(), assertEmailVerified());
+
+commentRoutes.get(
+  '/:id/replies',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('query', paginationSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { limit, offset } = c.req.valid('query');
+    const userId = c.get('userId');
+
+    const parent = await loadComment(id);
+    const access = await loadProjectAccess(parent.projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+
+    const [{ n } = { n: 0 }] = await db
+      .select({ n: count() })
+      .from(comments)
+      .where(eq(comments.parentId, id));
+
+    const rows = await db
+      .select({
+        id: comments.id,
+        issueId: comments.issueId,
+        authorId: comments.authorId,
+        body: comments.body,
+        parentId: comments.parentId,
+        createdAt: comments.createdAt,
+        updatedAt: comments.updatedAt,
+      })
+      .from(comments)
+      .where(eq(comments.parentId, id))
+      .orderBy(asc(comments.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    setTotalCount(c, Number(n));
+    return c.json(rows);
+  },
+);
 
 commentRoutes.patch(
   '/:id',
