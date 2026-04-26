@@ -45,7 +45,6 @@ import { registerRunnerStaleDetector } from './runners/stale-detector.js';
 import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
 import { knowledgeIngestRoutes } from './knowledge/ingest-routes.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
-import { isEnabled } from './lib/feature-flags.js';
 import { logger } from './logger.js';
 import { mcpHandler } from './mcp/handler.js';
 import { meAttentionRoutes } from './me/attention-routes.js';

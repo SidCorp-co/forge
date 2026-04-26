@@ -452,40 +452,58 @@ runnerCallbackRoutes.post(
     if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
     const { events } = parsed.data;
 
-    let persisted = 0;
-    // Track per-job next-seq across this batch to avoid one query per event.
-    const nextSeqByJob = new Map<string, number>();
-    for (const ev of events) {
-      const norm = normalizeAntigravityEvent({
-        type: ev.type,
-        data: ev.data ?? {},
-        ...(ev.timestamp !== undefined ? { timestamp: ev.timestamp } : {}),
-      });
-      if (norm.length === 0) continue;
-      const targetJobId = ev.jobId;
-      if (!targetJobId) continue;
-      const [job] = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.id, targetJobId)).limit(1);
-      if (!job) continue;
-      let nextSeq = nextSeqByJob.get(targetJobId);
-      if (nextSeq === undefined) {
-        const seqRows = await db.execute<{ max_seq: number | null }>(
-          sql`SELECT COALESCE(MAX(seq), 0) AS max_seq FROM job_events WHERE job_id = ${targetJobId}`,
-        );
-        const max = seqRows[0]?.max_seq ?? 0;
-        nextSeq = (typeof max === 'number' ? max : Number(max)) + 1;
-      }
-      for (const n of norm) {
-        await db.insert(jobEvents).values({
-          jobId: targetJobId,
-          kind: n.kind,
-          data: n.data,
-          seq: nextSeq,
+    // Wrap insert in a transaction with FOR UPDATE on the per-job seq frontier
+    // to prevent concurrent callbacks for the same job from racing on
+    // MAX(seq)+1. Also scope job lookup by runner's projectId so a compromised
+    // antigravity callback (with valid HMAC) for runner R can't write events
+    // for jobs in other projects.
+    const persisted = await db.transaction(async (tx) => {
+      let count = 0;
+      const nextSeqByJob = new Map<string, number>();
+      const verifiedJobs = new Set<string>();
+      for (const ev of events) {
+        const norm = normalizeAntigravityEvent({
+          type: ev.type,
+          data: ev.data ?? {},
+          ...(ev.timestamp !== undefined ? { timestamp: ev.timestamp } : {}),
         });
-        nextSeq++;
-        persisted++;
+        if (norm.length === 0) continue;
+        const targetJobId = ev.jobId;
+        if (!targetJobId) continue;
+        if (!verifiedJobs.has(targetJobId)) {
+          const [job] = await tx
+            .select({ id: jobs.id })
+            .from(jobs)
+            .where(and(eq(jobs.id, targetJobId), eq(jobs.projectId, existing.projectId)))
+            .limit(1);
+          if (!job) continue;
+          verifiedJobs.add(targetJobId);
+        }
+        let nextSeq = nextSeqByJob.get(targetJobId);
+        if (nextSeq === undefined) {
+          // FOR UPDATE on the existing job_events rows for this job pins the
+          // seq frontier for the duration of the tx so a concurrent callback
+          // serialises behind us instead of computing the same MAX.
+          const seqRows = await tx.execute<{ max_seq: number | null }>(
+            sql`SELECT COALESCE(MAX(seq), 0) AS max_seq FROM job_events WHERE job_id = ${targetJobId} FOR UPDATE`,
+          );
+          const max = seqRows[0]?.max_seq ?? 0;
+          nextSeq = (typeof max === 'number' ? max : Number(max)) + 1;
+        }
+        for (const n of norm) {
+          await tx.insert(jobEvents).values({
+            jobId: targetJobId,
+            kind: n.kind,
+            data: n.data,
+            seq: nextSeq,
+          });
+          nextSeq++;
+          count++;
+        }
+        nextSeqByJob.set(targetJobId, nextSeq);
       }
-      nextSeqByJob.set(targetJobId, nextSeq);
-    }
+      return count;
+    });
 
     logger.info({ runnerId: id, events: events.length, persisted }, 'runner callback ingested');
     return c.json({ ok: true, persisted }, 202);

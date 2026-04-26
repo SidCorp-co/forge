@@ -148,6 +148,7 @@ async function dispatchViaRunner(job: typeof jobs.$inferSelect): Promise<'dispat
     job: {
       id: job.id,
       projectId: job.projectId,
+      issueId: job.issueId,
       type: job.type,
       payload: job.payload,
       dispatchedAt,

@@ -42,6 +42,7 @@ export interface DispatchInput {
   job: {
     id: string;
     projectId: string;
+    issueId: string | null;
     type: string;
     payload: unknown;
     dispatchedAt: Date;

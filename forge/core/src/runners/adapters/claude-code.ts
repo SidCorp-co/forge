@@ -37,6 +37,7 @@ export const claudeCodeAdapter: RunnerAdapter = {
       data: {
         jobId: job.id,
         projectId: job.projectId,
+        issueId: job.issueId,
         type: job.type,
         payload: job.payload,
         runnerId: runner.id,
