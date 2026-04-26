@@ -1,5 +1,5 @@
 import { apiClient } from '@/lib/api/client';
-import type { Skill, SkillSyncStatus, BulkPushResult } from './types';
+import type { Skill, SkillSyncStatus, BulkPushResult, EffectiveSkill, SkillOverride } from './types';
 
 export const skillApi = {
   getAll: (projectId?: string) => {
@@ -47,4 +47,25 @@ export const skillApi = {
       method: 'POST',
       body: JSON.stringify({ targets, projectId, skillNames }),
     }).then((res) => ({ data: res })),
+
+  // EPIC 6 (ISS-278/290) — per-project skill override CRUD.
+  getEffective: (projectId: string) =>
+    apiClient<EffectiveSkill[]>(
+      `/projects/${encodeURIComponent(projectId)}/skills/effective`,
+    ).then((data) => ({ data })),
+
+  upsertOverride: (projectId: string, skillId: string, skillMdOverride: string) =>
+    apiClient<SkillOverride>(
+      `/projects/${encodeURIComponent(projectId)}/skills/${encodeURIComponent(skillId)}/override`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ skillMdOverride }),
+      },
+    ).then((data) => ({ data })),
+
+  deleteOverride: (projectId: string, skillId: string) =>
+    apiClient<null>(
+      `/projects/${encodeURIComponent(projectId)}/skills/${encodeURIComponent(skillId)}/override`,
+      { method: 'DELETE' },
+    ),
 };

@@ -57,3 +57,24 @@ export interface BulkPushResult {
   jobId: string | null;
   error?: string;
 }
+
+// EPIC 6 (ISS-278/290) — per-project skill override response shape from
+// /api/projects/:projectId/skills/effective. The list merges global skills
+// with their project-specific overrides; `isOverridden` flags rows where the
+// project's `skill_md_override` replaces the global `skill_md`.
+export interface EffectiveSkill extends Skill {
+  isOverridden: boolean;
+  globalSkillId?: string;
+  globalContentHash?: string | null;
+  globalSkillMd?: string | null;
+}
+
+export interface SkillOverride {
+  id: string;
+  projectId: string;
+  skillId: string;
+  skillMdOverride: string;
+  contentHash: string;
+  createdAt: string;
+  updatedAt: string;
+}

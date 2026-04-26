@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Save, X } from 'lucide-react';
+import { Save, X, FileDiff } from 'lucide-react';
 import type { Skill } from '../types';
+import { SkillDiffView } from './skill-diff-view';
 
 interface SkillEditorProps {
   skill?: Skill | null;
@@ -16,17 +17,21 @@ interface SkillEditorProps {
   }) => void;
   onCancel: () => void;
   saving?: boolean;
+  /** When the skill is a project override of a global, pass the global SKILL.md to enable diff. */
+  globalSkillMd?: string | null;
 }
 
-export function SkillEditor({ skill, onSave, onCancel, saving }: SkillEditorProps) {
+export function SkillEditor({ skill, onSave, onCancel, saving, globalSkillMd }: SkillEditorProps) {
   const [name, setName] = useState(skill?.name || '');
   const [description, setDescription] = useState(skill?.description || '');
   const [skillMd, setSkillMd] = useState(skill?.skillMd || '');
   const [target, setTarget] = useState<'dev' | 'cloud' | 'all'>(skill?.target || 'dev');
   const [isGlobal, setIsGlobal] = useState(skill?.isGlobal || false);
+  const [showDiff, setShowDiff] = useState(false);
 
   const isEdit = !!skill;
   const canSave = name.trim() && description.trim() && skillMd.trim();
+  const canDiff = !!globalSkillMd && (skillMd ?? '') !== globalSkillMd;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -81,14 +86,30 @@ export function SkillEditor({ skill, onSave, onCancel, saving }: SkillEditorProp
       </div>
 
       <div>
-        <label className="mb-1 block text-xs font-medium text-on-surface-variant">SKILL.md Content</label>
-        <textarea
-          value={skillMd}
-          onChange={(e) => setSkillMd(e.target.value)}
-          rows={16}
-          placeholder="# My Skill\n\nInstructions for the agent..."
-          className="w-full rounded border border-outline-variant/30 px-2.5 py-1.5 font-mono text-sm"
-        />
+        <div className="mb-1 flex items-center justify-between">
+          <label className="block text-xs font-medium text-on-surface-variant">SKILL.md Content</label>
+          {canDiff && (
+            <button
+              type="button"
+              onClick={() => setShowDiff((v) => !v)}
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-info hover:bg-info-surface/20"
+            >
+              <FileDiff className="h-3 w-3" />
+              {showDiff ? 'Hide diff' : 'Diff vs global'}
+            </button>
+          )}
+        </div>
+        {showDiff && globalSkillMd ? (
+          <SkillDiffView base={globalSkillMd} current={skillMd} />
+        ) : (
+          <textarea
+            value={skillMd}
+            onChange={(e) => setSkillMd(e.target.value)}
+            rows={16}
+            placeholder="# My Skill\n\nInstructions for the agent..."
+            className="w-full rounded border border-outline-variant/30 px-2.5 py-1.5 font-mono text-sm"
+          />
+        )}
       </div>
 
       {(target === 'cloud' || target === 'all') && (
