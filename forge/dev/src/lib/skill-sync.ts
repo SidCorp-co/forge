@@ -1,14 +1,134 @@
-// LEGACY — Strapi-backed skill sync. The API helpers it relied on
-// (`getRemoteSkills`, `getRemoteSkill`) were removed during the
-// Strapi → forge/core migration. Until skill sync is re-implemented
-// against the core endpoints (`/api/skills` + `/api/projects/:id/skills/sync`),
-// this module no-ops so that callers (e.g. `use-web-socket.ts`) can
-// keep importing it.
-//
-// TODO: rewrite against forge/core skill endpoints once schema settles.
-
+import { invoke } from "@/hooks/use-tauri-ipc";
+import { request, resolveProjectId } from "./api/client";
 import type { AppConfig } from "./types";
 
-export async function syncAllProjectSkills(_config: AppConfig): Promise<boolean> {
-  return false;
+/**
+ * EPIC 6 (ISS-278/290/292) — pull effective skills from forge/core's
+ * `/api/projects/:projectId/skills/effective` and write them through the
+ * existing Tauri install commands. The endpoint returns the merged list of
+ * global skills + any per-project overrides; consumers see a single coherent
+ * view that reflects whatever the operator configured in the web UI.
+ *
+ * Conflict-vs-local-edits resolution is intentionally deferred to v1.x —
+ * `install_skill_from_strapi` already short-circuits when contentHash matches,
+ * which covers the common case.
+ */
+
+interface EffectiveSkill {
+  id: string;
+  name: string;
+  description?: string | null;
+  scope: "global" | "project";
+  target?: "dev" | "cloud" | "all" | null;
+  version?: number | string | null;
+  skillMd?: string | null;
+  localGuide?: string | null;
+  contentHash?: string | null;
+  files?: Array<{ path: string; content: string; encoding: string }>;
+  isOverridden?: boolean;
+  globalContentHash?: string | null;
+}
+
+async function fetchEffectiveSkills(projectId: string): Promise<EffectiveSkill[]> {
+  return request<EffectiveSkill[]>(`/projects/${projectId}/skills/effective`);
+}
+
+async function getLocalHashes(): Promise<Record<string, string>> {
+  try {
+    return (await invoke<Record<string, string>>("get_skill_hashes")) ?? {};
+  } catch {
+    return {};
+  }
+}
+
+async function installSkill(skill: EffectiveSkill): Promise<void> {
+  const target = skill.target || "dev";
+  const versionStr = skill.version != null ? String(skill.version) : "1.0.0";
+
+  if (target === "cloud" || target === "all") {
+    const guideContent =
+      skill.localGuide ||
+      `# ${skill.name}\n${skill.description || ""}\n\nTo load the current version, call: forge_skills get ${skill.name}`;
+    await invoke("install_skill_guide", {
+      data: {
+        name: skill.name,
+        description: skill.description || "",
+        version: versionStr,
+        localGuide: guideContent,
+        contentHash: skill.contentHash || null,
+      },
+    });
+  } else {
+    await invoke("install_skill_from_strapi", {
+      data: {
+        name: skill.name,
+        description: skill.description || "",
+        version: versionStr,
+        skillMd: skill.skillMd || "",
+        files: skill.files || [],
+        contentHash: skill.contentHash || null,
+      },
+    });
+  }
+}
+
+/**
+ * Sync skills for a single project — called both at app start (via
+ * syncAllProjectSkills) and on the `skill.updated` WS event. Returns true if
+ * any skill was installed/updated locally.
+ */
+export async function syncProjectSkills(slug: string, _repoPath: string): Promise<boolean> {
+  let projectId: string;
+  try {
+    projectId = await resolveProjectId(slug);
+  } catch (err) {
+    console.warn(`[skill-sync] cannot resolve project id for slug=${slug}:`, err);
+    return false;
+  }
+
+  let effective: EffectiveSkill[];
+  try {
+    effective = await fetchEffectiveSkills(projectId);
+  } catch (err) {
+    console.warn(`[skill-sync] /effective failed for project=${slug}:`, err);
+    return false;
+  }
+
+  const localHashes = await getLocalHashes();
+  let installed = 0;
+
+  for (const skill of effective) {
+    if (skill.contentHash && localHashes[skill.name] === skill.contentHash) continue;
+    try {
+      await installSkill(skill);
+      installed++;
+    } catch (err) {
+      console.error(`[skill-sync] install failed (${skill.name}):`, err);
+    }
+  }
+
+  if (installed > 0) {
+    try {
+      await invoke("refresh_enabled_skills");
+    } catch (err) {
+      console.error("[skill-sync] refresh_enabled_skills failed:", err);
+    }
+  }
+
+  return installed > 0;
+}
+
+/** Sync skills for every project in config — call on app start. */
+export async function syncAllProjectSkills(config: AppConfig): Promise<boolean> {
+  let any = false;
+  for (const [slug, project] of Object.entries(config.projects ?? {})) {
+    if (!project?.repoPath) continue;
+    try {
+      const synced = await syncProjectSkills(slug, project.repoPath);
+      if (synced) any = true;
+    } catch (err) {
+      console.error(`[skill-sync] project=${slug} failed:`, err);
+    }
+  }
+  return any;
 }

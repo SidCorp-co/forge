@@ -6,7 +6,7 @@ import { registerDesktop, unregisterDesktop, registerDevice, relayAgentEvent, re
 import { buildIssuePrompt, buildMultiIssuePrompt } from "@/lib/prompt-builders";
 import { buildAgentPrompt, buildAgentReindexPrompt, type AgentConfig } from "@/lib/agent-prompt";
 import { SessionTracker } from "@/lib/session-tracker";
-import { syncAllProjectSkills } from "@/lib/skill-sync";
+import { syncAllProjectSkills, syncProjectSkills } from "@/lib/skill-sync";
 import { useAgentCommandHandler } from "./use-agent-commands";
 import { useJobAssignedHandler } from "./use-job-handler";
 import { mapStreamChunkToJobEvents } from "@/lib/job-event-mapper";
@@ -181,6 +181,32 @@ export function useWebSocket() {
 
         if (event === "skills:push") {
           handleSkillsPush(msg.data);
+          return;
+        }
+
+        // EPIC 6 (ISS-278/290/292) — single-skill update broadcast from
+        // forge/core when a project override is upserted/deleted via the web
+        // UI. We don't get the new content in the payload (per project room
+        // privacy) — re-pull /effective for the affected project.
+        if (event === "skill.updated") {
+          const projectId = msg.data?.projectId;
+          if (!projectId) return;
+          (async () => {
+            try {
+              const currentConfig = await invoke<any>("get_config");
+              const projects = currentConfig?.projects ?? {};
+              for (const [slug, p] of Object.entries<any>(projects)) {
+                if (!p?.repoPath) continue;
+                // syncProjectSkills resolves slug→id internally; cheaper than
+                // tracking id→slug separately here. Each project's effective
+                // list is bounded (~10 skills) so the extra fetch is fine.
+                try {
+                  await syncProjectSkills(slug, p.repoPath);
+                } catch { /* per-project skip */ }
+              }
+              queryClient.invalidateQueries({ queryKey: ["skill-sync-log"] });
+            } catch { /* ignore */ }
+          })();
           return;
         }
 
