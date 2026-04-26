@@ -42,6 +42,11 @@ vi.mock('../ws/server.js', () => ({
   roomManager: { publish: publishSpy },
 }));
 
+const safeRecordActivitySpy = vi.fn(async () => {});
+vi.mock('../pipeline/activity.js', () => ({
+  safeRecordActivity: safeRecordActivitySpy,
+}));
+
 const { agentSessionRoutes } = await import('./routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
@@ -153,12 +158,89 @@ describe('PATCH /api/agent-sessions/:id status change', () => {
 });
 
 describe('POST /api/agent-sessions/:id/pipeline-control', () => {
-  it('merges + broadcasts control', async () => {
+  it('merges + broadcasts control when caller is owner', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([
-      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'running', pipelineControl: { paused: false } },
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'running', pipelineControl: { paused: false }, metadata: null },
     ]);
-    projectAccessAsMember();
+    projectAccessAsOwner();
+    updateReturning.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'running' },
+    ]);
+    const res = await buildApp().request(
+      `/api/agent-sessions/${SESSION_ID}/pipeline-control`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ paused: true, reason: 'manual' }),
+      },
+    );
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as {
+      paused: boolean;
+      pausedBy: string | null;
+      pausedAt: string | null;
+      reason: string | null;
+    };
+    expect(json.paused).toBe(true);
+    expect(json.pausedBy).toBe(USER_ID);
+    expect(json.pausedAt).not.toBeNull();
+    expect(json.reason).toBe('manual');
+    const events = publishSpy.mock.calls.map((c) => (c[1] as { event: string }).event);
+    expect(events).toContain('agent-session.pipeline-control');
+  });
+
+  it('records activity when session is bound to an issue', async () => {
+    authVerified();
+    const ISSUE_ID = '55555555-5555-4555-8555-555555555555';
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'running',
+        pipelineControl: { paused: false },
+        metadata: { issueId: ISSUE_ID },
+      },
+    ]);
+    projectAccessAsOwner();
+    updateReturning.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'running' },
+    ]);
+    const res = await buildApp().request(
+      `/api/agent-sessions/${SESSION_ID}/pipeline-control`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ paused: true, reason: 'manual' }),
+      },
+    );
+    expect(res.status).toBe(200);
+    expect(safeRecordActivitySpy).toHaveBeenCalledTimes(1);
+    const arg = safeRecordActivitySpy.mock.calls[0]?.[0] as {
+      issueId: string;
+      action: string;
+      payload?: { paused: boolean; reason: string | null };
+    };
+    expect(arg.issueId).toBe(ISSUE_ID);
+    expect(arg.action).toBe('agent-session.pipelineControl.changed');
+    expect(arg.payload?.paused).toBe(true);
+    expect(arg.payload?.reason).toBe('manual');
+  });
+
+  it('skips activity log when session has no issueId metadata', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'running',
+        pipelineControl: null,
+        metadata: null,
+      },
+    ]);
+    projectAccessAsOwner();
     updateReturning.mockResolvedValueOnce([
       { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'running' },
     ]);
@@ -171,8 +253,63 @@ describe('POST /api/agent-sessions/:id/pipeline-control', () => {
       },
     );
     expect(res.status).toBe(200);
-    const json = (await res.json()) as { paused: boolean };
-    expect(json.paused).toBe(true);
+    expect(safeRecordActivitySpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects plain members with 403', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, status: 'running', pipelineControl: null, metadata: null },
+    ]);
+    projectAccessAsMember();
+    const res = await buildApp().request(
+      `/api/agent-sessions/${SESSION_ID}/pipeline-control`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ paused: true }),
+      },
+    );
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('GET /api/agent-sessions/:id/pipeline-health', () => {
+  it('returns the stored health when present', async () => {
+    authVerified();
+    const stored = {
+      retryCount: 3,
+      recoveryStats: { succeeded: 2, failed: 1 },
+      lastError: { message: 'boom', ts: new Date().toISOString(), jobId: null },
+      updatedAt: new Date().toISOString(),
+    };
+    selectLimit.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, pipelineHealth: stored },
+    ]);
+    projectAccessAsMember();
+    const res = await buildApp().request(
+      `/api/agent-sessions/${SESSION_ID}/pipeline-health`,
+      { headers: { authorization: `Bearer ${await token()}` } },
+    );
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { retryCount: number };
+    expect(json.retryCount).toBe(3);
+  });
+
+  it('returns the default shape when health is null', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      { id: SESSION_ID, projectId: PROJECT_ID, pipelineHealth: null },
+    ]);
+    projectAccessAsMember();
+    const res = await buildApp().request(
+      `/api/agent-sessions/${SESSION_ID}/pipeline-health`,
+      { headers: { authorization: `Bearer ${await token()}` } },
+    );
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { retryCount: number; lastError: unknown };
+    expect(json.retryCount).toBe(0);
+    expect(json.lastError).toBeNull();
   });
 });
 
