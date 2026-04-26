@@ -48,7 +48,11 @@ export async function createIssue(
     ? projectSlugOrId
     : await resolveProjectId(projectSlugOrId);
   // forge/core's createSchema is .strict() — only forward fields it accepts.
-  // attachments are dropped here until core grows a media surface.
+  if (data.attachments && data.attachments.length > 0) {
+    console.warn(
+      `[issues] createIssue: dropping ${data.attachments.length} attachment(s) — forge/core has no media surface yet (TODO(iss-275)).`,
+    );
+  }
   const body: Record<string, unknown> = {
     title: data.title,
     description: data.description,
@@ -64,11 +68,18 @@ export async function createIssue(
   return adaptIssue(row);
 }
 
-// forge/core's PATCH /issues/:id is .strict() and refuses `status` — status
-// changes go through the dedicated transition endpoint. Forward any non-status
-// fields via PATCH and dispatch status separately so callers like the board
-// drag-handler don't have to know which endpoint to hit.
-const ISSUE_TRANSITION_FIELDS = new Set(["status"]);
+// forge/core's PATCH /issues/:id is .strict() — only the fields below survive.
+// Status changes go through the dedicated transition endpoint. updateIssue
+// fans the patch out to whichever endpoint owns each field so callers (board
+// drag-handler, issue header, attachments panel) don't have to know.
+const ISSUE_PATCH_FIELDS = new Set([
+  "title",
+  "description",
+  "priority",
+  "category",
+  "assigneeId",
+  "labels",
+]);
 
 export async function updateIssue(
   documentId: string,
@@ -76,16 +87,22 @@ export async function updateIssue(
 ): Promise<Issue> {
   const { status, ...rest } = data as Partial<Issue> & { status?: string };
 
-  let latest: Issue | null = null;
-  const patchKeys = Object.keys(rest).filter((k) => !ISSUE_TRANSITION_FIELDS.has(k));
-  if (patchKeys.length > 0) {
-    const row = await request<Record<string, unknown> & { id: string }>(`/issues/${documentId}`, {
-      method: "PATCH",
-      body: JSON.stringify(rest),
-    });
-    latest = adaptIssue(row);
+  // Filter to fields core accepts; warn so silent drops are observable in dev.
+  const patchBody: Record<string, unknown> = {};
+  const dropped: string[] = [];
+  for (const [key, value] of Object.entries(rest)) {
+    if (ISSUE_PATCH_FIELDS.has(key)) patchBody[key] = value;
+    else dropped.push(key);
+  }
+  if (dropped.length > 0) {
+    console.warn(
+      `[issues] updateIssue: dropping unsupported field(s) ${dropped.join(", ")} — forge/core's PATCH /issues/:id only accepts ${[...ISSUE_PATCH_FIELDS].join(", ")} (TODO(iss-275)).`,
+    );
   }
 
+  // Transition first so a partial failure doesn't leave a PATCH applied without
+  // the matching status change. PATCH runs only after a successful transition.
+  let latest: Issue | null = null;
   if (status) {
     const row = await request<Record<string, unknown> & { id: string }>(
       `/issues/${documentId}/transition`,
@@ -97,8 +114,16 @@ export async function updateIssue(
     latest = adaptIssue(row);
   }
 
+  if (Object.keys(patchBody).length > 0) {
+    const row = await request<Record<string, unknown> & { id: string }>(`/issues/${documentId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patchBody),
+    });
+    latest = adaptIssue(row);
+  }
+
   if (latest) return latest;
-  // No-op: caller passed an empty patch; refetch to honor the Promise<Issue> contract.
+  // No-op: caller passed an empty/all-dropped patch; refetch so we honor Promise<Issue>.
   return getIssue(documentId);
 }
 
