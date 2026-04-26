@@ -239,6 +239,13 @@
       "when": 1777450000000,
       "tag": "0033_project_skill_overrides",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1777460000000,
+      "tag": "0034_projects_api_key",
+      "breakpoints": true
     }
   ]
 }

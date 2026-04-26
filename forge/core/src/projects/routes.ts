@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { zValidator } from '@hono/zod-validator';
 import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -7,6 +8,17 @@ import { db } from '../db/client.js';
 import { labels, projectMembers, projects } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+
+function generateApiKey(): string {
+  return `fk_${randomBytes(24).toString('hex')}`;
+}
+
+function redactApiKey(key: string | null): string | null {
+  if (!key || key.length < 8) return null;
+  // Preserve `fk_` prefix + last 4 chars so owners can recognise their key
+  // without leaking the secret in list responses.
+  return `${key.slice(0, 3)}…${key.slice(-4)}`;
+}
 
 export const createProjectSchema = z.object({
   slug: z
@@ -82,7 +94,7 @@ projectRoutes.post(
       const created = await db.transaction(async (tx) => {
         const inserted = await tx
           .insert(projects)
-          .values({ slug, name, ownerId: userId })
+          .values({ slug, name, ownerId: userId, apiKey: generateApiKey() })
           .returning({
             id: projects.id,
             slug: projects.slug,
@@ -126,13 +138,14 @@ projectRoutes.get('/', async (c) => {
       name: projects.name,
       ownerId: projects.ownerId,
       role: projectMembers.role,
+      apiKey: projects.apiKey,
       createdAt: projects.createdAt,
     })
     .from(projectMembers)
     .innerJoin(projects, eq(projects.id, projectMembers.projectId))
     .where(eq(projectMembers.userId, userId));
 
-  return c.json(rows);
+  return c.json(rows.map((r) => ({ ...r, apiKey: redactApiKey(r.apiKey) })));
 });
 
 projectRoutes.get(
@@ -155,6 +168,7 @@ projectRoutes.get(
         ownerId: projects.ownerId,
         agentConfig: projects.agentConfig,
         webhookSecret: projects.webhookSecret,
+        apiKey: projects.apiKey,
         createdAt: projects.createdAt,
       })
       .from(projects)
@@ -172,7 +186,38 @@ projectRoutes.get(
       .from(labels)
       .where(eq(labels.projectId, id));
 
-    return c.json({ ...project, members, labels: labelRows });
+    return c.json({
+      ...project,
+      apiKey: redactApiKey(project.apiKey),
+      members,
+      labels: labelRows,
+    });
+  },
+);
+
+projectRoutes.post(
+  '/:id/api-key/rotate',
+  zValidator('param', idParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const { project, role } = await loadMembership(id, userId);
+    if (project.ownerId !== userId && role !== 'owner' && role !== 'admin') {
+      throw forbidden('owner or admin required');
+    }
+
+    const apiKey = generateApiKey();
+    const [updated] = await db
+      .update(projects)
+      .set({ apiKey })
+      .where(eq(projects.id, id))
+      .returning({ id: projects.id, apiKey: projects.apiKey });
+    if (!updated) throw notFound();
+
+    return c.json({ id: updated.id, apiKey: updated.apiKey });
   },
 );
 

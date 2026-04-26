@@ -137,10 +137,19 @@ describe('db/schema — email_verification_tokens', () => {
 });
 
 describe('db/schema — projects', () => {
-  it('has the seven documented columns', () => {
+  it('has the eight documented columns', () => {
     const names = getTableConfig(projects).columns.map((c) => c.name);
     expect(names.sort()).toEqual(
-      ['agent_config', 'created_at', 'id', 'name', 'owner_id', 'slug', 'webhook_secret'].sort(),
+      [
+        'agent_config',
+        'api_key',
+        'created_at',
+        'id',
+        'name',
+        'owner_id',
+        'slug',
+        'webhook_secret',
+      ].sort(),
     );
   });
 

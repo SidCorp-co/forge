@@ -19,6 +19,7 @@ import { chatLogRoutes } from './chat-logs/routes.js';
 import { chatSessionRoutes } from './chat-sessions/routes.js';
 import { bootstrapChatProviders } from './chat/providers/bootstrap.js';
 import { chatRoutes } from './chat/routes.js';
+import { widgetChatRoutes } from './chat/widget-routes.js';
 import { commentRoutes } from './comments/routes.js';
 import { commentUploadRoutes } from './comments/upload.js';
 import { env } from './config/env.js';
@@ -74,6 +75,7 @@ import { skillRegisterRoutes, skillSyncRoutes } from './skills/routes.js';
 import { taskIssueRoutes, taskRoutes } from './tasks/routes.js';
 import { usageRecordRoutes } from './usage-records/routes.js';
 import { webhookInboundRoutes } from './webhooks/inbound-routes.js';
+import { widgetBundleRoutes } from './widget/bundle-routes.js';
 import { registerOutboundDeliveryWorker } from './webhooks/outbound.js';
 import { registerWebhookSubscribers } from './webhooks/subscribers.js';
 import { registerWsBroadcastSubscribers } from './ws/broadcast-subscribers.js';
@@ -245,7 +247,14 @@ app.route('/api/runners', runnerCallbackRoutes);
 // so a default `main` build behaves as if the route doesn't exist.
 if (isEnabled('chatProvider')) {
   app.route('/api/chat', chatRoutes);
+  app.route('/api/widget/chat', widgetChatRoutes);
 }
+
+// Widget bundle (ISS-295 PR-C) — public, project-scoped delivery of the
+// `forge/web` widget IIFE. Mounts unconditionally so embed snippets keep
+// working even when the chat flag is off (the widget itself can decide
+// what to render in that case).
+app.route('/widget', widgetBundleRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 

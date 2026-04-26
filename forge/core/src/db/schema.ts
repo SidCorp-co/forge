@@ -98,10 +98,14 @@ export const projects = pgTable(
       .references(() => users.id, { onDelete: 'restrict' }),
     agentConfig: jsonb('agent_config'),
     webhookSecret: text('webhook_secret'),
+    apiKey: text('api_key'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     ownerIdIdx: index('projects_owner_id_idx').on(t.ownerId),
+    apiKeyUq: uniqueIndex('projects_api_key_uq')
+      .on(t.apiKey)
+      .where(sql`api_key IS NOT NULL`),
   }),
 );
 
