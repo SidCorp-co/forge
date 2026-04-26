@@ -72,3 +72,37 @@ export function useBulkPushSkills() {
     },
   });
 }
+
+// EPIC 6 (ISS-278/290) — effective skills + per-project override mutations.
+export function useEffectiveSkills(projectId?: string) {
+  return useQuery({
+    queryKey: ['skills-effective', projectId],
+    queryFn: () => skillApi.getEffective(projectId!),
+    enabled: !!projectId,
+  });
+}
+
+export function useUpsertSkillOverride() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, skillId, skillMdOverride }: {
+      projectId: string;
+      skillId: string;
+      skillMdOverride: string;
+    }) => skillApi.upsertOverride(projectId, skillId, skillMdOverride),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['skills-effective', vars.projectId] });
+    },
+  });
+}
+
+export function useDeleteSkillOverride() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, skillId }: { projectId: string; skillId: string }) =>
+      skillApi.deleteOverride(projectId, skillId),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['skills-effective', vars.projectId] });
+    },
+  });
+}

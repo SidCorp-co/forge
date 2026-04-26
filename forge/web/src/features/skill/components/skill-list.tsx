@@ -1,7 +1,7 @@
 'use client';
 
 import { ArrowDown, ArrowUp, ArrowUpDown, Code2, Globe, Monitor, Laptop, Search, Trash2 } from 'lucide-react';
-import type { Skill } from '../types';
+import type { Skill, EffectiveSkill } from '../types';
 
 const TARGET_CONFIG: Record<string, { label: string; icon: typeof Globe; className: string }> = {
   dev: { label: 'Dev', icon: Monitor, className: 'bg-surface-container-high text-on-surface-variant' },
@@ -13,7 +13,7 @@ export type SortField = 'name' | 'version';
 export type SortDirection = 'asc' | 'desc';
 
 interface SkillListProps {
-  skills: Skill[];
+  skills: Skill[] | EffectiveSkill[];
   onSelect: (skill: Skill) => void;
   onDelete: (skill: Skill) => void;
   selectedId?: string;
@@ -22,6 +22,10 @@ interface SkillListProps {
   onSort: (field: SortField) => void;
   filter: string;
   onFilterChange: (value: string) => void;
+}
+
+function isOverridden(s: Skill | EffectiveSkill): boolean {
+  return (s as EffectiveSkill).isOverridden === true;
 }
 
 function SortIcon({ field, activeField, direction }: { field: SortField; activeField: SortField; direction: SortDirection }) {
@@ -119,11 +123,18 @@ export function SkillList({ skills, onSelect, onDelete, selectedId, sortField, s
                       </span>
                     </td>
                     <td className="px-4 py-2.5">
-                      {skill.isGlobal && (
+                      {isOverridden(skill) ? (
+                        <span
+                          title="Project-specific override active for this skill"
+                          className="rounded bg-info-surface/30 px-1.5 py-0.5 text-[10px] font-medium text-info"
+                        >
+                          Override
+                        </span>
+                      ) : skill.isGlobal ? (
                         <span className="rounded bg-warning-dim/20 px-1.5 py-0.5 text-[10px] font-medium text-warning">
                           Global
                         </span>
-                      )}
+                      ) : null}
                     </td>
                     <td className="px-4 py-2.5">
                       <button
