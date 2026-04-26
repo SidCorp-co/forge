@@ -1047,3 +1047,77 @@ export const agentSessionsRelations = relations(agentSessions, ({ one }) => ({
   user: one(users, { fields: [agentSessions.userId], references: [users.id] }),
   device: one(devices, { fields: [agentSessions.deviceId], references: [devices.id] }),
 }));
+
+// v1 EPIC 5 (ISS-274) — per-project chat/runtime config. One row per project,
+// upserted via PUT /api/app-config/:projectId. `chatProviderId` is free-form
+// text until EPIC 1 (ISS-270) ships the chat-provider registry that validates
+// it; consumers must fall back to env defaults when the provider is unknown.
+export const appConfig = pgTable('app_config', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id')
+    .notNull()
+    .unique()
+    .references(() => projects.id, { onDelete: 'cascade' }),
+  chatProviderId: text('chat_provider_id'),
+  chatModel: text('chat_model'),
+  retrievalTopK: integer('retrieval_top_k').notNull().default(10),
+  retrievalMinScore: real('retrieval_min_score').notNull().default(0),
+  enabledChannels: jsonb('enabled_channels').notNull().default(sql`'[]'::jsonb`),
+  systemPromptOverride: text('system_prompt_override'),
+  lastBackfillAt: timestamp('last_backfill_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const appConfigRelations = relations(appConfig, ({ one }) => ({
+  project: one(projects, { fields: [appConfig.projectId], references: [projects.id] }),
+}));
+
+// v1 EPIC 5 (ISS-274) — content-addressed domain template manifests. Mirrors
+// the skills seed pattern: builtin manifests get re-seeded when their
+// `contentHash` changes; user-applied snapshots are not retroactively bumped.
+export const domainTemplates = pgTable('domain_templates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  key: text('key').notNull().unique(),
+  name: text('name').notNull(),
+  description: text('description'),
+  manifest: jsonb('manifest').notNull(),
+  contentHash: text('content_hash').notNull(),
+  builtin: boolean('builtin').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// v1 EPIC 5 (ISS-274) — append-only retrieval log. Today only `/api/memory/search`
+// (`source='api-search'`) populates this; EPIC 1's chat-prompt-builder will add
+// `source='chat'` rows. No retention sweep yet — see ISS-274 plan Risks.
+export const retrievalSources = ['api-search', 'chat'] as const;
+export type RetrievalSource = (typeof retrievalSources)[number];
+
+export const retrievalAnalytics = pgTable(
+  'retrieval_analytics',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    query: text('query').notNull(),
+    hitCount: integer('hit_count').notNull(),
+    topScore: real('top_score'),
+    model: text('model'),
+    durationMs: integer('duration_ms'),
+    source: text('source', { enum: retrievalSources }).notNull().default('api-search'),
+    metadata: jsonb('metadata').notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectCreatedIdx: index('retrieval_analytics_project_created_idx').on(
+      t.projectId,
+      t.createdAt,
+    ),
+  }),
+);
+
+export const retrievalAnalyticsRelations = relations(retrievalAnalytics, ({ one }) => ({
+  project: one(projects, { fields: [retrievalAnalytics.projectId], references: [projects.id] }),
+}));

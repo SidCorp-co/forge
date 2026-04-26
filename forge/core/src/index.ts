@@ -6,6 +6,7 @@ import { cors } from 'hono/cors';
 import { adminRoutes } from './admin/routes.js';
 import { agentSessionRoutes } from './agent-sessions/routes.js';
 import { agentRoutes } from './agents/routes.js';
+import { appConfigRoutes } from './app-config/routes.js';
 import { devForceVerifyRoutes } from './auth/dev-force-verify.js';
 import { loginRoutes } from './auth/login.js';
 import { logoutRoutes } from './auth/logout.js';
@@ -16,6 +17,8 @@ import { authRoutes } from './auth/register.js';
 import { verifyRoutes } from './auth/verify.js';
 import { chatLogRoutes } from './chat-logs/routes.js';
 import { chatSessionRoutes } from './chat-sessions/routes.js';
+import { domainTemplateRoutes } from './domain-templates/routes.js';
+import { seedDomainTemplates } from './domain-templates/seed.js';
 import { commentRoutes } from './comments/routes.js';
 import { commentUploadRoutes } from './comments/upload.js';
 import { env } from './config/env.js';
@@ -223,6 +226,8 @@ app.route('/api/knowledge-edges', knowledgeEdgeRoutes);
 app.route('/api/skills', skillCrudRoutes);
 app.route('/api/usage-records', usageRecordRoutes);
 app.route('/api/chat-logs', chatLogRoutes);
+app.route('/api/app-config', appConfigRoutes);
+app.route('/api/domain-templates', domainTemplateRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 
@@ -231,6 +236,7 @@ if (isMain) {
 
   await startBoss();
   await seedBuiltinSkills(db);
+  await seedDomainTemplates(db);
   await registerDispatcher();
   await registerStaleDetector();
   await registerDeviceStaleDetector();
