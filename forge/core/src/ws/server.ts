@@ -6,7 +6,13 @@ import { AUTH_COOKIE_NAME } from '../auth/cookie.js';
 import { verifyDeviceToken } from '../auth/deviceToken.js';
 import { verifyUserToken } from '../auth/jwt.js';
 import { db } from '../db/client.js';
-import { devices, projectMembers } from '../db/schema.js';
+import { devices, projectMembers, runners } from '../db/schema.js';
+import { isEnabled } from '../lib/feature-flags.js';
+import {
+  handleRunnerRegister,
+  handleRunnerUnregister,
+  handleRunnerUpdate,
+} from '../runners/heartbeat-ws.js';
 import { RoomManager } from './rooms.js';
 
 type AnyServer = HttpServer | HttpsServer;
@@ -125,6 +131,27 @@ async function canSubscribe(principal: Principal, room: string): Promise<boolean
     const principalUserId = principal.type === 'user' ? principal.userId : principal.ownerId;
     return principalUserId === userId;
   }
+  if (room.startsWith('runner:')) {
+    const runnerId = room.slice('runner:'.length);
+    const [row] = await db
+      .select({ deviceId: runners.deviceId, projectId: runners.projectId })
+      .from(runners)
+      .where(eq(runners.id, runnerId))
+      .limit(1);
+    if (!row) return false;
+    if (principal.type === 'device') {
+      return row.deviceId === principal.deviceId;
+    }
+    // user — must be a project member.
+    const [member] = await db
+      .select({ userId: projectMembers.userId })
+      .from(projectMembers)
+      .where(
+        and(eq(projectMembers.projectId, row.projectId), eq(projectMembers.userId, principal.userId)),
+      )
+      .limit(1);
+    return !!member;
+  }
   return false;
 }
 
@@ -196,6 +223,18 @@ export function attachWs(server: AnyServer): void {
         })();
       } else if (type === 'unsubscribe') {
         roomManager.unsubscribe(ws, room);
+      } else if (
+        isEnabled('runnerFramework') &&
+        (type === 'runner:register' || type === 'runner:unregister' || type === 'runner:update')
+      ) {
+        if (ws.principal.type !== 'device') return;
+        if (type === 'runner:register') {
+          void handleRunnerRegister(ws as unknown as import('ws').WebSocket, msg);
+        } else if (type === 'runner:unregister') {
+          void handleRunnerUnregister(ws as unknown as import('ws').WebSocket, msg);
+        } else {
+          void handleRunnerUpdate(ws as unknown as import('ws').WebSocket, msg);
+        }
       }
     });
 

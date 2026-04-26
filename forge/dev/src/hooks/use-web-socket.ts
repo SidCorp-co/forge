@@ -220,6 +220,43 @@ export function useWebSocket() {
       }
     }
 
+    // ISS-271: Register a `claude-code` runner with the server's runner
+    // framework. Server ignores when `runnerFramework` flag is off, so it's
+    // safe to send unconditionally. The runnerId returned by the server
+    // arrives via `runner.registered` WS message (handled in handleMessage).
+    //
+    // Tauri Rust WS path does not currently expose a way to send arbitrary
+    // outbound messages from JS — this branch fires only via the browser
+    // fallback (`new WebSocket(wsUrl)`). A follow-up issue (tracked in the
+    // PR-B comment) will add a `ws_send` Tauri command and call it from the
+    // `ws:connected` listener above.
+    async function registerAsRunner(ws: WebSocket) {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      const projectSlug = Object.keys(config.projects ?? {})[0];
+      const projects = config.projects as Record<string, { documentId?: string }> | undefined;
+      const projectId = projectSlug ? projects?.[projectSlug]?.documentId : undefined;
+      if (!projectId) return;
+      let skills: string[] = [];
+      try {
+        const hashes = (await invoke<Record<string, string>>("get_skill_hashes")) ?? {};
+        skills = Object.keys(hashes);
+      } catch {
+        // tauri unavailable; runner registers with empty skills
+      }
+      ws.send(
+        JSON.stringify({
+          type: "runner:register",
+          data: {
+            type: "claude-code",
+            name: (await invoke<string>("get_hostname").catch(() => "Desktop")) || "Desktop",
+            projectId,
+            capabilities: { skills, maxConcurrent: 1 },
+            config: {},
+          },
+        }),
+      );
+    }
+
     let cancelled = false;
 
     async function setupListeners() {
@@ -555,6 +592,7 @@ export function useWebSocket() {
           if (config.deviceId) {
             ws.send(JSON.stringify({ type: "subscribe", room: `device:${config.deviceId}` }));
           }
+          void registerAsRunner(ws);
         };
         ws.onclose = () => setWsConnected(false);
         ws.onmessage = (e) => handleMessage(e.data);

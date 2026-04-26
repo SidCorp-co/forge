@@ -258,6 +258,9 @@ export const jobs = pgTable(
       .references(() => projects.id, { onDelete: 'cascade' }),
     issueId: uuid('issue_id').references((): AnyPgColumn => issues.id, { onDelete: 'set null' }),
     deviceId: uuid('device_id').references(() => devices.id, { onDelete: 'set null' }),
+    // EPIC 2 (ISS-271): nullable runner FK. Dispatcher writes both deviceId
+    // and runnerId for runnerFramework=on; only deviceId for legacy path.
+    runnerId: uuid('runner_id').references((): AnyPgColumn => runners.id, { onDelete: 'set null' }),
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
@@ -282,6 +285,7 @@ export const jobs = pgTable(
     deviceIdIdx: index('jobs_device_id_idx').on(t.deviceId),
     issueIdIdx: index('jobs_issue_id_idx').on(t.issueId),
     statusIdx: index('jobs_status_idx').on(t.status),
+    runnerIdIdx: index('jobs_runner_id_idx').on(t.runnerId),
     retryOfIdx: index('jobs_retry_of_idx').on(t.retryOf),
     activeUniqueIdx: uniqueIndex('jobs_active_unique')
       .on(t.issueId, t.type)
@@ -329,12 +333,71 @@ export const pairingCodesRelations = relations(pairingCodes, ({ one }) => ({
 export const jobsRelations = relations(jobs, ({ one, many }) => ({
   project: one(projects, { fields: [jobs.projectId], references: [projects.id] }),
   device: one(devices, { fields: [jobs.deviceId], references: [devices.id] }),
+  runner: one(runners, { fields: [jobs.runnerId], references: [runners.id] }),
   createdByUser: one(users, { fields: [jobs.createdBy], references: [users.id] }),
   events: many(jobEvents),
 }));
 
 export const jobEventsRelations = relations(jobEvents, ({ one }) => ({
   job: one(jobs, { fields: [jobEvents.jobId], references: [jobs.id] }),
+}));
+
+// EPIC 2 (ISS-271) — Runner framework.
+// A `runner` is a capability handle the dispatcher targets; concrete behaviour
+// lives in a `RunnerAdapter` registered by `bootstrapRunnerAdapters()`.
+// EPIC 2 owns the schema. EPIC 3 Phase B (ISS-272 follow-up) layers admin
+// dashboard reads on top — do not redesign these columns there.
+export const runnerTypes = ['claude-code', 'antigravity'] as const;
+export type RunnerType = (typeof runnerTypes)[number];
+
+export const runnerHosts = ['device', 'remote'] as const;
+export type RunnerHost = (typeof runnerHosts)[number];
+
+export const runnerStatuses = ['online', 'offline', 'draining', 'disabled'] as const;
+export type RunnerStatus = (typeof runnerStatuses)[number];
+
+export const runners = pgTable(
+  'runners',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    type: text('type', { enum: runnerTypes }).notNull(),
+    host: text('host', { enum: runnerHosts }).notNull(),
+    deviceId: uuid('device_id').references(() => devices.id, { onDelete: 'set null' }),
+    name: text('name').notNull(),
+    labels: jsonb('labels').notNull().default([]),
+    capabilities: jsonb('capabilities').notNull().default({}),
+    config: jsonb('config').notNull().default({}),
+    status: text('status', { enum: runnerStatuses }).notNull().default('offline'),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+    lastError: text('last_error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectTypeStatusIdx: index('runners_project_type_status_idx').on(
+      t.projectId,
+      t.type,
+      t.status,
+    ),
+    deviceIdIdx: uniqueIndex('runners_device_type_uq')
+      .on(t.deviceId, t.type)
+      .where(sql`device_id IS NOT NULL`),
+    // Remote runners (host='remote', deviceId IS NULL) must be uniquely
+    // named per project + type so an operator can't accidentally create
+    // duplicate antigravity backends with separate callback secrets.
+    remoteNameUq: uniqueIndex('runners_remote_name_uq')
+      .on(t.projectId, t.type, t.name)
+      .where(sql`host = 'remote'`),
+  }),
+);
+
+export const runnersRelations = relations(runners, ({ one, many }) => ({
+  project: one(projects, { fields: [runners.projectId], references: [projects.id] }),
+  device: one(devices, { fields: [runners.deviceId], references: [devices.id] }),
+  jobs: many(jobs),
 }));
 
 export const issueStatuses = [
