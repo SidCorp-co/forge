@@ -39,9 +39,9 @@ describe('buildCommentTree', () => {
     expect(a?.replies[0]?.replies.map((n) => n.id)).toEqual(['a1a']);
   });
 
-  it('treats a child with an unknown parent as a root (defensive)', () => {
-    const tree = buildCommentTree([row('orphan', 'missing-parent')]);
-    expect(tree.map((n) => n.id)).toEqual(['orphan']);
+  it('drops a reply whose parent is not in the input set (orphan, not promoted to root)', () => {
+    const tree = buildCommentTree([row('a', null), row('orphan', 'missing-parent')]);
+    expect(tree.map((n) => n.id)).toEqual(['a']);
   });
 
   it('preserves input order within a sibling group', () => {

@@ -35,6 +35,19 @@ const notFound = (message: string) =>
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
+// drizzle-orm wraps DB errors in DrizzleQueryError and may nest the original
+// postgres error 1+ levels deep on `.cause`. Walk the full chain so we don't
+// miss SQLSTATEs raised inside transaction helpers.
+function pgErrorCode(err: unknown): string | undefined {
+  let cur: unknown = err;
+  for (let depth = 0; cur && depth < 5; depth++) {
+    const code = (cur as { code?: unknown }).code;
+    if (typeof code === 'string') return code;
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return undefined;
+}
+
 export async function loadIssue(issueId: string) {
   const [row] = await db
     .select({ id: issues.id, projectId: issues.projectId })
@@ -112,17 +125,19 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
           });
         inserted = rows[0];
       } catch (err) {
-        // Postgres trigger raises check_violation (SQLSTATE 23514) when depth>3.
-        // drizzle-orm wraps DB errors in DrizzleQueryError with the postgres
-        // error on `.cause`, so check both surfaces.
-        const pgCode =
-          (err as { code?: string } | undefined)?.code ??
-          (err as { cause?: { code?: string } } | undefined)?.cause?.code;
+        const pgCode = pgErrorCode(err);
+        // 23514: depth-trigger check_violation (parent chain too deep).
         if (pgCode === '23514') {
           throw new HTTPException(400, {
             message: 'comment depth exceeds 3',
             cause: { code: 'DEPTH_EXCEEDED' },
           });
+        }
+        // 23503: parent_id FK violation — the parent we SELECTed above was
+        // deleted between the check and the insert (TOCTOU). Surface as
+        // 404 so the caller retries instead of a confusing 500.
+        if (pgCode === '23503' && parentId) {
+          throw notFound('parent comment not found');
         }
         throw err;
       }
@@ -142,6 +157,13 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
   router.get(
     '/:id/comments',
     zValidator('param', idParamSchema, (r) => {
+      if (!r.success) throw badRequest(z.flattenError(r.error));
+    }),
+    // Validate (and ignore) legacy ?limit/?offset params. The endpoint now
+    // returns a tree, but pre-existing flat-list clients still send them and
+    // a contract break would 500-loop them. The HARD_CAP below replaces the
+    // old `limit` semantics; pagination on a tree happens via /:id/replies.
+    zValidator('query', paginationSchema, (r) => {
       if (!r.success) throw badRequest(z.flattenError(r.error));
     }),
     async (c) => {

@@ -75,7 +75,7 @@ export function registerActivitySubscribers(bus: HooksBus): void {
       payload: {
         commentId: p.commentId,
         body: snippet(p.body),
-        ...(p.parentId ? { parentId: p.parentId } : {}),
+        ...(p.parentId != null ? { parentId: p.parentId } : {}),
       },
     });
   });

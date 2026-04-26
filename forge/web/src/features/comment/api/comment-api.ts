@@ -25,7 +25,7 @@ interface CoreCommentNode extends CoreComment {
   replies?: CoreCommentNode[];
 }
 
-function toLegacy(row: CoreComment, parentDocumentId: string | null = null): Comment {
+function toLegacy(row: CoreComment): Comment {
   const parentId = row.parentId ?? null;
   return {
     id: 0,
@@ -37,19 +37,16 @@ function toLegacy(row: CoreComment, parentDocumentId: string | null = null): Com
     isAI: false,
     issue: { id: 0, documentId: row.issueId },
     parent: parentId ? { id: 0, documentId: parentId } : null,
-    // Note: parentDocumentId is the legacy parent pointer when nesting under
-    // a synthetic Comment; the FE may show it instead of/alongside parentId.
     replies: [],
     mentions: [],
     attachments: [],
-    ...(parentDocumentId ? { _parentDocumentId: parentDocumentId } : {}),
-  } as Comment;
+  };
 }
 
 function flattenTree(nodes: CoreCommentNode[]): Comment[] {
   const out: Comment[] = [];
   const walk = (node: CoreCommentNode) => {
-    out.push(toLegacy(node, node.parentId ?? null));
+    out.push(toLegacy(node));
     for (const child of node.replies ?? []) walk(child);
   };
   for (const root of nodes) walk(root);
@@ -72,7 +69,7 @@ export const commentApi = {
       method: 'POST',
       body: JSON.stringify(payload),
     });
-    return { data: toLegacy(row, row.parentId ?? null) };
+    return { data: toLegacy(row) };
   },
 
   update: async (commentId: string, data: { body: string }): Promise<{ data: Comment }> => {
