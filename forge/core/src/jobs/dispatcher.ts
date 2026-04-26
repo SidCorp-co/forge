@@ -68,6 +68,7 @@ export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched'
     data: {
       jobId: job.id,
       projectId: job.projectId,
+      issueId: job.issueId,
       type: job.type,
       payload: job.payload,
       dispatchedAt: dispatchedAt.toISOString(),
