@@ -227,6 +227,13 @@
       "breakpoints": true
     },
     {
+      "idx": 32,
+      "version": "7",
+      "when": 1777435000000,
+      "tag": "0032_issue_plan_fields",
+      "breakpoints": true
+    },
+    {
       "idx": 33,
       "version": "7",
       "when": 1777450000000,

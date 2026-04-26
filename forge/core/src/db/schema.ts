@@ -454,6 +454,13 @@ export const issues = pgTable(
     reopenCount: integer('reopen_count').notNull().default(0),
     source: text('source', { enum: issueSources }).notNull().default('manual'),
     externalId: text('external_id'),
+    // ISS-293: extension fields used by the autonomous /forge-* skill pipeline
+    // (forge-plan writes plan, forge-clarify reads acceptanceCriteria, etc.).
+    // Migration 0031.
+    plan: text('plan'),
+    acceptanceCriteria: text('acceptance_criteria'),
+    suggestedSolution: text('suggested_solution'),
+    sessionContext: jsonb('session_context'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
