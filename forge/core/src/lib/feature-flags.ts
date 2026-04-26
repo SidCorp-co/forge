@@ -39,6 +39,12 @@ const flagDefs = {
 
   // v1 EPIC 5 — WebhookSource adapter framework (replaces inline GitHub branch)
   webhookAdapter: false,
+
+  // v1 EPIC 6 — Per-project skill config UI (Settings > Skills page in web).
+  // Backend (override CRUD + /effective + skill.updated WS) ships unflagged
+  // because it's additive. The web UI surface gates on this flag while the
+  // diff editor and forge/dev sync engine land incrementally.
+  skillUi: false,
 } as const;
 
 export type FeatureFlag = keyof typeof flagDefs;

@@ -218,6 +218,13 @@
       "when": 1777420000000,
       "tag": "0030_v1_epic5_chunk_a",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1777450000000,
+      "tag": "0033_project_skill_overrides",
+      "breakpoints": true
     }
   ]
 }
