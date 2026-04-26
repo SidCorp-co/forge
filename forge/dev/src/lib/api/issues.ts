@@ -1,42 +1,130 @@
 import type { Issue, IssueFormData } from "../types";
-import { request } from "./client";
+import { adaptRow, request, resolveProjectId } from "./client";
 
-// Lightweight fields for issue list views (excludes description, plan, aiSummary, etc.)
-const ISSUE_LIST_FIELDS = ["title", "status", "priority", "category", "reportedBy", "agentStatus", "changeHistory", "createdAt", "updatedAt"];
-const issueListFieldsQs = ISSUE_LIST_FIELDS.map((f, i) => `fields[${i}]=${f}`).join("&") + "&populate[labels][fields][0]=name&populate[labels][fields][1]=color";
+function adaptIssue(row: Record<string, unknown> & { id: string }): Issue {
+  // forge/core serializes the human-readable display id as `displayId: "ISS-N"`
+  // alongside `issSeq: N`. Map issSeq → legacy `id: number` so existing UI
+  // (`ISS-${issue.id}` in IssueListItem) keeps producing real sequence numbers
+  // instead of slicing the uuid.
+  const adapted = adaptRow(row) as unknown as Issue & { issSeq?: number };
+  if (typeof adapted.issSeq === "number") {
+    adapted.id = adapted.issSeq as unknown as number;
+  }
+  return adapted;
+}
 
 export async function getAllIssues(): Promise<Issue[]> {
-  return request(`/issues?${issueListFieldsQs}&sort=updatedAt:desc&pagination[pageSize]=100`);
+  // TODO(iss-275): forge/core has no global cross-project issues feed; the
+  // Dashboard's "all issues" tile renders empty until we either aggregate
+  // server-side or fan-out per-project here.
+  return [];
 }
 
 export async function getIssues(
   projectSlug: string,
   status?: string,
 ): Promise<Issue[]> {
-  let path = `/issues?filters[project][slug][$eq]=${encodeURIComponent(projectSlug)}&${issueListFieldsQs}&sort=createdAt:desc&pagination[pageSize]=200`;
-  if (status) path += `&filters[status][$eq]=${encodeURIComponent(status)}`;
-  return request(path);
+  const projectId = await resolveProjectId(projectSlug);
+  const params = new URLSearchParams({ limit: "200" });
+  if (status) params.set("status", status);
+  const rows = await request<Array<Record<string, unknown> & { id: string }>>(
+    `/projects/${projectId}/issues?${params.toString()}`,
+  );
+  return rows.map(adaptIssue);
 }
 
 export async function getIssue(documentId: string): Promise<Issue> {
-  return request(`/issues/${documentId}?populate=*`);
+  const row = await request<Record<string, unknown> & { id: string }>(`/issues/${documentId}`);
+  return adaptIssue(row);
 }
 
-export async function createIssue(data: IssueFormData): Promise<Issue> {
-  return request("/issues", {
-    method: "POST",
-    body: JSON.stringify({ data }),
-  });
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function createIssue(
+  projectSlugOrId: string,
+  data: IssueFormData,
+): Promise<Issue> {
+  const projectId = UUID_RE.test(projectSlugOrId)
+    ? projectSlugOrId
+    : await resolveProjectId(projectSlugOrId);
+  // forge/core's createSchema is .strict() — only forward fields it accepts.
+  if (data.attachments && data.attachments.length > 0) {
+    console.warn(
+      `[issues] createIssue: dropping ${data.attachments.length} attachment(s) — forge/core has no media surface yet (TODO(iss-275)).`,
+    );
+  }
+  const body: Record<string, unknown> = {
+    title: data.title,
+    description: data.description,
+    priority: data.priority,
+  };
+  const row = await request<Record<string, unknown> & { id: string }>(
+    `/projects/${projectId}/issues`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+  return adaptIssue(row);
 }
+
+// forge/core's PATCH /issues/:id is .strict() — only the fields below survive.
+// Status changes go through the dedicated transition endpoint. updateIssue
+// fans the patch out to whichever endpoint owns each field so callers (board
+// drag-handler, issue header, attachments panel) don't have to know.
+const ISSUE_PATCH_FIELDS = new Set([
+  "title",
+  "description",
+  "priority",
+  "category",
+  "assigneeId",
+  "labels",
+]);
 
 export async function updateIssue(
   documentId: string,
   data: Partial<Issue>,
 ): Promise<Issue> {
-  return request(`/issues/${documentId}`, {
-    method: "PUT",
-    body: JSON.stringify({ data }),
-  });
+  const { status, ...rest } = data as Partial<Issue> & { status?: string };
+
+  // Filter to fields core accepts; warn so silent drops are observable in dev.
+  const patchBody: Record<string, unknown> = {};
+  const dropped: string[] = [];
+  for (const [key, value] of Object.entries(rest)) {
+    if (ISSUE_PATCH_FIELDS.has(key)) patchBody[key] = value;
+    else dropped.push(key);
+  }
+  if (dropped.length > 0) {
+    console.warn(
+      `[issues] updateIssue: dropping unsupported field(s) ${dropped.join(", ")} — forge/core's PATCH /issues/:id only accepts ${[...ISSUE_PATCH_FIELDS].join(", ")} (TODO(iss-275)).`,
+    );
+  }
+
+  // Transition first so a partial failure doesn't leave a PATCH applied without
+  // the matching status change. PATCH runs only after a successful transition.
+  let latest: Issue | null = null;
+  if (status) {
+    const row = await request<Record<string, unknown> & { id: string }>(
+      `/issues/${documentId}/transition`,
+      {
+        method: "POST",
+        body: JSON.stringify({ toStatus: status }),
+      },
+    );
+    latest = adaptIssue(row);
+  }
+
+  if (Object.keys(patchBody).length > 0) {
+    const row = await request<Record<string, unknown> & { id: string }>(`/issues/${documentId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patchBody),
+    });
+    latest = adaptIssue(row);
+  }
+
+  if (latest) return latest;
+  // No-op: caller passed an empty/all-dropped patch; refetch so we honor Promise<Issue>.
+  return getIssue(documentId);
 }
 
 export async function enrichIssue(documentId: string): Promise<void> {
@@ -56,5 +144,27 @@ export interface IssueCostSummary {
 }
 
 export async function getIssueCostSummary(documentId: string): Promise<IssueCostSummary> {
-  return request(`/issues/${documentId}/cost-summary`);
+  // forge/core returns aggregate totals only (estimatedCost, inputTokens, …).
+  // Map them onto the legacy Strapi-shape interface so existing UI doesn't
+  // break; byStep/sessions stay empty until core exposes that breakdown.
+  const r = await request<{
+    estimatedCost: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
+    requests: number;
+    sampleCount: number;
+  }>(`/issues/${documentId}/cost-summary`);
+  return {
+    totalInputTokens: r.inputTokens,
+    totalOutputTokens: r.outputTokens,
+    totalCacheReadTokens: r.cacheReadTokens,
+    totalCacheWriteTokens: r.cacheCreationTokens,
+    totalTurns: r.requests,
+    totalCost: r.estimatedCost,
+    sessionCount: r.sampleCount,
+    byStep: [],
+    sessions: [],
+  };
 }

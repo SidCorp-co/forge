@@ -261,8 +261,7 @@ export interface IssueFormData {
   title: string;
   description: string;
   priority: IssuePriority;
-  project: string; // project documentId or slug
-  attachments?: number[]; // Strapi media IDs
+  attachments?: number[]; // forge/core ignores; kept for back-compat with callers
 }
 
 export interface ChatSession {
