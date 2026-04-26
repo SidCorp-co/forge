@@ -197,6 +197,13 @@
       "when": 1777330000000,
       "tag": "0027_agent_sessions_pipeline_health",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1777400000000,
+      "tag": "0028_user_preferences",
+      "breakpoints": true
     }
   ]
 }

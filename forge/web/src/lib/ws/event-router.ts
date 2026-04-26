@@ -60,6 +60,10 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
       qc.invalidateQueries({ queryKey: ['admin', 'devices'] });
       return;
     }
+    case 'user.preferencesChanged': {
+      qc.invalidateQueries({ queryKey: ['user-prefs'] });
+      return;
+    }
     default: {
       // Unknown event: no-op. Log once per event kind in dev to surface
       // missing wiring on the client side.

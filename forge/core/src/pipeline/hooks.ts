@@ -111,6 +111,11 @@ export interface HookPayloads {
     notificationId: string;
     userId: string;
   };
+  userPreferencesChanged: {
+    userId: string;
+    theme: string;
+    language: string;
+  };
 }
 
 export type HookTopic = keyof HookPayloads;

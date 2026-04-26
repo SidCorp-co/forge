@@ -111,4 +111,15 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
       },
     });
   });
+
+  bus.on('userPreferencesChanged', (p) => {
+    roomManager.publish(userRoom(p.userId), {
+      event: 'user.preferencesChanged',
+      data: {
+        userId: p.userId,
+        theme: p.theme,
+        language: p.language,
+      },
+    });
+  });
 }

@@ -59,6 +59,15 @@ export const emailVerificationTokens = pgTable(
   }),
 );
 
+export const userPreferences = pgTable('user_preferences', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  theme: text('theme').notNull().default('system'),
+  language: text('language').notNull().default('en'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const refreshTokens = pgTable(
   'refresh_tokens',
   {
