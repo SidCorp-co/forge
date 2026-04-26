@@ -118,13 +118,15 @@ jobEventsRoutes.post(
       throw conflict('job is in a terminal state', 'JOB_TERMINATED');
     }
 
-    // Server-assigned monotonic seq via FOR UPDATE on MAX(seq).
+    // Server-assigned monotonic seq. Postgres rejects FOR UPDATE on aggregates,
+    // so serialize concurrent inserts for this jobId via a transaction-scoped
+    // advisory lock keyed on the jobId hash. The lock auto-releases at COMMIT/ROLLBACK.
     const inserted = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${jobId}))`);
       const maxRows = await tx.execute<{ max_seq: number | null }>(sql`
         SELECT COALESCE(MAX(seq), 0) AS max_seq
         FROM job_events
         WHERE job_id = ${jobId}
-        FOR UPDATE
       `);
       const first = maxRows[0] as { max_seq: number | string | null } | undefined;
       const baseSeq = Number(first?.max_seq ?? 0);

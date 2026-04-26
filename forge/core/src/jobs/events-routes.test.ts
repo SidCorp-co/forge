@@ -183,6 +183,8 @@ describe('jobs/events-routes POST /:id/events', () => {
 
   it('accepts a batch, assigns contiguous monotonic seq, and publishes per event', async () => {
     // First batch: baseSeq = 0 → 1,2,3
+    // Two execute calls: advisory_xact_lock + MAX(seq) query.
+    txExecute.mockResolvedValueOnce([]);
     txExecute.mockResolvedValueOnce([{ max_seq: 0 }]);
     insertReturning.mockResolvedValueOnce([
       { seq: 1, kind: 'stdout', ts: new Date('2026-04-24T00:00:00Z'), data: { i: 0 } },
@@ -223,6 +225,7 @@ describe('jobs/events-routes POST /:id/events', () => {
   });
 
   it('continues seq across batches (baseSeq = prior MAX)', async () => {
+    txExecute.mockResolvedValueOnce([]); // advisory_xact_lock
     txExecute.mockResolvedValueOnce([{ max_seq: 5 }]);
     insertReturning.mockResolvedValueOnce([
       { seq: 6, kind: 'stdout', ts: new Date(), data: {} },

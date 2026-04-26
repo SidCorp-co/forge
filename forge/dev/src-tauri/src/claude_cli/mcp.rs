@@ -3,7 +3,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 /// Write a temporary MCP config JSON and return its path.
-/// Uses the remote Strapi MCP endpoint instead of a local stdio server.
+/// Uses the remote forge/core MCP endpoint instead of a local stdio server.
 /// Merges the built-in Forge server with any extra MCP servers from project config.
 pub(crate) fn write_mcp_config(
     forge_url: &str,
@@ -18,7 +18,7 @@ pub(crate) fn write_mcp_config(
             "type": "http",
             "url": mcp_url,
             "headers": {
-                "X-Forge-API-Key": forge_token,
+                "Authorization": format!("Bearer {forge_token}"),
                 "X-Forge-Project-Slug": project_slug
             }
         }
