@@ -60,10 +60,10 @@ function withTimezone(col: unknown): boolean | undefined {
 }
 
 describe('db/schema — users', () => {
-  it('has the five documented columns', () => {
+  it('has the documented columns', () => {
     const names = getTableConfig(users).columns.map((c) => c.name);
     expect(names.sort()).toEqual(
-      ['created_at', 'email', 'email_verified_at', 'id', 'password_hash'].sort(),
+      ['created_at', 'email', 'email_verified_at', 'id', 'is_ceo', 'password_hash'].sort(),
     );
   });
 
