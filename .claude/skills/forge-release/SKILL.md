@@ -1,81 +1,87 @@
 ---
 name: forge-release
-description: "PROJECT-LOCAL OVERRIDE for jarvis-agents (TBD). Merges ISS-* branch to main and closes the issue — the TBD `release` is the merge to trunk. No Coolify, no production branch."
+description: "PROJECT-LOCAL OVERRIDE for jarvis-agents (TBD). Merges ISS-* branch to main and auto-triggers forge-staging deploy. Status flow: developed → released (merged) → staging (deployed) → human closes."
 user_invocable: true
 arguments: "documentId"
 ---
 
-# Forge Release — jarvis-agents (TBD)
+# Forge Release — jarvis-agents (TBD release + auto-deploy)
 
-In TBD, "release" = **merge feature branch to trunk (main)**. Production deploy is decoupled (driven by env enabling the feature flag, not by a branch). This skill performs that merge and closes the issue.
+In TBD this skill performs **the merge to trunk**, then chains into `forge-staging` to push the change to the VPS. Status progression:
+
+```
+developed  → /forge-release →  released  → /forge-staging (auto) →  staging  → human → closed
+```
+
+The two-phase split (`released` after merge, `staging` after deploy) gives a recovery point: if the deploy script fails, `released` is the safe state — main is updated, but staging didn't get the change. Human runs `pnpm deploy:staging` manually after fixing infra.
 
 ## Preconditions
 
-The issue must satisfy:
 - Status = `developed`
-- Latest review comment from `Lapras` (forge-review) reports 0 bugs / minors at must-fix level (or only deferred Lows). If review was rejected, this skill must NOT run — `forge-fix` handles that loop.
-- `git fetch && git log "$(git remote | head -1)/ISS-XX-short-title"` shows the branch exists on the remote.
-
-If preconditions fail → post comment explaining what's blocking, do NOT change status, exit.
+- Latest review-comment from `Lapras` (or any code-review agent) reports a pass — no Bug-severity findings outstanding. If review was rejected, **abort** with comment `Cannot release — open Bug findings remain. Run /forge-fix first.` Do NOT change status.
+- `git fetch && git log "$(git remote | head -1)/ISS-XX-short-title"` shows the branch on the remote.
 
 ## Workflow
 
-1. Fetch issue. Verify `status === 'developed'`.
-2. Verify last review-comment is a pass:
-   ```
-   forge_comments → list → { filters: { issue: "<id>" }, limit: 5 }
-   ```
-   Look for the most recent comment from `Lapras` (or any code-review agent). If it lists Bug-severity findings, abort with comment "Cannot release — open Bug findings remain. Run /forge-fix first."
-3. Detect mode:
-   - **Branch mode**: in main worktree, work directly there
-   - **Worktree mode**: if `.claude/worktrees/iss-XX-short-title/` exists, use it for the merge; or temporarily switch the main worktree to `main` (the worktree branch was pushed already — we just need main checked out somewhere)
-4. Pull latest main:
-   ```bash
-   REMOTE=$(git remote | head -1)
-   git checkout main
-   git pull "$REMOTE" main
-   ```
-5. Merge ISS-* (no-ff to preserve issue history):
+1. Fetch issue + last 5 comments. Verify status `developed` and last review is a pass.
+2. Detect remote name (`git remote | head -1`).
+3. Workspace setup:
+   - Branch mode: in main worktree, `git checkout main && git pull <remote> main`
+   - Worktree mode: switch to a worktree where `main` can be checked out. If main is busy, ask: do the merge from inside the ISS-* worktree by `git fetch <remote> main:main` — this updates the local `main` ref without checking it out, then `git push <remote> ISS-XX-...:main` (server-side fast-forward — only works if main is exactly at the merge-base; otherwise needs an actual merge worktree).
+
+   Practical default: switch to the **main worktree** for the merge. If it's dirty, abort with comment `Main worktree busy — cannot release. Wait for the in-flight session to finish.`
+4. Merge:
    ```bash
    git merge --no-ff ISS-XX-short-title -m "Merge ISS-XX: <one-line summary>"
    ```
-   - If conflicts: abort, post comment with conflict file list, set status `reopen`, stop.
-6. Run tests on affected packages one more time after merge:
-   - From `git diff --name-only HEAD~1` find packages → run `pnpm test` per package.
-   - If any new failures → revert merge (`git reset --hard HEAD~1`), post comment, set status `reopen`, stop. **No fix-forward.**
-7. Push:
+   On conflict: `git merge --abort`, set status `reopen`, post comment with conflict files, stop. **Do not fix-forward conflicts here** — that's `forge-fix`'s job.
+5. Re-run tests on packages whose files changed (`git diff --name-only HEAD~1` → map to `forge/<pkg>/`):
    ```bash
-   git push "$REMOTE" main
+   pnpm --filter "@forge/<pkg>" test
    ```
-8. (Optional) tag if part of a release set: not done per-issue in TBD; do separately at version cut.
-9. Clean up worktree (if used): `git worktree remove .claude/worktrees/iss-XX-short-title --force` (branch already merged).
-10. Post completion comment:
-    ```
-    **Released to trunk** — Merged ISS-XX into main as commit <hash>.
-    Feature flag: `<flagName>` (off by default — enable via FEATURE_<NAME>=true in
-    target env). No Coolify deploy in this project — deployment happens separately.
-    ```
-11. Set status `closed` (LAST action).
+   On any new failure: `git reset --hard HEAD~1`, set status `reopen`, post comment with failures. Stop.
+6. Push main:
+   ```bash
+   git push <remote> main
+   ```
+7. Clean up worktree (if exists for this issue): `git worktree remove .claude/worktrees/iss-XX-* --force`.
+8. Post completion comment for the merge step:
+   ```
+   **Merged to trunk** — ISS-XX merged into main as <hash>.
+   Triggering staging deploy next.
+   ```
+9. Set status `released` (LAST action of this skill — does NOT close the issue).
+10. **Auto-chain into `forge-staging`** by calling that skill on the same documentId:
+    - This runs `pnpm deploy:staging`, verifies /health, posts a deploy comment, and sets status `staging` on success
+    - On deploy failure, status stays at `released` (the merge is preserved); human runs deploy manually
+    - If `forge-staging` skill is unavailable in this session, just post a comment "Manual deploy needed: `pnpm deploy:staging`" and stop
 
-## Failure modes
-
-- **Conflict on merge** → revert, status `reopen`, comment with conflict list. Human or `forge-fix` rebases.
-- **Test failure post-merge** → revert merge (`reset --hard`), status `reopen`, comment with failing test names.
-- **Network failure on push** → main local is ahead of remote; retry push or instruct human to push manually.
+After both skills complete: status is `staging`. Human verifies the change at https://stg-jarvis-a2.thejunix.com and manually sets `closed` once satisfied.
 
 ## What this skill does NOT do
 
-- ❌ Trigger Coolify deploy (project doesn't use it)
-- ❌ Merge to a production branch (none exists — main is production trunk)
-- ❌ Create a release tag (tagging is a separate, batched action)
-- ❌ Enable feature flags (flags are env-controlled per environment, not by code)
-- ❌ Squash-merge by default (uses `--no-ff` for clear issue history; squash is opt-in via `git merge --squash` when invoked manually)
+- ❌ Auto-close the issue (left for human verification on staging)
+- ❌ Squash by default (uses `--no-ff` to preserve issue history; squash is opt-in via `git merge --squash` if invoked manually)
+- ❌ Run the deploy itself (delegates to `forge-staging` for separation of concerns)
+- ❌ Production deploy (no prod env in v0.1)
+- ❌ Tag the commit (tagging batched at version cuts)
+
+## Failure modes & recovery
+
+| Failure | Action | Status after |
+|---|---|---|
+| Review still has Bug findings | Abort, comment | unchanged (`developed`) |
+| Merge conflict | `git merge --abort`, comment | `reopen` |
+| Post-merge tests fail | `git reset --hard HEAD~1`, comment | `reopen` |
+| Push rejected (race) | Pull + retry once; if still fails, abort with comment | unchanged |
+| Worktree busy | Abort, comment to wait | unchanged |
+| Deploy script fails (in chained forge-staging) | Main commit kept; deploy not done | `released` (manual retry) |
 
 ## Tools
 
-- `forge_issues`, `forge_comments`
-- Read, Bash (no Edit/Write — pure git operations)
+- `forge_issues`, `forge_comments`, Read, Bash
+- Skill chain: `forge-staging` (invoked via Skill tool)
 
 ## Output rules
 
-One-line status updates only. Final summary in the close comment.
+One-line status during merge + tests. Final summary in the merge comment. Deploy summary handled by `forge-staging`.

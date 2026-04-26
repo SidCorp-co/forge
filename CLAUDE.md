@@ -65,10 +65,29 @@ open → confirmed → approved → in_progress
                               developed (pass) | reopen (fail → /forge-fix loop)
                                   │ /forge-release
                                   ▼
-                                closed   ◄── merged to main behind feature flag
+                              released    ◄── merged to main, push complete
+                                  │ /forge-staging (auto-chained from release)
+                                  ▼
+                              staging     ◄── deployed to VPS, /health OK
+                                  │ (human verifies on staging URL)
+                                  ▼
+                                closed
 ```
 
-**Skipped statuses** (used by other projects with Coolify): `staging`, `released`, `tested`, `pass`, `deploying`, `testing`. The skill overrides under `.claude/skills/` enforce this — see `.claude/skills/README.md`.
+**Skipped statuses** (used by other projects with full Coolify pipeline): `tested`, `pass`, `deploying`, `testing`. The skill overrides under `.claude/skills/` enforce this — see `.claude/skills/README.md`.
+
+### Staging deployment
+
+```bash
+pnpm deploy:staging   # SSH to VPS, git fetch + reset main, docker rebuild, verify /health
+```
+
+Target VPS (configurable via `STAGING_*` env vars, defaults below):
+- Host `root@165.22.96.128` — path `/opt/jarvis-stg-a2`
+- Compose `docker-compose.prod.yml` project `jarvis-stg-a2`
+- URL `https://stg-jarvis-a2.thejunix.com`
+
+`forge-release` chains into `forge-staging` automatically after merging to main. On deploy failure, status stays at `released` for manual retry.
 
 ### Feature flags currently defined
 
