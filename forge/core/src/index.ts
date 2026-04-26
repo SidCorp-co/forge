@@ -17,14 +17,16 @@ import { authRoutes } from './auth/register.js';
 import { verifyRoutes } from './auth/verify.js';
 import { chatLogRoutes } from './chat-logs/routes.js';
 import { chatSessionRoutes } from './chat-sessions/routes.js';
-import { domainTemplateRoutes } from './domain-templates/routes.js';
-import { seedDomainTemplates } from './domain-templates/seed.js';
+import { bootstrapChatProviders } from './chat/providers/bootstrap.js';
+import { chatRoutes } from './chat/routes.js';
 import { commentRoutes } from './comments/routes.js';
 import { commentUploadRoutes } from './comments/upload.js';
 import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
 import { deviceAuthRoutes, devicePublicRoutes, deviceUserRoutes } from './devices/routes.js';
 import { registerDeviceStaleDetector } from './devices/stale-detector.js';
+import { domainTemplateRoutes } from './domain-templates/routes.js';
+import { seedDomainTemplates } from './domain-templates/seed.js';
 import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-routes.js';
 import { issueExtrasRoutes } from './issues/extras-routes.js';
 import { issueProjectRoutes, issueRoutes } from './issues/routes.js';
@@ -39,10 +41,11 @@ import { registerStaleDetector } from './jobs/stale-detector.js';
 import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
 import { knowledgeIngestRoutes } from './knowledge/ingest-routes.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
+import { isEnabled } from './lib/feature-flags.js';
 import { logger } from './logger.js';
 import { mcpHandler } from './mcp/handler.js';
-import { registerMemoryIndexer } from './memory/indexer.js';
 import { meAttentionRoutes } from './me/attention-routes.js';
+import { registerMemoryIndexer } from './memory/indexer.js';
 import { memoryListRoutes } from './memory/list-routes.js';
 import { memorySearchRoutes } from './memory/search-routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
@@ -231,6 +234,12 @@ app.route('/api/chat-logs', chatLogRoutes);
 app.route('/api/app-config', appConfigRoutes);
 app.route('/api/domain-templates', domainTemplateRoutes);
 
+// v1 EPIC 1 (ISS-270) — chat support agent. Mount only when the flag is on
+// so a default `main` build behaves as if the route doesn't exist.
+if (isEnabled('chatProvider')) {
+  app.route('/api/chat', chatRoutes);
+}
+
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 
 if (isMain) {
@@ -239,6 +248,9 @@ if (isMain) {
   await startBoss();
   await seedBuiltinSkills(db);
   await seedDomainTemplates(db);
+  if (isEnabled('chatProvider')) {
+    bootstrapChatProviders();
+  }
   await registerDispatcher();
   await registerStaleDetector();
   await registerDeviceStaleDetector();

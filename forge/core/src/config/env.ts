@@ -54,6 +54,15 @@ const EnvSchema = z.object({
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
   S3_BUCKET: z.string().optional(),
   S3_REGION: z.string().optional(),
+  // v1 EPIC 1 (ISS-270) — chat providers. Gated behind FEATURE_CHAT_PROVIDER;
+  // when the flag is off the route is not mounted and these values are
+  // ignored. LITELLM_* targets any OpenAI-compatible /v1/chat/completions
+  // endpoint (LiteLLM proxy in production); GEMINI_* uses @google/genai.
+  LITELLM_API_URL: z.url().optional(),
+  LITELLM_API_KEY: z.string().min(1).optional(),
+  LITELLM_MODEL: z.string().min(1).default('gpt-4o-mini'),
+  GEMINI_API_KEY: z.string().min(1).optional(),
+  GEMINI_MODEL: z.string().min(1).default('gemini-1.5-flash'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
