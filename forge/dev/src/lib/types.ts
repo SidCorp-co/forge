@@ -362,7 +362,8 @@ export type JobType = "plan" | "code" | "review" | "fix" | "triage";
 export interface JobAssignedPayload {
   jobId: string;
   projectId: string;
+  issueId?: string | null;
   type: string;
-  payload?: { issueId?: string } & Record<string, unknown>;
+  payload?: Record<string, unknown>;
   dispatchedAt?: string;
 }

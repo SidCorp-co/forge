@@ -7,10 +7,10 @@ import type { AppConfig, JobAssignedPayload } from "@/lib/types";
 
 const SUPPORTED_TYPES = ["plan", "code", "review", "fix", "triage"] as const;
 
-export function buildJobPrompt(type: string, payload: { issueId?: string } | undefined): string | null {
-  if (!payload?.issueId) return null;
+export function buildJobPrompt(type: string, issueId: string | undefined | null): string | null {
+  if (!issueId) return null;
   if ((SUPPORTED_TYPES as readonly string[]).includes(type)) {
-    return `/forge-${type} ${payload.issueId}`;
+    return `/forge-${type} ${issueId}`;
   }
   return null;
 }
@@ -38,6 +38,9 @@ export async function handleJobAssigned(
 ): Promise<void> {
   if (!data?.jobId) return;
   const { jobId, projectId, type, payload } = data;
+  // Dispatcher emits issueId at top level; legacy/test fixtures may put it
+  // inside payload — accept both so handler works in either shape.
+  const issueId = data.issueId ?? (payload?.issueId as string | undefined);
 
   // Outside Tauri (browser/dev mode) `send_chat` is a logged no-op and no
   // agent:* events ever fire, so the job would sit dispatched forever. Fail
@@ -62,7 +65,7 @@ export async function handleJobAssigned(
     return;
   }
 
-  const prompt = buildJobPrompt(type, payload);
+  const prompt = buildJobPrompt(type, issueId);
   if (!prompt) {
     try { await failJob(jobId, `unsupported job type or missing issueId (type=${type})`); } catch { /* ignore */ }
     return;
