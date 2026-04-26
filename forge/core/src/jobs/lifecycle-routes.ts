@@ -158,11 +158,14 @@ jobLifecycleDeviceRoutes.post(
   },
 );
 
+// Auth applied per-handler — see comment in jobs/routes.ts on why a bare
+// `.use('*')` would 401 device-only sibling routes.
 export const jobLifecycleUserRoutes = new Hono<{ Variables: AuthVars }>();
-jobLifecycleUserRoutes.use('*', requireAuth(), assertEmailVerified());
 
 jobLifecycleUserRoutes.post(
   '/:id/cancel',
+  requireAuth(),
+  assertEmailVerified(),
   zValidator('param', jobIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),

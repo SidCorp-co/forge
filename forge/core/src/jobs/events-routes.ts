@@ -50,10 +50,14 @@ export const jobEventsRoutes = new Hono<{ Variables: DeviceVars }>();
 
 // GET /api/jobs/:id/events — replay endpoint for the WS client. Members of
 // the job's project can read; device auth not required (reads are safe).
+//
+// Auth is applied per-handler (not via .use) so the middleware doesn't
+// intercept POST /:id/events on the sibling device router.
 export const jobEventsListRoutes = new Hono<{ Variables: AuthVars }>();
-jobEventsListRoutes.use('*', requireAuth(), assertEmailVerified());
 jobEventsListRoutes.get(
   '/:id/events',
+  requireAuth(),
+  assertEmailVerified(),
   zValidator('param', jobIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
