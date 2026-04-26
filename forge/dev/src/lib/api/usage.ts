@@ -1,14 +1,14 @@
 import type { UsageSummary, UsageRecordInput } from "../types";
 import { request } from "./client";
 
-export async function getUsageSummary(days = 7): Promise<UsageSummary> {
-  return request(`/usage-records/summary?days=${days}`);
+export async function getUsageSummary(projectId: string, days = 7): Promise<UsageSummary> {
+  return request(`/usage-records/summary?projectId=${projectId}&days=${days}`);
 }
 
 export async function createUsageRecord(data: UsageRecordInput): Promise<unknown> {
   return request("/usage-records", {
     method: "POST",
-    body: JSON.stringify({ data }),
+    body: JSON.stringify(data),
   });
 }
 

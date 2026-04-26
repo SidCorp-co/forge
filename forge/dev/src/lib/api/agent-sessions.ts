@@ -95,5 +95,9 @@ export interface PipelineTelemetry {
 }
 
 export async function getPipelineTelemetry(): Promise<PipelineTelemetry> {
-  return request("/agent-sessions/pipeline-telemetry");
+  // TODO(iss-275): forge/core only exposes /agent-sessions/:id/pipeline-telemetry
+  // (per-session). The sidebar's global counter has no core equivalent yet —
+  // short-circuit to zeros until we either aggregate server-side or rewire the
+  // sidebar to surface latest-session telemetry.
+  return { autoRetries: 0, recovered: 0, failed: 0, retriesExhausted: 0 };
 }

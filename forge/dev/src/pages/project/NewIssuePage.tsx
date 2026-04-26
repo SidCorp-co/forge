@@ -31,11 +31,10 @@ export function NewIssuePage() {
     setSubmitting(true);
     setError(null);
     try {
-      await createIssue({
+      await createIssue(project.documentId, {
         title,
         description,
         priority,
-        project: project.documentId,
         ...(attachments.length > 0 ? { attachments: attachments.map((a) => a.id) } : {}),
       });
       navigate(`/project/${slug}/issues`);

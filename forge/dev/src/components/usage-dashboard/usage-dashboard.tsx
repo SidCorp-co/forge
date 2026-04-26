@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo, useId } from "react";
 import { getUsageSummary, ingestCliUsage } from "@/lib/api";
+import { resolveProjectId } from "@/lib/api/client";
+import { useAppStore } from "@/stores/app-store";
 import { Skeleton, EmptyState, SegmentedControl } from "@/components/ui";
 import { UsageMetric } from "./usage-metric";
 import { SourceChips } from "./source-chips";
@@ -15,10 +17,19 @@ export function UsageDashboard() {
   const [days, setDays] = useState(7);
   const [activeSources, setActiveSources] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
+  const activeProject = useAppStore((s) => s.activeProject);
+
+  const { data: projectId } = useQuery({
+    queryKey: ["resolved-project-id", activeProject],
+    queryFn: () => resolveProjectId(activeProject!),
+    enabled: !!activeProject,
+    staleTime: 5 * 60_000,
+  });
 
   const { data: summary, isLoading, isError } = useQuery({
-    queryKey: ["usage-summary", days],
-    queryFn: () => getUsageSummary(days),
+    queryKey: ["usage-summary", projectId, days],
+    queryFn: () => getUsageSummary(projectId!, days),
+    enabled: !!projectId,
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
@@ -56,7 +67,15 @@ export function UsageDashboard() {
 
   const models = summary?.byModel ?? [];
 
-  if (isLoading) {
+  if (!activeProject) {
+    return (
+      <section className="mt-8">
+        <EmptyState title="Select a project to see usage." />
+      </section>
+    );
+  }
+
+  if (isLoading || !projectId) {
     return (
       <section className="mt-8">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

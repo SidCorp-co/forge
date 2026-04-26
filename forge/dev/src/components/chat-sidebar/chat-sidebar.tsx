@@ -122,7 +122,7 @@ export function ChatSidebar({ projectSlug, onClose }: ChatSidebarProps) {
 
     setCreating(true);
     try {
-      await createIssue({ title, description, priority: "medium", project: projectSlug });
+      await createIssue(projectSlug, { title, description, priority: "medium" });
       if (!mountedRef.current) return;
       queryClient.invalidateQueries({ queryKey: ["issues"] });
       setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "system" as const, content: `Issue created: "${title}"`, timestamp: Date.now() }]);

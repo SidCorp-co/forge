@@ -1,14 +1,17 @@
 import type { ChatSession, ChatSessionDetail } from "../types";
-import { request } from "./client";
+import { adaptRow, request, resolveProjectId } from "./client";
 
 export async function getChatSessions(projectSlug: string): Promise<ChatSession[]> {
-  return request(
-    `/chat-sessions?filters[project][slug][$eq]=${encodeURIComponent(projectSlug)}&sort=updatedAt:desc&pagination[pageSize]=50`,
+  const projectId = await resolveProjectId(projectSlug);
+  const rows = await request<Array<Record<string, unknown> & { id: string }>>(
+    `/chat-sessions?projectId=${projectId}&pageSize=50`,
   );
+  return rows.map((r) => adaptRow(r) as unknown as ChatSession);
 }
 
 export async function getChatSession(documentId: string): Promise<ChatSessionDetail> {
-  return request(`/chat-sessions/${documentId}`);
+  const row = await request<Record<string, unknown> & { id: string }>(`/chat-sessions/${documentId}`);
+  return adaptRow(row) as unknown as ChatSessionDetail;
 }
 
 export async function sendChatMessage(
