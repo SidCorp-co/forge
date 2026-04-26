@@ -16,6 +16,8 @@ RUN pnpm install --frozen-lockfile --filter web...
 WORKDIR /repo/forge/web
 ARG NEXT_PUBLIC_API_URL=http://localhost:8080/api
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_ENV_LABEL=
+ENV NEXT_PUBLIC_ENV_LABEL=$NEXT_PUBLIC_ENV_LABEL
 RUN pnpm build
 
 # Production runtime — Next.js monorepo standalone places server.js at forge/web/
