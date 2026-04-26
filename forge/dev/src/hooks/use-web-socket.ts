@@ -23,7 +23,11 @@ export function useWebSocket() {
   useEffect(() => {
     if (!config.coreUrl) return;
 
-    const wsUrl = config.coreUrl.replace(/^http/, "ws") + "/ws";
+    // Browser WS API can't set Authorization header → pass token via query
+    // string; forge/core's ws/server.ts accepts `?token=<jwt>` as a fallback
+    // alongside Authorization header and forge_auth cookie.
+    const wsBase = config.coreUrl.replace(/^http/, "ws") + "/ws";
+    const wsUrl = config.authToken ? `${wsBase}?token=${encodeURIComponent(config.authToken)}` : wsBase;
 
     async function handleSkillsPush(data: any) {
       const skills: Array<{

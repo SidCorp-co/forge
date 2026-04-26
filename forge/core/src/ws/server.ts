@@ -47,28 +47,53 @@ function parseBearer(header: string | string[] | undefined): string | undefined 
   return m?.[1]?.trim();
 }
 
+function parseQueryToken(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  // url is the request path like "/ws?token=..." — parse via URL helper
+  try {
+    const u = new URL(url, 'http://placeholder');
+    const t = u.searchParams.get('token');
+    return t ? t : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function tryUserToken(token: string): Promise<Principal | null> {
+  try {
+    const claims = await verifyUserToken(token);
+    return { type: 'user', userId: claims.sub };
+  } catch {
+    return null;
+  }
+}
+
 async function authenticate(req: IncomingMessage): Promise<Principal | null> {
   const bearer = parseBearer(req.headers.authorization);
   if (bearer) {
-    try {
-      const claims = await verifyUserToken(bearer);
-      return { type: 'user', userId: claims.sub };
-    } catch {
-      // fall through to device token attempt
-    }
+    const user = await tryUserToken(bearer);
+    if (user) return user;
     const device = await verifyDeviceToken(bearer);
     if (device) return { type: 'device', deviceId: device.id, ownerId: device.ownerId };
     return null;
   }
 
+  // Browser WebSocket API can't set Authorization headers, so fall back to
+  // a `?token=<jwt>` URL query (Tauri / cross-origin web clients). Cookies
+  // also fall through here for same-origin browser sessions.
+  const queryToken = parseQueryToken(req.url);
+  if (queryToken) {
+    const user = await tryUserToken(queryToken);
+    if (user) return user;
+    const device = await verifyDeviceToken(queryToken);
+    if (device) return { type: 'device', deviceId: device.id, ownerId: device.ownerId };
+    // Don't fall through to cookie — caller explicitly chose query auth.
+    return null;
+  }
+
   const cookie = parseCookie(req.headers.cookie, AUTH_COOKIE_NAME);
   if (cookie) {
-    try {
-      const claims = await verifyUserToken(cookie);
-      return { type: 'user', userId: claims.sub };
-    } catch {
-      return null;
-    }
+    return tryUserToken(cookie);
   }
 
   return null;

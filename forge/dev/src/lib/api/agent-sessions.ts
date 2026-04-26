@@ -30,18 +30,17 @@ export async function sendAgentSession(
   });
 }
 
-export async function registerDesktop(deviceId: string): Promise<void> {
-  await request("/agent-sessions/desktop/register", {
-    method: "POST",
-    body: JSON.stringify({ deviceId }),
-  });
+export async function registerDesktop(_deviceId: string): Promise<void> {
+  // forge/core has no /agent-sessions/desktop/register endpoint — the real
+  // device registration goes through /api/devices/register (handled by
+  // registerDevice in this same file). The "desktop" register/unregister
+  // pair was a Strapi-era shim; on core, the WebSocket connection itself
+  // is the live presence signal and per-session status is reported via
+  // /agent-sessions/:id/desktop/status. No-op here.
 }
 
-export async function unregisterDesktop(deviceId: string): Promise<void> {
-  await request("/agent-sessions/desktop/unregister", {
-    method: "POST",
-    body: JSON.stringify({ deviceId }),
-  });
+export async function unregisterDesktop(_deviceId: string): Promise<void> {
+  // See registerDesktop — no-op on forge/core.
 }
 
 export async function registerDevice(deviceId: string, name: string): Promise<{ projectsRoot?: string | null; projectPaths?: Record<string, string> | null }> {

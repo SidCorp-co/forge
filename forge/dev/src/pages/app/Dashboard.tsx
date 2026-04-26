@@ -88,32 +88,35 @@ export function Dashboard() {
                   const projDone = projIssues.filter((i) => i.status === "closed").length;
 
                   return (
-                    <li key={p.slug}>
+                    <li
+                      key={p.slug}
+                      className="rounded-lg border border-gray-200 bg-white p-4 transition hover:border-blue-400 hover:shadow-sm"
+                    >
+                      <div className="flex items-start justify-between">
+                        <Link
+                          to={`/project/${p.slug}/overview`}
+                          className="min-w-0 flex-1 pr-3"
+                        >
+                          <span className="font-medium text-gray-900">{p.name}</span>
+                          {p.description && (
+                            <p className="mt-1 text-sm text-gray-500 line-clamp-1">{p.description}</p>
+                          )}
+                        </Link>
+                        <Link
+                          to={`/project/${p.slug}/issues/new`}
+                          className="shrink-0 rounded bg-gray-900 px-2.5 py-1 text-xs text-white hover:bg-gray-700"
+                        >
+                          New Issue
+                        </Link>
+                      </div>
                       <Link
                         to={`/project/${p.slug}/overview`}
-                        className="block rounded-lg border border-gray-200 bg-white p-4 transition hover:border-blue-400 hover:shadow-sm"
+                        className="mt-2 flex gap-3 text-xs text-gray-400"
                       >
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <span className="font-medium text-gray-900">{p.name}</span>
-                            {p.description && (
-                              <p className="mt-1 text-sm text-gray-500 line-clamp-1">{p.description}</p>
-                            )}
-                          </div>
-                          <Link
-                            to={`/project/${p.slug}/issues/new`}
-                            className="shrink-0 rounded bg-gray-900 px-2.5 py-1 text-xs text-white hover:bg-gray-700"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            New Issue
-                          </Link>
-                        </div>
-                        <div className="mt-2 flex gap-3 text-xs text-gray-400">
-                          <span>{projOpen} open</span>
-                          <span>{projActive} active</span>
-                          <span>{projResolved} resolved</span>
-                          <span>{projDone} done</span>
-                        </div>
+                        <span>{projOpen} open</span>
+                        <span>{projActive} active</span>
+                        <span>{projResolved} resolved</span>
+                        <span>{projDone} done</span>
                       </Link>
                     </li>
                   );
