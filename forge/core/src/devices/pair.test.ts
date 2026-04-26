@@ -126,7 +126,7 @@ describe('redeemPairingCode', () => {
       platform: 'linux',
     });
     expect(result.projectId).toBe('proj-1');
-    // select + auto-bind update = 2 execute calls
-    expect(txExecute).toHaveBeenCalledTimes(2);
+    // select + auto-bind activeDeviceId + insert runner row = 3 execute calls
+    expect(txExecute).toHaveBeenCalledTimes(3);
   });
 });

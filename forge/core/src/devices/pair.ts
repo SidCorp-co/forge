@@ -76,6 +76,17 @@ export async function redeemPairingCode(input: PairInput): Promise<PairResult> {
         WHERE id = ${row.project_id}
           AND (agent_config IS NULL OR agent_config->>'activeDeviceId' IS NULL)
       `);
+
+      // ISS-271 runner registry: create a `claude-code` runner row bound to
+      // this device so the dispatcher's selectRunnerForJob can find it. The
+      // JS Tauri client does not yet send `runner:register` on the Rust WS
+      // path; until it does, pair-time creation is the contract for v0.1.
+      // ON CONFLICT DO NOTHING because (device_id, type) is uniquely indexed.
+      await tx.execute(sql`
+        INSERT INTO runners (project_id, type, host, device_id, name, status, last_seen_at)
+        VALUES (${row.project_id}, 'claude-code', 'device', ${device.id}, ${input.name}, 'online', now())
+        ON CONFLICT DO NOTHING
+      `);
     }
 
     return { device, plaintext, projectId: row.project_id };

@@ -161,6 +161,18 @@ deviceAuthRoutes.post(
 
     if (!updated) throw unauth();
 
+    // Mirror the heartbeat onto any runners bound to this device so the
+    // stale-detector doesn't flip them offline. ISS-271 added a separate
+    // runner registry but the JS Tauri client does not yet send `runner:register`
+    // over the Rust WS path, so the device heartbeat is the only signal we
+    // have. This keeps the contract: a device that talks to /heartbeat is
+    // also runnable by the dispatcher.
+    const { runners } = await import('../db/schema.js');
+    await db
+      .update(runners)
+      .set({ lastSeenAt: new Date(), status: 'online', updatedAt: new Date() })
+      .where(eq(runners.deviceId, device.id));
+
     if (wasOffline) {
       // Best-effort broadcast — import lazily to avoid circular deps at module init.
       const { roomManager } = await import('../ws/server.js');
