@@ -1,7 +1,8 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import pkg from '../../package.json' with { type: 'json' };
-import type { Device } from '../auth/deviceToken.js';
+import { forgeCommentsTool } from './tools/forge-comments.js';
+import { forgeIssuesTool } from './tools/forge-issues.js';
 import { forgeMemorySearchTool } from './tools/forge-memory.js';
 import {
   forgeSkillsGetTool,
@@ -9,24 +10,30 @@ import {
   forgeSkillsRegisterTool,
 } from './tools/forge-skills.js';
 import { type McpTool, forgeVersionTool } from './tools/forge-version.js';
+import type { McpContext } from './tools/lib.js';
 
 /**
- * Build an MCP server wired to the per-request authenticated device. Tool
- * factories receive the device to close over project-scope enforcement.
+ * Build an MCP server wired to the per-request {@link McpContext}. Tool
+ * factories receive the device (and optional project slug) so handlers can
+ * enforce project-scope access.
  *
  * Tools:
- *  - `forge_version` — no device needed (uptime/version).
+ *  - `forge_version` — no context needed (uptime/version).
  *  - `forge_memory.search` — wraps `runMemorySearch` (ISS-198).
- *  - `forge_skills.list` / `.get` / `.register` — wrap ISS-196 REST logic
- *    via the shared `skills/service.ts` helpers.
+ *  - `forge_skills.list` / `.get` / `.register` — wrap ISS-196 REST logic.
+ *  - `forge_issues` / `forge_comments` — action-based parity with the legacy
+ *    Strapi MCP so existing `/forge-*` skills work unchanged (ISS-293).
  */
-export function createMcpServer(device: Device): Server {
+export function createMcpServer(ctx: McpContext): Server {
+  const { device } = ctx;
   const tools: McpTool[] = [
     forgeVersionTool,
     forgeMemorySearchTool(device),
     forgeSkillsListTool(device),
     forgeSkillsGetTool(device),
     forgeSkillsRegisterTool(device),
+    forgeIssuesTool(ctx),
+    forgeCommentsTool(ctx),
   ];
   const toolMap = new Map(tools.map((t) => [t.name, t]));
 

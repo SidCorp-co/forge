@@ -5,7 +5,8 @@ import { createMcpServer } from './server.js';
 
 export async function mcpHandler(c: Context<{ Variables: DeviceVars }>): Promise<Response> {
   const device = c.get('device');
-  const server = createMcpServer(device);
+  const projectSlug = c.req.header('x-forge-project-slug') ?? null;
+  const server = createMcpServer({ device, projectSlug });
   // Stateless mode: omit sessionIdGenerator so no session tracking occurs.
   const transport = new WebStandardStreamableHTTPServerTransport({
     enableJsonResponse: true,

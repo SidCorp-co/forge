@@ -661,10 +661,11 @@ describe('db/schema — issues', () => {
     expect(issuePriorities).toEqual(['critical', 'high', 'medium', 'low', 'none']);
   });
 
-  it('has the sixteen documented columns (14 base + 2 F4 source/external_id)', () => {
+  it('has the documented columns (14 base + 2 F4 source/external_id + 4 ISS-293 plan/AC/sol/sessionCtx)', () => {
     const names = getTableConfig(issues).columns.map((c) => c.name);
     expect(names.sort()).toEqual(
       [
+        'acceptance_criteria',
         'assignee_id',
         'category',
         'created_at',
@@ -674,11 +675,14 @@ describe('db/schema — issues', () => {
         'id',
         'iss_seq',
         'parent_issue_id',
+        'plan',
         'priority',
         'project_id',
         'reopen_count',
+        'session_context',
         'source',
         'status',
+        'suggested_solution',
         'title',
         'updated_at',
       ].sort(),
