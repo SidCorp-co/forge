@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useLayoutEffect, type ReactNode } from 'react';
+import { ENV_LABEL, HAS_ENV_LABEL } from '@/lib/env-label';
 
 interface PageHeaderContextValue {
   title: string;
@@ -38,10 +39,11 @@ export function useSetPageTitle(title: string) {
   const { setTitle } = useContext(PageHeaderContext);
   useLayoutEffect(() => {
     setTitle(title);
-    document.title = title ? `${title} · Forge` : 'Forge';
+    const prefix = HAS_ENV_LABEL ? `[${ENV_LABEL}] ` : '';
+    document.title = title ? `${prefix}${title} · Forge` : `${prefix}Forge`;
     return () => {
       setTitle('');
-      document.title = 'Forge';
+      document.title = `${prefix}Forge`;
     };
   }, [title, setTitle]);
 }
