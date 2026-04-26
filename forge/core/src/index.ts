@@ -10,6 +10,7 @@ import { chatSessionRoutes } from './chat-sessions/routes.js';
 import { loginRoutes } from './auth/login.js';
 import { logoutRoutes } from './auth/logout.js';
 import { meRoutes } from './auth/me.js';
+import { preferenceRoutes } from './auth/preferences.js';
 import { refreshRoutes } from './auth/refresh.js';
 import { authRoutes } from './auth/register.js';
 import { devForceVerifyRoutes } from './auth/dev-force-verify.js';
@@ -170,6 +171,7 @@ app.route('/api/auth', refreshRoutes);
 app.route('/api/auth', verifyRoutes);
 app.route('/api/auth', devForceVerifyRoutes);
 app.route('/api/auth', meRoutes);
+app.route('/api/auth', preferenceRoutes);
 app.route('/api/auth', logoutRoutes);
 // projectHealthRoutes mounts /health (static) and must register before
 // projectRoutes which has GET /:id with a z.uuid() validator that would

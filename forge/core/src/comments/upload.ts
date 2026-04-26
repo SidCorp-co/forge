@@ -1,5 +1,3 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
 import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -11,6 +9,7 @@ import { db } from '../db/client.js';
 import { commentAttachments, comments, issues } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { getStorage, isEnoent } from '../storage/index.js';
 
 const ALLOWED_MIMES = new Set([
   'image/png',
@@ -37,14 +36,6 @@ function safeName(name: string): string {
 
 const commentIdParamSchema = z.object({ commentId: z.uuid() });
 const idParamSchema = z.object({ id: z.uuid() });
-
-function isEnoent(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    (err as { code?: string }).code === 'ENOENT'
-  );
-}
 
 export const commentUploadRoutes = new Hono<{ Variables: AuthVars }>();
 commentUploadRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -86,11 +77,9 @@ commentUploadRoutes.post(
     if (!ALLOWED_MIMES.has(mime)) throw badRequest(`mime not allowed: ${mime}`, 'MIME_NOT_ALLOWED');
 
     const name = safeName(file.name || 'file');
-    const dir = resolve(env.UPLOADS_DIR, comment.projectId, comment.id);
-    await mkdir(dir, { recursive: true });
     const buffer = Buffer.from(await file.arrayBuffer());
-    const diskPath = join(dir, `${Date.now()}-${name}`);
-    await writeFile(diskPath, buffer);
+    const key = `comments/${comment.id}/${Date.now()}-${name}`;
+    const { path: storedPath } = await getStorage().put(key, buffer, mime);
 
     const [inserted] = await db
       .insert(commentAttachments)
@@ -98,7 +87,7 @@ commentUploadRoutes.post(
         commentId: comment.id,
         uploaderId: userId,
         name,
-        path: diskPath,
+        path: storedPath,
         mime,
         size: file.size,
       })
@@ -151,7 +140,7 @@ commentUploadRoutes.get(
 
     let buffer: Buffer;
     try {
-      buffer = await readFile(row.path);
+      buffer = await getStorage().get(row.path);
     } catch (err) {
       if (isEnoent(err)) {
         throw new HTTPException(410, {

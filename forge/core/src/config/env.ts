@@ -42,11 +42,18 @@ const EnvSchema = z.object({
   // requests 403. Intentionally NOT a role column on users — deferred until
   // the admin surface stabilises.
   ADMIN_EMAILS: z.string().optional(),
-  // Local filesystem root for comment attachment uploads. Files are written
-  // under <UPLOADS_DIR>/<projectId>/<commentId>/<filename>. Served back via
-  // GET /api/comments/attachments/:id (proxy reads + streams the file).
+  // Storage root for the local-fs StorageAdapter. New comment attachment
+  // uploads land at <UPLOADS_DIR>/comments/<commentId>/<filename>. Existing
+  // pre-ISS-277 rows keep their old <UPLOADS_DIR>/<projectId>/<commentId>
+  // path on disk — `comment_attachments.path` is opaque so both layouts
+  // resolve through the same adapter `get(path)` call.
   UPLOADS_DIR: z.string().default('./uploads'),
   UPLOADS_MAX_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
+  // Storage backend for comment attachments. `local` writes under UPLOADS_DIR;
+  // `s3` is stubbed (calls throw) until the S3 adapter is implemented.
+  STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  S3_BUCKET: z.string().optional(),
+  S3_REGION: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
