@@ -6,10 +6,21 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessionStatuses, agentSessions } from '../db/schema.js';
 import { setTotalCount } from '../lib/pagination.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { loadProjectAccess, type ProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { safeRecordActivity } from '../pipeline/activity.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import {
+  DEFAULT_PIPELINE_HEALTH,
+  buildPipelineControl,
+  buildPipelineHealth,
+  normalisePipelineControl,
+  type PipelineControl,
+  type PipelineHealth,
+  pipelineControlInputSchema,
+  pipelineHealthInputSchema,
+} from './pipeline-control-types.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -48,15 +59,6 @@ const patchSchema = z
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
 
-const pipelineControlSchema = z
-  .object({
-    paused: z.boolean().optional(),
-    abort: z.boolean().optional(),
-    note: z.string().max(2000).nullable().optional(),
-  })
-  .strict()
-  .refine((o) => Object.keys(o).length > 0, { message: 'no control fields' });
-
 const pipelineTelemetrySchema = z
   .object({
     telemetry: z.unknown(),
@@ -86,6 +88,21 @@ const forbidden = (message: string) =>
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
+
+function isOwnerOrAdmin(access: ProjectAccess, userId: string): boolean {
+  if (access.ownerId === userId) return true;
+  return access.role === 'owner' || access.role === 'admin';
+}
+
+function extractIssueId(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== 'object') return null;
+  const raw = (metadata as Record<string, unknown>).issueId;
+  if (typeof raw !== 'string') return null;
+  // RFC 4122 UUID — guard against malformed metadata to avoid FK errors
+  // even though safeRecordActivity would swallow them.
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)) return null;
+  return raw;
+}
 
 function broadcastSession(
   session: { id: string; projectId: string; deviceId: string | null; status: string },
@@ -361,7 +378,7 @@ agentSessionRoutes.get(
     const access = await loadProjectAccess(row.projectId, userId);
     if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
 
-    return c.json(row.pipelineControl ?? null);
+    return c.json(normalisePipelineControl(row.pipelineControl));
   },
 );
 
@@ -370,12 +387,104 @@ agentSessionRoutes.post(
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
-  zValidator('json', pipelineControlSchema, (r) => {
+  zValidator('json', pipelineControlInputSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const control = c.req.valid('json');
+    const input = c.req.valid('json');
+    const userId = c.get('userId');
+
+    const [existing] = await db
+      .select()
+      .from(agentSessions)
+      .where(eq(agentSessions.id, id))
+      .limit(1);
+    if (!existing) throw notFound('agent session not found');
+
+    const access = await loadProjectAccess(existing.projectId, userId);
+    // Pause/resume is a privileged operation — only owner or admin role.
+    // Plain members can read state but cannot mutate it.
+    if (!isOwnerOrAdmin(access, userId)) throw forbidden('owner or admin role required');
+
+    const prev = existing.pipelineControl as PipelineControl | null;
+    const merged = buildPipelineControl(prev, input, userId);
+
+    const [updated] = await db
+      .update(agentSessions)
+      .set({ pipelineControl: merged, updatedAt: new Date() })
+      .where(eq(agentSessions.id, id))
+      .returning();
+    if (!updated) throw notFound('agent session not found');
+
+    broadcastSession(updated, 'agent-session.pipeline-control', {
+      control: merged,
+      paused: merged.paused,
+    });
+
+    // Best-effort audit. activity_log requires an issue FK; only record when
+    // the session is bound to an issue. safeRecordActivity swallows errors.
+    const issueId = extractIssueId(existing.metadata);
+    if (issueId) {
+      await safeRecordActivity({
+        issueId,
+        actor: { type: 'user', id: userId },
+        action: 'agent-session.pipelineControl.changed',
+        before: prev ?? undefined,
+        after: merged,
+        payload: {
+          sessionId: id,
+          paused: merged.paused,
+          reason: merged.reason,
+        },
+      });
+    }
+
+    return c.json(merged);
+  },
+);
+
+agentSessionRoutes.get(
+  '/:id/pipeline-health',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const [row] = await db
+      .select({
+        id: agentSessions.id,
+        projectId: agentSessions.projectId,
+        pipelineHealth: agentSessions.pipelineHealth,
+      })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, id))
+      .limit(1);
+    if (!row) throw notFound('agent session not found');
+
+    const access = await loadProjectAccess(row.projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+
+    return c.json((row.pipelineHealth as PipelineHealth | null) ?? DEFAULT_PIPELINE_HEALTH);
+  },
+);
+
+// TODO(EPIC-3 phase B / ISS-271): once Epic 2 introduces device-principal
+// runners, gate this POST behind a device-or-admin middleware. For Phase A any
+// project member may write — sufficient because health is informational.
+agentSessionRoutes.post(
+  '/:id/pipeline-health',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('json', pipelineHealthInputSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const input = c.req.valid('json');
     const userId = c.get('userId');
 
     const [existing] = await db
@@ -388,20 +497,16 @@ agentSessionRoutes.post(
     const access = await loadProjectAccess(existing.projectId, userId);
     if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
 
-    const merged = {
-      ...((existing.pipelineControl as Record<string, unknown> | null) ?? {}),
-      ...control,
-      updatedAt: new Date().toISOString(),
-    };
+    const merged = buildPipelineHealth(existing.pipelineHealth as PipelineHealth | null, input);
 
     const [updated] = await db
       .update(agentSessions)
-      .set({ pipelineControl: merged as never, updatedAt: new Date() })
+      .set({ pipelineHealth: merged, updatedAt: new Date() })
       .where(eq(agentSessions.id, id))
       .returning();
     if (!updated) throw notFound('agent session not found');
 
-    broadcastSession(updated, 'agent-session.pipeline-control', { control: merged });
+    broadcastSession(updated, 'agent-session.pipeline-health', { health: merged });
     return c.json(merged);
   },
 );
