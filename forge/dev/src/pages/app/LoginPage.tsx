@@ -30,28 +30,36 @@ export function LoginPage() {
     setLoading(true);
     try {
       const url = coreUrl.replace(/\/$/, "");
+      // forge/core uses { email, password } and returns { token }; legacy
+      // Strapi used { identifier, password } and returned { jwt }. Send both
+      // identifier shapes and accept either token field for compat.
       const res = await fetch(`${url}/api/auth/local`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier, password }),
+        body: JSON.stringify({ email: identifier, identifier, password }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data?.error?.message || "Invalid credentials");
+        setError(data?.message || data?.error?.message || "Invalid credentials");
+        return;
+      }
+      const token: string = data.token ?? data.jwt;
+      if (!token) {
+        setError("Auth response missing token");
         return;
       }
       const updated: AppConfig = {
         coreUrl: url,
-        authToken: data.jwt,
+        authToken: token,
         projects: config.projects,
         deviceId: config.deviceId || "",
       };
       setConfig(updated);
-      configureApi(url, data.jwt);
+      configureApi(url, token);
       await invoke("save_config", { config: updated });
       navigate(from, { replace: true });
-    } catch {
-      setError("Cannot connect to server. Is Strapi running?");
+    } catch (err) {
+      setError(err instanceof Error ? `Cannot connect to ${coreUrl}: ${err.message}` : `Cannot connect to ${coreUrl}`);
     } finally {
       setLoading(false);
     }
