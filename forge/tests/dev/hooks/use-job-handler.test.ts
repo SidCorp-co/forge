@@ -32,18 +32,19 @@ function makeCtx(projects: Record<string, { repoPath?: string; mcpServers?: Reco
 
 describe("buildJobPrompt", () => {
   it("returns /forge-<type> <issueId> for supported types", () => {
-    expect(buildJobPrompt("plan", { issueId: "ISS-7" })).toBe("/forge-plan ISS-7");
-    expect(buildJobPrompt("code", { issueId: "ISS-7" })).toBe("/forge-code ISS-7");
-    expect(buildJobPrompt("review", { issueId: "ISS-7" })).toBe("/forge-review ISS-7");
-    expect(buildJobPrompt("fix", { issueId: "ISS-7" })).toBe("/forge-fix ISS-7");
-    expect(buildJobPrompt("triage", { issueId: "ISS-7" })).toBe("/forge-triage ISS-7");
+    expect(buildJobPrompt("plan", "ISS-7")).toBe("/forge-plan ISS-7");
+    expect(buildJobPrompt("code", "ISS-7")).toBe("/forge-code ISS-7");
+    expect(buildJobPrompt("review", "ISS-7")).toBe("/forge-review ISS-7");
+    expect(buildJobPrompt("fix", "ISS-7")).toBe("/forge-fix ISS-7");
+    expect(buildJobPrompt("triage", "ISS-7")).toBe("/forge-triage ISS-7");
   });
   it("returns null when issueId is missing", () => {
-    expect(buildJobPrompt("plan", {})).toBeNull();
+    expect(buildJobPrompt("plan", null)).toBeNull();
     expect(buildJobPrompt("plan", undefined)).toBeNull();
+    expect(buildJobPrompt("plan", "")).toBeNull();
   });
   it("returns null for unsupported job types", () => {
-    expect(buildJobPrompt("deploy", { issueId: "ISS-7" })).toBeNull();
+    expect(buildJobPrompt("deploy", "ISS-7")).toBeNull();
   });
 });
 
@@ -54,7 +55,7 @@ describe("handleJobAssigned", () => {
     const ctx = makeCtx({ demo: { repoPath: "/repos/demo" } });
 
     await handleJobAssigned(
-      { jobId: "job-1", projectId: "proj-uuid", type: "plan", payload: { issueId: "ISS-7" } },
+      { jobId: "job-1", projectId: "proj-uuid", issueId: "ISS-7", type: "plan", payload: {} },
       ctx,
     );
 
@@ -110,11 +111,62 @@ describe("handleJobAssigned", () => {
     const ctx = makeCtx({ demo: { repoPath: "/repos/demo" } });
 
     await handleJobAssigned(
-      { jobId: "job-1", projectId: "p", type: "deploy", payload: { issueId: "ISS-7" } },
+      { jobId: "job-1", projectId: "p", issueId: "ISS-7", type: "deploy", payload: {} },
       ctx,
     );
 
     expect(mockFailJob).toHaveBeenCalledWith("job-1", expect.stringContaining("unsupported job type"));
+    expect(mockInvoke).not.toHaveBeenCalledWith("send_chat", expect.anything());
+  });
+
+  it("accepts issueId from top-level dispatcher payload (not nested in payload)", async () => {
+    mockResolveProjectSlug.mockResolvedValue("demo");
+    mockInvoke.mockResolvedValue(null);
+    const ctx = makeCtx({ demo: { repoPath: "/repos/demo" } });
+
+    await handleJobAssigned(
+      {
+        jobId: "job-top",
+        projectId: "p",
+        issueId: "ISS-42",
+        type: "plan",
+        payload: { skillName: "forge-plan", transition: { from: "open", to: "confirmed" } },
+      },
+      ctx,
+    );
+
+    expect(mockInvoke).toHaveBeenCalledWith("send_chat", expect.objectContaining({
+      message: "/forge-plan ISS-42",
+      sessionId: "job-top",
+    }));
+    expect(mockFailJob).not.toHaveBeenCalled();
+  });
+
+  it("falls back to payload.issueId when top-level issueId is absent (legacy)", async () => {
+    mockResolveProjectSlug.mockResolvedValue("demo");
+    mockInvoke.mockResolvedValue(null);
+    const ctx = makeCtx({ demo: { repoPath: "/repos/demo" } });
+
+    await handleJobAssigned(
+      { jobId: "job-legacy", projectId: "p", type: "plan", payload: { issueId: "ISS-9" } },
+      ctx,
+    );
+
+    expect(mockInvoke).toHaveBeenCalledWith("send_chat", expect.objectContaining({
+      message: "/forge-plan ISS-9",
+    }));
+  });
+
+  it("fails the job when issueId is missing in both top-level and payload", async () => {
+    mockResolveProjectSlug.mockResolvedValue("demo");
+    const ctx = makeCtx({ demo: { repoPath: "/repos/demo" } });
+
+    await handleJobAssigned(
+      { jobId: "job-no-iss", projectId: "p", type: "plan", payload: { skillName: "forge-plan" } },
+      ctx,
+    );
+
+    expect(mockFailJob).toHaveBeenCalledWith("job-no-iss", expect.stringContaining("missing issueId"));
     expect(mockInvoke).not.toHaveBeenCalledWith("send_chat", expect.anything());
   });
 
