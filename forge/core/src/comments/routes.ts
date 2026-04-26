@@ -172,6 +172,10 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
       // the server. Pagination on a tree is awkward — if the cap is hit the
       // client should switch to lazy-loading via /api/comments/:id/replies.
       const COMMENT_TREE_HARD_CAP = 1000;
+      const [{ n: total } = { n: 0 }] = await db
+        .select({ n: count() })
+        .from(comments)
+        .where(eq(comments.issueId, issueId));
       const rows = await db
         .select({
           id: comments.id,
@@ -188,7 +192,9 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         .limit(COMMENT_TREE_HARD_CAP);
 
       const tree = buildCommentTree(rows);
-      setTotalCount(c, rows.length);
+      // Report the true total so paginating clients see the real comment
+      // count even when the response payload was truncated to the cap.
+      setTotalCount(c, Number(total));
       return c.json(tree);
     },
   );

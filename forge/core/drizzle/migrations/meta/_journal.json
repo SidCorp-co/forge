@@ -183,6 +183,13 @@
       "when": 1777310000000,
       "tag": "0025_comment_depth_trigger_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1777320000000,
+      "tag": "0026_comment_depth_drop_dead_cycle_guard",
+      "breakpoints": true
     }
   ]
 }
