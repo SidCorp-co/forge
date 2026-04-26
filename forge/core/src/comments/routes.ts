@@ -9,6 +9,7 @@ import { paginationSchema, setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
+import { pgConstraintName, pgErrorCode } from './error-mapping.js';
 import { type CommentRow, buildCommentTree } from './tree.js';
 
 const commentCreateSchema = z
@@ -34,19 +35,6 @@ const notFound = (message: string) =>
 
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
-// drizzle-orm wraps DB errors in DrizzleQueryError and may nest the original
-// postgres error 1+ levels deep on `.cause`. Walk the full chain so we don't
-// miss SQLSTATEs raised inside transaction helpers.
-function pgErrorCode(err: unknown): string | undefined {
-  let cur: unknown = err;
-  for (let depth = 0; cur && depth < 5; depth++) {
-    const code = (cur as { code?: unknown }).code;
-    if (typeof code === 'string') return code;
-    cur = (cur as { cause?: unknown }).cause;
-  }
-  return undefined;
-}
 
 export async function loadIssue(issueId: string) {
   const [row] = await db
@@ -133,11 +121,16 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
             cause: { code: 'DEPTH_EXCEEDED' },
           });
         }
-        // 23503: parent_id FK violation — the parent we SELECTed above was
-        // deleted between the check and the insert (TOCTOU). Surface as
-        // 404 so the caller retries instead of a confusing 500.
+        // 23503: an FK violated. The comments INSERT touches three FKs
+        // (parent_id, issue_id, author_id) — only remap the parent_id case
+        // to 404 PARENT_NOT_FOUND (the TOCTOU window between our SELECT and
+        // INSERT). issue_id / author_id violations from concurrent deletes
+        // bubble up unchanged so callers see the real failure.
         if (pgCode === '23503' && parentId) {
-          throw notFound('parent comment not found');
+          const constraint = pgConstraintName(err);
+          if (constraint === 'comments_parent_id_fk') {
+            throw notFound('parent comment not found');
+          }
         }
         throw err;
       }

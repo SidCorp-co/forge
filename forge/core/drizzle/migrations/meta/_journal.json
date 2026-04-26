@@ -176,6 +176,13 @@
       "when": 1777300000000,
       "tag": "0024_comment_threading",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1777310000000,
+      "tag": "0025_comment_depth_trigger_hardening",
+      "breakpoints": true
     }
   ]
 }
