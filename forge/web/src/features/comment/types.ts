@@ -7,7 +7,7 @@ export interface Comment extends BaseEntity {
   issue: { id: number; documentId: string } | null;
   parent: { id: number; documentId: string } | null;
   replies: Comment[];
-  mentions: string[];
+  mentions: { userId: string; email: string }[];
   attachments: { id: number; url: string; name: string; mime: string }[];
 }
 

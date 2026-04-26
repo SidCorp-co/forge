@@ -204,6 +204,13 @@
       "when": 1777400000000,
       "tag": "0028_user_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1777410000000,
+      "tag": "0029_comment_mentions",
+      "breakpoints": true
     }
   ]
 }

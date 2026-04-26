@@ -535,6 +535,29 @@ export const commentsRelations = relations(comments, ({ one, many }) => ({
   }),
   replies: many(comments, { relationName: 'comment_parent' }),
   attachments: many(commentAttachments),
+  mentions: many(commentMentions),
+}));
+
+export const commentMentions = pgTable(
+  'comment_mentions',
+  {
+    commentId: uuid('comment_id')
+      .notNull()
+      .references(() => comments.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.commentId, t.userId] }),
+    userIdx: index('comment_mentions_user_id_idx').on(t.userId),
+  }),
+);
+
+export const commentMentionsRelations = relations(commentMentions, ({ one }) => ({
+  comment: one(comments, { fields: [commentMentions.commentId], references: [comments.id] }),
+  user: one(users, { fields: [commentMentions.userId], references: [users.id] }),
 }));
 
 export const commentAttachments = pgTable(
@@ -790,7 +813,10 @@ export const knowledgeEdges = pgTable(
   },
   (t) => ({
     projectSubjectIdx: index('knowledge_edges_project_subject_idx').on(t.projectId, t.subject),
-    projectPredicateIdx: index('knowledge_edges_project_predicate_idx').on(t.projectId, t.predicate),
+    projectPredicateIdx: index('knowledge_edges_project_predicate_idx').on(
+      t.projectId,
+      t.predicate,
+    ),
   }),
 );
 
@@ -1021,4 +1047,3 @@ export const agentSessionsRelations = relations(agentSessions, ({ one }) => ({
   user: one(users, { fields: [agentSessions.userId], references: [users.id] }),
   device: one(devices, { fields: [agentSessions.deviceId], references: [devices.id] }),
 }));
-
