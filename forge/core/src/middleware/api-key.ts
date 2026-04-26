@@ -1,3 +1,14 @@
+/**
+ * Widget API key middleware.
+ *
+ * Keys are stored in `projects.api_key` as plaintext and looked up by
+ * equality. That trade-off is documented in
+ * [ADR 0013](../../../../docs/decisions/0013-widget-api-key-storage.md) —
+ * the secret is embedded in the page that loads the widget, so server-side
+ * hashing does not change the threat model. Rotation (POST
+ * /api/projects/:id/api-key/rotate) is the mitigation against a DB leak.
+ */
+
 import { eq } from 'drizzle-orm';
 import type { MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -12,11 +23,11 @@ export type ApiKeyProject = {
 
 export type ApiKeyVars = { project: ApiKeyProject };
 
-const HEADER = 'x-forge-api-key';
-
 export function requireProjectApiKey(): MiddlewareHandler<{ Variables: ApiKeyVars }> {
   return async (c, next) => {
-    const key = c.req.header(HEADER) ?? c.req.header('X-Forge-API-Key');
+    // Hono lowercases header names internally — a single lookup covers
+    // every casing the widget snippet might emit.
+    const key = c.req.header('x-forge-api-key');
     if (!key || key.length < 16) {
       throw new HTTPException(401, {
         message: 'api key required',

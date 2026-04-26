@@ -28,26 +28,40 @@ beforeEach(() => {
 });
 
 describe('requireProjectApiKey', () => {
-  it('401 when header missing', async () => {
+  it('401 API_KEY_REQUIRED when header missing', async () => {
     const res = await buildApp().request('/secure/echo');
     expect(res.status).toBe(401);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('API_KEY_REQUIRED');
     expect(selectFrom).not.toHaveBeenCalled();
   });
 
-  it('401 when key is too short', async () => {
+  it('401 API_KEY_REQUIRED when key is too short', async () => {
     const res = await buildApp().request('/secure/echo', {
       headers: { 'X-Forge-API-Key': 'short' },
     });
     expect(res.status).toBe(401);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('API_KEY_REQUIRED');
     expect(selectFrom).not.toHaveBeenCalled();
   });
 
-  it('401 when key not found', async () => {
+  it('401 INVALID_API_KEY when key not found in DB', async () => {
     selectLimit.mockResolvedValueOnce([]);
     const res = await buildApp().request('/secure/echo', {
       headers: { 'X-Forge-API-Key': 'fk_not-a-real-key-but-long-enough' },
     });
     expect(res.status).toBe(401);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('INVALID_API_KEY');
+  });
+
+  it('case-insensitive header lookup (lowercase, mixed)', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: 'p', slug: 'p', name: 'P' }]);
+    const res = await buildApp().request('/secure/echo', {
+      headers: { 'x-forge-api-key': 'fk_valid-looking-key-from-test' },
+    });
+    expect(res.status).toBe(200);
   });
 
   it('200 + sets c.var.project when key matches', async () => {

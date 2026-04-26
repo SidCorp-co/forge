@@ -19,36 +19,61 @@ import { Hono } from 'hono';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 
-type CachedBundle = { body: Buffer; etag: string; contentType: string };
+type CachedBundle = { body: Buffer; etag: string; contentType: string; mtimeMs: number };
 
 let cached: CachedBundle | null = null;
+let bundlePathOverride: string | null = null;
 
-async function loadBundle(): Promise<CachedBundle | null> {
-  if (cached) return cached;
+function defaultBundlePath(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   // src/widget → ../../public when running from src; build outputs to
   // dist/widget so dist/widget → ../../public also resolves correctly.
-  const bundlePath = resolve(here, '..', '..', 'public', 'forge-widget.js');
+  return resolve(here, '..', '..', 'public', 'forge-widget.js');
+}
+
+/** Override the on-disk bundle path; used by tests so they don't clobber the
+ *  real `forge/core/public/forge-widget.js` produced by `pnpm --filter web
+ *  build:widget`. Pass `null` to restore the default. */
+export function setBundlePathForTesting(p: string | null): void {
+  bundlePathOverride = p;
+  cached = null;
+}
+
+async function loadBundle(): Promise<CachedBundle | null> {
+  const bundlePath = bundlePathOverride ?? defaultBundlePath();
+  let mtimeMs: number;
   try {
-    await stat(bundlePath);
+    const st = await stat(bundlePath);
+    mtimeMs = st.mtimeMs;
   } catch {
     return null;
   }
+  if (cached && cached.mtimeMs === mtimeMs) return cached;
   const body = await readFile(bundlePath);
   const etag = `"${createHash('sha256').update(body).digest('hex').slice(0, 32)}"`;
-  cached = { body, etag, contentType: 'application/javascript; charset=utf-8' };
+  cached = { body, etag, contentType: 'application/javascript; charset=utf-8', mtimeMs };
   return cached;
 }
 
-/** Force a bundle reload — used by tests to swap fixture contents. */
+/** Force a bundle reload — used by tests to swap fixture contents and by an
+ *  out-of-band signal (e.g. SIGUSR2) if a future deploy needs to rebuild
+ *  in-place without restarting core. */
 export function invalidateBundleCache(): void {
   cached = null;
 }
 
+const SLUG_RE = /^[a-z0-9-]{3,64}$/;
+
 export const widgetBundleRoutes = new Hono();
 
+// `/widget` deliberately sits outside the `/api/*` mount that owns the
+// CORS allow-list — browsers don't enforce CORS for `<script src>`, and the
+// bundle is meant to be loaded cross-origin from any embed snippet. Do not
+// wrap this in `cors()`; doing so would tie embedders to the allow-list.
 widgetBundleRoutes.get('/:slug/forge-widget.js', async (c) => {
   const slug = c.req.param('slug');
+  if (!SLUG_RE.test(slug)) return c.text('not found', 404);
+
   const [project] = await db
     .select({ id: projects.id })
     .from(projects)
@@ -75,15 +100,15 @@ widgetBundleRoutes.get('/:slug/forge-widget.js', async (c) => {
     });
   }
 
-  return new Response(
-    new Uint8Array(bundle.body.buffer, bundle.body.byteOffset, bundle.body.byteLength),
-    {
-      status: 200,
-      headers: {
-        'Content-Type': bundle.contentType,
-        ETag: bundle.etag,
-        'Cache-Control': 'public, max-age=300',
-      },
+  // `Buffer` extends `Uint8Array`, but the `Response` constructor's typed
+  // overloads narrow on the parent class; cast through Uint8Array to keep
+  // tsc happy without copying bytes.
+  return new Response(bundle.body as unknown as Uint8Array, {
+    status: 200,
+    headers: {
+      'Content-Type': bundle.contentType,
+      ETag: bundle.etag,
+      'Cache-Control': 'public, max-age=300',
     },
-  );
+  });
 });

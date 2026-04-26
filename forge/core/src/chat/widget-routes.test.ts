@@ -48,10 +48,8 @@ function apiKeyMatch() {
   selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, slug: 'forge-dev', name: 'Forge Dev' }]);
 }
 
-function projectInfoRow() {
-  selectLimit.mockResolvedValueOnce([
-    { id: PROJECT_ID, slug: 'forge-dev', name: 'Forge Dev', agentConfig: null },
-  ]);
+function projectAgentConfigRow() {
+  selectLimit.mockResolvedValueOnce([{ agentConfig: null }]);
 }
 
 function appConfigOverrideRow() {
@@ -94,16 +92,18 @@ beforeEach(() => {
 });
 
 describe('POST /api/widget/chat', () => {
-  it('401 without X-Forge-API-Key', async () => {
+  it('401 API_KEY_REQUIRED without X-Forge-API-Key', async () => {
     const res = await buildApp().request('/api/widget/chat', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ message: 'hi' }),
     });
     expect(res.status).toBe(401);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('API_KEY_REQUIRED');
   });
 
-  it('400 on invalid payload (missing message)', async () => {
+  it('400 BAD_REQUEST on invalid payload (missing message)', async () => {
     apiKeyMatch();
     const res = await buildApp().request('/api/widget/chat', {
       method: 'POST',
@@ -111,6 +111,9 @@ describe('POST /api/widget/chat', () => {
       body: JSON.stringify({}),
     });
     expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string; details: unknown };
+    expect(body.code).toBe('BAD_REQUEST');
+    expect(body.details).toBeDefined();
   });
 
   it('streams + persists chat_logs.source=widget', async () => {
@@ -124,7 +127,7 @@ describe('POST /api/widget/chat', () => {
     }));
 
     apiKeyMatch();
-    projectInfoRow();
+    projectAgentConfigRow();
     appConfigOverrideRow();
     appConfigProviderRow({ chatProviderId: 'mock', chatModel: null });
     newSessionInsert();

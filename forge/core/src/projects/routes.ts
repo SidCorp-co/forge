@@ -14,9 +14,13 @@ function generateApiKey(): string {
 }
 
 function redactApiKey(key: string | null): string | null {
-  if (!key || key.length < 8) return null;
-  // Preserve `fk_` prefix + last 4 chars so owners can recognise their key
-  // without leaking the secret in list responses.
+  if (!key) return null;
+  // Generated keys are 51 chars (`fk_` + 48 hex). The branch below is
+  // unreachable for keys produced by `generateApiKey`; it's a defensive
+  // fallback for legacy/short keys discovered in the wild and renders an
+  // unambiguous "exists but not previewable" placeholder rather than the
+  // null we'd otherwise indistinguish from "no key at all".
+  if (key.length < 8) return 'fk_…';
   return `${key.slice(0, 3)}…${key.slice(-4)}`;
 }
 
@@ -209,13 +213,38 @@ projectRoutes.post(
       throw forbidden('owner or admin required');
     }
 
-    const apiKey = generateApiKey();
-    const [updated] = await db
-      .update(projects)
-      .set({ apiKey })
-      .where(eq(projects.id, id))
-      .returning({ id: projects.id, apiKey: projects.apiKey });
-    if (!updated) throw notFound();
+    // Retry on the partial unique index violation. With 192 bits of
+    // entropy a collision is astronomical, but the `create` path already
+    // wraps inserts in `isUniqueViolation`; mirror the pattern so a freak
+    // collision presents as a 503 rather than an opaque 500.
+    let updated: { id: string; apiKey: string | null } | undefined;
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const apiKey = generateApiKey();
+        [updated] = await db
+          .update(projects)
+          .set({ apiKey })
+          .where(eq(projects.id, id))
+          .returning({ id: projects.id, apiKey: projects.apiKey });
+        break;
+      } catch (err) {
+        if (isUniqueViolation(err)) {
+          lastErr = err;
+          continue;
+        }
+        throw err;
+      }
+    }
+    if (!updated) {
+      if (lastErr) {
+        throw new HTTPException(503, {
+          message: 'failed to mint a unique api key — try again',
+          cause: { code: 'API_KEY_COLLISION' },
+        });
+      }
+      throw notFound();
+    }
 
     return c.json({ id: updated.id, apiKey: updated.apiKey });
   },
