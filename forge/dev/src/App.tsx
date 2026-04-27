@@ -5,6 +5,7 @@ import { ProjectIssues, NewIssuePage, ProjectBoard, AgentChat, ProjectSettings, 
 import { ProjectAgents } from "@/pages/project/ProjectAgents";
 import { ChatSidebar } from "@/components/chat-sidebar";
 import { ChatPreview } from "@/pages/preview/ChatPreview";
+import { SkillConflictDialog } from "@/components/skill-conflict-dialog";
 import { useWebSocket } from "@/hooks/use-web-socket";
 import { useLocalConfig } from "@/hooks/use-local-config";
 import { useAutoUpdater } from "@/hooks/use-auto-updater";
@@ -100,6 +101,7 @@ function AppInner() {
           </button>
         </div>
       )}
+      {isLoggedIn && <SkillConflictDialog />}
       <div className="flex flex-1 overflow-hidden">
         {isLoggedIn && <Sidebar />}
         <main className="flex-1 overflow-hidden">
