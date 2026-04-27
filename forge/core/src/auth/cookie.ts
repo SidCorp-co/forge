@@ -17,8 +17,11 @@ export function setAuthCookie(c: Context, token: string): void {
 }
 
 export function clearAuthCookie(c: Context): void {
-  deleteCookie(c, AUTH_COOKIE_NAME, {
-    path: '/',
-    ...(env.AUTH_COOKIE_DOMAIN ? { domain: env.AUTH_COOKIE_DOMAIN } : {}),
-  });
+  // Always clear the host-scoped variant first — it lingers in browsers from
+  // before AUTH_COOKIE_DOMAIN was introduced and would survive a normal
+  // domain-scoped logout, leaving stale auth attached to the request host.
+  deleteCookie(c, AUTH_COOKIE_NAME, { path: '/' });
+  if (env.AUTH_COOKIE_DOMAIN) {
+    deleteCookie(c, AUTH_COOKIE_NAME, { path: '/', domain: env.AUTH_COOKIE_DOMAIN });
+  }
 }
