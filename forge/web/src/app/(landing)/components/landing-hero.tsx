@@ -131,6 +131,7 @@ export function LandingHero() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.45, ease }}
+          className="flex flex-col items-center gap-5"
         >
           <a
             href={process.env.NEXT_PUBLIC_BOOKING_URL || '#book'}
@@ -139,6 +140,23 @@ export function LandingHero() {
             <Calendar className="w-5 h-5" />
             Book a 30-min Scoping Call
           </a>
+
+          {/* Quiet secondary path: surface the open-source engine without
+              competing with the primary scoping-call ask. */}
+          <div className="flex items-center gap-2.5 text-xs text-primary-fixed font-light">
+            <span className="h-px w-6 bg-outline-variant/40" />
+            <span>or</span>
+            <a
+              href="#forge"
+              className="inline-flex items-center gap-1.5 text-on-surface hover:text-warning transition-colors group"
+            >
+              <span>use the engine we built</span>
+              <span aria-hidden className="transition-transform group-hover:translate-x-0.5">
+                →
+              </span>
+            </a>
+            <span className="h-px w-6 bg-outline-variant/40" />
+          </div>
         </motion.div>
       </div>
     </section>
