@@ -67,8 +67,7 @@ test.describe('Phase G — agent chat assistant reply', () => {
         const orig = window.WebSocket;
         const captured: CapturedSocket[] = [];
         window.__forgeWSCaptured = captured;
-        // @ts-expect-error monkey-patch
-        window.WebSocket = class extends orig {
+          window.WebSocket = class extends orig {
           constructor(url: string | URL, protocols?: string | string[]) {
             super(url, protocols);
             const entry: CapturedSocket = {

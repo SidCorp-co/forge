@@ -317,6 +317,15 @@ export const jobs = pgTable(
     maxAttempts: integer('max_attempts').notNull().default(3),
     cancellationRequested: boolean('cancellation_requested').notNull().default(false),
     retryOf: uuid('retry_of').references((): AnyPgColumn => jobs.id, { onDelete: 'set null' }),
+    // Pipeline self-healing (Phase H, ISS-306). Set when the job ends in
+    // `failed`. failureKind drives whether the issue-state sweeper should
+    // re-fire (transient/unknown) or escalate (permanent). classifierVersion
+    // pins the classifier rules at write time so old rows survive future
+    // pattern changes without silent reclassification.
+    failureKind: text('failure_kind', { enum: ['transient', 'permanent', 'unknown'] }),
+    failureReason: text('failure_reason'),
+    failureMeta: jsonb('failure_meta'),
+    classifierVersion: integer('classifier_version'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -456,6 +465,12 @@ export const issueStatuses = [
   'reopen',
   'on_hold',
   'needs_info',
+  // Pipeline self-healing (Phase H, ISS-306). Set by the sweeper when an
+  // issue exhausts its recovery budget OR hits a permanent failure (content
+  // filter, auth, validation). Distinguishes "agent gave up" from
+  // `needs_info` ("agent asked the human a question") so dashboards,
+  // reporting, and notification routing can treat the two cases separately.
+  'pipeline_failed',
 ] as const;
 export type IssueStatus = (typeof issueStatuses)[number];
 
@@ -500,6 +515,15 @@ export const issues = pgTable(
     acceptanceCriteria: text('acceptance_criteria'),
     suggestedSolution: text('suggested_solution'),
     sessionContext: jsonb('session_context'),
+    // Pipeline self-healing (Phase H, ISS-306). The sweeper increments
+    // recoveryAttempts every time it re-fires the orchestrator for this
+    // issue. lastRecoveryAt anchors the sliding window; once
+    // (now - recoveryWindowStartedAt) exceeds the project's configured
+    // window (default 24h) the counter auto-resets so a one-off bad day
+    // doesn't condemn an issue forever.
+    recoveryAttempts: integer('recovery_attempts').notNull().default(0),
+    lastRecoveryAt: timestamp('last_recovery_at', { withTimezone: true }),
+    recoveryWindowStartedAt: timestamp('recovery_window_started_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -510,6 +534,9 @@ export const issues = pgTable(
     projectSourceExternalIdUq: uniqueIndex('issues_project_source_external_id_uq')
       .on(t.projectId, t.source, t.externalId)
       .where(sql`external_id IS NOT NULL`),
+    // Sweeper queries `WHERE status IN (...pipeline) ORDER BY last_recovery_at`
+    // to avoid revisiting the same recently-recovered issue every tick.
+    pipelineRecoveryIdx: index('issues_pipeline_recovery_idx').on(t.status, t.lastRecoveryAt),
     parentFk: foreignKey({
       columns: [t.parentIssueId],
       foreignColumns: [t.id],

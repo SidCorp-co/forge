@@ -63,6 +63,23 @@ function isUniqueViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && (err as { code?: string }).code === '23505';
 }
 
+/**
+ * Re-export for the self-healing sweeper (Phase H, ISS-306). Same shape
+ * as the private considerEnqueue used by hook subscribers — exposing it
+ * lets the sweeper salvage stuck issues without firing a synthetic
+ * `transition` hook (which would mutate activity_log / WS broadcasts in
+ * confusing ways).
+ */
+export async function reEnqueueForIssue(args: {
+  projectId: string;
+  issueId: string;
+  status: IssueStatus;
+  actor: Actor;
+  reason: Record<string, unknown>;
+}): Promise<void> {
+  return considerEnqueue(args);
+}
+
 async function considerEnqueue(args: {
   projectId: string;
   issueId: string;

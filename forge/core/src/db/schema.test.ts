@@ -494,18 +494,22 @@ describe('db/schema — jobs', () => {
     expect(modelTiers).toEqual(['haiku', 'sonnet', 'opus']);
   });
 
-  it('has the twenty-one documented columns (16 base + 4 F3 + runner_id)', () => {
+  it('has the documented columns', () => {
     const names = getTableConfig(jobs).columns.map((c) => c.name);
     expect(names.sort()).toEqual(
       [
         'attempts',
         'cancellation_requested',
+        'classifier_version',
         'created_at',
         'created_by',
         'device_id',
         'dispatched_at',
         'error',
         'exit_code',
+        'failure_kind',
+        'failure_meta',
+        'failure_reason',
         'finished_at',
         'id',
         'issue_id',
@@ -695,11 +699,12 @@ describe('db/schema — issues', () => {
       'reopen',
       'on_hold',
       'needs_info',
+      'pipeline_failed',
     ]);
     expect(issuePriorities).toEqual(['critical', 'high', 'medium', 'low', 'none']);
   });
 
-  it('has the documented columns (14 base + 2 F4 source/external_id + 4 ISS-293 plan/AC/sol/sessionCtx)', () => {
+  it('has the documented columns', () => {
     const names = getTableConfig(issues).columns.map((c) => c.name);
     expect(names.sort()).toEqual(
       [
@@ -712,10 +717,13 @@ describe('db/schema — issues', () => {
         'external_id',
         'id',
         'iss_seq',
+        'last_recovery_at',
         'parent_issue_id',
         'plan',
         'priority',
         'project_id',
+        'recovery_attempts',
+        'recovery_window_started_at',
         'reopen_count',
         'session_context',
         'source',

@@ -1,6 +1,8 @@
+import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { CLASSIFIER_VERSION, classifyFailure } from '../pipeline/failure-classifier.js';
 import { enqueueJob } from './enqueue.js';
 
 type JobRow = typeof jobs.$inferSelect;
@@ -28,6 +30,46 @@ export async function scheduleRetry(job: JobRow, reason: string): Promise<RetryO
   if (job.status === 'cancelled') {
     return { scheduled: false };
   }
+
+  // Persist a classification on the parent job before deciding. The
+  // sweeper reads `failure_kind` to choose recover vs escalate; the
+  // attempt cap below also short-circuits permanent failures so we do
+  // not waste API budget retrying a deterministic policy block (e.g.
+  // Anthropic content filter).
+  const inputError =
+    typeof job.error === 'string' && job.error.length > 0 ? job.error : reason;
+  const classified = classifyFailure({ error: inputError });
+  if (job.failureKind === null || job.failureKind === undefined) {
+    try {
+      await db
+        .update(jobs)
+        .set({
+          failureKind: classified.kind,
+          failureReason: classified.reason,
+          failureMeta: classified.meta as never,
+          classifierVersion: classified.version,
+        })
+        .where(eq(jobs.id, job.id));
+      // Mirror onto the in-memory row so downstream readers see it.
+      job.failureKind = classified.kind;
+      job.failureReason = classified.reason;
+      job.classifierVersion = classified.version;
+    } catch (err) {
+      logger.warn(
+        { err, jobId: job.id },
+        'retry: failed to persist classification, continuing',
+      );
+    }
+  }
+
+  if (classified.kind === 'permanent') {
+    logger.info(
+      { jobId: job.id, reason: classified.reason, classifierVersion: CLASSIFIER_VERSION },
+      'retry: skipping retry on permanent failure',
+    );
+    return { scheduled: false };
+  }
+
   if (job.attempts >= job.maxAttempts) {
     logger.info(
       { jobId: job.id, attempts: job.attempts, maxAttempts: job.maxAttempts, reason },

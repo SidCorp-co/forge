@@ -253,6 +253,13 @@
       "when": 1777680000000,
       "tag": "0035_projects_settings_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1777290000000,
+      "tag": "0036_pipeline_self_healing",
+      "breakpoints": true
     }
   ]
 }
