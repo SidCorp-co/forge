@@ -76,13 +76,13 @@ export interface AgentSession {
 export type AgentSessionSummary = Omit<AgentSession, 'messages'>;
 
 /**
- * Interactive agent runs (start / send / abort) live on the device-runner job
- * queue, which is not yet wired through forge/core's REST surface — the
- * `/agent-sessions/start|send|abort` paths below 404 against the current core.
- * The agent page is read-only for v0.1.0; gate any UI that triggers these
- * endpoints behind this flag. Flip to `true` when the job-queue endpoints land.
+ * Interactive agent runs (start / send / abort / build-prompt) ship with
+ * v0.1.9 (ISS-300). Core publishes `agent:start | agent:send | agent:abort |
+ * agent:review | agent:reindex | agent:build-prompt` events to the device's
+ * WS room; forge/dev (Tauri) listens for these events and drives the local
+ * Claude CLI. Streaming responses come back via the project + session rooms.
  */
-export const AGENT_INTERACTIVE_ENABLED = false;
+export const AGENT_INTERACTIVE_ENABLED = true;
 
 function adaptAgent(row: Record<string, unknown>): Agent {
   // core returns flat rows with `id` (uuid). Existing components read `documentId` —

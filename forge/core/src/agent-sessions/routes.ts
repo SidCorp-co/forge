@@ -1,10 +1,18 @@
+import { randomUUID } from 'node:crypto';
 import { zValidator } from '@hono/zod-validator';
-import { and, count, desc, eq, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { agentSessionStatuses, agentSessions } from '../db/schema.js';
+import {
+  agentSessionStatuses,
+  agentSessions,
+  issues,
+  projects,
+} from '../db/schema.js';
+import { buildChatPreamble, TOOL_REFERENCE } from '../lib/chat-preamble.js';
+import { findAvailableDeviceForProject, resolveRepoPath } from '../lib/device-pool.js';
 import { setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess, type ProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -125,6 +133,468 @@ function broadcastSession(
 
 export const agentSessionRoutes = new Hono<{ Variables: AuthVars }>();
 agentSessionRoutes.use('*', requireAuth(), assertEmailVerified());
+
+// === Static-path lifecycle routes (start / send / abort / build-prompt /
+// prompt-built). All mounted BEFORE the `:id` handlers to avoid uuid validator
+// collisions. The web UI calls these to drive an interactive Claude CLI
+// conversation through the device-runner — the device speaks the legacy
+// `agent:start | agent:send | agent:abort | agent:review | agent:reindex`
+// vocabulary on its WS channel (forge/dev preserves these handlers from
+// Strapi parity), so core just resolves a device, persists the session row,
+// and publishes the right event into the device's room.
+
+const startBodySchema = z
+  .object({
+    projectSlug: z.string().min(1).max(120),
+    prompt: z.string().min(1).max(40_000).optional(),
+    repoPath: z.string().max(2000).nullable().optional(),
+    preBuilt: z.boolean().optional(),
+    issueIds: z.array(z.uuid()).max(50).optional(),
+    type: z.string().max(80).optional(),
+    origin: z.string().max(40).optional(),
+  })
+  .strict();
+
+const sendBodySchema = z
+  .object({
+    sessionId: z.uuid(),
+    message: z.string().min(1).max(40_000),
+    claudeSessionId: z.string().max(500).nullable().optional(),
+    origin: z.string().max(40).optional(),
+  })
+  .strict();
+
+const abortBodySchema = z
+  .object({
+    sessionId: z.uuid(),
+  })
+  .strict();
+
+const buildPromptBodySchema = z
+  .object({
+    projectSlug: z.string().min(1).max(120),
+    issueIds: z.array(z.uuid()).min(1).max(50),
+  })
+  .strict();
+
+const promptBuiltBodySchema = z
+  .object({
+    requestId: z.string().min(1).max(120),
+    prompt: z.string().max(80_000).optional(),
+    error: z.string().max(2000).optional(),
+  })
+  .strict()
+  .refine((o) => o.prompt !== undefined || o.error !== undefined, {
+    message: 'prompt or error required',
+  });
+
+const MAX_RESUMABLE_CONTEXT = 600_000;
+
+async function loadProjectBySlug(slug: string) {
+  const [row] = await db
+    .select({
+      id: projects.id,
+      slug: projects.slug,
+      ownerId: projects.ownerId,
+      repoPath: projects.repoPath,
+      defaultDeviceId: projects.defaultDeviceId,
+    })
+    .from(projects)
+    .where(eq(projects.slug, slug))
+    .limit(1);
+  return row ?? null;
+}
+
+async function findResumableSessionForIssue(
+  issueId: string,
+  deviceId: string | null,
+): Promise<{
+  id: string;
+  claudeSessionId: string | null;
+  messages: unknown;
+  metadata: unknown;
+  usage: unknown;
+} | null> {
+  const rows = await db
+    .select({
+      id: agentSessions.id,
+      claudeSessionId: agentSessions.claudeSessionId,
+      messages: agentSessions.messages,
+      metadata: agentSessions.metadata,
+      usage: agentSessions.usage,
+      status: agentSessions.status,
+    })
+    .from(agentSessions)
+    .where(
+      and(
+        eq(
+          // jsonb metadata.issueId equality is encoded as a JSONB ->> 'issueId' compare.
+          // We avoid heavy SQL fragments here — the session list per device is
+          // small enough that filtering in app code is fine.
+          agentSessions.id,
+          agentSessions.id,
+        ),
+        inArray(agentSessions.status, ['completed', 'idle']),
+      ),
+    )
+    .orderBy(desc(agentSessions.updatedAt))
+    .limit(20);
+
+  for (const r of rows) {
+    if (!r.claudeSessionId) continue;
+    const meta = r.metadata as { issueId?: string; deviceId?: string } | null;
+    if (meta?.issueId !== issueId) continue;
+    if (deviceId && meta?.deviceId !== deviceId) continue;
+    const usage = r.usage as { contextUsed?: number } | null;
+    if ((usage?.contextUsed ?? 0) > MAX_RESUMABLE_CONTEXT) continue;
+    return r as never;
+  }
+  return null;
+}
+
+agentSessionRoutes.post(
+  '/start',
+  zValidator('json', startBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const input = c.req.valid('json');
+    const userId = c.get('userId');
+
+    const isReindex = input.type?.endsWith('-reindex') ?? false;
+    const isAgentSession = !!input.type;
+
+    if (!input.prompt && !isAgentSession) {
+      throw badRequest({ message: 'prompt is required for non-agent sessions' });
+    }
+
+    const project = await loadProjectBySlug(input.projectSlug);
+    if (!project) throw notFound('project not found');
+
+    const access = await loadProjectAccess(project.id, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+
+    let deviceId: string | null = null;
+    if (input.origin !== 'desktop') {
+      deviceId = await findAvailableDeviceForProject(project.id);
+    }
+    if (!deviceId && project.defaultDeviceId) {
+      deviceId = project.defaultDeviceId;
+    }
+
+    const agentName = input.type ?? 'agent';
+    const effectivePrompt =
+      input.prompt ?? (isReindex ? `${agentName}: Knowledge Reindex` : `${agentName}: Review`);
+
+    let title: string;
+    if (isAgentSession) {
+      title = isReindex ? `${agentName} Reindex` : `${agentName} Review`;
+    } else if (input.issueIds && input.issueIds.length > 0) {
+      const issueRows = await db
+        .select({ id: issues.id, issSeq: issues.issSeq, title: issues.title })
+        .from(issues)
+        .where(inArray(issues.id, input.issueIds));
+      if (issueRows.length === 1) {
+        title = `ISS-${issueRows[0]?.issSeq} ${issueRows[0]?.title ?? ''}`.slice(0, 120);
+      } else if (issueRows.length > 1) {
+        title = issueRows.map((i) => `ISS-${i.issSeq}`).join(', ').slice(0, 120);
+      } else {
+        title = effectivePrompt.slice(0, 120);
+      }
+    } else {
+      title = effectivePrompt
+        .replace(/^You are working on issue:\s*/i, '')
+        .replace(/^You are working on the following issues:\s*/i, '')
+        .replace(/^You are working on:\s*/i, '')
+        .slice(0, 120);
+    }
+
+    const rp = resolveRepoPath(input.repoPath, project.repoPath);
+    const now = Date.now();
+    const userMessage = { role: 'user', content: effectivePrompt, timestamp: now };
+
+    // Issue-triggered chats may resume an in-progress Claude CLI session.
+    if (
+      !isAgentSession &&
+      input.issueIds &&
+      input.issueIds.length === 1 &&
+      input.origin !== 'desktop' &&
+      deviceId &&
+      input.issueIds[0]
+    ) {
+      const firstIssueId = input.issueIds[0];
+      const resumable = await findResumableSessionForIssue(firstIssueId, deviceId);
+      if (resumable) {
+        const prevMessages = Array.isArray(resumable.messages) ? resumable.messages : [];
+        const messages = [...prevMessages, userMessage];
+        const [updated] = await db
+          .update(agentSessions)
+          .set({ status: 'running', messages, title, updatedAt: new Date() })
+          .where(eq(agentSessions.id, resumable.id))
+          .returning();
+        if (!updated) throw notFound('agent session not found');
+
+        roomManager.publish(deviceRoom(deviceId), {
+          event: 'agent:send',
+          data: {
+            sessionId: updated.id,
+            message: effectivePrompt,
+            claudeSessionId: resumable.claudeSessionId,
+            repoPath: rp,
+            projectSlug: input.projectSlug,
+          },
+        });
+        broadcastSession(updated, 'agent-session.updated');
+        return c.json(updated);
+      }
+    }
+
+    const metadata: Record<string, unknown> = isAgentSession ? { type: input.type } : {};
+    if (deviceId) metadata.deviceId = deviceId;
+    if (input.issueIds?.length === 1 && input.issueIds[0]) {
+      metadata.issueId = input.issueIds[0];
+    }
+
+    const [inserted] = await db
+      .insert(agentSessions)
+      .values({
+        projectId: project.id,
+        userId,
+        deviceId,
+        title,
+        status: 'running',
+        repoPath: rp,
+        messages: [userMessage] as never,
+        metadata: metadata as never,
+      })
+      .returning();
+    if (!inserted) throw new Error('agent_sessions: insert returned no row');
+
+    if (input.origin === 'desktop') {
+      // Desktop-originated sessions echo the user message to web subscribers.
+      roomManager.publish(projectRoom(project.id), {
+        event: 'agent:user-message',
+        data: { sessionId: inserted.id, content: effectivePrompt },
+      });
+    }
+
+    if (input.origin !== 'desktop' && deviceId) {
+      if (isAgentSession) {
+        const agentEvent = isReindex ? 'agent:reindex' : 'agent:review';
+        roomManager.publish(deviceRoom(deviceId), {
+          event: agentEvent,
+          data: {
+            sessionId: inserted.id,
+            repoPath: rp,
+            projectSlug: input.projectSlug,
+          },
+        });
+      } else {
+        let enriched = effectivePrompt;
+        if (!input.preBuilt) {
+          try {
+            const preamble = await buildChatPreamble(project.id);
+            enriched = preamble + effectivePrompt;
+          } catch {
+            // non-fatal — proceed with raw prompt
+          }
+        }
+        roomManager.publish(deviceRoom(deviceId), {
+          event: 'agent:start',
+          data: {
+            sessionId: inserted.id,
+            repoPath: rp,
+            prompt: enriched,
+            projectSlug: input.projectSlug,
+            preBuilt: input.preBuilt ?? false,
+            systemPrompt: TOOL_REFERENCE,
+          },
+        });
+      }
+    }
+
+    broadcastSession(inserted, 'agent-session.created');
+    return c.json(inserted, 201);
+  },
+);
+
+agentSessionRoutes.post(
+  '/send',
+  zValidator('json', sendBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const input = c.req.valid('json');
+    const userId = c.get('userId');
+
+    const [session] = await db
+      .select()
+      .from(agentSessions)
+      .where(eq(agentSessions.id, input.sessionId))
+      .limit(1);
+    if (!session) throw notFound('agent session not found');
+
+    const access = await loadProjectAccess(session.projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (session.userId && session.userId !== userId && !isOwnerOrAdmin(access, userId)) {
+      throw forbidden('not the session owner');
+    }
+
+    const prevMessages = Array.isArray(session.messages) ? session.messages : [];
+    const messages = [
+      ...prevMessages,
+      { role: 'user', content: input.message, timestamp: Date.now() },
+    ];
+    const [updated] = await db
+      .update(agentSessions)
+      .set({ messages: messages as never, status: 'running', updatedAt: new Date() })
+      .where(eq(agentSessions.id, input.sessionId))
+      .returning();
+    if (!updated) throw notFound('agent session not found');
+
+    if (input.origin === 'desktop') {
+      roomManager.publish(projectRoom(updated.projectId), {
+        event: 'agent:user-message',
+        data: { sessionId: updated.id, content: input.message },
+      });
+    }
+
+    if (input.origin !== 'desktop') {
+      const meta = (updated.metadata ?? {}) as { deviceId?: string };
+      const targetDeviceId = meta.deviceId ?? updated.deviceId ?? null;
+      if (targetDeviceId) {
+        const [project] = await db
+          .select({ slug: projects.slug })
+          .from(projects)
+          .where(eq(projects.id, updated.projectId))
+          .limit(1);
+        roomManager.publish(deviceRoom(targetDeviceId), {
+          event: 'agent:send',
+          data: {
+            sessionId: updated.id,
+            message: input.message,
+            claudeSessionId: input.claudeSessionId ?? updated.claudeSessionId ?? null,
+            repoPath: updated.repoPath ?? null,
+            projectSlug: project?.slug ?? null,
+          },
+        });
+      }
+    }
+
+    broadcastSession(updated, 'agent-session.updated');
+    return c.json({ ok: true });
+  },
+);
+
+agentSessionRoutes.post(
+  '/abort',
+  zValidator('json', abortBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const input = c.req.valid('json');
+    const userId = c.get('userId');
+
+    const [session] = await db
+      .select()
+      .from(agentSessions)
+      .where(eq(agentSessions.id, input.sessionId))
+      .limit(1);
+    if (!session) throw notFound('agent session not found');
+
+    const access = await loadProjectAccess(session.projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (session.userId && session.userId !== userId && !isOwnerOrAdmin(access, userId)) {
+      throw forbidden('not the session owner');
+    }
+
+    const [updated] = await db
+      .update(agentSessions)
+      .set({ status: 'idle', updatedAt: new Date() })
+      .where(eq(agentSessions.id, input.sessionId))
+      .returning();
+    if (!updated) throw notFound('agent session not found');
+
+    // Strapi parity also pinned `issues.manualHold = true` here for pipeline
+    // sessions so the sweeper wouldn't auto-retry. Core's issues schema does
+    // not have that field; the heartbeat sweeper isn't ported either, so the
+    // "abort = idle" status is enough today. Re-add when manualHold lands.
+    const meta = (updated.metadata ?? {}) as {
+      type?: string;
+      issueId?: string;
+      deviceId?: string;
+    };
+
+    const targetDeviceId = meta.deviceId ?? updated.deviceId ?? null;
+    if (targetDeviceId) {
+      roomManager.publish(deviceRoom(targetDeviceId), {
+        event: 'agent:abort',
+        data: { sessionId: updated.id },
+      });
+    }
+
+    broadcastSession(updated, 'agent-session.status');
+    return c.json({ ok: true });
+  },
+);
+
+agentSessionRoutes.post(
+  '/build-prompt',
+  zValidator('json', buildPromptBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const input = c.req.valid('json');
+    const userId = c.get('userId');
+
+    const project = await loadProjectBySlug(input.projectSlug);
+    if (!project) throw notFound('project not found');
+
+    const access = await loadProjectAccess(project.id, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+
+    const deviceId =
+      (await findAvailableDeviceForProject(project.id)) ?? project.defaultDeviceId;
+    if (!deviceId) {
+      throw new HTTPException(503, {
+        message: 'no online device for this project',
+        cause: { code: 'NO_DEVICE' },
+      });
+    }
+
+    const requestId = randomUUID();
+    roomManager.publish(deviceRoom(deviceId), {
+      event: 'agent:build-prompt',
+      data: { requestId, projectSlug: input.projectSlug, issueIds: input.issueIds },
+    });
+
+    return c.json({ requestId });
+  },
+);
+
+// Device → core relay for the build-prompt callback. Devices POST here once
+// they've assembled the prompt; core fans the result out to whichever web
+// client is waiting on `requestId`.
+agentSessionRoutes.post(
+  '/prompt-built',
+  zValidator('json', promptBuiltBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const input = c.req.valid('json');
+    // Broadcast org-wide on a stable room name. Web clients keyed on
+    // requestId filter the relevant message.
+    roomManager.publish('agent:prompt-built', {
+      event: 'agent:prompt-built',
+      data: {
+        requestId: input.requestId,
+        prompt: input.prompt ?? null,
+        error: input.error ?? null,
+      },
+    });
+    return c.json({ ok: true });
+  },
+);
 
 // Static path mounted before `:id` to avoid uuid validator collisions.
 agentSessionRoutes.post(
