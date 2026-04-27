@@ -26,11 +26,11 @@ export function useWebSocket() {
   useEffect(() => {
     if (!config.coreUrl) return;
 
-    // Browser WS API can't set Authorization header → pass token via query
-    // string; forge/core's ws/server.ts accepts `?token=<jwt>` as a fallback
-    // alongside Authorization header and forge_auth cookie.
-    const wsBase = config.coreUrl.replace(/^http/, "ws") + "/ws";
-    const wsUrl = config.authToken ? `${wsBase}?token=${encodeURIComponent(config.authToken)}` : wsBase;
+    // ISS-286: token never goes in the URL — it leaks via nginx access logs,
+    // browser history, and Referer. Tauri Rust path attaches the device
+    // token via Authorization header (see websocket/mod.rs); browser fallback
+    // path uses the `forge.bearer.<jwt>` Sec-WebSocket-Protocol subprotocol.
+    const wsUrl = config.coreUrl.replace(/^http/, "ws") + "/ws";
 
     async function handleSkillsPush(data: any) {
       const skills: Array<{
@@ -605,9 +605,14 @@ export function useWebSocket() {
           unlisten6();
         };
       } catch (err) {
-        // Not in Tauri — use native WebSocket as fallback
+        // Not in Tauri — use native WebSocket as fallback. Pass the user JWT
+        // via Sec-WebSocket-Protocol subprotocol (ISS-286) so the token
+        // never appears in the URL / access logs / Referer.
         console.warn("[ws-debug] tauri listen() failed → browser fallback", err);
-        const ws = new WebSocket(wsUrl);
+        const protocols = config.authToken
+          ? [`forge.bearer.${config.authToken}`]
+          : undefined;
+        const ws = protocols ? new WebSocket(wsUrl, protocols) : new WebSocket(wsUrl);
         wsRef.current = ws;
         ws.onopen = () => {
           console.warn("[ws-debug] browser WS open — sending subscribe device:", config.deviceId);
