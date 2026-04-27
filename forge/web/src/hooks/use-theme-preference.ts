@@ -48,12 +48,16 @@ export function useThemePreference() {
     staleTime: 60_000,
   });
 
-  // Mirror the server-side theme into next-themes once on first load so
-  // the UI matches what other tabs / devices have set.
+  // Mirror server-side theme into next-themes when an *incoming* server value
+  // changes (other tab / device updated it). Crucially `theme` is NOT a dep:
+  // local setTheme calls must not retrigger this effect, otherwise an in-flight
+  // mutation's stale `data.theme` would revert the user's click before the
+  // PATCH lands (the flicker fixed in ISS-309).
   useEffect(() => {
-    if (!data) return;
-    if (data.theme && data.theme !== theme) setTheme(data.theme);
-  }, [data, setTheme, theme]);
+    if (!data?.theme) return;
+    setTheme(data.theme);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.theme]);
 
   const mutation = useMutation({
     mutationFn: async (input: { theme?: PreferenceTheme; language?: PreferenceLanguage }) =>
@@ -61,6 +65,18 @@ export function useThemePreference() {
         method: 'PATCH',
         body: JSON.stringify(input),
       }),
+    onMutate: async (input) => {
+      if (!input.theme && !input.language) return;
+      await qc.cancelQueries({ queryKey: PREFS_KEY });
+      const prev = qc.getQueryData<UserPreferences>(PREFS_KEY);
+      qc.setQueryData<UserPreferences>(PREFS_KEY, (p) =>
+        p ? { ...p, ...(input.theme ? { theme: input.theme } : {}), ...(input.language ? { language: input.language } : {}) } : p,
+      );
+      return { prev };
+    },
+    onError: (_err, _input, ctx) => {
+      if (ctx?.prev) qc.setQueryData(PREFS_KEY, ctx.prev);
+    },
     onSuccess: (next) => {
       qc.setQueryData<UserPreferences>(PREFS_KEY, next);
     },

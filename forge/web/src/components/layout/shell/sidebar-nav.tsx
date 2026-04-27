@@ -25,6 +25,7 @@ import {
   Crown,
 } from 'lucide-react';
 import { useThemePreference } from '@/hooks/use-theme-preference';
+import { useMounted } from '@/hooks/use-mounted';
 import Image from 'next/image';
 import logoImg from '../../../../public/180x180.png';
 import { NotificationBell } from '@/features/notification/components/notification-bell';
@@ -113,16 +114,22 @@ function AvatarDropdown({ user, connected, logout, pathname }: {
 
 function ThemeToggle() {
   const { resolvedTheme, saveTheme } = useThemePreference();
-  const isDark = resolvedTheme === 'dark';
+  const mounted = useMounted();
+  const isDark = mounted && resolvedTheme === 'dark';
 
   return (
     <button
       onClick={() => saveTheme(isDark ? 'light' : 'dark')}
       className="w-full flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors"
-      title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      title={mounted ? (isDark ? 'Switch to light mode' : 'Switch to dark mode') : 'Theme'}
+      aria-label="Toggle theme"
+      suppressHydrationWarning
     >
-      {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-      <span className="text-xs">{isDark ? 'Light Mode' : 'Dark Mode'}</span>
+      {/* Render a stable placeholder until mounted so SSR/hydration markup matches; theme-dependent icon swaps in afterwards. */}
+      <span className="h-4 w-4 inline-flex items-center justify-center" suppressHydrationWarning>
+        {!mounted ? <Moon className="h-4 w-4 opacity-0" /> : isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+      </span>
+      <span className="text-xs" suppressHydrationWarning>{!mounted ? ' ' : isDark ? 'Light Mode' : 'Dark Mode'}</span>
     </button>
   );
 }

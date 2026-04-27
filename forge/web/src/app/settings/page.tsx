@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useTheme } from 'next-themes';
+import { useMounted } from '@/hooks/use-mounted';
 import {
   ChevronRight,
   FolderKanban,
@@ -249,6 +250,7 @@ function AppearanceCard() {
   const { theme: appliedTheme, setTheme } = useTheme();
   const prefs = useMePreferences();
   const update = useUpdateMePreferences();
+  const mounted = useMounted();
 
   // Hydrate next-themes from the server prefs once they load — useful when
   // the user signs in fresh and the cookie hasn't been set yet.
@@ -260,7 +262,9 @@ function AppearanceCard() {
     }
   }, [hydrated, prefs.data, setTheme]);
 
-  const current = (appliedTheme ?? prefs.data?.theme ?? 'system') as Theme;
+  // Until mounted, render with a stable null choice so SSR markup matches the
+  // first hydration paint (avoids React #418 — see ISS-309).
+  const current = mounted ? ((appliedTheme ?? prefs.data?.theme ?? 'system') as Theme) : null;
 
   function pick(value: Theme) {
     setTheme(value);
