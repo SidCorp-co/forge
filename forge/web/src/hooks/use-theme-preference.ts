@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTheme } from 'next-themes';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { ApiError, apiClient } from '@/lib/api/client';
 import { useAuth } from '@/providers/auth-provider';
 
@@ -46,18 +46,32 @@ export function useThemePreference() {
     },
     enabled: !authLoading && !!user,
     staleTime: 60_000,
+    // The query result is meant to *seed* next-themes on the first paint
+    // after login; subsequent local mutations are the source of truth. We
+    // disable focus/reconnect refetches so a background refetch can't clobber
+    // the user's in-flight click between optimistic onMutate and PATCH success.
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
-  // Mirror server-side theme into next-themes when an *incoming* server value
-  // changes (other tab / device updated it). Crucially `theme` is NOT a dep:
-  // local setTheme calls must not retrigger this effect, otherwise an in-flight
-  // mutation's stale `data.theme` would revert the user's click before the
-  // PATCH lands (the flicker fixed in ISS-309).
+  // Hydrate next-themes from the server **once**, on the first time `data`
+  // resolves after login. Subsequent server changes (other tab, etc.) are
+  // intentionally ignored — cross-tab sync is handled by next-themes' own
+  // localStorage listener.
+  //
+  // hydratedRef flips true on EITHER first server data arriving OR the user
+  // clicking the toggle, whichever is first. This is the key to the ISS-310
+  // race: if the GET response arrives *after* the click (e.g. on slow login
+  // or first paint), the now-stale server value must NOT replace the user's
+  // intentional choice. Tracking it as "hydrated" the moment the user picks
+  // makes their click the source of truth from then on.
+  const hydratedRef = useRef(false);
   useEffect(() => {
+    if (hydratedRef.current) return;
     if (!data?.theme) return;
+    hydratedRef.current = true;
     setTheme(data.theme);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data?.theme]);
+  }, [data?.theme, setTheme]);
 
   const mutation = useMutation({
     mutationFn: async (input: { theme?: PreferenceTheme; language?: PreferenceLanguage }) =>
@@ -69,13 +83,25 @@ export function useThemePreference() {
       if (!input.theme && !input.language) return;
       await qc.cancelQueries({ queryKey: PREFS_KEY });
       const prev = qc.getQueryData<UserPreferences>(PREFS_KEY);
-      qc.setQueryData<UserPreferences>(PREFS_KEY, (p) =>
-        p ? { ...p, ...(input.theme ? { theme: input.theme } : {}), ...(input.language ? { language: input.language } : {}) } : p,
-      );
+      // Synthesize a partial when prev is undefined (GET still in flight) so
+      // a late-arriving GET response cannot clobber the optimistic value.
+      qc.setQueryData<UserPreferences>(PREFS_KEY, (p) => {
+        const base: UserPreferences = p ?? {
+          userId: user?.id ?? '',
+          theme: 'system',
+          language: 'en',
+          updatedAt: null,
+        };
+        return {
+          ...base,
+          ...(input.theme ? { theme: input.theme } : {}),
+          ...(input.language ? { language: input.language } : {}),
+        };
+      });
       return { prev };
     },
     onError: (_err, _input, ctx) => {
-      if (ctx?.prev) qc.setQueryData(PREFS_KEY, ctx.prev);
+      if (ctx && 'prev' in ctx && ctx.prev) qc.setQueryData(PREFS_KEY, ctx.prev);
     },
     onSuccess: (next) => {
       qc.setQueryData<UserPreferences>(PREFS_KEY, next);
@@ -83,6 +109,9 @@ export function useThemePreference() {
   });
 
   const saveTheme = (newTheme: PreferenceTheme) => {
+    // Mark as hydrated immediately so a late-arriving GET response cannot
+    // revert the click — see the comment on hydratedRef above.
+    hydratedRef.current = true;
     setTheme(newTheme);
     if (user) mutation.mutate({ theme: newTheme });
   };
