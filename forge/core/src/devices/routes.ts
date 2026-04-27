@@ -1,12 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import { zValidator } from '@hono/zod-validator';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
-import { devicePlatforms, devices, pairingCodes } from '../db/schema.js';
+import { devicePlatforms, devices, pairingCodes, projectDevices } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
@@ -83,6 +83,114 @@ devicePublicRoutes.post(
       },
       201,
     );
+  },
+);
+
+// User-auth — owner-scoped device management (list / rename / revoke own devices).
+export const deviceOwnerRoutes = new Hono<{ Variables: AuthVars }>();
+deviceOwnerRoutes.use('*', requireAuth(), assertEmailVerified());
+
+deviceOwnerRoutes.get('/me/devices', async (c) => {
+  const userId = c.get('userId');
+  const rows = await db
+    .select({
+      id: devices.id,
+      name: devices.name,
+      platform: devices.platform,
+      agentVersion: devices.agentVersion,
+      status: devices.status,
+      lastSeenAt: devices.lastSeenAt,
+      pairedAt: devices.pairedAt,
+      capabilities: devices.capabilities,
+      createdAt: devices.createdAt,
+    })
+    .from(devices)
+    .where(eq(devices.ownerId, userId))
+    .orderBy(desc(devices.pairedAt));
+  return c.json(rows);
+});
+
+const deviceIdParamSchema = z.object({ id: z.uuid() });
+
+const updateDeviceSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+  })
+  .strict();
+
+deviceOwnerRoutes.patch(
+  '/devices/:id',
+  zValidator('param', deviceIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('json', updateDeviceSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { name } = c.req.valid('json');
+    const userId = c.get('userId');
+
+    const [device] = await db
+      .select({ ownerId: devices.ownerId })
+      .from(devices)
+      .where(eq(devices.id, id))
+      .limit(1);
+    if (!device) {
+      throw new HTTPException(404, { message: 'device not found', cause: { code: 'NOT_FOUND' } });
+    }
+    if (device.ownerId !== userId) throw forbidden('not the device owner');
+
+    const [updated] = await db
+      .update(devices)
+      .set({ name })
+      .where(eq(devices.id, id))
+      .returning({
+        id: devices.id,
+        name: devices.name,
+        platform: devices.platform,
+        status: devices.status,
+        lastSeenAt: devices.lastSeenAt,
+        pairedAt: devices.pairedAt,
+      });
+    if (!updated) {
+      throw new HTTPException(404, { message: 'device not found', cause: { code: 'NOT_FOUND' } });
+    }
+    return c.json(updated);
+  },
+);
+
+// Soft revoke — sets status='revoked' (preserves history; auth middleware
+// already rejects revoked tokens) and removes the device from every project
+// pool so it stops appearing in dispatcher candidate lists.
+deviceOwnerRoutes.delete(
+  '/devices/:id',
+  zValidator('param', deviceIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const [device] = await db
+      .select({ ownerId: devices.ownerId, status: devices.status })
+      .from(devices)
+      .where(eq(devices.id, id))
+      .limit(1);
+    if (!device) {
+      throw new HTTPException(404, { message: 'device not found', cause: { code: 'NOT_FOUND' } });
+    }
+    if (device.ownerId !== userId) throw forbidden('not the device owner');
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(devices)
+        .set({ status: 'revoked' })
+        .where(eq(devices.id, id));
+      await tx.delete(projectDevices).where(eq(projectDevices.deviceId, id));
+    });
+
+    return c.body(null, 204);
   },
 );
 
