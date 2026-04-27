@@ -24,7 +24,12 @@ import { commentRoutes } from './comments/routes.js';
 import { commentUploadRoutes } from './comments/upload.js';
 import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
-import { deviceAuthRoutes, devicePublicRoutes, deviceUserRoutes } from './devices/routes.js';
+import {
+  deviceAuthRoutes,
+  deviceOwnerRoutes,
+  devicePublicRoutes,
+  deviceUserRoutes,
+} from './devices/routes.js';
 import { registerDeviceStaleDetector } from './devices/stale-detector.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { seedDomainTemplates } from './domain-templates/seed.js';
@@ -232,6 +237,7 @@ app.route('/api/agent-sessions', agentSessionRoutes);
 app.route('/api/admin', adminRoutes);
 app.route('/api/devices', devicePublicRoutes);
 app.route('/api/devices', deviceAuthRoutes);
+app.route('/api', deviceOwnerRoutes);
 app.route('/api/projects', deviceUserRoutes);
 app.route('/api/schedules', scheduleRoutes);
 app.route('/api/knowledge', knowledgeIngestRoutes);

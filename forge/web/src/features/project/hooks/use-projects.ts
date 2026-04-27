@@ -114,3 +114,25 @@ export function useInviteProjectMember() {
     },
   });
 }
+
+export function useAddDeviceToPool() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, deviceId }: { projectId: string; deviceId: string }) =>
+      projectApi.addDevice(projectId, deviceId),
+    onSuccess: (_data, { projectId }) => {
+      qc.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+    },
+  });
+}
+
+export function useRemoveDeviceFromPool() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, deviceId }: { projectId: string; deviceId: string }) =>
+      projectApi.removeDevice(projectId, deviceId),
+    onSuccess: (_data, { projectId }) => {
+      qc.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+    },
+  });
+}

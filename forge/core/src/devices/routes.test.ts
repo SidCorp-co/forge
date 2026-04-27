@@ -32,12 +32,36 @@ const insertValues = vi.fn(async () => []);
 const dbInsert = vi.fn(() => ({ values: insertValues }));
 
 const updateReturning = vi.fn(async () => [{ id: 'dev-1' }]);
-const updateWhere = vi.fn(() => ({ returning: updateReturning }));
+const updateWhere = vi.fn(() => ({ returning: updateReturning, then: undefined }));
 const updateSet = vi.fn(() => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
+const selectLimit = vi.fn();
+const selectOrderBy = vi.fn();
+const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
+const selectFrom = vi.fn(() => ({ where: selectWhere }));
+const dbSelect = vi.fn(() => ({ from: selectFrom }));
+
+const deleteWhere = vi.fn(async () => undefined);
+const dbDelete = vi.fn(() => ({ where: deleteWhere }));
+
+const txUpdateWhere = vi.fn(async () => undefined);
+const txUpdateSet = vi.fn(() => ({ where: txUpdateWhere }));
+const txUpdate = vi.fn(() => ({ set: txUpdateSet }));
+const txDeleteWhere = vi.fn(async () => undefined);
+const txDelete = vi.fn(() => ({ where: txDeleteWhere }));
+const dbTransaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
+  fn({ update: txUpdate, delete: txDelete }),
+);
+
 vi.mock('../db/client.js', () => ({
-  db: { insert: dbInsert, update: dbUpdate },
+  db: {
+    insert: dbInsert,
+    update: dbUpdate,
+    select: dbSelect,
+    delete: dbDelete,
+    transaction: dbTransaction,
+  },
 }));
 
 // Bypass auth for user-route tests via loadProjectAccess mock + assertEmailVerified noop.
@@ -75,6 +99,7 @@ function buildApp() {
   app.use('*', requestId());
   app.route('/api/devices', routes.devicePublicRoutes);
   app.route('/api/devices', routes.deviceAuthRoutes);
+  app.route('/api', routes.deviceOwnerRoutes);
   app.route('/api/projects', routes.deviceUserRoutes);
   app.onError(errorHandler);
   return app;
@@ -197,5 +222,136 @@ describe('POST /api/devices/heartbeat', () => {
     expect(body.ok).toBe(true);
     expect(typeof body.serverTime).toBe('string');
     expect(updateSet).toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/me/devices', () => {
+  it('returns rows scoped to the current user', async () => {
+    selectWhere.mockReturnValueOnce({
+      orderBy: vi.fn(async () => [
+        {
+          id: 'dev-1',
+          name: 'laptop',
+          platform: 'linux',
+          agentVersion: '0.1.0',
+          status: 'online',
+          lastSeenAt: new Date('2026-04-27T00:00:00Z'),
+          pairedAt: new Date('2026-04-26T00:00:00Z'),
+          capabilities: null,
+          createdAt: new Date('2026-04-26T00:00:00Z'),
+        },
+      ]),
+    });
+
+    const app = buildApp();
+    const res = await app.fetch(req('/api/me/devices', { token: 'user-jwt' }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ id: string }>;
+    expect(body).toHaveLength(1);
+    expect(body[0]?.id).toBe('dev-1');
+  });
+});
+
+describe('PATCH /api/devices/:id', () => {
+  const ID = '11111111-1111-4111-8111-111111111111';
+
+  it('400 BAD_REQUEST on invalid uuid', async () => {
+    const app = buildApp();
+    const res = await app.fetch(
+      req('/api/devices/not-a-uuid', {
+        method: 'PATCH',
+        token: 'user-jwt',
+        body: JSON.stringify({ name: 'new' }),
+      }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('404 NOT_FOUND when device missing', async () => {
+    selectLimit.mockResolvedValueOnce([]);
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/devices/${ID}`, {
+        method: 'PATCH',
+        token: 'user-jwt',
+        body: JSON.stringify({ name: 'new' }),
+      }),
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('403 FORBIDDEN when caller is not device owner', async () => {
+    selectLimit.mockResolvedValueOnce([{ ownerId: 'someone-else' }]);
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/devices/${ID}`, {
+        method: 'PATCH',
+        token: 'user-jwt',
+        body: JSON.stringify({ name: 'new' }),
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('200 renames the device when caller is owner', async () => {
+    selectLimit.mockResolvedValueOnce([{ ownerId: 'u-1' }]);
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: ID,
+        name: 'renamed',
+        platform: 'linux',
+        status: 'online',
+        lastSeenAt: null,
+        pairedAt: new Date(),
+      },
+    ]);
+
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/devices/${ID}`, {
+        method: 'PATCH',
+        token: 'user-jwt',
+        body: JSON.stringify({ name: 'renamed' }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(updateSet).toHaveBeenCalledWith({ name: 'renamed' });
+  });
+});
+
+describe('DELETE /api/devices/:id (soft revoke + pool cleanup)', () => {
+  const ID = '11111111-1111-4111-8111-111111111111';
+
+  it('403 FORBIDDEN when caller is not device owner', async () => {
+    selectLimit.mockResolvedValueOnce([{ ownerId: 'someone-else', status: 'online' }]);
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/devices/${ID}`, { method: 'DELETE', token: 'user-jwt' }),
+    );
+    expect(res.status).toBe(403);
+    expect(dbTransaction).not.toHaveBeenCalled();
+  });
+
+  it('204 sets status=revoked AND removes device from project pools', async () => {
+    selectLimit.mockResolvedValueOnce([{ ownerId: 'u-1', status: 'online' }]);
+
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/devices/${ID}`, { method: 'DELETE', token: 'user-jwt' }),
+    );
+    expect(res.status).toBe(204);
+    expect(dbTransaction).toHaveBeenCalledOnce();
+    expect(txUpdateSet).toHaveBeenCalledWith({ status: 'revoked' });
+    expect(txDelete).toHaveBeenCalled();
+  });
+
+  it('404 NOT_FOUND when device missing', async () => {
+    selectLimit.mockResolvedValueOnce([]);
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/devices/${ID}`, { method: 'DELETE', token: 'user-jwt' }),
+    );
+    expect(res.status).toBe(404);
   });
 });

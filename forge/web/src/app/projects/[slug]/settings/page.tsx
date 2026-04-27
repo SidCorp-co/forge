@@ -8,6 +8,7 @@ import {
 } from '@/features/project/hooks/use-projects';
 import { useSetPageTitle } from '@/hooks/use-page-title';
 import { useAuth } from '@/providers/auth-provider';
+import { DevicesSection } from './components/devices-section';
 import { LabelsSection } from './components/labels-section';
 import { SettingsView } from './components/settings-view';
 import { useSettingsForm } from './hooks';
@@ -46,6 +47,7 @@ export default function ProjectSettingsPage() {
         generalExtra={
           <>
             <MembersSection projectId={project.id} isOwner={isOwner} />
+            <DevicesSection projectId={project.id} isOwner={isOwner} />
             <LabelsSection projectId={project.id} />
           </>
         }
