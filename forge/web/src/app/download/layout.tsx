@@ -24,14 +24,16 @@ export const metadata: Metadata = {
     canonical: 'https://stg-jarvis-a2.thejunix.com/download',
   },
   other: {
-    // JSON-LD will be inlined in the page itself for richer typing.
     'github:repo': REPO_URL,
   },
 };
 
 export default function DownloadLayout({ children }: { children: ReactNode }) {
+  // Light theme to stay consistent with the SidCorp landing — Forge is the
+  // engine surfaced on the marketing site, so the download page inherits the
+  // same editorial-luxury palette (white + amber gradient + soft radial glows).
   return (
-    <div data-theme="dark" className="fixed inset-0 overflow-y-auto bg-background text-on-surface">
+    <div data-theme="light" className="fixed inset-0 overflow-y-auto bg-background text-on-surface">
       {children}
     </div>
   );

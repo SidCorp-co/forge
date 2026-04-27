@@ -1,27 +1,38 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Download as DownloadIcon, Github, Terminal } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowUpRight, Download as DownloadIcon, Github, Terminal } from 'lucide-react';
 import type { PlatformAsset, ReleaseInfo } from '@/lib/github-releases';
-import { REPO_URL } from '@/lib/github-releases';
+import { REPO_URL, RELEASES_PAGE_URL } from '@/lib/github-releases';
 
 function detectPlatformId(): PlatformAsset['id'] | null {
   if (typeof navigator === 'undefined') return null;
   const ua = navigator.userAgent;
-  const platform = (navigator as Navigator & { userAgentData?: { platform: string } }).userAgentData
-    ?.platform ?? navigator.platform ?? '';
+  const platform =
+    (navigator as Navigator & { userAgentData?: { platform: string } }).userAgentData?.platform ??
+    navigator.platform ??
+    '';
   if (/Mac|iPhone|iPad/i.test(platform) || /Mac OS X/i.test(ua)) {
-    // Apple Silicon detection is best-effort. Modern WebKit reports
-    // "MacIntel" even on M-series; the safest signal is GPU renderer
-    // string but we avoid the WebGL probe noise. Default to ARM (which
-    // covers all Macs sold since 2020) and let the user pick Intel
-    // explicitly from the platform grid if needed.
     return 'macos-arm64';
   }
   if (/Win/i.test(platform) || /Windows/i.test(ua)) return 'windows-x64';
   if (/Linux/i.test(platform) || /X11/i.test(ua)) return 'linux-deb';
   return null;
+}
+
+function platformShortName(id: PlatformAsset['id'] | null): string {
+  if (!id) return 'your platform';
+  switch (id) {
+    case 'macos-arm64':
+    case 'macos-x64':
+      return 'macOS';
+    case 'windows-x64':
+      return 'Windows';
+    case 'linux-deb':
+    case 'linux-appimage':
+      return 'Linux';
+  }
 }
 
 interface DownloadHeroProps {
@@ -40,89 +51,110 @@ export function DownloadHero({ release }: DownloadHeroProps) {
     return release.assets.find((a) => a.id === platformId) ?? release.assets[0] ?? null;
   }, [release, platformId]);
 
-  return (
-    <section className="relative overflow-hidden border-b border-outline-variant/30">
-      {/* Ambient gradient backdrop */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.08),transparent_60%)]" />
-      <div className="pointer-events-none absolute -top-32 -left-32 h-96 w-96 rounded-full bg-[radial-gradient(circle,rgba(124,58,237,0.15),transparent_70%)] blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-[radial-gradient(circle,rgba(59,130,246,0.12),transparent_70%)] blur-3xl" />
+  // Always-visible primary CTA. When a release exists with a binary for the
+  // detected OS, link straight to the file. Otherwise route to the GitHub
+  // Releases page so the visitor still has a tangible next step (watch the
+  // repo, build from source, or wait for v0.1.7).
+  const primary = recommended
+    ? {
+        href: recommended.downloadUrl,
+        label: `Download for ${platformShortName(platformId)}`,
+        sub: `${recommended.filename} · ${(recommended.size / 1024 / 1024).toFixed(1)} MB`,
+        target: undefined as string | undefined,
+      }
+    : {
+        href: RELEASES_PAGE_URL,
+        label: 'Get Forge Beta on GitHub',
+        sub: 'First tagged release coming soon — watch the repo for v0.1.7',
+        target: '_blank',
+      };
 
-      <div className="relative mx-auto max-w-5xl px-6 py-20 sm:py-28">
-        {/* version badge */}
-        <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-outline-variant/40 bg-surface-container-low/60 px-3 py-1 text-xs text-on-surface-variant backdrop-blur">
-          <span className="size-1.5 rounded-full bg-success" />
+  return (
+    <section className="relative overflow-hidden border-b border-outline-variant/20">
+      {/* Soft radial glows — same vocabulary as the landing hero/forge sections */}
+      <div className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 w-[900px] h-[600px] rounded-full bg-[radial-gradient(ellipse,rgba(249,115,22,0.07)_0%,rgba(249,115,22,0.02)_40%,transparent_75%)]" />
+      <div className="pointer-events-none absolute bottom-0 right-[-15%] w-[500px] h-[500px] rounded-full bg-[radial-gradient(circle,rgba(124,58,237,0.05)_0%,transparent_70%)]" />
+
+      <div className="relative mx-auto max-w-5xl px-6 pt-28 pb-20 text-center">
+        {/* Eyebrow badge */}
+        <div className="inline-flex items-center gap-2 rounded-full border border-outline-variant/40 bg-white/80 backdrop-blur-sm px-4 py-1.5 text-xs text-primary-fixed font-mono tracking-wide mb-8 shadow-sm">
+          <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
           {release ? (
             <>
-              Latest&nbsp;<span className="font-mono">{release.tag}</span>
-              <span className="text-outline">·</span>
+              Latest&nbsp;<span className="font-semibold text-on-surface">{release.tag}</span>
+              <span className="mx-1 text-outline-variant">·</span>
               Apache-2.0
             </>
           ) : (
-            <>Coming soon · Apache-2.0</>
+            <>Pre-release · Apache-2.0</>
           )}
         </div>
 
-        <h1 className="text-balance font-serif text-4xl tracking-tight sm:text-6xl">
-          Open-source control plane for{' '}
-          <span className="bg-gradient-to-r from-[#a8d4ff] to-[#82c4f8] bg-clip-text text-transparent">
-            Claude Code
+        {/* Headline — matches landing's serif/light treatment */}
+        <h1 className="font-serif text-5xl sm:text-6xl md:text-7xl tracking-tight leading-[1.05] mb-6">
+          <span className="text-on-surface">Download</span>{' '}
+          <span className="bg-gradient-to-r from-amber-400 to-amber-600 bg-clip-text text-transparent">
+            Forge Beta
+          </span>
+          <br />
+          <span className="text-on-surface text-3xl sm:text-4xl md:text-5xl font-light">
+            on your machine
           </span>
         </h1>
 
-        <p className="mt-5 max-w-2xl text-pretty text-base leading-relaxed text-on-surface-variant sm:text-lg">
-          Forge Beta is a desktop app that orchestrates AI agents across your projects.
-          Pipeline-driven issue tracking, pluggable runners, MCP-native — running
-          locally on your machine with your own Claude subscription.
+        <p className="text-lg sm:text-xl text-primary-fixed max-w-xl mx-auto font-light leading-relaxed mb-12">
+          Open-source control plane for Claude Code. Local-first runner, pluggable
+          adapters, MCP-native — orchestration that respects your stack.
         </p>
 
-        <div className="mt-10 flex flex-wrap items-center gap-3">
-          {recommended ? (
+        {/* Primary CTA — always visible, big, amber gradient (matches landing) */}
+        <div className="flex flex-col items-center gap-5">
+          <a
+            href={primary.href}
+            target={primary.target}
+            rel={primary.target ? 'noopener noreferrer' : undefined}
+            className="group inline-flex items-center gap-3 rounded-xl bg-[linear-gradient(135deg,#855300_0%,#f59e0b_100%)] px-9 py-5 font-medium text-white text-lg sm:text-xl transition-all hover:-translate-y-0.5 shadow-[0_4px_24px_rgba(133,83,0,0.28)] hover:shadow-[0_10px_40px_rgba(133,83,0,0.4)]"
+          >
+            <DownloadIcon className="w-5 h-5" />
+            {primary.label}
+            <span
+              aria-hidden
+              className="transition-transform group-hover:translate-x-0.5 text-white/80"
+            >
+              →
+            </span>
+          </a>
+          <p className="font-mono text-xs text-primary-fixed">{primary.sub}</p>
+
+          {/* Secondary actions */}
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-sm">
             <a
-              href={recommended.downloadUrl}
-              className="group inline-flex items-center gap-2 rounded-md bg-[linear-gradient(135deg,#ffffff_0%,#d4d4d4_100%)] px-6 py-3 text-base font-semibold text-on-primary shadow-lg shadow-black/30 transition-transform hover:-translate-y-0.5 active:translate-y-0"
-              data-platform={recommended.id}
+              href={REPO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-primary-fixed hover:text-on-surface transition-colors group/link"
             >
-              <DownloadIcon className="size-4" />
-              Download for {recommended.label}
-              <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+              <Github className="w-4 h-4" />
+              <span>View source on GitHub</span>
+              <ArrowUpRight className="w-3.5 h-3.5 transition-transform group-hover/link:translate-x-0.5 group-hover/link:-translate-y-0.5" />
             </a>
-          ) : (
             <Link
-              href="#platforms"
-              className="group inline-flex items-center gap-2 rounded-md bg-[linear-gradient(135deg,#ffffff_0%,#d4d4d4_100%)] px-6 py-3 text-base font-semibold text-on-primary shadow-lg shadow-black/30 transition-transform hover:-translate-y-0.5 active:translate-y-0"
+              href="#quickstart"
+              className="inline-flex items-center gap-1.5 text-primary-fixed hover:text-on-surface transition-colors"
             >
-              <DownloadIcon className="size-4" />
-              {release ? 'See platforms' : 'Build from source'}
-              <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+              <Terminal className="w-4 h-4" />
+              <span>Read quickstart</span>
             </Link>
-          )}
-
-          <a
-            href={REPO_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-md border border-outline-variant/50 bg-surface-container-low/60 px-6 py-3 text-base font-medium text-on-surface backdrop-blur transition-colors hover:bg-surface-container"
-          >
-            <Github className="size-4" />
-            View on GitHub
-          </a>
-
-          <a
-            href="#quickstart"
-            className="inline-flex items-center gap-2 rounded-md px-4 py-3 text-sm font-medium text-on-surface-variant transition-colors hover:text-on-surface"
-          >
-            <Terminal className="size-4" />
-            Quickstart
-          </a>
+          </div>
         </div>
 
-        {recommended && release && (
-          <p className="mt-4 text-xs text-outline">
-            <span className="font-mono">{recommended.filename}</span>
-            <span className="mx-2">·</span>
-            {(recommended.size / 1024 / 1024).toFixed(1)} MB
-            <span className="mx-2">·</span>
+        {release && recommended && (
+          <p className="mt-12 text-xs text-primary-fixed/80 font-mono">
             Released {new Date(release.publishedAt).toLocaleDateString()}
+            <span className="mx-2 text-outline-variant">·</span>
+            <Link href="#platforms" className="underline-offset-4 hover:underline hover:text-on-surface transition-colors">
+              See all platforms
+            </Link>
           </p>
         )}
       </div>
