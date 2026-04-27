@@ -1,11 +1,14 @@
 import { useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAppStore } from "@/stores/app-store";
 import { invoke } from "./use-tauri-ipc";
 import { configureApi } from "@/lib/api";
+import { setAuthExpiredHandler } from "@/lib/api/client";
 import type { AppConfig } from "@/lib/types";
 
 export function useLocalConfig() {
   const { config, setConfig } = useAppStore();
+  const navigate = useNavigate();
   const loadedRef = useRef(false);
 
   useEffect(() => {
@@ -18,7 +21,21 @@ export function useLocalConfig() {
         configureApi(diskConfig.coreUrl, diskConfig.authToken);
       }
     });
-  }, [setConfig]);
+
+    // ISS-280: when any API call comes back 401 INVALID_TOKEN/UNAUTHENTICATED,
+    // wipe the in-memory auth and bounce the user to /login. Avoids the
+    // "every action silently fails" stuck state after a server JWT_SECRET
+    // rotation or an expired token.
+    setAuthExpiredHandler(() => {
+      const cur = useAppStore.getState().config;
+      const cleared: AppConfig = { ...cur, authToken: "" };
+      setConfig(cleared);
+      configureApi(cur.coreUrl, "");
+      invoke("save_config", { config: cleared }).catch(() => {/* ignore */});
+      navigate("/login", { replace: true });
+    });
+    return () => setAuthExpiredHandler(null);
+  }, [setConfig, navigate]);
 
   async function saveConfig(newConfig: AppConfig) {
     setConfig(newConfig);

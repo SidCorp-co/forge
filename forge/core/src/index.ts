@@ -36,6 +36,7 @@ import { registerDispatcher, unregisterDispatcher } from './jobs/dispatcher.js';
 import { jobEventsListRoutes, jobEventsRoutes } from './jobs/events-routes.js';
 import { jobLifecycleDeviceRoutes, jobLifecycleUserRoutes } from './jobs/lifecycle-routes.js';
 import { registerRetentionSweeper } from './jobs/retention-sweeper.js';
+import { registerStuckWatcher } from './jobs/stuck-watcher.js';
 import { jobProjectRoutes, jobRoutes } from './jobs/routes.js';
 import { registerStaleDetector } from './jobs/stale-detector.js';
 import { isEnabled } from './lib/feature-flags.js';
@@ -266,6 +267,7 @@ if (isMain) {
     await registerRunnerStaleDetector();
   }
   await registerRetentionSweeper();
+  await registerStuckWatcher();
   await registerOutboundDeliveryWorker();
   await registerScheduleTicker();
   registerWebhookSubscribers(hooks);

@@ -19,6 +19,19 @@ export function strapiMediaUrl(url: string): string {
   return `${baseUrl}${url}`;
 }
 
+/**
+ * Listener installed by app-store on boot. Fires once per request that comes
+ * back 401 with `INVALID_TOKEN` / `UNAUTHENTICATED` — the store clears its
+ * authToken and routes to /login. Decoupled via a callback so client.ts
+ * doesn't have to import the store (avoids the React → fetch cycle).
+ */
+let onAuthExpired: (() => void) | null = null;
+export function setAuthExpiredHandler(fn: (() => void) | null): void {
+  onAuthExpired = fn;
+}
+
+const AUTH_FAIL_CODES = new Set(['INVALID_TOKEN', 'UNAUTHENTICATED']);
+
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${baseUrl}/api${path}`, {
     ...options,
@@ -28,7 +41,32 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
       ...options?.headers,
     },
   });
-  if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    if (res.status === 401) {
+      // Drain the body once so we can read both the code and pass a useful
+      // message to the caller. Server emits `{ code, message }`; legacy
+      // routes may emit free-form text — fall back gracefully.
+      let code: string | undefined;
+      let message = res.statusText;
+      try {
+        const body = await res.clone().json();
+        if (body && typeof body === 'object') {
+          code = (body as { code?: string }).code;
+          message = (body as { message?: string }).message ?? message;
+        }
+      } catch {
+        // non-JSON body — keep statusText
+      }
+      if (!code || AUTH_FAIL_CODES.has(code)) {
+        // Schedule on next tick so the caller still observes the throw before
+        // the page navigates away. The store handler is responsible for
+        // clearing local state + redirecting.
+        if (onAuthExpired) queueMicrotask(onAuthExpired);
+      }
+      throw new Error(`API error: 401 ${message}`);
+    }
+    throw new Error(`API error: ${res.status} ${res.statusText}`);
+  }
   const json = await res.json();
   return json.data ?? json;
 }

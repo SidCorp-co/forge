@@ -99,6 +99,20 @@ export async function syncProjectSkills(slug: string, _repoPath: string): Promis
 
   for (const skill of effective) {
     if (skill.contentHash && localHashes[skill.name] === skill.contentHash) continue;
+    // Skip skills with no body: forge/core registers some skills as
+    // metadata-only (the legacy Strapi MCP uploads SKILL.md separately).
+    // Writing an empty body wipes the existing local file and breaks the
+    // /forge-* slash commands until a re-pair / re-sync. Better to leave
+    // the local content alone and surface the gap as a server-side issue.
+    const target = skill.target || "dev";
+    const isCloud = target === "cloud" || target === "all";
+    const hasBody = isCloud
+      ? !!(skill.localGuide && skill.localGuide.trim())
+      : !!(skill.skillMd && skill.skillMd.trim());
+    if (!hasBody) {
+      console.warn(`[skill-sync] skipping ${skill.name} — server returned empty body (target=${target})`);
+      continue;
+    }
     try {
       await installSkill(skill);
       installed++;

@@ -112,6 +112,15 @@ pub fn install_skill_from_strapi(data: StrapiSkillData) -> Result<SkillLibraryEn
         return Err(format!("Unsafe skill name: {}", data.name));
     }
 
+    // Defence in depth: never write a 0-byte SKILL.md. The TS layer already
+    // skips skills with empty bodies, but a malformed server response or a
+    // direct invoke from a future caller would otherwise wipe the existing
+    // skill via remove_dir_all + write("") and break /forge-* commands until
+    // a re-sync. Refuse the call so the caller sees the failure explicitly.
+    if data.skill_md.trim().is_empty() {
+        return Err(format!("install_skill_from_strapi: empty skill_md for {}", data.name));
+    }
+
     let dest = skills_dir().join(&data.name);
     if dest.exists() {
         fs::remove_dir_all(&dest).ok();
@@ -164,6 +173,12 @@ pub fn install_skill_from_strapi(data: StrapiSkillData) -> Result<SkillLibraryEn
 pub fn install_skill_guide(data: StrapiSkillGuideData) -> Result<SkillLibraryEntry, String> {
     if !is_safe_name(&data.name) {
         return Err(format!("Unsafe skill name: {}", data.name));
+    }
+
+    // Mirror the guard in install_skill_from_strapi — empty body must not wipe
+    // an existing local skill. See note there.
+    if data.local_guide.trim().is_empty() {
+        return Err(format!("install_skill_guide: empty local_guide for {}", data.name));
     }
 
     let dest = skills_dir().join(&data.name);
