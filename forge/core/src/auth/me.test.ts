@@ -11,9 +11,15 @@ const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 
+const insertReturning = vi.fn();
+const onConflictDoUpdate = vi.fn(() => ({ returning: insertReturning }));
+const insertValues = vi.fn(() => ({ onConflictDoUpdate }));
+const dbInsert = vi.fn(() => ({ values: insertValues }));
+
 vi.mock('../db/client.js', () => ({
   db: {
     select: vi.fn(() => ({ from: selectFrom })),
+    insert: dbInsert,
   },
 }));
 
@@ -33,6 +39,7 @@ function buildApp() {
 beforeEach(() => {
   vi.clearAllMocks();
   selectLimit.mockReset();
+  insertReturning.mockReset();
 });
 
 describe('GET /api/auth/me', () => {
@@ -70,5 +77,85 @@ describe('GET /api/auth/me', () => {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(res.status).toBe(401);
+  });
+});
+
+describe('GET /api/auth/me/preferences', () => {
+  it('returns defaults when the user has no row', async () => {
+    const token = await signUserToken('00000000-0000-0000-0000-000000000003');
+    selectLimit.mockResolvedValueOnce([]);
+    const res = await buildApp().request('/api/auth/me/preferences', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ theme: 'system', language: 'en', updatedAt: null });
+  });
+
+  it('returns the stored row when present', async () => {
+    const token = await signUserToken('00000000-0000-0000-0000-000000000003');
+    selectLimit.mockResolvedValueOnce([
+      { theme: 'dark', language: 'vi', updatedAt: new Date('2026-04-27T00:00:00Z') },
+    ]);
+    const res = await buildApp().request('/api/auth/me/preferences', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.theme).toBe('dark');
+    expect(body.language).toBe('vi');
+  });
+
+  it('rejects without a token', async () => {
+    const res = await buildApp().request('/api/auth/me/preferences');
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('PATCH /api/auth/me/preferences', () => {
+  it('upserts and echoes the new row', async () => {
+    const token = await signUserToken('00000000-0000-0000-0000-000000000003');
+    insertReturning.mockResolvedValueOnce([
+      { theme: 'dark', language: 'en', updatedAt: new Date('2026-04-27T00:00:00Z') },
+    ]);
+    const res = await buildApp().request('/api/auth/me/preferences', {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ theme: 'dark' }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.theme).toBe('dark');
+    expect(dbInsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an empty body', async () => {
+    const token = await signUserToken('00000000-0000-0000-0000-000000000003');
+    const res = await buildApp().request('/api/auth/me/preferences', {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: '{}',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects unknown theme value', async () => {
+    const token = await signUserToken('00000000-0000-0000-0000-000000000003');
+    const res = await buildApp().request('/api/auth/me/preferences', {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ theme: 'rainbow' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects unknown extra fields (strict)', async () => {
+    const token = await signUserToken('00000000-0000-0000-0000-000000000003');
+    const res = await buildApp().request('/api/auth/me/preferences', {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ theme: 'dark', secret: 'haha' }),
+    });
+    expect(res.status).toBe(400);
   });
 });
