@@ -28,6 +28,7 @@
     "react-dom": "19.2.3",
     "react-force-graph-2d": "^1.29.1",
     "react-markdown": "^10.1.0",
+    "recharts": "^3.8.1",
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.4.1",
@@ -35,6 +36,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.0",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -43,7 +45,6 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/three": "^0.183.1",
-    "@playwright/test": "^1.56.0",
     "@vitejs/plugin-react": "^4.5.2",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
