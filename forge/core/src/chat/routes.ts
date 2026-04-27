@@ -1,16 +1,12 @@
 /**
  * v1 EPIC 1 (ISS-270 / PR-B) — `POST /api/chat` SSE with session persistence
- * + chat_logs audit.
+ * + chat_logs audit. Cookie / Bearer authenticated.
  *
- * PR-A added the SSE skeleton and provider registry. PR-B (this file) loads
- * or creates a `chat_sessions` row keyed by `sessionId`, builds the v1
- * minimal system prompt from project + `app_config.systemPromptOverride` +
- * optional `pageContext`, streams the assistant reply, then on `done`
- * appends the assistant message + writes one `chat_logs` row + broadcasts
- * `chat.message` on the user's WS room. On `error` the failure is recorded
- * in `chat_logs.error` and re-emitted on the SSE stream.
+ * The shared streaming + persistence logic lives in `./run-turn.ts`; this
+ * file owns auth, project membership lookup, and session source tagging.
+ * The widget sibling (`./widget-routes.ts`) reuses the same helper under
+ * `requireProjectApiKey()`.
  *
- * Widget / API-key auth is PR-C — for now `source` is hard-coded to `'web'`.
  * The whole route is gated by feature flag `chatProvider`.
  */
 
@@ -18,24 +14,17 @@ import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { appConfig, chatLogs, projects } from '../db/schema.js';
+import { appConfig, projects } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { userRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { defaultChatProviderId } from './providers/bootstrap.js';
 import { resolveForProject } from './providers/registry.js';
-import type { ChatStreamEvent, ChatStreamUsage } from './providers/types.js';
-import {
-  appendAssistantMessage,
-  appendUserMessage,
-  loadOrCreateSession,
-  persistMessages,
-  toProviderMessages,
-} from './session.js';
+import { runChatTurn } from './run-turn.js';
+import { appendUserMessage, loadOrCreateSession, toProviderMessages } from './session.js';
 import { buildSystemPrompt } from './system-prompt.js';
 
 const chatRequestSchema = z
@@ -112,104 +101,24 @@ chatRoutes.post(
       ...toProviderMessages(session),
     ];
 
-    return streamSSE(c, async (stream) => {
-      // Disable buffering on Traefik / nginx so events flush immediately.
-      c.header('X-Accel-Buffering', 'no');
-      // Echo back the resolved sessionId so the client can stash it for the
-      // next turn without parsing a separate REST response.
-      await stream.writeSSE({
-        event: 'session',
-        data: JSON.stringify({ sessionId: session.id }),
-      });
-
-      const ac = new AbortController();
-      stream.onAbort(() => ac.abort());
-
-      const startedAt = Date.now();
-      let assistantText = '';
-      let usage: ChatStreamUsage | null = null;
-      let errorMessage: string | null = null;
-      let terminal: 'done' | 'error' | null = null;
-
-      try {
-        for await (const event of resolved.provider.stream({
-          model: resolved.model,
-          messages: providerMessages,
-          signal: ac.signal,
-        })) {
-          if (event.type === 'chunk') {
-            assistantText += event.text;
-          } else if (event.type === 'usage') {
-            usage = event.usage;
-          } else if (event.type === 'error') {
-            errorMessage = event.message;
-            terminal = 'error';
-          } else if (event.type === 'done') {
-            terminal = 'done';
-          }
-          await writeEvent(stream, event);
-          if (event.type === 'done' || event.type === 'error') break;
-        }
-        if (terminal === null) {
-          terminal = 'done';
-          await writeEvent(stream, { type: 'done' });
-        }
-      } catch (err) {
-        errorMessage = err instanceof Error ? err.message : String(err);
-        terminal = 'error';
-        await writeEvent(stream, { type: 'error', message: errorMessage });
-      }
-
-      const durationMs = Date.now() - startedAt;
-
-      if (terminal === 'done' && assistantText.length > 0) {
-        appendAssistantMessage(session, assistantText);
-        await persistMessages(session);
+    return runChatTurn({
+      c,
+      session,
+      resolved,
+      providerMessages,
+      projectSlug: project.slug,
+      userMessage: message,
+      userKey: userId,
+      onComplete: (sess) => {
         roomManager.publish(userRoom(userId), {
           event: 'chat.message',
           data: {
-            sessionId: session.id,
-            projectId: session.projectId,
+            sessionId: sess.id,
+            projectId: sess.projectId,
             role: 'assistant',
           },
         });
-      } else {
-        // Persist the user message even on error so the UI can surface the
-        // partial turn and the user's prior context isn't lost.
-        await persistMessages(session);
-      }
-
-      try {
-        await db.insert(chatLogs).values({
-          sessionId: session.id,
-          projectSlug: project.slug,
-          userKey: userId,
-          query: message,
-          reply: assistantText.length > 0 ? assistantText : null,
-          model: resolved.model,
-          ragContext: null,
-          toolCalls: [] as never,
-          usage: (usage as never) ?? null,
-          iterations: 1,
-          durationMs,
-          error: errorMessage,
-          queryIntent: null,
-          source: session.source,
-        });
-      } catch (err) {
-        // chat_logs is best-effort audit — don't fail the request when the
-        // INSERT errors (e.g. db pool exhausted). The SSE stream has already
-        // delivered to the client; logging the failure is enough.
-        console.error('chat_logs insert failed', err);
-      }
+      },
     });
   },
 );
-
-async function writeEvent(
-  stream: { writeSSE: (msg: { event: string; data: string }) => Promise<void> },
-  event: ChatStreamEvent,
-): Promise<void> {
-  const { type, ...rest } = event;
-  await stream.writeSSE({ event: type, data: JSON.stringify(rest) });
-}

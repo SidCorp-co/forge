@@ -129,11 +129,14 @@ describe('POST /api/projects', () => {
     const body = (await res.json()) as { id: string; slug: string; ownerId: string };
     expect(body).toMatchObject({ id: 'proj-1', slug: 'my-proj', ownerId: 'uuid-owner' });
 
-    expect(txInsertProjectValues).toHaveBeenCalledWith({
-      slug: 'my-proj',
-      name: 'My Project',
-      ownerId: 'uuid-owner',
-    });
+    expect(txInsertProjectValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        slug: 'my-proj',
+        name: 'My Project',
+        ownerId: 'uuid-owner',
+        apiKey: expect.stringMatching(/^fk_[0-9a-f]{48}$/),
+      }),
+    );
     expect(txInsertMembersValues).toHaveBeenCalledWith({
       userId: 'uuid-owner',
       projectId: 'proj-1',
@@ -327,6 +330,40 @@ describe('PATCH /api/projects/:id', () => {
       agentConfig: { auto: true },
       webhookSecret: 'secret-of-at-least-16-chars',
     });
+  });
+});
+
+describe('POST /api/projects/:id/api-key/rotate', () => {
+  const ID = '11111111-1111-4111-8111-111111111111';
+
+  it('403 FORBIDDEN for non-owner non-admin', async () => {
+    const token = await signUserToken('uuid-member');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-other' }])
+      .mockResolvedValueOnce([{ role: 'member' }]);
+
+    const res = await req(`/${ID}/api-key/rotate`, { method: 'POST', token });
+    expect(res.status).toBe(403);
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('200 with fresh fk_-prefixed key for admin', async () => {
+    const token = await signUserToken('uuid-admin');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-other' }])
+      .mockResolvedValueOnce([{ role: 'admin' }]);
+    updateReturning.mockImplementationOnce(async () => {
+      const setArg = updateSet.mock.calls[0]?.[0] as { apiKey: string };
+      return [{ id: 'p1', apiKey: setArg.apiKey }];
+    });
+
+    const res = await req(`/${ID}/api-key/rotate`, { method: 'POST', token });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { id: string; apiKey: string };
+    expect(body.id).toBe('p1');
+    expect(body.apiKey).toMatch(/^fk_[0-9a-f]{48}$/);
   });
 });
 

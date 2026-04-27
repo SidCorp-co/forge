@@ -18,7 +18,7 @@ export class WidgetAPI {
     hubToken?: string,
     hubContext?: object
   ): Promise<{ data: { sessionId: string; streaming?: boolean; reply?: string; toolCalls?: any[] } }> {
-    const res = await fetch(`${this.apiUrl}/api/chat`, {
+    const res = await fetch(`${this.apiUrl}/api/widget/chat`, {
       method: 'POST',
       headers: this.headers,
       body: JSON.stringify({ message, sessionId, requestId, hubToken, hubContext }),
