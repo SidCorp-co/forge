@@ -94,13 +94,11 @@ async function token() {
 }
 
 describe('GET /api/agent-sessions', () => {
-  it('400 without projectId or deviceId', async () => {
-    authVerified();
-    const res = await buildApp().request('/api/agent-sessions', {
-      headers: { authorization: `Bearer ${await token()}` },
-    });
-    expect(res.status).toBe(400);
-  });
+  // Note: the previous "400 without projectId or deviceId" test was removed
+  // when the cross-project path was added — calls without those filters now
+  // return the caller's visible-project sessions (mirroring chat-logs).
+  // That path mixes `db.selectDistinct` + `leftJoin` which the bare drizzle
+  // mock here doesn't model; integration tests on staging cover it instead.
 
   it('returns scoped list with X-Total-Count', async () => {
     authVerified();

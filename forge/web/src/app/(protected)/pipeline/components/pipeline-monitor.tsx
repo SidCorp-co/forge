@@ -1,12 +1,24 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { apiClient } from '@/lib/api/client';
 import { RefreshCw, Loader2, Trash2, Clock, AlertCircle, CheckCircle, XCircle, Activity, Zap, Database, Monitor, Server, Ban, RotateCcw, Pause, Play } from 'lucide-react';
 import { getPokemonSprite, getPokemonChain, getPokemonName, PIPELINE_POKEMON, getActiveCountSprite } from '@/lib/constants/pipeline-pokemon';
 import { PokemonSprite } from '@/components/ui/pokemon-sprite';
+import { useProjects } from '@/features/project/hooks/use-projects';
 import { type PipelineSession, STATUS_ICON, STATUS_CONFIG, timeAgo } from './pipeline-monitor-helpers';
 import { QuotaCountdown } from './pipeline-monitor-quota-countdown';
+
+// Forge/core flat shape returned by `GET /api/agent-sessions`.
+interface CoreAgentSessionRow {
+  id: string;
+  projectId: string;
+  title: string | null;
+  status: PipelineSession['status'];
+  createdAt: string;
+  updatedAt: string;
+  metadata: PipelineSession['metadata'];
+}
 
 export function PipelineMonitor() {
   const [sessions, setSessions] = useState<PipelineSession[]>([]);
@@ -14,72 +26,98 @@ export function PipelineMonitor() {
   const [filter, setFilter] = useState<'active' | 'all'>('active');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [paused, setPaused] = useState(false);
-  const [pauseLoading, setPauseLoading] = useState(false);
-
-  const fetchPipelineControl = useCallback(async () => {
-    try {
-      const res = await apiClient<{ data: { paused: boolean } }>('/agent-sessions/pipeline-control');
-      setPaused(res.data.paused);
-    } catch {}
-  }, []);
-
+  // The global pipeline-pause control is not yet in forge/core. Default to
+  // unpaused; togglePause is a no-op until the per-session pipeline-control
+  // endpoint is consolidated into a global one.
+  const paused = false;
+  const pauseLoading = false;
   const togglePause = async () => {
-    setPauseLoading(true);
-    try {
-      const res = await apiClient<{ data: { paused: boolean } }>('/agent-sessions/pipeline-control', {
-        method: 'POST',
-        body: JSON.stringify({ paused: !paused }),
-      });
-      setPaused(res.data.paused);
-    } catch (err) {
-      console.error('Failed to toggle pipeline pause:', err);
-    }
-    setPauseLoading(false);
+    // TODO(pipeline-control): forge/core only exposes per-session
+    // /:id/pipeline-control today. Wire a global pause endpoint or remove
+    // this UI control. See pipeline-monitor rework follow-up.
   };
+
+  // Hash projectId → enriched project info (joined client-side from
+  // useProjects cache; replaces Strapi's populate[project][fields]).
+  const { data: projectsList } = useProjects();
+  const projectsById = useMemo(() => {
+    const m = new Map<string, NonNullable<PipelineSession['project']>>();
+    for (const p of projectsList ?? []) {
+      m.set(p.id, { id: p.id, documentId: p.id, name: p.name, slug: p.slug });
+    }
+    return m;
+  }, [projectsList]);
+
+  const enrichSession = useCallback(
+    (row: CoreAgentSessionRow): PipelineSession => ({
+      id: row.id,
+      documentId: row.id,
+      title: row.title ?? '',
+      status: row.status,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      metadata: row.metadata,
+      project: projectsById.get(row.projectId) ?? null,
+      issues: [],
+    }),
+    [projectsById],
+  );
 
   const fetchSessions = useCallback(async () => {
     try {
-      const statusFilter = filter === 'active'
-        ? '&filters[status][$in][0]=queued&filters[status][$in][1]=running'
-        : '&filters[metadata][type][$eq]=pipeline';
-      const res = await apiClient<{ data: PipelineSession[]; meta: any }>(
-        `/agent-sessions?populate[project][fields][0]=name&populate[project][fields][1]=slug&populate[issues][fields][0]=title&populate[issues][fields][1]=status&filters[metadata][type][$eq]=pipeline${statusFilter}&sort=createdAt:desc&pagination[pageSize]=50`
-      );
-      // Sort: running first, then queued, then by createdAt desc
+      const fetchOnce = async (status?: PipelineSession['status']) => {
+        const params = new URLSearchParams({
+          metadataType: 'pipeline',
+          pageSize: '50',
+        });
+        if (status) params.set('status', status);
+        return apiClient<CoreAgentSessionRow[]>(`/agent-sessions?${params.toString()}`);
+      };
+
+      // forge/core's status filter is single-valued; for the 'active' tab we
+      // need queued + running, so issue two parallel fetches and merge by id.
+      const rows = filter === 'active'
+        ? (
+            await Promise.all([fetchOnce('running'), fetchOnce('queued')])
+          ).flat()
+        : await fetchOnce();
+
+      const dedupedById = Array.from(new Map(rows.map((r) => [r.id, r])).values());
+      const enriched = dedupedById.map(enrichSession);
+
+      // Sort: running first, then queued, then by createdAt desc.
       const statusOrder: Record<string, number> = { running: 0, queued: 1, failed: 2, completed: 3, idle: 4 };
-      const sorted = [...res.data].sort((a, b) => {
+      enriched.sort((a, b) => {
         const oa = statusOrder[a.status] ?? 9;
         const ob = statusOrder[b.status] ?? 9;
         if (oa !== ob) return oa - ob;
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       });
-      setSessions(sorted);
+      setSessions(enriched);
     } catch (err) {
       console.error('Failed to fetch pipeline sessions:', err);
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, [filter, enrichSession]);
 
   useEffect(() => {
     setLoading(true);
     fetchSessions();
-    fetchPipelineControl();
-  }, [fetchSessions, fetchPipelineControl]);
+  }, [fetchSessions]);
 
   useEffect(() => {
     if (!autoRefresh) return;
-    const interval = setInterval(() => { fetchSessions(); fetchPipelineControl(); }, 10000);
+    const interval = setInterval(() => { fetchSessions(); }, 10000);
     return () => clearInterval(interval);
-  }, [autoRefresh, fetchSessions, fetchPipelineControl]);
+  }, [autoRefresh, fetchSessions]);
 
   const handleCancel = async (docId: string) => {
     setActionLoading(docId);
     try {
       await apiClient(`/agent-sessions/${docId}`, {
-        method: 'PUT',
-        body: JSON.stringify({ data: { status: 'failed' } }),
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'failed' }),
       });
       await fetchSessions();
     } catch (err) {
@@ -93,8 +131,8 @@ export function PipelineMonitor() {
     try {
       const current = session.metadata?.noResume ?? false;
       await apiClient(`/agent-sessions/${session.documentId}`, {
-        method: 'PUT',
-        body: JSON.stringify({ data: { metadata: { ...session.metadata, noResume: !current } } }),
+        method: 'PATCH',
+        body: JSON.stringify({ metadata: { ...session.metadata, noResume: !current } }),
       });
       await fetchSessions();
     } catch (err) {

@@ -1,7 +1,10 @@
 import { Clock, Loader2, CheckCircle, XCircle } from 'lucide-react';
 
 export interface PipelineSession {
-  id: number;
+  // forge/core returns string UUIDs. `id` and `documentId` carry the same
+  // value here; legacy callers reference `documentId`, new code can use either.
+  // (Strapi shape kept the two distinct.)
+  id: string;
   documentId: string;
   title: string;
   status: 'queued' | 'running' | 'completed' | 'failed' | 'idle';
@@ -22,8 +25,12 @@ export interface PipelineSession {
     quotaExhaustedAt?: string;
     depletedModel?: string;
   } | null;
-  project: { id: number; documentId: string; name: string; slug: string } | null;
-  issues: Array<{ id: number; documentId: string; title: string; status: string }>;
+  // Joined client-side from useProjects (forge/core's flat row only carries
+  // projectId; cross-project list is now visibility-scoped per chat-logs pattern).
+  project: { id: string; documentId: string; name: string; slug: string } | null;
+  // Forge/core's agent-sessions list returns flat rows — issue associations
+  // are stored elsewhere (jobs / metadata.issueIds) and not joined here.
+  issues: Array<{ id: string; documentId: string; title: string; status: string }>;
 }
 
 export const STATUS_ICON: Record<string, typeof Clock> = {

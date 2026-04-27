@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { zValidator } from '@hono/zod-validator';
-import { and, count, desc, eq, inArray, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -9,7 +9,9 @@ import {
   agentSessionStatuses,
   agentSessions,
   issues,
+  projectMembers,
   projects,
+  users,
 } from '../db/schema.js';
 import { buildChatPreamble, TOOL_REFERENCE } from '../lib/chat-preamble.js';
 import { findAvailableDeviceForProject, resolveRepoPath } from '../lib/device-pool.js';
@@ -37,6 +39,10 @@ const listQuerySchema = z
     projectId: z.uuid().optional(),
     deviceId: z.uuid().optional(),
     status: z.enum(agentSessionStatuses).optional(),
+    // Optional jsonb filter on `metadata.type` (e.g. ?metadataType=pipeline).
+    // Used by /pipeline page to restrict the cross-project list to
+    // pipeline-control sessions.
+    metadataType: z.string().min(1).max(100).optional(),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(200).default(50),
   })
@@ -634,22 +640,52 @@ agentSessionRoutes.get(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    const { projectId, deviceId, status, page, pageSize } = c.req.valid('query');
+    const { projectId, deviceId, status, metadataType, page, pageSize } = c.req.valid('query');
     const userId = c.get('userId');
 
-    if (!projectId && !deviceId) {
-      throw badRequest({ message: 'projectId or deviceId is required' });
-    }
+    const conditions: SQL[] = [];
 
     if (projectId) {
       const access = await loadProjectAccess(projectId, userId);
       if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+      conditions.push(eq(agentSessions.projectId, projectId));
+    } else if (deviceId) {
+      conditions.push(eq(agentSessions.deviceId, deviceId));
+    } else {
+      // Cross-project view: restrict to caller-visible projects.
+      // CEO sees all; everyone else sees owned + member projects.
+      // Pattern mirrors forge/core/src/chat-logs/routes.ts + projects/health-routes.ts.
+      const [me] = await db
+        .select({ id: users.id, isCeo: users.isCeo })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      const visible = me?.isCeo
+        ? await db.select({ id: projects.id }).from(projects)
+        : await db
+            .selectDistinct({ id: projects.id })
+            .from(projects)
+            .leftJoin(projectMembers, eq(projectMembers.projectId, projects.id))
+            .where(sql`${projects.ownerId} = ${userId} OR ${projectMembers.userId} = ${userId}`);
+
+      if (visible.length === 0) {
+        setTotalCount(c, 0);
+        return c.json([]);
+      }
+
+      conditions.push(
+        inArray(
+          agentSessions.projectId,
+          visible.map((v) => v.id),
+        ),
+      );
     }
 
-    const conditions: SQL[] = [];
-    if (projectId) conditions.push(eq(agentSessions.projectId, projectId));
-    if (deviceId) conditions.push(eq(agentSessions.deviceId, deviceId));
     if (status) conditions.push(eq(agentSessions.status, status));
+    if (metadataType) {
+      conditions.push(sql`${agentSessions.metadata}->>'type' = ${metadataType}`);
+    }
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
