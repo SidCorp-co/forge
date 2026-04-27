@@ -6,6 +6,7 @@ COPY tsconfig.json tsconfig.build.json ./
 COPY src/ src/
 COPY skills/ skills/
 COPY drizzle/ drizzle/
+COPY public/ public/
 RUN npm run build
 
 FROM node:22-alpine AS runtime
@@ -16,6 +17,7 @@ RUN npm install --omit=dev --no-audit --no-fund && npm cache clean --force
 COPY --from=builder /app/dist/ dist/
 COPY --from=builder /app/skills/ skills/
 COPY --from=builder /app/drizzle/ drizzle/
+COPY --from=builder /app/public/ public/
 
 EXPOSE 8080
 
