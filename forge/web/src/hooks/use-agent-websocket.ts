@@ -3,6 +3,7 @@
 import { useRef, useEffect } from 'react';
 import type { ChatMessageData } from '@/components/chat/chat-message';
 import { agentApi } from '@/features/agent/api';
+import { useProjectBySlug } from '@/features/project/hooks/use-projects';
 import { WS_URL } from '@/lib/api/client';
 import { createAgentMessageHandler } from './use-agent-ws-handlers';
 
@@ -35,6 +36,14 @@ export function useAgentWebSocket(opts: UseAgentWebSocketOptions) {
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Core's WS protocol expects `{type:'subscribe', room:'project:<uuid>'}`
+  // (legacy Strapi shape used `{type:'subscribe', sessionId}` and was silently
+  // dropped on the new server). Resolve the project id once so both the
+  // initial subscribe and the per-session refresh both target the right room.
+  const project = useProjectBySlug(projectSlug);
+  const projectIdRef = useRef<string | null>(project?.id ?? null);
+  projectIdRef.current = project?.id ?? null;
 
   // Check desktop status on mount
   useEffect(() => {
@@ -71,9 +80,9 @@ export function useAgentWebSocket(opts: UseAgentWebSocketOptions) {
 
       ws.onopen = () => {
         if (disposed) { ws.close(); return; }
-        const sid = sessionIdRef.current;
-        if (sid) {
-          ws.send(JSON.stringify({ type: 'subscribe', sessionId: sid }));
+        const pid = projectIdRef.current;
+        if (pid) {
+          ws.send(JSON.stringify({ type: 'subscribe', room: `project:${pid}` }));
         }
         agentApi.desktopStatus({ projectSlug })
           .then((res) => {
