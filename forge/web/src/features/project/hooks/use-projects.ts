@@ -96,3 +96,21 @@ export function useRemoveProjectMember() {
     },
   });
 }
+
+export function useInviteProjectMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      projectId,
+      email,
+      role,
+    }: {
+      projectId: string;
+      email: string;
+      role?: 'admin' | 'member';
+    }) => projectApi.inviteMember(projectId, { email, ...(role ? { role } : {}) }),
+    onSuccess: (_data, { projectId }) => {
+      qc.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+    },
+  });
+}

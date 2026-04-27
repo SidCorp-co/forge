@@ -9,9 +9,10 @@ import type { AppConfig } from "./types";
  * global skills + any per-project overrides; consumers see a single coherent
  * view that reflects whatever the operator configured in the web UI.
  *
- * Conflict-vs-local-edits resolution is intentionally deferred to v1.x —
- * `install_skill_from_strapi` already short-circuits when contentHash matches,
- * which covers the common case.
+ * ISS-278 conflict resolution: Rust's `refresh_enabled_skills` returns a log
+ * with `action="conflict"` entries when a project's local SKILL.md was edited
+ * outside the app. We forward those as `skill-conflict` Tauri events so the
+ * `<SkillConflictDialog>` mounted in the app shell can prompt the user.
  */
 
 interface EffectiveSkill {
@@ -123,13 +124,73 @@ export async function syncProjectSkills(slug: string, _repoPath: string): Promis
 
   if (installed > 0) {
     try {
-      await invoke("refresh_enabled_skills");
+      const log = await invoke<SkillSyncLog | null>("refresh_enabled_skills");
+      await emitConflicts(log);
     } catch (err) {
       console.error("[skill-sync] refresh_enabled_skills failed:", err);
     }
   }
 
   return installed > 0;
+}
+
+interface SkillSyncLogEntry {
+  skill: string;
+  action: string;
+  detail: string;
+  projectSlug?: string | null;
+  localContent?: string | null;
+  serverContent?: string | null;
+}
+
+interface SkillSyncLog {
+  timestamp: number;
+  entries: SkillSyncLogEntry[];
+}
+
+export interface SkillConflictPayload {
+  slug: string;
+  skillName: string;
+  localContent: string;
+  serverContent: string;
+  detail: string;
+}
+
+/**
+ * Scan the refresh log for `action="conflict"` entries and forward each as a
+ * `skill-conflict` Tauri event. The dialog component mounted in the app shell
+ * subscribes via `@tauri-apps/api/event::listen`. Emit failures are logged
+ * but never propagate — a missed event is preferable to crashing the sync.
+ */
+async function emitConflicts(log: SkillSyncLog | null | undefined): Promise<void> {
+  if (!log?.entries?.length) return;
+  const conflicts = log.entries.filter(
+    (e): e is SkillSyncLogEntry & {
+      projectSlug: string;
+      localContent: string;
+      serverContent: string;
+    } =>
+      e.action === "conflict" &&
+      typeof e.projectSlug === "string" &&
+      typeof e.localContent === "string" &&
+      typeof e.serverContent === "string",
+  );
+  if (conflicts.length === 0) return;
+  try {
+    const { emit } = await import("@tauri-apps/api/event");
+    for (const c of conflicts) {
+      const payload: SkillConflictPayload = {
+        slug: c.projectSlug,
+        skillName: c.skill,
+        localContent: c.localContent,
+        serverContent: c.serverContent,
+        detail: c.detail,
+      };
+      await emit("skill-conflict", payload);
+    }
+  } catch (err) {
+    console.error("[skill-sync] failed to emit skill-conflict events:", err);
+  }
 }
 
 /** Sync skills for every project in config — call on app start. */

@@ -14,6 +14,13 @@ vi.mock('@/lib/api/client', () => ({
   resolveProjectId: (...args: unknown[]) => resolveProjectIdMock(...args),
 }));
 
+// Tauri event API is dynamically imported inside skill-sync.ts. Map the import
+// to a controllable mock so we can assert the emitted skill-conflict events.
+const emitMock = vi.fn();
+vi.mock('@tauri-apps/api/event', () => ({
+  emit: (...args: unknown[]) => emitMock(...args),
+}));
+
 import { syncProjectSkills, syncAllProjectSkills } from '@/lib/skill-sync';
 import type { AppConfig } from '@/lib/types';
 
@@ -21,6 +28,7 @@ beforeEach(() => {
   invokeMock.mockReset();
   requestMock.mockReset();
   resolveProjectIdMock.mockReset();
+  emitMock.mockReset();
 });
 
 describe('syncProjectSkills', () => {
@@ -87,6 +95,88 @@ describe('syncProjectSkills', () => {
     requestMock.mockRejectedValue(new Error('500'));
     const synced = await syncProjectSkills('demo', '/repos/demo');
     expect(synced).toBe(false);
+  });
+
+  it('emits skill-conflict events for each conflict entry returned by refresh', async () => {
+    resolveProjectIdMock.mockResolvedValue('proj-1');
+    requestMock.mockResolvedValue([
+      { id: 's1', name: 'forge-code', target: 'dev', skillMd: 'new', contentHash: 'h-new' },
+    ]);
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'get_skill_hashes') return Promise.resolve({});
+      if (cmd === 'refresh_enabled_skills') {
+        return Promise.resolve({
+          timestamp: 0,
+          entries: [
+            {
+              skill: 'forge-code',
+              action: 'conflict',
+              detail: '[demo] local SKILL.md edited',
+              projectSlug: 'demo',
+              localContent: 'local body',
+              serverContent: 'server body',
+            },
+            { skill: 'other', action: 'refreshed', detail: 'ok' },
+          ],
+        });
+      }
+      return Promise.resolve();
+    });
+
+    await syncProjectSkills('demo', '/repos/demo');
+
+    expect(emitMock).toHaveBeenCalledTimes(1);
+    expect(emitMock).toHaveBeenCalledWith(
+      'skill-conflict',
+      expect.objectContaining({
+        slug: 'demo',
+        skillName: 'forge-code',
+        localContent: 'local body',
+        serverContent: 'server body',
+      }),
+    );
+  });
+
+  it('does not emit skill-conflict events when refresh log has none', async () => {
+    resolveProjectIdMock.mockResolvedValue('proj-1');
+    requestMock.mockResolvedValue([
+      { id: 's1', name: 'forge-code', target: 'dev', skillMd: 'new', contentHash: 'h-new' },
+    ]);
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'get_skill_hashes') return Promise.resolve({});
+      if (cmd === 'refresh_enabled_skills') {
+        return Promise.resolve({ timestamp: 0, entries: [] });
+      }
+      return Promise.resolve();
+    });
+
+    await syncProjectSkills('demo', '/repos/demo');
+
+    expect(emitMock).not.toHaveBeenCalled();
+  });
+
+  it('skips emit when refresh entries are missing required conflict fields', async () => {
+    resolveProjectIdMock.mockResolvedValue('proj-1');
+    requestMock.mockResolvedValue([
+      { id: 's1', name: 'forge-code', target: 'dev', skillMd: 'new', contentHash: 'h-new' },
+    ]);
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'get_skill_hashes') return Promise.resolve({});
+      if (cmd === 'refresh_enabled_skills') {
+        return Promise.resolve({
+          timestamp: 0,
+          entries: [
+            // missing localContent / serverContent → not a real conflict payload
+            { skill: 'forge-code', action: 'conflict', detail: 'partial', projectSlug: 'demo' },
+          ],
+        });
+      }
+      return Promise.resolve();
+    });
+
+    await syncProjectSkills('demo', '/repos/demo');
+
+    expect(emitMock).not.toHaveBeenCalled();
   });
 });
 

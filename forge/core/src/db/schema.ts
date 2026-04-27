@@ -96,6 +96,13 @@ export const projects = pgTable(
     ownerId: uuid('owner_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    description: text('description'),
+    repoPath: text('repo_path'),
+    baseBranch: text('base_branch'),
+    productionBranch: text('production_branch'),
+    defaultDeviceId: uuid('default_device_id').references((): AnyPgColumn => devices.id, {
+      onDelete: 'set null',
+    }),
     agentConfig: jsonb('agent_config'),
     webhookSecret: text('webhook_secret'),
     apiKey: text('api_key'),
@@ -106,6 +113,7 @@ export const projects = pgTable(
     apiKeyUq: uniqueIndex('projects_api_key_uq')
       .on(t.apiKey)
       .where(sql`api_key IS NOT NULL`),
+    defaultDeviceIdx: index('projects_default_device_id_idx').on(t.defaultDeviceId),
   }),
 );
 
@@ -130,14 +138,41 @@ export const projectMembers = pgTable(
   }),
 );
 
+export const projectDevices = pgTable(
+  'project_devices',
+  {
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    deviceId: uuid('device_id')
+      .notNull()
+      .references((): AnyPgColumn => devices.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.projectId, t.deviceId] }),
+    deviceIdIdx: index('project_devices_device_id_idx').on(t.deviceId),
+  }),
+);
+
 export const projectsRelations = relations(projects, ({ one, many }) => ({
   owner: one(users, { fields: [projects.ownerId], references: [users.id] }),
   members: many(projectMembers),
+  defaultDevice: one(devices, {
+    fields: [projects.defaultDeviceId],
+    references: [devices.id],
+  }),
+  devicePool: many(projectDevices),
 }));
 
 export const projectMembersRelations = relations(projectMembers, ({ one }) => ({
   project: one(projects, { fields: [projectMembers.projectId], references: [projects.id] }),
   user: one(users, { fields: [projectMembers.userId], references: [users.id] }),
+}));
+
+export const projectDevicesRelations = relations(projectDevices, ({ one }) => ({
+  project: one(projects, { fields: [projectDevices.projectId], references: [projects.id] }),
+  device: one(devices, { fields: [projectDevices.deviceId], references: [devices.id] }),
 }));
 
 export const projectInvitations = pgTable(

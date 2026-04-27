@@ -5,7 +5,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { labels, projectMembers, projects } from '../db/schema.js';
+import { devices, labels, projectDevices, projectMembers, projects } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
@@ -39,6 +39,11 @@ export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 export const updateProjectSchema = z
   .object({
     name: z.string().trim().min(1).max(200).optional(),
+    description: z.string().trim().max(2000).nullable().optional(),
+    repoPath: z.string().trim().max(500).nullable().optional(),
+    baseBranch: z.string().trim().max(100).nullable().optional(),
+    productionBranch: z.string().trim().max(100).nullable().optional(),
+    defaultDeviceId: z.uuid().nullable().optional(),
     agentConfig: z.record(z.string(), z.unknown()).nullable().optional(),
     webhookSecret: z.string().min(16).max(128).nullable().optional(),
   })
@@ -170,6 +175,11 @@ projectRoutes.get(
         slug: projects.slug,
         name: projects.name,
         ownerId: projects.ownerId,
+        description: projects.description,
+        repoPath: projects.repoPath,
+        baseBranch: projects.baseBranch,
+        productionBranch: projects.productionBranch,
+        defaultDeviceId: projects.defaultDeviceId,
         agentConfig: projects.agentConfig,
         webhookSecret: projects.webhookSecret,
         apiKey: projects.apiKey,
@@ -190,11 +200,24 @@ projectRoutes.get(
       .from(labels)
       .where(eq(labels.projectId, id));
 
+    const devicePool = await db
+      .select({
+        id: devices.id,
+        name: devices.name,
+        platform: devices.platform,
+        status: devices.status,
+        lastSeenAt: devices.lastSeenAt,
+      })
+      .from(projectDevices)
+      .innerJoin(devices, eq(devices.id, projectDevices.deviceId))
+      .where(eq(projectDevices.projectId, id));
+
     return c.json({
       ...project,
       apiKey: redactApiKey(project.apiKey),
       members,
       labels: labelRows,
+      devicePool,
     });
   },
 );
@@ -270,6 +293,11 @@ projectRoutes.patch(
 
     const updates: Record<string, unknown> = {};
     if (patch.name !== undefined) updates.name = patch.name;
+    if (patch.description !== undefined) updates.description = patch.description;
+    if (patch.repoPath !== undefined) updates.repoPath = patch.repoPath;
+    if (patch.baseBranch !== undefined) updates.baseBranch = patch.baseBranch;
+    if (patch.productionBranch !== undefined) updates.productionBranch = patch.productionBranch;
+    if (patch.defaultDeviceId !== undefined) updates.defaultDeviceId = patch.defaultDeviceId;
     if (patch.agentConfig !== undefined) updates.agentConfig = patch.agentConfig;
     if (patch.webhookSecret !== undefined) updates.webhookSecret = patch.webhookSecret;
 
@@ -278,6 +306,11 @@ projectRoutes.patch(
       slug: projects.slug,
       name: projects.name,
       ownerId: projects.ownerId,
+      description: projects.description,
+      repoPath: projects.repoPath,
+      baseBranch: projects.baseBranch,
+      productionBranch: projects.productionBranch,
+      defaultDeviceId: projects.defaultDeviceId,
       agentConfig: projects.agentConfig,
       webhookSecret: projects.webhookSecret,
       createdAt: projects.createdAt,
@@ -285,6 +318,59 @@ projectRoutes.patch(
     if (!updated) throw notFound();
 
     return c.json(updated);
+  },
+);
+
+const deviceParamSchema = z.object({
+  id: z.uuid(),
+  deviceId: z.uuid(),
+});
+
+projectRoutes.put(
+  '/:id/devices/:deviceId',
+  zValidator('param', deviceParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { id, deviceId } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const { project, role } = await loadMembership(id, userId);
+    if (project.ownerId !== userId && role !== 'owner' && role !== 'admin') {
+      throw forbidden('owner or admin required');
+    }
+
+    try {
+      await db.insert(projectDevices).values({ projectId: id, deviceId }).onConflictDoNothing();
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        // already in pool — idempotent
+      } else {
+        throw err;
+      }
+    }
+    return c.body(null, 204);
+  },
+);
+
+projectRoutes.delete(
+  '/:id/devices/:deviceId',
+  zValidator('param', deviceParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { id, deviceId } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const { project, role } = await loadMembership(id, userId);
+    if (project.ownerId !== userId && role !== 'owner' && role !== 'admin') {
+      throw forbidden('owner or admin required');
+    }
+
+    await db
+      .delete(projectDevices)
+      .where(and(eq(projectDevices.projectId, id), eq(projectDevices.deviceId, deviceId)));
+    return c.body(null, 204);
   },
 );
 

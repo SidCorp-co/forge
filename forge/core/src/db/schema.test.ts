@@ -137,16 +137,21 @@ describe('db/schema — email_verification_tokens', () => {
 });
 
 describe('db/schema — projects', () => {
-  it('has the eight documented columns', () => {
+  it('has the documented columns', () => {
     const names = getTableConfig(projects).columns.map((c) => c.name);
     expect(names.sort()).toEqual(
       [
         'agent_config',
         'api_key',
+        'base_branch',
         'created_at',
+        'default_device_id',
+        'description',
         'id',
         'name',
         'owner_id',
+        'production_branch',
+        'repo_path',
         'slug',
         'webhook_secret',
       ].sort(),
@@ -190,13 +195,35 @@ describe('db/schema — projects', () => {
 
   it('owner_id references users.id with onDelete restrict', () => {
     const cfg = getTableConfig(projects);
-    expect(cfg.foreignKeys).toHaveLength(1);
-    const fk = cfg.foreignKeys[0];
-    if (!fk) throw new Error('expected FK');
+    const fk = cfg.foreignKeys.find((f) => f.reference().columns[0]?.name === 'owner_id');
+    if (!fk) throw new Error('expected owner_id FK');
     const ref = fk.reference();
-    expect(ref.columns[0]?.name).toBe('owner_id');
     expect(ref.foreignColumns[0]?.name).toBe('id');
     expect(fk.onDelete).toBe('restrict');
+  });
+
+  it('default_device_id references devices.id with onDelete set null', () => {
+    const cfg = getTableConfig(projects);
+    const fk = cfg.foreignKeys.find(
+      (f) => f.reference().columns[0]?.name === 'default_device_id',
+    );
+    if (!fk) throw new Error('expected default_device_id FK');
+    const ref = fk.reference();
+    expect(ref.foreignColumns[0]?.name).toBe('id');
+    expect(fk.onDelete).toBe('set null');
+  });
+
+  it('description, repo_path, base_branch, production_branch are nullable text', () => {
+    for (const name of ['description', 'repo_path', 'base_branch', 'production_branch']) {
+      const c = columnByName(projects, name);
+      expect(c.notNull).toBe(false);
+      expect(c.columnType).toBe('PgText');
+    }
+  });
+
+  it('has a named index on default_device_id', () => {
+    const cfg = getTableConfig(projects);
+    expect(cfg.indexes.some((i) => i.config.name === 'projects_default_device_id_idx')).toBe(true);
   });
 
   it('has a named index on owner_id', () => {
