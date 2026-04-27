@@ -104,24 +104,74 @@ describe('jobs/dispatcher', () => {
     expect(result).toBe('skipped');
   });
 
-  it('transitions job to dispatched when device is online and publishes job.assigned', async () => {
-    mockSelectOnce([{ id: 'j1', status: 'queued', projectId: 'p1', type: 'plan', payload: {} }]);
+  // Exhaustive `toEqual` (not `objectContaining`) so omitting any field of the
+  // job.assigned envelope fails the test. Subset matchers let the ISS-279
+  // `issueId`-omission regression (fixed in 511c627d) slip through. See ISS-285.
+  it('transitions job to dispatched when device is online and publishes job.assigned with full envelope', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-27T00:00:00.000Z'));
+    try {
+      mockSelectOnce([
+        {
+          id: 'j1',
+          status: 'queued',
+          projectId: 'p1',
+          issueId: 'i1',
+          type: 'plan',
+          payload: { foo: 'bar' },
+        },
+      ]);
+      (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
+      mockSelectOnce([{ id: 'd1', status: 'online' }]);
+      mockUpdateReturn([{ id: 'j1' }]);
+
+      const result = await handleDispatch({ jobId: 'j1' });
+      expect(result).toBe('dispatched');
+      // biome-ignore lint/suspicious/noExplicitAny: test-only mock chain
+      expect((db as any).update).toHaveBeenCalledTimes(1);
+      // biome-ignore lint/suspicious/noExplicitAny: test-only mock
+      expect((roomManager as any).publish).toHaveBeenCalledWith('device:d1', {
+        event: 'job.assigned',
+        data: {
+          jobId: 'j1',
+          projectId: 'p1',
+          issueId: 'i1',
+          type: 'plan',
+          payload: { foo: 'bar' },
+          dispatchedAt: '2026-04-27T00:00:00.000Z',
+        },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Regression guard for ISS-279: issueId must be a sibling of `payload`
+  // inside `data`, not nested inside `payload`. Device-runner code keys off
+  // `data.issueId` to scope status updates back to the originating issue.
+  it('event includes issueId at top level of data (not nested in payload)', async () => {
+    mockSelectOnce([
+      {
+        id: 'j2',
+        status: 'queued',
+        projectId: 'p1',
+        issueId: 'iss-abc',
+        type: 'code',
+        payload: { instructions: 'do thing' },
+      },
+    ]);
     (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
     mockSelectOnce([{ id: 'd1', status: 'online' }]);
-    mockUpdateReturn([{ id: 'j1' }]);
+    mockUpdateReturn([{ id: 'j2' }]);
 
-    const result = await handleDispatch({ jobId: 'j1' });
-    expect(result).toBe('dispatched');
-    // biome-ignore lint/suspicious/noExplicitAny: test-only mock chain
-    expect((db as any).update).toHaveBeenCalledTimes(1);
+    await handleDispatch({ jobId: 'j2' });
+
     // biome-ignore lint/suspicious/noExplicitAny: test-only mock
-    expect((roomManager as any).publish).toHaveBeenCalledWith(
-      'device:d1',
-      expect.objectContaining({
-        event: 'job.assigned',
-        data: expect.objectContaining({ jobId: 'j1', projectId: 'p1', type: 'plan' }),
-      }),
-    );
+    const call = (roomManager as any).publish.mock.calls[0];
+    expect(call).toBeDefined();
+    const envelope = call[1];
+    expect(envelope.data.issueId).toBe('iss-abc');
+    expect(envelope.data.payload).not.toHaveProperty('issueId');
   });
 
   it('skips when racing UPDATE returns zero rows and does NOT publish', async () => {
