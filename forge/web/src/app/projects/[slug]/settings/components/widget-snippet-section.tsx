@@ -7,6 +7,7 @@ interface WidgetSnippetSectionProps {
   apiKey: string | null;
   apiUrl: string;
   projectName: string;
+  projectSlug: string;
 }
 
 const POSITIONS = [
@@ -22,12 +23,12 @@ const THEMES = [
   { value: 'var(--color-warning-dim)', label: 'Orange' },
 ];
 
-export function WidgetSnippetSection({ apiKey, apiUrl, projectName }: WidgetSnippetSectionProps) {
+export function WidgetSnippetSection({ apiKey, apiUrl, projectName, projectSlug }: WidgetSnippetSectionProps) {
   const [position, setPosition] = useState('bottom-right');
   const [themeColor, setThemeColor] = useState('var(--color-info)');
   const [copied, setCopied] = useState(false);
 
-  const snippet = generateSnippet({ apiKey: apiKey || 'YOUR_API_KEY', apiUrl, position, themeColor, projectName });
+  const snippet = generateSnippet({ apiKey: apiKey || 'YOUR_API_KEY', apiUrl, position, themeColor, projectName, projectSlug });
 
   const handleCopy = () => {
     navigator.clipboard.writeText(snippet);
@@ -107,14 +108,14 @@ ForgeWidget.init({
   );
 }
 
-function generateSnippet({ apiKey, apiUrl, position, themeColor }: {
+export function generateSnippet({ apiKey, apiUrl, position, themeColor, projectSlug }: {
   apiKey: string;
   apiUrl: string;
   position: string;
   themeColor: string;
   projectName: string;
+  projectSlug: string;
 }) {
-  const baseUrl = apiUrl.replace(/\/api\/?$/, '');
   const config = btoa(JSON.stringify({ k: apiKey, p: position, c: themeColor }));
-  return `<script src="${baseUrl}/forge-widget.js" data-config="${config}" async></script>`;
+  return `<script src="${apiUrl}/widget/${projectSlug}/forge-widget.js" data-config="${config}" async></script>`;
 }
