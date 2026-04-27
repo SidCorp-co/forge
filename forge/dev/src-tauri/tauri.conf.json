@@ -46,7 +46,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFDODVGQjJDQzY5MkY1RDEKUldUUjlaTEdMUHVGSFBWK3BXQngwN3BaNHcraHM2MUpQYWxlSnpTUkxKaUUvdUhia05Ha2tjbmQK",
       "endpoints": [
-        "http://localhost:8080/api/app-releases/check/{{target}}/{{current_version}}"
+        "https://github.com/junixlabs/jarvis-agents/releases/latest/download/latest.json"
       ]
     }
   }

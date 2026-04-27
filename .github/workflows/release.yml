@@ -11,6 +11,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create_release.outputs.id }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,10 +35,98 @@ jobs:
           fi
 
       - name: Create GitHub Release
+        id: create_release
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
           body_path: /tmp/release_notes.md
           generate_release_notes: true
-          draft: false
+          draft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
+
+  # Build Forge Beta (Tauri) artifacts on each platform and attach to the
+  # release. Tauri's updater plugin then resolves
+  # https://github.com/junixlabs/jarvis-agents/releases/latest/download/latest.json
+  # which `tauri-action` generates with platform→download-URL mappings + signatures.
+  #
+  # Required GitHub repo secrets (Settings → Secrets → Actions):
+  #   TAURI_SIGNING_PRIVATE_KEY           (output of `pnpm tauri signer generate`)
+  #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  (passphrase chosen at generate time)
+  #
+  # The matching public key is committed at forge/dev/src-tauri/tauri.conf.json:pubkey
+  # and is what the updater plugin verifies against.
+  build:
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            args: ""
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            args: "--target aarch64-apple-darwin"
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            args: "--target x86_64-apple-darwin"
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: forge/dev/src-tauri
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: forge/dev/pnpm-lock.yaml
+
+      - name: Install JS deps (forge/dev)
+        run: pnpm install --frozen-lockfile
+        working-directory: forge/dev
+
+      - name: Build + sign + upload Tauri artifacts
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: forge/dev
+          releaseId: ${{ needs.release.outputs.release_id }}
+          args: ${{ matrix.args }}
+          includeUpdaterJson: true
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark release as non-draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit "$GITHUB_REF_NAME" --draft=false --repo "$GITHUB_REPOSITORY"

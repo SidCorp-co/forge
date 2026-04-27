@@ -1,4 +1,4 @@
-import { apiClient } from '@/lib/api/client';
+import { apiClient, apiClientList } from '@/lib/api/client';
 import type { UsageSummary, UsageRecord } from '../types';
 
 interface GetAllParams {
@@ -17,20 +17,16 @@ export const usageApi = {
       `/usage-records/summary?projectId=${encodeURIComponent(projectId)}&days=${days}`,
     ).then((data) => ({ data })),
 
-  getAll: (params: GetAllParams) => {
+  getAll: async (params: GetAllParams) => {
     const query = new URLSearchParams(
       Object.entries(params)
         .filter(([, v]) => v !== undefined)
         .map(([k, v]) => [k, String(v)]),
     );
-    // Backend exposes the true total via the X-Total-Count header. The
-    // current apiClient discards headers, so we report only the page slice
-    // length here. Wire `X-Total-Count` through the client to surface the
-    // real total to the UI.
-    return apiClient<UsageRecord[]>(`/usage-records?${query.toString()}`).then((data) => ({
-      data,
-      meta: { pagination: { pageLength: data.length } },
-    }));
+    const { items, totalCount } = await apiClientList<UsageRecord>(
+      `/usage-records?${query.toString()}`,
+    );
+    return { data: items, meta: { pagination: { total: totalCount } } };
   },
 
   ingestCli: (projectId: string, records: Array<Partial<UsageRecord> & { recordedAt: string; model: string; source: string }>) =>

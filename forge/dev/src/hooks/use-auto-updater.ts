@@ -32,6 +32,10 @@ export function useAutoUpdater() {
 
   const checkForUpdate = useCallback(async (isRetry = false) => {
     if (!isTauri) return;
+    // Skip auto-updater in dev (tauri dev) — the GitHub Releases endpoint
+    // returns 404 for unreleased versions and the resulting banner is noise.
+    // Production builds (tauri build) always run with import.meta.env.DEV=false.
+    if (import.meta.env.DEV) return;
     setState((s) => ({ ...s, checking: true, error: null }));
     try {
       const { check } = await import("@tauri-apps/plugin-updater");
