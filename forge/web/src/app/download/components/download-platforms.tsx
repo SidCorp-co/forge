@@ -15,6 +15,21 @@ function platformIcon(id: PlatformAsset['id']) {
   }
 }
 
+// Per-platform accent colors — keeps the cards from being 4 identical amber
+// chips. All within the existing M3 token vocabulary.
+function platformAccent(id: PlatformAsset['id']): { bg: string; color: string } {
+  switch (id) {
+    case 'macos-arm64':
+    case 'macos-x64':
+      return { bg: 'bg-info-surface', color: 'text-info' };
+    case 'windows-x64':
+      return { bg: 'bg-success-surface', color: 'text-success' };
+    case 'linux-deb':
+    case 'linux-appimage':
+      return { bg: 'bg-warning/10', color: 'text-warning' };
+  }
+}
+
 interface DownloadPlatformsProps {
   release: ReleaseInfo | null;
 }
@@ -85,13 +100,14 @@ export function DownloadPlatforms({ release }: DownloadPlatformsProps) {
       <div className="grid gap-3 sm:grid-cols-2">
         {release.assets.map((asset) => {
           const Icon = platformIcon(asset.id);
+          const accent = platformAccent(asset.id);
           return (
             <a
               key={asset.id}
               href={asset.downloadUrl}
-              className="group flex items-center gap-4 rounded-2xl border border-outline-variant/20 bg-white p-5 shadow-sm transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-md"
+              className="group flex items-center gap-4 rounded-2xl border border-outline-variant/30 bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[transform,box-shadow,border-color] hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] hover:border-outline-variant/60"
             >
-              <div className="flex w-11 h-11 shrink-0 items-center justify-center rounded-xl bg-warning/10 text-warning">
+              <div className={`flex w-11 h-11 shrink-0 items-center justify-center rounded-xl ${accent.bg} ${accent.color}`}>
                 <Icon className="w-5 h-5" />
               </div>
               <div className="min-w-0 flex-1">

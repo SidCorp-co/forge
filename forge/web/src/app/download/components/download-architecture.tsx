@@ -223,16 +223,18 @@ export function DownloadArchitecture() {
         </svg>
       </div>
 
+      {/* Architectural takeaways — each card gets a distinct edge color so
+          the row reads as three principles, not three identical chips. */}
       <ul className="mt-8 grid gap-3 sm:grid-cols-3 text-xs font-mono text-primary-fixed">
-        <li className="rounded-lg border border-outline-variant/20 bg-white px-4 py-3">
+        <li className="rounded-lg border border-outline-variant/30 bg-white px-4 py-3 border-l-2 border-l-warning">
           <span className="block text-on-surface mb-1">No proxy</span>
           Claude credentials stay on your device — never on the server.
         </li>
-        <li className="rounded-lg border border-outline-variant/20 bg-white px-4 py-3">
+        <li className="rounded-lg border border-outline-variant/30 bg-white px-4 py-3 border-l-2 border-l-info">
           <span className="block text-on-surface mb-1">One store</span>
           Postgres holds data, jobs (pg-boss), and embeddings (pgvector).
         </li>
-        <li className="rounded-lg border border-outline-variant/20 bg-white px-4 py-3">
+        <li className="rounded-lg border border-outline-variant/30 bg-white px-4 py-3 border-l-2 border-l-success">
           <span className="block text-on-surface mb-1">Same protocol</span>
           REST, WS, and MCP all hit the same Hono handlers — no surface drift.
         </li>

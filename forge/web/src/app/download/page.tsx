@@ -37,13 +37,32 @@ export default async function DownloadPage() {
         // biome-ignore lint/security/noDangerouslySetInnerHtml: structured data
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
+      {/*
+        Alternating section backgrounds break the white-on-white wash that
+        was making cards float without anchor. The pattern is:
+            white  → hero (with radial glows)
+            tinted → platforms
+            white  → features (cards stand out)
+            tinted → comparison (table reads as a "different surface")
+            white  → architecture (SVG diagram has breathing room)
+            tinted → quickstart (steps feel grouped)
+            white  → footer
+        Tint = surface-container-low/40 — barely-there but enough to give
+        the page rhythm and depth.
+      */}
       <main className="min-h-full">
         <DownloadHero release={release} />
-        <DownloadPlatforms release={release} />
+        <div className="bg-surface-container-low/40">
+          <DownloadPlatforms release={release} />
+        </div>
         <DownloadFeatures />
-        <DownloadComparison />
+        <div className="bg-surface-container-low/40">
+          <DownloadComparison />
+        </div>
         <DownloadArchitecture />
-        <DownloadQuickstart release={release} />
+        <div className="bg-surface-container-low/40">
+          <DownloadQuickstart release={release} />
+        </div>
         <DownloadFooter release={release} />
       </main>
     </>

@@ -71,6 +71,22 @@ export function DownloadHero({ release }: DownloadHeroProps) {
 
   return (
     <section className="relative overflow-hidden border-b border-outline-variant/20">
+      {/* Subtle dot grid for depth — kept very faint so it reads as
+          background texture, not visual noise. Mask fades it out toward
+          the center where text lives. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-[0.35]"
+        style={{
+          backgroundImage:
+            'radial-gradient(circle at 1px 1px, rgba(0,0,0,0.06) 1px, transparent 0)',
+          backgroundSize: '24px 24px',
+          maskImage:
+            'radial-gradient(ellipse 70% 60% at center, transparent 30%, black 100%)',
+          WebkitMaskImage:
+            'radial-gradient(ellipse 70% 60% at center, transparent 30%, black 100%)',
+        }}
+      />
       {/* Soft radial glows — same vocabulary as the landing hero/forge sections */}
       <div className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 w-[900px] h-[600px] rounded-full bg-[radial-gradient(ellipse,rgba(249,115,22,0.07)_0%,rgba(249,115,22,0.02)_40%,transparent_75%)]" />
       <div className="pointer-events-none absolute bottom-0 right-[-15%] w-[500px] h-[500px] rounded-full bg-[radial-gradient(circle,rgba(124,58,237,0.05)_0%,transparent_70%)]" />
