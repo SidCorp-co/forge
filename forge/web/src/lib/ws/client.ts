@@ -31,6 +31,18 @@ class ForgeWebSocket {
   private reconnectTimer?: ReturnType<typeof setTimeout>;
   private onOpenCallbacks = new Set<() => void>();
   private explicitlyClosed = false;
+  private bearerToken: string | undefined;
+
+  /**
+   * Optionally set a bearer token to authenticate via the
+   * `forge.bearer.<jwt>` Sec-WebSocket-Protocol subprotocol (ISS-286). Web
+   * normally relies on the same-origin `forge_auth` cookie and leaves this
+   * unset; cross-origin embeds (widget, future Tauri-style hosts) call this
+   * before `connect()` so the JWT never appears in the URL / access logs.
+   */
+  setBearerToken(token: string | undefined): void {
+    this.bearerToken = token;
+  }
 
   connect(): void {
     if (typeof window === 'undefined') return;
@@ -41,7 +53,9 @@ class ForgeWebSocket {
       return;
     }
     this.explicitlyClosed = false;
-    const ws = new WebSocket(WS_URL);
+    const ws = this.bearerToken
+      ? new WebSocket(WS_URL, [`forge.bearer.${this.bearerToken}`])
+      : new WebSocket(WS_URL);
     this.ws = ws;
 
     ws.onopen = () => {

@@ -65,6 +65,34 @@ function parseQueryToken(url: string | undefined): string | undefined {
   }
 }
 
+const SUBPROTOCOL_TOKEN_PREFIX = 'forge.bearer.';
+
+interface ProtocolMatch {
+  token: string;
+  protocol: string;
+}
+
+// Browsers require the server to echo the chosen subprotocol back via the
+// `Sec-WebSocket-Protocol` response header — otherwise the upgrade is
+// rejected client-side. Returns both the bearer token and the exact
+// protocol string we matched so the upgrade handler can echo it back.
+function parseProtocolToken(
+  header: string | string[] | undefined,
+): ProtocolMatch | undefined {
+  if (!header) return undefined;
+  // Node's http parser collapses repeats into a single comma-joined string
+  // but some runtimes hand back an array; handle both.
+  const raw = Array.isArray(header) ? header.join(',') : header;
+  for (const part of raw.split(',')) {
+    const proto = part.trim();
+    if (!proto.startsWith(SUBPROTOCOL_TOKEN_PREFIX)) continue;
+    const token = proto.slice(SUBPROTOCOL_TOKEN_PREFIX.length);
+    if (!token) continue;
+    return { token, protocol: proto };
+  }
+  return undefined;
+}
+
 async function tryUserToken(token: string): Promise<Principal | null> {
   try {
     const claims = await verifyUserToken(token);
@@ -74,32 +102,56 @@ async function tryUserToken(token: string): Promise<Principal | null> {
   }
 }
 
-async function authenticate(req: IncomingMessage): Promise<Principal | null> {
+interface AuthResult {
+  principal: Principal;
+  // If non-null, the upgrade handler MUST echo this subprotocol in the
+  // response so the browser accepts the connection.
+  acceptedProtocol?: string;
+}
+
+async function resolveBearer(token: string): Promise<Principal | null> {
+  const user = await tryUserToken(token);
+  if (user) return user;
+  const device = await verifyDeviceToken(token);
+  if (device) return { type: 'device', deviceId: device.id, ownerId: device.ownerId };
+  return null;
+}
+
+async function authenticate(req: IncomingMessage): Promise<AuthResult | null> {
+  // Authorization header — used by the Tauri Rust client and other native
+  // callers that can set arbitrary headers on the upgrade request.
   const bearer = parseBearer(req.headers.authorization);
   if (bearer) {
-    const user = await tryUserToken(bearer);
-    if (user) return user;
-    const device = await verifyDeviceToken(bearer);
-    if (device) return { type: 'device', deviceId: device.id, ownerId: device.ownerId };
-    return null;
+    const principal = await resolveBearer(bearer);
+    return principal ? { principal } : null;
   }
 
-  // Browser WebSocket API can't set Authorization headers, so fall back to
-  // a `?token=<jwt>` URL query (Tauri / cross-origin web clients). Cookies
-  // also fall through here for same-origin browser sessions.
-  const queryToken = parseQueryToken(req.url);
-  if (queryToken) {
-    const user = await tryUserToken(queryToken);
-    if (user) return user;
-    const device = await verifyDeviceToken(queryToken);
-    if (device) return { type: 'device', deviceId: device.id, ownerId: device.ownerId };
-    // Don't fall through to cookie — caller explicitly chose query auth.
-    return null;
+  // Sec-WebSocket-Protocol — browsers can't set Authorization on a WS
+  // upgrade but they CAN advertise subprotocols. We match the
+  // `forge.bearer.<jwt>` namespace and echo it back from the upgrade
+  // handler so the handshake completes.
+  const proto = parseProtocolToken(req.headers['sec-websocket-protocol']);
+  if (proto) {
+    const principal = await resolveBearer(proto.token);
+    return principal ? { principal, acceptedProtocol: proto.protocol } : null;
   }
 
+  // Same-origin browser path — auth via the forge_auth cookie.
   const cookie = parseCookie(req.headers.cookie, AUTH_COOKIE_NAME);
   if (cookie) {
-    return tryUserToken(cookie);
+    const user = await tryUserToken(cookie);
+    return user ? { principal: user } : null;
+  }
+
+  // Legacy `?token=<jwt>` query path — leaks via access logs / Referer /
+  // history. Gated behind a feature flag so we can flip it OFF after the
+  // soak window once all clients use the subprotocol path.
+  if (isEnabled('wsLegacyTokenAuth')) {
+    const queryToken = parseQueryToken(req.url);
+    if (queryToken) {
+      const principal = await resolveBearer(queryToken);
+      return principal ? { principal } : null;
+    }
   }
 
   return null;
@@ -169,8 +221,8 @@ export function attachWs(server: AnyServer): void {
     if (url.pathname !== '/ws') return;
 
     void (async () => {
-      const principal = await authenticate(req);
-      if (!principal) {
+      const result = await authenticate(req);
+      if (!result) {
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
         socket.destroy();
         return;
@@ -179,10 +231,17 @@ export function attachWs(server: AnyServer): void {
         socket.destroy();
         return;
       }
+      // When the client used Sec-WebSocket-Protocol auth, mutate the request
+      // headers so the underlying ws library's selectProtocol picks our
+      // accepted subprotocol and echoes it on the response. Browsers reject
+      // the upgrade otherwise.
+      if (result.acceptedProtocol) {
+        req.headers['sec-websocket-protocol'] = result.acceptedProtocol;
+      }
       wss.handleUpgrade(req, socket, head, (raw) => {
         const ws = raw as AliveSocket;
         ws.isAlive = true;
-        ws.principal = principal;
+        ws.principal = result.principal;
         wss?.emit('connection', ws, req);
       });
     })();

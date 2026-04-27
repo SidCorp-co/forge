@@ -45,6 +45,13 @@ const flagDefs = {
   // because it's additive. The web UI surface gates on this flag while the
   // diff editor and forge/dev sync engine land incrementally.
   skillUi: false,
+
+  // ISS-286 — Accept JWT via `?token=<jwt>` URL query on /ws upgrade. The
+  // canonical path is `Sec-WebSocket-Protocol: forge.bearer.<jwt>`; query
+  // auth leaks the JWT into nginx access logs / Referer / browser history.
+  // Default ON during rollout so older clients keep working; flip OFF after
+  // the soak window and remove the code path in a follow-up.
+  wsLegacyTokenAuth: true,
 } as const;
 
 export type FeatureFlag = keyof typeof flagDefs;
