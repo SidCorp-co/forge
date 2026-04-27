@@ -24,6 +24,9 @@ ADRs are **never edited after acceptance**. If a decision is reversed, write a n
 | [0009](0009-mobile-app-paused-for-v0x.md) | Mobile app paused for v0.x | Accepted | 2026-04-19 |
 | [0010](0010-clean-break-from-strapi.md) | Clean break from Strapi to `forge/core` (no parity, no dual-run) | Accepted | 2026-04-23 |
 | [0011](0011-pgvector-replaces-qdrant.md) | Postgres `pgvector` replaces Qdrant for vector storage | Accepted | 2026-04-23 |
+| [0012](0012-web-api-client-shape.md) | Web API client shape | Accepted | — |
+| [0013](0013-widget-api-key-storage.md) | Widget API key storage | Accepted | — |
+| [0014](0014-trunk-based-development.md) | Trunk-Based Development (single trunk, no `develop`/release branches) | Accepted | 2026-04-26 |
 
 ## Status values
 

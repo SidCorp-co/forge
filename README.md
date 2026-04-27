@@ -126,7 +126,7 @@ Current focus: **v0.1** — device-runner architecture, job pipeline, session re
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md). The repo follows **Trunk-Based Development** — single `main`, no `develop`, branches live <1 day, feature flags absorb in-flight work. Rationale + full rules: [ADR 0014](docs/decisions/0014-trunk-based-development.md).
 
 First-time? Look for [`good-first-issue`](https://github.com/junixlabs/jarvis-agents/labels/good-first-issue).
 

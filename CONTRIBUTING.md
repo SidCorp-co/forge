@@ -7,24 +7,46 @@ Thanks for your interest. The project is in alpha — every piece of feedback is
 - Read the [Code of Conduct](CODE_OF_CONDUCT.md).
 - Search existing issues before opening a new one.
 - For large features: open a **discussion** or a `proposal` issue before writing code.
+- Skim [ADR 0014 — Trunk-Based Development](docs/decisions/0014-trunk-based-development.md). The branching model is non-standard for a reason; the rules below are derived from it.
+
+## Branching model — Trunk-Based Development
+
+Single trunk = `main`. **No `develop`, no `staging`, no long-lived release branches.** Feature work merges to main as fast as it can compile + pass tests.
+
+| Rule | Detail |
+|---|---|
+| Trunk | `main` only — always green, always deployable |
+| Feature branches | `ISS-<seq>-<short-kebab>` cut from `main`, lifetime < 1 day, target same-day merge |
+| Feature flags | Incomplete work merges behind `isEnabled('flagName')` (default off, env-controlled) |
+| Hot-fix | Same as feature: branch from main, merge back fast. No separate hotfix track. |
+| Revert culture | If `main` breaks, revert within 30 min. Don't push fix-forward unless revert is structurally impossible. |
+| Pre-push hook | `.githooks/pre-push` runs build + tests on packages with changed files. Install via `git config core.hooksPath .githooks` (auto-set by `pnpm install` postinstall). |
+| Release tagging | Tag `vX.Y.Z` on commits when ready to ship. No release branch. |
+
+Full rationale + status-pipeline diagram + staging deploy details: [ADR 0014](docs/decisions/0014-trunk-based-development.md).
 
 ## Contribution workflow
 
-1. Fork the repo and create a branch from `main`: `feat/xyz` or `fix/xyz`.
-2. Write code + tests. CI must pass locally before pushing.
+1. Fork the repo and create a branch from `main`. Naming:
+   - `ISS-<seq>-<short-kebab>` if you've got a tracker issue (preferred — the prefix ties the branch to the issue's `iss_seq`).
+   - `fix/<short>` for an emergency hot-fix; file the issue retroactively.
+   - `chore/<short>` for pure docs / repo housekeeping.
+2. Write code + tests. The pre-push hook runs them locally — keep `main` green.
 3. Commit using [Conventional Commits](https://www.conventionalcommits.org/):
    - `feat: add X` — new feature
    - `fix: Y` — bug fix
    - `docs: Z` — docs only
    - `refactor:`, `test:`, `chore:`, `perf:`
-4. Open a PR and fill out the template.
-5. A maintainer reviews within 3 business days.
+   - Reference issue ID in the body (`ISS-279`), not the subject — keeps subjects under 72 chars.
+4. Open a PR and fill out the template. Same-day merge is the target; if it stretches past a day, gate the work behind a feature flag and merge anyway.
+5. A maintainer reviews within 3 business days. Reverts are cheap — don't fight them.
 
 ## Coding standards
 
 - Lint + format must pass in CI.
 - Test coverage should not regress.
 - Breaking changes: document them in the PR description and update CHANGELOG.
+- Long-running migrations: split into schema-first + code-second + drop-third so a feature flag can toggle without locking the trunk (see ADR 0014 §Cons).
 
 ## Reporting bugs
 
