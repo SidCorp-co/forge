@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "@/stores/app-store";
 import { invoke } from "./use-tauri-ipc";
-import { registerDesktop, unregisterDesktop, registerDevice, relayAgentEvent, relayPromptBuilt, getIssue, getComments, getProject, getAgents, syncKnowledgeToStrapi, syncAgentFiles, postJobEvents, completeJob, failJob, type JobEventInput } from "@/lib/api";
+import { registerDesktop, unregisterDesktop, registerDevice, relayAgentEvent, relayPromptBuilt, patchAgentSession, getIssue, getComments, getProject, getAgents, syncKnowledgeToStrapi, syncAgentFiles, postJobEvents, completeJob, failJob, type JobEventInput } from "@/lib/api";
 import { buildIssuePrompt, buildMultiIssuePrompt } from "@/lib/prompt-builders";
 import { buildAgentPrompt, buildAgentReindexPrompt, type AgentConfig } from "@/lib/agent-prompt";
 import { SessionTracker } from "@/lib/session-tracker";
@@ -537,6 +537,24 @@ export function useWebSocket() {
             } catch {
               /* ignore */
             }
+
+            // ISS-307 — persist the session row so a browser opening this
+            // session AFTER completion still sees the assistant reply +
+            // running flag clearing. The relay above is broadcast-only;
+            // without this PATCH the DB row stays stuck at
+            // status='running' / messages=[user-only]. Best-effort: sync
+            // failures must not block local cleanup or knowledge sync.
+            try {
+              const snap = tracker.getSnapshot(sessionId);
+              await patchAgentSession(sessionId, {
+                status: rest.error ? "failed" : "completed",
+                ...(snap ? { messages: snap.messages, claudeSessionId: snap.claudeSessionId } : {}),
+                ...(diffData ? { diff: diffData } : {}),
+              });
+            } catch (err) {
+              console.warn("[agent:complete] PATCH session failed:", err);
+            }
+
             // Sync local files to Strapi after agent sessions complete
             if (trackedSession?.repoPath && trackedSession?.slug && !rest.error) {
               try {
