@@ -16,21 +16,49 @@ Single trunk = `main`. **No `develop`, no `staging`, no long-lived release branc
 | Rule | Detail |
 |---|---|
 | Trunk | `main` only — always green, always deployable |
-| Feature branches | `ISS-<seq>-<short-kebab>` cut from `main`, lifetime < 1 day, target same-day merge |
+| Feature branches | Two schemes (see below). Cut from `main`, lifetime < 1 day, target same-day merge |
 | Feature flags | Incomplete work merges behind `isEnabled('flagName')` (default off, env-controlled) |
 | Hot-fix | Same as feature: branch from main, merge back fast. No separate hotfix track. |
 | Revert culture | If `main` breaks, revert within 30 min. Don't push fix-forward unless revert is structurally impossible. |
-| Pre-push hook | `.githooks/pre-push` runs build + tests on packages with changed files. Install via `git config core.hooksPath .githooks` (auto-set by `pnpm install` postinstall). |
+| Pre-push hook | `.githooks/pre-push` validates branch names + runs build + tests on packages with changed files. Install via `git config core.hooksPath .githooks` (auto-set by `pnpm install` postinstall). |
 | Release tagging | Tag `vX.Y.Z` on commits when ready to ship. No release branch. |
+
+### Branch naming — pick one scheme
+
+**External contributors (recommended)** — GitHub-native, no Forge account required:
+
+| Form | Example |
+|---|---|
+| `feat/<slug>` | `feat/widget-api-key` |
+| `fix/<slug>` | `fix/race-on-shutdown` |
+| `fix/gh-<num>-<slug>` | `fix/gh-456-token-leak` (links a GitHub Issue) |
+| `docs/<slug>` `chore/<slug>` `refactor/<slug>` `test/<slug>` `perf/<slug>` | `docs/branch-naming` |
+
+**Maintainers / Forge pipeline (canonical)** — the autonomous skill pipeline uses these; ties the branch to a tracker entry:
+
+| Form | Example |
+|---|---|
+| `ISS-<seq>-<slug>` | `ISS-279-job-assigned-handler` |
+| `ISS-<seq>-chunk-<a-z>-<slug>` | `ISS-293-chunk-a-issues-comments` |
+
+**Slug rules**:
+- Lowercase `a-z 0-9`, kebab-case (hyphens, no underscores).
+- ≤ 5 words, ≤ 50 chars. Total branch ≤ 60 chars.
+- **One issue per branch.** No multi-issue (`ISS-261-262-…`) — split into separate branches.
+
+The pre-push hook calls `scripts/check-branch-name.sh` to enforce this. Run it ad-hoc:
+
+```bash
+scripts/check-branch-name.sh                  # validates the current branch
+scripts/check-branch-name.sh feat/my-thing    # validates a name
+```
 
 Full rationale + status-pipeline diagram + staging deploy details: [ADR 0014](docs/decisions/0014-trunk-based-development.md).
 
 ## Contribution workflow
 
-1. Fork the repo and create a branch from `main`. Naming:
-   - `ISS-<seq>-<short-kebab>` if you've got a tracker issue (preferred — the prefix ties the branch to the issue's `iss_seq`).
-   - `fix/<short>` for an emergency hot-fix; file the issue retroactively.
-   - `chore/<short>` for pure docs / repo housekeeping.
+1. Fork the repo and create a branch from `main`. Pick a name from the
+   [Branch naming](#branch-naming--pick-one-scheme) table above.
 2. Write code + tests. The pre-push hook runs them locally — keep `main` green.
 3. Commit using [Conventional Commits](https://www.conventionalcommits.org/):
    - `feat: add X` — new feature

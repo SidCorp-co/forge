@@ -16,7 +16,30 @@ if [ "$SKIP_PREPUSH" = "1" ]; then
   exit 0
 fi
 
-# Read pushed refs from stdin (format: <local-ref> <local-sha> <remote-ref> <remote-sha>)
+# Capture stdin once — git only writes the ref list to the hook's stdin once,
+# so subsequent loops have to read from a saved copy.
+stdin_input="$(cat)"
+
+# Branch name validation per ADR 0014. Cheap; runs before the expensive
+# build/test cycle so a bad name fails fast.
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null)
+if [ -x "$repo_root/scripts/check-branch-name.sh" ]; then
+  while read -r local_ref _ _ _; do
+    case "$local_ref" in
+      refs/heads/*)
+        local_branch="${local_ref#refs/heads/}"
+        if ! "$repo_root/scripts/check-branch-name.sh" "$local_branch"; then
+          echo "[pre-push] FAIL: branch name violates ADR 0014. Push aborted."
+          echo "[pre-push] To bypass (e.g. emergency revert): SKIP_PREPUSH=1 git push"
+          exit 1
+        fi
+        ;;
+    esac
+  done <<< "$stdin_input"
+fi
+
+# Read pushed refs from the captured stdin (format:
+# <local-ref> <local-sha> <remote-ref> <remote-sha>)
 range=""
 while read -r local_ref local_sha remote_ref remote_sha; do
   if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
@@ -35,7 +58,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   else
     range="$range $remote_sha..$local_sha"
   fi
-done
+done <<< "$stdin_input"
 
 if [ -z "$range" ]; then
   echo "[pre-push] no commits to validate"

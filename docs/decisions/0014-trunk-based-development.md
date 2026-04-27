@@ -53,13 +53,62 @@ open → confirmed → approved → in_progress
 
 **Skipped statuses** (used by other projects with a full Coolify pipeline): `tested`, `pass`, `deploying`, `testing`. The skill overrides under `.claude/skills/` enforce this — see `.claude/skills/README.md`.
 
-### Branch naming
+### Branch naming — dual scheme
 
-- **Pipeline-driven** (most branches): `ISS-<seq>-<short-kebab>`. The `ISS-<seq>` prefix matches the issue's `iss_seq` so a glance at the branch tells you which issue it implements. Example: `ISS-279-job-assigned-handler`.
-- **Hot-fix without an issue**: `fix/<short-kebab>`, file the matching issue retroactively.
-- **Pure docs / chore**: `chore/<short-kebab>` is fine; tests still run via the pre-push hook.
+The repo is open source on GitHub but the canonical issue tracker is the
+project's own Forge instance (which uses `ISS-<seq>` IDs from `iss_seq`).
+Two branch-name schemes coexist so external contributors don't need a
+Forge account, and the autonomous pipeline still sees a tracker-linked
+branch on the maintainer side.
 
-`feat/xyz` from earlier `CONTRIBUTING.md` is **deprecated** — use `ISS-<seq>-<short>` so the branch ties back to the tracker.
+#### 1. Maintainer / Forge pipeline (canonical)
+
+```
+ISS-<seq>-<slug>                 e.g. ISS-279-job-assigned-handler
+ISS-<seq>-chunk-<a-z>-<slug>     e.g. ISS-293-chunk-a-issues-comments
+```
+
+Used by the Forge pipeline (`/forge-code` cuts these), maintainers, and
+internal contributors who have a Forge account. The `ISS-<seq>` prefix
+ties the branch to a single tracker entry and is the input the autonomous
+pipeline reads to advance status.
+
+#### 2. External contributor (GitHub-native)
+
+```
+feat/<slug>                      e.g. feat/widget-api-key
+fix/<slug>                       e.g. fix/race-on-shutdown
+fix/gh-<num>-<slug>              e.g. fix/gh-456-token-leak
+docs/<slug>      chore/<slug>      refactor/<slug>
+test/<slug>      perf/<slug>
+```
+
+`gh-<num>-` is optional; use it when the work is tied to a GitHub Issue.
+The maintainer who merges the PR will assign an `ISS-<seq>` retroactively
+on the Forge tracker if pipeline tracking is needed downstream.
+
+#### Slug rules (both schemes)
+
+- Lowercase `a-z 0-9`, kebab-case (hyphen separator, no underscores).
+- 2 to ~5 words, ≤ 50 characters.
+- **Total branch name** ≤ 60 characters.
+- **One issue per branch.** Multi-issue branches like `ISS-261-262-rc6`
+  are forbidden — split work into separate branches.
+- **No orphan ISS branches.** `ISS-attention-mvp` (no seq) is forbidden;
+  every `ISS-` prefix needs a numeric seq from the tracker.
+
+#### Validation
+
+`scripts/check-branch-name.sh` enforces the rules above; the pre-push
+hook calls it before the build/test cycle so a malformed name fails fast.
+Run it standalone any time:
+
+```bash
+scripts/check-branch-name.sh                          # current branch
+scripts/check-branch-name.sh ISS-279-foo              # specific name
+```
+
+`SKIP_PREPUSH=1 git push` bypasses for emergency reverts only.
 
 ### Commit messages
 
