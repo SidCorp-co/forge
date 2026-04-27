@@ -48,6 +48,20 @@ export function createAgentMessageHandler(opts: AgentHandlerOptions) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return function handleMessage(msg: any) {
+    // Core wraps device-relayed events in `agent-session.relay.<event>` and
+    // moves the original payload onto `data.payload` (see broadcastSession in
+    // forge/core/src/agent-sessions/routes.ts). Unwrap so the rest of this
+    // handler sees the bare event shape it was originally written against.
+    if (typeof msg.event === 'string' && msg.event.startsWith('agent-session.relay.')) {
+      const innerEvent = msg.event.slice('agent-session.relay.'.length);
+      const wrap = msg.data ?? {};
+      msg = {
+        ...msg,
+        event: innerEvent,
+        data: { sessionId: wrap.sessionId, ...(wrap.payload ?? {}) },
+      };
+    }
+
     // Re-check desktop status via API (broadcast goes to all clients,
     // but only the project's configured device matters)
     if (msg.event === 'desktop:connected' || msg.event === 'desktop:disconnected') {
