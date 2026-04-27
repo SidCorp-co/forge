@@ -30,6 +30,7 @@ import {
   devicePublicRoutes,
   deviceUserRoutes,
 } from './devices/routes.js';
+import { pipelineAnalyticsRoutes } from './pipeline/analytics-routes.js';
 import { registerDeviceStaleDetector } from './devices/stale-detector.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { seedDomainTemplates } from './domain-templates/seed.js';
@@ -239,6 +240,7 @@ app.route('/api/devices', devicePublicRoutes);
 app.route('/api/devices', deviceAuthRoutes);
 app.route('/api', deviceOwnerRoutes);
 app.route('/api/projects', deviceUserRoutes);
+app.route('/api/pipeline', pipelineAnalyticsRoutes);
 app.route('/api/schedules', scheduleRoutes);
 app.route('/api/knowledge', knowledgeIngestRoutes);
 app.route('/api/knowledge-edges', knowledgeEdgeRoutes);
