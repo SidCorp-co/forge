@@ -6,6 +6,7 @@ export function LandingNav() {
       <span className="text-xl font-semibold tracking-tight text-on-surface">SidCorp</span>
       <div className="flex items-center gap-6">
         <a href="#showcase" className="text-sm text-primary-fixed hover:text-on-surface transition-colors hidden sm:block">Work</a>
+        <a href="#forge" className="text-sm text-primary-fixed hover:text-on-surface transition-colors hidden sm:block">Forge</a>
         <a href="#trust" className="text-sm text-primary-fixed hover:text-on-surface transition-colors hidden sm:block">Team</a>
         <a href="#book" className="text-sm text-primary-fixed hover:text-on-surface transition-colors hidden sm:block">Book a Call</a>
         <Link href="/login" className="text-sm text-primary-fixed hover:text-on-surface transition-colors">Log in</Link>

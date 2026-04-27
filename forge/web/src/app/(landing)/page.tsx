@@ -3,6 +3,7 @@ import {
   LandingHero,
   LandingSpeedProof,
   LandingShowcase,
+  LandingForge,
   LandingTrust,
   LandingScope,
   LandingCta,
@@ -16,6 +17,7 @@ export default function LandingPage() {
       <LandingHero />
       <LandingSpeedProof />
       <LandingShowcase />
+      <LandingForge />
       <LandingTrust />
       <LandingScope />
       <LandingCta />

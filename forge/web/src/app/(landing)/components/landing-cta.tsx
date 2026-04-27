@@ -72,6 +72,19 @@ export function LandingCta() {
             <ChevronDown className="w-3.5 h-3.5" />
           )}
         </button>
+
+        {/* Self-serve fallback for visitors who'd rather try the toolkit first.
+            Quiet — sits below the booking CTA, doesn't compete with it. */}
+        <p className="mt-8 text-xs text-primary-fixed font-light">
+          Not ready to book?{' '}
+          <a
+            href="/download"
+            className="underline-offset-4 underline decoration-warning/40 text-on-surface hover:text-warning hover:decoration-warning transition-colors"
+          >
+            Grab the open-source toolkit instead
+          </a>
+          .
+        </p>
       </motion.div>
 
       {/* Optional intake form */}
