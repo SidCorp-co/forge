@@ -44,7 +44,7 @@
       "open": true
     },
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFDODVGQjJDQzY5MkY1RDEKUldUUjlaTEdMUHVGSFBWK3BXQngwN3BaNHcraHM2MUpQYWxlSnpTUkxKaUUvdUhia05Ha2tjbmQK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNFNDI2M0JFRUVCRURCQTQKUldTazI3N3V2bU5DUG9QUTk1ZGEwVTQxNFNVZkZhdjE0YXU3MEwwcS9RMWprVzJtNlRnSXpnU3UK",
       "endpoints": [
         "https://github.com/junixlabs/jarvis-agents/releases/latest/download/latest.json"
       ]
