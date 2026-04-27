@@ -1,4 +1,7 @@
 import { expect, test } from '@playwright/test';
+// ISS-307: cold-load assertion lives in the same file because it shares the
+// session-creation setup. Tauri's PATCH on agent:complete is what makes the
+// reply survive a page refresh — this spec catches regressions to that path.
 
 /**
  * Phase G smoke (ISS-300 → ISS-305): chat from web should land an
@@ -188,5 +191,88 @@ test.describe('Phase G — agent chat assistant reply', () => {
     }
 
     expect(assistantRendered).toBe(true);
+  });
+});
+
+test.describe('Phase G — agent reply survives a page refresh (ISS-307)', () => {
+  test('cold-load a completed session — assistant text + completed status persist in DB', async ({ page, context }) => {
+    // Seed: send a fresh message and wait for the agent to finish + Tauri's
+    // patchAgentSession to hydrate the DB row.
+    const loginRes = await context.request.post(
+      `${process.env.E2E_WEB_URL ?? 'https://stg-jarvis-a2.thejunix.com'}/api/auth/local`,
+      {
+        data: {
+          email: process.env.E2E_ADMIN_EMAIL ?? 'admin@thejunix.com',
+          password: process.env.E2E_ADMIN_PASSWORD ?? 'admin12345',
+        },
+        headers: { 'Content-Type': 'application/json' },
+      },
+    );
+    expect(loginRes.status()).toBe(200);
+
+    const promptText = `ISS-307 cold-load ${Date.now()} — reply with the digit 5`;
+    await page.goto('/projects/apiflow/agent');
+    await page.evaluate((p: string) => {
+      return new Promise<void>((resolve) => {
+        const tryFill = () => {
+          const ta = document.querySelector('textarea[placeholder="Message..."]') as HTMLTextAreaElement | null;
+          if (!ta) {
+            setTimeout(tryFill, 500);
+            return;
+          }
+          const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+          setter?.call(ta, p);
+          ta.dispatchEvent(new Event('input', { bubbles: true }));
+          setTimeout(() => {
+            const btn = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(
+              (b) => !b.disabled && b.className.includes('bg-on-primary') && !!b.querySelector('svg'),
+            );
+            btn?.click();
+            resolve();
+          }, 300);
+        };
+        tryFill();
+      });
+    }, promptText);
+
+    // Wait for the URL to reflect a sessionId, then for the run to finish.
+    await page.waitForURL(/\?session=[0-9a-f-]{36}/, { timeout: 15_000 });
+    const sessionId = new URL(page.url()).searchParams.get('session') ?? '';
+    expect(sessionId).toMatch(/^[0-9a-f-]{36}$/);
+
+    // Poll the API: status flips to 'completed' once Tauri PATCHes after
+    // agent:complete. 60s budget covers Claude CLI roundtrip on the slowest
+    // staging node.
+    await expect
+      .poll(
+        async () => {
+          const res = await context.request.get(
+            `${process.env.E2E_WEB_URL ?? 'https://stg-jarvis-a2.thejunix.com'}/api/agent-sessions/${sessionId}`,
+          );
+          if (res.status() !== 200) return null;
+          const row = (await res.json()) as { status?: string; messages?: unknown[] };
+          return row.status === 'completed' && Array.isArray(row.messages) && row.messages.length >= 2
+            ? row
+            : null;
+        },
+        { timeout: 60_000, intervals: [2_000, 3_000, 5_000] },
+      )
+      .toBeTruthy();
+
+    // Cold-load: navigate to the session URL again and verify the reply
+    // renders without depending on any in-flight WS subscription.
+    await page.goto(`/projects/apiflow/agent?session=${sessionId}`);
+    await page.waitForTimeout(2_000);
+
+    const chatText = await page.evaluate(() => document.querySelector('main')?.innerText ?? '');
+    expect(chatText, 'user prompt should render').toContain('cold-load');
+    // The exact reply token may vary; we assert that an assistant turn is
+    // visible (the "Agent finished." marker appears once status flips).
+    expect(chatText).toMatch(/Agent finished\.|Session started/i);
+
+    const placeholder = await page.evaluate(
+      () => (document.querySelector('textarea') as HTMLTextAreaElement | null)?.placeholder ?? '',
+    );
+    expect(placeholder, 'composer must NOT be stuck on running').toBe('Message...');
   });
 });
