@@ -29,7 +29,7 @@ export function ChatMessage({ message, variant = 'agent' }: ChatMessageProps) {
 
   if (message.role === 'system') {
     return (
-      <div className="text-xs text-outline py-0.5" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
+      <div className="text-xs text-on-surface-variant py-0.5" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
         {message.content}
       </div>
     );
@@ -165,11 +165,11 @@ export function ChatMessage({ message, variant = 'agent' }: ChatMessageProps) {
         </>
       )}
       {message.isStreaming && !displayContent && !message.toolCalls?.length && !hasBlocks && (
-        <span className="animate-pulse text-sm text-outline" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>Thinking...</span>
+        <span className="animate-pulse text-sm text-on-surface-variant" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>Thinking...</span>
       )}
       {message.content && !message.isStreaming && (
         <div className="flex items-center gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={handleCopy} className="p-1.5 text-outline hover:text-on-surface-variant">
+          <button onClick={handleCopy} className="p-1.5 text-on-surface-variant hover:text-on-surface-variant">
             {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
           </button>
         </div>

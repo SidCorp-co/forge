@@ -63,7 +63,7 @@ export function AgentSessionPanel({ sessionId: targetSessionId, projectSlug, onC
           {onOpenFull && (
             <button
               onClick={onOpenFull}
-              className="rounded p-1.5 text-outline hover:text-on-surface-variant"
+              className="rounded p-1.5 text-on-surface-variant hover:text-on-surface-variant"
               title="Open in full view"
             >
               <ExternalLink className="h-3.5 w-3.5" />
@@ -71,7 +71,7 @@ export function AgentSessionPanel({ sessionId: targetSessionId, projectSlug, onC
           )}
           <button
             onClick={onClose}
-            className="rounded p-1.5 text-outline hover:text-on-surface-variant"
+            className="rounded p-1.5 text-on-surface-variant hover:text-on-surface-variant"
             aria-label="Close"
           >
             <X className="h-4 w-4" />

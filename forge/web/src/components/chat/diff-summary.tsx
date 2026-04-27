@@ -60,10 +60,10 @@ function FileDiffView({ file }: { file: FileDiff }) {
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-container"
       >
-        <span className="shrink-0 text-[10px] font-mono text-outline">
+        <span className="shrink-0 text-[10px] font-mono text-on-surface-variant">
           {expanded ? '▼' : '▶'}
         </span>
-        <span className={`shrink-0 w-4 text-center text-xs font-bold ${STATUS_COLORS[file.status] || 'text-outline'}`}>
+        <span className={`shrink-0 w-4 text-center text-xs font-bold ${STATUS_COLORS[file.status] || 'text-on-surface-variant'}`}>
           {STATUS_LABELS[file.status] || '?'}
         </span>
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-on-surface">
@@ -71,7 +71,7 @@ function FileDiffView({ file }: { file: FileDiff }) {
         </span>
         <span className="shrink-0 text-xs font-mono">
           {file.additions > 0 && <span className="text-success">+{file.additions}</span>}
-          {file.additions > 0 && file.deletions > 0 && <span className="text-outline"> </span>}
+          {file.additions > 0 && file.deletions > 0 && <span className="text-on-surface-variant"> </span>}
           {file.deletions > 0 && <span className="text-danger">-{file.deletions}</span>}
         </span>
         <ChangeBar additions={file.additions} deletions={file.deletions} />
@@ -101,7 +101,7 @@ export function DiffSummary({ diff }: { diff: BranchDiff | null | undefined }) {
   if (!diff || diff.files.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center p-4">
-        <div className="text-sm text-outline">No changes recorded</div>
+        <div className="text-sm text-on-surface-variant">No changes recorded</div>
       </div>
     );
   }
@@ -116,7 +116,7 @@ export function DiffSummary({ diff }: { diff: BranchDiff | null | undefined }) {
         <span className="font-mono text-xs text-success">+{diff.total_additions}</span>
         <span className="font-mono text-xs text-danger">-{diff.total_deletions}</span>
         <span className="flex-1" />
-        <span className="font-mono text-[10px] text-outline">
+        <span className="font-mono text-[10px] text-on-surface-variant">
           {diff.base}...{diff.branch}
         </span>
       </div>

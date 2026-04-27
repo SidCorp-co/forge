@@ -16,7 +16,7 @@ export function ContextUsageBar({ usage }: ContextUsageBarProps) {
   const barColor = pct >= 60 ? 'bg-danger' : pct >= 39 ? 'bg-warning-dim/100' : 'bg-success';
 
   return (
-    <span className="flex items-center gap-1.5 text-[10px] text-outline ml-2 shrink-0">
+    <span className="flex items-center gap-1.5 text-[10px] text-on-surface-variant ml-2 shrink-0">
       <span className="w-10 sm:w-16 h-1.5 rounded-full bg-surface-container-highest inline-block relative">
         <span className={`absolute inset-y-0 left-0 rounded-full ${barColor}`} style={{ width: `${remaining}%` }} />
       </span>

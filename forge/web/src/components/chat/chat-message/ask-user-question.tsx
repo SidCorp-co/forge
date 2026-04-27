@@ -89,7 +89,7 @@ export function AskUserQuestionBody({ tc }: { tc: ToolCallData }) {
                   <span>
                     <span className="font-medium text-on-surface">{opt.label}</span>
                     {opt.description && (
-                      <span className="block text-outline mt-0.5">{opt.description}</span>
+                      <span className="block text-on-surface-variant mt-0.5">{opt.description}</span>
                     )}
                   </span>
                 </button>
@@ -106,7 +106,7 @@ export function AskUserQuestionBody({ tc }: { tc: ToolCallData }) {
           onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
           placeholder="Additional notes (optional)..."
           disabled={submitted}
-          className="w-full rounded border border-outline-variant/30 bg-surface-container-lowest px-2 py-1.5 font-mono text-xs text-on-surface placeholder:text-outline focus:border-outline-variant/50 focus:outline-none disabled:opacity-50"
+          className="w-full rounded border border-outline-variant/30 bg-surface-container-lowest px-2 py-1.5 font-mono text-xs text-on-surface placeholder:text-on-surface-variant focus:border-outline-variant/50 focus:outline-none disabled:opacity-50"
         />
       </div>
       <button

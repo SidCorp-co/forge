@@ -54,8 +54,8 @@ export function ChatMessages({ messages, variant = 'agent' }: ChatMessagesProps)
     return (
       <div className="flex-1 flex items-center justify-center bg-surface">
         <div className="text-center">
-          <MessageSquare className="h-10 w-10 text-outline-variant mx-auto mb-3" />
-          <p className="text-sm font-sans text-outline">Ask anything about this project</p>
+          <MessageSquare className="h-10 w-10 text-on-surface-variant mx-auto mb-3" />
+          <p className="text-sm font-sans text-on-surface-variant">Ask anything about this project</p>
         </div>
       </div>
     );
@@ -66,22 +66,22 @@ export function ChatMessages({ messages, variant = 'agent' }: ChatMessagesProps)
       {/* Search bar */}
       {searchOpen ? (
         <div className="flex items-center gap-2 border-b border-outline-variant/30 bg-surface-container-low px-3 py-2">
-          <Search className="h-3.5 w-3.5 shrink-0 text-outline" />
+          <Search className="h-3.5 w-3.5 shrink-0 text-on-surface-variant" />
           <input
             autoFocus
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search messages..."
-            className="flex-1 bg-transparent text-[16px] sm:text-sm text-on-surface placeholder:text-outline focus:outline-none"
+            className="flex-1 bg-transparent text-[16px] sm:text-sm text-on-surface placeholder:text-on-surface-variant focus:outline-none"
           />
           {matchingIds && (
-            <span className="shrink-0 text-[10px] text-outline">
+            <span className="shrink-0 text-[10px] text-on-surface-variant">
               {matchingIds.size} match{matchingIds.size !== 1 ? 'es' : ''}
             </span>
           )}
           <button
             onClick={() => { setSearchOpen(false); setSearchQuery(''); }}
-            className="shrink-0 p-1 text-outline hover:text-on-surface-variant"
+            className="shrink-0 p-1 text-on-surface-variant hover:text-on-surface-variant"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -89,7 +89,7 @@ export function ChatMessages({ messages, variant = 'agent' }: ChatMessagesProps)
       ) : (
         <button
           onClick={() => setSearchOpen(true)}
-          className="absolute right-3 top-2 z-10 rounded-full bg-surface-container border border-outline-variant/30 p-1.5 text-outline hover:text-on-surface-variant transition-colors"
+          className="absolute right-3 top-2 z-10 rounded-full bg-surface-container border border-outline-variant/30 p-1.5 text-on-surface-variant hover:text-on-surface-variant transition-colors"
           title="Search messages"
         >
           <Search className="h-3.5 w-3.5" />

@@ -8,7 +8,7 @@ export function TodoProgress({ todos }: { todos: AgentTodo[] }) {
 
   return (
     <div className="my-2 rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3 py-2 font-mono text-xs">
-      <div className="flex items-center justify-between mb-1.5 text-outline">
+      <div className="flex items-center justify-between mb-1.5 text-on-surface-variant">
         <span>Agent Progress</span>
         <span>{completed}/{todos.length} completed</span>
       </div>
@@ -28,7 +28,7 @@ function getTodoColors(status: AgentTodo['status']): { text: string; icon: strin
     case 'in_progress':
       return { text: 'text-on-surface', icon: 'text-info' };
     default:
-      return { text: 'text-outline', icon: 'text-outline' };
+      return { text: 'text-on-surface-variant', icon: 'text-on-surface-variant' };
   }
 }
 
@@ -43,7 +43,7 @@ function TodoItem({ todo }: { todo: AgentTodo }) {
         <span className={textColor}>{todo.content}</span>
       </div>
       {todo.status === 'in_progress' && todo.activeForm && (
-        <div className="ml-6 flex items-center gap-1.5 text-outline">
+        <div className="ml-6 flex items-center gap-1.5 text-on-surface-variant">
           <span className="select-none">⎿</span>
           <span className="animate-pulse">{todo.activeForm}...</span>
         </div>

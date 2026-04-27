@@ -64,7 +64,7 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-container transition-colors"
       >
-        {expanded ? <ChevronDown className="h-3 w-3 text-outline shrink-0" /> : <ChevronRight className="h-3 w-3 text-outline shrink-0" />}
+        {expanded ? <ChevronDown className="h-3 w-3 text-on-surface-variant shrink-0" /> : <ChevronRight className="h-3 w-3 text-on-surface-variant shrink-0" />}
         <FileCode className="h-3.5 w-3.5 text-on-surface-variant shrink-0" />
         <span className="font-mono text-xs text-on-surface truncate flex-1">{diff.filePath}</span>
         {diff.isNew && <span className="text-[10px] font-mono text-success shrink-0">NEW</span>}
@@ -94,7 +94,7 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
 
             return (
               <pre key={i} className="overflow-auto font-mono text-[11px] leading-[1.6]">
-                {i > 0 && <div className="text-outline text-center text-[10px] py-0.5">···</div>}
+                {i > 0 && <div className="text-on-surface-variant text-center text-[10px] py-0.5">···</div>}
                 {prefix.map((line, j) => (
                   <div key={`c0-${j}`} className="px-2 text-on-surface-variant">  {line}</div>
                 ))}
@@ -131,7 +131,7 @@ export function DiffSummary({ messages }: { messages: ChatMessageData[] }) {
         onClick={() => setExpanded(!expanded)}
         className="flex items-center gap-2 mb-2 hover:bg-surface-container rounded px-1 -mx-1 py-1 transition-colors"
       >
-        {expanded ? <ChevronDown className="h-3.5 w-3.5 text-outline" /> : <ChevronRight className="h-3.5 w-3.5 text-outline" />}
+        {expanded ? <ChevronDown className="h-3.5 w-3.5 text-on-surface-variant" /> : <ChevronRight className="h-3.5 w-3.5 text-on-surface-variant" />}
         <span className="font-mono text-xs text-on-surface">
           {diffs.length} file{diffs.length !== 1 ? 's' : ''} changed
         </span>

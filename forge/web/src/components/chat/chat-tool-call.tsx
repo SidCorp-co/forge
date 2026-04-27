@@ -28,19 +28,19 @@ export function ChatToolCall({ name, input, result, durationMs, isStreaming, isE
         )}
         <span className="font-medium text-on-surface-variant truncate">{name}</span>
         {durationMs != null && (
-          <span className="text-outline ml-auto shrink-0">{(durationMs / 1000).toFixed(1)}s</span>
+          <span className="text-on-surface-variant ml-auto shrink-0">{(durationMs / 1000).toFixed(1)}s</span>
         )}
         {expanded ? (
-          <ChevronDown className="h-3 w-3 text-outline shrink-0" />
+          <ChevronDown className="h-3 w-3 text-on-surface-variant shrink-0" />
         ) : (
-          <ChevronRight className="h-3 w-3 text-outline shrink-0" />
+          <ChevronRight className="h-3 w-3 text-on-surface-variant shrink-0" />
         )}
       </button>
       {expanded && (
         <div className="border-t border-outline-variant/30 px-3 py-2 space-y-2">
           {input && (
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-outline mb-1">Input</p>
+              <p className="text-[10px] uppercase tracking-wider text-on-surface-variant mb-1">Input</p>
               <pre className="whitespace-pre-wrap break-all text-on-surface-variant bg-surface-container-low rounded p-2 max-h-40 overflow-auto">
                 {JSON.stringify(input, null, 2)}
               </pre>
@@ -48,7 +48,7 @@ export function ChatToolCall({ name, input, result, durationMs, isStreaming, isE
           )}
           {result && (
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-outline mb-1">Result</p>
+              <p className="text-[10px] uppercase tracking-wider text-on-surface-variant mb-1">Result</p>
               <pre className={`whitespace-pre-wrap break-all rounded p-2 max-h-40 overflow-auto ${isError ? 'text-danger bg-danger-surface' : 'text-on-surface-variant bg-surface-container-low'}`}>
                 {result}
               </pre>

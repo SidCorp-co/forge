@@ -54,8 +54,8 @@ export function SessionList<T extends SessionBase>({ sessions, loading, activeSe
   if (sessions.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 px-4">
-        <MessageSquare className={cn('h-8 w-8 mb-2', isDark ? 'text-outline-variant' : 'text-outline')} />
-        <p className={cn('text-xs', isDark ? 'text-outline' : 'text-outline')}>No sessions yet</p>
+        <MessageSquare className="h-8 w-8 mb-2 text-on-surface-variant" />
+        <p className="text-xs text-on-surface-variant">No sessions yet</p>
       </div>
     );
   }
@@ -63,14 +63,17 @@ export function SessionList<T extends SessionBase>({ sessions, loading, activeSe
   return (
     <div>
       {sessions.length > 0 && (
-        <div className={cn('px-3 py-2 border-b', isDark ? 'border-outline-variant/30' : 'border-outline-variant/30')}>
-          <div className={cn('flex items-center gap-2 rounded-md border px-2 py-1.5', isDark ? 'border-outline-variant/30 bg-surface' : 'border-outline-variant/30 bg-surface-container-low')}>
-            <Search className={cn('h-3.5 w-3.5 shrink-0', isDark ? 'text-outline' : 'text-outline')} />
+        <div className="px-3 py-2 border-b border-outline-variant/30">
+          <div className={cn(
+            'flex items-center gap-2 rounded-md border border-outline-variant/30 px-2 py-1.5',
+            isDark ? 'bg-surface' : 'bg-surface-container-low',
+          )}>
+            <Search className="h-3.5 w-3.5 shrink-0 text-on-surface-variant" />
             <input
               value={search}
               onChange={(e) => { setSearch(e.target.value); onSearch?.(e.target.value); }}
               placeholder="Search sessions..."
-              className={cn('flex-1 bg-transparent text-[16px] sm:text-xs focus:outline-none', isDark ? 'text-on-surface placeholder:text-outline' : 'text-on-surface-variant placeholder-gray-400')}
+              className="flex-1 bg-transparent text-[16px] sm:text-xs text-on-surface placeholder:text-on-surface-variant focus:outline-none"
             />
           </div>
         </div>
@@ -78,7 +81,7 @@ export function SessionList<T extends SessionBase>({ sessions, loading, activeSe
       <div className="divide-y divide-outline-variant/30">
       {filtered.length === 0 && search.trim() && (
         <div className="py-8 text-center">
-          <p className={cn('text-xs', isDark ? 'text-outline' : 'text-outline')}>No sessions match "{search}"</p>
+          <p className="text-xs text-on-surface-variant">No sessions match &quot;{search}&quot;</p>
         </div>
       )}
       {filtered.map((s) => {
@@ -96,11 +99,11 @@ export function SessionList<T extends SessionBase>({ sessions, loading, activeSe
               <p className={cn('text-sm font-medium truncate flex-1', isDark && 'text-on-surface')}>{s.title || 'Untitled'}</p>
             </div>
             <div className={cn('flex items-center gap-2 text-xs mt-0.5', statusDot && 'ml-4')}>
-              <span className={isDark ? 'text-outline' : 'text-outline'}>
+              <span className="text-on-surface-variant">
                 {relativeTime(s.updatedAt || s.createdAt)}
               </span>
               {(s as any).user?.username && (
-                <span className={cn('truncate', isDark ? 'text-outline' : 'text-outline')}>
+                <span className="truncate text-on-surface-variant">
                   {(s as any).user.username}
                 </span>
               )}

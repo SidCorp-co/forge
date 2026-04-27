@@ -25,7 +25,7 @@ function TaskToolBody({ tc }: { tc: ToolCallData }) {
           {done ? '✓' : '⟳'}
         </span>
         {subagentType && (
-          <span className="text-outline">({subagentType})</span>
+          <span className="text-on-surface-variant">({subagentType})</span>
         )}
         <span className="font-medium text-on-surface">{description || 'Subtask'}</span>
       </div>
@@ -33,12 +33,12 @@ function TaskToolBody({ tc }: { tc: ToolCallData }) {
         <div className="mt-1.5">
           <button
             onClick={() => setShowPrompt((p) => !p)}
-            className="text-[10px] text-outline hover:text-on-surface-variant"
+            className="text-[10px] text-on-surface-variant hover:text-on-surface-variant"
           >
             {showPrompt ? '▼ Hide prompt' : '▶ Show prompt'}
           </button>
           {showPrompt && (
-            <pre className="mt-1 max-h-40 overflow-auto rounded bg-surface-container-lowest px-2 py-1.5 text-[11px] text-outline border border-outline-variant/30 whitespace-pre-wrap">
+            <pre className="mt-1 max-h-40 overflow-auto rounded bg-surface-container-lowest px-2 py-1.5 text-[11px] text-on-surface-variant border border-outline-variant/30 whitespace-pre-wrap">
               {prompt}
             </pre>
           )}
@@ -92,9 +92,9 @@ export function SingleToolCall({ tc }: { tc: ToolCallData }) {
         onClick={() => setExpanded((prev) => !prev)}
         className="flex w-full items-center gap-1.5 py-0.5 text-left font-mono text-xs hover:bg-surface-container rounded px-1 -mx-1"
       >
-        <span className="text-outline select-none">{expanded || done ? '⎿' : '⏵'}</span>
+        <span className="text-on-surface-variant select-none">{expanded || done ? '⎿' : '⏵'}</span>
         <span className="text-on-surface">{label}</span>
-        {!isWriteOp && <span className="ml-auto text-outline select-none">{expanded ? '▼' : '▶'}</span>}
+        {!isWriteOp && <span className="ml-auto text-on-surface-variant select-none">{expanded ? '▼' : '▶'}</span>}
       </button>
       {renderToolBody(tc, expanded)}
     </div>
@@ -144,10 +144,10 @@ function TypedToolSubGroup({ name, tools }: { name: string; tools: ToolCallData[
       >
         <span className="text-on-surface">{allDone ? '✓' : '⏵'}</span>
         <span className="text-on-surface">{label}</span>
-        <span className="text-outline">
+        <span className="text-on-surface-variant">
           {allDone ? '' : `(${completed}/${tools.length})`}
         </span>
-        <span className="text-outline">{expanded ? '▼' : '▶'}</span>
+        <span className="text-on-surface-variant">{expanded ? '▼' : '▶'}</span>
       </button>
       {expanded && (
         <div className="ml-3 border-l border-outline-variant/30 pl-3 mt-0.5">
@@ -199,10 +199,10 @@ export function ToolCallGroup({ tools }: { tools: ToolCallData[] }) {
           >
             <span className="text-on-surface">{allDone ? '✓' : '⏵'}</span>
             <span className="text-on-surface">{groupedTools.length} tool {groupedTools.length === 1 ? 'call' : 'calls'}</span>
-            <span className="text-outline">
+            <span className="text-on-surface-variant">
               {allDone ? '' : `(${completed}/${groupedTools.length})`}
             </span>
-            <span className="text-outline">{expanded ? '▼' : '▶'}</span>
+            <span className="text-on-surface-variant">{expanded ? '▼' : '▶'}</span>
           </button>
           {expanded && (
             <div className="ml-3 border-l border-outline-variant/30 pl-3 mt-0.5">

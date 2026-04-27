@@ -133,7 +133,7 @@ export function ChatInput({ onSend, disabled, isRunning, onStop }: ChatInputProp
       >
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="mb-0.5 p-2 text-outline hover:text-on-surface-variant transition-colors shrink-0"
+          className="mb-0.5 p-2 text-on-surface-variant hover:text-on-surface-variant transition-colors shrink-0"
           type="button"
         >
           <Paperclip className="h-5 w-5" />
@@ -158,7 +158,7 @@ export function ChatInput({ onSend, disabled, isRunning, onStop }: ChatInputProp
           placeholder={isRunning ? 'Agent is running...' : 'Message...'}
           rows={1}
           disabled={inputDisabled}
-          className="flex-1 resize-none bg-transparent text-sm text-on-surface outline-none placeholder:text-outline disabled:opacity-50"
+          className="flex-1 resize-none bg-transparent text-sm text-on-surface outline-none placeholder:text-on-surface-variant disabled:opacity-50"
           style={{ maxHeight: '144px', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}
         />
         {isRunning && onStop ? (
