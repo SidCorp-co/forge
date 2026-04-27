@@ -255,7 +255,7 @@ if (isEnabled('chatProvider')) {
 // `forge/web` widget IIFE. Mounts unconditionally so embed snippets keep
 // working even when the chat flag is off (the widget itself can decide
 // what to render in that case).
-app.route('/widget', widgetBundleRoutes);
+app.route('/api/widget', widgetBundleRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 

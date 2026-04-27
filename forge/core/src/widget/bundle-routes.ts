@@ -66,10 +66,11 @@ const SLUG_RE = /^[a-z0-9-]{3,64}$/;
 
 export const widgetBundleRoutes = new Hono();
 
-// `/widget` deliberately sits outside the `/api/*` mount that owns the
-// CORS allow-list — browsers don't enforce CORS for `<script src>`, and the
-// bundle is meant to be loaded cross-origin from any embed snippet. Do not
-// wrap this in `cors()`; doing so would tie embedders to the allow-list.
+// Mounted at `/api/widget` so the staging reverse proxy (which routes only
+// `/api/*` to core) reaches the bundle. Browsers don't enforce CORS for
+// `<script src>`, and the bundle is meant to be loaded cross-origin from any
+// embed snippet — do not wrap this in `cors()`; doing so would tie embedders
+// to the allow-list.
 widgetBundleRoutes.get('/:slug/forge-widget.js', async (c) => {
   const slug = c.req.param('slug');
   if (!SLUG_RE.test(slug)) return c.text('not found', 404);
