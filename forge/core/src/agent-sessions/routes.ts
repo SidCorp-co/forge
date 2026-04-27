@@ -8,6 +8,7 @@ import { db } from '../db/client.js';
 import {
   agentSessionStatuses,
   agentSessions,
+  devices,
   issues,
   projectMembers,
   projects,
@@ -631,6 +632,49 @@ agentSessionRoutes.post(
 
     broadcastSession(updated, 'agent-session.status', { note: note ?? null });
     return c.json(updated);
+  },
+);
+
+// Web → core probe: "is any desktop device for this project currently online?"
+// The agent page polls this on mount + on WS reconnect to decide whether to
+// show the "Desktop offline" pill. Returns the Strapi-era envelope shape
+// `{ data: { connected } }` for FE-compat. Inputs: `?deviceId` for an
+// explicit check, or `?projectSlug` to scan the project's pool + default.
+const desktopStatusQuerySchema = z
+  .object({
+    deviceId: z.uuid().optional(),
+    projectSlug: z.string().min(1).max(120).optional(),
+  })
+  .refine((o) => o.deviceId || o.projectSlug, {
+    message: 'deviceId or projectSlug is required',
+  });
+
+agentSessionRoutes.get(
+  '/desktop/status',
+  zValidator('query', desktopStatusQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { deviceId, projectSlug } = c.req.valid('query');
+
+    if (deviceId) {
+      const [row] = await db
+        .select({ status: devices.status })
+        .from(devices)
+        .where(eq(devices.id, deviceId))
+        .limit(1);
+      return c.json({ data: { connected: row?.status === 'online' } });
+    }
+
+    if (!projectSlug) {
+      return c.json({ data: { connected: false } });
+    }
+
+    const project = await loadProjectBySlug(projectSlug);
+    if (!project) return c.json({ data: { connected: false } });
+
+    const available = await findAvailableDeviceForProject(project.id);
+    return c.json({ data: { connected: available !== null } });
   },
 );
 
