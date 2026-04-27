@@ -49,11 +49,11 @@ export function AgentSessionPanel({ sessionId: targetSessionId, projectSlug, onC
     : 'Agent Session';
 
   return (
-    <div className="flex h-full flex-col bg-[#0c0c0c] chat-prose">
+    <div className="flex h-full flex-col bg-surface chat-prose">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-[#333333] bg-[#111111] px-4 py-3 shrink-0">
+      <div className="flex items-center justify-between border-b border-outline-variant/30 bg-surface-container-low px-4 py-3 shrink-0">
         <div className="flex items-center gap-2 min-w-0 flex-1">
-          <h3 className="text-sm font-semibold text-[#cccccc] truncate" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>{sessionTitle}</h3>
+          <h3 className="text-sm font-semibold text-on-surface truncate" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>{sessionTitle}</h3>
           {isRunning && (
             <span className="shrink-0 text-[10px] font-medium text-info">running</span>
           )}
@@ -63,7 +63,7 @@ export function AgentSessionPanel({ sessionId: targetSessionId, projectSlug, onC
           {onOpenFull && (
             <button
               onClick={onOpenFull}
-              className="rounded p-1.5 text-[#666666] hover:text-[#999999]"
+              className="rounded p-1.5 text-outline hover:text-on-surface-variant"
               title="Open in full view"
             >
               <ExternalLink className="h-3.5 w-3.5" />
@@ -71,7 +71,7 @@ export function AgentSessionPanel({ sessionId: targetSessionId, projectSlug, onC
           )}
           <button
             onClick={onClose}
-            className="rounded p-1.5 text-[#666666] hover:text-[#999999]"
+            className="rounded p-1.5 text-outline hover:text-on-surface-variant"
             aria-label="Close"
           >
             <X className="h-4 w-4" />

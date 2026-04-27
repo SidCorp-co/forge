@@ -59,20 +59,20 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
   const removeCount = diff.hunks.reduce((sum, h) => sum + h.oldLines.length, 0);
 
   return (
-    <div className="border border-[#333333] rounded-lg overflow-hidden">
+    <div className="border border-outline-variant/30 rounded-lg overflow-hidden">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-[#1a1a1a] transition-colors"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-container transition-colors"
       >
-        {expanded ? <ChevronDown className="h-3 w-3 text-[#666666] shrink-0" /> : <ChevronRight className="h-3 w-3 text-[#666666] shrink-0" />}
-        <FileCode className="h-3.5 w-3.5 text-[#888888] shrink-0" />
-        <span className="font-mono text-xs text-[#cccccc] truncate flex-1">{diff.filePath}</span>
-        {diff.isNew && <span className="text-[10px] font-mono text-[#27ae60] shrink-0">NEW</span>}
-        {addCount > 0 && <span className="text-[10px] font-mono text-[#27ae60] shrink-0">+{addCount}</span>}
-        {removeCount > 0 && <span className="text-[10px] font-mono text-[#c0392b] shrink-0">-{removeCount}</span>}
+        {expanded ? <ChevronDown className="h-3 w-3 text-outline shrink-0" /> : <ChevronRight className="h-3 w-3 text-outline shrink-0" />}
+        <FileCode className="h-3.5 w-3.5 text-on-surface-variant shrink-0" />
+        <span className="font-mono text-xs text-on-surface truncate flex-1">{diff.filePath}</span>
+        {diff.isNew && <span className="text-[10px] font-mono text-success shrink-0">NEW</span>}
+        {addCount > 0 && <span className="text-[10px] font-mono text-success shrink-0">+{addCount}</span>}
+        {removeCount > 0 && <span className="text-[10px] font-mono text-danger shrink-0">-{removeCount}</span>}
       </button>
       {expanded && (
-        <div className="border-t border-[#333333]">
+        <div className="border-t border-outline-variant/30">
           {diff.hunks.map((hunk, i) => {
             // Unified diff: context prefix, then removed block, then added block, then context suffix
             const oldL = hunk.oldLines;
@@ -94,9 +94,9 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
 
             return (
               <pre key={i} className="overflow-auto font-mono text-[11px] leading-[1.6]">
-                {i > 0 && <div className="text-[#444444] text-center text-[10px] py-0.5">···</div>}
+                {i > 0 && <div className="text-outline text-center text-[10px] py-0.5">···</div>}
                 {prefix.map((line, j) => (
-                  <div key={`c0-${j}`} className="px-2 text-[#888888]">  {line}</div>
+                  <div key={`c0-${j}`} className="px-2 text-on-surface-variant">  {line}</div>
                 ))}
                 {removed.map((line, j) => (
                   <DiffLine key={`r-${j}`} prefix="-" text={line} type="remove" />
@@ -105,7 +105,7 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
                   <DiffLine key={`a-${j}`} prefix="+" text={line} type="add" />
                 ))}
                 {suffix.map((line, j) => (
-                  <div key={`c1-${j}`} className="px-2 text-[#888888]">  {line}</div>
+                  <div key={`c1-${j}`} className="px-2 text-on-surface-variant">  {line}</div>
                 ))}
               </pre>
             );
@@ -126,17 +126,17 @@ export function DiffSummary({ messages }: { messages: ChatMessageData[] }) {
   const totalRemoves = diffs.reduce((sum, d) => sum + d.hunks.reduce((s, h) => s + h.oldLines.length, 0), 0);
 
   return (
-    <div className="border-t border-[#333333] pt-3 mt-3">
+    <div className="border-t border-outline-variant/30 pt-3 mt-3">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-2 mb-2 hover:bg-[#1a1a1a] rounded px-1 -mx-1 py-1 transition-colors"
+        className="flex items-center gap-2 mb-2 hover:bg-surface-container rounded px-1 -mx-1 py-1 transition-colors"
       >
-        {expanded ? <ChevronDown className="h-3.5 w-3.5 text-[#666666]" /> : <ChevronRight className="h-3.5 w-3.5 text-[#666666]" />}
-        <span className="font-mono text-xs text-[#cccccc]">
+        {expanded ? <ChevronDown className="h-3.5 w-3.5 text-outline" /> : <ChevronRight className="h-3.5 w-3.5 text-outline" />}
+        <span className="font-mono text-xs text-on-surface">
           {diffs.length} file{diffs.length !== 1 ? 's' : ''} changed
         </span>
-        <span className="font-mono text-[10px] text-[#27ae60]">+{totalAdds}</span>
-        <span className="font-mono text-[10px] text-[#c0392b]">-{totalRemoves}</span>
+        <span className="font-mono text-[10px] text-success">+{totalAdds}</span>
+        <span className="font-mono text-[10px] text-danger">-{totalRemoves}</span>
       </button>
       {expanded && (
         <div className="space-y-1.5">

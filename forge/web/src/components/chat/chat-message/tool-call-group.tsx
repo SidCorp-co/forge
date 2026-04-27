@@ -19,26 +19,26 @@ function TaskToolBody({ tc }: { tc: ToolCallData }) {
   const done = tc.result !== undefined || !tc.isStreaming;
 
   return (
-    <div className="my-1.5 rounded border border-[#2a2a2a] bg-[#0d0d0d] px-3 py-2 font-mono text-xs">
+    <div className="my-1.5 rounded border border-outline-variant/30 bg-surface-container-lowest px-3 py-2 font-mono text-xs">
       <div className="flex items-center gap-2">
         <span className={done ? 'text-success' : 'text-info animate-pulse'}>
           {done ? '✓' : '⟳'}
         </span>
         {subagentType && (
-          <span className="text-[#666666]">({subagentType})</span>
+          <span className="text-outline">({subagentType})</span>
         )}
-        <span className="font-medium text-[#cccccc]">{description || 'Subtask'}</span>
+        <span className="font-medium text-on-surface">{description || 'Subtask'}</span>
       </div>
       {prompt && (
         <div className="mt-1.5">
           <button
             onClick={() => setShowPrompt((p) => !p)}
-            className="text-[10px] text-[#555555] hover:text-[#888888]"
+            className="text-[10px] text-outline hover:text-on-surface-variant"
           >
             {showPrompt ? '▼ Hide prompt' : '▶ Show prompt'}
           </button>
           {showPrompt && (
-            <pre className="mt-1 max-h-40 overflow-auto rounded bg-[#0a0a0a] px-2 py-1.5 text-[11px] text-[#666666] border border-[#222222] whitespace-pre-wrap">
+            <pre className="mt-1 max-h-40 overflow-auto rounded bg-surface-container-lowest px-2 py-1.5 text-[11px] text-outline border border-outline-variant/30 whitespace-pre-wrap">
               {prompt}
             </pre>
           )}
@@ -90,11 +90,11 @@ export function SingleToolCall({ tc }: { tc: ToolCallData }) {
     <div>
       <button
         onClick={() => setExpanded((prev) => !prev)}
-        className="flex w-full items-center gap-1.5 py-0.5 text-left font-mono text-xs hover:bg-[#1a1a1a] rounded px-1 -mx-1"
+        className="flex w-full items-center gap-1.5 py-0.5 text-left font-mono text-xs hover:bg-surface-container rounded px-1 -mx-1"
       >
-        <span className="text-[#666666] select-none">{expanded || done ? '⎿' : '⏵'}</span>
-        <span className="text-[#cccccc]">{label}</span>
-        {!isWriteOp && <span className="ml-auto text-[#444444] select-none">{expanded ? '▼' : '▶'}</span>}
+        <span className="text-outline select-none">{expanded || done ? '⎿' : '⏵'}</span>
+        <span className="text-on-surface">{label}</span>
+        {!isWriteOp && <span className="ml-auto text-outline select-none">{expanded ? '▼' : '▶'}</span>}
       </button>
       {renderToolBody(tc, expanded)}
     </div>
@@ -140,17 +140,17 @@ function TypedToolSubGroup({ name, tools }: { name: string; tools: ToolCallData[
     <div className="my-0.5">
       <button
         onClick={() => setExpanded((prev) => !prev)}
-        className="flex items-center gap-1.5 font-mono text-xs hover:bg-[#1a1a1a] rounded px-1 -mx-1 py-0.5"
+        className="flex items-center gap-1.5 font-mono text-xs hover:bg-surface-container rounded px-1 -mx-1 py-0.5"
       >
-        <span className="text-[#cccccc]">{allDone ? '✓' : '⏵'}</span>
-        <span className="text-[#cccccc]">{label}</span>
-        <span className="text-[#666666]">
+        <span className="text-on-surface">{allDone ? '✓' : '⏵'}</span>
+        <span className="text-on-surface">{label}</span>
+        <span className="text-outline">
           {allDone ? '' : `(${completed}/${tools.length})`}
         </span>
-        <span className="text-[#666666]">{expanded ? '▼' : '▶'}</span>
+        <span className="text-outline">{expanded ? '▼' : '▶'}</span>
       </button>
       {expanded && (
-        <div className="ml-3 border-l border-[#333333] pl-3 mt-0.5">
+        <div className="ml-3 border-l border-outline-variant/30 pl-3 mt-0.5">
           {tools.map((tc) => (
             <SingleToolCall key={tc.id} tc={tc} />
           ))}
@@ -195,17 +195,17 @@ export function ToolCallGroup({ tools }: { tools: ToolCallData[] }) {
         <>
           <button
             onClick={handleToggle}
-            className="flex items-center gap-1.5 font-mono text-xs hover:bg-[#1a1a1a] rounded px-1 -mx-1 py-0.5"
+            className="flex items-center gap-1.5 font-mono text-xs hover:bg-surface-container rounded px-1 -mx-1 py-0.5"
           >
-            <span className="text-[#cccccc]">{allDone ? '✓' : '⏵'}</span>
-            <span className="text-[#cccccc]">{groupedTools.length} tool {groupedTools.length === 1 ? 'call' : 'calls'}</span>
-            <span className="text-[#666666]">
+            <span className="text-on-surface">{allDone ? '✓' : '⏵'}</span>
+            <span className="text-on-surface">{groupedTools.length} tool {groupedTools.length === 1 ? 'call' : 'calls'}</span>
+            <span className="text-outline">
               {allDone ? '' : `(${completed}/${groupedTools.length})`}
             </span>
-            <span className="text-[#666666]">{expanded ? '▼' : '▶'}</span>
+            <span className="text-outline">{expanded ? '▼' : '▶'}</span>
           </button>
           {expanded && (
-            <div className="ml-3 border-l border-[#333333] pl-3 mt-0.5">
+            <div className="ml-3 border-l border-outline-variant/30 pl-3 mt-0.5">
               {groups.map((g) => (
                 <TypedToolSubGroup key={g.name} name={g.name} tools={g.tools} />
               ))}

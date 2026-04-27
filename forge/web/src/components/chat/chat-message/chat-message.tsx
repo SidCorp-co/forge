@@ -29,7 +29,7 @@ export function ChatMessage({ message, variant = 'agent' }: ChatMessageProps) {
 
   if (message.role === 'system') {
     return (
-      <div className="text-xs text-[#666666] py-0.5" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
+      <div className="text-xs text-outline py-0.5" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
         {message.content}
       </div>
     );
@@ -38,9 +38,9 @@ export function ChatMessage({ message, variant = 'agent' }: ChatMessageProps) {
   if (message.role === 'user') {
     return (
       <>
-        <div className={variant === 'agent' ? 'border-t border-[#333333] pt-3' : ''}>
+        <div className={variant === 'agent' ? 'border-t border-outline-variant/30 pt-3' : ''}>
           <div className="flex items-start gap-2">
-            <span className="font-mono text-sm text-[#cccccc] select-none shrink-0">❯</span>
+            <span className="font-mono text-sm text-on-surface select-none shrink-0">❯</span>
             <div className="min-w-0 flex-1">
               <Markdown theme="dark">{message.content}</Markdown>
               {message.attachments && message.attachments.length > 0 && (
@@ -50,7 +50,7 @@ export function ChatMessage({ message, variant = 'agent' }: ChatMessageProps) {
                       key={i}
                       src={strapiMediaUrl(a.url)}
                       alt={a.name}
-                      className="h-20 w-20 rounded-lg object-cover border border-[#333333] cursor-zoom-in hover:border-[#555555] transition-colors"
+                      className="h-20 w-20 rounded-lg object-cover border border-outline-variant/30 cursor-zoom-in hover:border-outline transition-colors"
                       onClick={() => setPreviewImage({ url: strapiMediaUrl(a.url), name: a.name })}
                     />
                   ))}
@@ -165,11 +165,11 @@ export function ChatMessage({ message, variant = 'agent' }: ChatMessageProps) {
         </>
       )}
       {message.isStreaming && !displayContent && !message.toolCalls?.length && !hasBlocks && (
-        <span className="animate-pulse text-sm text-[#666666]" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>Thinking...</span>
+        <span className="animate-pulse text-sm text-outline" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>Thinking...</span>
       )}
       {message.content && !message.isStreaming && (
         <div className="flex items-center gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={handleCopy} className="p-1.5 text-[#555555] hover:text-[#888888]">
+          <button onClick={handleCopy} className="p-1.5 text-outline hover:text-on-surface-variant">
             {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
           </button>
         </div>

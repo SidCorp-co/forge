@@ -20,7 +20,7 @@ export function AskUserQuestionBody({ tc }: { tc: ToolCallData }) {
 
   if (answered) {
     return (
-      <div className="ml-4 mt-1 mb-1 rounded border border-[#2a2a2a] bg-[#0d0d0d] px-3 py-2 font-mono text-xs text-[#888888]">
+      <div className="ml-4 mt-1 mb-1 rounded border border-outline-variant/30 bg-surface-container-lowest px-3 py-2 font-mono text-xs text-on-surface-variant">
         <pre className="whitespace-pre-wrap">{typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2)}</pre>
       </div>
     );
@@ -63,10 +63,10 @@ export function AskUserQuestionBody({ tc }: { tc: ToolCallData }) {
   }
 
   return (
-    <div className="ml-4 mt-1 mb-2 space-y-3 rounded border border-[#2a2a2a] bg-[#0d0d0d] px-3 py-2.5">
+    <div className="ml-4 mt-1 mb-2 space-y-3 rounded border border-outline-variant/30 bg-surface-container-lowest px-3 py-2.5">
       {questions.map((q, qi) => (
         <div key={qi}>
-          <div className="mb-1.5 font-sans text-xs font-medium text-[#cccccc]">{q.header}</div>
+          <div className="mb-1.5 font-sans text-xs font-medium text-on-surface">{q.header}</div>
           <div className="space-y-1">
             {q.options.map((opt, oi) => {
               const selected = selections[qi]?.has(oi) ?? false;
@@ -78,7 +78,7 @@ export function AskUserQuestionBody({ tc }: { tc: ToolCallData }) {
                   className={`flex w-full items-start gap-2 rounded px-2 py-1.5 text-left text-xs transition ${
                     selected
                       ? 'bg-info-surface/40 border border-info/50'
-                      : 'border border-[#222222] hover:border-[#444444] hover:bg-[#1a1a1a]'
+                      : 'border border-outline-variant/30 hover:border-outline-variant/50 hover:bg-surface-container'
                   } ${submitted ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   <span className="mt-0.5 shrink-0 font-mono text-[10px]">
@@ -87,9 +87,9 @@ export function AskUserQuestionBody({ tc }: { tc: ToolCallData }) {
                       : (selected ? '◉' : '○')}
                   </span>
                   <span>
-                    <span className="font-medium text-[#cccccc]">{opt.label}</span>
+                    <span className="font-medium text-on-surface">{opt.label}</span>
                     {opt.description && (
-                      <span className="block text-[#666666] mt-0.5">{opt.description}</span>
+                      <span className="block text-outline mt-0.5">{opt.description}</span>
                     )}
                   </span>
                 </button>
@@ -106,7 +106,7 @@ export function AskUserQuestionBody({ tc }: { tc: ToolCallData }) {
           onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
           placeholder="Additional notes (optional)..."
           disabled={submitted}
-          className="w-full rounded border border-[#222222] bg-[#0a0a0a] px-2 py-1.5 font-mono text-xs text-[#cccccc] placeholder-[#444444] focus:border-[#444444] focus:outline-none disabled:opacity-50"
+          className="w-full rounded border border-outline-variant/30 bg-surface-container-lowest px-2 py-1.5 font-mono text-xs text-on-surface placeholder:text-outline focus:border-outline-variant/50 focus:outline-none disabled:opacity-50"
         />
       </div>
       <button

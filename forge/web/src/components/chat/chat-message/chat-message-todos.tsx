@@ -7,8 +7,8 @@ export function TodoProgress({ todos }: { todos: AgentTodo[] }) {
   const completed = todos.filter((t) => t.status === 'completed').length;
 
   return (
-    <div className="my-2 rounded-lg border border-[#2a2a2a] bg-[#0d0d0d] px-3 py-2 font-mono text-xs">
-      <div className="flex items-center justify-between mb-1.5 text-[#666666]">
+    <div className="my-2 rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3 py-2 font-mono text-xs">
+      <div className="flex items-center justify-between mb-1.5 text-outline">
         <span>Agent Progress</span>
         <span>{completed}/{todos.length} completed</span>
       </div>
@@ -26,9 +26,9 @@ function getTodoColors(status: AgentTodo['status']): { text: string; icon: strin
     case 'completed':
       return { text: 'text-success', icon: 'text-success' };
     case 'in_progress':
-      return { text: 'text-[#cccccc]', icon: 'text-info' };
+      return { text: 'text-on-surface', icon: 'text-info' };
     default:
-      return { text: 'text-[#555555]', icon: 'text-[#444444]' };
+      return { text: 'text-outline', icon: 'text-outline' };
   }
 }
 
@@ -43,7 +43,7 @@ function TodoItem({ todo }: { todo: AgentTodo }) {
         <span className={textColor}>{todo.content}</span>
       </div>
       {todo.status === 'in_progress' && todo.activeForm && (
-        <div className="ml-6 flex items-center gap-1.5 text-[#666666]">
+        <div className="ml-6 flex items-center gap-1.5 text-outline">
           <span className="select-none">⎿</span>
           <span className="animate-pulse">{todo.activeForm}...</span>
         </div>

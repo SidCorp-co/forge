@@ -58,12 +58,12 @@ export function DefaultToolBody({ tc }: { tc: ToolCallData }) {
   return (
     <div className="ml-4 mt-0.5 mb-1 space-y-1">
       {tc.input && (
-        <pre className="max-h-32 overflow-auto rounded bg-[#0a0a0a] px-2 py-1 font-mono text-[11px] text-[#888888] border border-[#222222]">
+        <pre className="max-h-32 overflow-auto rounded bg-surface-container-lowest px-2 py-1 font-mono text-[11px] text-on-surface-variant border border-outline-variant/30">
           {JSON.stringify(tc.input, null, 2)}
         </pre>
       )}
       {tc.result !== undefined && (
-        <pre className="max-h-32 overflow-auto rounded bg-[#0a0a0a] px-2 py-1 font-mono text-[11px] text-[#888888] border border-[#222222]">
+        <pre className="max-h-32 overflow-auto rounded bg-surface-container-lowest px-2 py-1 font-mono text-[11px] text-on-surface-variant border border-outline-variant/30">
           {truncated ? output.slice(0, MAX_TOOL_OUTPUT) + '\n… (truncated)' : output}
         </pre>
       )}

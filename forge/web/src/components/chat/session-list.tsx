@@ -54,8 +54,8 @@ export function SessionList<T extends SessionBase>({ sessions, loading, activeSe
   if (sessions.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 px-4">
-        <MessageSquare className={cn('h-8 w-8 mb-2', isDark ? 'text-[#333333]' : 'text-outline')} />
-        <p className={cn('text-xs', isDark ? 'text-[#555555]' : 'text-outline')}>No sessions yet</p>
+        <MessageSquare className={cn('h-8 w-8 mb-2', isDark ? 'text-outline-variant' : 'text-outline')} />
+        <p className={cn('text-xs', isDark ? 'text-outline' : 'text-outline')}>No sessions yet</p>
       </div>
     );
   }
@@ -63,44 +63,44 @@ export function SessionList<T extends SessionBase>({ sessions, loading, activeSe
   return (
     <div>
       {sessions.length > 0 && (
-        <div className={cn('px-3 py-2 border-b', isDark ? 'border-[#333333]' : 'border-outline-variant/30')}>
-          <div className={cn('flex items-center gap-2 rounded-md border px-2 py-1.5', isDark ? 'border-[#333333] bg-[#0c0c0c]' : 'border-outline-variant/30 bg-surface-container-low')}>
-            <Search className={cn('h-3.5 w-3.5 shrink-0', isDark ? 'text-[#555555]' : 'text-outline')} />
+        <div className={cn('px-3 py-2 border-b', isDark ? 'border-outline-variant/30' : 'border-outline-variant/30')}>
+          <div className={cn('flex items-center gap-2 rounded-md border px-2 py-1.5', isDark ? 'border-outline-variant/30 bg-surface' : 'border-outline-variant/30 bg-surface-container-low')}>
+            <Search className={cn('h-3.5 w-3.5 shrink-0', isDark ? 'text-outline' : 'text-outline')} />
             <input
               value={search}
               onChange={(e) => { setSearch(e.target.value); onSearch?.(e.target.value); }}
               placeholder="Search sessions..."
-              className={cn('flex-1 bg-transparent text-[16px] sm:text-xs focus:outline-none', isDark ? 'text-[#cccccc] placeholder-[#555555]' : 'text-on-surface-variant placeholder-gray-400')}
+              className={cn('flex-1 bg-transparent text-[16px] sm:text-xs focus:outline-none', isDark ? 'text-on-surface placeholder:text-outline' : 'text-on-surface-variant placeholder-gray-400')}
             />
           </div>
         </div>
       )}
-      <div className={cn('divide-y', isDark && 'divide-[#333333]')}>
+      <div className="divide-y divide-outline-variant/30">
       {filtered.length === 0 && search.trim() && (
         <div className="py-8 text-center">
-          <p className={cn('text-xs', isDark ? 'text-[#555555]' : 'text-outline')}>No sessions match "{search}"</p>
+          <p className={cn('text-xs', isDark ? 'text-outline' : 'text-outline')}>No sessions match "{search}"</p>
         </div>
       )}
       {filtered.map((s) => {
         const itemClass = cn(
           'block w-full px-4 py-3 text-left transition-colors',
           isDark
-            ? 'hover:bg-[#1a1a1a]'
+            ? 'hover:bg-surface-container'
             : 'hover:bg-surface-container-low',
-          activeSessionId === s.documentId && (isDark ? 'bg-[#1a1a1a]' : 'bg-surface-container-high')
+          activeSessionId === s.documentId && (isDark ? 'bg-surface-container' : 'bg-surface-container-high')
         );
         const content = (
           <>
             <div className="flex items-center gap-2">
               {statusDot?.(s)}
-              <p className={cn('text-sm font-medium truncate flex-1', isDark && 'text-[#cccccc]')}>{s.title || 'Untitled'}</p>
+              <p className={cn('text-sm font-medium truncate flex-1', isDark && 'text-on-surface')}>{s.title || 'Untitled'}</p>
             </div>
             <div className={cn('flex items-center gap-2 text-xs mt-0.5', statusDot && 'ml-4')}>
-              <span className={isDark ? 'text-[#666666]' : 'text-outline'}>
+              <span className={isDark ? 'text-outline' : 'text-outline'}>
                 {relativeTime(s.updatedAt || s.createdAt)}
               </span>
               {(s as any).user?.username && (
-                <span className={cn('truncate', isDark ? 'text-[#555555]' : 'text-outline')}>
+                <span className={cn('truncate', isDark ? 'text-outline' : 'text-outline')}>
                   {(s as any).user.username}
                 </span>
               )}

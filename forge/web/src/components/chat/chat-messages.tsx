@@ -52,10 +52,10 @@ export function ChatMessages({ messages, variant = 'agent' }: ChatMessagesProps)
 
   if (messages.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-[#0c0c0c]">
+      <div className="flex-1 flex items-center justify-center bg-surface">
         <div className="text-center">
-          <MessageSquare className="h-10 w-10 text-[#333333] mx-auto mb-3" />
-          <p className="text-sm font-sans text-[#555555]">Ask anything about this project</p>
+          <MessageSquare className="h-10 w-10 text-outline-variant mx-auto mb-3" />
+          <p className="text-sm font-sans text-outline">Ask anything about this project</p>
         </div>
       </div>
     );
@@ -65,23 +65,23 @@ export function ChatMessages({ messages, variant = 'agent' }: ChatMessagesProps)
     <div className="relative flex-1 overflow-hidden">
       {/* Search bar */}
       {searchOpen ? (
-        <div className="flex items-center gap-2 border-b border-[#333333] bg-[#111111] px-3 py-2">
-          <Search className="h-3.5 w-3.5 shrink-0 text-[#666666]" />
+        <div className="flex items-center gap-2 border-b border-outline-variant/30 bg-surface-container-low px-3 py-2">
+          <Search className="h-3.5 w-3.5 shrink-0 text-outline" />
           <input
             autoFocus
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search messages..."
-            className="flex-1 bg-transparent text-[16px] sm:text-sm text-[#cccccc] placeholder-[#555555] focus:outline-none"
+            className="flex-1 bg-transparent text-[16px] sm:text-sm text-on-surface placeholder:text-outline focus:outline-none"
           />
           {matchingIds && (
-            <span className="shrink-0 text-[10px] text-[#666666]">
+            <span className="shrink-0 text-[10px] text-outline">
               {matchingIds.size} match{matchingIds.size !== 1 ? 'es' : ''}
             </span>
           )}
           <button
             onClick={() => { setSearchOpen(false); setSearchQuery(''); }}
-            className="shrink-0 p-1 text-[#666666] hover:text-[#999999]"
+            className="shrink-0 p-1 text-outline hover:text-on-surface-variant"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -89,7 +89,7 @@ export function ChatMessages({ messages, variant = 'agent' }: ChatMessagesProps)
       ) : (
         <button
           onClick={() => setSearchOpen(true)}
-          className="absolute right-3 top-2 z-10 rounded-full bg-[#1a1a1a] border border-[#333333] p-1.5 text-[#666666] hover:text-[#999999] transition-colors"
+          className="absolute right-3 top-2 z-10 rounded-full bg-surface-container border border-outline-variant/30 p-1.5 text-outline hover:text-on-surface-variant transition-colors"
           title="Search messages"
         >
           <Search className="h-3.5 w-3.5" />
@@ -99,7 +99,7 @@ export function ChatMessages({ messages, variant = 'agent' }: ChatMessagesProps)
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="h-full overflow-y-auto overflow-x-hidden overscroll-contain px-4 py-4 space-y-3 bg-[#0c0c0c]"
+        className="h-full overflow-y-auto overflow-x-hidden overscroll-contain px-4 py-4 space-y-3 bg-surface"
       >
         {messages.map((msg) => {
           const dimmed = matchingIds !== null && !matchingIds.has(msg.id);
@@ -115,7 +115,7 @@ export function ChatMessages({ messages, variant = 'agent' }: ChatMessagesProps)
       {showScrollBtn && (
         <button
           onClick={() => scrollToBottom()}
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full bg-[#1a1a1a] border border-[#333333] shadow-md px-3 py-2 text-xs text-[#888888] hover:bg-[#222222] transition-colors"
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full bg-surface-container border border-outline-variant/30 shadow-md px-3 py-2 text-xs text-on-surface-variant hover:bg-surface-container-high transition-colors"
         >
           <ArrowDown className="h-3 w-3" />
           Scroll to bottom

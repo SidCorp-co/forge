@@ -104,7 +104,7 @@ export function ChatInput({ onSend, disabled, isRunning, onStop }: ChatInputProp
   const inputDisabled = disabled;
 
   return (
-    <div className="shrink-0 border-t border-[#333333] bg-[#111111] px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-4 sm:py-3">
+    <div className="shrink-0 border-t border-outline-variant/30 bg-surface-container-low px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-4 sm:py-3">
       {/* File previews */}
       {files.length > 0 && (
         <div className="flex gap-2 mb-2 flex-wrap">
@@ -127,13 +127,13 @@ export function ChatInput({ onSend, disabled, isRunning, onStop }: ChatInputProp
       )}
       {/* Input area */}
       <div
-        className="flex items-end gap-2 rounded-2xl border border-[#333333] bg-[#0c0c0c] px-3 py-2 focus-within:border-[#555555] transition-colors"
+        className="flex items-end gap-2 rounded-2xl border border-outline-variant/30 bg-surface px-3 py-2 focus-within:border-outline transition-colors"
         onDrop={handleDrop}
         onDragOver={handleDragOver}
       >
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="mb-0.5 p-2 text-[#555555] hover:text-[#888888] transition-colors shrink-0"
+          className="mb-0.5 p-2 text-outline hover:text-on-surface-variant transition-colors shrink-0"
           type="button"
         >
           <Paperclip className="h-5 w-5" />
@@ -158,7 +158,7 @@ export function ChatInput({ onSend, disabled, isRunning, onStop }: ChatInputProp
           placeholder={isRunning ? 'Agent is running...' : 'Message...'}
           rows={1}
           disabled={inputDisabled}
-          className="flex-1 resize-none bg-transparent text-sm text-[#cccccc] outline-none placeholder:text-[#555555] disabled:opacity-50"
+          className="flex-1 resize-none bg-transparent text-sm text-on-surface outline-none placeholder:text-outline disabled:opacity-50"
           style={{ maxHeight: '144px', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}
         />
         {isRunning && onStop ? (
