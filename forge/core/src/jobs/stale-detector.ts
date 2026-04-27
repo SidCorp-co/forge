@@ -100,6 +100,14 @@ export async function runStaleSweep(): Promise<{
         maxAttempts: updatedRow.max_attempts,
         cancellationRequested: updatedRow.cancellation_requested,
         retryOf: updatedRow.retry_of,
+        // ISS-306: stale-detector flagged failures are transient by definition
+        // (the runner went silent — almost always network / device crash, not
+        // a deterministic Anthropic policy block). The sweeper later reads
+        // this to decide whether to re-fire orchestrator vs. escalate.
+        failureKind: 'transient',
+        failureReason: 'runner stale (no progress for >5min)',
+        failureMeta: null,
+        classifierVersion: 1,
         createdAt: updatedRow.created_at,
       },
       'stale',
