@@ -51,13 +51,11 @@ export function useAgentStream({ projectSlug }: UseAgentStreamOptions) {
     finalize,
   });
 
-  // Subscribe when sessionId changes
-  useEffect(() => {
-    const ws = wsRef.current;
-    if (ws?.readyState === WebSocket.OPEN && sessionId) {
-      ws.send(JSON.stringify({ type: 'subscribe', sessionId }));
-    }
-  }, [sessionId, wsRef]);
+  // Per-session re-subscribe used to fire here on the legacy sessionId-keyed
+  // protocol. Core's WS now broadcasts agent-session.relay.* into the project
+  // room, which use-agent-websocket subscribes to once on connect — no need
+  // to re-subscribe per session. Filtering by sessionId happens in
+  // createAgentMessageHandler.
 
   // Fallback: poll session and load messages while running
   useEffect(() => {
