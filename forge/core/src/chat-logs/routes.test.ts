@@ -93,9 +93,9 @@ describe('GET /api/chat-logs', () => {
       headers: { authorization: `Bearer ${await token()}` },
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { data: unknown[]; meta: { pagination: { total: number } } };
-    expect(body.data).toEqual([]);
-    expect(body.meta.pagination.total).toBe(0);
+    expect(res.headers.get('X-Total-Count')).toBe('0');
+    const body = (await res.json()) as unknown[];
+    expect(body).toEqual([]);
   });
 
   it('200 across visible projects when projectSlug omitted', async () => {
@@ -111,12 +111,9 @@ describe('GET /api/chat-logs', () => {
       headers: { authorization: `Bearer ${await token()}` },
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      data: Array<{ id: string }>;
-      meta: { pagination: { total: number } };
-    };
-    expect(body.data).toHaveLength(1);
-    expect(body.meta.pagination.total).toBe(1);
+    expect(res.headers.get('X-Total-Count')).toBe('1');
+    const body = (await res.json()) as Array<{ id: string }>;
+    expect(body).toHaveLength(1);
   });
 
   it('CEO branch: projectSlug omitted returns aggregated logs unrestricted', async () => {
@@ -130,8 +127,9 @@ describe('GET /api/chat-logs', () => {
       headers: { authorization: `Bearer ${await token()}` },
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { data: Array<{ projectSlug: string }> };
-    expect(body.data[0]?.projectSlug).toBe('alpha');
+    expect(res.headers.get('X-Total-Count')).toBe('1');
+    const body = (await res.json()) as Array<{ projectSlug: string }>;
+    expect(body[0]?.projectSlug).toBe('alpha');
   });
 
   it('404 when projectSlug provided but unknown', async () => {

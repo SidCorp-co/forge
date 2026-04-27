@@ -115,10 +115,8 @@ chatLogRoutes.get(
             .where(sql`${projects.ownerId} = ${userId} OR ${projectMembers.userId} = ${userId}`);
 
       if (visible.length === 0) {
-        return c.json({
-          data: [],
-          meta: { pagination: { page, pageSize, pageCount: 0, total: 0 } },
-        });
+        setTotalCount(c, 0);
+        return c.json([]);
       }
 
       conditions.push(inArray(chatLogs.projectSlug, visible.map((v) => v.slug)));
