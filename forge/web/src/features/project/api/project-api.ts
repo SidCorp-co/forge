@@ -8,13 +8,20 @@ import { apiClient } from '@/lib/api/client';
 
 /**
  * Core's project detail response shape. The server returns the project row
- * plus embedded members + labels arrays. We re-type here because
+ * plus embedded members + labels + devicePool arrays. We re-type here because
  * `@forge/contracts` only exposes raw row types — not the hand-rolled
  * detail projection.
  */
 export interface ProjectDetail extends Project {
   members: Array<Pick<ProjectMember, 'userId' | 'role'>>;
   labels: Array<{ id: string; name: string; color: string | null }>;
+  devicePool: Array<{
+    id: string;
+    name: string;
+    platform: string;
+    status: string;
+    lastSeenAt: string | null;
+  }>;
 }
 
 /**
@@ -66,6 +73,25 @@ export const projectApi = {
 
   removeMember: (projectId: string, userId: string) =>
     apiClient<void>(`/projects/${projectId}/members/${userId}`, {
+      method: 'DELETE',
+    }),
+
+  inviteMember: (
+    projectId: string,
+    body: { email: string; role?: 'admin' | 'member' },
+  ) =>
+    apiClient<{ token: string; expiresAt: string }>(
+      `/projects/${projectId}/members/invite`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
+  addDevice: (projectId: string, deviceId: string) =>
+    apiClient<void>(`/projects/${projectId}/devices/${deviceId}`, {
+      method: 'PUT',
+    }),
+
+  removeDevice: (projectId: string, deviceId: string) =>
+    apiClient<void>(`/projects/${projectId}/devices/${deviceId}`, {
       method: 'DELETE',
     }),
 };
