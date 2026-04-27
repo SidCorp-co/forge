@@ -143,26 +143,28 @@ export const agentApi = {
       data: { ...(row as object), documentId: row['id'] as string } as unknown as AgentSession,
     })),
 
-  // TODO(v0.1.x): wire start/send/abort once core exposes these endpoints
+  // Core returns the flat agent_sessions row with `id` (uuid). Wrap it in
+  // the Strapi envelope `{data: {...documentId}}` so existing callers that
+  // read `result.data.documentId` keep working unchanged.
   start: (projectSlug: string, prompt: string, repoPath?: string, preBuilt?: boolean, issueIds?: string[]) =>
-    apiClient<{ data: AgentSession }>('/agent-sessions/start', {
+    apiClient<Record<string, unknown>>('/agent-sessions/start', {
       method: 'POST',
       body: JSON.stringify({ projectSlug, prompt, repoPath, preBuilt, issueIds }),
-    }),
+    }).then((row) => ({
+      data: { ...(row as object), documentId: row['id'] as string } as unknown as AgentSession,
+    })),
 
-  // TODO(v0.1.x): wire start/send/abort once core exposes these endpoints
   send: (sessionId: string, message: string, claudeSessionId?: string) =>
-    apiClient<{ data: { ok: boolean } }>('/agent-sessions/send', {
+    apiClient<{ ok: boolean }>('/agent-sessions/send', {
       method: 'POST',
       body: JSON.stringify({ sessionId, message, claudeSessionId }),
-    }),
+    }).then((row) => ({ data: row })),
 
-  // TODO(v0.1.x): wire start/send/abort once core exposes these endpoints
   abort: (sessionId: string) =>
-    apiClient<{ data: { ok: boolean } }>('/agent-sessions/abort', {
+    apiClient<{ ok: boolean }>('/agent-sessions/abort', {
       method: 'POST',
       body: JSON.stringify({ sessionId }),
-    }),
+    }).then((row) => ({ data: row })),
 
   desktopStatus: (opts?: { deviceId?: string; projectSlug?: string }) => {
     const params = new URLSearchParams();
@@ -175,22 +177,26 @@ export const agentApi = {
   },
 
   buildPrompt: (projectSlug: string, issueIds: string[]) =>
-    apiClient<{ data: { requestId: string } }>('/agent-sessions/build-prompt', {
+    apiClient<{ requestId: string }>('/agent-sessions/build-prompt', {
       method: 'POST',
       body: JSON.stringify({ projectSlug, issueIds }),
-    }),
+    }).then((row) => ({ data: row })),
 
   startAgentReview: (projectSlug: string, agentType: string) =>
-    apiClient<{ data: AgentSession }>('/agent-sessions/start', {
+    apiClient<Record<string, unknown>>('/agent-sessions/start', {
       method: 'POST',
       body: JSON.stringify({ projectSlug, type: agentType }),
-    }),
+    }).then((row) => ({
+      data: { ...(row as object), documentId: row['id'] as string } as unknown as AgentSession,
+    })),
 
   startAgentReindex: (projectSlug: string, agentType: string) =>
-    apiClient<{ data: AgentSession }>('/agent-sessions/start', {
+    apiClient<Record<string, unknown>>('/agent-sessions/start', {
       method: 'POST',
       body: JSON.stringify({ projectSlug, type: `${agentType}-reindex` }),
-    }),
+    }).then((row) => ({
+      data: { ...(row as object), documentId: row['id'] as string } as unknown as AgentSession,
+    })),
 
   triggerPipeline: (issueDocumentId: string) =>
     apiClient<{ data: { ok: boolean; status: string; sessionDocumentId: string | null } }>('/agent-sessions/trigger-pipeline', {
