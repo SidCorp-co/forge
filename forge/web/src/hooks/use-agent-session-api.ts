@@ -59,10 +59,9 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
       if (!mountedRef.current) return;
       const sid = res.data.documentId;
       setSessionId(sid);
-      const ws = wsRef.current;
-      if (ws?.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'subscribe', sessionId: sid }));
-      }
+      // Per-session subscribe is handled at the project-room level in
+      // useAgentWebSocket; relays for this session land via the project
+      // broadcast and createAgentMessageHandler filters by sessionId.
     } catch (err) {
       if (!mountedRef.current) return;
       setMessages((prev) => [...prev, errorMessage(err, 'Failed to start agent')]);
