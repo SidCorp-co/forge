@@ -21,6 +21,10 @@ const EnvSchema = z.object({
   SMTP_DEBUG: z.coerce.boolean().default(false),
   APP_BASE_URL: z.url().default('http://localhost:3000'),
   CORS_ORIGINS: z.string().default('http://localhost:3000'),
+  // Optional auth-cookie domain. Set to a parent domain like `.thejunix.com`
+  // when web + WS live on different subdomains so the cookie is shared.
+  // Default unset — cookie is host-scoped to the request hostname.
+  AUTH_COOKIE_DOMAIN: z.string().optional(),
   PORT: z.coerce.number().int().positive().default(8080),
   NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
   RATE_LIMIT_AUTH_LOCAL_MAX: z.coerce.number().int().positive().optional(),
