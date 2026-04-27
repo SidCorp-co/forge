@@ -64,6 +64,33 @@ export async function setDeviceProjectsRoot(deviceId: string, projectsRoot: stri
   });
 }
 
+/**
+ * PATCH the persisted session row on completion (ISS-307).
+ *
+ * Tauri streams every chunk live via /relay (broadcast only — the relay
+ * route does not write to DB). Without a final PATCH the row stays at
+ * `status='running'` with `messages=[user only]` forever; if a browser
+ * opens the session AFTER the run finished, it sees only the user
+ * prompt and no assistant reply because there are no future relay
+ * events to subscribe to. PATCH closes that loop by writing the merged
+ * messages + status + claude_session_id into the DB.
+ */
+export async function patchAgentSession(
+  sessionId: string,
+  patch: {
+    status?: "running" | "completed" | "idle" | "failed" | "cancelled";
+    messages?: unknown[];
+    claudeSessionId?: string | null;
+    usage?: unknown;
+    diff?: unknown;
+  },
+): Promise<void> {
+  await request(`/agent-sessions/${sessionId}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
 export async function relayAgentEvent(
   sessionId: string,
   event: string,

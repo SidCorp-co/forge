@@ -95,6 +95,17 @@ export class SessionTracker {
     return { worktreeBranch: s.worktreeBranch, repoPath: s.repoPath, slug: s.slug, isReindex: typeof firstMsg === "string" && firstMsg.includes("Reindex") };
   }
 
+  /** Get the full tracked-session state — messages + claudeSessionId — for
+   *  the agent:complete PATCH that persists the run on the server (ISS-307).
+   *  Returns undefined if the tracker has already finalised + dropped the
+   *  session, in which case the caller should skip the PATCH (the cleanup
+   *  call is already in flight). */
+  getSnapshot(sessionId: string): { messages: AgentMessage[]; claudeSessionId: string | null } | undefined {
+    const s = this.sessions.get(sessionId);
+    if (!s) return undefined;
+    return { messages: s.messages, claudeSessionId: s.claudeSessionId ?? null };
+  }
+
   /** Add a follow-up user message. */
   addUserMessage(sessionId: string, content: string, claudeSessionId?: string | null): void {
     const s = this.sessions.get(sessionId);

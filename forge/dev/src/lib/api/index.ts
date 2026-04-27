@@ -10,7 +10,7 @@ export {
   startAgentSession, sendAgentSession,
   registerDesktop, unregisterDesktop,
   registerDevice, setDeviceProjectPath, setDeviceProjectsRoot,
-  relayAgentEvent, relayPromptBuilt,
+  relayAgentEvent, relayPromptBuilt, patchAgentSession,
   getPipelineTelemetry,
 } from "./agent-sessions";
 export type { PipelineTelemetry } from "./agent-sessions";
