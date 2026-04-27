@@ -64,8 +64,8 @@ export function DownloadHero({ release }: DownloadHeroProps) {
       }
     : {
         href: RELEASES_PAGE_URL,
-        label: 'Get Forge Beta on GitHub',
-        sub: 'First tagged release coming soon — watch the repo for v0.1.7',
+        label: 'Watch v0.1.7 on GitHub',
+        sub: 'No tagged release yet — star the repo to be notified, or build from source below.',
         target: '_blank',
       };
 
@@ -113,7 +113,7 @@ export function DownloadHero({ release }: DownloadHeroProps) {
             href={primary.href}
             target={primary.target}
             rel={primary.target ? 'noopener noreferrer' : undefined}
-            className="group inline-flex items-center gap-3 rounded-xl bg-[linear-gradient(135deg,#855300_0%,#f59e0b_100%)] px-9 py-5 font-medium text-white text-lg sm:text-xl transition-all hover:-translate-y-0.5 shadow-[0_4px_24px_rgba(133,83,0,0.28)] hover:shadow-[0_10px_40px_rgba(133,83,0,0.4)]"
+            className="group inline-flex items-center gap-3 rounded-xl bg-[linear-gradient(135deg,#855300_0%,#f59e0b_100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white px-9 py-5 font-medium text-white text-lg sm:text-xl transition-[transform,box-shadow] hover:-translate-y-0.5 shadow-[0_4px_24px_rgba(133,83,0,0.28)] hover:shadow-[0_10px_40px_rgba(133,83,0,0.4)]"
           >
             <DownloadIcon className="w-5 h-5" />
             {primary.label}

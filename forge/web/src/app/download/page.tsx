@@ -3,6 +3,8 @@ import { fetchLatestRelease } from '@/lib/github-releases';
 import { DownloadHero } from './components/download-hero';
 import { DownloadPlatforms } from './components/download-platforms';
 import { DownloadFeatures } from './components/download-features';
+import { DownloadComparison } from './components/download-comparison';
+import { DownloadArchitecture } from './components/download-architecture';
 import { DownloadQuickstart } from './components/download-quickstart';
 import { DownloadFooter } from './components/download-footer';
 
@@ -39,6 +41,8 @@ export default async function DownloadPage() {
         <DownloadHero release={release} />
         <DownloadPlatforms release={release} />
         <DownloadFeatures />
+        <DownloadComparison />
+        <DownloadArchitecture />
         <DownloadQuickstart release={release} />
         <DownloadFooter release={release} />
       </main>

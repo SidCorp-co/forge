@@ -103,7 +103,7 @@ export function LandingShowcase() {
     : showcaseProjects.filter((p) => p.domain === activeDomain);
 
   return (
-    <section id="showcase" className="max-w-5xl mx-auto px-6 py-24">
+    <section id="showcase" className="scroll-mt-20 max-w-5xl mx-auto px-6 py-24">
       <p className="font-mono text-xs tracking-[0.15em] uppercase text-warning mb-3">
         Case Studies
       </p>
@@ -120,9 +120,9 @@ export function LandingShowcase() {
           <button
             key={domain}
             onClick={() => setActiveDomain(domain)}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${
+            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-[transform,opacity,background-color,color] duration-200 ${
               activeDomain === domain
-                ? 'bg-[linear-gradient(135deg,#855300_0%,#f59e0b_100%)] text-white shadow-sm'
+                ? 'bg-[linear-gradient(135deg,#855300_0%,#f59e0b_100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white text-white shadow-sm'
                 : 'bg-white text-primary-fixed hover:bg-surface-container-low border border-outline-variant/30'
             }`}
           >

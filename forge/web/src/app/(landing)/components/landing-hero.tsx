@@ -76,24 +76,20 @@ export function LandingHero() {
           className="inline-flex items-center gap-2 rounded-full border border-outline-variant/40 bg-white/80 backdrop-blur-sm px-4 py-1.5 text-xs text-primary-fixed font-mono tracking-wide mb-8 shadow-sm"
         >
           <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-          POC Studio &middot; SidCorp
+          POC Studio &middot; junixlabs
         </motion.div>
 
-        {/* Headline */}
+        {/* Headline — tightened to two lines for faster scan */}
         <motion.h1
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.15, ease }}
           className="font-serif text-5xl sm:text-6xl md:text-7xl lg:text-8xl tracking-tight leading-[1.05] mb-6"
         >
-          <span className="text-on-surface">From Idea to</span>
+          <span className="text-on-surface">From idea to working POC.</span>
           <br />
           <span className="bg-gradient-to-r from-amber-400 to-amber-600 bg-clip-text text-transparent">
-            Working POC
-          </span>
-          <br />
-          <span className="text-on-surface text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-light">
-            in Days, Not Months
+            In days, not months.
           </span>
         </motion.h1>
 
@@ -104,11 +100,12 @@ export function LandingHero() {
           transition={{ duration: 0.6, delay: 0.25, ease }}
           className="text-lg sm:text-xl text-primary-fixed max-w-xl mx-auto font-light leading-relaxed mb-10"
         >
-          We turn your vision into a fully functional proof of concept —
-          designed, built, and delivered with AI-augmented speed.
+          A studio that ships proofs of concept with our own open-source
+          orchestrator — Forge. Hire us, or grab the engine yourself.
         </motion.p>
 
-        {/* Differentiators */}
+        {/* Receipts pills — replace the buzzword "differentiators" with
+            specific, hard-to-fake claims that dev visitors can verify. */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -126,38 +123,40 @@ export function LandingHero() {
           ))}
         </motion.div>
 
-        {/* CTA */}
+        {/* Twin CTA — equal visual weight for the two audiences:
+            agency clients (book a call) and developers (download Forge).
+            Removes the "split-personality" feel by giving each a clear lane. */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.45, ease }}
-          className="flex flex-col items-center gap-5"
+          className="flex flex-col sm:flex-row items-center justify-center gap-3"
         >
           <a
             href={process.env.NEXT_PUBLIC_BOOKING_URL || '#book'}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#855300_0%,#f59e0b_100%)] px-8 py-4 font-medium text-white text-lg transition-all hover:-translate-y-0.5 shadow-[0_4px_24px_rgba(133,83,0,0.25)] hover:shadow-[0_8px_40px_rgba(133,83,0,0.35)]"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#855300_0%,#f59e0b_100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white px-7 py-4 font-medium text-white text-base sm:text-lg transition-[transform,box-shadow] hover:-translate-y-0.5 shadow-[0_4px_24px_rgba(133,83,0,0.25)] hover:shadow-[0_8px_40px_rgba(133,83,0,0.35)]"
           >
             <Calendar className="w-5 h-5" />
-            Book a 30-min Scoping Call
+            Hire us to ship yours
           </a>
-
-          {/* Quiet secondary path: surface the open-source engine without
-              competing with the primary scoping-call ask. */}
-          <div className="flex items-center gap-2.5 text-xs text-primary-fixed font-light">
-            <span className="h-px w-6 bg-outline-variant/40" />
-            <span>or</span>
-            <a
-              href="#forge"
-              className="inline-flex items-center gap-1.5 text-on-surface hover:text-warning transition-colors group"
-            >
-              <span>use the engine we built</span>
-              <span aria-hidden className="transition-transform group-hover:translate-x-0.5">
-                →
-              </span>
-            </a>
-            <span className="h-px w-6 bg-outline-variant/40" />
-          </div>
+          <a
+            href="/download"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-on-surface/80 bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white px-7 py-4 font-medium text-on-surface text-base sm:text-lg transition-[transform,box-shadow,background-color] hover:-translate-y-0.5 hover:bg-on-surface hover:text-white shadow-sm"
+          >
+            <span>Download Forge</span>
+            <span aria-hidden>→</span>
+          </a>
         </motion.div>
+
+        {/* Tiny segmentation hint below the twin CTA */}
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.6, delay: 0.6, ease }}
+          className="mt-5 text-[11px] text-primary-fixed/80 font-mono uppercase tracking-[0.15em]"
+        >
+          Founders &amp; teams &nbsp;·&nbsp; Apache-2.0 &amp; free
+        </motion.p>
       </div>
     </section>
   );

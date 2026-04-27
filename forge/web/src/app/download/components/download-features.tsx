@@ -41,7 +41,7 @@ const features = [
 
 export function DownloadFeatures() {
   return (
-    <section id="features" className="relative max-w-5xl mx-auto px-6 py-24 border-t border-outline-variant/20">
+    <section id="features" className="scroll-mt-20 relative max-w-5xl mx-auto px-6 py-24 border-t border-outline-variant/20">
       <div className="pointer-events-none absolute -top-20 right-[-10%] w-[400px] h-[400px] rounded-full bg-[radial-gradient(circle,rgba(124,58,237,0.04)_0%,transparent_70%)]" />
 
       <div className="text-center mb-14">
@@ -67,7 +67,7 @@ export function DownloadFeatures() {
           return (
             <div
               key={feature.title}
-              className="rounded-2xl border border-outline-variant/20 bg-white p-6 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+              className="rounded-2xl border border-outline-variant/20 bg-white p-6 shadow-sm transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-md"
             >
               <div className="mb-4 inline-flex w-10 h-10 items-center justify-center rounded-xl bg-warning/10 text-warning">
                 <Icon className="w-5 h-5" />

@@ -6,7 +6,7 @@ interface DownloadQuickstartProps {
 
 export function DownloadQuickstart({ release }: DownloadQuickstartProps) {
   return (
-    <section id="quickstart" className="relative max-w-5xl mx-auto px-6 py-24 border-t border-outline-variant/20">
+    <section id="quickstart" className="scroll-mt-20 relative max-w-5xl mx-auto px-6 py-24 border-t border-outline-variant/20">
       <div className="pointer-events-none absolute top-[10%] left-[-10%] w-[400px] h-[400px] rounded-full bg-[radial-gradient(circle,rgba(249,115,22,0.04)_0%,transparent_70%)]" />
 
       <div className="text-center mb-14">

@@ -13,7 +13,7 @@ export function LandingCta() {
   const [showForm, setShowForm] = useState(false);
 
   return (
-    <section id="book" className="relative max-w-5xl mx-auto px-6 py-24 text-center">
+    <section id="book" className="scroll-mt-20 relative max-w-5xl mx-auto px-6 py-24 text-center">
       <div className="pointer-events-none absolute bottom-[20%] left-1/2 -translate-x-1/2 w-[500px] h-[350px] rounded-full bg-[radial-gradient(circle,rgba(249,115,22,0.06)_0%,transparent_70%)]" />
 
       <motion.div
@@ -41,7 +41,7 @@ export function LandingCta() {
           href={BOOKING_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#855300_0%,#f59e0b_100%)] px-8 py-4 text-lg font-medium text-white transition-all hover:-translate-y-0.5"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#855300_0%,#f59e0b_100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white px-8 py-4 text-lg font-medium text-white transition-[transform,box-shadow] hover:-translate-y-0.5"
           animate={{
             scale: [1, 1.02, 1],
             boxShadow: [
@@ -144,7 +144,7 @@ export function LandingCta() {
 
           <button
             type="submit"
-            className="w-full rounded-xl bg-[linear-gradient(135deg,#855300_0%,#f59e0b_100%)] px-6 py-3 font-medium text-white hover:opacity-90 transition-all shadow-sm"
+            className="w-full rounded-xl bg-[linear-gradient(135deg,#855300_0%,#f59e0b_100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white px-6 py-3 font-medium text-white hover:opacity-90 transition-opacity shadow-sm"
           >
             Send Inquiry
           </button>

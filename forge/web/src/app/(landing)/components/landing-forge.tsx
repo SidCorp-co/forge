@@ -49,7 +49,7 @@ export function LandingForge() {
   return (
     <section
       id="forge"
-      className="relative max-w-5xl mx-auto px-6 py-28 overflow-hidden"
+      className="scroll-mt-20 relative max-w-5xl mx-auto px-6 py-28 overflow-hidden"
     >
       {/* Ambient glows — match the page-wide amber/violet vocabulary */}
       <div className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 w-[700px] h-[400px] rounded-full bg-[radial-gradient(ellipse,rgba(249,115,22,0.06)_0%,transparent_70%)]" />
@@ -191,7 +191,7 @@ export function LandingForge() {
       >
         <Link
           href="/download"
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#855300_0%,#f59e0b_100%)] px-7 py-3.5 font-medium text-white text-base transition-all hover:-translate-y-0.5 shadow-[0_4px_24px_rgba(133,83,0,0.22)] hover:shadow-[0_8px_40px_rgba(133,83,0,0.32)]"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#855300_0%,#f59e0b_100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white px-7 py-3.5 font-medium text-white text-base transition-[transform,box-shadow] hover:-translate-y-0.5 shadow-[0_4px_24px_rgba(133,83,0,0.22)] hover:shadow-[0_8px_40px_rgba(133,83,0,0.32)]"
         >
           <Download className="w-4 h-4" />
           Download Forge Beta

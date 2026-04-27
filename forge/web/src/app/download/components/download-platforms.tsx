@@ -22,7 +22,7 @@ interface DownloadPlatformsProps {
 export function DownloadPlatforms({ release }: DownloadPlatformsProps) {
   if (!release) {
     return (
-      <section id="platforms" className="relative max-w-5xl mx-auto px-6 py-24">
+      <section id="platforms" className="scroll-mt-20 relative max-w-5xl mx-auto px-6 py-24">
         <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] rounded-full bg-[radial-gradient(circle,rgba(249,115,22,0.04)_0%,transparent_70%)]" />
         <div className="text-center mb-10">
           <p className="font-mono text-xs tracking-[0.15em] uppercase text-warning mb-3">
@@ -45,14 +45,14 @@ export function DownloadPlatforms({ release }: DownloadPlatformsProps) {
             href={RELEASES_PAGE_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-xl bg-[linear-gradient(135deg,#855300_0%,#f59e0b_100%)] px-6 py-3 text-base font-medium text-white transition-all hover:-translate-y-0.5 shadow-sm"
+            className="inline-flex items-center gap-2 rounded-xl bg-[linear-gradient(135deg,#855300_0%,#f59e0b_100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white px-6 py-3 text-base font-medium text-white transition-[transform] hover:-translate-y-0.5 shadow-sm"
           >
             <Github className="w-4 h-4" />
             Watch releases on GitHub
           </a>
           <a
             href="#quickstart"
-            className="inline-flex items-center gap-1.5 rounded-xl border border-outline-variant/40 bg-white px-6 py-3 text-base font-medium text-on-surface hover:border-outline-variant transition-all"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-outline-variant/40 bg-white px-6 py-3 text-base font-medium text-on-surface transition-colors hover:border-outline-variant"
           >
             Build from source
             <span aria-hidden>→</span>
@@ -63,7 +63,7 @@ export function DownloadPlatforms({ release }: DownloadPlatformsProps) {
   }
 
   return (
-    <section id="platforms" className="relative max-w-5xl mx-auto px-6 py-24">
+    <section id="platforms" className="scroll-mt-20 relative max-w-5xl mx-auto px-6 py-24">
       <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[500px] rounded-full bg-[radial-gradient(circle,rgba(249,115,22,0.04)_0%,transparent_70%)]" />
 
       <div className="text-center mb-12">
@@ -89,7 +89,7 @@ export function DownloadPlatforms({ release }: DownloadPlatformsProps) {
             <a
               key={asset.id}
               href={asset.downloadUrl}
-              className="group flex items-center gap-4 rounded-2xl border border-outline-variant/20 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+              className="group flex items-center gap-4 rounded-2xl border border-outline-variant/20 bg-white p-5 shadow-sm transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-md"
             >
               <div className="flex w-11 h-11 shrink-0 items-center justify-center rounded-xl bg-warning/10 text-warning">
                 <Icon className="w-5 h-5" />
@@ -109,7 +109,7 @@ export function DownloadPlatforms({ release }: DownloadPlatformsProps) {
                   ) : null}
                 </div>
               </div>
-              <DownloadIcon className="w-4 h-4 shrink-0 text-primary-fixed transition-all group-hover:translate-y-0.5 group-hover:text-warning" />
+              <DownloadIcon className="w-4 h-4 shrink-0 text-primary-fixed transition-[transform,color] group-hover:translate-y-0.5 group-hover:text-warning" />
             </a>
           );
         })}

@@ -13,7 +13,7 @@ const AmbientCanvas = dynamic(
 
 export function LandingTrust() {
   return (
-    <section id="trust" className="relative bg-surface-container-low py-24 overflow-hidden">
+    <section id="trust" className="scroll-mt-20 relative bg-surface-container-low py-24 overflow-hidden">
       <AmbientCanvas className="absolute inset-0 z-0" />
       <div className="max-w-5xl mx-auto px-6 relative">
         <motion.div
