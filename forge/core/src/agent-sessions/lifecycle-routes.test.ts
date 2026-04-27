@@ -537,6 +537,105 @@ describe('POST /api/agent-sessions/build-prompt', () => {
   });
 });
 
+describe('GET /api/agent-sessions/desktop/status', () => {
+  it('400 when neither deviceId nor projectSlug provided', async () => {
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+
+    const app = buildApp();
+    const res = await app.fetch(req('/api/agent-sessions/desktop/status', { token }));
+    expect(res.status).toBe(400);
+  });
+
+  it('returns connected=true when deviceId is online', async () => {
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    selectLimit.mockResolvedValueOnce([{ status: 'online' }]);
+
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/agent-sessions/desktop/status?deviceId=${DEVICE_ID}`, { token }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { connected: boolean } };
+    expect(body.data.connected).toBe(true);
+  });
+
+  it('returns connected=false when deviceId is offline', async () => {
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    selectLimit.mockResolvedValueOnce([{ status: 'offline' }]);
+
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/agent-sessions/desktop/status?deviceId=${DEVICE_ID}`, { token }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { connected: boolean } };
+    expect(body.data.connected).toBe(false);
+  });
+
+  it('returns connected=true when projectSlug has an online pool device', async () => {
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: PROJECT_ID,
+        slug: 'apiflow',
+        ownerId: USER_ID,
+        repoPath: '/repo',
+        defaultDeviceId: null,
+      },
+    ]);
+    findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID);
+
+    const app = buildApp();
+    const res = await app.fetch(
+      req('/api/agent-sessions/desktop/status?projectSlug=apiflow', { token }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { connected: boolean } };
+    expect(body.data.connected).toBe(true);
+  });
+
+  it('returns connected=false when projectSlug has no online device', async () => {
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: PROJECT_ID,
+        slug: 'apiflow',
+        ownerId: USER_ID,
+        repoPath: null,
+        defaultDeviceId: null,
+      },
+    ]);
+    findAvailableDeviceForProject.mockResolvedValueOnce(null);
+
+    const app = buildApp();
+    const res = await app.fetch(
+      req('/api/agent-sessions/desktop/status?projectSlug=apiflow', { token }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { connected: boolean } };
+    expect(body.data.connected).toBe(false);
+  });
+
+  it('returns connected=false when project slug missing', async () => {
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    selectLimit.mockResolvedValueOnce([]); // loadProjectBySlug → empty
+
+    const app = buildApp();
+    const res = await app.fetch(
+      req('/api/agent-sessions/desktop/status?projectSlug=ghost', { token }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { connected: boolean } };
+    expect(body.data.connected).toBe(false);
+  });
+});
+
 describe('POST /api/agent-sessions/prompt-built', () => {
   it('400 when neither prompt nor error is provided', async () => {
     const token = await signUserToken(USER_ID);
