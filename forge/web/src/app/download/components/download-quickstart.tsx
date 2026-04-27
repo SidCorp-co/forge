@@ -22,11 +22,29 @@ export function DownloadQuickstart({ release }: DownloadQuickstartProps) {
       </div>
 
       <ol className="grid gap-6 max-w-3xl mx-auto">
-        <Step
-          n={1}
-          title="Install"
-          body="Pick the right binary for your OS above, run the installer (or chmod +x for AppImage), and launch Forge Beta."
-        />
+        {release ? (
+          <Step
+            n={1}
+            title="Install"
+            body="Pick the right binary for your OS above, run the installer (or chmod +x for AppImage), and launch Forge Beta."
+          />
+        ) : (
+          // Pre-release: there's no binary "above" to pick from, so Step 1
+          // must teach the visitor how to build from source. Removes the
+          // contradiction between Platforms ("Binaries coming soon") and a
+          // Step 1 that pretended a binary existed.
+          <Step
+            n={1}
+            title="Build from source (pre-release)"
+            body="No tagged release yet. Clone the repo, install dependencies, and run the desktop app in dev mode."
+            code={[
+              `git clone ${REPO_URL}.git`,
+              'cd jarvis-agents/forge/dev',
+              'pnpm install',
+              'pnpm tauri dev',
+            ].join('\n')}
+          />
+        )}
         <Step
           n={2}
           title="Pair with the cloud server"

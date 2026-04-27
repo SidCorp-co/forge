@@ -131,11 +131,27 @@ export function DownloadArchitecture() {
             </text>
           </g>
 
-          {/* Connector lines from clients to core */}
+          {/* Connector lines from clients to core. Static base lines stay
+              visible at all times so the diagram still reads when motion is
+              off; animated overlays carry a moving dash to suggest data
+              flowing into the engine. The CSS class hooks into the
+              prefers-reduced-motion guard further down. */}
           <g stroke="url(#line)" strokeWidth="1.6" fill="none" markerEnd="url(#arrow)">
             <path d="M 130 120 C 130 165, 360 175, 400 200" />
             <path d="M 400 120 L 400 200" />
             <path d="M 670 120 C 670 165, 440 175, 400 200" />
+          </g>
+          <g
+            className="forge-arch-flow"
+            stroke="#f59e0b"
+            strokeWidth="2"
+            fill="none"
+            strokeLinecap="round"
+            strokeDasharray="4 14"
+          >
+            <path d="M 130 120 C 130 165, 360 175, 400 200" />
+            <path d="M 400 120 L 400 200" style={{ animationDelay: '0.4s' }} />
+            <path d="M 670 120 C 670 165, 440 175, 400 200" style={{ animationDelay: '0.8s' }} />
           </g>
 
           {/* Connector labels */}
@@ -170,6 +186,17 @@ export function DownloadArchitecture() {
           <g stroke="url(#line)" strokeWidth="1.6" fill="none" markerEnd="url(#arrow)">
             <path d="M 320 300 L 220 350" />
             <path d="M 480 300 L 580 350" />
+          </g>
+          <g
+            className="forge-arch-flow"
+            stroke="#f59e0b"
+            strokeWidth="2"
+            fill="none"
+            strokeLinecap="round"
+            strokeDasharray="4 14"
+          >
+            <path d="M 320 300 L 220 350" style={{ animationDelay: '1.2s' }} />
+            <path d="M 480 300 L 580 350" style={{ animationDelay: '1.6s' }} />
           </g>
 
           <g fontFamily="ui-monospace, monospace" fontSize="10" fill="#999">
@@ -225,6 +252,30 @@ export function DownloadArchitecture() {
 
       {/* Architectural takeaways — each card gets a distinct edge color so
           the row reads as three principles, not three identical chips. */}
+      {/*
+        Animated dashed flow on the SVG arrows. Honors
+        prefers-reduced-motion so users with that setting see only the
+        static gradient base lines. dash offset moves opposite the marker
+        direction so the dashes appear to flow from clients → core →
+        data layer (left-to-right and top-to-bottom).
+      */}
+      <style>{`
+        .forge-arch-flow path {
+          stroke-dashoffset: 0;
+          opacity: 0.55;
+          animation: forgeArchFlow 1.6s linear infinite;
+        }
+        @keyframes forgeArchFlow {
+          to { stroke-dashoffset: -36; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .forge-arch-flow path {
+            animation: none;
+            opacity: 0;
+          }
+        }
+      `}</style>
+
       <ul className="mt-8 grid gap-3 sm:grid-cols-3 text-xs font-mono text-primary-fixed">
         <li className="rounded-lg border border-outline-variant/30 bg-white px-4 py-3 border-l-2 border-l-warning">
           <span className="block text-on-surface mb-1">No proxy</span>
