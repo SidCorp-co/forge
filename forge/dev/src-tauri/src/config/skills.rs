@@ -223,8 +223,20 @@ pub fn get_skill_hashes() -> HashMap<String, String> {
 #[serde(rename_all = "camelCase")]
 pub struct SkillSyncLogEntry {
     pub skill: String,
-    pub action: String, // "installed", "guide", "skipped", "refreshed", "error"
+    pub action: String, // "installed", "guide", "skipped", "refreshed", "error", "conflict"
     pub detail: String,
+    /// Project slug — only set for per-project log entries (refresh_enabled_skills).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub project_slug: Option<String>,
+    /// On `action="conflict"`, the SKILL.md body currently on disk in the
+    /// repo. Sent to the JS layer so the dialog can show a diff without an
+    /// extra round-trip.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub local_content: Option<String>,
+    /// On `action="conflict"`, the SKILL.md body the daemon would have
+    /// written from the library.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub server_content: Option<String>,
 }
 
 /// Full sync log — replaced on each sync.
@@ -254,44 +266,159 @@ pub fn read_sync_log() -> Option<SkillSyncLog> {
     serde_json::from_str(&data).ok()
 }
 
+/// Read the SKILL.md body from a project's local skill copy. Returns None if
+/// the file doesn't exist (first-time sync) so callers can short-circuit
+/// conflict detection.
+fn read_local_skill_body(repo_path: &str, skill_name: &str) -> Option<String> {
+    super::wsl::read_file(
+        repo_path,
+        &format!(".claude/skills/{}/SKILL.md", skill_name),
+    )
+}
+
+/// Read the SKILL.md body from the library copy. Returns None if missing.
+fn read_library_skill_body(source: &std::path::Path) -> Option<String> {
+    fs::read_to_string(source.join("SKILL.md")).ok()
+}
+
+/// Copy the library skill dir into the project repo, replacing whatever was
+/// there. Returns the result of the copy.
+fn write_skill_to_repo(
+    source: &std::path::Path,
+    repo_path: &str,
+    skill_name: &str,
+) -> Result<(), String> {
+    let rel_path = format!(".claude/skills/{}", skill_name);
+    super::wsl::rm_rf(repo_path, &rel_path).ok();
+    super::wsl::copy_dir(source, repo_path, &rel_path)
+}
+
 /// Sync all library skills to all configured project repos.
 /// Copies every skill from library to {repoPath}/.claude/skills/{name}/.
 /// Called after WebSocket skills:push to ensure updated skills reach the repos.
-/// Returns the sync log with per-skill results.
+///
+/// Per ISS-278 conflict resolution: before overwriting a project copy, the
+/// daemon compares the on-disk SKILL.md hash against the
+/// last-known-installed hash from `skill-state.json`. If the local file has
+/// drifted (user edited it outside the app) AND the library content also
+/// differs from the local file, the entry is logged with `action="conflict"`
+/// and skipped — the JS layer then surfaces the dialog. Pairs in
+/// `local_overrides` are skipped silently with `action="skipped"`.
 pub fn refresh_enabled_skills() -> SkillSyncLog {
     let mut config = load_config();
     let library = config.skill_library.clone().unwrap_or_default();
+    let mut state = super::skill_state::load_state();
     let mut entries = Vec::new();
     let mut changed = false;
+    let mut state_changed = false;
 
     for (slug, project) in config.projects.iter_mut() {
-        let repo_path = &project.repo_path;
+        let repo_path = project.repo_path.clone();
         if repo_path.is_empty() { continue; }
 
         let enabled = project.enabled_skills.get_or_insert_with(Vec::new);
 
         for (skill_name, entry) in &library {
+            let state_key = super::skill_state::key(slug, skill_name);
+
+            if state.local_overrides.contains(&state_key) {
+                entries.push(SkillSyncLogEntry {
+                    skill: skill_name.clone(),
+                    action: "skipped".to_string(),
+                    detail: format!("[{}] kept local — clear via clear_skill_local_override", slug),
+                    project_slug: Some(slug.clone()),
+                    local_content: None,
+                    server_content: None,
+                });
+                continue;
+            }
+
             let source = PathBuf::from(&entry.source_path);
             if !source.exists() {
                 entries.push(SkillSyncLogEntry {
                     skill: skill_name.clone(),
                     action: "error".to_string(),
                     detail: format!("[{}] source path missing", slug),
+                    project_slug: Some(slug.clone()),
+                    local_content: None,
+                    server_content: None,
                 });
                 continue;
             }
-            let rel_path = format!(".claude/skills/{}", skill_name);
-            super::wsl::rm_rf(repo_path, &rel_path).ok();
-            match super::wsl::copy_dir(&source, repo_path, &rel_path) {
+
+            let library_body = match read_library_skill_body(&source) {
+                Some(b) => b,
+                None => {
+                    entries.push(SkillSyncLogEntry {
+                        skill: skill_name.clone(),
+                        action: "error".to_string(),
+                        detail: format!("[{}] library SKILL.md missing", slug),
+                        project_slug: Some(slug.clone()),
+                        local_content: None,
+                        server_content: None,
+                    });
+                    continue;
+                }
+            };
+            let library_hash = super::skill_state::hash_body(&library_body);
+
+            // Check for human-edited local file before clobbering it.
+            let local_body_opt = read_local_skill_body(&repo_path, skill_name);
+            if let Some(local_body) = &local_body_opt {
+                let local_hash = super::skill_state::hash_body(local_body);
+                let last = state.last_installed.get(&state_key).cloned();
+                let local_drifted = match &last {
+                    Some(h) => &local_hash != h,
+                    // No baseline → treat as drifted only if local differs from library
+                    // (covers configs where the file pre-existed before sync ever ran).
+                    None => local_hash != library_hash,
+                };
+                if local_drifted && local_hash != library_hash {
+                    entries.push(SkillSyncLogEntry {
+                        skill: skill_name.clone(),
+                        action: "conflict".to_string(),
+                        detail: format!("[{}] local SKILL.md edited; sync held for review", slug),
+                        project_slug: Some(slug.clone()),
+                        local_content: Some(local_body.clone()),
+                        server_content: Some(library_body.clone()),
+                    });
+                    continue;
+                }
+                if local_hash == library_hash {
+                    // Already in sync — no-op write avoided. Update state so future
+                    // refreshes have a baseline even if no install ever occurred.
+                    if state.last_installed.get(&state_key) != Some(&library_hash) {
+                        state.last_installed.insert(state_key.clone(), library_hash.clone());
+                        state_changed = true;
+                    }
+                    entries.push(SkillSyncLogEntry {
+                        skill: skill_name.clone(),
+                        action: "skipped".to_string(),
+                        detail: format!("[{}] already up to date", slug),
+                        project_slug: Some(slug.clone()),
+                        local_content: None,
+                        server_content: None,
+                    });
+                    continue;
+                }
+            }
+
+            // Safe to overwrite.
+            match write_skill_to_repo(&source, &repo_path, skill_name) {
                 Ok(_) => {
                     if !enabled.contains(skill_name) {
                         enabled.push(skill_name.clone());
                         changed = true;
                     }
+                    state.last_installed.insert(state_key, library_hash);
+                    state_changed = true;
                     entries.push(SkillSyncLogEntry {
                         skill: skill_name.clone(),
                         action: "refreshed".to_string(),
                         detail: format!("[{}] → .claude/skills/{} (v{})", slug, skill_name, entry.version),
+                        project_slug: Some(slug.clone()),
+                        local_content: None,
+                        server_content: None,
                     });
                 }
                 Err(e) => {
@@ -299,6 +426,9 @@ pub fn refresh_enabled_skills() -> SkillSyncLog {
                         skill: skill_name.clone(),
                         action: "error".to_string(),
                         detail: format!("[{}] copy failed: {}", slug, e),
+                        project_slug: Some(slug.clone()),
+                        local_content: None,
+                        server_content: None,
                     });
                 }
             }
@@ -307,6 +437,9 @@ pub fn refresh_enabled_skills() -> SkillSyncLog {
 
     if changed {
         save_config(&config).ok();
+    }
+    if state_changed {
+        super::skill_state::save_state(&state).ok();
     }
 
     let secs = std::time::SystemTime::now()
@@ -320,5 +453,68 @@ pub fn refresh_enabled_skills() -> SkillSyncLog {
     };
     save_sync_log(&log);
     log
+}
+
+/// Force-install a single library skill into a project repo, bypassing the
+/// conflict guard. Called when the user picks "Overwrite" in the conflict
+/// dialog. Updates `last_installed` so subsequent refreshes treat the new
+/// content as the baseline.
+pub fn force_install_skill_to_project(slug: String, name: String) -> Result<(), String> {
+    let config = load_config();
+    let repo_path = config
+        .projects
+        .get(&slug)
+        .map(|p| p.repo_path.clone())
+        .ok_or_else(|| format!("unknown project slug: {}", slug))?;
+    if repo_path.is_empty() {
+        return Err(format!("project {} has no repoPath configured", slug));
+    }
+    let library = config.skill_library.clone().unwrap_or_default();
+    let entry = library
+        .get(&name)
+        .ok_or_else(|| format!("skill {} not in library", name))?;
+    let source = PathBuf::from(&entry.source_path);
+    let body = read_library_skill_body(&source)
+        .ok_or_else(|| format!("library SKILL.md missing for {}", name))?;
+    let library_hash = super::skill_state::hash_body(&body);
+
+    write_skill_to_repo(&source, &repo_path, &name)?;
+
+    let mut state = super::skill_state::load_state();
+    state
+        .last_installed
+        .insert(super::skill_state::key(&slug, &name), library_hash);
+    state
+        .local_overrides
+        .remove(&super::skill_state::key(&slug, &name));
+    super::skill_state::save_state(&state)?;
+    Ok(())
+}
+
+/// Mark a (project, skill) pair as "keep local". Future refreshes will skip
+/// it with `action="skipped"` until cleared via `clear_skill_local_override`.
+/// Does not touch the on-disk file — the user's edits stay where they are.
+pub fn accept_local_skill(slug: String, name: String) -> Result<(), String> {
+    let mut state = super::skill_state::load_state();
+    state
+        .local_overrides
+        .insert(super::skill_state::key(&slug, &name));
+    super::skill_state::save_state(&state)
+}
+
+/// Re-enable sync for a previously kept-local skill. Next refresh will treat
+/// the local file as a fresh baseline candidate.
+pub fn clear_skill_local_override(slug: String, name: String) -> Result<(), String> {
+    let mut state = super::skill_state::load_state();
+    state
+        .local_overrides
+        .remove(&super::skill_state::key(&slug, &name));
+    super::skill_state::save_state(&state)
+}
+
+/// Snapshot the current sync state — surfaced to the UI so settings can show
+/// which skills are kept-local + their last-installed baseline.
+pub fn get_skill_state() -> super::skill_state::SkillState {
+    super::skill_state::load_state()
 }
 

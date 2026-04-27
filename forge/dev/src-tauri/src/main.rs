@@ -279,6 +279,37 @@ async fn read_sync_log() -> Result<Option<config::SkillSyncLog>, String> {
         .map_err(|e| e.to_string())
 }
 
+// ISS-278 conflict-resolution commands. The dialog calls these in response to
+// `skill-conflict` events emitted by the JS sync layer.
+
+#[tauri::command]
+async fn force_install_skill_to_project(slug: String, name: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || config::force_install_skill_to_project(slug, name))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn accept_local_skill(slug: String, name: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || config::accept_local_skill(slug, name))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn clear_skill_local_override(slug: String, name: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || config::clear_skill_local_override(slug, name))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn get_skill_state() -> Result<config::skill_state::SkillState, String> {
+    tokio::task::spawn_blocking(config::get_skill_state)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn list_library_mcp() -> std::collections::HashMap<String, McpServerConfig> {
     config::list_library_mcp()
@@ -412,6 +443,10 @@ fn main() {
             get_skill_hashes,
             refresh_enabled_skills,
             read_sync_log,
+            force_install_skill_to_project,
+            accept_local_skill,
+            clear_skill_local_override,
+            get_skill_state,
             list_library_mcp,
             add_library_mcp,
             remove_library_mcp,
