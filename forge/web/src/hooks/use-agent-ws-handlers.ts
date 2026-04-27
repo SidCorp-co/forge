@@ -47,21 +47,7 @@ export function createAgentMessageHandler(opts: AgentHandlerOptions) {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return function handleMessage(msg: any) {
-    // Core wraps device-relayed events in `agent-session.relay.<event>` and
-    // moves the original payload onto `data.payload` (see broadcastSession in
-    // forge/core/src/agent-sessions/routes.ts). Unwrap so the rest of this
-    // handler sees the bare event shape it was originally written against.
-    if (typeof msg.event === 'string' && msg.event.startsWith('agent-session.relay.')) {
-      const innerEvent = msg.event.slice('agent-session.relay.'.length);
-      const wrap = msg.data ?? {};
-      msg = {
-        ...msg,
-        event: innerEvent,
-        data: { sessionId: wrap.sessionId, ...(wrap.payload ?? {}) },
-      };
-    }
-
+  function dispatch(msg: any): void {
     // Re-check desktop status via API (broadcast goes to all clients,
     // but only the project's configured device matters)
     if (msg.event === 'desktop:connected' || msg.event === 'desktop:disconnected') {
@@ -124,6 +110,39 @@ export function createAgentMessageHandler(opts: AgentHandlerOptions) {
       finalize({ completeTodos: true });
       setIsRunning(false);
     }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return function handleMessage(msg: any) {
+    // Core wraps device-relayed events in `agent-session.relay.<event>` and
+    // moves the original payload onto `data.payload` (see broadcastSession in
+    // forge/core/src/agent-sessions/routes.ts). Unwrap so the rest of this
+    // handler sees the bare event shape it was originally written against.
+    if (typeof msg.event === 'string' && msg.event.startsWith('agent-session.relay.')) {
+      const innerEvent = msg.event.slice('agent-session.relay.'.length);
+      const wrap = msg.data ?? {};
+      msg = {
+        ...msg,
+        event: innerEvent,
+        data: { sessionId: wrap.sessionId, ...(wrap.payload ?? {}) },
+      };
+    }
+
+    // Tauri batches several agent events into a single agent:batch payload
+    // every ~100ms (forge/dev/src/hooks/use-web-socket.ts:flushRelay) — split
+    // it back out so each event hits the existing handler branches.
+    if (msg.event === 'agent:batch' && Array.isArray(msg.data?.items)) {
+      const sessionId = msg.data.sessionId;
+      for (const item of msg.data.items) {
+        dispatch({
+          event: item.event,
+          data: { sessionId, ...(item.data ?? {}) },
+        });
+      }
+      return;
+    }
+
+    dispatch(msg);
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
