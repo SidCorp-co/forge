@@ -12,9 +12,13 @@ export function setAuthCookie(c: Context, token: string): void {
     sameSite: 'Lax',
     path: '/',
     maxAge: USER_JWT_TTL_SECONDS,
+    ...(env.AUTH_COOKIE_DOMAIN ? { domain: env.AUTH_COOKIE_DOMAIN } : {}),
   });
 }
 
 export function clearAuthCookie(c: Context): void {
-  deleteCookie(c, AUTH_COOKIE_NAME, { path: '/' });
+  deleteCookie(c, AUTH_COOKIE_NAME, {
+    path: '/',
+    ...(env.AUTH_COOKIE_DOMAIN ? { domain: env.AUTH_COOKIE_DOMAIN } : {}),
+  });
 }
