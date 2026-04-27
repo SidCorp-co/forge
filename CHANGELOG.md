@@ -16,6 +16,67 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+## [0.1.5-beta] - 2026-04-27
+
+First end-to-end autonomous pipeline run on forge/core staging. Beta build
+ships side-by-side with the legacy `forge-dev` binary so PMs can dogfood
+without losing the production fallback.
+
+### Added
+
+- `forge_issues` + `forge_comments` MCP tools (ISS-293 chunk A) — port the
+  legacy Strapi MCP shape; existing `/forge-*` skills work unchanged.
+- `forge_config` + `forge_tasks` MCP tools (ISS-293 chunk B) — completes the
+  toolset that `forge-plan`/`forge-code`/`forge-review`/`forge-fix` need.
+- forge/dev `job.assigned` WebSocket handler (ISS-279) — receives dispatcher
+  events, resolves project, spawns Claude CLI with `/forge-<type>` prompts,
+  and posts events back to `/api/jobs/:id/events`.
+- Stuck-dispatched watchdog (ISS-281) — cron every minute marks jobs that
+  never reported `started_at` within 5 min as failed and schedules retry up
+  to `maxAttempts`.
+- JWT auto-refresh on 401 (ISS-280) — forge/dev API client clears the
+  in-memory token and bounces to `/login` on `INVALID_TOKEN`/`UNAUTHENTICATED`.
+- Pair flow auto-creates a `claude-code` runner row bound to the new device
+  (post-ISS-271 dispatcher needs this to select the device for jobs).
+- Inline "Pair Device" card in forge/beta Settings — temporary UX while the
+  web pair-code page (ISS-211) remains backlog.
+- Issue extension columns `plan` / `acceptance_criteria` / `suggested_solution`
+  / `session_context` (migration 0032) — fields the autonomous pipeline
+  persists across plan → code → review.
+
+### Changed
+
+- forge/dev binary renamed `forge-dev` → `forge-beta`. New install path,
+  config dir (`~/.config/forge-beta/`), keychain service, Vite port 1421.
+  Allows coexistence with the stable build during the v0.1 dogfood window.
+- Tauri MCP config now sends `Authorization: Bearer <device-token>` instead
+  of the legacy `X-Forge-API-Key` header — matches forge/core's
+  `requireDevice()` middleware.
+- Dispatcher `job.assigned` event includes top-level `issueId` (was only
+  inside `payload`, but skill prompt builders need it directly).
+- Device heartbeat now also refreshes any runner rows bound to the device,
+  so the post-ISS-271 dispatcher does not flip them offline while the JS
+  Tauri client does not yet drive `runner:register` over the Rust WS path.
+
+### Fixed
+
+- Skill installer wiped existing `SKILL.md` when the server returned an empty
+  body (ISS-292 follow-up). Both layers (TS skill-sync + Rust install
+  command) now refuse empty input — defence in depth so a malformed
+  `/skills/effective` payload cannot silently break every `/forge-*` command.
+- `/api/jobs/:id/events` 500 from `FOR UPDATE` on aggregate. Use
+  `pg_advisory_xact_lock(hashtext(jobId))` to serialize concurrent inserts.
+- `/api/jobs/:id/events` returning 401 INVALID_TOKEN despite a valid device
+  token — per-handler auth scoping (was greedy `.use('*')` on a sibling router
+  intercepting POSTs aimed at `requireDevice()`).
+
+### Security
+
+- WebSocket auth on forge/core accepts a device principal via
+  `Authorization: Bearer` (Tauri Rust path) or `?token=` URL query (browser
+  fallback). The query-token surface is a short-term workaround tracked under
+  ISS-286 — migration to `Sec-WebSocket-Protocol` planned for v0.1.6.
+
 ## [0.1.1] - 2026-04-26
 
 Patch release that ships the long-deferred landing-page GSAP fix from ISS-269.
