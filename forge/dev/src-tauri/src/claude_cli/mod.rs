@@ -26,11 +26,11 @@ pub(crate) fn log(msg: &str) {
 
     static LOG_FILE: OnceLock<Mutex<std::fs::File>> = OnceLock::new();
     let file_mutex = LOG_FILE.get_or_init(|| {
-        let path = std::env::temp_dir().join("forge-dev.log");
+        let path = std::env::temp_dir().join("forge-beta.log");
         // Rotate if too large
         if let Ok(meta) = std::fs::metadata(&path) {
             if meta.len() > MAX_LOG_BYTES {
-                let bak = std::env::temp_dir().join("forge-dev.log.old");
+                let bak = std::env::temp_dir().join("forge-beta.log.old");
                 let _ = std::fs::rename(&path, &bak);
             }
         }

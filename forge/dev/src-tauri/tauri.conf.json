@@ -1,18 +1,19 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicuveo/tauri-v2-config-schema/main/schema.json",
-  "productName": "Forge Dev",
+  "productName": "Forge Beta",
+  "mainBinaryName": "forge-beta",
   "version": "0.2.27",
-  "identifier": "com.forge.dev",
+  "identifier": "com.thejunix.forge-beta",
   "build": {
     "frontendDist": "../dist",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:1421",
     "beforeBuildCommand": "npm run build",
     "beforeDevCommand": "npm run dev"
   },
   "app": {
     "windows": [
       {
-        "title": "Forge Dev",
+        "title": "Forge Beta — stg",
         "width": 1280,
         "height": 800,
         "minWidth": 900,

@@ -49,7 +49,7 @@ fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
 
 fn skills_dir() -> PathBuf {
     let mut path = dirs_next::config_dir().unwrap_or_else(|| PathBuf::from("."));
-    path.push("forge-dev");
+    path.push("forge-beta");
     path.push("skills");
     fs::create_dir_all(&path).ok();
     path
@@ -222,7 +222,7 @@ pub struct SkillSyncLog {
 
 fn sync_log_path() -> PathBuf {
     let mut path = dirs_next::config_dir().unwrap_or_else(|| PathBuf::from("."));
-    path.push("forge-dev");
+    path.push("forge-beta");
     path.push("skill-sync-log.json");
     path
 }

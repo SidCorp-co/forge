@@ -1,12 +1,14 @@
 //! OS keychain integration for the device token.
 //!
-//! Service: `forge-dev`, account: `device-token`. One token per install.
+//! Service: `forge-beta`, account: `device-token`. One token per install.
+//! Service name was renamed from `forge-dev` to coexist with the legacy
+//! Forge stable binary which still uses the `forge-dev` keychain entry.
 //! On Linux without a keychain backend (`NoStorageAccess`), the caller should
 //! treat it as "not paired" — never fall back to a plaintext file (AC §5).
 
 use keyring::Entry;
 
-const SERVICE: &str = "forge-dev";
+const SERVICE: &str = "forge-beta";
 const ACCOUNT: &str = "device-token";
 
 fn entry() -> Result<Entry, String> {

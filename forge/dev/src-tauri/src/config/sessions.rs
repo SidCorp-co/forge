@@ -35,7 +35,7 @@ fn sessions_dir() -> PathBuf {
         eprintln!("[config] WARNING: config_dir() returned None, falling back to current directory");
         PathBuf::from(".")
     });
-    path.push("forge-dev");
+    path.push("forge-beta");
     path.push("sessions");
     fs::create_dir_all(&path).ok();
     path

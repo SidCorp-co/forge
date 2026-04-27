@@ -185,7 +185,9 @@ fn config_path() -> PathBuf {
         eprintln!("[config] WARNING: config_dir() returned None, falling back to current directory");
         PathBuf::from(".")
     });
-    path.push("forge-dev");
+    // Renamed from `forge-dev` to `forge-beta` so this build coexists with the
+    // legacy stable Forge binary (which keeps writing `~/.config/forge-dev/`).
+    path.push("forge-beta");
     fs::create_dir_all(&path).ok();
     path.push("config.json");
     path

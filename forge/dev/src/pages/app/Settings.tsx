@@ -113,6 +113,9 @@ export function Settings() {
         </div>
       </div>
 
+      <PairDeviceCard />
+
+
       <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1">
@@ -231,5 +234,70 @@ export function Settings() {
         Project settings (repo path, instructions) are configured within each project page.
       </p>
     </PageShell>
+  );
+}
+
+function PairDeviceCard() {
+  const { config, setConfig } = useAppStore();
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("Beta-" + (typeof navigator !== "undefined" ? navigator.platform.slice(0, 8) : "device"));
+  const [status, setStatus] = useState<"idle" | "pairing" | "ok" | "error">("idle");
+  const [msg, setMsg] = useState("");
+
+  async function handlePair() {
+    setStatus("pairing");
+    setMsg("");
+    try {
+      const res = await invoke<{ deviceId: string; projectId?: string }>("pair_device", {
+        coreUrl: config.coreUrl,
+        code: code.trim(),
+        name: name.trim() || "device",
+      });
+      const updated = { ...config, deviceId: res.deviceId };
+      setConfig(updated);
+      await invoke("save_config", { config: updated });
+      setStatus("ok");
+      setMsg(`Paired as device ${res.deviceId}`);
+      setCode("");
+    } catch (err) {
+      setStatus("error");
+      setMsg(`Pair failed: ${err}`);
+    }
+  }
+
+  return (
+    <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
+      <h3 className="text-sm font-semibold text-gray-900">Pair Device</h3>
+      <p className="mt-0.5 text-xs text-gray-500">
+        Paste the pairing code from <code className="rounded bg-white px-1 text-[10px]">POST /api/projects/&lt;id&gt;/devices/pairing-codes</code>.
+      </p>
+      <div className="mt-2 flex flex-col gap-2">
+        <FormInput
+          type="text"
+          value={code}
+          onChange={(e) => setCode(e.target.value.toUpperCase())}
+          placeholder="QN-XXXX-XXXX"
+          className="font-mono"
+        />
+        <FormInput
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="device name"
+        />
+        <button
+          onClick={handlePair}
+          disabled={status === "pairing" || !code.trim()}
+          className="rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          {status === "pairing" ? "Pairing..." : "Pair"}
+        </button>
+      </div>
+      {msg && (
+        <p className={`mt-2 text-xs ${status === "ok" ? "text-green-700" : "text-red-700"}`}>
+          {msg}
+        </p>
+      )}
+    </div>
   );
 }
