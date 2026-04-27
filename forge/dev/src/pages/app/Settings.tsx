@@ -253,6 +253,7 @@ function PairDeviceCard() {
         code: code.trim(),
         name: name.trim() || "device",
       });
+      if (!res) throw new Error("pair_device returned no payload");
       const updated = { ...config, deviceId: res.deviceId };
       setConfig(updated);
       await invoke("save_config", { config: updated });
