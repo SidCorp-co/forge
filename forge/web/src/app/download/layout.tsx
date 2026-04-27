@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { Metadata } from 'next';
+import { ForceLightTheme } from '@/components/force-light-theme';
 import { REPO_URL } from '@/lib/github-releases';
 
 export const metadata: Metadata = {
@@ -32,9 +33,14 @@ export default function DownloadLayout({ children }: { children: ReactNode }) {
   // Light theme to stay consistent with the SidCorp landing — Forge is the
   // engine surfaced on the marketing site, so the download page inherits the
   // same editorial-luxury palette (white + amber gradient + soft radial glows).
+  // ForceLightTheme overrides the user's saved next-themes preference for
+  // the duration of this layout (restored on unmount).
   return (
-    <div data-theme="light" className="fixed inset-0 overflow-y-auto bg-background text-on-surface">
-      {children}
-    </div>
+    <>
+      <ForceLightTheme />
+      <div data-theme="light" className="fixed inset-0 overflow-y-auto bg-background text-on-surface">
+        {children}
+      </div>
+    </>
   );
 }
