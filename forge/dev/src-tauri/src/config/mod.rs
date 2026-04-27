@@ -6,6 +6,7 @@ use std::path::PathBuf;
 mod sessions;
 mod mcp;
 mod skills;
+pub(crate) mod merge;
 pub(crate) mod wsl;
 
 // Re-export public items from submodules
@@ -218,7 +219,163 @@ pub fn load_config() -> AppConfig {
 }
 
 pub fn save_config(config: &AppConfig) -> Result<(), String> {
-    let path = config_path();
-    let data = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
-    atomic_write(&path, &data)
+    save_config_at(&config_path(), config)
+}
+
+/// Read-modify-write save: load the on-disk JSON, deep-merge the snapshot
+/// over it, write atomically. Keys present on disk but absent from the
+/// snapshot survive (see ISS-282 — users hand-edit `config.json` and the
+/// previous snapshot-overwrite obliterated those edits).
+///
+/// Corrupt JSON is backed up to `config.json.corrupt-<unix_ts>` and treated
+/// as an empty object so we never silently lose user data.
+pub(crate) fn save_config_at(path: &std::path::Path, config: &AppConfig) -> Result<(), String> {
+    let mut existing = match fs::read_to_string(path) {
+        Ok(data) => match serde_json::from_str::<serde_json::Value>(&data) {
+            Ok(v) if v.is_object() => v,
+            Ok(_) => serde_json::Value::Object(Default::default()),
+            Err(e) => {
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                let backup = path.with_file_name(format!(
+                    "{}.corrupt-{ts}",
+                    path.file_name().and_then(|s| s.to_str()).unwrap_or("config.json")
+                ));
+                eprintln!(
+                    "[config] existing config is not valid JSON ({e}); backing up to {} and starting fresh",
+                    backup.display()
+                );
+                let _ = fs::rename(path, &backup);
+                serde_json::Value::Object(Default::default())
+            }
+        },
+        Err(_) => serde_json::Value::Object(Default::default()),
+    };
+    let patch = serde_json::to_value(config).map_err(|e| e.to_string())?;
+    merge::deep_merge(&mut existing, patch);
+    let data = serde_json::to_string_pretty(&existing).map_err(|e| e.to_string())?;
+    atomic_write(path, &data)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn tmp_config_path() -> PathBuf {
+        let mut p = std::env::temp_dir();
+        p.push(format!("forge-beta-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&p).unwrap();
+        p.push("config.json");
+        p
+    }
+
+    fn base_config() -> AppConfig {
+        AppConfig {
+            core_url: "http://localhost:1337".into(),
+            auth_token: String::new(),
+            device_id: "dev-1".into(),
+            projects_root: Some("/old".into()),
+            claude_mode: None,
+            projects: HashMap::new(),
+            skill_library: None,
+            mcp_library: None,
+        }
+    }
+
+    #[test]
+    fn preserves_unknown_top_level_key() {
+        let path = tmp_config_path();
+        fs::write(
+            &path,
+            r#"{"coreUrl":"http://localhost:1337","customField":"x","deviceId":"dev-1","projects":{}}"#,
+        )
+        .unwrap();
+        save_config_at(&path, &base_config()).unwrap();
+        let raw = fs::read_to_string(&path).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(v["customField"], "x");
+        assert_eq!(v["deviceId"], "dev-1");
+    }
+
+    #[test]
+    fn preserves_hand_added_project() {
+        let path = tmp_config_path();
+        fs::write(
+            &path,
+            r#"{
+                "coreUrl": "http://localhost:1337",
+                "deviceId": "dev-1",
+                "projects": {
+                    "apiflow": { "slug": "apiflow", "repoPath": "/Users/me/apiflow", "branch": null, "instructions": null, "repos": null, "mcpServers": null }
+                }
+            }"#,
+        )
+        .unwrap();
+        save_config_at(&path, &base_config()).unwrap();
+        let raw = fs::read_to_string(&path).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(v["projects"]["apiflow"]["repoPath"], "/Users/me/apiflow");
+    }
+
+    #[test]
+    fn overwrites_known_field() {
+        let path = tmp_config_path();
+        fs::write(
+            &path,
+            r#"{"coreUrl":"http://localhost:1337","deviceId":"dev-1","projectsRoot":"/old","projects":{}}"#,
+        )
+        .unwrap();
+        let mut cfg = base_config();
+        cfg.projects_root = Some("/new".into());
+        save_config_at(&path, &cfg).unwrap();
+        let raw = fs::read_to_string(&path).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(v["projectsRoot"], "/new");
+    }
+
+    #[test]
+    fn adds_new_field() {
+        let path = tmp_config_path();
+        fs::write(
+            &path,
+            r#"{"coreUrl":"http://localhost:1337","deviceId":"dev-1","projects":{}}"#,
+        )
+        .unwrap();
+        let mut cfg = base_config();
+        cfg.claude_mode = Some("auto".into());
+        save_config_at(&path, &cfg).unwrap();
+        let raw = fs::read_to_string(&path).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(v["claudeMode"], "auto");
+    }
+
+    #[test]
+    fn corrupt_existing_is_backed_up() {
+        let path = tmp_config_path();
+        fs::write(&path, "{ not valid json").unwrap();
+        save_config_at(&path, &base_config()).unwrap();
+        let raw = fs::read_to_string(&path).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(v["coreUrl"], "http://localhost:1337");
+        let parent = path.parent().unwrap();
+        let entries = fs::read_dir(parent).unwrap();
+        assert!(entries
+            .filter_map(|e| e.ok())
+            .any(|e| e.file_name().to_string_lossy().contains(".corrupt-")));
+    }
+
+    #[test]
+    fn missing_file_is_treated_as_empty() {
+        let mut p = std::env::temp_dir();
+        p.push(format!("forge-beta-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&p).unwrap();
+        p.push("config.json");
+        save_config_at(&p, &base_config()).unwrap();
+        let raw = fs::read_to_string(&p).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(v["deviceId"], "dev-1");
+    }
 }
