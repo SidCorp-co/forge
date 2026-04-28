@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { db } from '../db/client.js';
 import { refreshTokens } from '../db/schema.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
-import { clearAuthCookie } from './cookie.js';
+import { clearAuthCookie, clearRefreshCookie } from './cookie.js';
 
 export const logoutRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -23,5 +23,6 @@ logoutRoutes.post('/logout', async (c) => {
     .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.usedAt)));
 
   clearAuthCookie(c);
+  clearRefreshCookie(c);
   return c.body(null, 204);
 });

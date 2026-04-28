@@ -1,11 +1,10 @@
-import { zValidator } from '@hono/zod-validator';
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
+import { getCookie } from 'hono/cookie';
 import { HTTPException } from 'hono/http-exception';
-import { z } from 'zod';
 import { db } from '../db/client.js';
 import { refreshTokens } from '../db/schema.js';
-import { setAuthCookie } from './cookie.js';
+import { REFRESH_COOKIE_NAME, setAuthCookie, setRefreshCookie } from './cookie.js';
 import { signUserToken } from './jwt.js';
 import {
   generateRefreshToken,
@@ -14,10 +13,6 @@ import {
   refreshTokenPrefix,
   verifyRefreshToken,
 } from './refresh-token.js';
-
-const refreshSchema = z.object({
-  refreshToken: z.string().min(1).max(512),
-});
 
 export const refreshRoutes = new Hono();
 
@@ -67,18 +62,29 @@ type RefreshOutcome =
   | { kind: 'expired' }
   | { kind: 'replay'; userId: string };
 
+async function readRefreshFromRequest(c: Context): Promise<string | null> {
+  // Prefer the HttpOnly cookie path (XSS-safe). Fall back to the legacy
+  // JSON body path for one release while clients catch up — remove once
+  // every active client is on the cookie flow.
+  const cookie = getCookie(c, REFRESH_COOKIE_NAME);
+  if (cookie) return cookie;
+  try {
+    const body = (await c.req.json()) as { refreshToken?: unknown };
+    if (typeof body?.refreshToken === 'string' && body.refreshToken.length >= 1) {
+      return body.refreshToken;
+    }
+  } catch {
+    // No JSON body — that's fine if the cookie was present; we already
+    // returned. If neither was present, fall through to invalid().
+  }
+  return null;
+}
+
 refreshRoutes.post(
   '/refresh',
-  zValidator('json', refreshSchema, (result) => {
-    if (!result.success) {
-      throw new HTTPException(400, {
-        message: 'Invalid refresh input',
-        cause: { code: 'BAD_REQUEST', details: z.flattenError(result.error) },
-      });
-    }
-  }),
   async (c) => {
-    const { refreshToken: raw } = c.req.valid('json');
+    const raw = await readRefreshFromRequest(c);
+    if (!raw) throw invalid();
     const prefix = refreshTokenPrefix(raw);
 
     // The rotation transaction only mutates the matched row + inserts the new
@@ -135,6 +141,7 @@ refreshRoutes.post(
 
     const token = await signUserToken(outcome.userId);
     setAuthCookie(c, token);
+    setRefreshCookie(c, outcome.refreshToken);
     return c.json({ token, refreshToken: outcome.refreshToken });
   },
 );

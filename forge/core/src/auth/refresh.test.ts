@@ -271,19 +271,24 @@ describe('POST /api/auth/refresh', () => {
     expect(txState.insertValues).toHaveLength(0);
   });
 
-  it('malformed body (missing refreshToken) → 400 BAD_REQUEST', async () => {
+  // Since ISS-315 the refresh route accepts EITHER the cookie or the legacy
+  // body field. With neither present there's nothing to verify — the route
+  // returns the same generic INVALID_REFRESH_TOKEN as a forged token would,
+  // both to avoid leaking shape info to a probe and because conceptually a
+  // missing token IS an invalid one.
+  it('missing refreshToken (no cookie, no body) → 401 INVALID_REFRESH_TOKEN', async () => {
     const res = await post({});
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(401);
     const body = (await res.json()) as { code: string };
-    expect(body.code).toBe('BAD_REQUEST');
+    expect(body.code).toBe('INVALID_REFRESH_TOKEN');
     expect(txState.selectCalls).toBe(0);
   });
 
-  it('empty refreshToken → 400 BAD_REQUEST', async () => {
+  it('empty refreshToken → 401 INVALID_REFRESH_TOKEN', async () => {
     const res = await post({ refreshToken: '' });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(401);
     const body = (await res.json()) as { code: string };
-    expect(body.code).toBe('BAD_REQUEST');
+    expect(body.code).toBe('INVALID_REFRESH_TOKEN');
     expect(txState.selectCalls).toBe(0);
   });
 });

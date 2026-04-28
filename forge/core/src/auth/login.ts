@@ -7,7 +7,7 @@ import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
 import { rateLimit } from '../middleware/rate-limit.js';
-import { setAuthCookie } from './cookie.js';
+import { setAuthCookie, setRefreshCookie } from './cookie.js';
 import { signUserToken } from './jwt.js';
 import { getDummyPasswordHash, verifyPassword } from './password.js';
 import { issueRefreshToken } from './refresh.js';
@@ -64,6 +64,11 @@ loginRoutes.post(
     const token = await signUserToken(user.id);
     const { raw: refreshToken } = await db.transaction((tx) => issueRefreshToken(tx, user.id));
     setAuthCookie(c, token);
+    // Refresh token now rides an HttpOnly cookie scoped to /api/auth so
+    // any XSS that lands inside the SPA can't read it from localStorage.
+    // The legacy `refreshToken` JSON field is kept on the response for one
+    // release while clients catch up; remove in a follow-up cleanup PR.
+    setRefreshCookie(c, refreshToken);
 
     return c.json({
       token,
