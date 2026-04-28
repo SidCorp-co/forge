@@ -90,7 +90,7 @@ echo "[pre-push] validating packages:$packages"
 
 repo_root=$(git rev-parse --show-toplevel)
 for pkg in $packages; do
-  pkg_dir="$repo_root/forge/$pkg"
+  pkg_dir="$repo_root/packages/$pkg"
   if [ ! -d "$pkg_dir" ]; then
     echo "[pre-push] skip $pkg — directory missing"
     continue
