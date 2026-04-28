@@ -7,17 +7,34 @@ updates:
     open-pull-requests-limit: 5
     labels: ["dependencies", "ci"]
 
-  # Uncomment các ecosystem bạn dùng:
+  # npm ecosystem at the repo root — Dependabot reads pnpm-lock.yaml and
+  # opens PRs for both direct deps (forge/{core,web,dev}/package.json) and
+  # transitive deps in the lockfile. minor + patch are grouped to keep PR
+  # volume manageable; majors come as individual PRs for review.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels: ["dependencies"]
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
 
-  # - package-ecosystem: "npm"
-  #   directory: "/"
-  #   schedule:
-  #     interval: "weekly"
-  #   open-pull-requests-limit: 10
-  #   labels: ["dependencies"]
-  #   groups:
-  #     minor-and-patch:
-  #       update-types: ["minor", "patch"]
+  # Cargo for the Tauri desktop app's Rust backend. forge/dev/src-tauri/
+  # is the only Cargo project; forge/core/, forge/web/, forge/app/ are
+  # pure TS.
+  - package-ecosystem: "cargo"
+    directory: "/forge/dev/src-tauri/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "rust"]
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  # Stubs kept commented for future ecosystems; uncomment if/when adopted.
 
   # - package-ecosystem: "pip"
   #   directory: "/"
@@ -25,11 +42,6 @@ updates:
   #     interval: "weekly"
 
   # - package-ecosystem: "gomod"
-  #   directory: "/"
-  #   schedule:
-  #     interval: "weekly"
-
-  # - package-ecosystem: "cargo"
   #   directory: "/"
   #   schedule:
   #     interval: "weekly"
