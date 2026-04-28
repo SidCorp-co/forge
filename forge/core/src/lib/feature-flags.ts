@@ -51,14 +51,6 @@ const flagDefs = {
   // even if env vars are accidentally set in a non-rolled-out environment.
   socialAuth: false,
 
-  // ISS-286 — Accept JWT via `?token=<jwt>` URL query on /ws upgrade. The
-  // canonical path is `Sec-WebSocket-Protocol: forge.bearer.<jwt>`; query
-  // auth leaks the JWT into nginx access logs / Referer / browser history.
-  // Flipped OFF (ISS-315) after audit confirmed no live client still uses
-  // it: forge/dev uses the subprotocol, forge/web rides the same-origin
-  // forge_auth cookie. Re-enable per-env with FEATURE_WS_LEGACY_TOKEN_AUTH=true
-  // if a regression surfaces; remove the branch entirely once dust settles.
-  wsLegacyTokenAuth: false,
 } as const;
 
 export type FeatureFlag = keyof typeof flagDefs;

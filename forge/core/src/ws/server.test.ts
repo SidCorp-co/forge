@@ -1,11 +1,10 @@
 import { type AddressInfo, createServer } from 'node:http';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// ISS-286 — auth path tests for the /ws upgrade handler. Exercises the
-// canonical Sec-WebSocket-Protocol subprotocol path, the legacy
-// `?token=<jwt>` query path (gated behind `wsLegacyTokenAuth`), Bearer
-// header, cookie, and rejection cases. The DB and verifier modules are
-// mocked so the test stays in-process.
+// /ws upgrade auth — exercises the canonical Sec-WebSocket-Protocol
+// subprotocol path, Bearer header, cookie, and rejection cases. The
+// legacy `?token=<jwt>` query path was removed in ISS-315 cleanup. DB
+// and verifier modules are mocked so the test stays in-process.
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 const VALID_USER_TOKEN = 'valid-user-token';
@@ -49,9 +48,8 @@ vi.mock('../runners/heartbeat-ws.js', () => ({
   handleRunnerUpdate: vi.fn(),
 }));
 
-const flagState: Record<string, boolean> = { wsLegacyTokenAuth: true };
 vi.mock('../lib/feature-flags.js', () => ({
-  isEnabled: (flag: string) => flagState[flag] ?? false,
+  isEnabled: () => false,
 }));
 
 const { attachWs, closeWs } = await import('./server.js');
@@ -70,10 +68,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await closeWs();
   await new Promise<void>((resolve) => server.close(() => resolve()));
-});
-
-beforeEach(() => {
-  flagState.wsLegacyTokenAuth = true;
 });
 
 afterEach(() => {
@@ -126,14 +120,7 @@ describe('/ws auth — Sec-WebSocket-Protocol subprotocol (ISS-286)', () => {
     expect(result.status).toBe('open');
   });
 
-  it('accepts `?token=<jwt>` query iff `wsLegacyTokenAuth` flag is on', async () => {
-    flagState.wsLegacyTokenAuth = true;
-    const ok = await dial({ query: `token=${VALID_USER_TOKEN}` });
-    expect(ok.status).toBe('open');
-  });
-
-  it('rejects `?token=<jwt>` query with 401 when `wsLegacyTokenAuth` flag is off', async () => {
-    flagState.wsLegacyTokenAuth = false;
+  it('rejects `?token=<jwt>` query with 401 (legacy path removed in ISS-315 cleanup)', async () => {
     const result = await dial({ query: `token=${VALID_USER_TOKEN}` });
     expect(result.status).toBe('error');
     if (result.status === 'error') {
@@ -144,16 +131,6 @@ describe('/ws auth — Sec-WebSocket-Protocol subprotocol (ISS-286)', () => {
   it('still accepts Authorization: Bearer header (Tauri Rust client path)', async () => {
     const result = await dial({
       headers: { Authorization: `Bearer ${VALID_USER_TOKEN}` },
-    });
-    expect(result.status).toBe('open');
-  });
-
-  it('subprotocol auth is preferred over the legacy query token (no leakage of acceptance)', async () => {
-    // Subprotocol valid + query invalid → still upgrades because subprotocol wins.
-    flagState.wsLegacyTokenAuth = true;
-    const result = await dial({
-      protocols: [`forge.bearer.${VALID_USER_TOKEN}`],
-      query: `token=${INVALID_TOKEN}`,
     });
     expect(result.status).toBe('open');
   });

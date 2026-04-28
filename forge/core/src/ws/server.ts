@@ -53,18 +53,6 @@ function parseBearer(header: string | string[] | undefined): string | undefined 
   return m?.[1]?.trim();
 }
 
-function parseQueryToken(url: string | undefined): string | undefined {
-  if (!url) return undefined;
-  // url is the request path like "/ws?token=..." — parse via URL helper
-  try {
-    const u = new URL(url, 'http://placeholder');
-    const t = u.searchParams.get('token');
-    return t ? t : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 const SUBPROTOCOL_TOKEN_PREFIX = 'forge.bearer.';
 
 interface ProtocolMatch {
@@ -143,17 +131,11 @@ async function authenticate(req: IncomingMessage): Promise<AuthResult | null> {
     return user ? { principal: user } : null;
   }
 
-  // Legacy `?token=<jwt>` query path — leaks via access logs / Referer /
-  // history. Gated behind a feature flag so we can flip it OFF after the
-  // soak window once all clients use the subprotocol path.
-  if (isEnabled('wsLegacyTokenAuth')) {
-    const queryToken = parseQueryToken(req.url);
-    if (queryToken) {
-      const principal = await resolveBearer(queryToken);
-      return principal ? { principal } : null;
-    }
-  }
-
+  // The legacy `?token=<jwt>` query path was removed in ISS-315 cleanup —
+  // it leaked the JWT into nginx access logs / Referer / browser history,
+  // and every live client (forge/dev subprotocol, forge/web cookie) had
+  // already migrated off it. Anyone still passing the query is treated as
+  // unauthenticated.
   return null;
 }
 
