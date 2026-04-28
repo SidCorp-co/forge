@@ -637,8 +637,19 @@ when every hop preserves it:
 1. **nginx** — `location /ws` must set `proxy_http_version 1.1` and
    forward `Upgrade` + `Connection` headers. Without those, nginx
    downgrades the request to a plain HTTP GET and the Hono catch-all
-   returns `{"code":"NOT_FOUND","message":"Not Found: GET /ws"}`. See
-   `infra/nginx/stg-jarvis-a2.thejunix.com.conf` for a working snapshot.
+   returns `{"code":"NOT_FOUND","message":"Not Found: GET /ws"}`. A minimal
+   working `location` block:
+
+   ```nginx
+   location /ws {
+       proxy_pass http://core_upstream;
+       proxy_http_version 1.1;
+       proxy_set_header Upgrade $http_upgrade;
+       proxy_set_header Connection "upgrade";
+       proxy_set_header Host $host;
+       proxy_read_timeout 3600s;
+   }
+   ```
 
 2. **Cloudflare** — `Network -> WebSockets` must be **On** at the zone
    level. CF only proxies WebSockets over HTTP/1.1; with the toggle off,
@@ -658,5 +669,9 @@ when every hop preserves it:
    (ISS-110); the channel remains a notification channel for the
    authenticated principal.
 
-For the full diagnostic/verification recipe, see
-[`infra/nginx/README.md`](../../infra/nginx/README.md).
+If WS upgrades fail in your deployment, the four-layer diagnostic is:
+
+1. `curl --http1.1 -H "Upgrade: websocket" -H "Connection: upgrade" -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: $(openssl rand -base64 16)" -i https://your-host/ws` — expect `101` (after auth) or `401` (auth failure but routing OK)
+2. Same against `http://your-host:<core-port>/ws` directly — bypasses nginx
+3. Same against the upstream container — bypasses Cloudflare
+4. Tail the core process logs for `[ws]` entries

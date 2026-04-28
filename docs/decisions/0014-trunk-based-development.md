@@ -120,17 +120,7 @@ Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`, 
 
 ### Staging deployment
 
-```bash
-pnpm deploy:staging   # SSH to VPS, git fetch + reset main, docker rebuild, verify /health
-```
-
-Target VPS (configurable via `STAGING_*` env vars, defaults below):
-
-- Host `root@165.22.96.128` — path `/opt/jarvis-stg-a2`
-- Compose `docker-compose.prod.yml` project `jarvis-stg-a2`
-- URL `https://stg-jarvis-a2.thejunix.com`
-
-`forge-release` chains into `forge-staging` automatically after merging to main. On deploy failure, status stays at `released` for manual retry.
+The maintainer's reference deployment uses `docker-compose.prod.yml` against a single staging VPS — operator-specific scripts live outside this repo. Self-hosters configure their own deployment per `docs/guides/release.md`. `forge-release` chains into `forge-staging` automatically after merging to main; on deploy failure, status stays at `released` for manual retry.
 
 ## Consequences
 

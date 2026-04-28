@@ -49,11 +49,7 @@ pnpm start        # serve the production build
 
 ```bash
 pnpm --filter web test          # vitest (component + unit)
-pnpm --filter web e2e           # playwright (e2e)
-pnpm --filter web e2e:install   # one-time playwright browser install
 ```
-
-E2E tests target a deployed environment; override defaults via `E2E_WEB_URL`, `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD`.
 
 ## Architecture
 

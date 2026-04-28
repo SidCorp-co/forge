@@ -76,19 +76,6 @@ open → confirmed → approved → in_progress
 
 **Skipped statuses** (used by other projects with full Coolify pipeline): `tested`, `pass`, `deploying`, `testing`. The skill overrides under `.claude/skills/` enforce this — see `.claude/skills/README.md`.
 
-### Staging deployment
-
-```bash
-pnpm deploy:staging   # SSH to VPS, git fetch + reset main, docker rebuild, verify /health
-```
-
-Target VPS (configurable via `STAGING_*` env vars, defaults below):
-- Host `root@165.22.96.128` — path `/opt/jarvis-stg-a2`
-- Compose `docker-compose.prod.yml` project `jarvis-stg-a2`
-- URL `https://stg-jarvis-a2.thejunix.com`
-
-`forge-release` chains into `forge-staging` automatically after merging to main. On deploy failure, status stays at `released` for manual retry.
-
 ### Feature flags currently defined
 
 See `forge/core/src/lib/feature-flags.ts` for the live list. Per-epic flags during v1: `chatProvider`, `runnerFramework`, `pipelineControl`, `commentMentions`, `userPreferences`, `knowledgeOps`, `webhookAdapter`.
