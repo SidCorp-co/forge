@@ -1,81 +1,157 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
+import { z } from 'zod';
 import { useAuth } from '@/providers/auth-provider';
 import { useSetPageTitle } from '@/hooks/use-page-title';
+import { extractFieldErrors } from '@/lib/api/extract-field-errors';
+import { AuthCard } from '../components/auth-card';
+import { Field } from '../components/field';
+import { PrimaryButton } from '../components/primary-button';
+
+const registerSchema = z
+  .object({
+    email: z.string().trim().min(1, 'Email is required').email('Enter a valid email'),
+    password: z.string().min(8, 'At least 8 characters'),
+    confirmPassword: z.string().min(1, 'Confirm your password'),
+  })
+  .refine((d) => d.password === d.confirmPassword, {
+    path: ['confirmPassword'],
+    message: 'Passwords do not match',
+  });
+
+type FieldKey = 'email' | 'password' | 'confirmPassword';
+type FieldErrors = Partial<Record<FieldKey, string>>;
+const SERVER_FIELD_KEYS = ['email', 'password'] as const;
 
 export default function RegisterPage() {
-  useSetPageTitle('Register');
+  useSetPageTitle('Create account');
   const { register } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [topError, setTopError] = useState('');
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError('');
+    setTopError('');
+    const parsed = registerSchema.safeParse({ email, password, confirmPassword });
+    if (!parsed.success) {
+      const next: FieldErrors = {};
+      for (const issue of parsed.error.issues) {
+        const key = issue.path[0] as FieldKey | undefined;
+        if (key && !next[key]) next[key] = issue.message;
+      }
+      setFieldErrors(next);
+      return;
+    }
+    setFieldErrors({});
     setLoading(true);
     try {
-      await register({ email, password });
-      router.push('/login');
+      await register({ email: parsed.data.email, password: parsed.data.password });
+      // Hand the email forward so /login can prefill + show the success
+      // banner. `replace` keeps the back button useful (lands on whatever the
+      // user came from rather than re-opening the register form).
+      const next = `/login?registered=1&email=${encodeURIComponent(parsed.data.email)}`;
+      router.replace(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed');
+      const fieldMap = extractFieldErrors(err, SERVER_FIELD_KEYS);
+      if (Object.keys(fieldMap).length > 0) {
+        setFieldErrors(fieldMap);
+      } else {
+        setTopError(err instanceof Error ? err.message : 'Registration failed');
+      }
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="w-full max-w-sm space-y-6">
-      <div className="text-center">
-        <h1 className="text-xl font-bold sm:text-2xl">Create an account</h1>
-      </div>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {error && <p className="text-sm text-danger">{error}</p>}
-        <div>
-          <label htmlFor="email" className="block text-sm font-medium text-on-surface-variant">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 block w-full rounded border border-outline-variant px-3 py-2.5 text-sm focus:border-primary focus:outline-none"
-          />
-        </div>
-        <div>
-          <label htmlFor="password" className="block text-sm font-medium text-on-surface-variant">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="mt-1 block w-full rounded border border-outline-variant px-3 py-2.5 text-sm focus:border-primary focus:outline-none"
-          />
-        </div>
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded bg-primary py-2.5 text-sm font-medium text-on-primary hover:bg-primary/90 disabled:opacity-50"
-        >
-          {loading ? 'Creating account...' : 'Create account'}
-        </button>
+    <AuthCard
+      eyebrow="Create account"
+      title="Start a new project"
+      description="One account drives every issue, agent, and chat across your projects."
+    >
+      <form onSubmit={handleSubmit} className="space-y-7" noValidate>
+        {topError && (
+          <div className="border border-error/40 bg-error-container/30 px-4 py-3">
+            <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-on-error-container">
+              {topError}
+            </p>
+          </div>
+        )}
+
+        <Field
+          id="email"
+          name="email"
+          type="email"
+          label="Email"
+          autoComplete="email"
+          inputMode="email"
+          spellCheck={false}
+          autoFocus
+          placeholder="you@studio.com"
+          value={email}
+          onChange={(e) => {
+            setEmail(e.target.value);
+            if (fieldErrors.email) setFieldErrors((p) => ({ ...p, email: undefined }));
+          }}
+          error={fieldErrors.email}
+        />
+
+        <Field
+          id="password"
+          name="password"
+          type="password"
+          label="Password"
+          autoComplete="new-password"
+          placeholder="••••••••"
+          hint="8+ characters"
+          value={password}
+          onChange={(e) => {
+            setPassword(e.target.value);
+            if (fieldErrors.password) setFieldErrors((p) => ({ ...p, password: undefined }));
+            if (fieldErrors.confirmPassword && e.target.value === confirmPassword) {
+              setFieldErrors((p) => ({ ...p, confirmPassword: undefined }));
+            }
+          }}
+          error={fieldErrors.password}
+        />
+
+        <Field
+          id="confirmPassword"
+          name="confirmPassword"
+          type="password"
+          label="Confirm password"
+          autoComplete="new-password"
+          placeholder="••••••••"
+          value={confirmPassword}
+          onChange={(e) => {
+            setConfirmPassword(e.target.value);
+            if (fieldErrors.confirmPassword) setFieldErrors((p) => ({ ...p, confirmPassword: undefined }));
+          }}
+          error={fieldErrors.confirmPassword}
+        />
+
+        <PrimaryButton loading={loading} loadingLabel="Creating account…">
+          Create account
+        </PrimaryButton>
       </form>
-      <p className="text-center text-sm text-primary-fixed">
-        Already have an account?{' '}
-        <Link href="/login" className="text-on-primary underline">
-          Sign in
+
+      <p className="mt-8 font-mono text-[11px] uppercase tracking-[0.18em] text-on-surface-variant">
+        Have an account?{' '}
+        <Link
+          href="/login"
+          className="text-on-surface underline decoration-warning decoration-2 underline-offset-4 hover:text-warning transition-colors"
+        >
+          Sign in ↗
         </Link>
       </p>
-    </div>
+    </AuthCard>
   );
 }

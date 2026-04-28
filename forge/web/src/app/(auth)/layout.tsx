@@ -1,14 +1,42 @@
+import { Suspense } from 'react';
+import { ForceLightTheme } from '@/components/force-light-theme';
+import { BrandPanel } from './components/brand-panel';
+
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="relative bg-background min-h-screen flex flex-col items-center justify-center p-6 selection:bg-primary selection:text-on-primary">
-      {/* Noise overlay for texture */}
+    <div
+      data-theme="light"
+      className="fixed inset-0 overflow-y-auto bg-background text-on-surface selection:bg-warning/30"
+    >
+      {/* Drive next-themes to "light" while these public auth pages are
+          mounted — same pattern landing/download use so a visitor with dark
+          theme saved still sees the intended marketing surface. */}
+      <ForceLightTheme />
+      {/* Subtle dot grid — same vocabulary as /download hero. Cheap, calm,
+          gives the surface tactile depth without a noise overlay. */}
       <div
-        className="fixed inset-0 pointer-events-none opacity-[0.02] z-[9999]"
+        aria-hidden
+        className="pointer-events-none fixed inset-0 opacity-[0.5]"
         style={{
-          backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 256 256\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noise\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.65\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noise)\'/%3E%3C/svg%3E")',
+          backgroundImage:
+            'radial-gradient(circle at 1px 1px, rgba(0,0,0,0.05) 1px, transparent 0)',
+          backgroundSize: '28px 28px',
         }}
       />
-      {children}
+
+      <main className="relative mx-auto grid min-h-full max-w-6xl grid-cols-1 gap-x-12 px-6 py-10 sm:px-10 lg:grid-cols-5 lg:gap-x-20 lg:py-16">
+        <section className="flex items-center justify-center lg:col-span-3 lg:justify-end">
+          {children}
+        </section>
+        <div className="lg:col-span-2">
+          {/* Suspense so a slow GitHub API call inside BrandPanel doesn't
+              hold up the form render. The fallback is `null` since the panel
+              is decorative on lg-only viewports. */}
+          <Suspense fallback={null}>
+            <BrandPanel />
+          </Suspense>
+        </div>
+      </main>
     </div>
   );
 }
