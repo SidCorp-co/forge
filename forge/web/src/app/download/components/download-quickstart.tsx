@@ -50,11 +50,12 @@ export function DownloadQuickstart({ release }: DownloadQuickstartProps) {
           title="Pair with the cloud server"
           body="Sign in once. The desktop app pairs as a runner device — your Claude CLI sessions stream their work back to the project pipeline."
           code={[
-            '# (Optional) self-host the cloud server with Docker:',
+            '# Self-host the cloud server with Docker:',
             `git clone ${REPO_URL}.git && cd jarvis-agents`,
+            'cp .env.example .env   # set JWT_SECRET, DEVICE_TOKEN_PEPPER',
+            'docker compose up -d',
             '',
-            '# Or use the hosted instance:',
-            '#   https://stg-jarvis-a2.thejunix.com',
+            '# Then open http://localhost:3000 to register and pair.',
           ].join('\n')}
         />
         <Step

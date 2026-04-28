@@ -45,16 +45,30 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
 
   # Build Forge Beta (Tauri) artifacts on each platform and attach to the
-  # release. Tauri's updater plugin then resolves
+  # release. Tauri's updater plugin resolves
   # https://github.com/junixlabs/jarvis-agents/releases/latest/download/latest.json
-  # which `tauri-action` generates with platform→download-URL mappings + signatures.
+  # which tauri-action generates with platform→download-URL mappings + signatures.
   #
-  # Required GitHub repo secrets (Settings → Secrets → Actions):
-  #   TAURI_SIGNING_PRIVATE_KEY           (output of `pnpm tauri signer generate`)
-  #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  (passphrase chosen at generate time)
+  # Repo secrets (Settings → Secrets and variables → Actions):
   #
-  # The matching public key is committed at forge/dev/src-tauri/tauri.conf.json:pubkey
-  # and is what the updater plugin verifies against.
+  # Required (always — updater signing):
+  #   TAURI_SIGNING_PRIVATE_KEY           output of `pnpm tauri signer generate`
+  #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  passphrase chosen at generate time
+  #     The matching public key lives at forge/dev/src-tauri/tauri.conf.json:pubkey.
+  #
+  # Optional (macOS code signing + notarization — leave unset for unsigned builds):
+  #   APPLE_CERTIFICATE                   base64-encoded .p12 (Developer ID Application)
+  #   APPLE_CERTIFICATE_PASSWORD          .p12 password
+  #   APPLE_SIGNING_IDENTITY              e.g. "Developer ID Application: Acme Inc (TEAMID)"
+  #   APPLE_ID                            Apple ID email
+  #   APPLE_PASSWORD                      app-specific password (appleid.apple.com → Sign-In and Security)
+  #   APPLE_TEAM_ID                       Team ID from developer.apple.com
+  #
+  # Optional (Windows code signing — leave unset for unsigned builds):
+  #   WINDOWS_CERTIFICATE                 base64-encoded .pfx
+  #   WINDOWS_CERTIFICATE_PASSWORD        .pfx password
+  #
+  # See docs/guides/release.md for the full setup playbook.
   build:
     needs: release
     strategy:
@@ -95,26 +109,34 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: forge/dev/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
-      - name: Install JS deps (forge/dev)
+      - name: Install JS deps (workspace)
         run: pnpm install --frozen-lockfile
-        working-directory: forge/dev
 
       - name: Build + sign + upload Tauri artifacts
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Tauri updater signing (required).
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # macOS code signing + notarization (optional — empty means unsigned build).
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Windows code signing (optional — empty means unsigned build).
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         with:
           projectPath: forge/dev
           releaseId: ${{ needs.release.outputs.release_id }}

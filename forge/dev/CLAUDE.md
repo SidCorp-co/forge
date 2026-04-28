@@ -7,7 +7,7 @@ Tauri desktop app with React frontend. Local codebase access, agent execution, M
 - Device-runner architecture: [ADR 0001](../../docs/decisions/0001-device-runner-architecture.md), [docs/modules/devices/](../../docs/modules/devices/)
 - Claude CLI as runner: [ADR 0003](../../docs/decisions/0003-claude-code-cli-as-primary-runner.md); credential boundary: [ADR 0004](../../docs/decisions/0004-no-claude-credentials-on-server.md)
 - Agent + job flow: [docs/modules/agents-jobs/](../../docs/modules/agents-jobs/)
-- Backend is moving Strapi → `forge/core` per [RFC 0002](../../docs/rfcs/0002-replace-strapi-with-hono-drizzle.md). `src/lib/api.ts` will switch base URL in the Phase 2.5 flip — write any new code against `core`'s response shape, not Strapi's envelope.
+- Backend is `forge/core` (Hono + Drizzle) per [RFC 0002](../../docs/rfcs/0002-replace-strapi-with-hono-drizzle.md). Strapi was removed at Phase 2.8-F1 — write all API code against `core`'s response shape (no `{ data, meta }` envelope).
 
 ## Architecture
 
@@ -18,7 +18,7 @@ Tauri desktop app with React frontend. Local codebase access, agent execution, M
 - `src/pages/` — React pages: dashboard, project issues/board/chat, settings
 - `src/components/` — UI components: issue detail, chat sidebar, settings panels
 - `src/stores/app-store.ts` — Zustand store (auth, config, projects)
-- `src/lib/api.ts` — Strapi API client
+- `src/lib/api.ts` — Forge core API client
 - `src/lib/types.ts` — Shared TypeScript types
 
 ## Key Patterns

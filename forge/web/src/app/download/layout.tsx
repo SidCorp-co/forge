@@ -2,6 +2,9 @@ import type { ReactNode } from 'react';
 import type { Metadata } from 'next';
 import { ForceLightTheme } from '@/components/force-light-theme';
 import { REPO_URL } from '@/lib/github-releases';
+import { SITE_URL } from '@/lib/site-url';
+
+const DOWNLOAD_URL = `${SITE_URL}/download`;
 
 export const metadata: Metadata = {
   title: 'Download Forge Beta — Open-source control plane for Claude Code',
@@ -11,7 +14,7 @@ export const metadata: Metadata = {
     title: 'Download Forge Beta',
     description:
       'Open-source desktop app for project management + Claude Code orchestration. macOS, Windows, Linux.',
-    url: 'https://stg-jarvis-a2.thejunix.com/download',
+    url: DOWNLOAD_URL,
     siteName: 'Forge Beta',
     type: 'website',
   },
@@ -22,7 +25,7 @@ export const metadata: Metadata = {
       'Open-source desktop app for project management + Claude Code orchestration.',
   },
   alternates: {
-    canonical: 'https://stg-jarvis-a2.thejunix.com/download',
+    canonical: DOWNLOAD_URL,
   },
   other: {
     'github:repo': REPO_URL,
