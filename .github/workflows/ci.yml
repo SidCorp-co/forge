@@ -10,6 +10,15 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Dependabot PRs run with a read-only GITHUB_TOKEN by default (since
+# Sept 2021), which makes dorny/paths-filter's pulls.listFiles API call
+# fail with "Resource not accessible by integration". Declaring read
+# scopes explicitly fixes Dependabot PRs without changing behavior for
+# pushes or human PRs.
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   changes:
     runs-on: ubuntu-latest
