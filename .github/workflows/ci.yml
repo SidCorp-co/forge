@@ -25,6 +25,7 @@ jobs:
     outputs:
       web: ${{ steps.filter.outputs.web }}
       dev: ${{ steps.filter.outputs.dev }}
+      dev-tauri: ${{ steps.filter.outputs.dev-tauri }}
       core: ${{ steps.filter.outputs.core }}
       docs: ${{ steps.filter.outputs.docs }}
     steps:
@@ -45,6 +46,9 @@ jobs:
               - 'packages/contracts/**'
             dev:
               - 'packages/dev/**'
+            dev-tauri:
+              - 'packages/dev/src-tauri/**'
+              - '.github/workflows/release.yml'
             core:
               - 'packages/core/**'
               - 'pnpm-workspace.yaml'
@@ -111,6 +115,57 @@ jobs:
         run: |
           cargo fmt --all -- --check
           cargo clippy --all-targets -- -D warnings
+
+  # Smoke-build a Tauri bundle on Linux (deb only) when src-tauri config or
+  # the release workflow changes. Catches regressions in tauri.conf.json
+  # (e.g. bundle.active flipped to false, broken icon paths, invalid target
+  # list) BEFORE they reach a release tag. Without this guard, every release
+  # v0.1.9..v0.1.16 silently produced binary-only builds with zero installer
+  # artifacts attached.
+  dev-bundle-smoke:
+    needs: changes
+    if: needs.changes.outputs.dev-tauri == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate bundle.active=true
+        run: |
+          jq -e '.bundle.active == true' packages/dev/src-tauri/tauri.conf.json \
+            || { echo "::error file=packages/dev/src-tauri/tauri.conf.json::bundle.active must be true (release builds skip bundling otherwise)"; exit 1; }
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/dev/src-tauri
+      - name: Install Linux deps for Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Install workspace deps
+        run: pnpm install --frozen-lockfile
+      - name: Generate throwaway updater signing key
+        # tauri-cli aborts with "public key found, but no private key" when
+        # tauri.conf.json declares an updater pubkey. Generate a smoke-only
+        # keypair so the build step can sign artifacts; the throwaway key
+        # never leaves CI and is unrelated to release-signing secrets.
+        run: |
+          pnpm --filter forge-beta exec tauri signer generate -p "" -w /tmp/smoke.key
+          echo "TAURI_SIGNING_PRIVATE_KEY=$(cat /tmp/smoke.key)" >> "$GITHUB_ENV"
+          echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=" >> "$GITHUB_ENV"
+      - name: Build (deb only)
+        working-directory: packages/dev
+        run: pnpm tauri build --bundles deb
+      - name: Verify .deb produced
+        run: |
+          if ! ls "packages/dev/src-tauri/target/release/bundle/deb/"*.deb >/dev/null 2>&1; then
+            echo "::error::Tauri bundler did not produce a .deb under target/release/bundle/deb/"
+            exit 1
+          fi
 
   # packages/app/ job removed: mobile is paused per ADR 0009 with known
   # type-error drift; no point gating CI on a package no one is meant to

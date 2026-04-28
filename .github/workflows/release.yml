@@ -139,6 +139,7 @@ jobs:
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         with:
           projectPath: packages/dev
+          tauriScript: pnpm tauri
           releaseId: ${{ needs.release.outputs.release_id }}
           args: ${{ matrix.args }}
           includeUpdaterJson: true
