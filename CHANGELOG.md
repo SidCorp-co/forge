@@ -16,6 +16,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+## [0.1.18] - 2026-04-28
+
+Patch release: macOS auto-updater payload + Next.js DoS hardening.
+
+### Fixed
+
+- **macOS auto-updater entries.** `bundle.targets` was missing the `app` entry, so Tauri built `Forge Beta.app`, wrapped it in the `.dmg`, then deleted the `.app` directory before the updater could tarball it. Result: `latest.json` shipped with `linux-*` and `windows-*` keys but no `darwin-aarch64` / `darwin-x86_64`, which silently disabled in-place updates for macOS users. Adding `"app"` produces both `Forge Beta.app.tar.gz` and `Forge Beta.app.tar.gz.sig`, which tauri-action then attaches to the release and references from `latest.json`.
+
+### Security
+
+- **Next.js 16.1.7 → 16.2.4.** Closes [GHSA-q4gf-8mx6-v5v3](https://github.com/advisories/GHSA-q4gf-8mx6-v5v3) (DoS via Server Components, high). The advisory has separate fix lines per minor: 15.5.15 for `15.x` and 16.2.3 for `16.x`. The earlier 16.1.7 bump only crossed the 15.x boundary in the metadata; 16.x callers stayed below the patch. Open Dependabot alert count: 4 → 3 (remaining are transitive Rust deps `rand` and `glib` whose fix lines are above what Tauri's gtk-rs chain currently exposes).
+
 ## [0.1.17] - 2026-04-28
 
 Rebrand to `Forge` under the `SidCorp-co` org **and** the first release to actually attach desktop installers to the GitHub Release. Every prior tag from `v0.1.9` onward built only the raw `forge-beta` binary because `bundle.active` was missing from `tauri.conf.json`; this release restores the bundler pipeline end-to-end. See [ADR 0015](docs/decisions/0015-rebrand-to-forge.md) for the rebrand rationale.
