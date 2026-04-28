@@ -18,12 +18,22 @@ export function useSkill(documentId: string) {
   });
 }
 
+// The project skills page lists from `useEffectiveSkills` (key
+// `['skills-effective', projectId]`), which merges the global skills
+// catalog with per-project overrides. Mutations that touch the global
+// catalog must invalidate BOTH `['skills']` (global list cache, used by
+// the standalone /skills admin) AND `['skills-effective']` (project list
+// cache) so the project page reflects the change immediately. Missing
+// the latter is what made create/update/delete look like silent no-ops
+// on the project skills page.
+
 export function useCreateSkill() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: Parameters<typeof skillApi.create>[0]) => skillApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['skills'] });
+      queryClient.invalidateQueries({ queryKey: ['skills-effective'] });
     },
   });
 }
@@ -36,6 +46,7 @@ export function useUpdateSkill() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['skills'] });
       queryClient.invalidateQueries({ queryKey: ['skill'] });
+      queryClient.invalidateQueries({ queryKey: ['skills-effective'] });
     },
   });
 }
@@ -46,6 +57,7 @@ export function useDeleteSkill() {
     mutationFn: (documentId: string) => skillApi.delete(documentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['skills'] });
+      queryClient.invalidateQueries({ queryKey: ['skills-effective'] });
     },
   });
 }
