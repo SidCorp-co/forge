@@ -18,31 +18,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.1.17] - 2026-04-28
 
-Rebrand to `Forge` under the `SidCorp-co` org. Repo transferred from `junixlabs/jarvis-agents` → `SidCorp-co/forge`, workspace dir renamed `forge/` → `packages/`, Tauri bundle identifier changed from `com.thejunix.forge-beta` → `co.sidcorp.forge-beta`. See [ADR 0015](docs/decisions/0015-rebrand-to-forge.md) for the rationale.
+Rebrand to `Forge` under the `SidCorp-co` org **and** the first release to actually attach desktop installers to the GitHub Release. Every prior tag from `v0.1.9` onward built only the raw `forge-beta` binary because `bundle.active` was missing from `tauri.conf.json`; this release restores the bundler pipeline end-to-end. See [ADR 0015](docs/decisions/0015-rebrand-to-forge.md) for the rebrand rationale.
 
 ### Changed
 
 - **Repo URL:** `https://github.com/SidCorp-co/forge` (old URL auto-redirects).
 - **Workspace layout:** `forge/<pkg>/` → `packages/<pkg>/` for `core`, `web`, `dev`, `app`, `contracts`, `tests`, `widget`. npm scope `@forge/*` is unchanged.
 - **Tauri identifier:** `co.sidcorp.forge-beta`. The auto-updater endpoint in `tauri.conf.json` now points at the new repo.
-- **CI:** workflow declares `permissions: contents:read, pull-requests:read` so Dependabot PRs no longer fail at the changes job.
+- **Tauri config:** `bundle.targets` set explicitly to `["deb", "appimage", "dmg", "nsis"]`; RPM intentionally dropped because the GitHub-hosted Linux runner has no `rpmbuild`. `$schema` switched to the canonical `https://schema.tauri.app/config/2`. `bundle.publisher`, `category`, `shortDescription`, `copyright` populated for installer metadata.
+- **Icons:** regenerated the icon set with `pnpm tauri icon`. macOS DMG now has the required `.icns`; Linux desktop entries get the proper 32/128/128@2x PNGs.
+- **CI:** workflow declares `permissions: contents:read, pull-requests:read` so Dependabot PRs no longer fail at the changes job. New `dev-bundle-smoke` job runs `pnpm tauri build --bundles deb` (with a throwaway updater key) on PRs that touch `packages/dev/src-tauri/**` or `release.yml`, so a future `bundle.active=false` regression fails in CI rather than at tag time.
 - **Docs:** trimmed `architecture/websocket.md` (678 → 167 lines), `modules/issues-pipeline/status-pipeline.md` (367 → 177 lines); maintainer-only artifacts (release tests, migration audits, ops runbooks) moved to gitignored `.internal-docs/`.
 - **Dependabot:** `npm` ecosystem now scans only the active workspace members (`packages/app/` excluded per [ADR 0009](docs/decisions/0009-mobile-app-paused-for-v0x.md)); `cargo` ecosystem added for `packages/dev/src-tauri/`.
 - Internal hostnames + emails scrubbed from tracked sources (test fixtures, code comments, deployment defaults).
 
 ### Fixed
 
-- `pre-push` hook used `$repo_root/forge/$pkg` as the package path — the variable substitution slipped past the workspace rename and the gate was effectively a no-op for any push touching the renamed packages until corrected.
+- **Bundler pipeline.** `tauri.conf.json` was missing `bundle.active`. Tauri 2 defaults that field to `false`, so `tauri build` produced only the raw `forge-beta` executable and skipped every installer. tauri-action then aborted with `No artifacts were found.` This was a silent regression: every release `v0.1.9..v0.1.16` shipped with empty installer attachments and the source-code zip only.
+- **macOS codesign on unsigned builds.** The release workflow forwarded `APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}` even when the secret was unset; GitHub Actions interpolates that as the empty string, and Tauri's macOS bundler treats present-but-empty as "import this cert" and aborts with `failed to run command security import`. Same shape on Windows. The `APPLE_*` and `WINDOWS_*` env entries are now omitted entirely until real certificates exist; until then bundles ship unsigned.
+- **release.yml runner detection.** Pinned `tauriScript: pnpm tauri` so tauri-action stops falling back to `npm run tauri` when `projectPath` (`packages/dev/`) has no `pnpm-lock.yaml` of its own.
+- **pre-push guard.** Hook now fails the push if `bundle.active` ever drifts back to `false`, so the bundler regression cannot recur.
+- **pre-push path.** Earlier hook used `$repo_root/forge/$pkg` as the package path — the variable substitution slipped past the workspace rename and the gate was effectively a no-op for any push touching the renamed packages until corrected.
 
 ### Security
 
 - 6 cargo bumps merged through Dependabot (rustls-webpki, openssl chain via the minor-and-patch group, sha2, nix, tar, plus the Tauri 2.10.3 group). Open Dependabot security alert count: 44 → 33.
 
-> ⚠️ **Breaking for installed alpha users:** the Tauri bundle identifier changed, so v0.1.17 is treated by the OS as a different application from v0.1.16. Reinstall recommended; OS keychain entries from older versions will not be inherited automatically.
+> ⚠️ **Breaking for installed alpha users:** the Tauri bundle identifier changed (`com.thejunix.forge-beta` → `co.sidcorp.forge-beta`), so the OS treats v0.1.17 as a different application from any earlier install. Reinstall is required; OS keychain entries are not inherited. In practice no installer was actually published for any tag prior to v0.1.17, so the population this affects is "people who built locally and ran it."
 
 ## [0.1.16] - 2026-04-28
 
-OSS launch prep — first release with a working release pipeline. Tags `v0.1.6` through `v0.1.15` were created during pipeline debugging and never published; this is the first version to actually produce installable artifacts. Desktop binary version realigned from the legacy `0.2.x` `forge-beta` train back to the repo's `0.1.x` line so tag, package, and Cargo versions match.
+OSS launch prep. Tags `v0.1.6` through `v0.1.15` were created during pipeline debugging and never produced a non-draft release. (At the time this entry was written we believed `v0.1.16` was the first version producing installable artifacts; that turned out to be wrong — the bundler was silently disabled until `v0.1.17`. See the v0.1.17 "Fixed" notes.) Desktop binary version realigned from the legacy `0.2.x` `forge-beta` train back to the repo's `0.1.x` line so tag, package, and Cargo versions match.
 
 ### Added
 
