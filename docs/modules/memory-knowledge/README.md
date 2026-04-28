@@ -4,7 +4,7 @@ Postgres `pgvector` semantic memory, project knowledge graph, RAG retrieval.
 
 ## Overview
 
-Claude Code has no memory between sessions by default. Jarvis Agents adds persistent memory: the system captures issue content, agent session outputs, decisions, and resolved errors; embeds them and stores the vectors in Postgres via `pgvector` (same connection as the rest of the data); and surfaces relevant context to agents at the start of each session.
+Claude Code has no memory between sessions by default. Forge adds persistent memory: the system captures issue content, agent session outputs, decisions, and resolved errors; embeds them and stores the vectors in Postgres via `pgvector` (same connection as the rest of the data); and surfaces relevant context to agents at the start of each session.
 
 ## Data Flow
 

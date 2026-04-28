@@ -3,7 +3,7 @@
     { "pattern": "^http://localhost" },
     { "pattern": "^https?://localhost" },
     { "pattern": "^http://127\\.0\\.0\\.1" },
-    { "pattern": "^https?://github\\.com/junixlabs/jarvis-agents" }
+    { "pattern": "^https?://github\\.com/SidCorp-co/forge" }
   ],
   "timeout": "10s",
   "retryOn429": true,

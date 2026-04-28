@@ -1,6 +1,6 @@
 # Documentation
 
-Jarvis Agents documentation, organized by purpose.
+Forge documentation, organized by purpose.
 
 ## If you are an AI coding session — read in this order
 
@@ -18,13 +18,13 @@ If a doc disagrees with the code, trust the code, then propose a doc fix in the 
 
 | I want to | Go here |
 |-----------|---------|
-| Run Jarvis Agents for the first time | [quickstart.md](quickstart.md) |
+| Run Forge for the first time | [quickstart.md](quickstart.md) |
 | Understand the overall system | [architecture/](architecture/) |
 | Understand a specific feature (issues, agents, devices, skills, chat, memory) | [modules/](modules/) |
 | Know why a technical choice was made | [decisions/](decisions/) |
 | Propose a significant change | [rfcs/](rfcs/) |
 | Read planned but unshipped features | [proposals/](proposals/) |
-| Connect Jarvis Agents to an external platform | [integrations/](integrations/) |
+| Connect Forge to an external platform | [integrations/](integrations/) |
 | Follow a how-to for a specific task | [guides/](guides/) |
 | See what's shipping next | [ROADMAP.md](ROADMAP.md) |
 | Use the brand / voice correctly | [BRAND.md](BRAND.md) |

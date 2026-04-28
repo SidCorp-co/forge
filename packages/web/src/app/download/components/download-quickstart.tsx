@@ -39,7 +39,7 @@ export function DownloadQuickstart({ release }: DownloadQuickstartProps) {
             body="No tagged release yet. Clone the repo, install dependencies, and run the desktop app in dev mode."
             code={[
               `git clone ${REPO_URL}.git`,
-              'cd jarvis-agents/packages/dev',
+              'cd forge/packages/dev',
               'pnpm install',
               'pnpm tauri dev',
             ].join('\n')}
@@ -51,7 +51,7 @@ export function DownloadQuickstart({ release }: DownloadQuickstartProps) {
           body="Sign in once. The desktop app pairs as a runner device — your Claude CLI sessions stream their work back to the project pipeline."
           code={[
             '# Self-host the cloud server with Docker:',
-            `git clone ${REPO_URL}.git && cd jarvis-agents`,
+            `git clone ${REPO_URL}.git && cd forge`,
             'cp .env.example .env   # set JWT_SECRET, DEVICE_TOKEN_PEPPER',
             'docker compose up -d',
             '',

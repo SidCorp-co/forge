@@ -1,5 +1,5 @@
 # Multi-stage Dockerfile for packages/web
-# BUILD CONTEXT: repo root (jarvis-agents/) so pnpm workspace can resolve workspace:* deps.
+# BUILD CONTEXT: repo root (forge/) so pnpm workspace can resolve workspace:* deps.
 # Build with: docker build -f packages/web/Dockerfile .
 FROM node:22-alpine AS base
 RUN corepack enable && corepack prepare pnpm@9 --activate

@@ -10,7 +10,7 @@
 #      (usually pre-installed on Windows 10/11)
 #
 # Usage:
-#   cd \\wsl$\Ubuntu\home\dmin\ai-project\jarvis-agents\forge\dev
+#   cd \\wsl$\Ubuntu\home\dmin\ai-project\forge\packages\dev
 #   .\build-windows.ps1
 
 $ErrorActionPreference = "Stop"

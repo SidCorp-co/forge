@@ -1,6 +1,6 @@
 # Guides
 
-How-to guides for specific developer tasks. Each guide is task-oriented — "how do I do X" — and written for a developer who already has Jarvis Agents running.
+How-to guides for specific developer tasks. Each guide is task-oriented — "how do I do X" — and written for a developer who already has Forge running.
 
 ## Available guides
 

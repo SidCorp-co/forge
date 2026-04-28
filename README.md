@@ -1,8 +1,8 @@
-# Jarvis Agents
+# Forge
 
 > Remote-control your local Claude Code. Webhook in. Pipeline out. Every job on record.
 
-[![CI](https://github.com/junixlabs/jarvis-agents/actions/workflows/ci.yml/badge.svg)](https://github.com/junixlabs/jarvis-agents/actions/workflows/ci.yml)
+[![CI](https://github.com/SidCorp-co/forge/actions/workflows/ci.yml/badge.svg)](https://github.com/SidCorp-co/forge/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-alpha-yellow.svg)]()
 
@@ -10,7 +10,7 @@
 
 ## What it is
 
-Jarvis Agents is an open-source **control plane** for Claude Code. You keep using `claude` on your own machine with your own Claude Pro/Max subscription. Jarvis adds the layer around it: a web dashboard to trigger work, a pipeline that routes issues through agent stages, and a full audit trail of every job.
+Forge is an open-source **control plane** for Claude Code. You keep using `claude` on your own machine with your own Claude Pro/Max subscription. Jarvis adds the layer around it: a web dashboard to trigger work, a pipeline that routes issues through agent stages, and a full audit trail of every job.
 
 - **Devices pair into your account.** Your laptop, desktop, or CI box runs the Jarvis agent, which spawns `claude` locally. The server never holds Claude credentials.
 - **Issues flow in from anywhere.** GitHub webhooks, Sentry alerts, Stripe events, your own API — create a webhook, point it at Jarvis, it becomes an issue.
@@ -31,8 +31,8 @@ Think of it as **GitHub Actions self-hosted runners, for Claude Code.** The devi
 ## Quickstart
 
 ```bash
-git clone https://github.com/junixlabs/jarvis-agents.git
-cd jarvis-agents
+git clone https://github.com/SidCorp-co/forge.git
+cd forge
 cp .env.example .env
 docker compose up -d
 ```
@@ -40,7 +40,7 @@ docker compose up -d
 - Core API: <http://localhost:8080>
 - Web dashboard: <http://localhost:3000>
 
-Then install the desktop agent (spawns `claude` on your machine) from [Releases](https://github.com/junixlabs/jarvis-agents/releases), or run `forged pair <code>` if you prefer the CLI daemon.
+Then install the desktop agent (spawns `claude` on your machine) from [Releases](https://github.com/SidCorp-co/forge/releases), or run `forged pair <code>` if you prefer the CLI daemon.
 
 Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
 
@@ -128,7 +128,7 @@ Current focus: **v0.1** — device-runner architecture, job pipeline, session re
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). The repo follows **Trunk-Based Development** — single `main`, no `develop`, branches live <1 day, feature flags absorb in-flight work. Rationale + full rules: [ADR 0014](docs/decisions/0014-trunk-based-development.md).
 
-First-time? Look for [`good-first-issue`](https://github.com/junixlabs/jarvis-agents/labels/good-first-issue).
+First-time? Look for [`good-first-issue`](https://github.com/SidCorp-co/forge/labels/good-first-issue).
 
 Significant changes require an RFC — see [docs/rfcs/](docs/rfcs/) for the format.
 

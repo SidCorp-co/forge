@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Questions & discussions
-    url: https://github.com/junixlabs/jarvis-agents/discussions
+    url: https://github.com/SidCorp-co/forge/discussions
     about: Use Discussions for questions and proposals still taking shape
   - name: Report a security vulnerability
-    url: https://github.com/junixlabs/jarvis-agents/security/advisories/new
+    url: https://github.com/SidCorp-co/forge/security/advisories/new
     about: DO NOT open a public issue — use the private security advisory form

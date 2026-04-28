@@ -1,12 +1,12 @@
-# Brand & style — Jarvis Agents
+# Brand & style — Forge
 
 Consistent style across code, docs, UI, and public communication.
 
 ## Name
 
-- **Canonical:** `Jarvis Agents` — two words, title case, both capitalized
+- **Canonical:** `Forge` — two words, title case, both capitalized
 - **Short form:** `Jarvis` — acceptable only in casual contexts (tweets, social); never in docs or commits
-- **Code identifier:** `jarvis-agents` — kebab-case, lowercase, used for repo, npm package, Docker image
+- **Code identifier:** `forge` — kebab-case, lowercase, used for repo, npm package, Docker image
 - **Never use:** `jarvisagents`, `JarvisAgents`, `JARVIS`, `forge` (internal codename, retired for OSS)
 
 ## Tagline
@@ -52,7 +52,7 @@ Use "job" for individual agent runs (CI-style). "Session" is acceptable colloqui
 
 | Surface | Convention | Example |
 |---------|-----------|---------|
-| Repo / npm / Docker image | `kebab-case` | `jarvis-agents` |
+| Repo / npm / Docker image | `kebab-case` | `forge` |
 | TypeScript files | `camelCase` | `userStore.ts` |
 | TypeScript exports (classes, React components) | `PascalCase` | `UserStore`, `IssueList` |
 | TypeScript functions, variables | `camelCase` | `fetchIssues`, `currentUser` |

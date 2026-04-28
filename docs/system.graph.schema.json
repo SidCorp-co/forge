@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://junixlabs.github.io/jarvis-agents/system.graph.schema.json",
-  "title": "Jarvis Agents — system graph",
+  "$id": "https://sidcorp-co.github.io/forge/system.graph.schema.json",
+  "title": "Forge — system graph",
   "description": "Single-file graph of planes, services, modules, features, datastores, and externals. Nodes are identified by stable slugs; edges describe containment, dependencies, and broadcast/exposure relations.",
   "type": "object",
   "required": ["version", "root", "nodes", "edges"],

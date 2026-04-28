@@ -1,6 +1,6 @@
 # web
 
-Next.js 16 cloud UI for Jarvis Agents — project dashboard, issue pipeline, agent chat, settings. Talks to [`@forge/core`](../core) over REST + WebSocket and shares row/request types via [`@forge/contracts`](../contracts).
+Next.js 16 cloud UI for Forge — project dashboard, issue pipeline, agent chat, settings. Talks to [`@forge/core`](../core) over REST + WebSocket and shares row/request types via [`@forge/contracts`](../contracts).
 
 ## Prerequisites
 

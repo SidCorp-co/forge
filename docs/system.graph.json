@@ -2,7 +2,7 @@
   "$schema": "./system.graph.schema.json",
   "version": "1.0.0",
   "generated": "2026-04-23",
-  "root": "jarvis-agents",
+  "root": "forge",
   "legend": {
     "kinds": ["plane", "service", "module", "feature", "datastore", "external"],
     "statuses": ["active", "legacy", "paused", "proposed", "planned"],
@@ -17,7 +17,7 @@
 
   "nodes": [
     {
-      "id": "jarvis-agents",
+      "id": "forge",
       "kind": "plane",
       "purpose": "Project management + AI agent platform",
       "status": "active"
@@ -211,9 +211,9 @@
   ],
 
   "edges": [
-    { "from": "jarvis-agents", "to": "client-plane", "relation": "contains" },
-    { "from": "jarvis-agents", "to": "control-plane", "relation": "contains" },
-    { "from": "jarvis-agents", "to": "runtime-plane", "relation": "contains" },
+    { "from": "forge", "to": "client-plane", "relation": "contains" },
+    { "from": "forge", "to": "control-plane", "relation": "contains" },
+    { "from": "forge", "to": "runtime-plane", "relation": "contains" },
 
     { "from": "client-plane", "to": "packages/web", "relation": "contains" },
     { "from": "client-plane", "to": "packages/dev", "relation": "contains" },

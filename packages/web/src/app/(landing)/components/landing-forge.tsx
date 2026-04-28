@@ -197,7 +197,7 @@ export function LandingForge() {
           Download Forge Beta
         </Link>
         <a
-          href="https://github.com/junixlabs/jarvis-agents"
+          href="https://github.com/SidCorp-co/forge"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 text-sm text-primary-fixed hover:text-on-surface transition-colors"

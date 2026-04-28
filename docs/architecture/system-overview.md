@@ -1,12 +1,12 @@
 # Architecture
 
-How Jarvis Agents is put together, and why.
+How Forge is put together, and why.
 
 The architectural foundation is [RFC 0001: Device-runner architecture](../rfcs/0001-device-runner-architecture.md). This doc summarizes and explains; the RFC is authoritative.
 
 ## One-paragraph summary
 
-Jarvis Agents splits into two planes:
+Forge splits into two planes:
 
 - **Control plane** — `packages/core`, a Hono + Drizzle service exposing REST, WebSocket, and MCP. Hosts project and issue state, queues jobs (pg-boss), stores embeddings (pgvector), and streams events. **Never holds Claude credentials.**
 - **Runtime plane** — **device agents** running on users' own machines. Two form factors share a Rust `agent-core` crate: `dev` (Tauri GUI) and `forged` (CLI daemon). Devices pair into the account, receive job dispatches over WebSocket, spawn the `claude` CLI locally in a git worktree, and stream JobEvents back.

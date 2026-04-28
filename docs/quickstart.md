@@ -1,6 +1,6 @@
 # Quickstart
 
-Get Jarvis Agents running end-to-end — server + one paired device + first job — in about 10 minutes.
+Get Forge running end-to-end — server + one paired device + first job — in about 10 minutes.
 
 ## Requirements
 
@@ -12,8 +12,8 @@ Get Jarvis Agents running end-to-end — server + one paired device + first job 
 ## 1. Run the server
 
 ```bash
-git clone https://github.com/junixlabs/jarvis-agents.git
-cd jarvis-agents
+git clone https://github.com/SidCorp-co/forge.git
+cd forge
 cp .env.example .env
 ```
 
@@ -69,7 +69,7 @@ A device is any machine that will run `claude` for your projects. Most teams sta
 
 ### Option A: Desktop GUI (Tauri)
 
-1. Download the desktop app for your OS from [GitHub Releases](https://github.com/junixlabs/jarvis-agents/releases).
+1. Download the desktop app for your OS from [GitHub Releases](https://github.com/SidCorp-co/forge/releases).
 2. Install and open it.
 3. Point it at your server: `http://localhost:8080` (or your deployed URL).
 4. In the web dashboard: **Account → Devices → Add device** → copy the pairing code.
@@ -81,7 +81,6 @@ For CI runners, headless dev boxes, or if you prefer the terminal:
 
 ```bash
 # Install forged (example — actual install path TBD)
-curl -sSL https://jarvisagents.dev/install.sh | sh
 
 # Pair
 forged pair F9-3K7T-92XA
@@ -149,4 +148,4 @@ Jarvis sends verification via the configured SMTP provider. For local dev, set `
 
 ---
 
-Stuck? Open a [Discussion](https://github.com/junixlabs/jarvis-agents/discussions) — we reply within 72h during alpha.
+Stuck? Open a [Discussion](https://github.com/SidCorp-co/forge/discussions) — we reply within 72h during alpha.

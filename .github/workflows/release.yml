@@ -46,7 +46,7 @@ jobs:
 
   # Build Forge Beta (Tauri) artifacts on each platform and attach to the
   # release. Tauri's updater plugin resolves
-  # https://github.com/junixlabs/jarvis-agents/releases/latest/download/latest.json
+  # https://github.com/SidCorp-co/forge/releases/latest/download/latest.json
   # which tauri-action generates with platform→download-URL mappings + signatures.
   #
   # Repo secrets (Settings → Secrets and variables → Actions):

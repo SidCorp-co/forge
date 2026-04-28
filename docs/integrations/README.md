@@ -1,6 +1,6 @@
 # Integrations
 
-Documentation for external platforms that connect to Jarvis Agents. Platform specifics live here; business flow stays in [../modules/](../modules/).
+Documentation for external platforms that connect to Forge. Platform specifics live here; business flow stays in [../modules/](../modules/).
 
 ## Available integrations
 

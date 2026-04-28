@@ -66,7 +66,7 @@ export async function BrandPanel() {
           ← Download desktop
         </Link>
         <Link
-          href="https://github.com/junixlabs/jarvis-agents"
+          href="https://github.com/SidCorp-co/forge"
           className="hover:text-on-surface transition-colors"
           target="_blank"
           rel="noreferrer"

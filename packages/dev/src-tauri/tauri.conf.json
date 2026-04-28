@@ -3,7 +3,7 @@
   "productName": "Forge Beta",
   "mainBinaryName": "forge-beta",
   "version": "0.1.16",
-  "identifier": "com.thejunix.forge-beta",
+  "identifier": "co.sidcorp.forge-beta",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1421",
@@ -46,7 +46,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNFNDI2M0JFRUVCRURCQTQKUldTazI3N3V2bU5DUG9QUTk1ZGEwVTQxNFNVZkZhdjE0YXU3MEwwcS9RMWprVzJtNlRnSXpnU3UK",
       "endpoints": [
-        "https://github.com/junixlabs/jarvis-agents/releases/latest/download/latest.json"
+        "https://github.com/SidCorp-co/forge/releases/latest/download/latest.json"
       ]
     }
   }

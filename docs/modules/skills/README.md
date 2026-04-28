@@ -4,7 +4,7 @@ The units of agent work. Each skill is a prompt + tool allow-list that Claude Co
 
 ## Overview
 
-Jarvis Agents ships 8 built-in pipeline skills (`forge-triage`, `forge-clarify`, `forge-plan`, `forge-code`, `forge-review`, `forge-test`, `forge-release`, `forge-fix`). Users can also author custom skills and register them to pipeline stages — enabling domain-specific workflows without forking the product.
+Forge ships 8 built-in pipeline skills (`forge-triage`, `forge-clarify`, `forge-plan`, `forge-code`, `forge-review`, `forge-test`, `forge-release`, `forge-fix`). Users can also author custom skills and register them to pipeline stages — enabling domain-specific workflows without forking the product.
 
 ## Data Flow
 

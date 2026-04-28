@@ -1,4 +1,4 @@
-# Jarvis Agents — Roadmap
+# Forge — Roadmap
 
 > Public roadmap — what we build and why. Concrete timelines and commitments live in internal planning; this doc names the direction.
 
@@ -9,7 +9,7 @@ Status: Alpha — expect breaking changes across `v0.x`
 
 ## 1. Positioning
 
-**Jarvis Agents** lets you remote-control your local Claude Code from a web dashboard. You keep your Claude subscription and your code on your own machines; Jarvis pairs them as **devices**, routes incoming issues through a 14-status pipeline, and captures every job so teams have visibility, resumability, and audit.
+**Forge** lets you remote-control your local Claude Code from a web dashboard. You keep your Claude subscription and your code on your own machines; Jarvis pairs them as **devices**, routes incoming issues through a 14-status pipeline, and captures every job so teams have visibility, resumability, and audit.
 
 The architectural story: **the server never holds your Claude credentials.** Think GitHub Actions self-hosted runners, for Claude Code.
 

@@ -9,7 +9,7 @@
  * the page falls back to a "Build from source" CTA.
  */
 
-const REPO = 'junixlabs/jarvis-agents';
+const REPO = 'SidCorp-co/forge';
 const RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
 const RELEASES_PAGE = `https://github.com/${REPO}/releases`;
 

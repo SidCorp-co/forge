@@ -128,7 +128,7 @@ Re-tag with the stable name once the artifacts look right.
 ## Rollback / emergency unpublish
 
 ```bash
-gh release delete vX.Y.Z --repo junixlabs/jarvis-agents --cleanup-tag
+gh release delete vX.Y.Z --repo SidCorp-co/forge --cleanup-tag
 ```
 
 `--cleanup-tag` removes the git tag too. Forks of installed users on this version stay on it (no auto-downgrade); the next valid release published as Latest takes over the updater channel.
