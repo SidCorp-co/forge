@@ -2,6 +2,7 @@
 
 import { Check, Copy, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
+import { Shell } from '@/components/layout/shell';
 import { Button, Modal } from '@/components/ui';
 import {
   useMintPairingCode,
@@ -35,7 +36,8 @@ export default function DevicesPage() {
   const [pairOpen, setPairOpen] = useState(false);
 
   return (
-    <div className="p-6 space-y-6">
+    <Shell>
+      <div className="flex h-full flex-col overflow-y-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-on-surface">Devices</h1>
@@ -93,7 +95,8 @@ export default function DevicesPage() {
       )}
 
       <PairDeviceModal open={pairOpen} onClose={() => setPairOpen(false)} />
-    </div>
+      </div>
+    </Shell>
   );
 }
 
