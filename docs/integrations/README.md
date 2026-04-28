@@ -24,7 +24,7 @@ _(None documented in depth yet. Core webhook ingestion works with generic JSON P
 2. Cover:
    - Direction (inbound webhook / outbound call / MCP / other)
    - What the external platform sends or expects
-   - How Jarvis maps the platform's fields to internal entities
+   - How Forge maps the platform's fields to internal entities
    - Auth mechanism (secret, OAuth, API key)
    - Required permissions on the external side
    - Known quirks / rate limits

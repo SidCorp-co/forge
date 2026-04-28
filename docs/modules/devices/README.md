@@ -4,7 +4,7 @@ Paired machines that run `claude` CLI locally. The runtime plane's connection po
 
 ## Overview
 
-A user pairs devices (laptop, desktop, CI box) with their account. Each device installs the Jarvis agent (Tauri `dev` or `forged` CLI). Projects bind to devices from a user's pool — one active at a time per project.
+A user pairs devices (laptop, desktop, CI box) with their account. Each device installs the Forge agent (Tauri `dev` or `forged` CLI). Projects bind to devices from a user's pool — one active at a time per project.
 
 ## Data Flow
 
@@ -62,7 +62,7 @@ A user pairs devices (laptop, desktop, CI box) with their account. Each device i
 | `owner` | User who paired this device |
 | `name` | User-provided, e.g. `macbook-pro` |
 | `platform` | `macos` \| `linux` \| `windows` |
-| `agentVersion` | Version of the Jarvis agent running on the device |
+| `agentVersion` | Version of the Forge agent running on the device |
 | `tokenHash` | argon2 hash of the device token (never stored plaintext) |
 | `tokenPrefix` | First 8 chars for UI display |
 | `status` | `online` \| `offline` \| `revoked` |

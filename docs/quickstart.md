@@ -58,7 +58,7 @@ Wait ~30 seconds for services to become healthy.
 ## 2. Create your first user and project
 
 1. Open <http://localhost:3000> — register a user for the web dashboard.
-2. **Verify your email.** Jarvis requires email verification before you can create your first project. Check the verification email; click the link.
+2. **Verify your email.** Forge requires email verification before you can create your first project. Check the verification email; click the link.
 3. Create a project. Note its slug — you'll use it when pairing a device.
 
 > Admin operations (user list, device list, audit log) are exposed at `/admin` in the web app once Phase 2.6 ships. Until then, use Drizzle Studio + REST.
@@ -144,7 +144,7 @@ Codes are valid for 5 minutes. Generate a new one from **Account → Devices →
 
 ### Email verification loop
 
-Jarvis sends verification via the configured SMTP provider. For local dev, set `SMTP_DEBUG=true` in `.env` to print verification links to the container logs instead.
+Forge sends verification via the configured SMTP provider. For local dev, set `SMTP_DEBUG=true` in `.env` to print verification links to the container logs instead.
 
 ---
 

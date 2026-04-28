@@ -115,7 +115,7 @@ MCP clients (Claude Code itself, Cline, custom tools) reach the same data via `/
 ```
 1. Webhook fires: GitHub issue opened (or Sentry alert, or Stripe event)
    → POST /api/webhooks/<project-id>
-   → Server creates a Jarvis issue in status `open`
+   → Server creates a Forge issue in status `open`
 
 2. Pipeline triggers `forge-triage` job (if auto-triage is enabled for this project)
    → Job row inserted: {project, issue, type: 'triage', status: 'queued'}

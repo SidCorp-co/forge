@@ -36,7 +36,7 @@ If a doc disagrees with the code, trust the code, then propose a doc fix in the 
 | `architecture/` | How is the system built? How do modules chain together? | Rarely |
 | `decisions/` | Why was X chosen over Y? | Append-only |
 | `guides/` | How do I do X? | When process changes |
-| `integrations/` | How does external platform Y work with Jarvis? | When platform API changes |
+| `integrations/` | How does external platform Y work with Forge? | When platform API changes |
 | `modules/` | How does feature Z work? Where does its data come from? | When feature changes |
 | `proposals/` | What will we build next? | Move to `modules/` when shipped |
 | `rfcs/` | Proposals through Final Comment Period | One per major change |

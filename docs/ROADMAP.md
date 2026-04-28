@@ -9,7 +9,7 @@ Status: Alpha — expect breaking changes across `v0.x`
 
 ## 1. Positioning
 
-**Forge** lets you remote-control your local Claude Code from a web dashboard. You keep your Claude subscription and your code on your own machines; Jarvis pairs them as **devices**, routes incoming issues through a 14-status pipeline, and captures every job so teams have visibility, resumability, and audit.
+**Forge** lets you remote-control your local Claude Code from a web dashboard. You keep your Claude subscription and your code on your own machines; Forge pairs them as **devices**, routes incoming issues through a 14-status pipeline, and captures every job so teams have visibility, resumability, and audit.
 
 The architectural story: **the server never holds your Claude credentials.** Think GitHub Actions self-hosted runners, for Claude Code.
 
@@ -17,7 +17,7 @@ The architectural story: **the server never holds your Claude credentials.** Thi
 
 1. **Engineering managers / tech leads (teams 3–20) already using Claude Code** — need visibility into agent-driven work, audit trails, multi-project coordination. Willing to self-host for control.
 2. **Developers who run Claude Code across many projects** — want persistent job state, resumability, webhook-driven triggers, multi-device pooling (laptop + desktop + CI).
-3. **Privacy-sensitive / regulated / agency teams** — cannot send code to third-party clouds. Jarvis's architecture guarantees Claude credentials and code never leave your devices.
+3. **Privacy-sensitive / regulated / agency teams** — cannot send code to third-party clouds. Forge's architecture guarantees Claude credentials and code never leave your devices.
 
 **What we are NOT:**
 - Not a replacement for Claude Code — we orchestrate, we don't reimplement.

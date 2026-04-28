@@ -10,14 +10,14 @@
 
 ## What it is
 
-Forge is an open-source **control plane** for Claude Code. You keep using `claude` on your own machine with your own Claude Pro/Max subscription. Jarvis adds the layer around it: a web dashboard to trigger work, a pipeline that routes issues through agent stages, and a full audit trail of every job.
+Forge is an open-source **control plane** for Claude Code. You keep using `claude` on your own machine with your own Claude Pro/Max subscription. Forge adds the layer around it: a web dashboard to trigger work, a pipeline that routes issues through agent stages, and a full audit trail of every job.
 
-- **Devices pair into your account.** Your laptop, desktop, or CI box runs the Jarvis agent, which spawns `claude` locally. The server never holds Claude credentials.
-- **Issues flow in from anywhere.** GitHub webhooks, Sentry alerts, Stripe events, your own API — create a webhook, point it at Jarvis, it becomes an issue.
+- **Devices pair into your account.** Your laptop, desktop, or CI box runs the Forge agent, which spawns `claude` locally. The server never holds Claude credentials.
+- **Issues flow in from anywhere.** GitHub webhooks, Sentry alerts, Stripe events, your own API — create a webhook, point it at Forge, it becomes an issue.
 - **A 14-status pipeline routes work.** Triage → clarify → plan → code → review → test → release. Per stage: auto-run or human gate.
 - **Every job is captured.** stdout, stderr, tool calls, diffs, token usage — streamed to the dashboard in real time, resumable on disconnect, replayable later.
 - **Extensible by design.** Write your own skills, define your own pipeline stages, bring your own runner.
-- **Multi-project, multi-device.** One Jarvis instance coordinates many projects. Each project binds to devices from a pool; one active at a time.
+- **Multi-project, multi-device.** One Forge instance coordinates many projects. Each project binds to devices from a pool; one active at a time.
 
 Think of it as **GitHub Actions self-hosted runners, for Claude Code.** The devices are yours. The compute is yours. The orchestration is open-source.
 
@@ -107,7 +107,7 @@ See [docs/architecture/system-overview.md](docs/architecture/system-overview.md)
 
 - **Custom skills** — author your own skill in `.claude/skills/` and register it with a pipeline stage.
 - **Custom pipeline stages** — modify the 14-status state machine for domain-specific flows (requires RFC for public releases).
-- **Custom runners** — the device agent is pluggable. Default runs `claude` CLI; future runners can be anything that emits the Jarvis event protocol.
+- **Custom runners** — the device agent is pluggable. Default runs `claude` CLI; future runners can be anything that emits the Forge event protocol.
 
 ## Roadmap
 

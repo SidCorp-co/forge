@@ -4,23 +4,24 @@ Consistent style across code, docs, UI, and public communication.
 
 ## Name
 
-- **Canonical:** `Forge` — two words, title case, both capitalized
-- **Short form:** `Jarvis` — acceptable only in casual contexts (tweets, social); never in docs or commits
-- **Code identifier:** `forge` — kebab-case, lowercase, used for repo, npm package, Docker image
-- **Never use:** `jarvisagents`, `JarvisAgents`, `JARVIS`, `forge` (internal codename, retired for OSS)
+- **Canonical:** `Forge` — single word, title case (capital F).
+- **Code identifier:** `forge` — kebab-case, lowercase. Used for the GitHub repo, root npm package, Docker image, and OS bundle name.
+- **Tauri desktop app:** `Forge Beta` (display name), `forge-beta` (binary). Will drop the "Beta" suffix when we exit `v0.x`.
+- **Org:** `SidCorp` (formal `SidCorp.co`); GitHub handle `SidCorp-co`. Repo: [`SidCorp-co/forge`](https://github.com/SidCorp-co/forge).
+- **Never use:** `Jarvis`, `Jarvis Agents`, `JARVIS`, `jarvis-agents`, `jarvisagents` — retired pre-OSS names. Old URLs auto-redirect, but new code, docs, and commits should not introduce them.
 
 ## Tagline
 
-**Primary:**
-> Remote-control your local Claude Code.
+**Primary (repo description, social one-liners):**
+> The open-source engine behind a POC studio. Webhook → AI agent pipeline → your machines, end-to-end. Self-hosted, MCP-native, Apache-2.0.
 
-**Secondary (developer-facing, community posts):**
-> GitHub self-hosted runners, for Claude Code.
+**Hero (README, landing page):**
+> Remote-control your local Claude Code. Webhook in. Pipeline out. Every job on record.
 
-**Rhythmic (tables, feature lists, footer):**
-> Webhook in. Pipeline out. Every job on record.
+**Developer-facing (community posts, blog):**
+> GitHub Actions self-hosted runners, for Claude Code.
 
-Lead with the action ("remote-control") — it's the concrete value. Avoid "open-source project management + AI agent platform" which under-sells what we actually do.
+Lead with the action ("remote-control") — it's the concrete value. Avoid "open-source project management + AI agent platform" — it under-sells what we actually do and reads as generic.
 
 ## Writing voice
 
@@ -52,16 +53,19 @@ Use "job" for individual agent runs (CI-style). "Session" is acceptable colloqui
 
 | Surface | Convention | Example |
 |---------|-----------|---------|
-| Repo / npm / Docker image | `kebab-case` | `forge` |
+| Repo / Docker image | `kebab-case` | `forge` |
+| npm package scope | `@forge/*` | `@forge/core`, `@forge/contracts` |
 | TypeScript files | `camelCase` | `userStore.ts` |
 | TypeScript exports (classes, React components) | `PascalCase` | `UserStore`, `IssueList` |
 | TypeScript functions, variables | `camelCase` | `fetchIssues`, `currentUser` |
 | REST API paths | `kebab-case`, plural | `/api/projects`, `/api/agent-sessions` |
 | Database tables | `snake_case`, plural | `projects`, `agent_sessions` |
 | Environment variables | `SCREAMING_SNAKE_CASE` | `DATABASE_URL`, `FORGE_API_KEY` |
-| Feature flags | `FEATURE_` prefix | `FEATURE_AI_CHAT`, `FEATURE_WIDGET_V2` |
-| Git branches | `type/short-description` | `feat/oauth-login`, `fix/ws-reconnect` |
+| Feature flags | camelCase in code, `FEATURE_*` env | `isEnabled('chatProvider')` ↔ `FEATURE_CHAT_PROVIDER` |
+| Git branches | `ISS-<id>-<short>` | `ISS-42-oauth-login` |
 | Issue IDs | `ISS-<number>` | `ISS-42` |
+
+Tauri bundle identifier follows reverse-DNS — `co.sidcorp.forge-beta`.
 
 ## Commit messages
 
@@ -71,13 +75,14 @@ Format: `type(scope): description`
 
 Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`, `build`, `style`, `revert`.
 
-Scopes (required unless root-level change): the package touched — `strapi`, `web`, `dev`, `forged`, `agent-core`, `app` (paused), `docs`, `ci`.
+Scopes (required unless root-level change): the package touched — `core`, `web`, `dev`, `contracts`, `app` (paused), `docs`, `ci`, `deps`.
 
 Examples:
 ```
-feat(strapi): add OAuth2 device flow endpoint
+feat(core): add OAuth2 device flow endpoint
 fix(web): resolve WebSocket reconnect race
 docs(readme): update quickstart for v0.2
+chore(deps): bump rustls-webpki to 0.103.13
 ```
 
 ### Breaking changes
@@ -95,7 +100,7 @@ BREAKING CHANGE: /users removed. Use /accounts. See migration-2.0.md.
 For non-trivial commits, body should include:
 
 ```
-feat(strapi): introduce agent session streaming
+feat(core): introduce agent session streaming
 
 Problem: Clients polling for session status caused DB load spikes.
 Solution: WebSocket subscription broadcasts chunks as they arrive.
@@ -134,8 +139,8 @@ Automated where possible, manual review otherwise:
 
 | Rule | Enforcement |
 |------|-------------|
-| TypeScript style | ESLint + Prettier per package |
-| Commit messages | commitlint hook (Phase 1) + PR title check in CI |
-| File/folder naming | Linted via custom ESLint rule (later) |
+| TypeScript style | Biome (lint + format) per package |
+| Commit messages | PR title check in CI; commitlint hook planned |
+| File/folder naming | Linted via custom rule (later) |
 | Error message format | PR review |
-| Brand voice | PR review, BRAND.md referenced in CONTRIBUTING |
+| Brand voice | PR review; BRAND.md referenced in CONTRIBUTING |
