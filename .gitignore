@@ -55,3 +55,6 @@ skills/*
 
 # Logs
 *.log
+
+# Internal-only docs (maintainer artifacts: release tests, migration audits, ops runbooks)
+.internal-docs/

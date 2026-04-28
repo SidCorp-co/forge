@@ -1,6 +1,6 @@
 # Issue Status Pipeline
 
-## Statuses (15)
+## Statuses
 
 | # | Status | Meaning | Trigger |
 |---|--------|---------|---------|
@@ -13,355 +13,165 @@
 | 7 | `deploying` | Deploying to staging | forge-review pass, or forge-code push (Simple/Medium) |
 | 8 | `testing` | QA against staging | Deploy success (auto-transitions from deploying) |
 | 9 | `staging` | Human final check before release | forge-test pass |
-| 11 | `released` | Approved for prod, triggers merge + deploy | Human confirms staging |
-| 12 | `closed` | Done / archived | forge-release or manual |
-| 13 | `reopen` | Rejected, needs fix | Rejection at any gate |
-| 14 | `on_hold` | Paused / blocked | Manual or infra failure |
-| 15 | `needs_info` | Blocked on clarification | Triage or manual |
+| 10 | `released` | Approved for prod, triggers merge + deploy | Human confirms staging |
+| 11 | `closed` | Done / archived | forge-release or manual |
+| 12 | `reopen` | Rejected, needs fix | Rejection at any gate |
+| 13 | `on_hold` | Paused / blocked | Manual or infra failure |
+| 14 | `needs_info` | Blocked on clarification | Triage or manual |
 
-## Pipeline Diagram
+## Flow
 
 ```
-                         ┌──────────────────────────────────────────────────┐
-                         │              HAPPY PATH                          │
-                         │                                                  │
-  ┌──────┐   forge-    ┌──────────┐  forge-  ┌─────────┐  human  ┌────────┐│
-  │ open │──triage───▶│ confirmed │──plan──▶│ waiting │──────▶│approved││
-  └──────┘            └──────────┘          │(Complex)│        └───┬────┘│
-                                             └─────────┘            │     │
-                                   Simple/Medium: auto-approve ─────┘     │
-                                                                          │
-                                              forge-code                  │
-                                                   │                      │
-                                            ┌──────▼──────┐               │
-                                            │ in_progress │               │
-                                            │             │               │
-                                            │ 1. implement│               │
-                                            │ 2. build    │               │
-                                            │ 3. test     │               │
-                                            │ 4. review   │               │
-                                            │    (Simple/ │               │
-                                            │     Medium) │               │
-                                            │ 5. commit   │               │
-                                            └──────┬──────┘               │
-                                                   │                      │
-                                    ┌──────────────┼──────────────┐       │
-                                    │              │              │       │
-                              Complex         Simple/Med     Simple      │
-                              push ISS-*     push ISS-*    (staging URL) │
-                                    │              │         merge to     │
-                             ┌──────▼──────┐       │         baseBranch   │
-                             │  developed  │       │              │       │
-                             └──────┬──────┘       │              │       │
-                                    │              │              │       │
-                              forge-review         │              │       │
-                                    │              │              │       │
-                             ┌──────┴──────┐       │              │       │
-                             │             │       │              │       │
-                          pass          has bugs   │              │       │
-                             │             │       │              │       │
-                             │      ┌──────▼──┐    │              │       │
-                             │      │ reopen  │    │              │       │
-                             │      └─────────┘    │              │       │
-                             │                     │              │       │
-                      ┌──────▼──────┐              │              │       │
-                      │  deploying  │◀─────────────┘              │       │
-                      └──────┬──────┘                             │       │
-                             │                                    │       │
-                    ┌────────┴────────┐                            │       │
-                    │                 │                            │       │
-               CI passed         CI failed                        │       │
-               deploy OK              │                           │       │
-                    │           ┌─────▼─────┐                     │       │
-                    │           │  reopen   │                     │       │
-                    │           │(code fix) │                     │       │
-                    │           └───────────┘                     │       │
-                    │                                             │       │
-               server deploy                                     │       │
-                    │                                             │       │
-             ┌──────┴──────┐                                      │       │
-             │             │                                      │       │
-          success     server fail                                 │       │
-             │        (retry 1-2x)                                │       │
-             │             │                                      │       │
-             │      ┌──────▼──────┐                               │       │
-             │      │   on_hold   │                               │       │
-             │      │(infra issue)│                               │       │
-             │      └─────────────┘                               │       │
-             │                                                    │       │
-      ┌──────▼──────┐◀───────────────────────────────────────────┘       │
-      │   testing   │                                                     │
-      └──────┬──────┘                                                     │
-             │                                                            │
-        forge-test                                                        │
-             │                                                            │
-      ┌──────▼──────┐                                                     │
-      │   staging   │                                                     │
-      └──────┬──────┘                                                     │
-             │                                                            │
-        human approve                                                     │
-             │                                                            │
-      ┌──────▼──────┐                                                     │
-      │  released   │                                                     │
-      └──────┬──────┘                                                     │
-             │                                                            │
-        forge-release                                                     │
-        (squash merge ISS-*                                               │
-         → productionBranch                                               │
-         + Coolify deploy)                                                │
-             │                                                            │
-      ┌──────▼──────┐                                                     │
-      │   closed    │                                                     │
-      └─────────────┘                                                     │
-                                                                          │
-                   ┌──────────────────────────────────────────────────────┘
-                   │  REJECTION (from review/test/staging)
-                   │
-            ┌──────▼──────┐    forge-fix    ─▶ back to developed (Complex)
-            │    reopen   │                    or deploying (Simple/Medium)
-            └─────────────┘
+open ──forge-triage──▶ confirmed ──forge-plan──▶ approved (S/M)
+                                                 └─▶ waiting ──human──▶ approved (Complex)
 
-  EXCEPTIONS (from any active state):
-  ┌───────────┐  ┌────────────┐
-  │  on_hold  │  │ needs_info │
-  └───────────┘  └────────────┘
+approved ──forge-code──▶ in_progress ──▶ developed (Complex)  ──forge-review──▶ deploying
+                                       └▶ deploying  (Simple/Medium, auto)         │
+                                                                                    ▼
+                          deploying ──CI+deploy success──▶ testing ──forge-test──▶ staging
+                                                                                    │
+                                                       human approve ◀──────────────┘
+                                                                │
+                                                                ▼
+                                                            released ──forge-release──▶ closed
+
+Rejection at review/test/staging  ──▶ reopen ──forge-fix──▶ developed (Complex) or deploying (S/M)
+Infra failure / unknown hang      ──▶ on_hold (manual)
+Triage cannot proceed             ──▶ needs_info (manual)
 ```
 
-## Pipeline Steps
-
-1. **open** → forge-triage → **confirmed** (or **needs_info**)
-2. **confirmed** → forge-plan → **approved** (Simple/Medium) or **waiting** (Complex, human gate)
-3. **waiting** → human approve → **approved**
-4. **approved** → forge-code → **in_progress** (implement + build + review + commit + push) → exit varies by complexity
-5. **developed** → forge-review → **deploying** (pass) or **reopen** (has bugs) — Complex only
-6. **deploying** → deploy success → **testing**
-7. **testing** → forge-test → **staging** (pass) or **reopen** (fail)
-9. **staging** → human approve → **released**
-10. **released** → forge-release → squash merge ISS-* to productionBranch → Coolify deploy → **closed**
-
-**Rejection** → **reopen** → forge-fix (on ISS-* branch, merge to baseBranch) → **developed** (Complex) or **deploying** (Simple/Medium)
+`waiting` and `staging` are always human gates — no auto-approve.
 
 ## Branching Model
 
-Two branches serve different environments:
-- **baseBranch** (e.g. `develop`, `main`) — staging/testing environment. Issues merge here for QA.
-- **productionBranch** (e.g. `master`) — production. Only forge-release merges here via squash merge.
+- **baseBranch** (e.g. `develop`, `main`) — staging environment. Issues merge here for QA.
+- **productionBranch** (e.g. `master`) — production. Only forge-release merges here, via squash merge.
 
-```
-ISS-* branch ──merge──▶ baseBranch (staging) ──▶ staging env for QA
-                  │
-                  └─── at released ──squash merge──▶ productionBranch (production)
-```
+The ISS-* branch is kept alive across the whole pipeline. forge-code pushes it; forge-fix fixes on it; forge-release squash-merges it to productionBranch at the end.
 
-**Key rule:** Never merge baseBranch → productionBranch directly. baseBranch may have commits from many issues. Each issue reaches production independently via its own ISS-* branch.
-
-The ISS-* branch is kept alive through the entire pipeline. forge-code pushes it, forge-fix fixes on it, and forge-release squash-merges it to productionBranch at the end.
+**Never merge baseBranch → productionBranch directly** — baseBranch may carry commits from many issues. Each issue reaches production independently via its own ISS-* branch.
 
 ## Deploy Routing (forge-code exit)
 
-How forge-code exits `in_progress` depends on project config and issue complexity. In all cases, the ISS-* branch is pushed and kept alive.
+How forge-code exits `in_progress` depends on issue complexity. The ISS-* branch is always pushed.
 
-| Scenario | Action | Exit Status |
-|----------|--------|-------------|
-| **Simple / Medium** | Push ISS-*, merge to baseBranch → `forge_coolify_deploy` | `deploying` (auto-transitions to `testing`) |
-| **Complex** | Push ISS-* feature branch | `developed` (triggers forge-review) |
+| Complexity | Action | Exit Status |
+|------------|--------|-------------|
+| Simple / Medium | Push ISS-*, merge to baseBranch → trigger deploy | `deploying` (auto-transitions to `testing`) |
+| Complex | Push ISS-* feature branch only | `developed` (triggers forge-review) |
 
-Staging is the sole test environment. The `deploying` status auto-transitions to `testing` via the issue lifecycle hook.
+Staging is the sole automated test environment.
 
 ## What Happens Inside `in_progress`
 
-forge-code (and forge-fix) handle the full local development cycle before pushing:
+forge-code (and forge-fix) run the full local cycle before pushing:
 
-```
-in_progress:
-  1. Implement changes (follow plan)
-  2. Run build (`npm run build`) — catch compile/type errors
-  3. Test API if applicable (curl affected endpoints)
-  4. Code review (tiered by complexity):
-     - Simple: self-review (read diff)
-     - Medium: quick review agent (Bug-severity only)
-     - Complex: full review agent + simplifier
-  5. Fix any review findings
-  6. Commit (local)
-  7. Push → exit status depends on deploy routing (see above)
-```
+1. Implement changes per plan
+2. Build (`npm run build`) — catch compile/type errors
+3. Test affected endpoints if applicable
+4. Tiered code review:
+   - Simple: self-review (read diff)
+   - Medium: quick review agent (Bug-severity only)
+   - Complex: full review agent + simplifier
+5. Fix review findings
+6. Commit locally
+7. Push — exit status per Deploy Routing above
 
-Build and review happen BEFORE push. Only clean, reviewed code gets pushed and deployed.
+Build and review happen **before** push. Only clean code reaches `deploying`.
 
-For **Complex** issues, an additional independent review (forge-review) happens after push at `developed` status, before the code reaches `deploying`.
+For Complex issues, an additional independent review (forge-review) runs at `developed` before `deploying`.
 
 ## Deploy Failure Handling
 
-Deploy has two failure modes with different causes and responses:
+Two failure modes with different responses:
 
 ### CI Pipeline Failed (code problem)
 
-GitLab webhook sends `status: 'failed'` with job info but no logs.
-Fetch build logs via GitLab API: `GET /projects/:id/jobs/:job_id/trace`.
+CI returns `status: 'failed'`. Build logs are fetched from the CI provider and posted as a comment. The orchestrator transitions to `reopen`; forge-fix reads the comment, fixes the code, re-pushes.
 
 ```
-deploying → CI fails → reopen
-                         │
-                    forge-fix reads CI error from comment
-                    fixes code (in_progress: build + review + push)
-                    → deploying again
+deploying → CI fails → reopen → forge-fix → deploying
 ```
-
-Post comment with:
-- Which job failed (`build-web`, `build-api`)
-- `failure_reason` from webhook (`script_failure`, etc.)
-- Last N lines of CI job trace (fetched via GitLab API)
 
 ### Server Deploy Failed (infra problem)
 
-Docker build/start/health check failed on deploy server.
-Logs captured by the deploy service.
+Docker build/start/health check failed on the deploy server. Auto-retry 1–2x; if still failing, transition to `on_hold` for human ops.
 
 ```
-deploying → server fail → auto-retry (1-2x)
-                              │
-                         still fails → on_hold
-                                        │
-                                   human investigates
-                                   fixes infra
-                                   re-triggers deploy
+deploying → server fail → retry → on_hold (after retries exhausted or 15min hang)
 ```
-
-Post comment with:
-- Deploy step that failed (clone, build, start, health check)
-- Docker compose logs (already captured, sanitized)
-- Stuck recovery marks as `on_hold` after 15min timeout
 
 | Failure | Cause | Status | Handler |
 |---------|-------|--------|---------|
 | CI pipeline failed | Code doesn't build | `reopen` | forge-fix |
-| Server deploy failed | Infra issue | `on_hold` | Human/ops |
-| Deploy stuck >15min | Unknown hang | `on_hold` | Human/ops |
+| Server deploy failed | Infra issue | `on_hold` | Human / ops |
+| Deploy stuck >15 min | Unknown hang | `on_hold` | Human / ops |
 
-## Pipeline Orchestrator
+## Orchestrator
 
-The orchestrator (`forge/core/src/pipeline/orchestrator.ts`) watches issue status changes and dispatches the appropriate skill.
+The orchestrator watches issue status changes and dispatches the matching skill. Source: `forge/core/src/pipeline/orchestrator.ts`.
 
-### Skill Mapping
+### Skill mapping
 
-```
-Status        → Skill          → Config Toggle
-─────────────────────────────────────────────────
-open          → forge-triage   → autoTriage
-confirmed     → forge-plan     → autoPlan
-approved      → forge-code     → autoCode
-developed     → forge-review   → autoReview
-testing       → forge-test     → autoTest
-reopen        → forge-fix      → autoFix
-released      → forge-release  → autoRelease
-```
+| Status | Skill | Per-project toggle |
+|--------|-------|--------------------|
+| `open` | forge-triage | `autoTriage` |
+| `confirmed` | forge-plan | `autoPlan` |
+| `approved` | forge-code | `autoCode` |
+| `developed` | forge-review | `autoReview` |
+| `testing` | forge-test | `autoTest` |
+| `reopen` | forge-fix | `autoFix` |
+| `released` | forge-release | `autoRelease` |
 
 Human-gated statuses (`waiting`, `staging`) never trigger automated skills.
 
-### Execution Modes
+### Execution modes
 
-Each pipeline step can run via one of two runners:
+Each step runs through one of:
 
-| Runner | How it works |
-|--------|-------------|
-| **desktop** (default) | Creates agent session, sends to desktop device via WebSocket → Claude CLI |
-| **antigravity** | Sends prompt to Antigravity service for server-side execution |
+- **desktop** (default) — agent session over WebSocket → device runs Claude CLI in a git worktree
+- **antigravity** — server-side execution via the Antigravity service
 
-### Queue Management
+### Concurrency
 
-Desktop runners share a single repo checkout per project, so only one agent runs per project at a time:
+Desktop runners share one repo checkout per project, so only one agent runs per project at a time. Concurrent triggers are queued (FIFO) with deduplication on `issueId+status`.
 
-- If a step triggers while another is running → session created with status `queued`
-- On session complete → next queued session promoted (FIFO)
-- Deduplication: skip if same issue+status already queued
+### Reopen cycle protection
 
-### Session Continuity
+After 5 `reopen → fix → deploying` cycles for the same issue, auto-fix stops and the issue stays at `reopen` for human review. Manual triggers bypass this limit.
 
-Pipeline steps try to resume existing Claude CLI sessions so context carries across steps (triage → plan → code → review → test → fix). Failed sessions are retried up to 5 times.
+## Project pipeline configuration
 
-### Batching
+The automated pipeline is opt-in per project via `agentConfig.pipelineConfig`. Each step toggle is either:
 
-Related issues (`related_to`) at the same status are batched into a single agent session:
-- Avoids duplicate exploration
-- Prevents merge conflicts on overlapping files
-- Ensures all related changes are on one branch
+- a boolean (`true` = enabled, desktop runner, default model), or
+- an object `{ enabled, runner, model }` for runner / model overrides per step.
 
-### Reopen Cycle Protection
+Top-level `enabled: false` (default) disables all automation — every status transition becomes manual. Individual `auto*` toggles let projects opt out of specific steps (e.g. `autoTest: false` for human QA only).
 
-Tracks `reopen → fix → deploying` cycles per issue. After 5 cycles, auto-fix stops and the issue stays at `reopen` for human review. Manual triggers bypass this limit.
+`previewDeploy` carries the staging URL + test credentials used by forge-test. Schema lives next to the orchestrator code; consult that as the source of truth.
 
-### Pikachu Shadow Evaluation
+## Pipeline skills summary
 
-Pikachu runs alongside the pipeline as a shadow evaluator — it makes routing and rejection decisions independently and posts them as activity comments for comparison. Does NOT affect pipeline flow.
+| Skill | Trigger status | Exit status | What it does |
+|-------|---------------|-------------|--------------|
+| **forge-triage** | `open` | `confirmed` / `needs_info` | Validate completeness, classify complexity, set category/priority |
+| **forge-plan** | `confirmed` | `approved` (S/M) / `waiting` (C) | Explore code, write implementation plan + QA scenarios |
+| **forge-code** | `approved` | `developed` / `deploying` | Implement, build, tiered review, commit, push |
+| **forge-review** | `developed` | `deploying` / `reopen` | Independent fresh-context code review |
+| **forge-test** | `testing` | `staging` / `reopen` | API + browser QA against staging |
+| **forge-fix** | `reopen` | `developed` (C) / `deploying` (S/M) | Scoped fix on ISS-* branch |
+| **forge-release** | `released` | `closed` | Squash merge ISS-* to productionBranch, trigger production deploy |
 
-### Trigger Guards
+## Removed statuses (historical)
 
-- `open` from `needs_info` → don't re-triage (prevents loops when users answer questions)
-- Manual triggers bypass `enabled` and per-step toggles (user explicitly requested)
+Older revisions of the pipeline used additional statuses; they are no longer valid and should not appear in new code or fixtures.
 
-## Project Pipeline Configuration
-
-The automated pipeline is opt-in per project. Not all projects use automation — some are manual-only.
-
-### Project-level config
-
-Each project has `agentConfig.pipelineConfig` controlling which steps are automated:
-
-```json
-{
-  "enabled": true,
-  "autoTriage": true,
-  "autoPlan": true,
-  "autoCode": true,
-  "autoReview": true,
-  "autoTest": true,
-  "autoFix": true,
-  "autoRelease": true,
-  "previewDeploy": {
-    "repoUrl": "...",
-    "stagingUrl": "...",
-    "stagingApiUrl": "...",
-    "testCredentials": [{ "label": "Admin", "username": "...", "password": "..." }]
-  }
-}
-```
-
-Each step toggle supports both boolean and object form:
-- `true` — enabled, desktop runner
-- `{ "enabled": true, "runner": "antigravity", "model": "..." }` — enabled with specific runner/model
-
-### Behavior
-
-- **`enabled: false`** (default) — no automation, all status transitions are manual
-- **`enabled: true`** — orchestrator watches status changes and triggers the next skill
-- Individual steps can be toggled off (e.g. `autoTest: false` = human does QA manually)
-- **`waiting` and `staging` are always human gates** — no config to auto-approve
-- `released` triggers forge-release (merge to production) when `autoRelease` is enabled
-
-### Startup Recovery
-
-On `forge/core` startup, `cleanupStaleSessions()` finds crashed "running" sessions and reverts their issues to the trigger status so they can be re-triggered.
-
-## Pipeline Skills Summary
-
-| Skill | Status Trigger | Exit Status | Agent Name | What It Does |
-|-------|---------------|-------------|------------|-------------|
-| **forge-triage** | `open` | `confirmed` / `needs_info` | — | Validate completeness, classify complexity (Simple/Medium/Complex), set category/priority |
-| **forge-plan** | `confirmed` | `approved` (S/M) / `waiting` (C) | Alakazam | Explore codebase, write implementation plan with QA scenarios |
-| **forge-code** | `approved` | `developed` / `deploying` / `testing` | — | Implement from plan, build, test, review (tiered), commit, push |
-| **forge-review** | `developed` | `deploying` / `reopen` | Lapras | Independent code review with fresh context, check against project skills |
-| **forge-test** | `testing` | `staging` / `reopen` | Forge QA | QA against staging — API + browser testing |
-| **forge-fix** | `reopen` | `developed` (C) / `deploying` (S/M) | Blastoise | Scoped fix on ISS-* branch, merge to baseBranch |
-| **forge-release** | `released` | `closed` | Dragonite | Squash merge ISS-* to productionBranch, Coolify deploy, cleanup |
-
-## Removed Statuses (Historical)
-
-| Old Status | Replacement |
+| Old status | Replacement |
 |-----------|-------------|
 | `resolved` | `closed` |
-| `in_review` | `developed` (Complex) or removed (Simple/Medium — review inside `in_progress`) |
-| `rejected` | `closed` + comment/label |
+| `in_review` | `developed` (Complex) or removed entirely (Simple/Medium — review inside `in_progress`) |
+| `rejected` | `closed` + comment / label |
 | `duplicate` | `closed` + label `duplicate` |
 | `wontfix` | `closed` + label `wontfix` |
 | `failed` | `reopen` (code) or `on_hold` (infra) |
-

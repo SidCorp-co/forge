@@ -1,5 +1,7 @@
 # Release process
 
+> **Audience:** maintainers cutting an official release. End users building from source do not need to follow this — they can run `pnpm tauri build` directly.
+
 How a new version of Forge Beta (the Tauri desktop app) gets built, signed, published, and surfaced on `/download`.
 
 ## TL;DR

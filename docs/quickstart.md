@@ -19,17 +19,28 @@ cp .env.example .env
 
 ### Configure `.env`
 
-Minimum required values:
+Minimum required values (see `.env.example` for the full list):
 
 ```bash
-# Generate each with: openssl rand -base64 32
-APP_KEYS=<random-1>,<random-2>
-API_TOKEN_SALT=<random>
-ADMIN_JWT_SECRET=<random>
-TRANSFER_TOKEN_SALT=<random>
+# Generate strong values: openssl rand -base64 32
 JWT_SECRET=<random>
-ENCRYPTION_KEY=<random>
+DEVICE_TOKEN_PEPPER=<random>
+
+# Database
 POSTGRES_PASSWORD=<choose-one>
+
+# URLs (defaults work for local Docker Compose)
+CORS_ORIGINS=http://localhost:3000
+APP_BASE_URL=http://localhost:3000
+NEXT_PUBLIC_API_URL=http://localhost:8080/api
+
+# SMTP — required by core schema; leave blank for dev (set SMTP_DEBUG=true to log
+# verification links to container logs instead of sending email)
+SMTP_HOST=
+SMTP_PORT=
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM=
 ```
 
 ### Start
