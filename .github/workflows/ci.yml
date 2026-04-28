@@ -16,7 +16,6 @@ jobs:
     outputs:
       web: ${{ steps.filter.outputs.web }}
       dev: ${{ steps.filter.outputs.dev }}
-      app: ${{ steps.filter.outputs.app }}
       core: ${{ steps.filter.outputs.core }}
       docs: ${{ steps.filter.outputs.docs }}
     steps:
@@ -24,21 +23,21 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: filter
         with:
+          # NB: dorny/paths-filter treats `!pattern` entries as separate
+          # positive matchers ("match files NOT matching pattern"), not as
+          # subtractions from the match set. With the default
+          # `predicate-quantifier: some`, a `!**/*.md` line would make a
+          # filter match any non-MD file in the diff. Don't use negations
+          # here — keep filters as plain positive include lists.
+          # forge/app/ is paused (ADR 0009); intentionally not gated.
           filters: |
             web:
               - 'forge/web/**'
-              - '!forge/web/**/*.md'
               - 'forge/contracts/**'
-              - '!forge/contracts/**/*.md'
             dev:
               - 'forge/dev/**'
-              - '!forge/dev/**/*.md'
-            app:
-              - 'forge/app/**'
-              - '!forge/app/**/*.md'
             core:
               - 'forge/core/**'
-              - '!forge/core/**/*.md'
               - 'pnpm-workspace.yaml'
               - 'pnpm-lock.yaml'
               - 'package.json'
@@ -56,7 +55,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "pnpm"
           cache-dependency-path: pnpm-lock.yaml
       - name: Install workspace dependencies
@@ -78,7 +77,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
           cache-dependency-path: forge/dev/package-lock.json
       - uses: dtolnay/rust-toolchain@stable
@@ -97,22 +96,9 @@ jobs:
           cargo fmt --all -- --check
           cargo clippy --all-targets -- -D warnings
 
-  app:
-    needs: changes
-    if: needs.changes.outputs.app == 'true'
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: forge/app
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: forge/app/package-lock.json
-      - run: npm ci
-      - run: npx tsc --noEmit
+  # forge/app/ job removed: mobile is paused per ADR 0009 with known
+  # type-error drift; no point gating CI on a package no one is meant to
+  # touch. Re-add when the app is unpaused.
 
   core:
     needs: changes
@@ -126,7 +112,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "pnpm"
           cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
@@ -191,7 +177,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "pnpm"
           cache-dependency-path: pnpm-lock.yaml
       - name: Install workspace dependencies
