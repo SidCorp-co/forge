@@ -260,6 +260,13 @@
       "when": 1777290000000,
       "tag": "0036_pipeline_self_healing",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1777700000000,
+      "tag": "0037_oauth_accounts",
+      "breakpoints": true
     }
   ]
 }

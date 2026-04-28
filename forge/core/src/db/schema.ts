@@ -38,11 +38,37 @@ export const pgVector = (dim: number) =>
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: text('email').notNull().unique(),
-  passwordHash: text('password_hash').notNull(),
+  // Nullable since 0037: OAuth-only users have no local password. The
+  // /auth/local handler rejects rows with a null hash so password-less
+  // accounts cannot be brute-forced via the email/password endpoint.
+  passwordHash: text('password_hash'),
   emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
   isCeo: boolean('is_ceo').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const oauthAccounts = pgTable(
+  'oauth_accounts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    // 'github' | 'google' | 'oidc' — kept as text rather than an enum so a
+    // future provider doesn't require a migration to add a value.
+    provider: text('provider').notNull(),
+    providerAccountId: text('provider_account_id').notNull(),
+    email: text('email'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    providerAccountUq: uniqueIndex('oauth_accounts_provider_account_uniq').on(
+      t.provider,
+      t.providerAccountId,
+    ),
+    userIdIdx: index('oauth_accounts_user_id_idx').on(t.userId),
+  }),
+);
 
 export const emailVerificationTokens = pgTable(
   'email_verification_tokens',

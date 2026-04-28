@@ -46,6 +46,11 @@ const flagDefs = {
   // diff editor and forge/dev sync engine land incrementally.
   skillUi: false,
 
+  // ISS-314 — OAuth/OIDC providers (GitHub + Google + generic OIDC). Surface
+  // is fully gated until the flag flips so the public auth pages stay clean
+  // even if env vars are accidentally set in a non-rolled-out environment.
+  socialAuth: false,
+
   // ISS-286 — Accept JWT via `?token=<jwt>` URL query on /ws upgrade. The
   // canonical path is `Sec-WebSocket-Protocol: forge.bearer.<jwt>`; query
   // auth leaks the JWT into nginx access logs / Referer / browser history.

@@ -80,8 +80,10 @@ describe('db/schema — users', () => {
     expect(email.isUnique).toBe(true);
   });
 
-  it('password_hash is notNull', () => {
-    expect(columnByName(users, 'password_hash').notNull).toBe(true);
+  it('password_hash is nullable (OAuth-only users have no local password)', () => {
+    // Made nullable in 0037 so OAuth-only users can be created without a
+    // local password. The /auth/local handler refuses login for null hashes.
+    expect(columnByName(users, 'password_hash').notNull).toBe(false);
   });
 
   it('email_verified_at is nullable timestamptz with no default', () => {

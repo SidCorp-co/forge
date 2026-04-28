@@ -67,6 +67,32 @@ const EnvSchema = z.object({
   LITELLM_MODEL: z.string().min(1).default('gpt-4o-mini'),
   GEMINI_API_KEY: z.string().min(1).optional(),
   GEMINI_MODEL: z.string().min(1).default('gemini-1.5-flash'),
+  // ISS-314 — OAuth/OIDC providers. All optional; a provider is "enabled"
+  // only when its required pair (clientId + clientSecret, plus issuerUrl
+  // for generic OIDC) are all set. The frontend fetches the live list from
+  // /api/auth/oauth/providers; we never hardcode which buttons render.
+  //
+  // OAUTH_REDIRECT_BASE is the public origin the provider should send the
+  // user back to (e.g. https://stg-jarvis-a2.thejunix.com). Defaults to
+  // APP_BASE_URL but is split out because some deployments terminate the
+  // OAuth callback on a different host (api subdomain) than the SPA.
+  OAUTH_REDIRECT_BASE: z.url().optional(),
+
+  // GitHub — plain OAuth 2.0, no id_token. We fetch /user + /user/emails.
+  GITHUB_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+  GITHUB_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+
+  // Google — full OIDC. Discovery doc is hardcoded; only id + secret needed.
+  GOOGLE_OIDC_CLIENT_ID: z.string().min(1).optional(),
+  GOOGLE_OIDC_CLIENT_SECRET: z.string().min(1).optional(),
+
+  // Generic OIDC (Auth0, Keycloak, Authentik, ZITADEL, …). Discovery is
+  // pulled from `${OIDC_ISSUER_URL}/.well-known/openid-configuration`.
+  OIDC_LABEL: z.string().min(1).default('Continue with SSO'),
+  OIDC_ISSUER_URL: z.url().optional(),
+  OIDC_CLIENT_ID: z.string().min(1).optional(),
+  OIDC_CLIENT_SECRET: z.string().min(1).optional(),
+  OIDC_SCOPES: z.string().min(1).default('openid email profile'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

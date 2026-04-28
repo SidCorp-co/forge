@@ -51,6 +51,13 @@ loginRoutes.post(
       throw invalidCredentials();
     }
 
+    // OAuth-only users have no local password (passwordHash is NULL since
+    // 0037). Run a dummy verify for timing parity, then refuse — they have
+    // to come back through their OAuth provider.
+    if (!user.passwordHash) {
+      await verifyPassword(password, await getDummyPasswordHash());
+      throw invalidCredentials();
+    }
     const ok = await verifyPassword(password, user.passwordHash);
     if (!ok) throw invalidCredentials();
 

@@ -12,6 +12,7 @@ import { devForceVerifyRoutes } from './auth/dev-force-verify.js';
 import { loginRoutes } from './auth/login.js';
 import { logoutRoutes } from './auth/logout.js';
 import { meRoutes } from './auth/me.js';
+import { oauthRoutes } from './auth/oauth/routes.js';
 import { preferenceRoutes } from './auth/preferences.js';
 import { refreshRoutes } from './auth/refresh.js';
 import { authRoutes } from './auth/register.js';
@@ -198,6 +199,9 @@ app.route('/api/auth', devForceVerifyRoutes);
 app.route('/api/auth', meRoutes);
 app.route('/api/auth', preferenceRoutes);
 app.route('/api/auth', logoutRoutes);
+// ISS-314 — OAuth/OIDC (GitHub + Google + generic OIDC). Internally gated
+// by `socialAuth` feature flag; safe to mount unconditionally.
+app.route('/api/auth', oauthRoutes);
 // projectHealthRoutes mounts /health (static) and must register before
 // projectRoutes which has GET /:id with a z.uuid() validator that would
 // 400-reject the literal "health" segment.
