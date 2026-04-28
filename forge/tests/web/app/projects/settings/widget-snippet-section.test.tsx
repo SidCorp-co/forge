@@ -21,7 +21,7 @@ describe('generateSnippet', () => {
   it('encodes apiKey, position, and themeColor in base64 data-config', () => {
     const snippet = generateSnippet({
       apiKey: 'fk_test',
-      apiUrl: 'https://stg-jarvis-a2.thejunix.com/api',
+      apiUrl: 'https://example.com/api',
       position: 'bottom-left',
       themeColor: 'var(--color-success)',
       projectName: 'ApiFlow',
@@ -41,13 +41,13 @@ describe('generateSnippet', () => {
   it('preserves trailing /api in apiUrl when building the bundle URL', () => {
     const snippet = generateSnippet({
       apiKey: 'fk_test',
-      apiUrl: 'https://stg-jarvis-a2.thejunix.com/api',
+      apiUrl: 'https://example.com/api',
       position: 'bottom-right',
       themeColor: 'var(--color-info)',
       projectName: 'ApiFlow',
       projectSlug: 'apiflow',
     });
 
-    expect(snippet).toContain('https://stg-jarvis-a2.thejunix.com/api/widget/apiflow/forge-widget.js');
+    expect(snippet).toContain('https://example.com/api/widget/apiflow/forge-widget.js');
   });
 });

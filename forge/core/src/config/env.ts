@@ -21,7 +21,7 @@ const EnvSchema = z.object({
   SMTP_DEBUG: z.coerce.boolean().default(false),
   APP_BASE_URL: z.url().default('http://localhost:3000'),
   CORS_ORIGINS: z.string().default('http://localhost:3000'),
-  // Optional auth-cookie domain. Set to a parent domain like `.thejunix.com`
+  // Optional auth-cookie domain. Set to a parent domain like `.example.com`
   // when web + WS live on different subdomains so the cookie is shared.
   // Default unset — cookie is host-scoped to the request hostname.
   AUTH_COOKIE_DOMAIN: z.string().optional(),
@@ -73,7 +73,7 @@ const EnvSchema = z.object({
   // /api/auth/oauth/providers; we never hardcode which buttons render.
   //
   // OAUTH_REDIRECT_BASE is the public origin the provider should send the
-  // user back to (e.g. https://stg-jarvis-a2.thejunix.com). Defaults to
+  // user back to (e.g. https://your-host.example.com). Defaults to
   // APP_BASE_URL but is split out because some deployments terminate the
   // OAuth callback on a different host (api subdomain) than the SPA.
   OAUTH_REDIRECT_BASE: z.url().optional(),

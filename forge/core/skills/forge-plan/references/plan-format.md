@@ -59,7 +59,7 @@ Each scenario = Setup → Action → Verify → Contrast (optional).>
 **API Test Plan** — only include for changes that touch backend API endpoints, controllers, or services. Each test should specify the endpoint, method, request body, **and the expected response** (status code + key fields/values). The expected output is the contract that QA will later verify — forge-code confirms the API returns exactly what QA expects. Include a curl example so forge-code can run it against the local dev server. **Omit entirely for frontend-only changes** — frontend testing is handled by QA (forge-test).
 
 **QA Scenarios** — these are consumed by `forge-test` which executes them against the live preview/staging deployment using browser automation and API calls. Each scenario follows the pattern:
-- **Setup**: preconditions (role, time override, data state). Be specific: "Login as Employee (tuyendtb@canawan.com)" not just "login as employee".
+- **Setup**: preconditions (role, time override, data state). Be specific: "Login as Employee (employee@example.com)" not just "login as employee".
 - **Action**: concrete user steps. "Navigate to /attendance → Click Clock Out" not "test clockout".
 - **Verify**: expected observable result. "No warning dialog appears" not "works correctly".
 - **Contrast** (optional but valuable): the opposite case that proves the logic isn't broken. If the fix hides something for Role A, the contrast tests that Role B still sees it. If the fix changes behavior on Saturday, the contrast tests that weekday behavior is unchanged.
