@@ -16,6 +16,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+## [0.1.16] - 2026-04-28
+
+OSS launch prep — first release with a working release pipeline. Tags `v0.1.6` through `v0.1.15` were created during pipeline debugging and never published; this is the first version to actually produce installable artifacts. Desktop binary version realigned from the legacy `0.2.x` `forge-beta` train back to the repo's `0.1.x` line so tag, package, and Cargo versions match.
+
+### Added
+
+- Release pipeline now produces signed (where secrets are configured) macOS, Windows, and Linux artifacts on every `v*.*.*` tag.
+- Per-package READMEs for `forge/dev`, `forge/contracts`, and `forge/app` (with paused-per-ADR-0009 banner).
+- Conditional Apple Developer ID + Windows code-signing env in `.github/workflows/release.yml`. Builds remain unsigned (and installable with one-time OS warnings) until the optional `APPLE_*` / `WINDOWS_*` secrets are set; see [`docs/guides/release.md`](docs/guides/release.md) for the playbook.
+- `NEXT_PUBLIC_APP_URL` in `forge/web` drives canonical / OpenGraph URLs on `/download` instead of a hardcoded staging origin.
+- `forge/core` `dev` and `start` scripts auto-load `.env` via `--env-file-if-exists`.
+- OAuth/OIDC keys (`GITHUB_OAUTH_*`, `GOOGLE_OAUTH_*`, `OIDC_*`) documented in `forge/core/.env.example`.
+- `Apache-2.0` license declared explicitly on every workspace package.
+
+### Changed
+
+- Desktop binary version realigned: `forge/dev/package.json`, `tauri.conf.json`, and `Cargo.toml` all on `0.1.16` (was `0.2.27` / `0.2.27` / `0.2.4` — three-way drift).
+- `forge/web` README rewritten from the default `create-next-app` boilerplate to a Jarvis-specific guide.
+- `forge/dev/CLAUDE.md` updated to past-tense Strapi removal and "Forge core API client" naming.
+- `/download` Quickstart Step 2 now walks through self-hosting (`docker compose up`) instead of pointing at an internal staging instance.
+
+### Fixed
+
+- `release.yml` failed every build at `pnpm/action-setup` because pnpm version was specified twice (`version: 9` + `packageManager` in `package.json`). Removed the explicit version.
+- `release.yml` `cache-dependency-path` pointed at non-existent `forge/dev/pnpm-lock.yaml` — fixed to root `pnpm-lock.yaml`.
+- `release.yml` ran `pnpm install` in `forge/dev` (workspace member, no own lockfile) — moved to repo root.
+
+### Security
+
+- Real-looking GitHub OAuth credentials removed from on-disk `forge/core/.env` (file deleted; gitignored, never in git history). Rotate the OAuth App secret at github.com/settings/developers as a precaution.
+
 ## [0.1.5-beta] - 2026-04-27
 
 First end-to-end autonomous pipeline run on forge/core staging. Beta build
