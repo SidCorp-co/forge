@@ -7,6 +7,7 @@ import { useAuth } from '@/providers/auth-provider';
 import { useSetPageTitle } from '@/hooks/use-page-title';
 import { extractFieldErrors } from '@/lib/api/extract-field-errors';
 import { Field } from '../components/field';
+import { PasswordMeter } from '../components/password-meter';
 import { PrimaryButton } from '../components/primary-button';
 
 const registerSchema = z
@@ -97,24 +98,31 @@ export function RegisterForm() {
         error={fieldErrors.email}
       />
 
-      <Field
-        id="password"
-        name="password"
-        type="password"
-        label="Password"
-        autoComplete="new-password"
-        placeholder="••••••••"
-        hint="8+ characters"
-        value={password}
-        onChange={(e) => {
-          setPassword(e.target.value);
-          if (fieldErrors.password) setFieldErrors((p) => ({ ...p, password: undefined }));
-          if (fieldErrors.confirmPassword && e.target.value === confirmPassword) {
-            setFieldErrors((p) => ({ ...p, confirmPassword: undefined }));
-          }
-        }}
-        error={fieldErrors.password}
-      />
+      <div>
+        <Field
+          id="password"
+          name="password"
+          type="password"
+          label="Password"
+          autoComplete="new-password"
+          placeholder="••••••••"
+          hint="8+ characters"
+          value={password}
+          onChange={(e) => {
+            setPassword(e.target.value);
+            if (fieldErrors.password) setFieldErrors((p) => ({ ...p, password: undefined }));
+            if (fieldErrors.confirmPassword && e.target.value === confirmPassword) {
+              setFieldErrors((p) => ({ ...p, confirmPassword: undefined }));
+            }
+          }}
+          error={fieldErrors.password}
+        />
+        {/* Realtime zxcvbn meter — server still enforces score ≥ 2 in
+            register.ts so a tampered client cannot smuggle a weak choice
+            through. The lib is dynamically imported on first keystroke
+            so the cold /register payload stays small. */}
+        <PasswordMeter password={password} userInputs={[email]} />
+      </div>
 
       <Field
         id="confirmPassword"

@@ -9,6 +9,7 @@ import { logger } from '../logger.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { sendVerificationEmail } from './email.js';
 import { hashPassword } from './password.js';
+import { MIN_PASSWORD_SCORE, evaluatePasswordStrength } from './password-strength.js';
 import { issueVerificationToken } from './verification-token.js';
 
 export const registerSchema = z.object({
@@ -34,6 +35,29 @@ authRoutes.post(
   }),
   async (c) => {
     const { email, password } = c.req.valid('json');
+
+    // Strength check uses email as a personal input so `alex@studio.com`
+    // refusing a password of "alex123" is automatic. Length floor stays in
+    // the zod schema (8 chars) so an empty/short password trips earlier
+    // with field-level feedback; this catches the dictionary cases zxcvbn
+    // is built for.
+    const strength = evaluatePasswordStrength(password, [email]);
+    if (strength.score < MIN_PASSWORD_SCORE) {
+      throw new HTTPException(400, {
+        message: 'Password is too weak',
+        cause: {
+          code: 'WEAK_PASSWORD',
+          details: {
+            fieldErrors: {
+              password: [strength.warning || 'Password is too easy to guess'],
+            },
+            score: strength.score,
+            suggestions: strength.suggestions,
+          },
+        },
+      });
+    }
+
     const passwordHash = await hashPassword(password);
 
     try {

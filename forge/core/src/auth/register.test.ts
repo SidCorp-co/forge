@@ -58,16 +58,16 @@ describe('POST /api/auth/register', () => {
     const res = await buildApp().request('/api/auth/register', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: 'a@b.co', password: 'password1' }),
+      body: JSON.stringify({ email: 'a@b.co', password: 'quartz-juniper-tessellate' }),
     });
 
     expect(res.status).toBe(201);
     await expect(res.json()).resolves.toEqual({ userId: 'uuid-1', email: 'a@b.co' });
-    expect(hashPassword).toHaveBeenCalledWith('password1');
+    expect(hashPassword).toHaveBeenCalledWith('quartz-juniper-tessellate');
     expect(db.insert).toHaveBeenCalledTimes(1);
     expect(insertValues).toHaveBeenCalledWith({
       email: 'a@b.co',
-      passwordHash: 'hashed:password1',
+      passwordHash: 'hashed:quartz-juniper-tessellate',
     });
     // emailVerifiedAt not set — DB default (null) applies.
     const values = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
@@ -83,7 +83,7 @@ describe('POST /api/auth/register', () => {
     const res = await buildApp().request('/api/auth/register', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: 'f@b.co', password: 'password1' }),
+      body: JSON.stringify({ email: 'f@b.co', password: 'quartz-juniper-tessellate' }),
     });
 
     expect(res.status).toBe(201);
@@ -98,7 +98,7 @@ describe('POST /api/auth/register', () => {
     const res = await buildApp().request('/api/auth/register', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: 'dup@b.co', password: 'password1' }),
+      body: JSON.stringify({ email: 'dup@b.co', password: 'quartz-juniper-tessellate' }),
     });
 
     expect(res.status).toBe(409);
@@ -110,7 +110,7 @@ describe('POST /api/auth/register', () => {
     const res = await buildApp().request('/api/auth/register', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: 'not-an-email', password: 'password1' }),
+      body: JSON.stringify({ email: 'not-an-email', password: 'quartz-juniper-tessellate' }),
     });
 
     expect(res.status).toBe(400);
@@ -133,19 +133,39 @@ describe('POST /api/auth/register', () => {
     expect(db.insert).not.toHaveBeenCalled();
   });
 
+  it('returns 400 WEAK_PASSWORD when zxcvbn score < 2', async () => {
+    // 8+ chars but trivial dictionary word — passes the zod min-length but
+    // gets caught by the strength check.
+    const res = await buildApp().request('/api/auth/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'a@b.co', password: 'password' }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as {
+      code: string;
+      details?: { fieldErrors?: { password?: string[] }; score?: number };
+    };
+    expect(body.code).toBe('WEAK_PASSWORD');
+    expect(body.details?.score).toBeLessThan(2);
+    expect(body.details?.fieldErrors?.password?.[0]).toBeTruthy();
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
   it('lowercases and trims the email before insert', async () => {
     insertReturning.mockResolvedValueOnce([{ userId: 'uuid-2', email: 'foo@bar.com' }]);
 
     const res = await buildApp().request('/api/auth/register', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: '  Foo@Bar.COM  ', password: 'password1' }),
+      body: JSON.stringify({ email: '  Foo@Bar.COM  ', password: 'quartz-juniper-tessellate' }),
     });
 
     expect(res.status).toBe(201);
     expect(insertValues).toHaveBeenCalledWith({
       email: 'foo@bar.com',
-      passwordHash: 'hashed:password1',
+      passwordHash: 'hashed:quartz-juniper-tessellate',
     });
   });
 });
