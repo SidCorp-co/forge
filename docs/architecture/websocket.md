@@ -1,677 +1,164 @@
-# WebSocket Implementation Guide
+# WebSocket
 
-Reference documentation for rebuilding the WebSocket real-time layer in another project.
+Real-time channel between `forge/core` and clients (`forge/web`, `forge/dev`,
+embeddable widget). One endpoint, room-scoped, JSON envelopes.
 
-## Overview
+## Endpoint & connection
 
-A dual-purpose WebSocket system:
-1. **Broadcast** — push data-change events to ALL clients for cache invalidation
-2. **Session-targeted** — stream AI agent/chat responses to subscribed clients only
+- **URL:** `/ws` on the same host/port as the HTTP API. `WS_URL` is derived
+  from `NEXT_PUBLIC_API_URL` (e.g. `http://api/api` → `ws://api/ws`).
+- **Auth at upgrade:** required. Three accepted forms, in order:
+  1. `Authorization: Bearer <jwt|deviceToken>` — used by native clients
+     that can set arbitrary headers (Tauri).
+  2. `Sec-WebSocket-Protocol: forge.bearer.<jwt>` — used by browsers that
+     can't set Authorization on a WS upgrade. The server echoes the matched
+     subprotocol back so the handshake completes (ISS-286).
+  3. `forge_auth` cookie (same-origin browser path) — Web's default.
+- The legacy `?token=<jwt>` query path was removed in ISS-315 (leaked into
+  access logs / Referer / history).
+- Failed auth → `HTTP/1.1 401 Unauthorized` and the socket is destroyed.
+  A `404` from any layer means routing is broken, not auth.
+- **Heartbeat:** server pings every 30s; missing pong → terminate.
 
-Single WebSocket endpoint at `/ws`. No authentication on the WS connection itself — it's a notification channel, not a data channel.
+## Subscription model
 
----
+A connection is an authenticated principal (`user` or `device`). Principals
+join *rooms* to receive a stream of events scoped to that room. The server
+authorizes every subscribe via `canSubscribe(principal, room)`; an
+unauthorized subscribe gets a `subscribe.denied` event back, not a
+disconnect.
 
-## Server Side
+| Room | Membership rule |
+|---|---|
+| `project:<projectId>` | user is a project member, or device owned by such user |
+| `user:<userId>` | the principal IS that user (or its owning user, for devices) |
+| `device:<deviceId>` | principal owns the device, or IS the device |
+| `runner:<runnerId>` | runner's device or a member of runner's project |
 
-### Tech Stack
-- `ws` (npm) WebSocketServer, attached to the existing HTTP server
-- No separate WS port — shares the main HTTP server
-
-### Setup
-
-```ts
-import { WebSocketServer, WebSocket } from 'ws';
-
-let wss: WebSocketServer | null = null;
-const sessionSubscriptions = new Map<string, Set<WebSocket>>();
-
-export function initWebSocket(httpServer: any) {
-  wss = new WebSocketServer({ server: httpServer, path: '/ws' });
-
-  wss.on('connection', (ws) => {
-    ws.on('message', (raw) => {
-      try {
-        const msg = JSON.parse(raw.toString());
-        if (msg.type === 'subscribe' && msg.sessionId) {
-          let subs = sessionSubscriptions.get(msg.sessionId);
-          if (!subs) {
-            subs = new Set();
-            sessionSubscriptions.set(msg.sessionId, subs);
-          }
-          subs.add(ws);
-        } else if (msg.type === 'unsubscribe' && msg.sessionId) {
-          sessionSubscriptions.get(msg.sessionId)?.delete(ws);
-        }
-      } catch { /* ignore non-JSON */ }
-    });
-
-    ws.on('close', () => {
-      for (const subs of sessionSubscriptions.values()) {
-        subs.delete(ws);
-      }
-    });
-
-    ws.on('error', (err) => console.error('WS client error:', err));
-  });
-}
-```
-
-Call `initWebSocket(httpServer)` during server bootstrap.
-
-### Server API Functions
-
-#### `broadcast(event, data)`
-Send to ALL connected clients. Used for data-change notifications.
-
-```ts
-export function broadcast(event: string, data: unknown) {
-  if (!wss) return;
-  const message = JSON.stringify({ event, data, timestamp: new Date().toISOString() });
-  wss.clients.forEach((client) => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(message);
-    }
-  });
-}
-```
-
-#### `sendToSession(sessionId, event, data)`
-Send only to clients subscribed to a specific session. Used for AI streaming.
-
-```ts
-export function sendToSession(sessionId: string, event: string, data: unknown) {
-  const subs = sessionSubscriptions.get(sessionId);
-  if (!subs || subs.size === 0) return false;
-  const message = JSON.stringify({ event, data, timestamp: new Date().toISOString() });
-  let sent = 0;
-  for (const ws of subs) {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(message);
-      sent++;
-    }
-  }
-  return sent > 0;
-}
-```
-
-#### `waitForSubscriber(sessionId, timeoutMs)`
-Poll until at least one client subscribes. Prevents race conditions where the server starts streaming before the client has subscribed.
-
-```ts
-export function waitForSubscriber(sessionId: string, timeoutMs = 5000): Promise<boolean> {
-  const subs = sessionSubscriptions.get(sessionId);
-  if (subs && subs.size > 0) return Promise.resolve(true);
-  return new Promise((resolve) => {
-    const interval = 100;
-    let elapsed = 0;
-    const timer = setInterval(() => {
-      elapsed += interval;
-      const s = sessionSubscriptions.get(sessionId);
-      if (s && s.size > 0) {
-        clearInterval(timer);
-        resolve(true);
-      } else if (elapsed >= timeoutMs) {
-        clearInterval(timer);
-        resolve(false);
-      }
-    }, interval);
-  });
-}
-```
-
-### Wire Format
-
-All messages are JSON with a consistent envelope:
+**Client → server messages** (JSON, one frame each):
 
 ```json
-{
-  "event": "issue:created",
-  "data": { "documentId": "abc123", "title": "Bug report" },
-  "timestamp": "2025-01-15T10:30:00.000Z"
+{ "type": "subscribe",   "room": "project:abc" }
+{ "type": "unsubscribe", "room": "project:abc" }
+```
+
+Runner control adds `{"type":"runner:register|unregister|update", ...}` —
+device-only, gated by the `runnerFramework` feature flag.
+
+**Server → client envelope** (every published event):
+
+```json
+{ "event": "issue.updated", "data": { ... }, "timestamp": "2026-04-28T..." }
+```
+
+## Events
+
+Event names are dot-cased (`issue.updated`, not `issue:updated`). Categories
+and the rooms they publish to:
+
+| Category | Room | Source |
+|---|---|---|
+| `issue.*`, `task.*`, `schedule.*`, `skill.*` | `project:<id>` | `forge/core/src/ws/broadcast-subscribers.ts` |
+| `notification.*`, `user.preferencesChanged`, `chat.message` | `user:<id>` | `chat-sessions/routes.ts`, `chat/routes.ts`, broadcast-subscribers |
+| `job.*` (incl. `job.event` with `seq`) | `project:<id>` (and `device:<id>` for assignment) | `jobs/lifecycle-routes.ts`, `jobs/events-routes.ts`, `jobs/dispatcher.ts` |
+| `runner.*`, `device.status`, `pipeline.*` | `project:<id>` / `device:<id>` / `runner:<id>` | `runners/`, `devices/` |
+| `agent:*` (legacy colon names — agent runner internal) | `device:<id>` | `runners/adapters/claude-code.ts` |
+
+For the authoritative list, grep `roomManager.publish` in `forge/core/src/`.
+Event payloads are typed by the publishing module — do not derive shapes
+from this doc, read the call site.
+
+`job.event` carries a monotonic `seq` per `jobId` so clients can request
+missed events from the REST endpoint on reconnect (replay semantics).
+Project-room events are best-effort: the client invalidates broad React
+Query keys on reconnect to refetch anything visible.
+
+## Server primitives
+
+`forge/core/src/ws/server.ts` exports the lifecycle:
+
+- `attachWs(server)` — bind to the existing HTTP server, mount `/ws`.
+- `closeWs()` — graceful shutdown (sends 1001, falls back to terminate).
+- `roomManager` — singleton `RoomManager` from `ws/rooms.ts`.
+
+`RoomManager` exposes:
+
+- `subscribe(sub, room)` / `unsubscribe(sub, room)` — manual membership.
+- `publish(room, { event, data })` — fan out to all OPEN sockets in a
+  room. Returns delivered count.
+- `removeAll(sub)` — invoked on socket close.
+
+There is **no** session-targeted send and **no** `waitForSubscriber()` —
+both removed. To target a single user, publish to `user:<userId>`.
+
+## Client integration (forge/web)
+
+`forge/web/src/lib/ws/`:
+
+- **`client.ts`** — `wsClient` singleton. One connection per tab. Resends
+  all room subscriptions on every reopen. Reconnect is jittered exponential
+  backoff (1s base, 30s cap). Browsers authenticate via the `forge_auth`
+  cookie automatically; cross-origin embeds call `setBearerToken(jwt)`
+  before `connect()` to use the subprotocol path.
+- **`use-websocket.ts`** — `useWebSocket()` mounts the singleton once under
+  the auth provider. Listens via `event-router.ts` which maps event names
+  to React Query `invalidateQueries` calls.
+- **`use-room.ts`** — `useRoom(room)` subscribes a component to a room for
+  its lifetime; pass null while data is loading.
+- **`event-router.ts`** — single dispatch table. Cache keys here MUST match
+  the keys in feature hook modules — renaming one side silently breaks
+  realtime updates.
+- **`seq-tracker.ts`** — tracks last-seen `seq` per job for replay.
+
+The widget (`forge/web/src/widget/widget-root.tsx`) consumes `chat.message`
+events directly for streaming AI chat UI.
+
+## Design decisions
+
+1. **Auth at upgrade, not in payloads.** The connection identifies the
+   principal once; every published event carries only IDs. Sensitive data
+   is fetched via authenticated REST after a cache-invalidation event.
+2. **Room-scoped, not session-scoped.** A "session" is a principal +
+   rooms-of-interest. Unicast = publish to that user's room.
+3. **Cache invalidation, not state push.** WS events trigger React Query
+   refetches rather than carry domain state. Keeps REST as source of truth
+   and avoids stale-data races.
+4. **Jittered exponential backoff** prevents reconnect stampedes after
+   server restart. Project events are replayed best-effort by invalidating
+   `['issues'|'jobs'|'projects']` on reopen; job events use `seq` for exact
+   replay via REST.
+5. **Subscribe authorization on every join.** Membership changes (project
+   removed, device unbound) are enforced at subscribe-time; existing
+   subscriptions are not retroactively pruned.
+
+## Reverse proxy / Cloudflare
+
+WS upgrade only survives if every hop preserves it.
+
+**nginx — minimal `location` block:**
+
+```nginx
+location /ws {
+    proxy_pass http://core_upstream;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade    $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host       $host;
+    proxy_read_timeout 3600s;
 }
 ```
 
-### Client-to-Server Messages
-
-| Message | Purpose |
-|---------|---------|
-| `{ "type": "subscribe", "sessionId": "..." }` | Join a session channel |
-| `{ "type": "unsubscribe", "sessionId": "..." }` | Leave a session channel |
-
-### Triggering Broadcasts
-
-Call `broadcast()` from lifecycle hooks / service logic whenever data changes:
-
-```ts
-// In an issue lifecycle hook (after create)
-broadcast('issue:created', { documentId: result.documentId, title: result.title });
-
-// In a task lifecycle hook (after update)
-broadcast('task:updated', { documentId: result.documentId, status: result.status });
-
-// In AI enrichment service
-broadcast('issue:updated', { documentId: issueDocumentId });
-```
-
-### Triggering Session Events
-
-Call `sendToSession()` during AI agent/chat execution to stream responses:
-
-```ts
-// When a new chat session is ready
-broadcast('chat:session_ready', { sessionId, requestId });
-
-// During AI streaming — text chunks
-sendToSession(sessionId, 'chat:text_delta', { text: chunk });
-
-// Tool usage
-sendToSession(sessionId, 'chat:tool_use', { id: toolId, name: toolName });
-
-// Per-iteration done (tool calls finished, more iterations may follow)
-sendToSession(sessionId, 'chat:done', { usage });
-
-// Full run complete
-sendToSession(sessionId, 'chat:complete', { sessionId, reply: fullText });
-
-// Error
-sendToSession(sessionId, 'chat:error', { error: errorMessage });
-```
-
----
-
-## Client Side (React)
-
-### Tech Stack
-- Native browser `WebSocket` API
-- React hooks with `useRef` / `useState`
-- `@tanstack/react-query` for cache invalidation
-
-### WS URL Configuration
-
-```ts
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
-const API_ORIGIN = API_URL.replace(/\/api\/?$/, '');
-
-export const WS_URL =
-  process.env.NEXT_PUBLIC_WS_URL ||
-  API_ORIGIN.replace(/^http/, 'ws') + '/ws';
-// http://localhost:8080 -> ws://localhost:8080/ws
-```
-
-### Hook 1: `useWebSocket()` — Global Cache Invalidation
-
-Connects once at app level. Listens for broadcast events and invalidates React Query caches.
-
-```ts
-import { useEffect, useRef, useCallback, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-
-const MAX_RETRIES = 10;
-const BASE_DELAY = 1000;
-
-export function useWebSocket() {
-  const queryClient = useQueryClient();
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const retryCount = useRef(0);
-  const [connected, setConnected] = useState(false);
-
-  const invalidate = useCallback(
-    (keys: string[]) => {
-      keys.forEach((key) =>
-        queryClient.invalidateQueries({ queryKey: [key], refetchType: 'all' })
-      );
-    },
-    [queryClient]
-  );
-
-  const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
-    if (retryCount.current >= MAX_RETRIES) return;
-
-    const ws = new WebSocket(WS_URL);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setConnected(true);
-      retryCount.current = 0;
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        switch (msg.event) {
-          case 'issue:created':
-          case 'issue:updated':
-            invalidate(['issues', 'issue']);
-            break;
-          case 'task:created':
-          case 'task:updated':
-            invalidate(['tasks']);
-            break;
-          case 'notification:created':
-            invalidate(['notifications']);
-            break;
-        }
-      } catch {}
-    };
-
-    ws.onclose = () => {
-      setConnected(false);
-      if (retryCount.current < MAX_RETRIES) {
-        const delay = Math.min(BASE_DELAY * 2 ** retryCount.current, 30_000);
-        retryCount.current += 1;
-        reconnectTimer.current = setTimeout(connect, delay);
-      }
-    };
-
-    ws.onerror = () => ws.close();
-  }, [invalidate]);
-
-  useEffect(() => {
-    connect();
-    return () => {
-      clearTimeout(reconnectTimer.current);
-      wsRef.current?.close();
-    };
-  }, [connect]);
-
-  return { connected };
-}
-```
-
-**Key pattern:** Exponential backoff reconnect (1s, 2s, 4s, ... up to 30s, max 10 retries).
-
-### Hook 2: `useChatWebSocket()` — AI Chat Streaming
-
-Subscribes to a session and assembles streaming messages from text deltas, tool calls, and completion events.
-
-```ts
-import { useRef, useEffect, useCallback } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-
-interface ChatMessageData {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  isStreaming?: boolean;
-  toolCalls?: ToolCallData[];
-}
-
-interface ToolCallData {
-  id: string;
-  name: string;
-  isStreaming: boolean;
-  result?: string;
-  isError?: boolean;
-}
-
-interface UseChatWebSocketOptions {
-  sessionId: string | null;
-  setSessionId?: (id: string) => void;
-  setMessages: React.Dispatch<React.SetStateAction<ChatMessageData[]>>;
-}
-
-export function useChatWebSocket({ sessionId, setSessionId, setMessages }: UseChatWebSocketOptions) {
-  const wsRef = useRef<WebSocket | null>(null);
-  const streamingMsgId = useRef<string | null>(null);
-  const pendingRequestId = useRef<string | null>(null);
-  const sessionIdRef = useRef(sessionId);
-  sessionIdRef.current = sessionId;
-  const mountedRef = useRef(true);
-
-  const subscribeToSession = useCallback((sid: string) => {
-    const ws = wsRef.current;
-    if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'subscribe', sessionId: sid }));
-    }
-  }, []);
-
-  const unsubscribeFromSession = useCallback((sid: string) => {
-    const ws = wsRef.current;
-    if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'unsubscribe', sessionId: sid }));
-    }
-  }, []);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    let reconnectTimer: ReturnType<typeof setTimeout>;
-
-    function connect() {
-      const ws = new WebSocket(WS_URL);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        const sid = sessionIdRef.current;
-        if (sid) subscribeToSession(sid);
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          const msgId = streamingMsgId.current;
-
-          // Subscribe to new session before streaming starts
-          if (msg.event === 'chat:session_ready' && msg.data?.requestId === pendingRequestId.current) {
-            const sid = msg.data.sessionId;
-            pendingRequestId.current = null;
-            subscribeToSession(sid);
-            setSessionId?.(sid);
-          }
-
-          // Append text chunk to streaming message
-          if (msg.event === 'chat:text_delta' && msgId) {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === msgId ? { ...m, content: m.content + (msg.data?.text || '') } : m
-              )
-            );
-          }
-
-          // Add tool call to streaming message
-          else if (msg.event === 'chat:tool_use' && msgId) {
-            const toolCall: ToolCallData = {
-              id: msg.data?.id || crypto.randomUUID(),
-              name: msg.data?.name || 'tool',
-              isStreaming: true,
-            };
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === msgId
-                  ? { ...m, toolCalls: [...(m.toolCalls || []), toolCall] }
-                  : m
-              )
-            );
-          }
-
-          // Per-iteration done — mark tool calls finished, keep streaming
-          else if (msg.event === 'chat:done' && msgId) {
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.id !== msgId) return m;
-                return { ...m, toolCalls: m.toolCalls?.map((tc) => ({ ...tc, isStreaming: false })) };
-              })
-            );
-          }
-
-          // Full run complete — finalize message
-          else if (msg.event === 'chat:complete') {
-            const reply = msg.data?.reply || '';
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.id === msgId || (m.isStreaming && m.role === 'assistant')) {
-                  return { ...m, content: reply || m.content, isStreaming: false,
-                    toolCalls: m.toolCalls?.map((tc) => ({ ...tc, isStreaming: false })) };
-                }
-                return m;
-              })
-            );
-            streamingMsgId.current = null;
-          }
-
-          // Error — finalize with error message
-          else if (msg.event === 'chat:error' && msgId) {
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.id !== msgId) return m;
-                return { ...m, content: m.content || 'An error occurred.', isStreaming: false };
-              })
-            );
-            streamingMsgId.current = null;
-          }
-        } catch {}
-      };
-
-      ws.onerror = () => ws.close();
-      ws.onclose = () => {
-        if (mountedRef.current) reconnectTimer = setTimeout(connect, 2000);
-      };
-    }
-
-    connect();
-    return () => {
-      mountedRef.current = false;
-      clearTimeout(reconnectTimer);
-      wsRef.current?.close();
-    };
-  }, []);
-
-  // Re-subscribe when sessionId changes
-  useEffect(() => {
-    if (sessionId) subscribeToSession(sessionId);
-    return () => { if (sessionId) unsubscribeFromSession(sessionId); };
-  }, [sessionId, subscribeToSession, unsubscribeFromSession]);
-
-  return { wsRef, streamingMsgId, pendingRequestId, subscribeToSession };
-}
-```
-
-### Hook 3: `useAgentRunLog()` — Lightweight Progress Log
-
-Simple log-only stream for inline progress indicators (no full chat UI).
-
-```ts
-import { useState, useEffect, useRef, useCallback } from 'react';
-
-export function useAgentRunLog() {
-  const [status, setStatus] = useState<string | null>(null);
-  const [log, setLog] = useState<string[]>([]);
-  const [isRunning, setIsRunning] = useState(false);
-  const sessionIdRef = useRef<string | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-
-  const startRun = useCallback((sessionId: string, label: string) => {
-    sessionIdRef.current = sessionId;
-    setStatus(label);
-    setLog([]);
-    setIsRunning(true);
-    const ws = wsRef.current;
-    if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'subscribe', sessionId }));
-    }
-  }, []);
-
-  useEffect(() => {
-    let disposed = false;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-
-    function connect() {
-      if (disposed) return;
-      const ws = new WebSocket(WS_URL);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        if (disposed) { ws.close(); return; }
-        const sid = sessionIdRef.current;
-        if (sid) ws.send(JSON.stringify({ type: 'subscribe', sessionId: sid }));
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          if (!sessionIdRef.current) return;
-          if (msg.data?.sessionId && msg.data.sessionId !== sessionIdRef.current) return;
-
-          if (msg.event === 'agent:message') {
-            const content = msg.data?.message?.content;
-            if (Array.isArray(content)) {
-              for (const block of content) {
-                if (block.type === 'text' && block.text) {
-                  setLog((prev) => [...prev, block.text]);
-                } else if (block.type === 'tool_use') {
-                  setLog((prev) => [...prev, `Tool: ${block.name}`]);
-                }
-              }
-            }
-          } else if (msg.event === 'agent:complete') {
-            setStatus('Complete');
-            setIsRunning(false);
-            sessionIdRef.current = null;
-          }
-        } catch {}
-      };
-
-      ws.onclose = () => {
-        wsRef.current = null;
-        if (!disposed) reconnectTimer = setTimeout(connect, 2000);
-      };
-      ws.onerror = () => ws.close();
-    }
-
-    connect();
-    return () => {
-      disposed = true;
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      wsRef.current?.close();
-    };
-  }, []);
-
-  return { status, log, isRunning, startRun };
-}
-```
-
-### Polling Fallback
-
-If the WebSocket drops mid-stream, poll the session status as a safety net:
-
-```ts
-useEffect(() => {
-  if (!isRunning || !sessionId) return;
-  const interval = setInterval(async () => {
-    try {
-      const res = await api.getSession(sessionId);
-      if (res.data?.status !== 'running') {
-        finalize();
-        setIsRunning(false);
-      }
-    } catch {}
-  }, 15000);
-  return () => clearInterval(interval);
-}, [isRunning, sessionId]);
-```
-
----
-
-## Event Catalog
-
-### Broadcast Events (all clients)
-
-| Event | Trigger | Typical Client Action |
-|-------|---------|----------------------|
-| `issue:created` | Issue lifecycle afterCreate | Invalidate `['issues']` |
-| `issue:updated` | Issue lifecycle afterUpdate, AI enrichment | Invalidate `['issues', 'issue']` |
-| `issue:confirmed` | Issue status changed to confirmed | Invalidate `['issues', 'issue']` |
-| `issue:resolved` | Issue resolution service | Invalidate `['issues', 'issue']` |
-| `issue:enrichment_failed` | AI enrichment error | Invalidate `['issues']` |
-| `task:created` | Task lifecycle afterCreate | Invalidate `['tasks']` |
-| `task:updated` | Task lifecycle afterUpdate | Invalidate `['tasks']` |
-| `agent:completed` | Agent task finished | Invalidate `['tasks']` |
-| `notification:created` | Notification lifecycle | Invalidate `['notifications']` |
-
-### Session Events (subscribed clients only)
-
-| Event | Data | Purpose |
-|-------|------|---------|
-| `chat:session_ready` | `{ sessionId, requestId }` | Client subscribes to new session |
-| `chat:text_delta` | `{ text }` | Append text chunk to streaming message |
-| `chat:tool_use` | `{ id, name }` | Show tool call in progress |
-| `chat:done` | `{ usage }` | Per-iteration complete (may have more) |
-| `chat:complete` | `{ sessionId, reply }` | Full run finished, finalize message |
-| `chat:error` | `{ error }` | Run failed, show error |
-| `agent:message` | `{ sessionId, type, message }` | Full message block from agent |
-| `agent:complete` | `{ sessionId }` | Agent run finished |
-| `agent:user-message` | `{ sessionId, content }` | Echo user message to subscribers |
-
----
-
-## Architecture Diagram
-
-```
-                        Client A (browser)              Client B (browser)
-                            |                               |
-                     useWebSocket()                  useChatWebSocket()
-                    (broadcast listener)           (session subscriber)
-                            |                               |
-                            +----------- WSS ---------------+
-                                          |
-                                    /ws endpoint
-                                   WebSocketServer
-                                          |
-                          +---------------+----------------+
-                          |               |                |
-                    broadcast()    sendToSession()   waitForSubscriber()
-                          |               |                |
-                  Lifecycle hooks    Chat controller   Pre-stream sync
-                  (issue, task,     (AI streaming)
-                   notification)
-```
-
-## Key Design Decisions
-
-1. **No auth on WS** — The WebSocket is a notification channel. Sensitive data is fetched via authenticated REST API calls triggered by cache invalidation.
-
-2. **Broadcast + Session dual model** — Broadcasts are cheap fire-and-forget for cache busting. Session channels are for streaming large payloads to specific clients.
-
-3. **React Query integration** — WS events trigger `invalidateQueries()` rather than manually updating state. This keeps the source of truth in the API and avoids stale data.
-
-4. **Text delta streaming** — AI responses are streamed as small text chunks (`chat:text_delta`) and assembled client-side by appending to message content.
-
-5. **Multi-iteration awareness** — `chat:done` fires per AI iteration (after tool calls), `chat:complete` fires once when the full run ends. This allows the UI to show intermediate progress.
-
-6. **Polling fallback** — A 15s polling interval catches completion if the WebSocket drops mid-stream.
-
-7. **`waitForSubscriber()`** — Server-side race condition prevention. Ensures a client is listening before streaming begins.
-
-8. **Reconnect strategies** — Exponential backoff (1s-30s, 10 max) for the global hook; fixed 2s delay for session hooks (simpler, session-scoped).
-
----
-
-## Edge / Reverse Proxy Requirements
-
-Real-world deploys put `core` behind a reverse proxy (nginx) and usually
-behind Cloudflare too. The WebSocket upgrade only survives the full path
-when every hop preserves it:
-
-1. **nginx** — `location /ws` must set `proxy_http_version 1.1` and
-   forward `Upgrade` + `Connection` headers. Without those, nginx
-   downgrades the request to a plain HTTP GET and the Hono catch-all
-   returns `{"code":"NOT_FOUND","message":"Not Found: GET /ws"}`. A minimal
-   working `location` block:
-
-   ```nginx
-   location /ws {
-       proxy_pass http://core_upstream;
-       proxy_http_version 1.1;
-       proxy_set_header Upgrade $http_upgrade;
-       proxy_set_header Connection "upgrade";
-       proxy_set_header Host $host;
-       proxy_read_timeout 3600s;
-   }
-   ```
-
-2. **Cloudflare** — `Network -> WebSockets` must be **On** at the zone
-   level. CF only proxies WebSockets over HTTP/1.1; with the toggle off,
-   the upgrade is stripped and origin returns the same 404. RFC 6455
-   clients (browsers, `wscat`, the `ws` npm package) negotiate HTTP/1.1
-   automatically — `curl` does not, so verifying with a default `curl`
-   call requires `--http1.1` to mimic browser behaviour. SSL/TLS mode
-   must be `Full` or `Full (strict)`; `Flexible` breaks WS.
-
-3. **Auth on upgrade** — `core`'s WS server requires a Bearer token or
-   `forge_auth` cookie at upgrade time (see
-   `forge/core/src/ws/server.ts`). An unauthenticated handshake returns
-   `401 Unauthorized` *after* the upgrade is accepted, which is a useful
-   signal that routing is healthy. `404` at any layer means routing is
-   broken there. The "no auth on WS" note in design decision #1 above is
-   historical — room-scoping in v0.1 introduced auth on upgrade
-   (ISS-110); the channel remains a notification channel for the
-   authenticated principal.
-
-If WS upgrades fail in your deployment, the four-layer diagnostic is:
-
-1. `curl --http1.1 -H "Upgrade: websocket" -H "Connection: upgrade" -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: $(openssl rand -base64 16)" -i https://your-host/ws` — expect `101` (after auth) or `401` (auth failure but routing OK)
-2. Same against `http://your-host:<core-port>/ws` directly — bypasses nginx
-3. Same against the upstream container — bypasses Cloudflare
-4. Tail the core process logs for `[ws]` entries
+Without `proxy_http_version 1.1` and the upgrade headers, nginx downgrades
+the request to plain HTTP GET and the catch-all returns 404.
+
+**Cloudflare:** *Network → WebSockets* must be **On** at the zone level
+(default off on some plans). SSL/TLS mode must be `Full` or `Full (strict)`
+— `Flexible` breaks WS. CF only proxies WS over HTTP/1.1; browsers and
+`wscat` negotiate it automatically, `curl` does not.
+
+**Diagnostic ladder** when upgrades fail in production:
+
+1. `curl --http1.1 -H "Upgrade: websocket" -H "Connection: upgrade" -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: $(openssl rand -base64 16)" -i https://your-host/ws` — expect `101` after auth, or `401` if routing OK but auth missing. `404` = routing broken.
+2. Same against the origin host:port directly — bypasses nginx.
+3. Same against the upstream container — bypasses Cloudflare.
+4. Tail core logs for `[ws]` entries.

@@ -33,6 +33,16 @@ skills/*
 .vscode
 *.swp
 *.swo
+*~
+*.orig
+*.rej
+*.bak
+
+# Direnv (per-shell env)
+.envrc
+
+# Vite cache
+*.timestamp-*
 
 # Environment
 .env
