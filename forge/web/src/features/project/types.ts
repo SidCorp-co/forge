@@ -147,13 +147,6 @@ export interface Project extends BaseEntity {
   antigravityProjectMap?: Record<string, string> | null;
   channels?: ChannelConfig[];
   crossProjectAccess?: boolean;
-  heartbeatConfig?: {
-    enabled?: boolean;
-    intervalSeconds?: number;
-    paused?: boolean;
-    stages?: string[];
-    maxRetries?: number;
-  } | null;
 }
 
 export interface ChannelConfig {

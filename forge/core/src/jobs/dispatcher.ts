@@ -3,6 +3,7 @@ import { db } from '../db/client.js';
 import { devices, jobs, projects, runners } from '../db/schema.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import { logger } from '../logger.js';
+import { resolveRunnerChainForJob } from '../pipeline/resolve-step-runner.js';
 import { boss } from '../queue/boss.js';
 import { getRunnerAdapter } from '../runners/registry.js';
 import { selectRunnerForJob } from '../runners/select.js';
@@ -97,10 +98,8 @@ async function dispatchViaRunner(job: typeof jobs.$inferSelect): Promise<'dispat
     .from(projects)
     .where(eq(projects.id, job.projectId))
     .limit(1);
-  const agentConfig = (project?.agentConfig ?? {}) as { runnerFallback?: string[] };
-  const fallbackChain = (agentConfig.runnerFallback ?? ['claude-code']) as Array<
-    'claude-code' | 'antigravity'
-  >;
+  const agentConfig = (project?.agentConfig ?? {}) as Record<string, unknown>;
+  const fallbackChain = resolveRunnerChainForJob(job.type, agentConfig);
 
   const runner = await selectRunnerForJob({
     projectId: job.projectId,

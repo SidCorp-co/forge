@@ -7,6 +7,7 @@ import { AlertBanner } from '@/components/ui';
 import type { useSettingsForm } from '../hooks';
 import { ChatAgentSection } from './chat-agent-section';
 import { GeneralSection } from './general-section';
+import { PipelineConfigSection } from './pipeline-config-section';
 import { ProvidersToolsSection } from './providers-tools-section';
 
 type SettingsFormReturn = ReturnType<typeof useSettingsForm>;
@@ -35,6 +36,7 @@ export function SettingsView({
   isSuccess,
   save,
   reset,
+  project,
   projectSlug,
   generalExtra,
 }: SettingsViewProps) {
@@ -98,12 +100,15 @@ export function SettingsView({
           />
         )}
 
-        {activeTab === 'pipeline' && (
-          <UnimplementedBanner
-            feature="Pipeline configuration"
-            hint="Pipeline step configuration, custom flows, heartbeat sweep, and test credentials land in v0.1.7+ once the pipeline schema ships in forge/core."
-          />
-        )}
+        {activeTab === 'pipeline' &&
+          (project?.id ? (
+            <PipelineConfigSection projectId={project.id} />
+          ) : (
+            <UnimplementedBanner
+              feature="Pipeline configuration"
+              hint="Project not loaded yet."
+            />
+          ))}
 
         {activeTab === 'providers' && (
           <ProvidersToolsSection

@@ -1,13 +1,20 @@
 import { randomBytes } from 'node:crypto';
 import { zValidator } from '@hono/zod-validator';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { devices, labels, projectDevices, projectMembers, projects } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
+import { isEnabled } from '../lib/feature-flags.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import {
+  PIPELINE_CONFIG_DEFAULTS,
+  type PipelineConfig,
+  pipelineConfigPatchSchema,
+  pipelineConfigSchema,
+} from '../pipeline/pipeline-config-schema.js';
 
 function generateApiKey(): string {
   return `fk_${randomBytes(24).toString('hex')}`;
@@ -390,5 +397,137 @@ projectRoutes.delete(
 
     await db.delete(projects).where(eq(projects.id, id));
     return c.body(null, 204);
+  },
+);
+
+// ─── Pipeline configuration ──────────────────────────────────────────────────
+//
+// Dedicated read/patch routes for `agentConfig.pipelineConfig`. The main
+// PATCH /:id route still accepts a wide-open `agentConfig` jsonb (other
+// settings tabs need that escape hatch) — these routes give the pipeline
+// settings UI a typed, validated, atomic-merge surface so two tabs writing
+// to different `agentConfig` sub-keys never clobber each other.
+//
+// Gated on `pipelineControl` feature flag; off by default in production.
+
+const pipelineFlagOff = () =>
+  new HTTPException(404, {
+    message: 'pipeline configuration disabled',
+    cause: { code: 'FEATURE_OFF' },
+  });
+
+projectRoutes.get(
+  '/:id/pipeline-config',
+  zValidator('param', idParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    if (!isEnabled('pipelineControl')) throw pipelineFlagOff();
+
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const { role } = await loadMembership(id, userId);
+    if (!role) throw forbidden('not a project member');
+
+    const [row] = await db
+      .select({ agentConfig: projects.agentConfig })
+      .from(projects)
+      .where(eq(projects.id, id))
+      .limit(1);
+    if (!row) throw notFound();
+
+    const ac = (row.agentConfig ?? {}) as Record<string, unknown>;
+    const stored = (ac.pipelineConfig ?? {}) as Record<string, unknown>;
+    // Parse through schema — drops legacy keys (autoClarify, etc.) so the
+    // response is the typed surface the FE expects. Defaults fill blanks.
+    const parsed = pipelineConfigSchema.parse(stored);
+    const pipelineConfig: PipelineConfig = { ...PIPELINE_CONFIG_DEFAULTS, ...parsed };
+
+    const runnerFallback = Array.isArray(ac.runnerFallback)
+      ? (ac.runnerFallback as string[])
+      : ['claude-code'];
+
+    return c.json({ pipelineConfig, runnerFallback });
+  },
+);
+
+projectRoutes.patch(
+  '/:id/pipeline-config',
+  zValidator('param', idParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  zValidator('json', pipelineConfigPatchSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    if (!isEnabled('pipelineControl')) throw pipelineFlagOff();
+
+    const { id } = c.req.valid('param');
+    const { runnerFallback, ...pipelinePatch } = c.req.valid('json');
+    const userId = c.get('userId');
+
+    const { project, role } = await loadMembership(id, userId);
+    if (project.ownerId !== userId && role !== 'owner') {
+      throw forbidden('not a project owner');
+    }
+
+    // Atomic jsonb merge at the DB level. Writes pipelineConfig as a sub-key
+    // (so unknown legacy keys round-trip) AND optionally runnerFallback as a
+    // sibling — both in one UPDATE so they cannot interleave with another
+    // tab's write.
+    const mergeDoc: Record<string, unknown> = {};
+    if (Object.keys(pipelinePatch).length > 0) {
+      mergeDoc.pipelineConfig = pipelinePatch;
+    }
+    if (runnerFallback !== undefined) {
+      mergeDoc.runnerFallback = runnerFallback;
+    }
+
+    if (Object.keys(mergeDoc).length > 0) {
+      // Two-level merge: top-level keys (runnerFallback, pipelineConfig) are
+      // shallow-merged via `||`. Then for pipelineConfig specifically, we
+      // also need to deep-merge so partial step toggles don't wipe the rest.
+      // Approach: pre-merge pipelineConfig in JS using the loaded doc, then
+      // emit a single atomic write at the agentConfig level.
+      const [row] = await db
+        .select({ agentConfig: projects.agentConfig })
+        .from(projects)
+        .where(eq(projects.id, id))
+        .limit(1);
+      if (!row) throw notFound();
+      const currentAc = (row.agentConfig ?? {}) as Record<string, unknown>;
+      const currentPipeline = (currentAc.pipelineConfig ?? {}) as Record<string, unknown>;
+      const nextDoc: Record<string, unknown> = {};
+      if (mergeDoc.pipelineConfig) {
+        nextDoc.pipelineConfig = { ...currentPipeline, ...(mergeDoc.pipelineConfig as object) };
+      }
+      if (runnerFallback !== undefined) {
+        nextDoc.runnerFallback = runnerFallback;
+      }
+      const subkey = JSON.stringify(nextDoc);
+      await db.execute(
+        sql`UPDATE projects
+            SET agent_config = COALESCE(agent_config, '{}'::jsonb) || ${subkey}::jsonb
+            WHERE id = ${id}`,
+      );
+    }
+
+    // Re-read to compose the canonical merged response.
+    const [row] = await db
+      .select({ agentConfig: projects.agentConfig })
+      .from(projects)
+      .where(eq(projects.id, id))
+      .limit(1);
+    if (!row) throw notFound();
+    const ac = (row.agentConfig ?? {}) as Record<string, unknown>;
+    const stored = (ac.pipelineConfig ?? {}) as Record<string, unknown>;
+    const parsed = pipelineConfigSchema.parse(stored);
+    const pipelineConfig: PipelineConfig = { ...PIPELINE_CONFIG_DEFAULTS, ...parsed };
+    const respRunnerFallback = Array.isArray(ac.runnerFallback)
+      ? (ac.runnerFallback as string[])
+      : ['claude-code'];
+
+    return c.json({ pipelineConfig, runnerFallback: respRunnerFallback });
   },
 );
