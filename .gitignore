@@ -7,15 +7,26 @@ node_modules
 # pnpm store (project-local, if used)
 .pnpm-store
 
+# Build output
+dist
+build
+out
+.next
+.cache
+*.tsbuildinfo
+
+# Test output
+coverage
+playwright-report
+playwright/.cache
+
 # OS
 .DS_Store
 Thumbs.db
 *Zone.Identifier
 __pycache__
 *.pyc
-.claude/*
-!.claude/skills/
-.claude/worktrees/
+.claude/
 skills/*
 # IDE
 .idea

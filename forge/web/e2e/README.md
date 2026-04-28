@@ -1,7 +1,10 @@
-# E2E — Phase 2.6-F4
+# E2E (public)
 
-Playwright harness for `forge/web`. Runs a single Chromium happy-path spec
-against a live `forge/core` instance.
+Playwright harness for `forge/web`. Runs Chromium specs against a live
+`forge/core` instance — the suite that the CI `e2e-web` job exercises.
+
+> Maintainer-only specs (paired-runner / staging / admin-state) live in
+> [`../e2e-internal/`](../e2e-internal/) and ship as `pnpm --filter web e2e:internal`.
 
 ## Run locally
 
