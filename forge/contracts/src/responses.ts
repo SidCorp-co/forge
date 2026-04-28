@@ -7,12 +7,13 @@ export interface ListResponse<T> {
   totalCount: number;
 }
 
-// Login response from `POST /api/auth/local`. Access token is also set as
-// an httpOnly `forge_auth` cookie — clients should rely on the cookie for
-// subsequent requests and keep `refreshToken` in localStorage.
+// Login response from `POST /api/auth/local`. The access token is set as
+// an httpOnly `forge_auth` cookie and ALSO returned in the body so native
+// clients (Tauri) that prefer Bearer headers can store it. The refresh
+// token rides an httpOnly cookie scoped to /api/auth — never returned in
+// JSON, never visible to JavaScript.
 export interface LoginResponse {
   token: string;
-  refreshToken: string;
   user: {
     id: string;
     email: string;
@@ -26,7 +27,9 @@ export interface RegisterResponse {
   email: string;
 }
 
+// Same shape as login: the new JWT comes back in the body (for Bearer
+// callers) plus the auth cookie; the new refresh token rides the
+// httpOnly refresh cookie.
 export interface RefreshResponse {
   token: string;
-  refreshToken: string;
 }

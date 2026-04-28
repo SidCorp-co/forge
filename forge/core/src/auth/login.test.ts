@@ -76,16 +76,18 @@ describe('POST /api/auth/local', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       token: string;
-      refreshToken: string;
       user: { id: string; email: string; emailVerified: boolean };
       emailVerificationRequired: boolean;
     };
     expect(body.user).toEqual({ id: 'uuid-1', email: 'a@b.co', emailVerified: true });
     expect(body.emailVerificationRequired).toBe(false);
     expect(typeof body.token).toBe('string');
-    expect(typeof body.refreshToken).toBe('string');
-    expect(body.refreshToken.length).toBeGreaterThan(0);
+    // refreshToken no longer in JSON — rides the forge_refresh httpOnly cookie.
+    expect((body as Record<string, unknown>).refreshToken).toBeUndefined();
     expect(txInsertValues).toHaveBeenCalledTimes(1);
+
+    const refreshCookie = (res.headers.get('set-cookie') ?? '').includes('forge_refresh=');
+    expect(refreshCookie).toBe(true);
 
     const setCookie = res.headers.get('set-cookie') ?? '';
     expect(setCookie).toContain('forge_auth=');
