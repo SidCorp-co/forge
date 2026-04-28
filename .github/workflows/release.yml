@@ -56,15 +56,18 @@ jobs:
   #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  passphrase chosen at generate time
   #     The matching public key lives at packages/dev/src-tauri/tauri.conf.json:pubkey.
   #
-  # Optional (macOS code signing + notarization — leave unset for unsigned builds):
+  # Optional code-signing secrets — currently NOT wired into the env block
+  # below because GitHub Actions interpolates a missing secret as "" (not
+  # unset) and Tauri treats an empty APPLE_CERTIFICATE / WINDOWS_CERTIFICATE
+  # as "import this cert" → aborts. When real certs become available, add
+  # both the secret AND the matching env: line in the build step.
+  #
   #   APPLE_CERTIFICATE                   base64-encoded .p12 (Developer ID Application)
   #   APPLE_CERTIFICATE_PASSWORD          .p12 password
   #   APPLE_SIGNING_IDENTITY              e.g. "Developer ID Application: Acme Inc (TEAMID)"
   #   APPLE_ID                            Apple ID email
   #   APPLE_PASSWORD                      app-specific password (appleid.apple.com → Sign-In and Security)
   #   APPLE_TEAM_ID                       Team ID from developer.apple.com
-  #
-  # Optional (Windows code signing — leave unset for unsigned builds):
   #   WINDOWS_CERTIFICATE                 base64-encoded .pfx
   #   WINDOWS_CERTIFICATE_PASSWORD        .pfx password
   #
@@ -124,19 +127,19 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Tauri updater signing (required).
+          # Tauri updater signing (required — used to sign the .sig files
+          # that the auto-updater verifies against tauri.conf.json:pubkey).
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # macOS code signing + notarization (optional — empty means unsigned build).
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # Windows code signing (optional — empty means unsigned build).
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          #
+          # NB: APPLE_* and WINDOWS_* code-signing env vars are intentionally
+          # NOT set here. GitHub Actions interpolates a missing secret as the
+          # empty string (not "unset"); Tauri's macOS bundler treats a present-
+          # but-empty APPLE_CERTIFICATE as "try to import" and aborts with
+          # `failed to run command security import`. Same shape on Windows.
+          # Re-add these env entries (and the matching secrets) when we
+          # actually have certificates — until then, omitting them yields
+          # unsigned builds that still ship artifacts.
         with:
           projectPath: packages/dev
           tauriScript: pnpm tauri
