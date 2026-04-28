@@ -124,11 +124,19 @@ function buildApp() {
   return app;
 }
 
-function post(body: unknown) {
+/**
+ * Build the request with the refresh token in the httpOnly cookie. The
+ * route only reads the cookie since the post-ISS-315 cleanup; the legacy
+ * JSON body path is gone.
+ */
+function postWithCookie(refreshToken?: string) {
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (refreshToken !== undefined) {
+    headers.cookie = `forge_refresh=${refreshToken}`;
+  }
   return buildApp().request('/api/auth/refresh', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: typeof body === 'string' ? body : JSON.stringify(body),
+    headers,
   });
 }
 
@@ -160,24 +168,26 @@ beforeEach(() => {
 describe('POST /api/auth/refresh', () => {
   const presentedRaw = 'PRESENTEDtoken-valid';
 
-  it('valid refresh → 200 with new JWT + new refreshToken, old marked used, new inserted, cookie set', async () => {
+  it('valid refresh → 200 with new JWT + new refresh cookie, old row marked used, new row inserted', async () => {
     const matched = row({ id: 'row-1', userId: 'user-1' });
     txState.candidates = [matched];
     txState.verifyImpl = async (_h, r) => r === presentedRaw;
     txState.claimReturning = [{ id: 'row-1' }];
 
-    const res = await post({ refreshToken: presentedRaw });
+    const res = await postWithCookie(presentedRaw);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { token: string; refreshToken: string };
+    const body = (await res.json()) as { token: string; refreshToken?: string };
 
     const claims = await verifyUserToken(body.token);
     expect(claims.sub).toBe('user-1');
     expect(claims.typ).toBe('user');
-    expect(body.refreshToken).toBe('NEWRAW__rest_of_token');
+    // refreshToken no longer in JSON — rides the forge_refresh cookie.
+    expect(body.refreshToken).toBeUndefined();
 
-    // Cookie set.
+    // Both cookies set on rotation.
     const setCookie = res.headers.get('set-cookie') ?? '';
     expect(setCookie).toContain('forge_auth=');
+    expect(setCookie).toContain('forge_refresh=');
     expect(setCookie).toContain('HttpOnly');
 
     // Exactly one tx UPDATE (the claim-by-id). No outer mass-invalidate.
@@ -200,7 +210,7 @@ describe('POST /api/auth/refresh', () => {
     txState.candidates = [row({ usedAt: new Date(Date.now() - 1000) })];
     txState.verifyImpl = async () => true;
 
-    const res = await post({ refreshToken: presentedRaw });
+    const res = await postWithCookie(presentedRaw);
     expect(res.status).toBe(401);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('REFRESH_TOKEN_REUSED');
@@ -219,7 +229,7 @@ describe('POST /api/auth/refresh', () => {
     txState.candidates = [row({ expiresAt: new Date(Date.now() - 1000) })];
     txState.verifyImpl = async () => true;
 
-    const res = await post({ refreshToken: presentedRaw });
+    const res = await postWithCookie(presentedRaw);
     expect(res.status).toBe(401);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('REFRESH_TOKEN_EXPIRED');
@@ -232,7 +242,7 @@ describe('POST /api/auth/refresh', () => {
   it('unknown token (no prefix match) → 401 INVALID_REFRESH_TOKEN, no mass-invalidate', async () => {
     txState.candidates = [];
 
-    const res = await post({ refreshToken: presentedRaw });
+    const res = await postWithCookie(presentedRaw);
     expect(res.status).toBe(401);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('INVALID_REFRESH_TOKEN');
@@ -245,7 +255,7 @@ describe('POST /api/auth/refresh', () => {
     txState.candidates = [row(), row({ id: 'row-2' })];
     txState.verifyImpl = async () => false;
 
-    const res = await post({ refreshToken: presentedRaw });
+    const res = await postWithCookie(presentedRaw);
     expect(res.status).toBe(401);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('INVALID_REFRESH_TOKEN');
@@ -258,7 +268,7 @@ describe('POST /api/auth/refresh', () => {
     txState.verifyImpl = async () => true;
     txState.claimReturning = []; // someone else claimed it
 
-    const res = await post({ refreshToken: presentedRaw });
+    const res = await postWithCookie(presentedRaw);
     expect(res.status).toBe(401);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('REFRESH_TOKEN_REUSED');
@@ -271,21 +281,11 @@ describe('POST /api/auth/refresh', () => {
     expect(txState.insertValues).toHaveLength(0);
   });
 
-  // Since ISS-315 the refresh route accepts EITHER the cookie or the legacy
-  // body field. With neither present there's nothing to verify — the route
-  // returns the same generic INVALID_REFRESH_TOKEN as a forged token would,
-  // both to avoid leaking shape info to a probe and because conceptually a
-  // missing token IS an invalid one.
-  it('missing refreshToken (no cookie, no body) → 401 INVALID_REFRESH_TOKEN', async () => {
-    const res = await post({});
-    expect(res.status).toBe(401);
-    const body = (await res.json()) as { code: string };
-    expect(body.code).toBe('INVALID_REFRESH_TOKEN');
-    expect(txState.selectCalls).toBe(0);
-  });
-
-  it('empty refreshToken → 401 INVALID_REFRESH_TOKEN', async () => {
-    const res = await post({ refreshToken: '' });
+  // The route reads refresh token only from the httpOnly cookie. No cookie
+  // → 401 (same code a forged token would yield, so a probe can't tell
+  // "no cookie" from "wrong cookie" apart).
+  it('missing refresh cookie → 401 INVALID_REFRESH_TOKEN', async () => {
+    const res = await postWithCookie();
     expect(res.status).toBe(401);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('INVALID_REFRESH_TOKEN');

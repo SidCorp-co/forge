@@ -1,5 +1,5 @@
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import { Hono, type Context } from 'hono';
+import { Hono } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
@@ -62,28 +62,15 @@ type RefreshOutcome =
   | { kind: 'expired' }
   | { kind: 'replay'; userId: string };
 
-async function readRefreshFromRequest(c: Context): Promise<string | null> {
-  // Prefer the HttpOnly cookie path (XSS-safe). Fall back to the legacy
-  // JSON body path for one release while clients catch up — remove once
-  // every active client is on the cookie flow.
-  const cookie = getCookie(c, REFRESH_COOKIE_NAME);
-  if (cookie) return cookie;
-  try {
-    const body = (await c.req.json()) as { refreshToken?: unknown };
-    if (typeof body?.refreshToken === 'string' && body.refreshToken.length >= 1) {
-      return body.refreshToken;
-    }
-  } catch {
-    // No JSON body — that's fine if the cookie was present; we already
-    // returned. If neither was present, fall through to invalid().
-  }
-  return null;
-}
-
 refreshRoutes.post(
   '/refresh',
   async (c) => {
-    const raw = await readRefreshFromRequest(c);
+    // Refresh token lives ONLY in the httpOnly cookie at this point — the
+    // body fallback was removed in ISS-315 cleanup once every client had
+    // landed on the cookie path. A missing cookie returns the same
+    // INVALID_REFRESH_TOKEN that a forged token would, so a probe can't
+    // distinguish "no cookie" from "wrong cookie".
+    const raw = getCookie(c, REFRESH_COOKIE_NAME);
     if (!raw) throw invalid();
     const prefix = refreshTokenPrefix(raw);
 
@@ -142,6 +129,8 @@ refreshRoutes.post(
     const token = await signUserToken(outcome.userId);
     setAuthCookie(c, token);
     setRefreshCookie(c, outcome.refreshToken);
-    return c.json({ token, refreshToken: outcome.refreshToken });
+    // refreshToken stays out of the JSON body (cookie-only since ISS-315
+    // cleanup) — clients should rely on the cookie roundtrip.
+    return c.json({ token });
   },
 );
