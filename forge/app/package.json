@@ -15,7 +15,7 @@
     "@react-navigation/bottom-tabs": "^7.0.0",
     "@tanstack/react-query": "^5.0.0",
     "base64-js": "^1.5.1",
-    "date-fns": "^3.0.0",
+    "date-fns": "^4.1.0",
     "expo": "~52.0.0",
     "expo-asset": "~11.0.5",
     "expo-clipboard": "~7.0.0",
