@@ -22,9 +22,7 @@ type Mods = {
   signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
   errorHandler: typeof import('../../src/middleware/error.js').errorHandler;
   hooks: typeof import('../../src/pipeline/hooks.js').hooks;
-  registerNotifyMentionsSubscriber: typeof import(
-    '../../src/notifications/notify-mentions.js',
-  ).registerNotifyMentionsSubscriber;
+  registerNotifyMentionsSubscriber: typeof import('../../src/notifications/notify-mentions.js').registerNotifyMentionsSubscriber;
 };
 
 describe('ISS-276 comment mentions', () => {
