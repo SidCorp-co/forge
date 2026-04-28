@@ -76,7 +76,7 @@ export function LandingHero() {
           className="inline-flex items-center gap-2 rounded-full border border-outline-variant/40 bg-white/80 backdrop-blur-sm px-4 py-1.5 text-xs text-primary-fixed font-mono tracking-wide mb-8 shadow-sm"
         >
           <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-          POC Studio &middot; junixlabs
+          POC Studio &middot; SidCorp
         </motion.div>
 
         {/* Headline — tightened to two lines for faster scan */}

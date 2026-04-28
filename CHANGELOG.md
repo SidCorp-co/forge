@@ -16,6 +16,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+## [0.1.17] - 2026-04-28
+
+Rebrand to `Forge` under the `SidCorp-co` org. Repo transferred from `junixlabs/jarvis-agents` → `SidCorp-co/forge`, workspace dir renamed `forge/` → `packages/`, Tauri bundle identifier changed from `com.thejunix.forge-beta` → `co.sidcorp.forge-beta`. See [ADR 0015](docs/decisions/0015-rebrand-to-forge.md) for the rationale.
+
+### Changed
+
+- **Repo URL:** `https://github.com/SidCorp-co/forge` (old URL auto-redirects).
+- **Workspace layout:** `forge/<pkg>/` → `packages/<pkg>/` for `core`, `web`, `dev`, `app`, `contracts`, `tests`, `widget`. npm scope `@forge/*` is unchanged.
+- **Tauri identifier:** `co.sidcorp.forge-beta`. The auto-updater endpoint in `tauri.conf.json` now points at the new repo.
+- **CI:** workflow declares `permissions: contents:read, pull-requests:read` so Dependabot PRs no longer fail at the changes job.
+- **Docs:** trimmed `architecture/websocket.md` (678 → 167 lines), `modules/issues-pipeline/status-pipeline.md` (367 → 177 lines); maintainer-only artifacts (release tests, migration audits, ops runbooks) moved to gitignored `.internal-docs/`.
+- **Dependabot:** `npm` ecosystem now scans only the active workspace members (`packages/app/` excluded per [ADR 0009](docs/decisions/0009-mobile-app-paused-for-v0x.md)); `cargo` ecosystem added for `packages/dev/src-tauri/`.
+- Internal hostnames + emails scrubbed from tracked sources (test fixtures, code comments, deployment defaults).
+
+### Fixed
+
+- `pre-push` hook used `$repo_root/forge/$pkg` as the package path — the variable substitution slipped past the workspace rename and the gate was effectively a no-op for any push touching the renamed packages until corrected.
+
+### Security
+
+- 6 cargo bumps merged through Dependabot (rustls-webpki, openssl chain via the minor-and-patch group, sha2, nix, tar, plus the Tauri 2.10.3 group). Open Dependabot security alert count: 44 → 33.
+
+> ⚠️ **Breaking for installed alpha users:** the Tauri bundle identifier changed, so v0.1.17 is treated by the OS as a different application from v0.1.16. Reinstall recommended; OS keychain entries from older versions will not be inherited automatically.
+
 ## [0.1.16] - 2026-04-28
 
 OSS launch prep — first release with a working release pipeline. Tags `v0.1.6` through `v0.1.15` were created during pipeline debugging and never published; this is the first version to actually produce installable artifacts. Desktop binary version realigned from the legacy `0.2.x` `forge-beta` train back to the repo's `0.1.x` line so tag, package, and Cargo versions match.

@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/nicuveo/tauri-v2-config-schema/main/schema.json",
   "productName": "Forge Beta",
   "mainBinaryName": "forge-beta",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "identifier": "co.sidcorp.forge-beta",
   "build": {
     "frontendDist": "../dist",
