@@ -7,12 +7,19 @@ updates:
     open-pull-requests-limit: 5
     labels: ["dependencies", "ci"]
 
-  # npm ecosystem at the repo root — Dependabot reads pnpm-lock.yaml and
-  # opens PRs for both direct deps (forge/{core,web,dev}/package.json) and
-  # transitive deps in the lockfile. minor + patch are grouped to keep PR
-  # volume manageable; majors come as individual PRs for review.
+  # npm ecosystem — explicitly list workspace package.json paths so we can
+  # exclude forge/app/ (paused per ADR 0009 — bumping its deps now would
+  # silently rot the package and surface as a big-bang upgrade when the
+  # mobile app unpauses). Root package.json owns turbo + pnpm config; the
+  # other entries are pnpm workspace members. minor+patch are grouped to
+  # keep PR volume sane; majors land as individual PRs for review.
   - package-ecosystem: "npm"
-    directory: "/"
+    directories:
+      - "/"
+      - "/forge/contracts"
+      - "/forge/core"
+      - "/forge/dev"
+      - "/forge/web"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
