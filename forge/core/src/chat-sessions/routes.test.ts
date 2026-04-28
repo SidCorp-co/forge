@@ -63,7 +63,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   selectLimit.mockReset();
   selectOrderByOffset.mockReset();
-  selectOrderBy.mockReset();
+  // Factory mocks that return chained-method objects must keep their
+  // implementation across tests — mockReset would wipe `() => ({ limit:… })`
+  // and the next chain call would explode on `undefined.limit`.
+  selectOrderBy.mockClear();
   insertReturning.mockReset();
   updateReturning.mockReset();
   whereResults.length = 0;
