@@ -8,7 +8,7 @@ The architectural foundation is [RFC 0001: Device-runner architecture](../rfcs/0
 
 Jarvis Agents splits into two planes:
 
-- **Control plane** — `forge/core`, a Hono + Drizzle service exposing REST, WebSocket, and MCP. Hosts project and issue state, queues jobs (pg-boss), stores embeddings (pgvector), and streams events. **Never holds Claude credentials.**
+- **Control plane** — `packages/core`, a Hono + Drizzle service exposing REST, WebSocket, and MCP. Hosts project and issue state, queues jobs (pg-boss), stores embeddings (pgvector), and streams events. **Never holds Claude credentials.**
 - **Runtime plane** — **device agents** running on users' own machines. Two form factors share a Rust `agent-core` crate: `dev` (Tauri GUI) and `forged` (CLI daemon). Devices pair into the account, receive job dispatches over WebSocket, spawn the `claude` CLI locally in a git worktree, and stream JobEvents back.
 
 Two principals interact with the system — **user** (JWT) and **device** (long-lived revocable token). Both pass through a shared policy layer so access checks live in one place.
@@ -24,7 +24,7 @@ Two principals interact with the system — **user** (JWT) and **device** (long-
                        │ MCP (user token or device token)
                        ▼
 ┌─────────────────────────────────────────────────────────┐
-│           Control plane — forge/core (Hono)             │
+│           Control plane — packages/core (Hono)             │
 │  ┌───────────┐ ┌───────────┐ ┌────────────────────────┐ │
 │  │ REST /api │ │ WS /ws    │ │ MCP /mcp               │ │
 │  └─────┬─────┘ └─────┬─────┘ └───────────┬────────────┘ │
@@ -173,7 +173,7 @@ Per-project config decides which transitions auto-trigger vs wait for human appr
 - **Claude credentials never on the server.** They live in each device's OS keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service).
 - **User JWT:** 7-day TTL, refresh-token rotation, `httpOnly` cookies on web.
 - **Device token:** long-lived, stored in OS keychain, revocable from the web UI.
-- **Rate limits** on `/api/auth/*` and `/api/devices/pair`. Defaults: `/api/auth/local` 5 attempts / 15 min / IP, `/api/auth/register` 3 / hour / IP, `/api/devices/pair` 10 / hour / IP — all configurable via `RATE_LIMIT_*` env vars. Source of truth: `forge/core/src/config/rate-limits.ts`.
+- **Rate limits** on `/api/auth/*` and `/api/devices/pair`. Defaults: `/api/auth/local` 5 attempts / 15 min / IP, `/api/auth/register` 3 / hour / IP, `/api/devices/pair` 10 / hour / IP — all configurable via `RATE_LIMIT_*` env vars. Source of truth: `packages/core/src/config/rate-limits.ts`.
 - **Email verification** required before creating the first project.
 - **CORS:** whitelist + regex patterns via `CORS_ORIGINS` / `CORS_ORIGIN_PATTERNS`.
 - **MCP `crossProjectAccess` flag removed** — every tool call must include `projectId` and pass the policy check.

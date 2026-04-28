@@ -8,9 +8,9 @@ How a new version of Forge Beta (the Tauri desktop app) gets built, signed, publ
 
 ```bash
 # 1. Bump versions
-#    forge/dev/package.json          version
-#    forge/dev/src-tauri/Cargo.toml  package.version
-#    forge/dev/src-tauri/tauri.conf.json  version (if explicit)
+#    packages/dev/package.json          version
+#    packages/dev/src-tauri/Cargo.toml  package.version
+#    packages/dev/src-tauri/tauri.conf.json  version (if explicit)
 
 # 2. Add a CHANGELOG.md entry under ## [X.Y.Z] - YYYY-MM-DD
 
@@ -25,7 +25,7 @@ That triggers `.github/workflows/release.yml`. ~15-20 min later:
 - `tauri-action@v0` builds + signs + uploads artifacts on macOS (Intel + ARM), Windows, Linux.
 - Tauri's updater manifest (`latest.json`) is generated alongside the bundles.
 - The publish job flips the release to non-draft.
-- The `/download` page (in `forge/web`) reads GitHub Releases API and shows the new bundles automatically — no redeploy needed.
+- The `/download` page (in `packages/web`) reads GitHub Releases API and shows the new bundles automatically — no redeploy needed.
 
 If a build job fails, the release stays Draft and the publish job is skipped. Inspect logs at `gh run list -R <owner>/<repo> --workflow=release.yml`.
 
@@ -54,7 +54,7 @@ Set in GitHub: **Settings → Secrets and variables → Actions → Secrets**.
 | `TAURI_SIGNING_PRIVATE_KEY` | Output of `pnpm tauri signer generate -w ~/.tauri/forge.key`. Sign-once for the lifetime of the app — rotating breaks updates for installed users. |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Passphrase chosen at generate time. |
 
-The matching public key lives at [`forge/dev/src-tauri/tauri.conf.json:pubkey`](../../forge/dev/src-tauri/tauri.conf.json) and is what the in-app updater verifies against.
+The matching public key lives at [`packages/dev/src-tauri/tauri.conf.json:pubkey`](../../packages/dev/src-tauri/tauri.conf.json) and is what the in-app updater verifies against.
 
 ### Optional — macOS code signing + notarization
 
@@ -92,9 +92,9 @@ Bump these in lockstep:
 
 | File | Field |
 |---|---|
-| `forge/dev/package.json` | `version` |
-| `forge/dev/src-tauri/Cargo.toml` | `package.version` |
-| `forge/dev/src-tauri/tauri.conf.json` | `version` (if not `auto`) |
+| `packages/dev/package.json` | `version` |
+| `packages/dev/src-tauri/Cargo.toml` | `package.version` |
+| `packages/dev/src-tauri/tauri.conf.json` | `version` (if not `auto`) |
 
 Mismatches cause the in-app updater to behave oddly — keep them aligned.
 
@@ -138,7 +138,7 @@ gh release delete vX.Y.Z --repo junixlabs/jarvis-agents --cleanup-tag
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | All 4 build jobs die at "Setup pnpm" with *Multiple versions of pnpm specified* | `pnpm/action-setup` `version:` field set + `packageManager` in `package.json` | Drop the `version:` from the workflow; let `packageManager` win. |
-| Lockfile-related cache miss on every run | `cache-dependency-path` points at a non-existent path | Should be `pnpm-lock.yaml` (root); `forge/dev/pnpm-lock.yaml` doesn't exist (workspace) |
+| Lockfile-related cache miss on every run | `cache-dependency-path` points at a non-existent path | Should be `pnpm-lock.yaml` (root); `packages/dev/pnpm-lock.yaml` doesn't exist (workspace) |
 | macOS build succeeds but `.dmg` rejected by Gatekeeper | Notarization not stapled | Confirm all six `APPLE_*` secrets set; check `notarytool` output in logs |
 | `/download` page falls back to "Build from source" after a successful release | Release still Draft because publish job didn't run | Inspect the `build` matrix — every job must succeed |
 | Updater can't fetch `latest.json` | `tauri-action` ran without `includeUpdaterJson: true` or signing key missing | Verify the JSON exists in release assets and matches the pubkey in `tauri.conf.json` |

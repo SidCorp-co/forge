@@ -5,9 +5,9 @@ Get Jarvis Agents running end-to-end — server + one paired device + first job 
 ## Requirements
 
 - **Docker** 24+ with Docker Compose v2
-- **Node** 20+ (for local dev against the `forge/core` API)
+- **Node** 20+ (for local dev against the `packages/core` API)
 - **Claude Code CLI** installed on at least one machine (`claude`) with a working Claude Pro or Max subscription
-- ~1.5 GB free disk for the server (Postgres + `forge/core` + node_modules)
+- ~1.5 GB free disk for the server (Postgres + `packages/core` + node_modules)
 
 ## 1. Run the server
 

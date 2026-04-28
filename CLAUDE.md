@@ -6,8 +6,8 @@ Project management + AI agent platform.
 
 | You are about to... | Required reading |
 |---|---|
-| Touch `forge/core/` (the new Hono+Drizzle backend) | [docs/rfcs/0002](docs/rfcs/0002-replace-strapi-with-hono-drizzle.md) + [docs/proposals/core-strapi-decoupling.md](docs/proposals/core-strapi-decoupling.md) |
-| Touch `forge/app/` (mobile) | **STOP** — paused per [ADR 0009](docs/decisions/0009-mobile-app-paused-for-v0x.md). Ask before changing. |
+| Touch `packages/core/` (the new Hono+Drizzle backend) | [docs/rfcs/0002](docs/rfcs/0002-replace-strapi-with-hono-drizzle.md) + [docs/proposals/core-strapi-decoupling.md](docs/proposals/core-strapi-decoupling.md) |
+| Touch `packages/app/` (mobile) | **STOP** — paused per [ADR 0009](docs/decisions/0009-mobile-app-paused-for-v0x.md). Ask before changing. |
 | Change auth, queue, vector storage, license, or any cross-cutting choice | Find the matching ADR in [docs/decisions/](docs/decisions/). Do not contradict. |
 | Build a feature in an existing module (issues, agents, devices, chat, skills, memory) | The matching `docs/modules/<name>/README.md` |
 | Add a new cross-module flow | [docs/architecture/cross-module-flows.md](docs/architecture/cross-module-flows.md) |
@@ -17,18 +17,18 @@ If a doc disagrees with the code, **trust the code, then propose a doc fix** —
 
 ## Current state (2026-04)
 
-- **Backend:** `forge/core` (Hono + Drizzle + pg-boss + ws + MCP). Single process, single Postgres for data + jobs + vectors (`pgvector`). See [RFC 0002](docs/rfcs/0002-replace-strapi-with-hono-drizzle.md) + [docs/proposals/core-strapi-decoupling.md](docs/proposals/core-strapi-decoupling.md).
+- **Backend:** `packages/core` (Hono + Drizzle + pg-boss + ws + MCP). Single process, single Postgres for data + jobs + vectors (`pgvector`). See [RFC 0002](docs/rfcs/0002-replace-strapi-with-hono-drizzle.md) + [docs/proposals/core-strapi-decoupling.md](docs/proposals/core-strapi-decoupling.md).
 - **`forge/strapi/`** — removed at Phase 2.8-F1 (ISS-219); archive preserved at `legacy/strapi-v0` tag.
-- **`forge/app/`** — paused per [ADR 0009](docs/decisions/0009-mobile-app-paused-for-v0x.md). No development.
+- **`packages/app/`** — paused per [ADR 0009](docs/decisions/0009-mobile-app-paused-for-v0x.md). No development.
 
 ## Packages
 
-- **forge/core/** — Hono + Drizzle backend (the backend)
-- **forge/web/** — Next.js 16 cloud UI
-- **forge/dev/** — Tauri desktop app
-- **forge/app/** — paused (ADR 0009)
+- **packages/core/** — Hono + Drizzle backend (the backend)
+- **packages/web/** — Next.js 16 cloud UI
+- **packages/dev/** — Tauri desktop app
+- **packages/app/** — paused (ADR 0009)
 
-`forge/core/`, `forge/web/`, `forge/dev/` join a pnpm workspace at `forge/`. Each other package is independent.
+`packages/core/`, `packages/web/`, `packages/dev/` join a pnpm workspace at `packages/`. Each other package is independent.
 
 ## Key Patterns
 
@@ -47,7 +47,7 @@ Single trunk = `main`. **No `develop`, no `staging`, no long-lived release branc
 |---|---|
 | Trunk | `main` only — always green, always deployable |
 | Feature branches | `ISS-XX-<short>` cut from `main`, lifetime < 1 day, target same-day merge |
-| Feature flags | Incomplete work merges behind `isEnabled('flagName')` from `forge/core/src/lib/feature-flags.ts` (default off) |
+| Feature flags | Incomplete work merges behind `isEnabled('flagName')` from `packages/core/src/lib/feature-flags.ts` (default off) |
 | Revert culture | If main breaks, **revert the offending commit within 30 min**. Do not push fix-forward unless revert is structurally impossible. |
 | Hot-fix | Same as feature: branch from main, merge back fast. No separate hotfix track. |
 | Pre-push hook | `.githooks/pre-push` runs build + tests on packages with changed files; install via `git config core.hooksPath .githooks` (auto-set by `pnpm install` postinstall). |
@@ -78,7 +78,7 @@ open → confirmed → approved → in_progress
 
 ### Feature flags currently defined
 
-See `forge/core/src/lib/feature-flags.ts` for the live list. Per-epic flags during v1: `chatProvider`, `runnerFramework`, `pipelineControl`, `commentMentions`, `userPreferences`, `knowledgeOps`, `webhookAdapter`.
+See `packages/core/src/lib/feature-flags.ts` for the live list. Per-epic flags during v1: `chatProvider`, `runnerFramework`, `pipelineControl`, `commentMentions`, `userPreferences`, `knowledgeOps`, `webhookAdapter`.
 
 To enable a flag in an environment: `FEATURE_CHAT_PROVIDER=true` (camelCase → SCREAMING_SNAKE_CASE in the env name). Do **not** flip flags in code — only via env.
 

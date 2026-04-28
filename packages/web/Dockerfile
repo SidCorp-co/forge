@@ -1,0 +1,36 @@
+# Multi-stage Dockerfile for packages/web
+# BUILD CONTEXT: repo root (jarvis-agents/) so pnpm workspace can resolve workspace:* deps.
+# Build with: docker build -f packages/web/Dockerfile .
+FROM node:22-alpine AS base
+RUN corepack enable && corepack prepare pnpm@9 --activate
+WORKDIR /repo
+
+# Copy whole repo so pnpm workspace resolves (small footprint vs build correctness tradeoff)
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY forge ./forge
+
+# Install only web's transitive deps (web package name is "web", not "@forge/web")
+RUN pnpm install --frozen-lockfile --filter web...
+
+# Build
+WORKDIR /repo/packages/web
+ARG NEXT_PUBLIC_API_URL=http://localhost:8080/api
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_WS_URL=
+ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
+ARG NEXT_PUBLIC_ENV_LABEL=
+ENV NEXT_PUBLIC_ENV_LABEL=$NEXT_PUBLIC_ENV_LABEL
+RUN pnpm build
+
+# Production runtime — Next.js monorepo standalone places server.js at packages/web/
+FROM node:22-alpine AS production
+WORKDIR /app
+
+COPY --from=base /repo/packages/web/.next/standalone ./
+COPY --from=base /repo/packages/web/.next/static ./packages/web/.next/static
+COPY --from=base /repo/packages/web/public ./packages/web/public
+
+WORKDIR /app/packages/web
+EXPOSE 3000
+ENV HOSTNAME=0.0.0.0
+CMD ["node", "server.js"]

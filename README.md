@@ -56,7 +56,7 @@ Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
          │ REST + WebSocket            │ runs `claude` locally│
          ▼                             │ in a git worktree    │
   ┌────────────────────────────────────┐└────────┬─────────────┘
-  │  Control plane (forge/core)        │         │
+  │  Control plane (packages/core)        │         │
   │  Hono + Drizzle + pg-boss + ws     │ WebSocket (events, jobs)
   │  + MCP                             │◄────────┘
   │  Pipeline engine, job dispatcher   │
@@ -81,13 +81,13 @@ See [docs/architecture/system-overview.md](docs/architecture/system-overview.md)
 
 | Package | Role | Dev command |
 |---------|------|-------------|
-| [`forge/core/`](forge/core/) | Control plane: Hono + Drizzle + pg-boss + WebSocket + MCP | `pnpm dev` |
-| [`forge/web/`](forge/web/) | Next.js dashboard: Kanban, job replay, pipeline health, device mgmt | `npm run dev` |
-| [`forge/dev/`](forge/dev/) | Tauri desktop device agent (GUI form factor) | `npm run tauri dev` |
-| `forge/forged/` | CLI daemon device agent (headless form factor) — coming soon | — |
-| `forge/agent-core/` | Shared Rust crate used by both device agents | — |
+| [`packages/core/`](packages/core/) | Control plane: Hono + Drizzle + pg-boss + WebSocket + MCP | `pnpm dev` |
+| [`packages/web/`](packages/web/) | Next.js dashboard: Kanban, job replay, pipeline health, device mgmt | `npm run dev` |
+| [`packages/dev/`](packages/dev/) | Tauri desktop device agent (GUI form factor) | `npm run tauri dev` |
+| `packages/forged/` | CLI daemon device agent (headless form factor) — coming soon | — |
+| `packages/agent-core/` | Shared Rust crate used by both device agents | — |
 
-> Mobile app (`forge/app/`) is paused for `v0.x`. Revisiting for `v0.2+` after the device-runner model stabilizes.
+> Mobile app (`packages/app/`) is paused for `v0.x`. Revisiting for `v0.2+` after the device-runner model stabilizes.
 
 ## How it works
 

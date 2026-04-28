@@ -5,7 +5,7 @@
 
 ## Context
 
-The repository includes a React Native (Expo) mobile app at `forge/app/`. It was built alongside the web and desktop clients during the internal alpha.
+The repository includes a React Native (Expo) mobile app at `packages/app/`. It was built alongside the web and desktop clients during the internal alpha.
 
 When [ADR 0001](0001-device-runner-architecture.md) reshaped the system into a device-runner model, the product's value on a mobile form factor shifted. The primary user actions — pair a device, run an agent, review a diff — are either impossible or awkward on mobile (you don't pair a phone as a Claude runner; you don't review a 500-line diff on a 6-inch screen comfortably).
 
@@ -19,7 +19,7 @@ But none of these is essential for the first public release. The device-runner i
 
 ## Decision
 
-- Mobile app is **paused** for v0.x. Development on `forge/app/` halts.
+- Mobile app is **paused** for v0.x. Development on `packages/app/` halts.
 - Existing mobile code stays in the repo, not deleted. Rust lessons-learned style: keep the learnings, freeze the development.
 - Mobile returns in **v0.2+** as a read-only dashboard: status, job monitoring, issue comments, push notifications. Not an execution surface.
 - No App Store / Play Store submissions during v0.x.
@@ -34,7 +34,7 @@ But none of these is essential for the first public release. The device-runner i
 ## Alternatives considered
 
 1. **Ship mobile at launch as read-only viewer** — rejected: still adds 2–3 weeks of scope (UI parity, auth flow, push notifications, store submission). Not worth the launch timeline slip.
-2. **Delete `forge/app/` entirely** — rejected: the code has lessons learned (Expo routing, React Native patterns) that would be painful to re-derive. Keeping it dormant costs nothing.
+2. **Delete `packages/app/` entirely** — rejected: the code has lessons learned (Expo routing, React Native patterns) that would be painful to re-derive. Keeping it dormant costs nothing.
 3. **Keep mobile as v0.1 scope and cut something else** — rejected: the thing to cut is always mobile, given it doesn't execute the product's core value.
 
 ## Consequences

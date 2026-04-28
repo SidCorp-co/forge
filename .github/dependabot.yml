@@ -8,7 +8,7 @@ updates:
     labels: ["dependencies", "ci"]
 
   # npm ecosystem — explicitly list workspace package.json paths so we can
-  # exclude forge/app/ (paused per ADR 0009 — bumping its deps now would
+  # exclude packages/app/ (paused per ADR 0009 — bumping its deps now would
   # silently rot the package and surface as a big-bang upgrade when the
   # mobile app unpauses). Root package.json owns turbo + pnpm config; the
   # other entries are pnpm workspace members. minor+patch are grouped to
@@ -16,10 +16,10 @@ updates:
   - package-ecosystem: "npm"
     directories:
       - "/"
-      - "/forge/contracts"
-      - "/forge/core"
-      - "/forge/dev"
-      - "/forge/web"
+      - "/packages/contracts"
+      - "/packages/core"
+      - "/packages/dev"
+      - "/packages/web"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
@@ -28,11 +28,11 @@ updates:
       minor-and-patch:
         update-types: ["minor", "patch"]
 
-  # Cargo for the Tauri desktop app's Rust backend. forge/dev/src-tauri/
-  # is the only Cargo project; forge/core/, forge/web/, forge/app/ are
+  # Cargo for the Tauri desktop app's Rust backend. packages/dev/src-tauri/
+  # is the only Cargo project; packages/core/, packages/web/, packages/app/ are
   # pure TS.
   - package-ecosystem: "cargo"
-    directory: "/forge/dev/src-tauri/"
+    directory: "/packages/dev/src-tauri/"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5

@@ -9,7 +9,7 @@
 > **Reader note (2026-04-23):** Three items in this RFC are superseded:
 > 1. **Vector DB row in §Stack** ("Qdrant — unchanged") and the docker-compose `qdrant:` service → superseded by **[ADR 0011](../decisions/0011-pgvector-replaces-qdrant.md)** (Postgres `pgvector`, single connection).
 > 2. **Cutover model** (parity-implied throughout) → superseded by **[ADR 0010](../decisions/0010-clean-break-from-strapi.md)** (clean break, no parity, single flip PR).
-> 3. **Mobile mentions** → `forge/app/` is paused per [ADR 0009](../decisions/0009-mobile-app-paused-for-v0x.md); it is not a Phase 2.5 client.
+> 3. **Mobile mentions** → `packages/app/` is paused per [ADR 0009](../decisions/0009-mobile-app-paused-for-v0x.md); it is not a Phase 2.5 client.
 >
 > The RFC body is preserved as the historical proposal. For current implementation guidance, follow the ADRs above and [proposals/core-strapi-decoupling.md](../proposals/core-strapi-decoupling.md).
 
@@ -41,7 +41,7 @@ Rebuilding from scratch is cheaper and safer than migrating. Attempting a parall
 
 ## The new service
 
-`forge/core/` is a Node 20+ service built on Hono. It exposes:
+`packages/core/` is a Node 20+ service built on Hono. It exposes:
 
 - **REST API** at `/api/*` for projects, issues, comments, devices, jobs, webhooks, auth.
 - **WebSocket** at `/ws` with room-scoped broadcasts (one socket → many rooms based on principal type).
@@ -66,7 +66,7 @@ It does NOT include:
 | Auth | Custom: `jose` (JWT) + `argon2` + shared policy module |
 | Email | Nodemailer + SMTP |
 | Vector DB | Qdrant (unchanged) |
-| Admin UI | Next.js `/admin` routes in `forge/web/` + Drizzle Studio for dev |
+| Admin UI | Next.js `/admin` routes in `packages/web/` + Drizzle Studio for dev |
 | Lint + format | Biome |
 | Test | Vitest |
 | Runtime | Node 20+ (Bun-compatible via Hono if we choose later) |
@@ -113,7 +113,7 @@ Each module ships `.test.ts` files using Vitest. Tests hit a test Postgres via T
 ## Directory layout
 
 ```
-forge/core/
+packages/core/
 ├── src/
 │   ├── db/
 │   │   ├── schema.ts          # Drizzle schema for all tables
@@ -305,7 +305,7 @@ services:
   postgres: # unchanged
   qdrant:   # unchanged
   core:
-    build: ./forge/core
+    build: ./packages/core
     ports: ["8080:8080"]
     depends_on:
       postgres: { condition: service_healthy }

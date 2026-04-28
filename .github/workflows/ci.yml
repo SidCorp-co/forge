@@ -38,15 +38,15 @@ jobs:
           # `predicate-quantifier: some`, a `!**/*.md` line would make a
           # filter match any non-MD file in the diff. Don't use negations
           # here — keep filters as plain positive include lists.
-          # forge/app/ is paused (ADR 0009); intentionally not gated.
+          # packages/app/ is paused (ADR 0009); intentionally not gated.
           filters: |
             web:
-              - 'forge/web/**'
-              - 'forge/contracts/**'
+              - 'packages/web/**'
+              - 'packages/contracts/**'
             dev:
-              - 'forge/dev/**'
+              - 'packages/dev/**'
             core:
-              - 'forge/core/**'
+              - 'packages/core/**'
               - 'pnpm-workspace.yaml'
               - 'pnpm-lock.yaml'
               - 'package.json'
@@ -85,18 +85,18 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: forge/dev
+        working-directory: packages/dev
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: forge/dev/package-lock.json
+          cache-dependency-path: packages/dev/package-lock.json
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: forge/dev/src-tauri
+          workspaces: packages/dev/src-tauri
       - name: Install Linux deps for Tauri
         run: |
           sudo apt-get update
@@ -107,12 +107,12 @@ jobs:
       # warnings). Tracked for cleanup as a separate ISS. Don't block CI.
       - name: Rust check
         continue-on-error: true
-        working-directory: forge/dev/src-tauri
+        working-directory: packages/dev/src-tauri
         run: |
           cargo fmt --all -- --check
           cargo clippy --all-targets -- -D warnings
 
-  # forge/app/ job removed: mobile is paused per ADR 0009 with known
+  # packages/app/ job removed: mobile is paused per ADR 0009 with known
   # type-error drift; no point gating CI on a package no one is meant to
   # touch. Re-add when the app is unpaused.
 
@@ -122,7 +122,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: forge/core
+        working-directory: packages/core
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

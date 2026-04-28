@@ -19,7 +19,7 @@ services:
   # same origin and proxies to /api.
   core:
     build:
-      context: ./forge/core
+      context: ./packages/core
       dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
@@ -55,7 +55,7 @@ services:
   web:
     build:
       context: .
-      dockerfile: forge/web/Dockerfile
+      dockerfile: packages/web/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api}
         NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-}

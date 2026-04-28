@@ -75,11 +75,11 @@ fi
 
 # Map changed files to affected packages
 packages=""
-echo "$changed" | grep -q '^forge/core/' && packages="$packages core"
-echo "$changed" | grep -q '^forge/web/' && packages="$packages web"
-echo "$changed" | grep -q '^forge/dev/' && packages="$packages dev"
-echo "$changed" | grep -q '^forge/widget/' && packages="$packages widget"
-echo "$changed" | grep -q '^forge/contracts/' && packages="$packages contracts"
+echo "$changed" | grep -q '^packages/core/' && packages="$packages core"
+echo "$changed" | grep -q '^packages/web/' && packages="$packages web"
+echo "$changed" | grep -q '^packages/dev/' && packages="$packages dev"
+echo "$changed" | grep -q '^packages/widget/' && packages="$packages widget"
+echo "$changed" | grep -q '^packages/contracts/' && packages="$packages contracts"
 
 if [ -z "$packages" ]; then
   echo "[pre-push] no source-package files changed (docs/skills/etc only) — skipping build/test"

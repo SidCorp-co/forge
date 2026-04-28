@@ -54,7 +54,7 @@ jobs:
   # Required (always — updater signing):
   #   TAURI_SIGNING_PRIVATE_KEY           output of `pnpm tauri signer generate`
   #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  passphrase chosen at generate time
-  #     The matching public key lives at forge/dev/src-tauri/tauri.conf.json:pubkey.
+  #     The matching public key lives at packages/dev/src-tauri/tauri.conf.json:pubkey.
   #
   # Optional (macOS code signing + notarization — leave unset for unsigned builds):
   #   APPLE_CERTIFICATE                   base64-encoded .p12 (Developer ID Application)
@@ -105,7 +105,7 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: forge/dev/src-tauri
+          workspaces: packages/dev/src-tauri
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -138,7 +138,7 @@ jobs:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         with:
-          projectPath: forge/dev
+          projectPath: packages/dev
           releaseId: ${{ needs.release.outputs.release_id }}
           args: ${{ matrix.args }}
           includeUpdaterJson: true

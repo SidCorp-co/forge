@@ -109,7 +109,7 @@ deploying → server fail → retry → on_hold (after retries exhausted or 15mi
 
 ## Orchestrator
 
-The orchestrator watches issue status changes and dispatches the matching skill. Source: `forge/core/src/pipeline/orchestrator.ts`.
+The orchestrator watches issue status changes and dispatches the matching skill. Source: `packages/core/src/pipeline/orchestrator.ts`.
 
 ### Skill mapping
 

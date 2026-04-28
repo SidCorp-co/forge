@@ -8,7 +8,7 @@
 
 ## Context
 
-The legacy Strapi build runs Qdrant 1.13 as a separate service for embeddings. With `forge/core` rebuilt from scratch ([ADR 0010](0010-clean-break-from-strapi.md)), and the embedding workload being modest (issues + comments + job outputs + project knowledge — tens of thousands of vectors per project, not millions), the case for a dedicated vector service weakened:
+The legacy Strapi build runs Qdrant 1.13 as a separate service for embeddings. With `packages/core` rebuilt from scratch ([ADR 0010](0010-clean-break-from-strapi.md)), and the embedding workload being modest (issues + comments + job outputs + project knowledge — tens of thousands of vectors per project, not millions), the case for a dedicated vector service weakened:
 
 - Operational surface: every self-hoster runs an extra container, extra port, extra healthcheck, extra backup target.
 - No transactional join: the vector store is separate from the relational store, so writing an issue + its embedding requires two-phase logic and reconciliation.
@@ -22,10 +22,10 @@ Vector storage moves into the **same Postgres instance** that holds relational d
 - One `memories` table with a `vector vector(N)` column (N = embedding dimension, default 1536).
 - Index type: **HNSW** (`USING hnsw (vector vector_cosine_ops)`).
 - Same Drizzle connection — no second client, no second pool.
-- `CREATE EXTENSION IF NOT EXISTS vector;` is the first migration in `forge/core/migrations/`.
+- `CREATE EXTENSION IF NOT EXISTS vector;` is the first migration in `packages/core/migrations/`.
 - The `qdrant` service is removed from `docker-compose.yml` at the Phase 2.5 flip PR.
 
-This makes Postgres the **single data store** for `forge/core`: rows, jobs, vectors.
+This makes Postgres the **single data store** for `packages/core`: rows, jobs, vectors.
 
 ## Rationale
 
@@ -61,7 +61,7 @@ Agent context retrieval is recall-sensitive (a missed memory is worse than a slo
 - `docker-compose.yml` drops one service (`qdrant`).
 - Single connection pool, single backup target, single restore drill.
 - Embedding writes can join issue/job writes in one transaction — eliminates the "embedded but no source row" / "source row but no embedding" reconciliation failure modes.
-- Self-host story shortens: "Postgres + `forge/core`" instead of "Postgres + Qdrant + Strapi".
+- Self-host story shortens: "Postgres + `packages/core`" instead of "Postgres + Qdrant + Strapi".
 
 ### Negative
 
@@ -81,11 +81,11 @@ Until then, `pgvector` is the answer.
 
 ## Implementation notes
 
-- `CREATE EXTENSION IF NOT EXISTS vector;` shipped as the first migration in `forge/core/migrations/`.
+- `CREATE EXTENSION IF NOT EXISTS vector;` shipped as the first migration in `packages/core/migrations/`.
 - `memories` table uses `vector(1536)` column with HNSW index on `vector_cosine_ops` as specified.
 - `qdrant` service removed from `docker-compose.yml` and `docker-compose.prod.yml` in the ISS-219 flip.
 - Postgres image pinned to `pgvector/pgvector:pg17` in `docker-compose.yml`, `docker-compose.prod.yml`, and the CI e2e-web service.
-- Drizzle first-class `vector` column support used throughout `forge/core/src/db/schema/`.
+- Drizzle first-class `vector` column support used throughout `packages/core/src/db/schema/`.
 
 ## Related
 

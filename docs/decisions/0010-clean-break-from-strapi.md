@@ -1,4 +1,4 @@
-# ADR 0010 — Clean break from Strapi to `forge/core`
+# ADR 0010 — Clean break from Strapi to `packages/core`
 
 - **Status:** Implemented
 - **Date:** 2026-04-23
@@ -8,12 +8,12 @@
 
 ## Context
 
-[ADR 0002](0002-replace-strapi-with-hono-drizzle.md) decided **what** to build (a Hono + Drizzle service, `forge/core`) and **why** (workload shape, memory footprint, upgrade treadmill, OSS-contributor friction). It did **not** decide **how** the existing Strapi-dependent codebase moves to the new service.
+[ADR 0002](0002-replace-strapi-with-hono-drizzle.md) decided **what** to build (a Hono + Drizzle service, `packages/core`) and **why** (workload shape, memory footprint, upgrade treadmill, OSS-contributor friction). It did **not** decide **how** the existing Strapi-dependent codebase moves to the new service.
 
 Two cutover models were possible:
 
-1. **Parity + dual-run** — build `forge/core` to match Strapi's API exactly, run both backends in production, switch clients per-domain behind feature flags, write contract tests asserting equivalence.
-2. **Clean break** — build `forge/core` from scratch with the API shape we actually want, point all clients at it in a single PR, delete `forge/strapi/` in the same PR.
+1. **Parity + dual-run** — build `packages/core` to match Strapi's API exactly, run both backends in production, switch clients per-domain behind feature flags, write contract tests asserting equivalence.
+2. **Clean break** — build `packages/core` from scratch with the API shape we actually want, point all clients at it in a single PR, delete `forge/strapi/` in the same PR.
 
 Without a decision, work drifted toward (1) — agents added "compatibility" thinking, contract-test scaffolding, dual-write hooks. This created the worst-of-both: longer Phase 2, half-Strapi-shaped `core`, and no clear "Strapi is gone" moment.
 
@@ -21,11 +21,11 @@ The internal alpha has no external users, no production data worth preserving, a
 
 ## Decision
 
-**Clean break.** `forge/core` is built fresh against the API shape that serves the clients best. There is no parity gate, no dual-run window, no contract tests against the legacy Strapi API. When `forge/core` reaches feature-completeness:
+**Clean break.** `packages/core` is built fresh against the API shape that serves the clients best. There is no parity gate, no dual-run window, no contract tests against the legacy Strapi API. When `packages/core` reaches feature-completeness:
 
-- All clients (`web/`, `dev/`) are pointed at `forge/core` in one PR.
+- All clients (`web/`, `dev/`) are pointed at `packages/core` in one PR.
 - `forge/strapi/` is deleted in the same PR.
-- The internal alpha deployment is wiped and recreated empty on `forge/core`.
+- The internal alpha deployment is wiped and recreated empty on `packages/core`.
 - No Strapi service in `docker-compose.yml`, no `STRAPI_URL` env vars, no Strapi response envelope (`{ data, meta }`) compatibility shims.
 
 `forge/strapi/` is **frozen** from the date of this ADR: bug fixes only, no new content types or endpoints.
@@ -42,7 +42,7 @@ The internal alpha has no external users, no production data worth preserving, a
 
 1. **Parity + dual-run (rejected, see Context).** Worst-of-both: longer timeline, no clean cutover moment, half-shaped `core`.
 2. **Migrate the Strapi schema with `drizzle-kit pull` and adapt.** Rejected — the Strapi-shaped schema is exactly what we're trying to escape.
-3. **Keep Strapi for the admin UI, run `forge/core` for everything else.** Rejected — two backends double operational surface for self-hosters; admin UI is small enough to ship in `forge/web/` (Phase 2.6).
+3. **Keep Strapi for the admin UI, run `packages/core` for everything else.** Rejected — two backends double operational surface for self-hosters; admin UI is small enough to ship in `packages/web/` (Phase 2.6).
 4. **Defer the cutover to v0.x+1.** Rejected — every week Strapi stays adds drift, contributor confusion, and audit-finding workarounds.
 
 ## Consequences
@@ -52,25 +52,25 @@ The internal alpha has no external users, no production data worth preserving, a
 - Single decision rule for every Phase 2 PR: "Does this depend on Strapi? If yes, defer until after the flip."
 - Zero ongoing dual-write or compatibility cost.
 - Phase 2.5 = one PR, one revert, one wipe-and-recreate.
-- `forge/core` API shape is owned by us, not inherited.
+- `packages/core` API shape is owned by us, not inherited.
 
 ### Negative
 
 - Internal alpha data is lost on cutover (accepted — test data, ~20 SidCorp engineers, recreatable in <1 day).
 - The flip PR is large by necessity (touches all clients + deletes a package). Compensated by being a single atomic revert target.
-- Loss of Strapi admin UI for ~1 week of cutover before Phase 2.6 ships `/admin` in `forge/web/`. Mitigation: Drizzle Studio + REST during the gap.
+- Loss of Strapi admin UI for ~1 week of cutover before Phase 2.6 ships `/admin` in `packages/web/`. Mitigation: Drizzle Studio + REST during the gap.
 
 ## Implementation notes
 
 - Flip executed via ISS-219 (Phase 2.8-F1): single PR containing `forge/strapi/` deletion + client repointing + docker-compose finalization. No dual-run window used, no contract-test scaffolding written.
 - Archive preserved at `legacy/strapi-v0` tag and branch; `git ls-tree legacy/strapi-v0 forge/strapi` remains non-empty for recoverability.
-- Internal alpha deployment wiped and recreated empty on `forge/core` per the ADR's acceptance of data loss.
-- `forge/app/` received the `STRAPI_URL` cleanup (rename to `API_ORIGIN`, `strapiMediaUrl` → `mediaUrl`) with no other functional changes, per the "Affects" clause below.
-- `/admin` in `forge/web/` shipped in Phase 2.6; Drizzle Studio covered the pre-2.6 gap as planned.
+- Internal alpha deployment wiped and recreated empty on `packages/core` per the ADR's acceptance of data loss.
+- `packages/app/` received the `STRAPI_URL` cleanup (rename to `API_ORIGIN`, `strapiMediaUrl` → `mediaUrl`) with no other functional changes, per the "Affects" clause below.
+- `/admin` in `packages/web/` shipped in Phase 2.6; Drizzle Studio covered the pre-2.6 gap as planned.
 
 ## Related
 
 - Driven by: [ADR 0002](0002-replace-strapi-with-hono-drizzle.md) (decided to replace Strapi; this ADR decides how)
 - Bound to: [ADR 0011](0011-pgvector-replaces-qdrant.md) (vector storage cutover happens in the same flip PR)
-- Affects: [ADR 0009](0009-mobile-app-paused-for-v0x.md) — `forge/app/` is not a Phase 2.5 client; its `STRAPI_URL` cleanup happens at the flip but no functional changes
+- Affects: [ADR 0009](0009-mobile-app-paused-for-v0x.md) — `packages/app/` is not a Phase 2.5 client; its `STRAPI_URL` cleanup happens at the flip but no functional changes
 - Cutover plan: [proposals/core-strapi-decoupling.md](../proposals/core-strapi-decoupling.md) (execution detail)

@@ -1,6 +1,6 @@
 # WebSocket
 
-Real-time channel between `forge/core` and clients (`forge/web`, `forge/dev`,
+Real-time channel between `packages/core` and clients (`packages/web`, `packages/dev`,
 embeddable widget). One endpoint, room-scoped, JSON envelopes.
 
 ## Endpoint & connection
@@ -58,13 +58,13 @@ and the rooms they publish to:
 
 | Category | Room | Source |
 |---|---|---|
-| `issue.*`, `task.*`, `schedule.*`, `skill.*` | `project:<id>` | `forge/core/src/ws/broadcast-subscribers.ts` |
+| `issue.*`, `task.*`, `schedule.*`, `skill.*` | `project:<id>` | `packages/core/src/ws/broadcast-subscribers.ts` |
 | `notification.*`, `user.preferencesChanged`, `chat.message` | `user:<id>` | `chat-sessions/routes.ts`, `chat/routes.ts`, broadcast-subscribers |
 | `job.*` (incl. `job.event` with `seq`) | `project:<id>` (and `device:<id>` for assignment) | `jobs/lifecycle-routes.ts`, `jobs/events-routes.ts`, `jobs/dispatcher.ts` |
 | `runner.*`, `device.status`, `pipeline.*` | `project:<id>` / `device:<id>` / `runner:<id>` | `runners/`, `devices/` |
 | `agent:*` (legacy colon names — agent runner internal) | `device:<id>` | `runners/adapters/claude-code.ts` |
 
-For the authoritative list, grep `roomManager.publish` in `forge/core/src/`.
+For the authoritative list, grep `roomManager.publish` in `packages/core/src/`.
 Event payloads are typed by the publishing module — do not derive shapes
 from this doc, read the call site.
 
@@ -75,7 +75,7 @@ Query keys on reconnect to refetch anything visible.
 
 ## Server primitives
 
-`forge/core/src/ws/server.ts` exports the lifecycle:
+`packages/core/src/ws/server.ts` exports the lifecycle:
 
 - `attachWs(server)` — bind to the existing HTTP server, mount `/ws`.
 - `closeWs()` — graceful shutdown (sends 1001, falls back to terminate).
@@ -91,9 +91,9 @@ Query keys on reconnect to refetch anything visible.
 There is **no** session-targeted send and **no** `waitForSubscriber()` —
 both removed. To target a single user, publish to `user:<userId>`.
 
-## Client integration (forge/web)
+## Client integration (packages/web)
 
-`forge/web/src/lib/ws/`:
+`packages/web/src/lib/ws/`:
 
 - **`client.ts`** — `wsClient` singleton. One connection per tab. Resends
   all room subscriptions on every reopen. Reconnect is jittered exponential
@@ -110,7 +110,7 @@ both removed. To target a single user, publish to `user:<userId>`.
   realtime updates.
 - **`seq-tracker.ts`** — tracks last-seen `seq` per job for replay.
 
-The widget (`forge/web/src/widget/widget-root.tsx`) consumes `chat.message`
+The widget (`packages/web/src/widget/widget-root.tsx`) consumes `chat.message`
 events directly for streaming AI chat UI.
 
 ## Design decisions

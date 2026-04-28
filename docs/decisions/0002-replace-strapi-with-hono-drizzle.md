@@ -88,10 +88,10 @@ Detail: RFC 0002 (to be drafted).
 ## Implementation notes
 
 - RFC 0002 accepted and executed across Phase 2.0–2.7.
-- `forge/core` ships Hono + Drizzle + pg-boss + `ws` + `@modelcontextprotocol/sdk` as specified, plus `jose` + `argon2` + shared policy module for dual-principal auth.
+- `packages/core` ships Hono + Drizzle + pg-boss + `ws` + `@modelcontextprotocol/sdk` as specified, plus `jose` + `argon2` + shared policy module for dual-principal auth.
 - Vector-storage decision updated to `pgvector` per [ADR 0011](0011-pgvector-replaces-qdrant.md) (supersedes the "Qdrant — unchanged" language in the Decision section).
 - Cutover model formalized in [ADR 0010](0010-clean-break-from-strapi.md) and executed via ISS-219 at Phase 2.8-F1: `forge/strapi/` archived to `legacy/strapi-v0` tag and deleted from main; `docker-compose.yml` slimmed to postgres + core + web.
-- Admin UI delivered via `/admin` routes in `forge/web/` (Phase 2.6).
+- Admin UI delivered via `/admin` routes in `packages/web/` (Phase 2.6).
 
 ## Related
 

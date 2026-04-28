@@ -20,7 +20,7 @@ services:
   # === Core API (Hono + Drizzle — RFC 0002) ===
   core:
     build:
-      context: ./forge/core
+      context: ./packages/core
       dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
@@ -45,7 +45,7 @@ services:
   web:
     build:
       context: .
-      dockerfile: forge/web/Dockerfile
+      dockerfile: packages/web/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8080/api
     restart: unless-stopped

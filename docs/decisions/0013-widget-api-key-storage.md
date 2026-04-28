@@ -6,7 +6,7 @@
 
 ## Context
 
-The chat widget authenticates against `forge/core` with a single per-project secret in the `X-Forge-API-Key` header. Three storage options were considered:
+The chat widget authenticates against `packages/core` with a single per-project secret in the `X-Forge-API-Key` header. Three storage options were considered:
 
 1. **Plaintext** in `projects.api_key` with a partial unique index, equality lookup on every widget request.
 2. **Hash + prefix** like `refresh_tokens.token_hash` / `token_prefix` and `devices.token_hash` / `token_prefix`: the prefix is indexed, the hash is bcrypt/argon2 verified per request.
@@ -38,6 +38,6 @@ The mitigations we keep:
 
 ## References
 
-- Implementation: `forge/core/src/middleware/api-key.ts`, `forge/core/src/projects/routes.ts` (rotate endpoint), migration `0034_projects_api_key.sql`.
+- Implementation: `packages/core/src/middleware/api-key.ts`, `packages/core/src/projects/routes.ts` (rotate endpoint), migration `0034_projects_api_key.sql`.
 - Issue: ISS-295.
 - Comparable hashed-credential designs in this codebase: `refresh_tokens` (auth/jwt), `devices` (device pairing) — both protect credentials whose plaintext is *not* embedded in HTML and therefore have a different threat model.

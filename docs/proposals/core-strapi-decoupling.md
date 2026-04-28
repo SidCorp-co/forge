@@ -1,10 +1,10 @@
 ---
-name: Clean-break to forge/core
-description: Skip Strapi entirely. Build forge/core from scratch, point all clients at it, delete forge/strapi in one shot. No parity, no dual-run, no migration.
+name: Clean-break to packages/core
+description: Skip Strapi entirely. Build packages/core from scratch, point all clients at it, delete forge/strapi in one shot. No parity, no dual-run, no migration.
 type: proposal
 ---
 
-# Proposal: Clean-break to `forge/core`
+# Proposal: Clean-break to `packages/core`
 
 - **Status:** Draft (companion to [RFC 0002](../rfcs/0002-replace-strapi-with-hono-drizzle.md))
 - **Date:** 2026-04-23
@@ -14,7 +14,7 @@ type: proposal
 
 **Bypass Strapi entirely. Do not migrate. Do not run both backends. Do not write contract tests against the old API.**
 
-Build `forge/core` as a fresh, purpose-shaped service. When it is feature-complete, all clients are pointed at it in one PR, and `forge/strapi/` is deleted in the same PR. The internal alpha deployment is wiped and recreated on `core` from empty.
+Build `packages/core` as a fresh, purpose-shaped service. When it is feature-complete, all clients are pointed at it in one PR, and `forge/strapi/` is deleted in the same PR. The internal alpha deployment is wiped and recreated on `core` from empty.
 
 This is allowed because:
 - No external users.
@@ -31,7 +31,7 @@ This is allowed because:
        └────────────┬───────────┘
                     ▼
           ┌──────────────────┐
-          │   forge/core     │  Hono · Drizzle · pg-boss · ws · MCP
+          │   packages/core     │  Hono · Drizzle · pg-boss · ws · MCP
           │   (single proc)  │
           └────────┬─────────┘
                    │
@@ -40,7 +40,7 @@ This is allowed because:
           └──────────────────┘
 ```
 
-One backend. One process. **One database** — Postgres carries data, jobs (pg-boss), and embeddings (pgvector). No Strapi, no Qdrant, no Redis. Mobile (`forge/app/`) is paused per [ADR 0009](../decisions/0009-mobile-app-paused-for-v0x.md) and is not a client of `core` in v0.x.
+One backend. One process. **One database** — Postgres carries data, jobs (pg-boss), and embeddings (pgvector). No Strapi, no Qdrant, no Redis. Mobile (`packages/app/`) is paused per [ADR 0009](../decisions/0009-mobile-app-paused-for-v0x.md) and is not a client of `core` in v0.x.
 
 ### Surface
 
@@ -51,12 +51,12 @@ One backend. One process. **One database** — Postgres carries data, jobs (pg-b
 | `/mcp` | MCP server (Streamable HTTP) — same handlers as REST |
 | `/health` | liveness + queue + ws status |
 
-Admin UI is not part of `core` — it lives at `/admin` in `forge/web/` and uses the same REST.
+Admin UI is not part of `core` — it lives at `/admin` in `packages/web/` and uses the same REST.
 
-### Module shape (inside `forge/core/`)
+### Module shape (inside `packages/core/`)
 
 ```
-forge/core/
+packages/core/
   migrations/         drizzle-kit generated SQL (top-level per drizzle convention)
   drizzle.config.ts   points migrations out → ./migrations
   src/
@@ -99,7 +99,7 @@ Each phase ends in a working `core` that runs locally and in CI. Strapi is **not
 | **2.3** | Devices, jobs, JobEvents, pg-boss dispatcher, ws fanout, agents, skills, chat | A device can claim a job, post events, broadcast to subscribed clients |
 | **2.4** | MCP tools for every domain | Claude Code talks to `core` over MCP and exercises all CRUD |
 | **2.5** | **The flip** (see below) | `forge/strapi/` deleted; clients on `core` |
-| **2.6** | `/admin` routes in `forge/web/` | User/project/device/audit admin functional |
+| **2.6** | `/admin` routes in `packages/web/` | User/project/device/audit admin functional |
 
 Phases run sequentially. No phase depends on Strapi state.
 
@@ -139,7 +139,7 @@ After merge, rollback means restoring `forge/strapi/` from git and reverting cli
 
 ## Related decisions
 
-- [ADR 0009](../decisions/0009-mobile-app-paused-for-v0x.md) — `forge/app/` is not a Phase 2.5 client.
+- [ADR 0009](../decisions/0009-mobile-app-paused-for-v0x.md) — `packages/app/` is not a Phase 2.5 client.
 - [ADR 0010](../decisions/0010-clean-break-from-strapi.md) — formalizes the clean-break cutover model (no parity, single flip PR).
 - [ADR 0011](../decisions/0011-pgvector-replaces-qdrant.md) — vector storage moves into Postgres `pgvector`, supersedes "Qdrant unchanged" in [ADR 0002](../decisions/0002-replace-strapi-with-hono-drizzle.md), [ADR 0006](../decisions/0006-pg-boss-for-job-queue.md), and [RFC 0002](../rfcs/0002-replace-strapi-with-hono-drizzle.md) §Stack.
 
@@ -147,9 +147,9 @@ After merge, rollback means restoring `forge/strapi/` from git and reverting cli
 
 | # | Question | Decision | Rationale |
 |---|---|---|---|
-| **D1** | Drizzle migrations location | `forge/core/migrations/` (top-level) | Standard drizzle-kit convention; cleaner CLI ergonomics — no `--out` flag on every command. |
-| **D2** | `forge/dev` local-Strapi mode | **Removed** in Phase 2.5. No `core` local-mode in v0.x. | Opt-in dev tooling with low usage; reintroducing later against `core` is cheaper than porting now. |
-| **D3** | `/admin` UI in `forge/web/` for Phase 2.5 | **Not required** for the flip. Operate via Drizzle Studio + REST during cutover week. Ship `/admin` in Phase 2.6. | Keeps Phase 2.5 to a single PR; `/admin` work doesn't gate the Strapi deletion. |
+| **D1** | Drizzle migrations location | `packages/core/migrations/` (top-level) | Standard drizzle-kit convention; cleaner CLI ergonomics — no `--out` flag on every command. |
+| **D2** | `packages/dev` local-Strapi mode | **Removed** in Phase 2.5. No `core` local-mode in v0.x. | Opt-in dev tooling with low usage; reintroducing later against `core` is cheaper than porting now. |
+| **D3** | `/admin` UI in `packages/web/` for Phase 2.5 | **Not required** for the flip. Operate via Drizzle Studio + REST during cutover week. Ship `/admin` in Phase 2.6. | Keeps Phase 2.5 to a single PR; `/admin` work doesn't gate the Strapi deletion. |
 | **D4** | pgvector index type | **`hnsw`** | Embedding corpus is small in v0.x; recall matters more than build speed for agent context retrieval. Re-evaluate if corpus crosses ~1M vectors. |
 
 D4 has been promoted to **[ADR 0011](../decisions/0011-pgvector-replaces-qdrant.md)** (accepted 2026-04-23). The cutover model itself (clean break, no parity, single flip PR) is **[ADR 0010](../decisions/0010-clean-break-from-strapi.md)**. D1–D3 are execution-scoped and live and die with this proposal.

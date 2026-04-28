@@ -6,7 +6,7 @@ Jarvis Agents documentation, organized by purpose.
 
 0. **System map (30-second overview).** Load [system.graph.json](system.graph.json) — nodes + edges describing planes, services, modules, and their dependencies. Use this to orient yourself before touching anything. Validated against [system.graph.schema.json](system.graph.schema.json).
 1. **Repo state.** Read `/CLAUDE.md` (root) — gives current Phase 2 status, active migrations, and a "before you start" reading map.
-2. **Package context.** Read the `forge/<pkg>/CLAUDE.md` for the package you're touching. It tells you whether the package is active, legacy (Strapi), or paused (mobile).
+2. **Package context.** Read the `packages/<pkg>/CLAUDE.md` for the package you're touching. It tells you whether the package is active, legacy (Strapi), or paused (mobile).
 3. **Constraints.** Skim [decisions/](decisions/) for any ADR whose title matches your task (auth, queue, vector storage, license, mobile, runner, credentials). **Never silently contradict an ADR** — supersede with a new ADR if you must.
 4. **In-flight work.** Check [proposals/](proposals/). Your task may already be planned (or explicitly out of scope).
 5. **Behavior canon.** For feature work, read the matching [modules/](modules/) doc — it answers "where does data come from, how does it flow."

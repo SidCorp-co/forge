@@ -24,7 +24,7 @@ Adopt **Trunk-Based Development**. Single trunk = `main`. No `develop`, no `stag
 |---|---|
 | Trunk | `main` only — always green, always deployable. |
 | Feature branches | `ISS-XX-<short>` cut from `main`, lifetime < 1 day, target same-day merge. |
-| Feature flags | Incomplete work merges behind `isEnabled('flagName')` from `forge/core/src/lib/feature-flags.ts` (default off). |
+| Feature flags | Incomplete work merges behind `isEnabled('flagName')` from `packages/core/src/lib/feature-flags.ts` (default off). |
 | Revert culture | If main breaks, revert the offending commit within 30 min. Do not push fix-forward unless revert is structurally impossible. |
 | Hot-fix | Same as feature: branch from main, merge back fast. No separate hotfix track. |
 | Pre-push hook | `.githooks/pre-push` runs build + tests on packages with changed files. Install via `git config core.hooksPath .githooks` (auto-set by `pnpm install` postinstall). |

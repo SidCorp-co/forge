@@ -43,36 +43,36 @@
     },
 
     {
-      "id": "forge/web",
+      "id": "packages/web",
       "kind": "service",
       "purpose": "Next.js 16 cloud UI",
       "status": "active",
       "stack": ["next", "react-query", "tailwind"],
-      "docs": "forge/web/CLAUDE.md"
+      "docs": "packages/web/CLAUDE.md"
     },
     {
-      "id": "forge/dev",
+      "id": "packages/dev",
       "kind": "service",
       "purpose": "Tauri desktop app — local codebase + agent runner",
       "status": "active",
       "stack": ["tauri", "rust", "react"],
-      "docs": "forge/dev/CLAUDE.md"
+      "docs": "packages/dev/CLAUDE.md"
     },
     {
-      "id": "forge/app",
+      "id": "packages/app",
       "kind": "service",
       "purpose": "React Native mobile (paused)",
       "status": "paused",
       "decisions": ["ADR-0009"],
-      "docs": "forge/app/CLAUDE.md"
+      "docs": "packages/app/CLAUDE.md"
     },
     {
-      "id": "forge/core",
+      "id": "packages/core",
       "kind": "service",
       "purpose": "Hono + Drizzle backend (REST + WS + MCP)",
       "status": "active",
       "stack": ["hono", "drizzle", "pg-boss", "ws"],
-      "docs": "forge/core/",
+      "docs": "packages/core/",
       "decisions": ["ADR-0002", "ADR-0010"]
     },
     {
@@ -215,36 +215,36 @@
     { "from": "jarvis-agents", "to": "control-plane", "relation": "contains" },
     { "from": "jarvis-agents", "to": "runtime-plane", "relation": "contains" },
 
-    { "from": "client-plane", "to": "forge/web", "relation": "contains" },
-    { "from": "client-plane", "to": "forge/dev", "relation": "contains" },
-    { "from": "client-plane", "to": "forge/app", "relation": "contains" },
+    { "from": "client-plane", "to": "packages/web", "relation": "contains" },
+    { "from": "client-plane", "to": "packages/dev", "relation": "contains" },
+    { "from": "client-plane", "to": "packages/app", "relation": "contains" },
 
-    { "from": "control-plane", "to": "forge/core", "relation": "contains" },
+    { "from": "control-plane", "to": "packages/core", "relation": "contains" },
     {
       "from": "control-plane",
       "to": "forge/strapi",
       "relation": "contains",
-      "note": "frozen — replaced_by forge/core"
+      "note": "frozen — replaced_by packages/core"
     },
 
     {
       "from": "runtime-plane",
-      "to": "forge/dev",
+      "to": "packages/dev",
       "relation": "contains",
       "note": "dev is both client (UI) and runtime (agent)"
     },
     { "from": "runtime-plane", "to": "forged", "relation": "contains" },
 
-    { "from": "forge/strapi", "to": "forge/core", "relation": "replaced_by" },
+    { "from": "forge/strapi", "to": "packages/core", "relation": "replaced_by" },
 
-    { "from": "forge/core", "to": "issues-pipeline", "relation": "contains" },
-    { "from": "forge/core", "to": "agents-jobs", "relation": "contains" },
-    { "from": "forge/core", "to": "devices", "relation": "contains" },
-    { "from": "forge/core", "to": "skills", "relation": "contains" },
-    { "from": "forge/core", "to": "memory-knowledge", "relation": "contains" },
-    { "from": "forge/core", "to": "chat", "relation": "contains" },
-    { "from": "forge/core", "to": "auth", "relation": "contains" },
-    { "from": "forge/web", "to": "admin-ui", "relation": "contains" },
+    { "from": "packages/core", "to": "issues-pipeline", "relation": "contains" },
+    { "from": "packages/core", "to": "agents-jobs", "relation": "contains" },
+    { "from": "packages/core", "to": "devices", "relation": "contains" },
+    { "from": "packages/core", "to": "skills", "relation": "contains" },
+    { "from": "packages/core", "to": "memory-knowledge", "relation": "contains" },
+    { "from": "packages/core", "to": "chat", "relation": "contains" },
+    { "from": "packages/core", "to": "auth", "relation": "contains" },
+    { "from": "packages/web", "to": "admin-ui", "relation": "contains" },
 
     {
       "from": "issues-pipeline",
@@ -267,7 +267,7 @@
       "relation": "contains"
     },
 
-    { "from": "forge/core", "to": "postgres", "relation": "depends_on" },
+    { "from": "packages/core", "to": "postgres", "relation": "depends_on" },
     {
       "from": "memory-knowledge",
       "to": "postgres",
@@ -295,7 +295,7 @@
     },
 
     {
-      "from": "forge/dev",
+      "from": "packages/dev",
       "to": "claude-cli",
       "relation": "depends_on",
       "note": "spawned in git worktree per job"
@@ -303,51 +303,51 @@
     { "from": "forged", "to": "claude-cli", "relation": "depends_on" },
 
     {
-      "from": "forge/web",
-      "to": "forge/core",
+      "from": "packages/web",
+      "to": "packages/core",
       "relation": "depends_on",
       "note": "REST + WS"
     },
     {
-      "from": "forge/dev",
-      "to": "forge/core",
+      "from": "packages/dev",
+      "to": "packages/core",
       "relation": "depends_on",
       "note": "REST + WS for control; receives job dispatches"
     },
     {
-      "from": "forge/app",
-      "to": "forge/core",
+      "from": "packages/app",
+      "to": "packages/core",
       "relation": "depends_on",
       "note": "inactive — paused"
     },
 
     {
-      "from": "forge/core",
-      "to": "forge/web",
+      "from": "packages/core",
+      "to": "packages/web",
       "relation": "broadcasts_to",
       "note": "user JWT room"
     },
     {
-      "from": "forge/core",
-      "to": "forge/dev",
+      "from": "packages/core",
+      "to": "packages/dev",
       "relation": "broadcasts_to",
       "note": "user + device rooms"
     },
 
     {
-      "from": "forge/core",
+      "from": "packages/core",
       "exposes": "REST",
       "at": "/api/*",
       "to": "client-plane"
     },
     {
-      "from": "forge/core",
+      "from": "packages/core",
       "exposes": "WebSocket",
       "at": "/ws",
       "to": "client-plane"
     },
     {
-      "from": "forge/core",
+      "from": "packages/core",
       "exposes": "MCP",
       "at": "/mcp",
       "to": "claude-cli",
