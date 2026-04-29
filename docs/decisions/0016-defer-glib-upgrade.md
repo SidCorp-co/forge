@@ -75,7 +75,7 @@ Any of the following triggers a fresh look at this decision:
    - wry main: [`Cargo.toml`](https://github.com/tauri-apps/wry/blob/dev/Cargo.toml) — currently pins `gtk = "0.18"`, `webkit2gtk = "=2.0.2"`.
    - muda: [issue #259](https://github.com/tauri-apps/muda/issues/259) (gtk-4 migration, open since 2024-12, no recent activity).
 
-2. **glib 0.18 gets a backport patch** for `VariantStrIter` — would close the alert at the current pin without an ecosystem move. Watch: [glib on crates.io](https://crates.io/crates/glib).
+2. **glib 0.18 gets a backport patch** for `VariantStrIter` — would close the alert at the current pin without an ecosystem move. Watch: [gtk-rs/gtk-rs-core releases](https://github.com/gtk-rs/gtk-rs-core/releases) for any `glib-0.18.*` patch tag.
 
 3. **Forge code starts using GVariant** — the grep above starts returning matches. The `pre-push` hook should grow a guard for this; not adding it today because the surface is currently zero.
 
