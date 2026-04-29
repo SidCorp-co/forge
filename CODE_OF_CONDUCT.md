@@ -26,7 +26,7 @@ Examples of unacceptable behavior:
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders at **chuongld@sidcorp.co**. All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders at **chuongld@sidcorp.co**.<!-- TODO: replace with neutral maintainer contact (security advisory form or new email) once set up. --> All complaints will be reviewed and investigated promptly and fairly.
 
 ## Attribution
 

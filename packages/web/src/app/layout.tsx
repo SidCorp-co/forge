@@ -19,7 +19,7 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "Forge",
-  description: "Issue tracking and project management",
+  description: "Self-hosted AI-powered software lifecycle platform. Build through maintain with Claude Code on devices you control.",
   icons: {
     icon: [
       { url: "/32x32.png", sizes: "32x32", type: "image/png" },
