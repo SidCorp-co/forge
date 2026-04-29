@@ -27,7 +27,7 @@ ADRs are **never edited after acceptance**. If a decision is reversed, write a n
 | [0012](0012-web-api-client-shape.md) | Web API client shape | Accepted | — |
 | [0013](0013-widget-api-key-storage.md) | Widget API key storage | Accepted | — |
 | [0014](0014-trunk-based-development.md) | Trunk-Based Development (single trunk, no `develop`/release branches) | Accepted | 2026-04-26 |
-| [0015](0015-rebrand-to-forge.md) | Rebrand to Forge under `SidCorp-co` | Accepted | 2026-04-28 |
+| [0015](0015-rebrand-to-forge.md) | Rebrand to Forge | Accepted | 2026-04-28 |
 | [0016](0016-defer-glib-upgrade.md) | Defer glib 0.20 upgrade; transitive 0.18 dismissed with zero-exposure evidence | Accepted | 2026-04-29 |
 
 ## Status values

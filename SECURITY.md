@@ -13,7 +13,7 @@ During alpha, only the latest version receives security fixes. A formal support 
 
 **Do not open a public issue.**
 
-Email **chuongld@sidcorp.co** with:
+Submit through GitHub's [private vulnerability reporting form](https://github.com/SidCorp-co/forge/security/advisories/new) with:
 
 - A description of the vulnerability and its impact
 - Steps to reproduce

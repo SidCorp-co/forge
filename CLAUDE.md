@@ -1,6 +1,9 @@
 # Forge
 
-Project management + AI agent platform.
+Open-source AI-powered software lifecycle platform. Powered by Claude Code,
+running on devices you control. Today covers Build / Review / Launch / Maintain;
+full lifecycle (Idea → Maintain) on roadmap. See [docs/VISION.md](docs/VISION.md)
+for the full concept.
 
 ## Before you start a task — read first
 
@@ -102,4 +105,4 @@ Full index at [docs/README.md](docs/README.md). Quick jumps:
 - [docs/rfcs/](docs/rfcs/) — accepted RFCs (0002 Strapi replacement)
 - [docs/proposals/](docs/proposals/) — in-flight proposals (Strapi cutover, cost-aware routing)
 - [docs/system.graph.json](docs/system.graph.json) — machine-readable system map (validated against [schema](docs/system.graph.schema.json))
-- [docs/ROADMAP.md](docs/ROADMAP.md) — what ships next
+- [docs/VISION.md](docs/VISION.md) — concept, audience, non-goals, roadmap horizons
