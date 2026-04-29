@@ -16,6 +16,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+## [0.1.22] - 2026-04-29
+
+Patch: self-heal stale `config.coreUrl` for users who logged in before v0.1.21 on subdomain-split deploys.
+
+### Fixed
+
+- **"Sync to server" 404 after login.** Users who logged in on <= v0.1.20 stored the WEB URL in `config.coreUrl`. On subdomain-split deploys every subsequent `/api/*` call hit the web origin and 404'd (project save, agent run, etc. all silently failed). The desktop now resolves `config.coreUrl` via `/.well-known/forge-config.json` on every launch and persists the corrected value — single-origin deploys are unaffected, subdomain-split stale configs heal silently on first launch of v0.1.22.
+- **CORS for Tauri webview** (server-side, ships with the next core deploy). The API now allows `tauri://localhost` (macOS/Linux) and `https://tauri.localhost` (Windows) unconditionally so desktop fetches with credentials succeed.
+
 ## [0.1.21] - 2026-04-29
 
 Patch release: fixes the desktop "Server URL" field showing `http://localhost:8080` instead of the saved server URL.
