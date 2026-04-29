@@ -58,3 +58,6 @@ skills/*
 
 # Internal-only docs (maintainer artifacts: release tests, migration audits, ops runbooks)
 .internal-docs/
+
+# Claude Code working files (per-repo / per-package agent guidance, not OSS-public)
+CLAUDE.md
