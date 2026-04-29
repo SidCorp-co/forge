@@ -1,145 +1,105 @@
 'use client';
 
-import { Check, X, Clock } from 'lucide-react';
 import { motion } from 'framer-motion';
-
-const included = [
-  'Discovery & research',
-  'UI/UX design',
-  'Full-stack build',
-  'Handoff & documentation',
-  'Launch support',
-];
-
-const notIncluded = [
-  'Production scaling',
-  'Ongoing maintenance',
-  { label: 'SLA support', note: 'unless upgraded' },
-  '24/7 on-call',
-];
-
-const containerVariants = {
-  hidden: {},
-  visible: {
-    transition: { staggerChildren: 0.1 },
-  },
-};
+import { Check, Clock } from 'lucide-react';
+import { lifecycleStages } from '../constants';
 
 const ease = 'easeOut' as const;
 
+const containerVariants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.06 } },
+};
+
 const itemVariants = {
-  hidden: { opacity: 0, y: 16 },
+  hidden: { opacity: 0, y: 12 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease } },
 };
 
+/**
+ * Lifecycle Scope — visualizes the 7-stage lifecycle with a clear split
+ * between "ships today" (Build / Review / Launch / Maintain) and "roadmap"
+ * (Idea / Spec / Design). Honest about current capability without burying
+ * the long-term vision.
+ */
 export function LandingScope() {
   return (
-    <section className="relative max-w-5xl mx-auto px-6 py-24">
-      <div className="pointer-events-none absolute top-[10%] left-1/2 -translate-x-1/2 w-[600px] h-[400px] rounded-full bg-[radial-gradient(circle,rgba(249,115,22,0.04)_0%,transparent_70%)]" />
+    <section
+      id="scope"
+      className="scroll-mt-20 relative max-w-5xl mx-auto px-6 py-28"
+    >
+      <div className="pointer-events-none absolute -top-12 right-[-10%] w-[500px] h-[400px] rounded-full bg-[radial-gradient(circle,rgba(249,115,22,0.05)_0%,transparent_70%)]" />
 
       <motion.div
         className="text-center mb-16"
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, amount: 0.3 }}
-        transition={{ duration: 0.6, ease: 'easeOut' }}
+        transition={{ duration: 0.6, ease }}
       >
         <p className="font-mono text-xs tracking-[0.15em] uppercase text-warning mb-3">
-          Scope
+          Lifecycle scope
         </p>
         <h2 className="font-serif text-4xl sm:text-5xl tracking-tight mb-4">
-          Honest{' '}
+          Today, and{' '}
           <span className="bg-gradient-to-r from-amber-400 to-amber-600 bg-clip-text text-transparent">
-            boundaries
+            where we&apos;re going
           </span>
         </h2>
-        <p className="text-primary-fixed max-w-md mx-auto text-base font-light leading-relaxed">
-          Clear expectations from day one. Know exactly what you get — and what you don&apos;t.
+        <p className="text-primary-fixed max-w-xl mx-auto text-base font-light leading-relaxed">
+          The full vision: every stage from idea to maintenance. Today, Forge
+          ships the build-through-maintain half. Idea, Spec, and Design are
+          next.
         </p>
       </motion.div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-        {/* Included */}
-        <motion.div
-          className="rounded-2xl border border-outline-variant/20 bg-white p-6 shadow-sm"
-          variants={containerVariants}
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, amount: 0.3 }}
-        >
-          <h3 className="font-mono text-xs tracking-[0.15em] uppercase text-success mb-5">
-            What&apos;s Included
-          </h3>
-          <ul className="space-y-3">
-            {included.map((item) => (
-              <motion.li
-                key={item}
-                className="flex items-center gap-3 text-on-surface"
-                variants={itemVariants}
-              >
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-success/10 flex items-center justify-center">
-                  <Check className="w-3.5 h-3.5 text-success" />
-                </span>
-                <span className="text-sm font-light">{item}</span>
-              </motion.li>
-            ))}
-          </ul>
-        </motion.div>
-
-        {/* Not Included */}
-        <motion.div
-          className="rounded-2xl border border-outline-variant/20 bg-white p-6 shadow-sm"
-          variants={containerVariants}
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, amount: 0.3 }}
-        >
-          <h3 className="font-mono text-xs tracking-[0.15em] uppercase text-error mb-5">
-            Not Included
-          </h3>
-          <ul className="space-y-3">
-            {notIncluded.map((item) => {
-              const label = typeof item === 'string' ? item : item.label;
-              const note = typeof item === 'string' ? null : item.note;
-              return (
-                <motion.li
-                  key={label}
-                  className="flex items-center gap-3 text-on-surface"
-                  variants={itemVariants}
-                >
-                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-error/10 flex items-center justify-center">
-                    <X className="w-3.5 h-3.5 text-error" />
-                  </span>
-                  <span className="text-sm font-light">
-                    {label}
-                    {note && (
-                      <span className="text-primary-fixed ml-1.5 text-xs italic">
-                        ({note})
-                      </span>
-                    )}
-                  </span>
-                </motion.li>
-              );
-            })}
-          </ul>
-        </motion.div>
-      </div>
-
-      {/* Timeline badge */}
-      <motion.div
-        className="flex justify-center"
-        initial={{ opacity: 0, y: 12 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, amount: 0.5 }}
-        transition={{ duration: 0.5, ease: 'easeOut' }}
+      <motion.ol
+        variants={containerVariants}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.2 }}
+        className="relative grid grid-cols-1 sm:grid-cols-7 gap-3"
       >
-        <div className="inline-flex items-center gap-2 rounded-full border border-outline-variant/30 bg-white px-5 py-2.5 shadow-sm">
-          <Clock className="w-4 h-4 text-warning" />
-          <span className="font-mono text-sm text-on-surface">
-            2–4 weeks from kickoff
-          </span>
-        </div>
-      </motion.div>
+        {lifecycleStages.map((stage) => {
+          const isToday = stage.status === 'today';
+          return (
+            <motion.li
+              key={stage.name}
+              variants={itemVariants}
+              className={`relative rounded-2xl border p-5 transition-colors ${
+                isToday
+                  ? 'border-warning/40 bg-white shadow-sm'
+                  : 'border-outline-variant/20 bg-surface-container-low/40 opacity-70'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                {isToday ? (
+                  <span className="inline-flex w-5 h-5 items-center justify-center rounded-full bg-success/15 text-success">
+                    <Check className="w-3 h-3" />
+                  </span>
+                ) : (
+                  <span className="inline-flex w-5 h-5 items-center justify-center rounded-full bg-outline-variant/30 text-primary-fixed">
+                    <Clock className="w-3 h-3" />
+                  </span>
+                )}
+                <p className="font-serif text-lg text-on-surface">
+                  {stage.name}
+                </p>
+              </div>
+              <p
+                className={`font-mono text-[10px] uppercase tracking-[0.18em] mb-2 ${
+                  isToday ? 'text-success' : 'text-primary-fixed/60'
+                }`}
+              >
+                {isToday ? 'Today' : 'Roadmap'}
+              </p>
+              <p className="text-xs text-primary-fixed leading-relaxed">
+                {stage.description}
+              </p>
+            </motion.li>
+          );
+        })}
+      </motion.ol>
     </section>
   );
 }

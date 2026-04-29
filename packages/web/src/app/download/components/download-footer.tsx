@@ -20,7 +20,7 @@ export function DownloadFooter({ release }: DownloadFooterProps) {
         <div className="flex flex-col gap-8 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="font-serif text-2xl tracking-tight text-on-surface">
-              Forge Beta
+              Forge desktop
             </p>
             <p className="mt-2 text-xs text-primary-fixed font-mono">
               <span className="text-on-surface">Apache-2.0</span>
@@ -39,14 +39,9 @@ export function DownloadFooter({ release }: DownloadFooterProps) {
               )}
             </p>
             <p className="mt-3 text-xs text-primary-fixed font-light max-w-sm leading-relaxed">
-              Built by{' '}
-              <Link
-                href="/"
-                className="underline-offset-4 hover:underline hover:text-on-surface transition-colors"
-              >
-                SidCorp
-              </Link>{' '}
-              — POC studio shipping fast with the same toolkit you&apos;re downloading.
+              Pair this app with a self-hosted Forge instance to spawn{' '}
+              <code className="font-mono text-[12px] text-on-surface">claude</code>{' '}
+              on your machine. Tokens stay in your OS keychain.
             </p>
           </div>
 
@@ -66,9 +61,9 @@ export function DownloadFooter({ release }: DownloadFooterProps) {
         </div>
 
         <div className="mt-10 pt-6 border-t border-outline-variant/20 text-xs text-primary-fixed/80 flex flex-wrap items-center justify-between gap-2">
-          <span>© {new Date().getFullYear()} junixlabs · Built with Forge</span>
+          <span>© {new Date().getFullYear()} Forge contributors · Apache-2.0</span>
           <Link href="/" className="hover:text-on-surface transition-colors">
-            ← Back to studio
+            ← Back to home
           </Link>
         </div>
       </div>

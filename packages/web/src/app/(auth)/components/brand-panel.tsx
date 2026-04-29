@@ -1,11 +1,11 @@
 import Link from 'next/link';
 import { fetchLatestRelease } from '@/lib/github-releases';
 
-const PITCH = 'From idea to working POC.\nIn days, not months.';
+const PITCH = 'From build to maintain.\nOn devices you control.';
 
 const BADGES = [
   'Open Source · Apache-2.0',
-  'Local-first runner',
+  'Powered by Claude Code',
   'MCP-native',
 ] as const;
 
@@ -33,15 +33,15 @@ export async function BrandPanel() {
 
       <div className="max-w-[380px]">
         <p className="font-mono text-[10px] uppercase tracking-[0.32em] text-on-surface-variant">
-          POC Studio · junixlabs
+          AI-powered software lifecycle
         </p>
         <h2 className="mt-5 whitespace-pre-line text-[32px] leading-[1.08] tracking-tight text-on-surface">
           {PITCH}
         </h2>
         <p className="mt-5 text-[14px] leading-relaxed text-on-surface-variant max-w-[340px]">
-          A local-first build console for shipping proof-of-concept work fast.
-          Sign in to drive issues through the pipeline, or create an account to
-          start a new project.
+          The open-source platform for managing software from build through
+          maintenance. Sign in to drive issues through your pipeline, or
+          create an account to start a new project.
         </p>
 
         <ul className="mt-8 space-y-2.5">

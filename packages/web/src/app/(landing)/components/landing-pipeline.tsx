@@ -1,21 +1,10 @@
 'use client';
 
-import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ArrowUpRight, Cpu, Download, Github, Network, Shield } from 'lucide-react';
+import { Cpu, Network, Shield } from 'lucide-react';
+import { pipelineSteps } from '../constants';
 
 const ease = 'easeOut' as const;
-
-// Real-feel pipeline log — these are stages a single issue actually walks
-// through in Forge. Each step animates in on scroll to give the section a
-// pulse without falling into "fake terminal" cliché.
-const pipelineSteps = [
-  { stage: 'triage', from: 'open', to: 'confirmed', delay: 0.0 },
-  { stage: 'plan', from: 'confirmed', to: 'approved', delay: 0.12 },
-  { stage: 'code', from: 'approved', to: 'developed', delay: 0.24 },
-  { stage: 'review', from: 'developed', to: 'pass', delay: 0.36, glyph: '✓' },
-  { stage: 'release', from: 'pass', to: 'main', delay: 0.48 },
-];
 
 const pillars = [
   {
@@ -26,7 +15,7 @@ const pillars = [
   {
     icon: Network,
     label: 'MCP-native',
-    body: 'Per-project MCP servers. The desktop and the cloud speak the same protocol end-to-end.',
+    body: 'Per-project MCP server at /mcp. Desktop, web, and external clients speak the same protocol.',
   },
   {
     icon: Shield,
@@ -45,17 +34,15 @@ const itemVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.45, ease } },
 };
 
-export function LandingForge() {
+export function LandingPipeline() {
   return (
     <section
-      id="forge"
+      id="pipeline"
       className="scroll-mt-20 relative max-w-5xl mx-auto px-6 py-28 overflow-hidden"
     >
-      {/* Ambient glows — match the page-wide amber/violet vocabulary */}
       <div className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 w-[700px] h-[400px] rounded-full bg-[radial-gradient(ellipse,rgba(249,115,22,0.06)_0%,transparent_70%)]" />
       <div className="pointer-events-none absolute bottom-0 right-[-15%] w-[420px] h-[420px] rounded-full bg-[radial-gradient(circle,rgba(124,58,237,0.05)_0%,transparent_70%)]" />
 
-      {/* Header */}
       <motion.div
         className="text-center mb-14"
         initial={{ opacity: 0, y: 20 }}
@@ -64,22 +51,22 @@ export function LandingForge() {
         transition={{ duration: 0.6, ease }}
       >
         <p className="font-mono text-xs tracking-[0.15em] uppercase text-warning mb-3">
-          The Engine
+          Pipeline
         </p>
         <h2 className="font-serif text-4xl sm:text-5xl md:text-6xl tracking-tight leading-[1.05] mb-5">
-          <span className="text-on-surface">Built in public,</span>
-          <br />
+          <span className="text-on-surface">Configurable.</span>{' '}
           <span className="bg-gradient-to-r from-amber-400 to-amber-600 bg-clip-text text-transparent">
-            yours to ship
+            Per project.
           </span>
         </h2>
         <p className="text-primary-fixed max-w-xl mx-auto text-base sm:text-lg font-light leading-relaxed">
-          The same engine we use to ship POCs is now open-source. The AI-augmented
-          pipeline, the runners, the orchestration — Apache-2.0, no strings.
+          Issues flow through stages with per-stage auto-run or human gates.
+          The default 14-status pipeline is one shape — shorten, extend, or
+          replace it for each project.
         </p>
       </motion.div>
 
-      {/* Pipeline log mockup — distinctive visual, not a fake console */}
+      {/* Pipeline log mockup */}
       <motion.div
         className="relative mb-14"
         initial={{ opacity: 0, y: 20 }}
@@ -88,7 +75,7 @@ export function LandingForge() {
         transition={{ duration: 0.6, ease, delay: 0.1 }}
       >
         <div className="rounded-2xl border border-outline-variant/20 bg-white p-6 sm:p-8 shadow-sm">
-          {/* "Live" header */}
+          {/* Live header */}
           <div className="flex items-center justify-between mb-5 pb-4 border-b border-outline-variant/15">
             <div className="flex items-center gap-2">
               <span className="relative flex w-2 h-2">
@@ -104,7 +91,6 @@ export function LandingForge() {
             </span>
           </div>
 
-          {/* Steps */}
           <motion.ol
             variants={containerVariants}
             initial="hidden"
@@ -143,7 +129,6 @@ export function LandingForge() {
             ))}
           </motion.ol>
 
-          {/* Footer line */}
           <div className="mt-5 pt-4 border-t border-outline-variant/15 flex items-center justify-between text-[11px] font-mono text-primary-fixed/70">
             <span>5 stages · 47 minutes · 1 reviewer</span>
             <span className="text-success">✓ released</span>
@@ -157,7 +142,7 @@ export function LandingForge() {
         initial="hidden"
         whileInView="visible"
         viewport={{ once: true, amount: 0.3 }}
-        className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-14"
+        className="grid grid-cols-1 sm:grid-cols-3 gap-4"
       >
         {pillars.map((pillar) => {
           const Icon = pillar.icon;
@@ -179,33 +164,6 @@ export function LandingForge() {
             </motion.div>
           );
         })}
-      </motion.div>
-
-      {/* CTA row */}
-      <motion.div
-        className="flex flex-col sm:flex-row items-center justify-center gap-4"
-        initial={{ opacity: 0, y: 16 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, amount: 0.5 }}
-        transition={{ duration: 0.5, ease }}
-      >
-        <Link
-          href="/download"
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#855300_0%,#f59e0b_100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white px-7 py-3.5 font-medium text-white text-base transition-[transform,box-shadow] hover:-translate-y-0.5 shadow-[0_4px_24px_rgba(133,83,0,0.22)] hover:shadow-[0_8px_40px_rgba(133,83,0,0.32)]"
-        >
-          <Download className="w-4 h-4" />
-          Download Forge Beta
-        </Link>
-        <a
-          href="https://github.com/SidCorp-co/forge"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-sm text-primary-fixed hover:text-on-surface transition-colors"
-        >
-          <Github className="w-4 h-4" />
-          View source on GitHub
-          <ArrowUpRight className="w-3.5 h-3.5" />
-        </a>
       </motion.div>
     </section>
   );
