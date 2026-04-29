@@ -12,7 +12,12 @@ services:
       test: ["CMD-SHELL", "pg_isready -U forge"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 10
+      # Postgres image bootstraps with initdb → create-db → restart sequence
+      # that can take 20-30s cold. Without start_period the depends_on
+      # condition flips to unhealthy on first deploy and Coolify aborts
+      # before the second (real) postgres start finishes.
+      start_period: 30s
 
   # NOTE: configure your reverse proxy (Traefik / nginx / Caddy) to route
   # https://<your-host>/api → core:8080. The web service below expects the
