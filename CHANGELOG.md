@@ -16,6 +16,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+## [0.1.20] - 2026-04-29
+
+Patch release: server URL discovery so the desktop app's "Server URL" field accepts the same web URL the user uses in their browser, even on subdomain-split deploys (web + API on different hosts).
+
+### Added
+
+- **Server discovery via `/.well-known/forge-config.json`.** The Tauri client now probes this endpoint on the user-typed URL to learn where the API actually lives, following Matrix's [Client-Server discovery pattern](https://spec.matrix.org/latest/client-server-api/) (RFC 8615). Web app exposes the endpoint with `{ apiUrl, wsUrl?, version }`. Single-origin deploys keep working with zero configuration — discovery returns the same origin. Subdomain-split deploys (web at `forge-beta.sidcorp.co`, API at `forge-beta-api.sidcorp.co`) are now seamless: user types the web URL they see in their browser, app silently routes API calls to the right host.
+- **"Server URL" field helper** on the desktop login form: "The same URL you use to open Forge in your browser." Removes the previous footgun where a user typing the web URL on a subdomain-split deploy would see the social-login section silently disappear because `/api/*` 404'd on the web origin.
+
+### Fixed
+
+- **Sign-in-with-GitHub button missing on subdomain-split deploys.** Root cause was the same as the bug fixed by the discovery endpoint above — the desktop app blindly appended `/api/*` to the user-typed URL, which only worked on single-origin deploys.
+
 ## [0.1.19] - 2026-04-29
 
 Feature release: Sign in with GitHub / Google / OIDC on the desktop app, plus email-verification UX polish.
