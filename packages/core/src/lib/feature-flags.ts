@@ -52,11 +52,14 @@ const flagDefs = {
   socialAuth: false,
 
   // ADR 0017 — Desktop OAuth via PKCE handoff. Gates /api/auth/desktop/*
-  // and the future Tauri "Sign in with <provider>" buttons. Independent of
-  // socialAuth on purpose: an operator may want web OAuth on while the
-  // desktop client is still being rolled out (e.g. installer not yet
-  // shipped to users), or vice versa.
-  desktopOauth: false,
+  // and the Tauri "Sign in with <provider>" buttons. Default-on as of
+  // v0.1.19 (the first release that ships the desktop client UI). Operators
+  // who haven't deployed the v0.1.19 desktop binary still need socialAuth
+  // on for end-to-end OAuth to function — desktopOauth alone only enables
+  // the API surface, the Tauri UI is the actual gate users see. Set
+  // FEATURE_DESKTOP_OAUTH=false to re-disable the API surface (e.g. an
+  // operator who explicitly does not want desktop OAuth at all).
+  desktopOauth: true,
 
 } as const;
 
