@@ -11,6 +11,11 @@ tauri-plugin-fs = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+# ADR 0017 — desktop OAuth handoff via custom URL scheme.
+# single-instance is REQUIRED so a running app receives the deep-link
+# instead of spawning a fresh process that would drop the OAuth context.
+tauri-plugin-deep-link = "2"
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
