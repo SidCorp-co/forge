@@ -267,6 +267,13 @@
       "when": 1777700000000,
       "tag": "0037_oauth_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1777800000000,
+      "tag": "0038_oauth_handoff",
+      "breakpoints": true
     }
   ]
 }

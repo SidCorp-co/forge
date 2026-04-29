@@ -51,6 +51,13 @@ const flagDefs = {
   // even if env vars are accidentally set in a non-rolled-out environment.
   socialAuth: false,
 
+  // ADR 0017 — Desktop OAuth via PKCE handoff. Gates /api/auth/desktop/*
+  // and the future Tauri "Sign in with <provider>" buttons. Independent of
+  // socialAuth on purpose: an operator may want web OAuth on while the
+  // desktop client is still being rolled out (e.g. installer not yet
+  // shipped to users), or vice versa.
+  desktopOauth: false,
+
 } as const;
 
 export type FeatureFlag = keyof typeof flagDefs;
