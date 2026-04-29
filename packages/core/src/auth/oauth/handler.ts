@@ -47,6 +47,17 @@ function safeRedirect(raw: string | undefined | null): string {
   return raw;
 }
 
+/**
+ * Redirect back to the web `/login` with a typed error code so the page can
+ * render a friendly banner instead of leaving the user on a raw 400 JSON.
+ * Codes are stable identifiers (not human prose) — translation lives in the
+ * web layer.
+ */
+function oauthErrorRedirect(c: Context, code: string): Response {
+  const base = env.APP_BASE_URL.replace(/\/+$/, '');
+  return c.redirect(`${base}/login?oauth_error=${encodeURIComponent(code)}`, 302);
+}
+
 export async function handleStart(c: Context, providerId: ProviderId) {
   const cfg = getProvider(providerId);
   if (!cfg) {
@@ -158,24 +169,19 @@ export async function handleCallback(c: Context, providerId: ProviderId) {
   const code = c.req.query('code');
   const state = c.req.query('state');
   const error = c.req.query('error');
+  // User-recoverable error paths redirect back to /login with a typed code
+  // so the web banner can give a useful message. Operator-misconfiguration
+  // paths (PROVIDER_NOT_ENABLED above) keep their HTTP error since the user
+  // can't fix them by retrying.
   if (error) {
-    throw new HTTPException(400, {
-      message: `OAuth provider error: ${error}`,
-      cause: { code: 'PROVIDER_DENIED' },
-    });
+    return oauthErrorRedirect(c, error === 'access_denied' ? 'denied' : 'provider_error');
   }
   if (!code || !state) {
-    throw new HTTPException(400, {
-      message: 'missing code or state in callback',
-      cause: { code: 'BAD_REQUEST' },
-    });
+    return oauthErrorRedirect(c, 'provider_error');
   }
   const cookieJwt = getCookie(c, STATE_COOKIE_NAME);
   if (!cookieJwt) {
-    throw new HTTPException(400, {
-      message: 'oauth state cookie missing or expired',
-      cause: { code: 'STATE_MISSING' },
-    });
+    return oauthErrorRedirect(c, 'session_expired');
   }
 
   let payload;
@@ -183,17 +189,11 @@ export async function handleCallback(c: Context, providerId: ProviderId) {
     payload = await verifyState(cookieJwt);
   } catch {
     clearStateCookie(c);
-    throw new HTTPException(400, {
-      message: 'oauth state is invalid',
-      cause: { code: 'STATE_INVALID' },
-    });
+    return oauthErrorRedirect(c, 'session_expired');
   }
   if (payload.p !== providerId || payload.n !== state) {
     clearStateCookie(c);
-    throw new HTTPException(400, {
-      message: 'oauth state mismatch',
-      cause: { code: 'STATE_MISMATCH' },
-    });
+    return oauthErrorRedirect(c, 'session_expired');
   }
   // Single-use — burn the cookie before doing anything that might fail so a
   // network blip on the token exchange can't leave a replayable state.
@@ -208,7 +208,16 @@ export async function handleCallback(c: Context, providerId: ProviderId) {
     redirectUri,
   });
 
-  const { userId } = await findOrCreateUser(cfg, identity);
+  let userId: string;
+  try {
+    ({ userId } = await findOrCreateUser(cfg, identity));
+  } catch (err) {
+    const causeCode = (err as { cause?: { code?: string } })?.cause?.code;
+    if (causeCode === 'EMAIL_UNVERIFIED') {
+      return oauthErrorRedirect(c, 'email_unverified');
+    }
+    throw err;
+  }
 
   const token = await signUserToken(userId);
   setAuthCookie(c, token);
