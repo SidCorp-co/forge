@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAppStore } from "@/stores/app-store";
 import { configureApi } from "@/lib/api";
@@ -20,6 +20,18 @@ export function LoginPage() {
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/";
 
   const [coreUrl, setStrapiUrl] = useState(config.coreUrl || "http://localhost:8080");
+  // useLocalConfig() loads the disk config asynchronously after this
+  // component mounts, so on first render `config.coreUrl` is empty and the
+  // useState initializer above falls back to localhost. Sync once when the
+  // real value arrives — guarded by `synced` so we don't clobber any URL
+  // the user has already started typing.
+  const synced = useRef(false);
+  useEffect(() => {
+    if (!synced.current && config.coreUrl) {
+      synced.current = true;
+      setStrapiUrl(config.coreUrl);
+    }
+  }, [config.coreUrl]);
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
