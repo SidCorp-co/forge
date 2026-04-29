@@ -20,6 +20,7 @@
 
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { open as openUrl } from '@tauri-apps/plugin-shell';
+import { resolveApiBase } from './api-discovery';
 
 export type DesktopProviderId = 'github' | 'google' | 'oidc';
 
@@ -97,7 +98,12 @@ export async function signInWithProvider(opts: SignInOptions): Promise<ExchangeR
 
   const verifier = randomB64url(32);
   const challenge = await sha256B64url(verifier);
-  const baseUrl = opts.coreUrl.replace(/\/+$/, '');
+  // Resolve the actual API origin via /.well-known/forge-config.json on the
+  // user-typed URL. On subdomain-split deploys the API lives on a different
+  // host than the web; on single-origin deploys this resolves to opts.coreUrl
+  // itself. Discovery never throws — falls back to opts.coreUrl on any
+  // error so single-origin keeps working without any operator action.
+  const baseUrl = await resolveApiBase(opts.coreUrl);
   const startUrl =
     `${baseUrl}/api/auth/desktop/start` +
     `?provider=${encodeURIComponent(opts.provider)}` +
@@ -223,10 +229,14 @@ interface ProvidersResponse {
  * Ask the API which providers are configured + flagged enabled. Returns
  * `[]` (and never throws) so a misconfigured backend just hides the
  * social-sign-in section instead of breaking the login form.
+ *
+ * Resolves the API origin via /.well-known/forge-config.json on the
+ * user-typed URL — see `api-discovery.ts` for the fallback ladder.
  */
 export async function fetchEnabledProviders(coreUrl: string): Promise<OAuthProvider[]> {
   try {
-    const res = await fetch(`${coreUrl.replace(/\/+$/, '')}/api/auth/oauth/providers`, {
+    const apiBase = await resolveApiBase(coreUrl);
+    const res = await fetch(`${apiBase}/api/auth/oauth/providers`, {
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) return [];

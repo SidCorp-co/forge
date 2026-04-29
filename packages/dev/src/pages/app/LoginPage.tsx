@@ -10,6 +10,7 @@ import {
   signInWithProvider,
   type OAuthProvider,
 } from "@/lib/desktop-oauth";
+import { clearApiCache, resolveApiBase } from "@/lib/api-discovery";
 import type { AppConfig } from "@/lib/types";
 
 export function LoginPage() {
@@ -32,9 +33,11 @@ export function LoginPage() {
     return null;
   }
 
-  // Refresh provider list whenever the server URL changes (debounced via the
-  // url itself acting as a memo key). Empty list silently hides the section,
-  // which is the right behaviour when FEATURE_DESKTOP_OAUTH is off.
+  // Refresh provider list whenever the server URL changes. Discovery and
+  // provider fetch happen inside fetchEnabledProviders → resolveApiBase →
+  // probe /.well-known/forge-config.json on the user-typed URL. Empty list
+  // silently hides the section so misconfigured / single-origin / older
+  // server deploys all degrade gracefully.
   useEffect(() => {
     let cancelled = false;
     const trimmed = coreUrl.replace(/\/+$/, "");
@@ -50,6 +53,9 @@ export function LoginPage() {
       // Drop any pending OAuth flow when the user changes the server URL —
       // the verifier is bound to the URL the start request was sent to.
       cancelInFlight();
+      // Drop the discovery cache so the next probe picks up the new URL
+      // (and any operator-side env var change in between).
+      clearApiCache();
     };
   }, [coreUrl]);
 
@@ -57,16 +63,21 @@ export function LoginPage() {
     setError("");
     setOauthLoading(providerId);
     try {
-      const url = coreUrl.replace(/\/+$/, "");
-      const { token, user } = await signInWithProvider({ coreUrl: url, provider: providerId });
+      const userUrl = coreUrl.replace(/\/+$/, "");
+      const { token, user } = await signInWithProvider({ coreUrl: userUrl, provider: providerId });
+      // Persist the resolved API origin (not the user-typed URL) — post-login
+      // surfaces (WS, heartbeat, REST client) read config.coreUrl directly and
+      // need the API host. Discovery already happened inside signInWithProvider
+      // and the result is cached, so this is a free lookup.
+      const apiUrl = await resolveApiBase(userUrl);
       const updated: AppConfig = {
-        coreUrl: url,
+        coreUrl: apiUrl,
         authToken: token,
         projects: config.projects,
         deviceId: config.deviceId || "",
       };
       setConfig(updated);
-      configureApi(url, token);
+      configureApi(apiUrl, token);
       await invoke("save_config", { config: updated });
       navigate(from, { replace: true });
       // user.email is intentionally not persisted here — the next call to
@@ -84,7 +95,12 @@ export function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const url = coreUrl.replace(/\/$/, "");
+      const userUrl = coreUrl.replace(/\/$/, "");
+      // Resolve the actual API origin via /.well-known/forge-config.json.
+      // Same helper used by the OAuth flow — single-origin deploys keep
+      // working with zero configuration; subdomain-split deploys discover
+      // the API host instead of forcing the user to know the difference.
+      const url = await resolveApiBase(userUrl);
       // packages/core uses { email, password } and returns { token }; legacy
       // Strapi used { identifier, password } and returned { jwt }. Send both
       // identifier shapes and accept either token field for compat.
@@ -130,12 +146,15 @@ export function LoginPage() {
 
         <form onSubmit={handleLogin} className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
           <div className="mb-4">
-            <label className="mb-1 block text-xs text-gray-500">Server</label>
+            <label className="mb-1 block text-xs text-gray-500">Server URL</label>
             <FormInput
               type="text"
               value={coreUrl}
               onChange={(e) => setStrapiUrl(e.target.value)}
             />
+            <p className="mt-1 text-[10px] text-gray-400">
+              The same URL you use to open Forge in your browser.
+            </p>
           </div>
 
           {providers.length > 0 && (
