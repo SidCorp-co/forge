@@ -47,6 +47,12 @@ services:
       SMTP_FROM: ${SMTP_FROM}
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      # When web + api live on different subdomains of the same registrable
+      # domain (e.g. forge-beta.example.com + forge-beta-api.example.com),
+      # set AUTH_COOKIE_DOMAIN=.example.com so the auth cookie is shared
+      # across both. Without it the cookie stays host-scoped to api.* and
+      # the web origin cannot read it → user appears unauthenticated.
+      AUTH_COOKIE_DOMAIN: ${AUTH_COOKIE_DOMAIN:-}
       LITELLM_API_URL: ${LITELLM_API_URL:-}
       LITELLM_API_KEY: ${LITELLM_API_KEY:-}
       LITELLM_MODEL: ${LITELLM_MODEL:-}
