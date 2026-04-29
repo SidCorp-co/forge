@@ -101,9 +101,19 @@ app.use('*', requestLogger());
 // Cookie-based auth from browsers requires Access-Control-Allow-Credentials
 // with an explicit origin (never `*`). `CORS_ORIGINS` is a comma-separated
 // allow-list; requests from unlisted origins receive no CORS headers.
-const CORS_ORIGINS = env.CORS_ORIGINS.split(',')
-  .map((s) => s.trim())
-  .filter((s) => s.length > 0);
+//
+// Tauri desktop client origins are added unconditionally — they're part of
+// the product, not external embeds. Tauri 2 webview uses tauri://localhost
+// on macOS/Linux and https://tauri.localhost on Windows. Without this,
+// every fetch from the Tauri webview to /api/* fails CORS even though the
+// app is "us" — operators would have to learn an undocumented env var.
+const CORS_ORIGINS = [
+  ...env.CORS_ORIGINS.split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0),
+  'tauri://localhost',
+  'https://tauri.localhost',
+];
 app.use(
   '/api/*',
   cors({
