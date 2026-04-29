@@ -11,16 +11,26 @@ const coreProxy = process.env.E2E_CORE_PROXY_URL;
 const nextConfig: NextConfig = {
   // Required for Docker production image (server.js + .next/standalone).
   output: "standalone",
-  ...(coreProxy
-    ? {
-        async rewrites() {
-          return [
-            { source: "/api/:path*", destination: `${coreProxy}/api/:path*` },
-            { source: "/ws", destination: `${coreProxy}/ws` },
-          ];
-        },
-      }
-    : {}),
+  async rewrites() {
+    // `/.well-known/forge-config.json` is the canonical discovery path
+    // (Matrix-style — see app/forge-config/route.ts). Next.js App Router
+    // can't have a folder literally named `.well-known` (dot-prefixed
+    // segments are filtered), so we rewrite to a regular route.
+    const wellKnown = [
+      {
+        source: "/.well-known/forge-config.json",
+        destination: "/forge-config",
+      },
+    ];
+    if (coreProxy) {
+      return [
+        ...wellKnown,
+        { source: "/api/:path*", destination: `${coreProxy}/api/:path*` },
+        { source: "/ws", destination: `${coreProxy}/ws` },
+      ];
+    }
+    return wellKnown;
+  },
 };
 
 export default nextConfig;
