@@ -20,7 +20,13 @@ function getTransport(): Transporter {
 }
 
 export function buildVerificationLink(token: string): string {
-  return `${env.APP_BASE_URL}/api/auth/verify?token=${encodeURIComponent(token)}`;
+  // Link must hit the API origin (where /api/auth/verify lives), NOT the web
+  // origin. With subdomain-split deploys (web=forge-beta.example.com,
+  // api=forge-beta-api.example.com) APP_BASE_URL is the web URL, so we fall
+  // through to OAUTH_REDIRECT_BASE which already names the API origin.
+  // Single-origin deploys leave OAUTH_REDIRECT_BASE unset → APP_BASE_URL.
+  const apiBase = (env.OAUTH_REDIRECT_BASE ?? env.APP_BASE_URL).replace(/\/+$/, '');
+  return `${apiBase}/api/auth/verify?token=${encodeURIComponent(token)}`;
 }
 
 export async function sendVerificationEmail(to: string, token: string): Promise<void> {

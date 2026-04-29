@@ -74,4 +74,25 @@ describe('sendVerificationEmail', () => {
     };
     expect(args.text).toContain('token=a%2Bb%2Fc%3D');
   });
+
+  // Regression: with subdomain-split deploys (web on APP_BASE_URL, API on
+  // OAUTH_REDIRECT_BASE) the verification link must hit the API origin —
+  // /api/auth/verify only exists there. APP_BASE_URL would 404 on the web.
+  it('uses OAUTH_REDIRECT_BASE for the link when set (subdomain-split deploy)', async () => {
+    const e = envMod.env as {
+      OAUTH_REDIRECT_BASE?: string;
+      SMTP_DEBUG: boolean;
+    };
+    e.SMTP_DEBUG = true;
+    e.OAUTH_REDIRECT_BASE = 'https://api.example.com';
+    try {
+      await emailMod.sendVerificationEmail('split@example.com', 'tok-split');
+      const [payload] = (loggerInfo.mock.calls as unknown as unknown[][])[0] ?? [];
+      expect(payload).toMatchObject({
+        link: 'https://api.example.com/api/auth/verify?token=tok-split',
+      });
+    } finally {
+      delete e.OAUTH_REDIRECT_BASE;
+    }
+  });
 });

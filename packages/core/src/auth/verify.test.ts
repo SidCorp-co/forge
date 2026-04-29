@@ -1,6 +1,12 @@
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const APP_BASE_URL = 'https://app.example.com';
+
+vi.mock('../config/env.js', () => ({
+  env: { APP_BASE_URL, NODE_ENV: 'test' },
+}));
+
 const consumeVerificationToken = vi.fn();
 
 vi.mock('./verification-token.js', () => ({
@@ -23,41 +29,38 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('GET /api/auth/verify', () => {
-  it('returns 200 { verified: true } on ok', async () => {
+describe('GET /api/auth/verify (browser link from email — redirects to web /login)', () => {
+  it('redirects to /login?verified=1 on ok', async () => {
     consumeVerificationToken.mockResolvedValueOnce('ok');
-    const res = await buildApp().request('/api/auth/verify?token=good');
-    expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ verified: true });
+    const res = await buildApp().request('/api/auth/verify?token=good', { redirect: 'manual' });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(`${APP_BASE_URL}/login?verified=1`);
     expect(consumeVerificationToken).toHaveBeenCalledWith('good');
   });
 
-  it('returns 400 INVALID_TOKEN on null result', async () => {
+  it('redirects to /login?verify_error=invalid on null result', async () => {
     consumeVerificationToken.mockResolvedValueOnce(null);
-    const res = await buildApp().request('/api/auth/verify?token=missing');
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { code: string };
-    expect(body.code).toBe('INVALID_TOKEN');
+    const res = await buildApp().request('/api/auth/verify?token=missing', { redirect: 'manual' });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(`${APP_BASE_URL}/login?verify_error=invalid`);
   });
 
-  it('returns 400 TOKEN_EXPIRED on expired result', async () => {
+  it('redirects to /login?verify_error=expired on expired result', async () => {
     consumeVerificationToken.mockResolvedValueOnce('expired');
-    const res = await buildApp().request('/api/auth/verify?token=old');
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { code: string };
-    expect(body.code).toBe('TOKEN_EXPIRED');
+    const res = await buildApp().request('/api/auth/verify?token=old', { redirect: 'manual' });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(`${APP_BASE_URL}/login?verify_error=expired`);
   });
 
-  it('returns 400 INVALID_TOKEN when token query is missing', async () => {
-    const res = await buildApp().request('/api/auth/verify');
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { code: string };
-    expect(body.code).toBe('INVALID_TOKEN');
+  it('redirects to /login?verify_error=invalid when token query is missing', async () => {
+    const res = await buildApp().request('/api/auth/verify', { redirect: 'manual' });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(`${APP_BASE_URL}/login?verify_error=invalid`);
     expect(consumeVerificationToken).not.toHaveBeenCalled();
   });
 });
 
-describe('POST /api/auth/verify', () => {
+describe('POST /api/auth/verify (programmatic — JSON envelope)', () => {
   it('accepts token from JSON body', async () => {
     consumeVerificationToken.mockResolvedValueOnce('ok');
     const res = await buildApp().request('/api/auth/verify', {
@@ -66,6 +69,7 @@ describe('POST /api/auth/verify', () => {
       body: JSON.stringify({ token: 'body-token' }),
     });
     expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ verified: true });
     expect(consumeVerificationToken).toHaveBeenCalledWith('body-token');
   });
 
@@ -83,5 +87,13 @@ describe('POST /api/auth/verify', () => {
     expect(res.status).toBe(400);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('INVALID_TOKEN');
+  });
+
+  it('returns 400 TOKEN_EXPIRED on expired result (POST)', async () => {
+    consumeVerificationToken.mockResolvedValueOnce('expired');
+    const res = await buildApp().request('/api/auth/verify?token=old', { method: 'POST' });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('TOKEN_EXPIRED');
   });
 });
