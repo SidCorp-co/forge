@@ -10,9 +10,16 @@ mod websocket;
 use claude_cli::{new_sessions, Sessions, WorktreeInfo};
 use claude_cli::worktree::BranchDiff;
 use config::{AppConfig, SessionData, SessionMeta, McpServerConfig, SkillLibraryEntry, StrapiSkillData, StrapiSkillGuideData};
-use tauri::State;
+use tauri::{Emitter, Manager, State};
 use std::sync::Arc;
 use tokio::sync::{watch, Mutex as TokioMutex};
+use tauri_plugin_deep_link::DeepLinkExt;
+
+/// Tauri event emitted to the React frontend when the OS hands us a
+/// `forge-beta://...` URL — either at app launch (cold start) or while the
+/// app is already running (forwarded by the single-instance plugin).
+/// Frontend listens via `listen('deep-link://received', ...)`.
+const DEEP_LINK_EVENT: &str = "deep-link://received";
 
 struct AppState {
     sessions: Sessions,
@@ -401,12 +408,55 @@ async fn get_branch_diff(repo_path: String, branch: String, base: String) -> Res
 
 fn main() {
     tauri::Builder::default()
+        // single-instance MUST be first per Tauri docs. With the `deep-link`
+        // feature the secondary process forwards its launch URL into the
+        // primary so the running window receives the OAuth callback —
+        // otherwise on Windows / Linux a fresh process would pick up the
+        // URL while the user's existing window stays unauthed.
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // single-instance with deep-link feature passes the URL as an arg.
+            for arg in args.iter().skip(1) {
+                if arg.starts_with("forge-beta://") {
+                    let _ = app.emit(DEEP_LINK_EVENT, arg);
+                }
+            }
+            // Also wake the primary window so the user sees the result.
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.set_focus();
+                let _ = w.unminimize();
+            }
+        }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .setup(|app| {
+            // Linux + Windows dev mode: register the URL scheme at runtime
+            // (production installers register via .desktop file / NSIS).
+            // No-op on macOS, where the OS handles registration via Info.plist.
+            #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
+            {
+                if let Err(e) = app.deep_link().register("forge-beta") {
+                    eprintln!("deep-link register error: {e}");
+                }
+            }
+
+            // Stream incoming URLs to the frontend. on_open_url fires for both
+            // cold-start (launch via URL) and warm runs (single-instance fan-in
+            // already covered above; this handler additionally covers macOS,
+            // where single-instance args are not used).
+            let app_handle = app.handle().clone();
+            app.deep_link().on_open_url(move |event| {
+                for url in event.urls() {
+                    let _ = app_handle.emit(DEEP_LINK_EVENT, url.as_str());
+                }
+            });
+
+            Ok(())
+        })
         .manage(AppState {
             sessions: new_sessions(),
             ws_cancel: Arc::new(TokioMutex::new(None)),
