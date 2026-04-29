@@ -1,10 +1,9 @@
 export { LandingNav } from './landing-nav';
 export { LandingHero } from './landing-hero';
-export { LandingSpeedProof } from './landing-speed-proof';
-export { LandingShowcase } from './landing-showcase';
-export { LandingPulse } from './landing-pulse';
-export { LandingForge } from './landing-forge';
-export { LandingTrust } from './landing-trust';
+export { LandingWhy } from './landing-why';
+export { LandingPipeline } from './landing-pipeline';
+export { LandingArchitecture } from './landing-architecture';
 export { LandingScope } from './landing-scope';
+export { LandingQuickstart } from './landing-quickstart';
 export { LandingCta } from './landing-cta';
 export { LandingFooter } from './landing-footer';
