@@ -16,6 +16,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+## [0.1.21] - 2026-04-29
+
+Patch release: fixes the desktop "Server URL" field showing `http://localhost:8080` instead of the saved server URL.
+
+### Fixed
+
+- **Server URL field stuck on localhost.** A `useState` initializer captured the empty initial Zustand state before `useLocalConfig()` finished reading `~/.config/forge-beta/config.json`. The field now syncs once when the disk config arrives (guarded so it doesn't clobber any URL the user is already typing). Workaround on v0.1.20 was to retype the URL into the field manually.
+
 ## [0.1.20] - 2026-04-29
 
 Patch release: server URL discovery so the desktop app's "Server URL" field accepts the same web URL the user uses in their browser, even on subdomain-split deploys (web + API on different hosts).
