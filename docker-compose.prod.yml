@@ -50,6 +50,24 @@ services:
       LITELLM_API_URL: ${LITELLM_API_URL:-}
       LITELLM_API_KEY: ${LITELLM_API_KEY:-}
       LITELLM_MODEL: ${LITELLM_MODEL:-}
+      # OAuth/OIDC (ISS-314). Toggle FEATURE_SOCIAL_AUTH=true to expose
+      # provider buttons; provider rows are read at request time so you can
+      # add/remove providers without restarting once the flag is on.
+      FEATURE_SOCIAL_AUTH: ${FEATURE_SOCIAL_AUTH:-false}
+      OAUTH_REDIRECT_BASE: ${OAUTH_REDIRECT_BASE:-${APP_BASE_URL}}
+      GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}
+      GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET:-}
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      # Embeddings (memory-knowledge module). Empty = disabled; embeddings
+      # singleton is lazy and only errors on first semantic-search use.
+      EMBEDDINGS_BASE_URL: ${EMBEDDINGS_BASE_URL:-}
+      EMBEDDINGS_API_KEY: ${EMBEDDINGS_API_KEY:-}
+      EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL:-}
+      EMBEDDINGS_DIM: ${EMBEDDINGS_DIM:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 10s
