@@ -32,6 +32,12 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:19450:8080"
+    volumes:
+      # Comment attachments default to local-fs storage at UPLOADS_DIR
+      # (=./uploads = /app/uploads in the container). Without a volume the
+      # directory is wiped on every container recreate. Switch to S3 by
+      # setting STORAGE_DRIVER=s3 + S3_BUCKET/S3_REGION when ready.
+      - core_uploads:/app/uploads
     env_file:
       - .env
     environment:
@@ -63,11 +69,17 @@ services:
       OAUTH_REDIRECT_BASE: ${OAUTH_REDIRECT_BASE:-${APP_BASE_URL}}
       GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}
       GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET:-}
-      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
-      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      # Google uses full OIDC; env names follow the schema in
+      # packages/core/src/config/env.ts (GOOGLE_OIDC_*, not GOOGLE_OAUTH_*).
+      GOOGLE_OIDC_CLIENT_ID: ${GOOGLE_OIDC_CLIENT_ID:-}
+      GOOGLE_OIDC_CLIENT_SECRET: ${GOOGLE_OIDC_CLIENT_SECRET:-}
       OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      # Comma-separated allow-list of admin emails; gates /api/admin/*.
+      # Without it every admin route 403s — set at least one email so a
+      # human can reach the admin surface on a fresh deployment.
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       # Embeddings (memory-knowledge module). Empty = disabled; embeddings
       # singleton is lazy and only errors on first semantic-search use.
       EMBEDDINGS_BASE_URL: ${EMBEDDINGS_BASE_URL:-}
@@ -99,3 +111,4 @@ services:
 
 volumes:
   postgres_data:
+  core_uploads:
