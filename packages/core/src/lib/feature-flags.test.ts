@@ -18,9 +18,16 @@ describe('feature-flags', () => {
     Object.assign(process.env, originalEnv);
   });
 
-  it('returns false by default (no env set)', () => {
+  it('returns true by default (no env set) — flags ship on for v0.1.x alpha', () => {
+    expect(isEnabled('chatProvider')).toBe(true);
+    expect(isEnabled('runnerFramework')).toBe(true);
+  });
+
+  it('explicit FEATURE_X=false overrides default-on', () => {
+    process.env.FEATURE_CHAT_PROVIDER = 'false';
     expect(isEnabled('chatProvider')).toBe(false);
-    expect(isEnabled('runnerFramework')).toBe(false);
+    process.env.FEATURE_PIPELINE_CONTROL = '0';
+    expect(isEnabled('pipelineControl')).toBe(false);
   });
 
   it('reads `true` from env (camelCase → SCREAMING_SNAKE_CASE)', () => {
