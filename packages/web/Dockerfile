@@ -1,5 +1,5 @@
 # Multi-stage Dockerfile for packages/web
-# BUILD CONTEXT: repo root (forge/) so pnpm workspace can resolve workspace:* deps.
+# BUILD CONTEXT: repo root so pnpm workspace can resolve workspace:* deps.
 # Build with: docker build -f packages/web/Dockerfile .
 FROM node:22-alpine AS base
 RUN corepack enable && corepack prepare pnpm@9 --activate
@@ -7,7 +7,7 @@ WORKDIR /repo
 
 # Copy whole repo so pnpm workspace resolves (small footprint vs build correctness tradeoff)
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
-COPY forge ./forge
+COPY packages ./packages
 
 # Install only web's transitive deps (web package name is "web", not "@forge/web")
 RUN pnpm install --frozen-lockfile --filter web...
