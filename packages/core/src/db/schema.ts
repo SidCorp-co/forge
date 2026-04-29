@@ -70,6 +70,26 @@ export const oauthAccounts = pgTable(
   }),
 );
 
+// Cross-process PKCE handoff for the desktop client (ADR 0017). Holds the
+// transient state between /auth/desktop/start and /auth/desktop/exchange so
+// the desktop process can claim a JWT without ever exposing one in a URL.
+export const oauthHandoff = pgTable(
+  'oauth_handoff',
+  {
+    id: text('id').primaryKey(),
+    provider: text('provider').notNull(),
+    codeChallenge: text('code_challenge').notNull(),
+    codeHash: text('code_hash'),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (t) => ({
+    expiresIdx: index('oauth_handoff_expires_idx').on(t.expiresAt),
+  }),
+);
+
 export const emailVerificationTokens = pgTable(
   'email_verification_tokens',
   {
