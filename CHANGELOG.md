@@ -16,6 +16,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+## [0.1.19] - 2026-04-29
+
+Feature release: Sign in with GitHub / Google / OIDC on the desktop app, plus email-verification UX polish.
+
+### Added
+
+- **Desktop OAuth (ADR 0017).** New "Continue with GitHub" / Google / OIDC buttons on the Tauri login page. Click opens the system browser to the existing web OAuth flow; after the user authenticates, the browser deep-links back into the app via the new `forge-beta://` URL scheme and the desktop trades a one-time code for a JWT. The flow uses RFC 8252 (OAuth 2.0 for Native Apps) + RFC 7636 (PKCE) — the JWT never appears in any URL, never persists to disk, never embeds in the binary, and a malicious app intercepting the deep-link gets only a useless one-time code. Provider list is fetched dynamically from `/api/auth/oauth/providers`, so adding Google later is purely a backend config change. Gated behind `FEATURE_DESKTOP_OAUTH` on the core service.
+- **`forge-beta://` URL scheme registration.** First launch of v0.1.19 (or first install on a fresh machine) registers the URL scheme with the OS — Info.plist on macOS, NSIS hook on Windows, `.desktop` file + runtime fallback on Linux. The OS may prompt for permission the first time the deep-link is invoked.
+- **Single-instance plugin.** A click on `forge-beta://...` while the app is already running now wakes the existing window instead of spawning a new process — required for the OAuth handoff to land in the user's authenticated context.
+
+### Fixed
+
+- **Email verification link UX.** Clicking the verification link in the registration email now lands on the web `/login?verified=1` page with a green "Email verified" banner instead of raw JSON. Stale or expired links land on `/login?verify_error=…` with a friendly warning. Also fixes a bug where, on subdomain-split deploys (web + API on different subdomains), the verification link was generated against `APP_BASE_URL` (the web origin) and 404'd because `/api/auth/verify` only exists on the API origin — the link is now built against `OAUTH_REDIRECT_BASE` (the API origin) when set.
+
 ## [0.1.18] - 2026-04-28
 
 Patch release: macOS auto-updater payload + Next.js DoS hardening.
