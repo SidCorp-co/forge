@@ -1,0 +1,119 @@
+Sentry server-side data-scrubbing rules — forge-* projects
+==========================================================
+
+Source of truth for Advanced Data Scrubbing on every forge-* project on the
+self-hosted Sentry at https://logs.canawan.com (org: canawan).
+
+Server-side scrubbing is defense-in-depth: it runs on ingest after the SDK's
+beforeSend hook, so it survives SDK upgrades and accidental beforeSend
+regressions. Keep this file in sync with the rule sets configured in each
+project's UI — when adding a new sensitive key, update here first, then paste
+the JSON block into all five projects.
+
+----------------------------------------------------------------------
+Step 1 — Settings → Security & Privacy (toggles)
+----------------------------------------------------------------------
+
+For each project, set:
+
+  Data Scrubber          ON
+  Use Default Scrubbers  ON   (covers $password / [Authorization] / CC / SSN)
+  Scrub IP Addresses     leave at current value
+
+Project URLs:
+
+  https://logs.canawan.com/settings/canawan/projects/forge-dev/security-and-privacy/
+  https://logs.canawan.com/settings/canawan/projects/forge-dev-rust/security-and-privacy/
+  https://logs.canawan.com/settings/canawan/projects/forge-core/security-and-privacy/
+  https://logs.canawan.com/settings/canawan/projects/forge-web/security-and-privacy/
+  https://logs.canawan.com/settings/canawan/projects/forge-app/security-and-privacy/
+
+----------------------------------------------------------------------
+Step 2 — Advanced Data Scrubbing (canonical JSON block)
+----------------------------------------------------------------------
+
+In the same page, scroll to "Advanced Data Scrubbing" and switch to the JSON
+view. Paste the block below verbatim into all five projects so they stay in
+sync. Sentry merges these rules with the default scrubbers from Step 1.
+
+Rule semantics:
+  - scrub-token-keys     : replace any value whose key matches the token-name
+                           regex with [Filtered], in event body and extras
+  - scrub-token-headers  : replace specific request/response header values
+                           with [Filtered]
+  - scrub-token-querystr : strip token-bearing query-string params from URLs
+
+----- BEGIN sentry:pii_config -----
+{
+  "rules": {
+    "scrub-token-keys": {
+      "type": "redact_pair",
+      "redaction": { "method": "replace", "text": "[Filtered]" },
+      "keyPattern": "(?i)(auth[_-]?token|access[_-]?token|refresh[_-]?token|bearer[_-]?token|session[_-]?token|api[_-]?key|jwt|x[_-]?device[_-]?token|x[_-]?csrf[_-]?token)"
+    },
+    "scrub-token-headers": {
+      "type": "redact_pair",
+      "redaction": { "method": "replace", "text": "[Filtered]" },
+      "keyPattern": "(?i)(authorization|cookie|x-api-key|x-device-token|x-csrf-token)"
+    },
+    "scrub-token-querystr": {
+      "type": "pattern",
+      "redaction": { "method": "replace", "text": "[Filtered]" },
+      "pattern": "(?i)([?&](?:auth[_-]?token|access[_-]?token|refresh[_-]?token|bearer[_-]?token|session[_-]?token|api[_-]?key|jwt|token)=)[^&#]*"
+    }
+  },
+  "applications": {
+    "$string":              ["scrub-token-querystr"],
+    "$http.headers":        ["scrub-token-headers"],
+    "$http.query_string":   ["scrub-token-querystr"],
+    "$http.env":            ["scrub-token-headers"],
+    "extra.**":             ["scrub-token-keys"],
+    "request.data.**":      ["scrub-token-keys"],
+    "request.cookies.**":   ["scrub-token-keys"],
+    "contexts.**":          ["scrub-token-keys"],
+    "breadcrumbs.values.**.data.**": ["scrub-token-keys"],
+    "breadcrumbs.values.**.message": ["scrub-token-querystr"]
+  }
+}
+----- END sentry:pii_config -----
+
+----------------------------------------------------------------------
+Step 3 — Verification (one-shot per surface, do NOT ship)
+----------------------------------------------------------------------
+
+For each surface, temporarily neuter the client-side beforeSend on a
+verification branch, send an event whose payload carries an intentionally
+unscrubbed token, and confirm the rendered event in Sentry shows [Filtered].
+Revert the bypass before closing.
+
+  forge-dev      packages/dev/src/lib/sentry.ts
+  forge-dev-rust packages/dev/src-tauri/src/main.rs
+  forge-core     packages/core/src/observability/sentry.ts
+  forge-web      packages/web/instrumentation{,-client}.ts
+  forge-app      DSN not yet wired — configure rules anyway, defer live test
+
+Sample renderer payload (paste into devtools after no-oping beforeSend):
+
+  Sentry.captureException(new Error('scrub-test'), {
+    extra: {
+      authToken: 'leak-me-A',
+      apiKey:    'leak-me-B',
+      headers:   { Authorization: 'Bearer leak-me-C',
+                   'X-Device-Token': 'leak-me-D' }
+    }
+  })
+
+All four values must render as [Filtered] in the Sentry UI.
+
+----------------------------------------------------------------------
+Maintenance
+----------------------------------------------------------------------
+
+When adding a new sensitive key on the client (`packages/observability/src/scrubbing.ts`):
+
+  1. Add it to the matching regex in scrub-token-keys / scrub-token-headers
+     above.
+  2. Paste the updated JSON block into all five projects.
+  3. Bump the date below.
+
+Last updated: 2026-04-30
