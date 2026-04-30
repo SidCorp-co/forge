@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams, Outlet } from "react-router-dom";
+import { Sentry } from "@/lib/sentry";
 import { Sidebar } from "@/components/sidebar";
 import { Dashboard, Settings, LoginPage, UsagePage } from "@/pages/app";
 import { ProjectIssues, NewIssuePage, ProjectBoard, AgentChat, ProjectSettings, KnowledgePage, McpPage, ProjectOverview, ProjectPipeline } from "@/pages/project";
@@ -153,10 +154,31 @@ function AppInner() {
   );
 }
 
+function ErrorFallback() {
+  return (
+    <div className="flex h-screen items-center justify-center bg-white">
+      <div className="max-w-md rounded-lg border border-red-200 bg-red-50 p-6 text-sm text-red-700">
+        <p className="font-semibold">Something went wrong.</p>
+        <p className="mt-1 text-xs text-red-600">
+          The error was reported. Try reloading; if it persists, sign out and back in.
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-3 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+        >
+          Reload
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   return (
-    <BrowserRouter>
-      <AppInner />
-    </BrowserRouter>
+    <Sentry.ErrorBoundary fallback={<ErrorFallback />}>
+      <BrowserRouter>
+        <AppInner />
+      </BrowserRouter>
+    </Sentry.ErrorBoundary>
   );
 }

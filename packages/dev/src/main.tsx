@@ -3,7 +3,15 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
+import { initSentry } from "./lib/sentry";
+import pkg from "../package.json";
 import "./index.css";
+
+// Sentry is opt-in. Build-time `VITE_SENTRY_DSN` (set by the official
+// release workflow) wires the maintainer's DSN. Source builds without
+// the env var stay silent — runtime override via config.json is applied
+// later inside useLocalConfig once the disk config hydrates.
+initSentry({ release: pkg.version });
 
 // Forward client errors + console.error to the Tauri Rust process so they
 // land in the same stdout stream the dev runner tails. Lets us debug the
