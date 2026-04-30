@@ -1,6 +1,13 @@
 import { clearDeviceTokenCache } from "./jobs";
 
-let baseUrl = "http://localhost:8080";
+// `baseUrl` starts empty so any request fired before `configureApi` runs
+// (i.e. before useLocalConfig hydrates from disk + keychain) fails loudly
+// instead of silently hitting localhost:8080 — the v0.1.25 logout-on-reload
+// regression was caused by an operator's local dev core at that address
+// returning 401 INVALID_TOKEN to a pre-hydrate query and triggering the
+// auth-expired wipe. An empty baseUrl makes the same race observable
+// during dev (no fetch goes out) instead of dangerous in prod.
+let baseUrl = "";
 let authToken = "";
 
 export function configureApi(url: string, token: string) {
@@ -33,6 +40,13 @@ export function setAuthExpiredHandler(fn: (() => void) | null): void {
 const AUTH_FAIL_CODES = new Set(['INVALID_TOKEN', 'UNAUTHENTICATED']);
 
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  if (!baseUrl) {
+    // Pre-hydrate request — refuse rather than silently fall back to a
+    // hostname the renderer never knew about. Callers gate on configReady
+    // (RequireAuth, query enabled flags); this throw is a safety net for
+    // anything that slips through.
+    throw new Error('API not configured: request before configureApi()');
+  }
   const res = await fetch(`${baseUrl}/api${path}`, {
     ...options,
     headers: {

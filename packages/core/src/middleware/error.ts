@@ -2,6 +2,7 @@ import type { Context, ErrorHandler, NotFoundHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { StatusCode } from 'hono/utils/http-status';
 import { getLogger } from '../logger.js';
+import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import type { RequestIdVars } from './request-id.js';
 
 type ErrorBody = { code: string; message: string; details?: unknown };
@@ -56,6 +57,12 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
     if (status >= 500) log.error(logPayload, 'http.error');
     else log.warn(logPayload, 'http.error');
 
+    // 5xx HTTPExceptions still represent server-side failures we want to
+    // see in Sentry; 4xx are expected client errors and stay out.
+    if (isSentryEnabled() && status >= 500) {
+      captureToSentry(err, c, body.code);
+    }
+
     return c.json(body, status);
   }
 
@@ -68,8 +75,22 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
   }
 
   log.error({ err }, 'http.unhandled');
+  if (isSentryEnabled()) {
+    captureToSentry(err, c, 'INTERNAL_ERROR');
+  }
   return c.json(body, 500);
 };
+
+function captureToSentry(err: unknown, c: Context, code: string): void {
+  Sentry.withScope((scope) => {
+    scope.setTag('http.method', c.req.method);
+    scope.setTag('http.path', c.req.path);
+    scope.setTag('error.code', code);
+    const requestId = c.get('requestId' as never) as string | undefined;
+    if (requestId) scope.setTag('request.id', requestId);
+    Sentry.captureException(err);
+  });
+}
 
 export const notFoundHandler: NotFoundHandler<{ Variables: RequestIdVars }> = (c: Context) => {
   return c.json<ErrorBody>(

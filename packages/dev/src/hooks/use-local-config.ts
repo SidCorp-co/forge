@@ -54,6 +54,16 @@ export function useLocalConfig() {
         if (cfg.deviceId) {
           Sentry.setUser({ id: cfg.deviceId });
         }
+        // ORDER MATTERS — configureApi BEFORE setConfig.
+        // Sentry surfaced a regression in v0.1.25 where `setConfig` published
+        // authToken into the store before the api client had its baseUrl set.
+        // Components subscribed to `config.authToken` triggered React Query
+        // refetches that hit the module-level default `localhost:8080` (any
+        // operator running a local dev core there returns 401 INVALID_TOKEN),
+        // which fires `setAuthExpiredHandler` and wipes the just-loaded JWT.
+        // Configuring the api client first means the very first render after
+        // store update already has the correct baseUrl + token.
+        configureApi(cfg.coreUrl, cfg.authToken);
         setConfig(cfg);
         // Self-heal: users who logged in on <= v0.1.20 stored the WEB URL in
         // config.coreUrl (the URL they typed) instead of the resolved API
@@ -63,8 +73,8 @@ export function useLocalConfig() {
         // stale subdomain-split configs heal silently. Persist the resolved
         // URL so subsequent launches skip the probe entirely.
         const resolved = await resolveApiBase(cfg.coreUrl);
-        configureApi(resolved, cfg.authToken);
         if (resolved && resolved !== cfg.coreUrl) {
+          configureApi(resolved, cfg.authToken);
           const healed: AppConfig = { ...cfg, coreUrl: resolved };
           setConfig(healed);
           await invoke("save_config", { config: healed }).catch(() => {/* ignore */});
@@ -95,7 +105,20 @@ export function useLocalConfig() {
     // "every action silently fails" stuck state after a server JWT_SECRET
     // rotation or an expired token.
     setAuthExpiredHandler(() => {
-      const cur = useAppStore.getState().config;
+      const state = useAppStore.getState();
+      // Defensive gate (v0.1.26): if the hydrate hasn't finished, any 401 we
+      // saw came from a request fired BEFORE the api client knew its real
+      // baseUrl/token — wiping auth on that signal turns a stale-route mistake
+      // into a forced logout. Ignore and trust the upcoming hydrate.
+      if (!state.configReady) {
+        Sentry.captureMessage("auth-expired-pre-hydrate-ignored", {
+          level: "warning",
+          tags: { auth_phase: "expired-ignored" },
+        });
+        console.warn("[auth-trace] auth-expired ignored (configReady=false)");
+        return;
+      }
+      const cur = state.config;
       // The "log out on reload" class of bugs converges here — anything that
       // wipes the JWT (server 401, race in hydrate, etc.) goes through this
       // handler. Capture with current state so a maintainer reading Sentry
