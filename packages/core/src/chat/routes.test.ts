@@ -157,7 +157,15 @@ afterEach(() => {
 });
 
 describe('feature flag gate', () => {
-  it('chatProvider flag is off by default', () => {
+  it('chatProvider flag default is on (FEATURE_CHAT_PROVIDER unset)', () => {
+    // Commit 2020bda8 flipped all v0.1.x alpha flags to default-on. The
+    // test still pins the *runtime override* below — toggling
+    // FEATURE_CHAT_PROVIDER=false continues to disable the route.
+    expect(isEnabled('chatProvider')).toBe(true);
+  });
+
+  it('chatProvider flag respects explicit FEATURE_CHAT_PROVIDER=false', () => {
+    process.env.FEATURE_CHAT_PROVIDER = 'false';
     expect(isEnabled('chatProvider')).toBe(false);
   });
 
