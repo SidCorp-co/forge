@@ -425,6 +425,25 @@ async fn get_branch_diff(repo_path: String, branch: String, base: String) -> Res
 }
 
 fn main() {
+    // Opt-in Sentry init. `option_env!` reads at compile time — official
+    // release builds set FORGE_SENTRY_DSN_RUST in CI, source builds leave it
+    // unset and the guard returns None so the SDK never attaches. The
+    // returned `_guard` must outlive `main` for events to flush on panic.
+    let _sentry_guard = option_env!("FORGE_SENTRY_DSN_RUST")
+        .filter(|s| !s.is_empty())
+        .map(|dsn| {
+            sentry::init((
+                dsn,
+                sentry::ClientOptions {
+                    release: Some(env!("CARGO_PKG_VERSION").into()),
+                    environment: Some(if cfg!(debug_assertions) { "development".into() } else { "production".into() }),
+                    send_default_pii: false,
+                    attach_stacktrace: true,
+                    ..Default::default()
+                },
+            ))
+        });
+
     tauri::Builder::default()
         // single-instance MUST be first per Tauri docs. With the `deep-link`
         // feature the secondary process forwards its launch URL into the

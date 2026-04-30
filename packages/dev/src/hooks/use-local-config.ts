@@ -5,6 +5,7 @@ import { invoke } from "./use-tauri-ipc";
 import { configureApi } from "@/lib/api";
 import { resolveApiBase } from "@/lib/api-discovery";
 import { setAuthExpiredHandler } from "@/lib/api/client";
+import { Sentry } from "@/lib/sentry";
 import type { AppConfig } from "@/lib/types";
 
 export function useLocalConfig() {
@@ -17,6 +18,8 @@ export function useLocalConfig() {
     if (loadedRef.current) return;
     loadedRef.current = true;
 
+    const hydrateStart = performance.now();
+    Sentry.addBreadcrumb({ category: "auth", level: "info", message: "hydrate:start" });
     console.warn("[auth-trace] useLocalConfig hydrate: start");
 
     (async () => {
@@ -29,10 +32,28 @@ export function useLocalConfig() {
         // the in-memory config.
         const jwt = await invoke<string | null>("load_user_jwt").catch((err) => {
           console.warn("[auth-trace] load_user_jwt failed:", err);
+          Sentry.captureException(err, {
+            tags: { auth_phase: "load_user_jwt" },
+            level: "warning",
+          });
           return null;
         });
         const cfg: AppConfig = { ...(diskConfig ?? ({} as AppConfig)), authToken: jwt ?? "" };
         console.warn("[auth-trace] hydrate result jwt?=", !!jwt);
+        Sentry.addBreadcrumb({
+          category: "auth",
+          level: "info",
+          message: "hydrate:result",
+          data: {
+            jwt_present: !!jwt,
+            disk_config_present: !!diskConfig,
+            disk_core_url: diskConfig?.coreUrl ?? null,
+            elapsed_ms: Math.round(performance.now() - hydrateStart),
+          },
+        });
+        if (cfg.deviceId) {
+          Sentry.setUser({ id: cfg.deviceId });
+        }
         setConfig(cfg);
         // Self-heal: users who logged in on <= v0.1.20 stored the WEB URL in
         // config.coreUrl (the URL they typed) instead of the resolved API
@@ -50,11 +71,21 @@ export function useLocalConfig() {
         }
       } catch (err) {
         console.warn("[auth-trace] useLocalConfig hydrate threw:", err);
+        Sentry.captureException(err, {
+          tags: { auth_phase: "hydrate" },
+          level: "error",
+        });
       } finally {
         // Always flip the gate so RequireAuth / LoginPage stop showing the
         // splash even when keychain access fails. A failed hydrate means the
         // user has no JWT — same outcome as logged-out.
         console.warn("[auth-trace] useLocalConfig hydrate: ready");
+        Sentry.addBreadcrumb({
+          category: "auth",
+          level: "info",
+          message: "hydrate:ready",
+          data: { elapsed_ms: Math.round(performance.now() - hydrateStart) },
+        });
         setConfigReady(true);
       }
     })();
@@ -65,6 +96,19 @@ export function useLocalConfig() {
     // rotation or an expired token.
     setAuthExpiredHandler(() => {
       const cur = useAppStore.getState().config;
+      // The "log out on reload" class of bugs converges here — anything that
+      // wipes the JWT (server 401, race in hydrate, etc.) goes through this
+      // handler. Capture with current state so a maintainer reading Sentry
+      // can tell whether the user *had* a token a moment ago.
+      Sentry.captureMessage("auth-expired-handler-fired", {
+        level: "warning",
+        tags: { auth_phase: "expired" },
+        extra: {
+          had_token: !!cur.authToken,
+          core_url: cur.coreUrl,
+          device_id: cur.deviceId || null,
+        },
+      });
       const cleared: AppConfig = { ...cur, authToken: "" };
       setConfig(cleared);
       configureApi(cur.coreUrl, "");
@@ -73,6 +117,7 @@ export function useLocalConfig() {
       // re-hydrate the expired token from `load_user_jwt` and bounce
       // the user right back into the loop.
       invoke("clear_user_jwt").catch(() => {/* ignore */});
+      Sentry.setUser(null);
       navigate("/login", { replace: true });
     });
     return () => setAuthExpiredHandler(null);

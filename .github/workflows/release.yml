@@ -140,6 +140,15 @@ jobs:
           # Re-add these env entries (and the matching secrets) when we
           # actually have certificates — until then, omitting them yields
           # unsigned builds that still ship artifacts.
+          #
+          # Sentry DSNs (opt-in telemetry — official release artifacts only).
+          # Both env vars are read at build time:
+          #   VITE_SENTRY_DSN          → @sentry/react in packages/dev (renderer)
+          #   FORGE_SENTRY_DSN_RUST    → option_env!() in src-tauri/main.rs (Rust)
+          # Source builds without these secrets compile cleanly with Sentry
+          # disabled — contributors never silently report to the maintainer.
+          VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN_FORGE_DEV }}
+          FORGE_SENTRY_DSN_RUST: ${{ secrets.SENTRY_DSN_FORGE_DEV_RUST }}
         with:
           projectPath: packages/dev
           tauriScript: pnpm tauri

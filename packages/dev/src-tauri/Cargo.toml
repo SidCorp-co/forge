@@ -1,6 +1,6 @@
 [package]
 name = "forge-beta"
-version = "0.1.24"
+version = "0.1.25"
 edition = "2021"
 
 [dependencies]
@@ -29,6 +29,11 @@ keyring = { version = "3", features = ["apple-native", "windows-native", "sync-s
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 sha2 = "0.11"
 hex = "0.4"
+# Sentry is opt-in. The DSN is embedded at build time via the
+# `FORGE_SENTRY_DSN_RUST` env var (read by `option_env!` in main.rs).
+# Source builds without that env stay silent — no maintainer telemetry
+# from contributor builds.
+sentry = { version = "0.42", default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "rustls"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
