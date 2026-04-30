@@ -293,7 +293,15 @@ if (isMain) {
   const port = env.PORT;
 
   await startBoss();
-  await seedBuiltinSkills(db);
+  const skillSeed = await seedBuiltinSkills(db);
+  for (const change of skillSeed.changes) {
+    await hooks.emit('globalSkillUpdated', {
+      name: change.name,
+      oldVersion: change.oldVersion,
+      newVersion: change.newVersion,
+      contentHash: change.contentHash,
+    });
+  }
   await seedDomainTemplates(db);
   if (isEnabled('chatProvider')) {
     bootstrapChatProviders();

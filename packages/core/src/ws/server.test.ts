@@ -143,3 +143,46 @@ describe('/ws auth — Sec-WebSocket-Protocol subprotocol (ISS-286)', () => {
     }
   });
 });
+
+// ISS-2A — any authenticated principal can subscribe to the cross-tenant
+// `global` room used for builtin skill update broadcasts. The DB is mocked
+// to return no rows so this also confirms subscribe to `'global'` does not
+// hit any project-membership lookup.
+describe('/ws subscribe — global room (ISS-2A)', () => {
+  function dialPersistent(opts: {
+    protocols?: string | string[];
+    headers?: Record<string, string>;
+  }): Promise<import('ws').WebSocket> {
+    const url = `ws://127.0.0.1:${port}/ws`;
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocketLib(url, opts.protocols, { headers: opts.headers });
+      ws.on('open', () => resolve(ws));
+      ws.on('error', reject);
+    });
+  }
+
+  it('user principal can subscribe to "global" without a project membership lookup', async () => {
+    const ws = await dialPersistent({ protocols: [`forge.bearer.${VALID_USER_TOKEN}`] });
+    try {
+      const denial = new Promise<unknown>((resolve, reject) => {
+        const t = setTimeout(() => resolve(null), 200);
+        ws.on('message', (buf) => {
+          clearTimeout(t);
+          try {
+            const msg = JSON.parse(buf.toString());
+            if (msg?.event === 'subscribe.denied') resolve(msg);
+            else reject(new Error(`unexpected message ${buf.toString()}`));
+          } catch (err) {
+            reject(err);
+          }
+        });
+      });
+      ws.send(JSON.stringify({ type: 'subscribe', room: 'global' }));
+      const result = await denial;
+      // Null = no denial message arrived within the grace window.
+      expect(result).toBeNull();
+    } finally {
+      ws.close();
+    }
+  });
+});

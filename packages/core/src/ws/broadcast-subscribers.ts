@@ -1,5 +1,5 @@
 import type { HooksBus } from '../pipeline/hooks.js';
-import { projectRoom, userRoom } from './rooms.js';
+import { globalRoom, projectRoom, userRoom } from './rooms.js';
 import { roomManager } from './server.js';
 
 /**
@@ -133,6 +133,19 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
         action: p.action,
         contentHash: p.contentHash,
         actorId: p.actorUserId,
+      },
+    });
+  });
+
+  bus.on('globalSkillUpdated', (p) => {
+    roomManager.publish(globalRoom(), {
+      event: 'skill.updated',
+      data: {
+        scope: 'global',
+        name: p.name,
+        oldVersion: p.oldVersion,
+        newVersion: p.newVersion,
+        contentHash: p.contentHash,
       },
     });
   });

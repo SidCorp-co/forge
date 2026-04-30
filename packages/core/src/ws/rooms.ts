@@ -12,6 +12,12 @@ export const projectRoom = (projectId: string): string => `project:${projectId}`
 export const deviceRoom = (deviceId: string): string => `device:${deviceId}`;
 export const userRoom = (userId: string): string => `user:${userId}`;
 export const runnerRoom = (runnerId: string): string => `runner:${runnerId}`;
+// Single shared room for cross-tenant broadcasts (e.g. global skill updates
+// from `seedBuiltinSkills`). Any authenticated principal may subscribe; no
+// project membership is required. Distinct from the prefix-based rooms above
+// so it never collides with a UUID-derived key.
+export const GLOBAL_ROOM = 'global';
+export const globalRoom = (): string => GLOBAL_ROOM;
 
 const OPEN = 1;
 

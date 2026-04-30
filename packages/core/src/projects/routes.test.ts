@@ -543,6 +543,198 @@ describe('POST /api/projects/:id/api-key/rotate', () => {
   });
 });
 
+describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
+  const PID = '11111111-1111-4111-8111-111111111111';
+  const SKILL_IDS = {
+    triage: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    plan: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    code: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    review: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    test: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    fix: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+    release: '99999999-9999-4999-8999-999999999999',
+  };
+
+  function bootstrap(token: string) {
+    return req(`/${PID}/skills/bootstrap`, { method: 'POST', token });
+  }
+
+  it('403 FORBIDDEN when caller is neither owner nor admin', async () => {
+    const token = await signUserToken('uuid-member');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-other' }])
+      .mockResolvedValueOnce([{ role: 'member' }]);
+
+    const res = await bootstrap(token);
+    expect(res.status).toBe(403);
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('201 inserts 7 stage→skill registrations and applies the Balanced preset on first call', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]) // assertEmailVerified
+      .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-owner' }]) // loadMembership: project
+      .mockResolvedValueOnce([{ role: 'owner' }]) // loadMembership: member
+      .mockResolvedValueOnce([]) // existing registrations -> none
+      .mockResolvedValueOnce([{ agentConfig: null }]); // project agentConfig
+
+    // 5th selectWhere — globalSkills lookup (.where(...) without .limit()).
+    // Preceding 5 select calls all use .limit() and consume the
+    // selectLimit queue above; the 6th overall select is this one.
+    selectWhere
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockResolvedValueOnce([
+        { id: SKILL_IDS.triage, name: 'forge-triage' },
+        { id: SKILL_IDS.plan, name: 'forge-plan' },
+        { id: SKILL_IDS.code, name: 'forge-code' },
+        { id: SKILL_IDS.review, name: 'forge-review' },
+        { id: SKILL_IDS.test, name: 'forge-test' },
+        { id: SKILL_IDS.fix, name: 'forge-fix' },
+        { id: SKILL_IDS.release, name: 'forge-release' },
+      ]);
+
+    // The bootstrap inserts directly into skill_registrations (no .onConflictDoNothing).
+    // Override insertValues to be awaitable.
+    insertValues.mockReturnValueOnce(Promise.resolve());
+
+    const res = await bootstrap(token);
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      alreadyBootstrapped: boolean;
+      skillsBound: number;
+      pipelineEnabled: boolean;
+    };
+    expect(body.alreadyBootstrapped).toBe(false);
+    expect(body.skillsBound).toBe(7);
+    expect(body.pipelineEnabled).toBe(true);
+
+    expect(insertValues).toHaveBeenCalledTimes(1);
+    const inserted = insertValues.mock.calls[0]?.[0] as Array<{ stage: string; skillId: string }>;
+    expect(inserted).toHaveLength(7);
+    const stages = inserted.map((r) => r.stage).sort();
+    expect(stages).toEqual(
+      ['approved', 'confirmed', 'developed', 'open', 'released', 'reopen', 'testing'].sort(),
+    );
+
+    // The Balanced preset write went through update().set(...).where(...).
+    expect(updateSet).toHaveBeenCalledTimes(1);
+    const setArg = updateSet.mock.calls[0]?.[0] as { agentConfig: { pipelineConfig: Record<string, unknown> } };
+    expect(setArg.agentConfig.pipelineConfig).toMatchObject({
+      enabled: true,
+      autoTriage: true,
+      autoPlan: true,
+      autoCode: false,
+      autoReview: true,
+      autoTest: true,
+      autoFix: true,
+      autoRelease: false,
+    });
+  });
+
+  it('200 returns alreadyBootstrapped on second call without writing registrations or agentConfig', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-owner' }])
+      .mockResolvedValueOnce([{ role: 'owner' }])
+      .mockResolvedValueOnce([{ id: 'reg-1' }]) // existing registrations -> one row, short-circuits
+      .mockResolvedValueOnce([
+        { agentConfig: { pipelineConfig: { enabled: true, autoTriage: true } } },
+      ]);
+
+    // The second call does a count(*) over registrations via .where(...) no limit.
+    selectWhere
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockResolvedValueOnce([{ count: 7 }]);
+
+    const res = await bootstrap(token);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      alreadyBootstrapped: boolean;
+      skillsBound: number;
+      pipelineEnabled: boolean;
+    };
+    expect(body).toMatchObject({
+      alreadyBootstrapped: true,
+      skillsBound: 7,
+      pipelineEnabled: true,
+    });
+
+    expect(insertValues).not.toHaveBeenCalled();
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('preserves an existing pipelineConfig.enabled flag (does not clobber user choice)', async () => {
+    const token = await signUserToken('uuid-owner');
+    // First call already set pipelineConfig.enabled=false; bootstrap must
+    // skip the preset write and report the user's value back.
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-owner' }])
+      .mockResolvedValueOnce([{ role: 'owner' }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { agentConfig: { pipelineConfig: { enabled: false } } },
+      ]);
+
+    selectWhere
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockResolvedValueOnce([
+        { id: SKILL_IDS.triage, name: 'forge-triage' },
+        { id: SKILL_IDS.plan, name: 'forge-plan' },
+        { id: SKILL_IDS.code, name: 'forge-code' },
+        { id: SKILL_IDS.review, name: 'forge-review' },
+        { id: SKILL_IDS.test, name: 'forge-test' },
+        { id: SKILL_IDS.fix, name: 'forge-fix' },
+        { id: SKILL_IDS.release, name: 'forge-release' },
+      ]);
+
+    insertValues.mockReturnValueOnce(Promise.resolve());
+
+    const res = await bootstrap(token);
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { pipelineEnabled: boolean };
+    expect(body.pipelineEnabled).toBe(false);
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('503 NO_GLOBAL_SKILLS when the seeder has not run', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-owner' }])
+      .mockResolvedValueOnce([{ role: 'owner' }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ agentConfig: null }]);
+
+    selectWhere
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockResolvedValueOnce([]); // no global skills
+
+    const res = await bootstrap(token);
+    expect(res.status).toBe(503);
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+});
+
 describe('DELETE /api/projects/:id', () => {
   it('403 FORBIDDEN when caller is not owner', async () => {
     const token = await signUserToken('uuid-member');
