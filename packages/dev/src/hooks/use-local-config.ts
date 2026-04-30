@@ -5,6 +5,7 @@ import { invoke } from "./use-tauri-ipc";
 import { configureApi } from "@/lib/api";
 import { resolveApiBase } from "@/lib/api-discovery";
 import { setAuthExpiredHandler } from "@/lib/api/client";
+import { clearAuthState } from "@/lib/clear-auth";
 import { Sentry } from "@/lib/sentry";
 import type { AppConfig } from "@/lib/types";
 
@@ -77,7 +78,17 @@ export function useLocalConfig() {
           configureApi(resolved, cfg.authToken);
           const healed: AppConfig = { ...cfg, coreUrl: resolved };
           setConfig(healed);
-          await invoke("save_config", { config: healed }).catch(() => {/* ignore */});
+          // Persist the resolved URL so subsequent launches skip the probe.
+          // A failure here means the heal will re-run every launch — surface
+          // it instead of swallowing.
+          try {
+            await invoke("save_config", { config: healed });
+          } catch (err) {
+            Sentry.captureException(err, {
+              tags: { auth_phase: "save_config_heal" },
+              level: "warning",
+            });
+          }
         }
       } catch (err) {
         console.warn("[auth-trace] useLocalConfig hydrate threw:", err);
@@ -105,20 +116,7 @@ export function useLocalConfig() {
     // "every action silently fails" stuck state after a server JWT_SECRET
     // rotation or an expired token.
     setAuthExpiredHandler(() => {
-      const state = useAppStore.getState();
-      // Defensive gate (v0.1.26): if the hydrate hasn't finished, any 401 we
-      // saw came from a request fired BEFORE the api client knew its real
-      // baseUrl/token — wiping auth on that signal turns a stale-route mistake
-      // into a forced logout. Ignore and trust the upcoming hydrate.
-      if (!state.configReady) {
-        Sentry.captureMessage("auth-expired-pre-hydrate-ignored", {
-          level: "warning",
-          tags: { auth_phase: "expired-ignored" },
-        });
-        console.warn("[auth-trace] auth-expired ignored (configReady=false)");
-        return;
-      }
-      const cur = state.config;
+      const cur = useAppStore.getState().config;
       // The "log out on reload" class of bugs converges here — anything that
       // wipes the JWT (server 401, race in hydrate, etc.) goes through this
       // handler. Capture with current state so a maintainer reading Sentry
@@ -132,16 +130,12 @@ export function useLocalConfig() {
           device_id: cur.deviceId || null,
         },
       });
-      const cleared: AppConfig = { ...cur, authToken: "" };
-      setConfig(cleared);
-      configureApi(cur.coreUrl, "");
-      invoke("save_config", { config: cleared }).catch(() => {/* ignore */});
-      // Drop the keychain JWT too — otherwise the next launch would
-      // re-hydrate the expired token from `load_user_jwt` and bounce
-      // the user right back into the loop.
-      invoke("clear_user_jwt").catch(() => {/* ignore */});
-      Sentry.setUser(null);
-      navigate("/login", { replace: true });
+      // Don't unregister the desktop — server says this token is invalid,
+      // not that the user wants to drop the device pairing. Re-login from
+      // the same machine should reuse the existing device row.
+      void clearAuthState({ unregisterDesktop: false }).then(() => {
+        navigate("/login", { replace: true });
+      });
     });
     return () => setAuthExpiredHandler(null);
   }, [setConfig, navigate]);

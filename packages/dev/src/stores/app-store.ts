@@ -90,7 +90,13 @@ export const useAppStore = create<AppState>((set) => ({
     set({ agentUsage: EMPTY_USAGE }),
 
   config: {
-    coreUrl: "http://localhost:8080",
+    // No coreUrl default. `useLocalConfig` is the only legitimate source —
+    // it calls configureApi() before publishing the hydrated config to the
+    // store. A non-empty default here caused the v0.1.25 logout race: an
+    // operator's local dev core on localhost:8080 returned 401
+    // INVALID_TOKEN to a pre-hydrate query and tripped the auth-expired
+    // wipe. Empty matches the default in lib/api/client.ts.
+    coreUrl: "",
     authToken: "",
     projects: {},
     deviceId: "",

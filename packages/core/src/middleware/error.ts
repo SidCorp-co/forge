@@ -81,12 +81,16 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
   return c.json(body, 500);
 };
 
-function captureToSentry(err: unknown, c: Context, code: string): void {
+function captureToSentry(
+  err: unknown,
+  c: Context<{ Variables: RequestIdVars }>,
+  code: string,
+): void {
   Sentry.withScope((scope) => {
     scope.setTag('http.method', c.req.method);
     scope.setTag('http.path', c.req.path);
     scope.setTag('error.code', code);
-    const requestId = c.get('requestId' as never) as string | undefined;
+    const requestId = c.get('requestId');
     if (requestId) scope.setTag('request.id', requestId);
     Sentry.captureException(err);
   });

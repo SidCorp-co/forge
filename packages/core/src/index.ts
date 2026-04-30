@@ -6,7 +6,7 @@ import { cors } from 'hono/cors';
 // Sentry init runs before any other module that might throw at import time —
 // see observability/sentry.ts for the opt-in / scrubbing contract.
 import { initSentry } from './observability/sentry.js';
-initSentry({ release: process.env.npm_package_version || 'unknown' });
+initSentry();
 import { pipelineHealthAdminRoutes } from './admin/pipeline-health-routes.js';
 import { adminRoutes } from './admin/routes.js';
 import { agentSessionRoutes } from './agent-sessions/routes.js';
