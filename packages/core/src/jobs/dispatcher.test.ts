@@ -28,6 +28,14 @@ vi.mock('../ws/server.js', () => ({
   },
 }));
 
+// ISS-4 wired ensureAgentSessionForJob into the dispatch path. The real
+// implementation hits the DB; stub it so dispatcher tests stay focused on
+// the dispatch envelope. Returns a deterministic ID so callers can assert
+// it ends up in the job.assigned data when relevant.
+vi.mock('./agent-session-link.js', () => ({
+  ensureAgentSessionForJob: vi.fn(async () => 'sess-test'),
+}));
+
 const { db } = await import('../db/client.js');
 const { getActiveDeviceId } = await import('./active-device.js');
 const { handleDispatch, registerDispatcher, unregisterDispatcher, isDispatcherRegistered } =
@@ -58,10 +66,18 @@ function mockUpdateReturn(rows: Row[]): void {
 describe('jobs/dispatcher', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Pin to the legacy device dispatch path. After commit 2020bda8 flipped
+    // all v0.1.x alpha flags default-on, runtime now goes through
+    // `dispatchViaRunner` → `selectRunnerForJob` → `db.execute(...)` which
+    // these tests don't mock. The runner path has its own coverage in
+    // `runners/select.test.ts`; this suite specifically asserts the legacy
+    // device path remains correct, so disable runnerFramework explicitly.
+    process.env.FEATURE_RUNNER_FRAMEWORK = 'false';
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    delete process.env.FEATURE_RUNNER_FRAMEWORK;
   });
 
   it('skips when job is missing', async () => {
@@ -124,6 +140,10 @@ describe('jobs/dispatcher', () => {
       (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
       mockSelectOnce([{ id: 'd1', status: 'online' }]);
       mockUpdateReturn([{ id: 'j1' }]);
+      // After UPDATE, dispatchViaDevice calls loadRepoPath which selects from
+      // projects to feed ensureAgentSessionForJob. Mock the row so the chain
+      // doesn't fall through to the unmocked .from() and crash.
+      mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
 
       const result = await handleDispatch({ jobId: 'j1' });
       expect(result).toBe('dispatched');
@@ -139,6 +159,7 @@ describe('jobs/dispatcher', () => {
           type: 'plan',
           payload: { foo: 'bar' },
           dispatchedAt: '2026-04-27T00:00:00.000Z',
+          agentSessionId: 'sess-test',
         },
       });
     } finally {
@@ -163,6 +184,7 @@ describe('jobs/dispatcher', () => {
     (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
     mockSelectOnce([{ id: 'd1', status: 'online' }]);
     mockUpdateReturn([{ id: 'j2' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
 
     await handleDispatch({ jobId: 'j2' });
 
