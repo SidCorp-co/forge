@@ -651,14 +651,25 @@ projectRoutes.post(
         'code' in err &&
         (err as { code: string }).code === '23505';
       if (!isUnique) throw err;
+      // Refetch agentConfig: the winner of the race has likely already
+      // applied BALANCED_PRESET by now, so the snapshot read before the
+      // insert is stale. Reading post-conflict reflects the live state and
+      // returns the correct `pipelineEnabled` to the loser.
       const countRows = await db
         .select({ count: sql<number>`count(*)::int` })
         .from(skillRegistrations)
         .where(eq(skillRegistrations.projectId, id));
+      const [refetchedRow] = await db
+        .select({ agentConfig: projects.agentConfig })
+        .from(projects)
+        .where(eq(projects.id, id))
+        .limit(1);
+      const refetchedAc = (refetchedRow?.agentConfig ?? {}) as Record<string, unknown>;
+      const refetchedPipeline = (refetchedAc.pipelineConfig ?? {}) as Record<string, unknown>;
       return c.json({
         alreadyBootstrapped: true,
         skillsBound: Number(countRows[0]?.count ?? 0),
-        pipelineEnabled: currentPipeline.enabled === true,
+        pipelineEnabled: refetchedPipeline.enabled === true,
       });
     }
 

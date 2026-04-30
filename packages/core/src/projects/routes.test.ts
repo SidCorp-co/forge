@@ -719,7 +719,13 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
       .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-owner' }])
       .mockResolvedValueOnce([{ role: 'owner' }])
       .mockResolvedValueOnce([]) // existing registrations -> none (loser passes the check)
-      .mockResolvedValueOnce([{ agentConfig: null }]);
+      .mockResolvedValueOnce([{ agentConfig: null }]) // pre-insert agentConfig snapshot (stale)
+      // Recovery path refetches agentConfig; the winner has by now applied
+      // BALANCED_PRESET, so the loser must observe `enabled: true` rather
+      // than the stale pre-insert snapshot.
+      .mockResolvedValueOnce([
+        { agentConfig: { pipelineConfig: { enabled: true, autoCode: false } } },
+      ]);
 
     selectWhere
       .mockReturnValueOnce({ limit: selectLimit })
@@ -737,7 +743,9 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
         { id: SKILL_IDS.release, name: 'forge-release' },
       ])
       // Recovery path counts the rows the winner already inserted.
-      .mockResolvedValueOnce([{ count: 7 }]);
+      .mockResolvedValueOnce([{ count: 7 }])
+      // Recovery path refetches agentConfig.
+      .mockReturnValueOnce({ limit: selectLimit });
 
     // The insert loses the race → unique violation surfaces from drizzle.
     insertValues.mockImplementationOnce(async () => {
@@ -754,7 +762,7 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     expect(body).toMatchObject({
       alreadyBootstrapped: true,
       skillsBound: 7,
-      pipelineEnabled: false,
+      pipelineEnabled: true,
     });
     // The Balanced preset write is skipped on the loser path.
     expect(updateSet).not.toHaveBeenCalled();

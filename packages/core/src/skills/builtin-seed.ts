@@ -194,6 +194,15 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
         })
         .where(and(eq(skills.name, name), eq(skills.scope, 'global')));
       result.unchanged += 1;
+      // One-time per skill per device: dev daemons cached the salted hash
+      // from the prior boot, so the natural-hash convergence will trigger
+      // a single redundant `GET /skills/effective` refetch on next poll.
+      // Log so operators expect the post-deploy refetch spike rather than
+      // mistaking it for an unrelated content churn.
+      logger.info(
+        { name, saltedHash, naturalHash: contentHash },
+        'seedBuiltinSkills: converged salted→natural hash (expect one-time daemon refetch)',
+      );
       continue;
     }
 
