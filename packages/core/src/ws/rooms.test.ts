@@ -1,5 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import { RoomManager, type Subscriber, deviceRoom, projectRoom, userRoom } from './rooms.js';
+import {
+  GLOBAL_ROOM,
+  RoomManager,
+  type Subscriber,
+  deviceRoom,
+  globalRoom,
+  projectRoom,
+  userRoom,
+} from './rooms.js';
 
 const OPEN = 1;
 const CLOSED = 3;
@@ -154,6 +162,40 @@ describe('RoomManager', () => {
       expect(userSub.send).toHaveBeenCalledTimes(1);
       expect(projSub.send).not.toHaveBeenCalled();
       expect(devSub.send).not.toHaveBeenCalled();
+    });
+
+    it('globalRoom returns the literal "global" key and never collides with prefix-keyed rooms', () => {
+      expect(globalRoom()).toBe('global');
+      expect(GLOBAL_ROOM).toBe('global');
+      // Sanity: no prefix helper produces the global key for any UUID.
+      const id = '99999999-9999-9999-9999-999999999999';
+      expect(projectRoom(id)).not.toBe(globalRoom());
+      expect(deviceRoom(id)).not.toBe(globalRoom());
+      expect(userRoom(id)).not.toBe(globalRoom());
+    });
+
+    it('publish to globalRoom delivers to all subscribers and isolates from project/user rooms', () => {
+      const rm = new RoomManager();
+      const id = '44444444-4444-4444-4444-444444444444';
+      const globalA = makeSub();
+      const globalB = makeSub();
+      const projSub = makeSub();
+      const userSub = makeSub();
+      rm.subscribe(globalA, globalRoom());
+      rm.subscribe(globalB, globalRoom());
+      rm.subscribe(projSub, projectRoom(id));
+      rm.subscribe(userSub, userRoom(id));
+
+      const delivered = rm.publish(globalRoom(), {
+        event: 'skill.updated',
+        data: { scope: 'global', name: 'forge-code' },
+      });
+
+      expect(delivered).toBe(2);
+      expect(globalA.send).toHaveBeenCalledTimes(1);
+      expect(globalB.send).toHaveBeenCalledTimes(1);
+      expect(projSub.send).not.toHaveBeenCalled();
+      expect(userSub.send).not.toHaveBeenCalled();
     });
 
     it('deviceRoom publish is isolated from projectRoom subscribers with the same UUID', () => {

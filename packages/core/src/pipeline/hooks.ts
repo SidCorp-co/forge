@@ -92,6 +92,18 @@ export interface HookPayloads {
     contentHash: string | null;
     actorUserId: string;
   };
+  // ISS-2A — fired from the boot-time builtin seeder when a global skill row
+  // is inserted or its content actually changed. Carries no `projectId`
+  // because the broadcast targets the cross-tenant `globalRoom()`. The WS
+  // bridge maps this to the `skill.updated` wire event with `scope: 'global'`
+  // — kept distinct from `skillUpdated` so the override-flow handler does
+  // not need a runtime branch on a nullable projectId.
+  globalSkillUpdated: {
+    name: string;
+    oldVersion: number;
+    newVersion: number;
+    contentHash: string;
+  };
   taskCreated: {
     taskId: string;
     issueId: string;

@@ -41,6 +41,13 @@ interface AppState {
 
   config: AppConfig;
   setConfig: (c: AppConfig) => void;
+  /**
+   * False until `useLocalConfig` finishes hydrating from disk + the OS
+   * keychain. RequireAuth and LoginPage gate on this so a fresh launch
+   * doesn't bounce the user to /login while the JWT is still loading.
+   */
+  configReady: boolean;
+  setConfigReady: (v: boolean) => void;
 
   sidebarOpen: boolean;
   toggleSidebar: () => void;
@@ -89,6 +96,8 @@ export const useAppStore = create<AppState>((set) => ({
     deviceId: "",
   },
   setConfig: (c) => set({ config: c }),
+  configReady: false,
+  setConfigReady: (v) => set({ configReady: v }),
 
   sidebarOpen: true,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),

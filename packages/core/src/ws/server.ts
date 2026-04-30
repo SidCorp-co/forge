@@ -13,7 +13,7 @@ import {
   handleRunnerUnregister,
   handleRunnerUpdate,
 } from '../runners/heartbeat-ws.js';
-import { RoomManager } from './rooms.js';
+import { GLOBAL_ROOM, RoomManager } from './rooms.js';
 
 type AnyServer = HttpServer | HttpsServer;
 
@@ -140,6 +140,10 @@ async function authenticate(req: IncomingMessage): Promise<AuthResult | null> {
 }
 
 async function canSubscribe(principal: Principal, room: string): Promise<boolean> {
+  // Global broadcast room — server-emitted cross-tenant events (e.g. builtin
+  // skill seeding). Any authenticated principal may join; the upgrade
+  // handler has already established authentication.
+  if (room === GLOBAL_ROOM) return true;
   if (room.startsWith('project:')) {
     const projectId = room.slice('project:'.length);
     const userId = principal.type === 'user' ? principal.userId : principal.ownerId;
