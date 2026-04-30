@@ -122,7 +122,7 @@ Rules:
   - Total branch name ≤ 60 chars
   - One issue per branch (no ISS-A-B-…)
 
-Override: SKIP_PREPUSH=1 git push  (use sparingly — emergency only).
+Override: rename the branch to match an accepted pattern.
 
 See docs/decisions/0014-trunk-based-development.md.
 EOF

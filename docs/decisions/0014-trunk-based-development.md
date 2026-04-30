@@ -108,7 +108,7 @@ scripts/check-branch-name.sh                          # current branch
 scripts/check-branch-name.sh ISS-279-foo              # specific name
 ```
 
-`SKIP_PREPUSH=1 git push` bypasses for emergency reverts only.
+For emergency reverts only, `git push --no-verify` skips the hook entirely. There is no in-script bypass — by design, so the gate cannot quietly become optional.
 
 ### Commit messages
 
@@ -135,7 +135,7 @@ The maintainer's reference deployment uses `docker-compose.prod.yml` against a s
 
 - Requires CI + pre-push hook discipline. A green `main` is a contract; it costs vigilance to keep.
 - Long-running migrations need to be split (schema first, code second, drop second) so a feature flag can toggle without locking the trunk.
-- The pre-push hook can fail on pre-existing flaky tests (currently `db/schema.test.ts is_ceo`, `tests/integration/comment-mentions.test.ts`, plus 2 route-mock flakes). `SKIP_PREPUSH=1` is acceptable for unrelated work — track the flake under a follow-up issue (see [docs/quickstart.md §Testing](../quickstart.md#testing)).
+- The pre-push hook can fail on pre-existing flaky tests (currently `db/schema.test.ts is_ceo`, `tests/integration/comment-mentions.test.ts`, plus 2 route-mock flakes). Per-package CI + per-package pre-push (ISS-14) means a flake in one package no longer blocks pushes that don't touch it. If a package's tests are genuinely broken on main, fix or `.skip` them at the test level — do not bypass the gate. See [docs/quickstart.md §Testing](../quickstart.md#testing) for the live flake list.
 
 ### Alternatives considered
 
