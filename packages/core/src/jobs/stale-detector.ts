@@ -100,6 +100,7 @@ export async function runStaleSweep(): Promise<{
         maxAttempts: updatedRow.max_attempts,
         cancellationRequested: updatedRow.cancellation_requested,
         retryOf: updatedRow.retry_of,
+        agentSessionId: null,
         // ISS-306: stale-detector flagged failures are transient by definition
         // (the runner went silent — almost always network / device crash, not
         // a deterministic Anthropic policy block). The sweeper later reads

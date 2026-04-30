@@ -10,6 +10,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { scheduleRetry } from './retry.js';
 
 const badRequest = (details: unknown) =>
@@ -91,6 +92,10 @@ jobLifecycleDeviceRoutes.post(
       retry = await scheduleRetry(updated, input.error ?? 'exit nonzero');
     }
 
+    // Mirror lifecycle to the linked agent_session row so /pipeline + issue
+    // detail tab reflect completion. Best-effort.
+    await syncAgentSessionLifecycle(updated, status);
+
     roomManager.publish(projectRoom(updated.projectId), {
       event:
         status === 'done'
@@ -144,6 +149,8 @@ jobLifecycleDeviceRoutes.post(
 
     const retry = await scheduleRetry(updated, input.error);
 
+    await syncAgentSessionLifecycle(updated, 'failed');
+
     roomManager.publish(projectRoom(updated.projectId), {
       event: 'job.failed',
       data: { jobId: updated.id, status: 'failed', error: updated.error },
@@ -189,6 +196,8 @@ jobLifecycleUserRoutes.post(
         .where(and(eq(jobs.id, id), eq(jobs.status, 'queued')))
         .returning();
       if (!updated) throw conflict('job state changed mid-request', 'NOT_CANCELLABLE');
+
+      await syncAgentSessionLifecycle(updated, 'cancelled');
 
       roomManager.publish(projectRoom(updated.projectId), {
         event: 'job.cancelled',

@@ -11,6 +11,7 @@ import type { RequiredCapabilities } from '../runners/types.js';
 import { deviceRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { getActiveDeviceId } from './active-device.js';
+import { ensureAgentSessionForJob } from './agent-session-link.js';
 import { JOB_QUEUE_NAME } from './queue-name.js';
 
 interface DispatchMessage {
@@ -73,6 +74,12 @@ async function dispatchViaDevice(job: typeof jobs.$inferSelect): Promise<'dispat
     return 'skipped';
   }
 
+  const repoPath = await loadRepoPath(job.projectId);
+  const agentSessionId = await ensureAgentSessionForJob(
+    { ...job, status: 'dispatched', deviceId, dispatchedAt },
+    { repoPath },
+  );
+
   roomManager.publish(deviceRoom(deviceId), {
     event: 'job.assigned',
     data: {
@@ -82,11 +89,24 @@ async function dispatchViaDevice(job: typeof jobs.$inferSelect): Promise<'dispat
       type: job.type,
       payload: job.payload,
       dispatchedAt: dispatchedAt.toISOString(),
+      agentSessionId,
     },
   });
 
   logger.info({ jobId: job.id, deviceId }, 'dispatcher: dispatched (legacy device path)');
   return 'dispatched';
+}
+
+async function loadRepoPath(projectId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ repoPath: projects.repoPath, agentConfig: projects.agentConfig })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  if (!row) return null;
+  if (row.repoPath) return row.repoPath;
+  const ac = (row.agentConfig ?? {}) as Record<string, unknown>;
+  return typeof ac.repoPath === 'string' ? ac.repoPath : null;
 }
 
 async function dispatchViaRunner(job: typeof jobs.$inferSelect): Promise<'dispatched' | 'skipped'> {
@@ -142,6 +162,18 @@ async function dispatchViaRunner(job: typeof jobs.$inferSelect): Promise<'dispat
     logger.debug({ jobId: job.id }, 'dispatcher: lost race to another dispatcher');
     return 'skipped';
   }
+
+  const repoPath = await loadRepoPath(job.projectId);
+  await ensureAgentSessionForJob(
+    {
+      ...job,
+      status: 'dispatched',
+      runnerId: runner.id,
+      deviceId: runner.deviceId,
+      dispatchedAt,
+    },
+    { repoPath },
+  );
 
   const result = await adapter.dispatch({
     job: {

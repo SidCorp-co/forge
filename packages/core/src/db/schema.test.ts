@@ -500,6 +500,7 @@ describe('db/schema — jobs', () => {
     const names = getTableConfig(jobs).columns.map((c) => c.name);
     expect(names.sort()).toEqual(
       [
+        'agent_session_id',
         'attempts',
         'cancellation_requested',
         'classifier_version',

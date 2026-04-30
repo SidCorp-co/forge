@@ -363,6 +363,11 @@ export const jobs = pgTable(
     maxAttempts: integer('max_attempts').notNull().default(3),
     cancellationRequested: boolean('cancellation_requested').notNull().default(false),
     retryOf: uuid('retry_of').references((): AnyPgColumn => jobs.id, { onDelete: 'set null' }),
+    // ISS-4: link to the observability `agent_sessions` row created by the
+    // dispatcher so /pipeline + issue detail surfaces can render pipeline
+    // jobs alongside interactive sessions. Bare uuid (no FK) to match the
+    // notifications.agent_session_id pattern — adding the FK later is additive.
+    agentSessionId: uuid('agent_session_id'),
     // Pipeline self-healing (Phase H, ISS-306). Set when the job ends in
     // `failed`. failureKind drives whether the issue-state sweeper should
     // re-fire (transient/unknown) or escalate (permanent). classifierVersion
@@ -381,6 +386,7 @@ export const jobs = pgTable(
     statusIdx: index('jobs_status_idx').on(t.status),
     runnerIdIdx: index('jobs_runner_id_idx').on(t.runnerId),
     retryOfIdx: index('jobs_retry_of_idx').on(t.retryOf),
+    agentSessionIdIdx: index('jobs_agent_session_id_idx').on(t.agentSessionId),
     activeUniqueIdx: uniqueIndex('jobs_active_unique')
       .on(t.issueId, t.type)
       .where(sql`status IN ('queued','dispatched','running') AND issue_id IS NOT NULL`),
