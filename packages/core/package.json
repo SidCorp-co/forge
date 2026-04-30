@@ -35,6 +35,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@forge/observability": "workspace:*",
     "@google/genai": "^0.7.0",
     "@hono/node-server": "^1.13.7",
     "@hono/zod-validator": "^0.7.6",
