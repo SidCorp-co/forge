@@ -44,6 +44,9 @@ const listQuerySchema = z
     // Used by /pipeline page to restrict the cross-project list to
     // pipeline-control sessions.
     metadataType: z.string().min(1).max(100).optional(),
+    // Optional jsonb filter on `metadata.issueId` — used by the issue detail
+    // "Agent Sessions" tab to scope the list to a single issue.
+    issueId: z.uuid().optional(),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(200).default(50),
   })
@@ -684,7 +687,8 @@ agentSessionRoutes.get(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    const { projectId, deviceId, status, metadataType, page, pageSize } = c.req.valid('query');
+    const { projectId, deviceId, status, metadataType, issueId, page, pageSize } =
+      c.req.valid('query');
     const userId = c.get('userId');
 
     const conditions: SQL[] = [];
@@ -729,6 +733,9 @@ agentSessionRoutes.get(
     if (status) conditions.push(eq(agentSessions.status, status));
     if (metadataType) {
       conditions.push(sql`${agentSessions.metadata}->>'type' = ${metadataType}`);
+    }
+    if (issueId) {
+      conditions.push(sql`${agentSessions.metadata}->>'issueId' = ${issueId}`);
     }
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
