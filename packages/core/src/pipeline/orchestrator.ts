@@ -80,6 +80,89 @@ export async function reEnqueueForIssue(args: {
   return considerEnqueue(args);
 }
 
+/**
+ * Thrown by `triggerPipelineStepManual` when the same (issueId, type) already
+ * has a queued/dispatched/running job. The route handler maps this to HTTP
+ * 409 so the UI can surface "Job already running, cancel first".
+ */
+export class ActiveJobConflictError extends Error {
+  constructor(
+    public readonly existingJobId: string,
+    public readonly type: JobType,
+  ) {
+    super(`active ${type} job already exists for this issue`);
+    this.name = 'ActiveJobConflictError';
+  }
+}
+
+/**
+ * Manual fire of a pipeline stage from the issue UI (ISS-5). Bypasses
+ * `pipelineConfig.enabled` and the per-stage `auto*` toggles — the user
+ * explicitly clicked "Run" so we honor it regardless of project automation
+ * settings. Throws `ActiveJobConflictError` when a job of the same
+ * (issueId, type) is already active so the route can return 409.
+ */
+export async function triggerPipelineStepManual(args: {
+  projectId: string;
+  issueId: string;
+  status: IssueStatus;
+  stage?: JobType;
+  actor: Actor;
+  reason: Record<string, unknown>;
+}): Promise<{ jobId: string; type: JobType }> {
+  const skill = args.stage
+    ? { type: args.stage, toggle: '' }
+    : resolveSkillForStatus(args.status);
+  if (!skill) throw new Error('no skill mapped for this status');
+
+  const { ownerId } = await loadPipelineConfig(args.projectId);
+
+  const existing = await findActiveJob(args.issueId, skill.type);
+  if (existing) throw new ActiveJobConflictError(existing, skill.type);
+
+  const createdBy = resolveCreatedBy(args.actor, ownerId);
+
+  let insertedId: string | null = null;
+  try {
+    const [inserted] = await db
+      .insert(jobs)
+      .values({
+        projectId: args.projectId,
+        issueId: args.issueId,
+        createdBy,
+        type: skill.type,
+        payload: { skillName: `forge-${skill.type}`, ...args.reason },
+        status: 'queued',
+      })
+      .returning({ id: jobs.id });
+    insertedId = inserted?.id ?? null;
+  } catch (err) {
+    // Concurrent click → unique-index dedupe. Surface as conflict so the UI
+    // sees the same 409 it would for the in-app race check.
+    if (isUniqueViolation(err)) {
+      const racing = await findActiveJob(args.issueId, skill.type);
+      if (racing) throw new ActiveJobConflictError(racing, skill.type);
+    }
+    throw err;
+  }
+  if (!insertedId) throw new Error('jobs: insert returned no row');
+
+  try {
+    await enqueueJob(insertedId);
+  } catch (err) {
+    logger.error(
+      { err, jobId: insertedId },
+      'manual trigger: pg-boss enqueue failed; row persisted',
+    );
+  }
+
+  logger.info(
+    { jobId: insertedId, type: skill.type, issueId: args.issueId },
+    'manual trigger: enqueued',
+  );
+  return { jobId: insertedId, type: skill.type };
+}
+
 async function considerEnqueue(args: {
   projectId: string;
   issueId: string;
