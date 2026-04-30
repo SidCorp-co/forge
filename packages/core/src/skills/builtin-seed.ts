@@ -9,10 +9,26 @@ import { skills } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { parseManifest } from './parse-manifest.js';
 
+export interface SeedChange {
+  name: string;
+  oldVersion: number;
+  newVersion: number;
+  contentHash: string;
+  reason: 'inserted' | 'updated';
+}
+
 export interface SeedResult {
   inserted: number;
   updated: number;
   unchanged: number;
+  /**
+   * Per-skill change records for callers (e.g. boot wiring) that need to
+   * broadcast a `globalSkillUpdated` hook for each genuine content change.
+   * Excludes the stale-`skill_md` backfill where `contentHash` already
+   * matched the existing row — that path re-renders bytes without
+   * signalling a logical update to clients.
+   */
+  changes: SeedChange[];
 }
 
 export interface SeedOptions {
@@ -49,7 +65,7 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
     throw err;
   }
 
-  const result: SeedResult = { inserted: 0, updated: 0, unchanged: 0 };
+  const result: SeedResult = { inserted: 0, updated: 0, unchanged: 0, changes: [] };
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
@@ -118,11 +134,29 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
         skillMd: rawText,
       });
       result.inserted += 1;
+      result.changes.push({
+        name,
+        oldVersion: 0,
+        newVersion: 1,
+        contentHash,
+        reason: 'inserted',
+      });
       continue;
     }
 
+    // ISS-2A: when the row's `skill_md` was null but `contentHash` matched
+    // the file, the desktop sync daemon's locally-cached hash equals the
+    // server hash and it short-circuits the install — leaving the local
+    // SKILL.md file empty even though the DB now has content. To force a
+    // one-time daemon resync, the backfill writes a salted hash that
+    // differs from the daemon's cached value. The salt is deterministic
+    // so once applied the row converges (subsequent boots accept either
+    // the natural or the salted hash as "current content").
+    const saltedHash = sha256(`backfill-iss2a:${rawText}`);
     const skillMdMissing = !current.skillMd;
-    if (current.contentHash === contentHash && !skillMdMissing) {
+    const hashMatches =
+      current.contentHash === contentHash || current.contentHash === saltedHash;
+    if (hashMatches && !skillMdMissing) {
       result.unchanged += 1;
       continue;
     }
@@ -130,7 +164,9 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
     // Bump version only when the underlying content actually changed; a pure
     // skill_md backfill (hash already matches) re-renders bytes without
     // signalling a logical update to clients.
-    const versionChanged = current.contentHash !== contentHash;
+    const versionChanged = !hashMatches;
+    const writeContentHash = skillMdMissing && !versionChanged ? saltedHash : contentHash;
+    const newVersion = versionChanged ? current.version + 1 : current.version;
     await db
       .update(skills)
       .set({
@@ -138,13 +174,22 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
         prompt,
         tools,
         manifest: frontmatter,
-        contentHash,
+        contentHash: writeContentHash,
         skillMd: rawText,
-        version: versionChanged ? current.version + 1 : current.version,
+        version: newVersion,
         updatedAt: sql`now()`,
       })
       .where(and(eq(skills.name, name), eq(skills.scope, 'global')));
     result.updated += 1;
+    if (versionChanged) {
+      result.changes.push({
+        name,
+        oldVersion: current.version,
+        newVersion,
+        contentHash,
+        reason: 'updated',
+      });
+    }
   }
 
   if (result.updated > 0 || result.inserted > 0) {
