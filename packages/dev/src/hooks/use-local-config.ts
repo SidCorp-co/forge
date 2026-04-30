@@ -18,7 +18,14 @@ export function useLocalConfig() {
 
     invoke<AppConfig>("get_config").then(async (diskConfig) => {
       if (!diskConfig) return;
-      setConfig(diskConfig);
+      // ADR 0004: the user JWT lives in the OS keychain, not config.json.
+      // The Rust serde model deliberately drops `auth_token` on
+      // save/load, so before v0.1.23 a fresh launch always landed on the
+      // login screen. Pull the JWT from the keychain and merge it into
+      // the in-memory config.
+      const jwt = await invoke<string | null>("load_user_jwt").catch(() => null);
+      const cfg: AppConfig = { ...diskConfig, authToken: jwt ?? "" };
+      setConfig(cfg);
       // Self-heal: users who logged in on <= v0.1.20 stored the WEB URL in
       // config.coreUrl (the URL they typed) instead of the resolved API
       // origin. On subdomain-split deploys every /api/* call from that
@@ -26,10 +33,10 @@ export function useLocalConfig() {
       // launch — single-origin deploys return the same URL (cheap) and
       // stale subdomain-split configs heal silently. Persist the resolved
       // URL so subsequent launches skip the probe entirely.
-      const resolved = await resolveApiBase(diskConfig.coreUrl);
-      configureApi(resolved, diskConfig.authToken);
-      if (resolved && resolved !== diskConfig.coreUrl) {
-        const healed: AppConfig = { ...diskConfig, coreUrl: resolved };
+      const resolved = await resolveApiBase(cfg.coreUrl);
+      configureApi(resolved, cfg.authToken);
+      if (resolved && resolved !== cfg.coreUrl) {
+        const healed: AppConfig = { ...cfg, coreUrl: resolved };
         setConfig(healed);
         await invoke("save_config", { config: healed }).catch(() => {/* ignore */});
       }
@@ -45,6 +52,10 @@ export function useLocalConfig() {
       setConfig(cleared);
       configureApi(cur.coreUrl, "");
       invoke("save_config", { config: cleared }).catch(() => {/* ignore */});
+      // Drop the keychain JWT too — otherwise the next launch would
+      // re-hydrate the expired token from `load_user_jwt` and bounce
+      // the user right back into the loop.
+      invoke("clear_user_jwt").catch(() => {/* ignore */});
       navigate("/login", { replace: true });
     });
     return () => setAuthExpiredHandler(null);
@@ -53,6 +64,14 @@ export function useLocalConfig() {
   async function saveConfig(newConfig: AppConfig) {
     setConfig(newConfig);
     configureApi(newConfig.coreUrl, newConfig.authToken);
+    // Mirror the JWT into the keychain whenever callers update config —
+    // keeps the two stores in sync without forcing every call site to
+    // know about the keychain. Empty token => clear, matching logout.
+    if (newConfig.authToken) {
+      await invoke("store_user_jwt", { token: newConfig.authToken }).catch(() => {/* ignore */});
+    } else {
+      await invoke("clear_user_jwt").catch(() => {/* ignore */});
+    }
     await invoke("save_config", { config: newConfig });
   }
 

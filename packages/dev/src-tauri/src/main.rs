@@ -56,6 +56,24 @@ fn clear_device_token() -> Result<(), String> {
     keychain::clear()
 }
 
+// === User JWT — stored in OS keychain, not config.json (ADR 0004 / ISS-214 §5).
+// Persists across reloads so users don't re-login on every launch.
+
+#[tauri::command]
+fn store_user_jwt(token: String) -> Result<(), String> {
+    keychain::store_jwt(&token)
+}
+
+#[tauri::command]
+fn load_user_jwt() -> Result<Option<String>, String> {
+    keychain::load_jwt()
+}
+
+#[tauri::command]
+fn clear_user_jwt() -> Result<(), String> {
+    keychain::clear_jwt()
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PairDeviceResponse {
@@ -465,6 +483,9 @@ fn main() {
             connect_ws,
             load_device_token,
             clear_device_token,
+            store_user_jwt,
+            load_user_jwt,
+            clear_user_jwt,
             pair_device,
             heartbeat,
             post_job_events,

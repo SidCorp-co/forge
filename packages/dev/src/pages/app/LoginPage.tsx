@@ -90,6 +90,9 @@ export function LoginPage() {
       };
       setConfig(updated);
       configureApi(apiUrl, token);
+      // Stash the JWT in the OS keychain so it survives reload —
+      // config.json deliberately drops auth_token (ADR 0004).
+      await invoke("store_user_jwt", { token });
       await invoke("save_config", { config: updated });
       navigate(from, { replace: true });
       // user.email is intentionally not persisted here — the next call to
@@ -139,6 +142,9 @@ export function LoginPage() {
       };
       setConfig(updated);
       configureApi(url, token);
+      // Stash the JWT in the OS keychain so it survives reload —
+      // config.json deliberately drops auth_token (ADR 0004).
+      await invoke("store_user_jwt", { token });
       await invoke("save_config", { config: updated });
       navigate(from, { replace: true });
     } catch (err) {
