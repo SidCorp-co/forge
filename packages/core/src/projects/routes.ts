@@ -572,12 +572,33 @@ projectRoutes.post(
       throw forbidden('owner or admin role required');
     }
 
-    // Already bootstrapped? Return current state, no mutation.
+    // Already bootstrapped? Return current state, no mutation. The repeat-call
+    // path stays read-light — agentConfig is only loaded inside the branch
+    // that needs it (here for `pipelineEnabled`, below for the preset write).
     const existing = await db
       .select({ id: skillRegistrations.id })
       .from(skillRegistrations)
       .where(eq(skillRegistrations.projectId, id))
       .limit(1);
+
+    if (existing.length > 0) {
+      const [existingProjectRow] = await db
+        .select({ agentConfig: projects.agentConfig })
+        .from(projects)
+        .where(eq(projects.id, id))
+        .limit(1);
+      const existingAc = (existingProjectRow?.agentConfig ?? {}) as Record<string, unknown>;
+      const existingPipeline = (existingAc.pipelineConfig ?? {}) as Record<string, unknown>;
+      const countRows = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(skillRegistrations)
+        .where(eq(skillRegistrations.projectId, id));
+      return c.json({
+        alreadyBootstrapped: true,
+        skillsBound: Number(countRows[0]?.count ?? 0),
+        pipelineEnabled: existingPipeline.enabled === true,
+      });
+    }
 
     const [projectRow] = await db
       .select({ agentConfig: projects.agentConfig })
@@ -586,18 +607,6 @@ projectRoutes.post(
       .limit(1);
     const currentAc = (projectRow?.agentConfig ?? {}) as Record<string, unknown>;
     const currentPipeline = (currentAc.pipelineConfig ?? {}) as Record<string, unknown>;
-
-    if (existing.length > 0) {
-      const countRows = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(skillRegistrations)
-        .where(eq(skillRegistrations.projectId, id));
-      return c.json({
-        alreadyBootstrapped: true,
-        skillsBound: Number(countRows[0]?.count ?? 0),
-        pipelineEnabled: currentPipeline.enabled === true,
-      });
-    }
 
     // Look up global skills referenced by STATUS_TO_SKILL. Each entry in the
     // map points to a `forge-<type>` skill name + the auto* toggle key.
@@ -629,7 +638,29 @@ projectRoutes.post(
       });
     }
 
-    await db.insert(skillRegistrations).values(toInsert);
+    try {
+      await db.insert(skillRegistrations).values(toInsert);
+    } catch (err: unknown) {
+      // Concurrent bootstrap calls (e.g. a double-click) both pass the
+      // existence check and race on the insert. The loser hits the
+      // (project_id, stage) unique constraint — surface that as the
+      // idempotent already-bootstrapped response instead of a 500.
+      const isUnique =
+        typeof err === 'object' &&
+        err !== null &&
+        'code' in err &&
+        (err as { code: string }).code === '23505';
+      if (!isUnique) throw err;
+      const countRows = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(skillRegistrations)
+        .where(eq(skillRegistrations.projectId, id));
+      return c.json({
+        alreadyBootstrapped: true,
+        skillsBound: Number(countRows[0]?.count ?? 0),
+        pipelineEnabled: currentPipeline.enabled === true,
+      });
+    }
 
     // Apply the Balanced preset only when no pipelineConfig.enabled flag has
     // been set yet — never clobber a user's deliberate config.

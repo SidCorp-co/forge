@@ -146,6 +146,7 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
         oldVersion: p.oldVersion,
         newVersion: p.newVersion,
         contentHash: p.contentHash,
+        changelog: p.changelog,
       },
     });
   });

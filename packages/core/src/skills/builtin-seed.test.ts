@@ -24,6 +24,7 @@ interface MockSkillRow {
   contentHash: string;
   version: number;
   skillMd: string | null;
+  changelog?: unknown;
 }
 
 // Hand-rolled `Db` mock that satisfies only the chained calls the seeder uses:
@@ -89,6 +90,7 @@ function makeDb(initialRows: Map<string, MockSkillRow>) {
                     contentHash: (v.contentHash as string) ?? existing.contentHash,
                     version: (v.version as number) ?? existing.version,
                     skillMd: (v.skillMd as string) ?? existing.skillMd,
+                    changelog: v.changelog ?? existing.changelog,
                   });
                 }
               }
@@ -254,6 +256,86 @@ describe('seedBuiltinSkills', () => {
     expect(change.contentHash).not.toBe('old-stale-hash');
     expect(harness.updates).toHaveLength(1);
     expect(harness.updates[0]?.set.version).toBe(8);
+  });
+
+  it('appends a changelog entry on insert and on a genuine version bump', async () => {
+    const root = await track(
+      await makeSkillsRoot([{ name: 'forge-zeta', body: '# Zeta body v1' }]),
+    );
+
+    // Insert path
+    const insertHarness = makeDb(new Map());
+    insertHarness.setCurrentName('forge-zeta');
+    const first = await seedBuiltinSkills(insertHarness.db as never, { skillsRoot: root });
+    expect(first.changes[0]?.changelog.reason).toBe('inserted');
+    expect(first.changes[0]?.changelog.version).toBe(1);
+    const insertedRow = insertHarness.inserts[0]!;
+    expect(Array.isArray(insertedRow.changelog)).toBe(true);
+    expect((insertedRow.changelog as unknown[]).length).toBe(1);
+
+    // Update path: stale hash, existing changelog with one entry → appended
+    const updateHarness = makeDb(
+      new Map([
+        [
+          'forge-zeta',
+          {
+            contentHash: 'old-hash',
+            version: 4,
+            skillMd: 'old md',
+            changelog: [
+              { at: '2026-01-01T00:00:00Z', version: 4, reason: 'inserted', contentHash: 'old-hash' },
+            ],
+          },
+        ],
+      ]),
+    );
+    updateHarness.setCurrentName('forge-zeta');
+    const second = await seedBuiltinSkills(updateHarness.db as never, { skillsRoot: root });
+    expect(second.changes).toHaveLength(1);
+    expect(second.changes[0]?.changelog.reason).toBe('updated');
+    expect(second.changes[0]?.changelog.version).toBe(5);
+    const updateSet = updateHarness.updates[0]?.set;
+    const writtenChangelog = updateSet?.changelog as unknown[];
+    expect(writtenChangelog).toHaveLength(2);
+  });
+
+  it('converges a previously salted-hash row back to the natural hash without bumping version or emitting a change', async () => {
+    const root = await track(
+      await makeSkillsRoot([{ name: 'forge-eta', body: '# Eta body' }]),
+    );
+
+    // Compute the salted hash the way builtin-seed does, then plant a row that
+    // matches it (i.e. a row that was previously stale-backfilled). skillMd is
+    // now non-null because the daemon has resynced.
+    const { createHash } = await import('node:crypto');
+    const rawText = `---\nname: forge-eta\ndescription: "desc for forge-eta"\n---\n\n# Eta body\n`;
+    const naturalHash = createHash('sha256').update(rawText).digest('hex');
+    const saltedHash = createHash('sha256').update(`backfill-iss2a:${rawText}`).digest('hex');
+
+    const harness = makeDb(
+      new Map([
+        [
+          'forge-eta',
+          { contentHash: saltedHash, version: 9, skillMd: rawText, changelog: [] },
+        ],
+      ]),
+    );
+    harness.setCurrentName('forge-eta');
+
+    const result = await seedBuiltinSkills(harness.db as never, { skillsRoot: root });
+
+    expect(result.unchanged).toBe(1);
+    expect(result.updated).toBe(0);
+    expect(result.changes).toHaveLength(0);
+
+    // Convergence wrote one UPDATE with the natural hash and nothing else
+    // version-related (no skillMd/version/changelog churn).
+    expect(harness.updates).toHaveLength(1);
+    const updateSet = harness.updates[0]?.set as Record<string, unknown>;
+    expect(updateSet.contentHash).toBe(naturalHash);
+    expect(updateSet.version).toBeUndefined();
+    expect(updateSet.changelog).toBeUndefined();
+    expect(updateSet.skillMd).toBeUndefined();
   });
 
   it('skips entries that do not start with the forge- prefix', async () => {

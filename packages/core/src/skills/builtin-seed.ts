@@ -9,12 +9,20 @@ import { skills } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { parseManifest } from './parse-manifest.js';
 
+export interface SkillChangelogEntry {
+  at: string;
+  version: number;
+  reason: 'inserted' | 'updated';
+  contentHash: string;
+}
+
 export interface SeedChange {
   name: string;
   oldVersion: number;
   newVersion: number;
   contentHash: string;
   reason: 'inserted' | 'updated';
+  changelog: SkillChangelogEntry;
 }
 
 export interface SeedResult {
@@ -113,6 +121,7 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
         contentHash: skills.contentHash,
         version: skills.version,
         skillMd: skills.skillMd,
+        changelog: skills.changelog,
       })
       .from(skills)
       .where(and(eq(skills.name, name), eq(skills.scope, 'global')))
@@ -120,6 +129,12 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
     const current = existing[0];
 
     if (!current) {
+      const entry: SkillChangelogEntry = {
+        at: new Date().toISOString(),
+        version: 1,
+        reason: 'inserted',
+        contentHash,
+      };
       await db.insert(skills).values({
         name,
         description,
@@ -132,6 +147,7 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
         version: 1,
         contentHash,
         skillMd: rawText,
+        changelog: [entry],
       });
       result.inserted += 1;
       result.changes.push({
@@ -140,6 +156,7 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
         newVersion: 1,
         contentHash,
         reason: 'inserted',
+        changelog: entry,
       });
       continue;
     }
@@ -153,10 +170,29 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
     // so once applied the row converges (subsequent boots accept either
     // the natural or the salted hash as "current content").
     const saltedHash = sha256(`backfill-iss2a:${rawText}`);
+    const naturalMatches = current.contentHash === contentHash;
+    const saltedMatches = current.contentHash === saltedHash;
     const skillMdMissing = !current.skillMd;
-    const hashMatches =
-      current.contentHash === contentHash || current.contentHash === saltedHash;
-    if (hashMatches && !skillMdMissing) {
+
+    if (naturalMatches && !skillMdMissing) {
+      result.unchanged += 1;
+      continue;
+    }
+
+    // Convergence: the row was previously backfilled with the salted hash
+    // (skillMd is now non-null and the daemon has long since resynced).
+    // Quietly write the natural hash back so downstream consumers that
+    // recompute sha256(rawText) see a consistent value. No version bump,
+    // no change record — bytes are identical and clients already hold the
+    // correct content.
+    if (saltedMatches && !skillMdMissing) {
+      await db
+        .update(skills)
+        .set({
+          contentHash,
+          updatedAt: sql`now()`,
+        })
+        .where(and(eq(skills.name, name), eq(skills.scope, 'global')));
       result.unchanged += 1;
       continue;
     }
@@ -164,9 +200,21 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
     // Bump version only when the underlying content actually changed; a pure
     // skill_md backfill (hash already matches) re-renders bytes without
     // signalling a logical update to clients.
-    const versionChanged = !hashMatches;
+    const versionChanged = !naturalMatches && !saltedMatches;
     const writeContentHash = skillMdMissing && !versionChanged ? saltedHash : contentHash;
     const newVersion = versionChanged ? current.version + 1 : current.version;
+    const existingChangelog = Array.isArray(current.changelog)
+      ? (current.changelog as SkillChangelogEntry[])
+      : [];
+    let newEntry: SkillChangelogEntry | null = null;
+    if (versionChanged) {
+      newEntry = {
+        at: new Date().toISOString(),
+        version: newVersion,
+        reason: 'updated',
+        contentHash,
+      };
+    }
     await db
       .update(skills)
       .set({
@@ -177,17 +225,19 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
         contentHash: writeContentHash,
         skillMd: rawText,
         version: newVersion,
+        ...(newEntry ? { changelog: [...existingChangelog, newEntry] } : {}),
         updatedAt: sql`now()`,
       })
       .where(and(eq(skills.name, name), eq(skills.scope, 'global')));
     result.updated += 1;
-    if (versionChanged) {
+    if (versionChanged && newEntry) {
       result.changes.push({
         name,
         oldVersion: current.version,
         newVersion,
         contentHash,
         reason: 'updated',
+        changelog: newEntry,
       });
     }
   }

@@ -103,6 +103,15 @@ export interface HookPayloads {
     oldVersion: number;
     newVersion: number;
     contentHash: string;
+    // Latest changelog entry appended by the seeder for this change. The WS
+    // bridge forwards it on the wire so banner UIs (ISS-3) can show "what's
+    // new" without a separate fetch.
+    changelog: {
+      at: string;
+      version: number;
+      reason: 'inserted' | 'updated';
+      contentHash: string;
+    };
   };
   taskCreated: {
     taskId: string;

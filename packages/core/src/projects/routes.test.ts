@@ -712,6 +712,54 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     expect(updateSet).not.toHaveBeenCalled();
   });
 
+  it('handles concurrent first-bootstrap race by returning alreadyBootstrapped on unique-violation', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-owner' }])
+      .mockResolvedValueOnce([{ role: 'owner' }])
+      .mockResolvedValueOnce([]) // existing registrations -> none (loser passes the check)
+      .mockResolvedValueOnce([{ agentConfig: null }]);
+
+    selectWhere
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockResolvedValueOnce([
+        { id: SKILL_IDS.triage, name: 'forge-triage' },
+        { id: SKILL_IDS.plan, name: 'forge-plan' },
+        { id: SKILL_IDS.code, name: 'forge-code' },
+        { id: SKILL_IDS.review, name: 'forge-review' },
+        { id: SKILL_IDS.test, name: 'forge-test' },
+        { id: SKILL_IDS.fix, name: 'forge-fix' },
+        { id: SKILL_IDS.release, name: 'forge-release' },
+      ])
+      // Recovery path counts the rows the winner already inserted.
+      .mockResolvedValueOnce([{ count: 7 }]);
+
+    // The insert loses the race → unique violation surfaces from drizzle.
+    insertValues.mockImplementationOnce(async () => {
+      throw Object.assign(new Error('duplicate key'), { code: '23505' });
+    });
+
+    const res = await bootstrap(token);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      alreadyBootstrapped: boolean;
+      skillsBound: number;
+      pipelineEnabled: boolean;
+    };
+    expect(body).toMatchObject({
+      alreadyBootstrapped: true,
+      skillsBound: 7,
+      pipelineEnabled: false,
+    });
+    // The Balanced preset write is skipped on the loser path.
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
   it('503 NO_GLOBAL_SKILLS when the seeder has not run', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit

@@ -300,6 +300,7 @@ if (isMain) {
       oldVersion: change.oldVersion,
       newVersion: change.newVersion,
       contentHash: change.contentHash,
+      changelog: change.changelog,
     });
   }
   await seedDomainTemplates(db);
