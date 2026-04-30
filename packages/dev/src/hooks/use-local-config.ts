@@ -9,6 +9,103 @@ import { clearAuthState } from "@/lib/clear-auth";
 import { Sentry } from "@/lib/sentry";
 import type { AppConfig } from "@/lib/types";
 
+/**
+ * Pure-function hydrate body extracted from `useLocalConfig` so that the
+ * call-order invariant (configureApi BEFORE setConfig) can be unit-tested
+ * without renderHook (see vitest.config.ts on the dual-React mismatch).
+ *
+ * The deps argument is the seam: production wiring passes the real
+ * implementations; tests pass spies and assert on `mock.invocationCallOrder`.
+ */
+export interface HydrateLocalConfigDeps {
+  invoke: typeof invoke;
+  configureApi: typeof configureApi;
+  resolveApiBase: typeof resolveApiBase;
+  setConfig: (cfg: AppConfig) => void;
+  setConfigReady: (ready: boolean) => void;
+  Sentry: typeof Sentry;
+}
+
+export async function hydrateLocalConfig(deps: HydrateLocalConfigDeps): Promise<void> {
+  const hydrateStart = performance.now();
+  deps.Sentry.addBreadcrumb({ category: "auth", level: "info", message: "hydrate:start" });
+  console.warn("[auth-trace] useLocalConfig hydrate: start");
+
+  try {
+    const diskConfig = await deps.invoke<AppConfig>("get_config");
+    // ADR 0004: JWT lives in the OS keychain, not config.json — pull it
+    // separately and merge into the in-memory config.
+    const jwt = await deps.invoke<string | null>("load_user_jwt").catch((err) => {
+      console.warn("[auth-trace] load_user_jwt failed:", err);
+      deps.Sentry.captureException(err, {
+        tags: { auth_phase: "load_user_jwt" },
+        level: "warning",
+      });
+      return null;
+    });
+    const cfg: AppConfig = { ...(diskConfig ?? ({} as AppConfig)), authToken: jwt ?? "" };
+    console.warn("[auth-trace] hydrate result jwt?=", !!jwt);
+    deps.Sentry.addBreadcrumb({
+      category: "auth",
+      level: "info",
+      message: "hydrate:result",
+      data: {
+        jwt_present: !!jwt,
+        disk_config_present: !!diskConfig,
+        disk_core_url: diskConfig?.coreUrl ?? null,
+        elapsed_ms: Math.round(performance.now() - hydrateStart),
+      },
+    });
+    if (cfg.deviceId) {
+      deps.Sentry.setUser({ id: cfg.deviceId });
+    }
+    // ORDER MATTERS — configureApi BEFORE setConfig. Sentry surfaced a
+    // regression in v0.1.25 where setConfig published authToken to the store
+    // before the api client had its baseUrl, so subscribed components fired
+    // React Query refetches against the module-level default localhost:8080.
+    // Any operator running a local dev core there returns 401 INVALID_TOKEN,
+    // which trips setAuthExpiredHandler and wipes the just-loaded JWT.
+    deps.configureApi(cfg.coreUrl, cfg.authToken);
+    deps.setConfig(cfg);
+    // Self-heal: users who logged in on <= v0.1.20 stored the WEB URL in
+    // config.coreUrl. On subdomain-split deploys every /api/* call 404s.
+    // Resolve via /.well-known/forge-config.json on each launch — same URL
+    // for single-origin deploys, silent heal for split.
+    const resolved = await deps.resolveApiBase(cfg.coreUrl);
+    if (resolved && resolved !== cfg.coreUrl) {
+      deps.configureApi(resolved, cfg.authToken);
+      const healed: AppConfig = { ...cfg, coreUrl: resolved };
+      deps.setConfig(healed);
+      try {
+        await deps.invoke("save_config", { config: healed });
+      } catch (err) {
+        deps.Sentry.captureException(err, {
+          tags: { auth_phase: "save_config_heal" },
+          level: "warning",
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("[auth-trace] useLocalConfig hydrate threw:", err);
+    deps.Sentry.captureException(err, {
+      tags: { auth_phase: "hydrate" },
+      level: "error",
+    });
+  } finally {
+    // Always flip the gate so RequireAuth / LoginPage stop showing the splash
+    // even when keychain access fails — a failed hydrate has the same outcome
+    // as logged-out (no JWT).
+    console.warn("[auth-trace] useLocalConfig hydrate: ready");
+    deps.Sentry.addBreadcrumb({
+      category: "auth",
+      level: "info",
+      message: "hydrate:ready",
+      data: { elapsed_ms: Math.round(performance.now() - hydrateStart) },
+    });
+    deps.setConfigReady(true);
+  }
+}
+
 export function useLocalConfig() {
   const { config, setConfig } = useAppStore();
   const setConfigReady = useAppStore((s) => s.setConfigReady);
@@ -19,97 +116,14 @@ export function useLocalConfig() {
     if (loadedRef.current) return;
     loadedRef.current = true;
 
-    const hydrateStart = performance.now();
-    Sentry.addBreadcrumb({ category: "auth", level: "info", message: "hydrate:start" });
-    console.warn("[auth-trace] useLocalConfig hydrate: start");
-
-    (async () => {
-      try {
-        const diskConfig = await invoke<AppConfig>("get_config");
-        // ADR 0004: the user JWT lives in the OS keychain, not config.json.
-        // The Rust serde model deliberately drops `auth_token` on
-        // save/load, so before v0.1.23 a fresh launch always landed on the
-        // login screen. Pull the JWT from the keychain and merge it into
-        // the in-memory config.
-        const jwt = await invoke<string | null>("load_user_jwt").catch((err) => {
-          console.warn("[auth-trace] load_user_jwt failed:", err);
-          Sentry.captureException(err, {
-            tags: { auth_phase: "load_user_jwt" },
-            level: "warning",
-          });
-          return null;
-        });
-        const cfg: AppConfig = { ...(diskConfig ?? ({} as AppConfig)), authToken: jwt ?? "" };
-        console.warn("[auth-trace] hydrate result jwt?=", !!jwt);
-        Sentry.addBreadcrumb({
-          category: "auth",
-          level: "info",
-          message: "hydrate:result",
-          data: {
-            jwt_present: !!jwt,
-            disk_config_present: !!diskConfig,
-            disk_core_url: diskConfig?.coreUrl ?? null,
-            elapsed_ms: Math.round(performance.now() - hydrateStart),
-          },
-        });
-        if (cfg.deviceId) {
-          Sentry.setUser({ id: cfg.deviceId });
-        }
-        // ORDER MATTERS — configureApi BEFORE setConfig.
-        // Sentry surfaced a regression in v0.1.25 where `setConfig` published
-        // authToken into the store before the api client had its baseUrl set.
-        // Components subscribed to `config.authToken` triggered React Query
-        // refetches that hit the module-level default `localhost:8080` (any
-        // operator running a local dev core there returns 401 INVALID_TOKEN),
-        // which fires `setAuthExpiredHandler` and wipes the just-loaded JWT.
-        // Configuring the api client first means the very first render after
-        // store update already has the correct baseUrl + token.
-        configureApi(cfg.coreUrl, cfg.authToken);
-        setConfig(cfg);
-        // Self-heal: users who logged in on <= v0.1.20 stored the WEB URL in
-        // config.coreUrl (the URL they typed) instead of the resolved API
-        // origin. On subdomain-split deploys every /api/* call from that
-        // baseUrl 404s. Resolve via /.well-known/forge-config.json on every
-        // launch — single-origin deploys return the same URL (cheap) and
-        // stale subdomain-split configs heal silently. Persist the resolved
-        // URL so subsequent launches skip the probe entirely.
-        const resolved = await resolveApiBase(cfg.coreUrl);
-        if (resolved && resolved !== cfg.coreUrl) {
-          configureApi(resolved, cfg.authToken);
-          const healed: AppConfig = { ...cfg, coreUrl: resolved };
-          setConfig(healed);
-          // Persist the resolved URL so subsequent launches skip the probe.
-          // A failure here means the heal will re-run every launch — surface
-          // it instead of swallowing.
-          try {
-            await invoke("save_config", { config: healed });
-          } catch (err) {
-            Sentry.captureException(err, {
-              tags: { auth_phase: "save_config_heal" },
-              level: "warning",
-            });
-          }
-        }
-      } catch (err) {
-        console.warn("[auth-trace] useLocalConfig hydrate threw:", err);
-        Sentry.captureException(err, {
-          tags: { auth_phase: "hydrate" },
-          level: "error",
-        });
-      } finally {
-        // Always flip the gate so RequireAuth / LoginPage stop showing the
-        // splash even when keychain access fails. A failed hydrate means the
-        // user has no JWT — same outcome as logged-out.
-        console.warn("[auth-trace] useLocalConfig hydrate: ready");
-        Sentry.addBreadcrumb({
-          category: "auth",
-          level: "info",
-          message: "hydrate:ready",
-          data: { elapsed_ms: Math.round(performance.now() - hydrateStart) },
-        });
-        setConfigReady(true);
-      }
-    })();
+    void hydrateLocalConfig({
+      invoke,
+      configureApi,
+      resolveApiBase,
+      setConfig,
+      setConfigReady,
+      Sentry,
+    });
 
     // ISS-280: when any API call comes back 401 INVALID_TOKEN/UNAUTHENTICATED,
     // wipe the in-memory auth and bounce the user to /login. Avoids the

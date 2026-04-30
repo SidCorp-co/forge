@@ -13,13 +13,13 @@ describe("api client", () => {
   it("GET request: correct URL and auth header", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ data: [{ id: 1, name: "Proj" }] }),
+      json: async () => ({ data: [{ id: "1", name: "Proj", slug: "proj" }] }),
     });
 
     await getProjects();
 
     expect(mockFetch).toHaveBeenCalledWith(
-      "http://localhost:8080/api/projects?populate=*",
+      "http://localhost:8080/api/projects",
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: "Bearer test-token",
@@ -29,10 +29,10 @@ describe("api client", () => {
     );
   });
 
-  it("POST/PUT request: correct body serialization", async () => {
+  it("PATCH request: correct body serialization", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ data: { id: 1 } }),
+      json: async () => ({ data: { id: "task-doc-1" } }),
     });
 
     await updateTask("task-doc-1", { agentStatus: "running" } as any);
@@ -40,8 +40,8 @@ describe("api client", () => {
     expect(mockFetch).toHaveBeenCalledWith(
       "http://localhost:8080/api/tasks/task-doc-1",
       expect.objectContaining({
-        method: "PUT",
-        body: JSON.stringify({ data: { agentStatus: "running" } }),
+        method: "PATCH",
+        body: JSON.stringify({ agentStatus: "running" }),
       }),
     );
   });
@@ -66,7 +66,7 @@ describe("api client", () => {
     await getProjects();
 
     expect(mockFetch).toHaveBeenCalledWith(
-      "http://other:9999/api/projects?populate=*",
+      "http://other:9999/api/projects",
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: "Bearer new-token",

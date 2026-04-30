@@ -1,103 +1,108 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook } from "@testing-library/react";
-import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { describe, it, expect, vi } from "vitest";
+import { makeKeyboardHandler } from "@/hooks/use-keyboard-shortcuts";
+import type { NavigateFunction } from "react-router-dom";
 
-const mockNavigate = vi.fn();
+// The hook itself wraps `makeKeyboardHandler` in a useEffect that adds the
+// resulting listener to `window`. Tests exercise the factory directly (no
+// renderHook) — the wiring is trivial and the routing logic is what matters.
+// See vitest.config.ts for why renderHook is currently off-limits in this
+// package.
 
-vi.mock("react-router-dom", () => ({
-  useNavigate: () => mockNavigate,
-}));
-
-let mockActiveProject: string | null = null;
-vi.mock("@/stores/app-store", () => ({
-  useAppStore: (selector: any) => {
-    const state = { activeProject: mockActiveProject };
-    return selector ? selector(state) : state;
-  },
-}));
-
-function fireKey(key: string, opts: Partial<KeyboardEventInit> = {}) {
-  const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...opts });
-  const preventDefaultSpy = vi.spyOn(event, "preventDefault");
-  window.dispatchEvent(event);
-  return preventDefaultSpy;
+function makeEvent(key: string, opts: Partial<KeyboardEventInit> = {}): KeyboardEvent {
+  return new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...opts });
 }
 
-describe("useKeyboardShortcuts", () => {
-  beforeEach(() => {
-    mockNavigate.mockClear();
-    mockActiveProject = null;
-  });
+function navigateSpy(): NavigateFunction {
+  return vi.fn() as unknown as NavigateFunction;
+}
 
+describe("makeKeyboardHandler", () => {
   it("Ctrl+1 navigates to / and calls preventDefault", () => {
-    renderHook(() => useKeyboardShortcuts());
-    const preventSpy = fireKey("1", { ctrlKey: true });
+    const navigate = navigateSpy();
+    const handler = makeKeyboardHandler(navigate, null);
+    const event = makeEvent("1", { ctrlKey: true });
+    const preventSpy = vi.spyOn(event, "preventDefault");
+    handler(event);
     expect(preventSpy).toHaveBeenCalled();
-    expect(mockNavigate).toHaveBeenCalledWith("/");
+    expect(navigate).toHaveBeenCalledWith("/");
   });
 
-  it("Ctrl+2 with activeProject navigates to issues and calls preventDefault", () => {
-    mockActiveProject = "my-proj";
-    renderHook(() => useKeyboardShortcuts());
-    const preventSpy = fireKey("2", { ctrlKey: true });
+  it("Ctrl+2 with activeProject navigates to issues", () => {
+    const navigate = navigateSpy();
+    const handler = makeKeyboardHandler(navigate, "my-proj");
+    const event = makeEvent("2", { ctrlKey: true });
+    const preventSpy = vi.spyOn(event, "preventDefault");
+    handler(event);
     expect(preventSpy).toHaveBeenCalled();
-    expect(mockNavigate).toHaveBeenCalledWith("/project/my-proj/issues");
+    expect(navigate).toHaveBeenCalledWith("/project/my-proj/issues");
   });
 
   it("Ctrl+2 without activeProject does not navigate", () => {
-    renderHook(() => useKeyboardShortcuts());
-    fireKey("2", { ctrlKey: true });
-    expect(mockNavigate).not.toHaveBeenCalled();
+    const navigate = navigateSpy();
+    const handler = makeKeyboardHandler(navigate, null);
+    handler(makeEvent("2", { ctrlKey: true }));
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it("Ctrl+3 with activeProject navigates to board", () => {
-    mockActiveProject = "my-proj";
-    renderHook(() => useKeyboardShortcuts());
-    const preventSpy = fireKey("3", { ctrlKey: true });
+    const navigate = navigateSpy();
+    const handler = makeKeyboardHandler(navigate, "my-proj");
+    const event = makeEvent("3", { ctrlKey: true });
+    const preventSpy = vi.spyOn(event, "preventDefault");
+    handler(event);
     expect(preventSpy).toHaveBeenCalled();
-    expect(mockNavigate).toHaveBeenCalledWith("/project/my-proj/board");
+    expect(navigate).toHaveBeenCalledWith("/project/my-proj/board");
   });
 
   it("Ctrl+4 with activeProject navigates to agent", () => {
-    mockActiveProject = "my-proj";
-    renderHook(() => useKeyboardShortcuts());
-    const preventSpy = fireKey("4", { ctrlKey: true });
+    const navigate = navigateSpy();
+    const handler = makeKeyboardHandler(navigate, "my-proj");
+    const event = makeEvent("4", { ctrlKey: true });
+    const preventSpy = vi.spyOn(event, "preventDefault");
+    handler(event);
     expect(preventSpy).toHaveBeenCalled();
-    expect(mockNavigate).toHaveBeenCalledWith("/project/my-proj/agent");
+    expect(navigate).toHaveBeenCalledWith("/project/my-proj/agent");
   });
 
   it("Ctrl+5 navigates to /settings and calls preventDefault", () => {
-    renderHook(() => useKeyboardShortcuts());
-    const preventSpy = fireKey("5", { ctrlKey: true });
+    const navigate = navigateSpy();
+    const handler = makeKeyboardHandler(navigate, null);
+    const event = makeEvent("5", { ctrlKey: true });
+    const preventSpy = vi.spyOn(event, "preventDefault");
+    handler(event);
     expect(preventSpy).toHaveBeenCalled();
-    expect(mockNavigate).toHaveBeenCalledWith("/settings");
+    expect(navigate).toHaveBeenCalledWith("/settings");
   });
 
   it("Ctrl+9 (unhandled combo) does NOT navigate", () => {
-    renderHook(() => useKeyboardShortcuts());
-    fireKey("9", { ctrlKey: true });
-    expect(mockNavigate).not.toHaveBeenCalled();
+    const navigate = navigateSpy();
+    const handler = makeKeyboardHandler(navigate, "my-proj");
+    handler(makeEvent("9", { ctrlKey: true }));
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it("Ctrl+6 (unhandled combo) does NOT navigate", () => {
-    renderHook(() => useKeyboardShortcuts());
-    fireKey("6", { ctrlKey: true });
-    expect(mockNavigate).not.toHaveBeenCalled();
+    const navigate = navigateSpy();
+    const handler = makeKeyboardHandler(navigate, "my-proj");
+    handler(makeEvent("6", { ctrlKey: true }));
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it("Escape dispatches forge:close-modal event", () => {
-    const handler = vi.fn();
-    window.addEventListener("forge:close-modal", handler);
-    renderHook(() => useKeyboardShortcuts());
-    fireKey("Escape");
-    expect(handler).toHaveBeenCalledTimes(1);
-    window.removeEventListener("forge:close-modal", handler);
+    const navigate = navigateSpy();
+    const handler = makeKeyboardHandler(navigate, null);
+    const closeListener = vi.fn();
+    window.addEventListener("forge:close-modal", closeListener);
+    handler(makeEvent("Escape"));
+    expect(closeListener).toHaveBeenCalledTimes(1);
+    window.removeEventListener("forge:close-modal", closeListener);
   });
 
   it("plain number keys without Ctrl do not navigate", () => {
-    renderHook(() => useKeyboardShortcuts());
-    fireKey("1");
-    fireKey("5");
-    expect(mockNavigate).not.toHaveBeenCalled();
+    const navigate = navigateSpy();
+    const handler = makeKeyboardHandler(navigate, null);
+    handler(makeEvent("1"));
+    handler(makeEvent("5"));
+    expect(navigate).not.toHaveBeenCalled();
   });
 });

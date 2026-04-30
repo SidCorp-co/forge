@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
 
-describe("useNotifications", () => {
+// The hook itself wraps the pure `notify` function in `useCallback`. Tests
+// exercise `notify` directly (no renderHook) — the wiring is trivial and the
+// browser-vs-Tauri branch is what matters. See vitest.config.ts for why
+// renderHook is currently off-limits in this package.
+
+describe("notify", () => {
   beforeEach(() => {
     vi.resetModules();
     delete (window as any).__TAURI_INTERNALS__;
@@ -9,6 +13,8 @@ describe("useNotifications", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.doUnmock("@tauri-apps/plugin-notification");
   });
 
   it("browser env: shows notification immediately when permission is already granted", async () => {
@@ -17,14 +23,9 @@ describe("useNotifications", () => {
     (MockNotification as any).requestPermission = vi.fn();
     vi.stubGlobal("Notification", MockNotification);
 
-    const { useNotifications } = await import("@/hooks/use-notifications");
-    const { result } = renderHook(() => useNotifications());
+    const { notify } = await import("@/hooks/use-notifications");
+    await notify({ title: "Test", body: "Hello" });
 
-    await act(async () => {
-      await result.current.notify({ title: "Test", body: "Hello" });
-    });
-
-    // Should NOT request permission since it's already granted
     expect(MockNotification.requestPermission).not.toHaveBeenCalled();
     expect(MockNotification).toHaveBeenCalledWith("Test", { body: "Hello" });
   });
@@ -35,14 +36,9 @@ describe("useNotifications", () => {
     (MockNotification as any).requestPermission = vi.fn().mockResolvedValue("granted");
     vi.stubGlobal("Notification", MockNotification);
 
-    const { useNotifications } = await import("@/hooks/use-notifications");
-    const { result } = renderHook(() => useNotifications());
+    const { notify } = await import("@/hooks/use-notifications");
+    await notify({ title: "Test", body: "Hello" });
 
-    await act(async () => {
-      await result.current.notify({ title: "Test", body: "Hello" });
-    });
-
-    // Must request permission before showing
     expect(MockNotification.requestPermission).toHaveBeenCalledTimes(1);
     expect(MockNotification).toHaveBeenCalledWith("Test", { body: "Hello" });
   });
@@ -53,12 +49,8 @@ describe("useNotifications", () => {
     (MockNotification as any).requestPermission = vi.fn();
     vi.stubGlobal("Notification", MockNotification);
 
-    const { useNotifications } = await import("@/hooks/use-notifications");
-    const { result } = renderHook(() => useNotifications());
-
-    await act(async () => {
-      await result.current.notify({ title: "Test", body: "Hello" });
-    });
+    const { notify } = await import("@/hooks/use-notifications");
+    await notify({ title: "Test", body: "Hello" });
 
     expect(MockNotification.requestPermission).not.toHaveBeenCalled();
     expect(MockNotification).not.toHaveBeenCalled();
@@ -70,15 +62,10 @@ describe("useNotifications", () => {
     (MockNotification as any).requestPermission = vi.fn().mockResolvedValue("denied");
     vi.stubGlobal("Notification", MockNotification);
 
-    const { useNotifications } = await import("@/hooks/use-notifications");
-    const { result } = renderHook(() => useNotifications());
-
-    await act(async () => {
-      await result.current.notify({ title: "Test", body: "Hello" });
-    });
+    const { notify } = await import("@/hooks/use-notifications");
+    await notify({ title: "Test", body: "Hello" });
 
     expect(MockNotification.requestPermission).toHaveBeenCalledTimes(1);
-    // Should NOT create notification since permission was denied
     expect(MockNotification).not.toHaveBeenCalled();
   });
 
@@ -94,16 +81,10 @@ describe("useNotifications", () => {
       requestPermission: mockRequestPermission,
     }));
 
-    const { useNotifications } = await import("@/hooks/use-notifications");
-    const { result } = renderHook(() => useNotifications());
+    const { notify } = await import("@/hooks/use-notifications");
+    await notify({ title: "Test", body: "Body" });
 
-    await act(async () => {
-      await result.current.notify({ title: "Test", body: "Body" });
-    });
-
-    // Verifies permission check happens
     expect(mockIsPermissionGranted).toHaveBeenCalledTimes(1);
-    // Should NOT request permission since already granted
     expect(mockRequestPermission).not.toHaveBeenCalled();
     expect(mockSend).toHaveBeenCalledWith({ title: "Test", body: "Body" });
   });
@@ -120,12 +101,8 @@ describe("useNotifications", () => {
       requestPermission: mockRequestPermission,
     }));
 
-    const { useNotifications } = await import("@/hooks/use-notifications");
-    const { result } = renderHook(() => useNotifications());
-
-    await act(async () => {
-      await result.current.notify({ title: "Test", body: "Body" });
-    });
+    const { notify } = await import("@/hooks/use-notifications");
+    await notify({ title: "Test", body: "Body" });
 
     expect(mockIsPermissionGranted).toHaveBeenCalledTimes(1);
     expect(mockRequestPermission).toHaveBeenCalledTimes(1);
