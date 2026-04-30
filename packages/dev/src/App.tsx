@@ -14,10 +14,32 @@ import { useAppStore } from "@/stores/app-store";
 import { useState } from "react";
 import clsx from "clsx";
 
+function AuthSplash() {
+  return (
+    <div className="flex h-full items-center justify-center bg-white">
+      <div className="text-xs font-mono uppercase tracking-widest text-gray-400">
+        Loading…
+      </div>
+    </div>
+  );
+}
+
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { config } = useAppStore();
+  const configReady = useAppStore((s) => s.configReady);
   const location = useLocation();
+  // Wait for the on-mount keychain hydrate to finish before deciding
+  // logged-in vs logged-out. Without this, the very first render lands
+  // here with an empty token (initial store state) and bounces the user
+  // to /login even when the keychain has a valid JWT — the v0.1.23 fix
+  // depended on LoginPage's redirect-back, which is a navigate() called
+  // during render and is unreliable in React Router 6+.
+  if (!configReady) {
+    console.warn("[auth-trace] RequireAuth waiting (configReady=false)");
+    return <AuthSplash />;
+  }
   if (!config.authToken) {
+    console.warn("[auth-trace] RequireAuth redirect /login (no token after hydrate)");
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
   return <>{children}</>;

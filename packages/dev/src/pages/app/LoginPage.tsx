@@ -15,6 +15,7 @@ import type { AppConfig } from "@/lib/types";
 
 export function LoginPage() {
   const { config, setConfig } = useAppStore();
+  const configReady = useAppStore((s) => s.configReady);
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/";
@@ -39,11 +40,18 @@ export function LoginPage() {
   const [providers, setProviders] = useState<OAuthProvider[]>([]);
   const [oauthLoading, setOauthLoading] = useState<string | null>(null);
 
-  // Redirect if already logged in
-  if (config.authToken) {
-    navigate(from, { replace: true });
-    return null;
-  }
+  // Redirect if already logged in. Calling `navigate()` inside the render
+  // body is unsupported in React Router 6+; do it from an effect so React
+  // schedules the navigation correctly. Also gate on `configReady` so the
+  // very first render (before the keychain hydrate completes) does not
+  // mistake the empty initial token for a logged-out session.
+  useEffect(() => {
+    if (!configReady) return;
+    if (config.authToken) {
+      console.warn("[auth-trace] LoginPage redirect-back to", from);
+      navigate(from, { replace: true });
+    }
+  }, [configReady, config.authToken, from, navigate]);
 
   // Refresh provider list whenever the server URL changes. Discovery and
   // provider fetch happen inside fetchEnabledProviders → resolveApiBase →
@@ -152,6 +160,19 @@ export function LoginPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  // Splash until the keychain hydrate finishes, or while the redirect-back
+  // effect is about to fire. Showing the form during this window would let
+  // a logged-in user briefly see the login screen on every reload.
+  if (!configReady || config.authToken) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="text-xs font-mono uppercase tracking-widest text-gray-400">
+          Loading…
+        </div>
+      </div>
+    );
   }
 
   return (
