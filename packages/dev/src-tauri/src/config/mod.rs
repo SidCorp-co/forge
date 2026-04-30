@@ -113,6 +113,7 @@ struct LegacyAppConfig {
     projects: HashMap<String, ProjectConfig>,
     skill_library: Option<HashMap<String, SkillLibraryEntry>>,
     mcp_library: Option<HashMap<String, McpServerConfig>>,
+    sentry_dsn: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -142,6 +143,13 @@ pub struct AppConfig {
     pub skill_library: Option<HashMap<String, SkillLibraryEntry>>,
     #[serde(default)]
     pub mcp_library: Option<HashMap<String, McpServerConfig>>,
+    /// Optional runtime Sentry DSN for the Rust panic hook. Lets operators
+    /// rotate the DSN on an installed binary without cutting a new release —
+    /// the compile-time `option_env!("FORGE_SENTRY_DSN_RUST")` is only the
+    /// release default. Empty/missing → fall through to the compile-time
+    /// fallback, or no-op if that's also unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sentry_dsn: Option<String>,
 }
 
 impl AppConfig {
@@ -163,6 +171,7 @@ impl AppConfig {
             projects: legacy.projects,
             skill_library: legacy.skill_library,
             mcp_library: legacy.mcp_library,
+            sentry_dsn: legacy.sentry_dsn,
         }
     }
 }
@@ -178,6 +187,7 @@ impl Default for AppConfig {
             projects: HashMap::new(),
             skill_library: None,
             mcp_library: None,
+            sentry_dsn: None,
         }
     }
 }
@@ -221,6 +231,35 @@ pub fn load_config() -> AppConfig {
 
 pub fn save_config(config: &AppConfig) -> Result<(), String> {
     save_config_at(&config_path(), config)
+}
+
+/// Pure precedence resolver for the Rust panic-hook Sentry DSN. Order:
+/// runtime env → on-disk `sentryDsn` field → compile-time fallback baked
+/// by CI. Empty strings are treated as unset so an operator can blank out
+/// the field to disable without removing the key. Split from `load_sentry_dsn`
+/// so callers can test the precedence without mutating env / config files.
+pub fn resolve_sentry_dsn(
+    env: Option<String>,
+    config_field: Option<String>,
+    compile_time: Option<&str>,
+) -> Option<String> {
+    if let Some(v) = env.filter(|s| !s.is_empty()) {
+        return Some(v);
+    }
+    if let Some(v) = config_field.filter(|s| !s.is_empty()) {
+        return Some(v);
+    }
+    compile_time.filter(|s| !s.is_empty()).map(|s| s.to_string())
+}
+
+/// Resolve the Rust panic-hook Sentry DSN at startup, reading the env var
+/// and on-disk config, then falling back to the compile-time default.
+pub fn load_sentry_dsn(compile_time: Option<&'static str>) -> Option<String> {
+    resolve_sentry_dsn(
+        std::env::var("FORGE_SENTRY_DSN_RUST").ok(),
+        load_config().sentry_dsn,
+        compile_time,
+    )
 }
 
 /// Read-modify-write save: load the on-disk JSON, deep-merge the snapshot
@@ -283,6 +322,7 @@ mod tests {
             projects: HashMap::new(),
             skill_library: None,
             mcp_library: None,
+            sentry_dsn: None,
         }
     }
 
@@ -366,6 +406,71 @@ mod tests {
         assert!(entries
             .filter_map(|e| e.ok())
             .any(|e| e.file_name().to_string_lossy().contains(".corrupt-")));
+    }
+
+    #[test]
+    fn sentry_dsn_env_overrides_config_and_compile_time() {
+        let dsn = resolve_sentry_dsn(
+            Some("https://env@sentry/1".into()),
+            Some("https://config@sentry/2".into()),
+            Some("https://compile@sentry/3"),
+        );
+        assert_eq!(dsn.as_deref(), Some("https://env@sentry/1"));
+    }
+
+    #[test]
+    fn sentry_dsn_config_used_when_env_unset() {
+        let dsn = resolve_sentry_dsn(
+            None,
+            Some("https://config@sentry/2".into()),
+            Some("https://compile@sentry/3"),
+        );
+        assert_eq!(dsn.as_deref(), Some("https://config@sentry/2"));
+    }
+
+    #[test]
+    fn sentry_dsn_falls_back_to_compile_time() {
+        let dsn = resolve_sentry_dsn(None, None, Some("https://compile@sentry/3"));
+        assert_eq!(dsn.as_deref(), Some("https://compile@sentry/3"));
+    }
+
+    #[test]
+    fn sentry_dsn_all_unset_returns_none() {
+        assert_eq!(resolve_sentry_dsn(None, None, None), None);
+        assert_eq!(resolve_sentry_dsn(None, None, Some("")), None);
+    }
+
+    #[test]
+    fn sentry_dsn_empty_string_treated_as_unset() {
+        // empty env falls through to config
+        let dsn = resolve_sentry_dsn(
+            Some(String::new()),
+            Some("https://config@sentry/2".into()),
+            None,
+        );
+        assert_eq!(dsn.as_deref(), Some("https://config@sentry/2"));
+        // empty config falls through to compile-time
+        let dsn = resolve_sentry_dsn(None, Some(String::new()), Some("https://compile@sentry/3"));
+        assert_eq!(dsn.as_deref(), Some("https://compile@sentry/3"));
+        // all empty returns None
+        assert_eq!(
+            resolve_sentry_dsn(Some(String::new()), Some(String::new()), Some("")),
+            None
+        );
+    }
+
+    #[test]
+    fn sentry_dsn_round_trips_through_legacy_load() {
+        let path = tmp_config_path();
+        fs::write(
+            &path,
+            r#"{"coreUrl":"http://localhost:1337","deviceId":"dev-1","projects":{},"sentryDsn":"https://operator@sentry/9"}"#,
+        )
+        .unwrap();
+        let raw = fs::read_to_string(&path).unwrap();
+        let legacy: LegacyAppConfig = serde_json::from_str(&raw).unwrap();
+        let cfg = AppConfig::from_legacy(legacy);
+        assert_eq!(cfg.sentry_dsn.as_deref(), Some("https://operator@sentry/9"));
     }
 
     #[test]

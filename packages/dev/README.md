@@ -80,6 +80,18 @@ cd packages/dev/src-tauri
 cargo test
 ```
 
+## Sentry (opt-in)
+
+The desktop ships with two Sentry init points — TS renderer (`src/lib/sentry.ts`) and Rust panic hook (`src-tauri/src/main.rs`). Both are no-ops unless a DSN is supplied. Source builds without env vars or config compile cleanly with the SDK detached, so contributors never silently report to the maintainer's instance.
+
+**Rust DSN resolution at startup** (first non-empty wins):
+
+1. `FORGE_SENTRY_DSN_RUST` env var — runtime override for dev / debugging.
+2. `~/.config/forge-beta/config.json` → `sentryDsn` field — operator rotation. Edit the file and restart the app; no rebuild required.
+3. `option_env!("FORGE_SENTRY_DSN_RUST")` — compile-time fallback baked by CI for official `v0.1.x` artifacts.
+
+All three absent → SDK never initializes. To disable on an installed beta, blank out `sentryDsn` in `config.json` (empty string is treated as unset). The TS renderer accepts a DSN from its caller (`main.tsx`); piping it from the same `sentryDsn` field is a follow-up.
+
 ## Other scripts
 
 | Script | Purpose |

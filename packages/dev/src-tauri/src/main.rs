@@ -425,12 +425,15 @@ async fn get_branch_diff(repo_path: String, branch: String, base: String) -> Res
 }
 
 fn main() {
-    // Opt-in Sentry init. `option_env!` reads at compile time — official
-    // release builds set FORGE_SENTRY_DSN_RUST in CI, source builds leave it
-    // unset and the guard returns None so the SDK never attaches. The
-    // returned `_guard` must outlive `main` for events to flush on panic.
-    let _sentry_guard = option_env!("FORGE_SENTRY_DSN_RUST")
-        .filter(|s| !s.is_empty())
+    // Opt-in Sentry init. DSN precedence (first non-empty wins):
+    //   1. FORGE_SENTRY_DSN_RUST env var (runtime override)
+    //   2. ~/.config/forge-beta/config.json `sentryDsn` (operator rotation
+    //      without rebuild — mirrors the renderer's contract)
+    //   3. compile-time `option_env!("FORGE_SENTRY_DSN_RUST")` (release default
+    //      baked by CI; source builds leave it unset)
+    // All three absent → SDK stays detached so OSS source builds never report.
+    // The returned `_guard` must outlive `main` for events to flush on panic.
+    let _sentry_guard = config::load_sentry_dsn(option_env!("FORGE_SENTRY_DSN_RUST"))
         .map(|dsn| {
             sentry::init((
                 dsn,
