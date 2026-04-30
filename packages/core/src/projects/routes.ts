@@ -5,7 +5,15 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { devices, labels, projectDevices, projectMembers, projects } from '../db/schema.js';
+import {
+  devices,
+  labels,
+  projectDevices,
+  projectMembers,
+  projects,
+  skillRegistrations,
+  skills,
+} from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -15,6 +23,7 @@ import {
   pipelineConfigPatchSchema,
   pipelineConfigSchema,
 } from '../pipeline/pipeline-config-schema.js';
+import { STATUS_TO_SKILL } from '../pipeline/skill-mapping.js';
 
 function generateApiKey(): string {
   return `fk_${randomBytes(24).toString('hex')}`;
@@ -529,5 +538,123 @@ projectRoutes.patch(
       : ['claude-code'];
 
     return c.json({ pipelineConfig, runnerFallback: respRunnerFallback });
+  },
+);
+
+// ISS-2A: idempotent first-run bootstrap. Binds the 7 stage-mapped global
+// `forge-*` skills to the project, applies the Balanced pipelineConfig
+// preset (only when no preset is set yet), and returns the result. Re-running
+// the call after the project is already bootstrapped is a no-op.
+const bootstrapParamSchema = z.object({ id: z.uuid() });
+
+const BALANCED_PRESET = {
+  enabled: true,
+  autoTriage: true,
+  autoPlan: true,
+  autoCode: false,
+  autoReview: true,
+  autoTest: true,
+  autoFix: true,
+  autoRelease: false,
+} as const;
+
+projectRoutes.post(
+  '/:id/skills/bootstrap',
+  zValidator('param', bootstrapParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const { project, role } = await loadMembership(id, userId);
+    if (project.ownerId !== userId && role !== 'owner' && role !== 'admin') {
+      throw forbidden('owner or admin role required');
+    }
+
+    // Already bootstrapped? Return current state, no mutation.
+    const existing = await db
+      .select({ id: skillRegistrations.id })
+      .from(skillRegistrations)
+      .where(eq(skillRegistrations.projectId, id))
+      .limit(1);
+
+    const [projectRow] = await db
+      .select({ agentConfig: projects.agentConfig })
+      .from(projects)
+      .where(eq(projects.id, id))
+      .limit(1);
+    const currentAc = (projectRow?.agentConfig ?? {}) as Record<string, unknown>;
+    const currentPipeline = (currentAc.pipelineConfig ?? {}) as Record<string, unknown>;
+
+    if (existing.length > 0) {
+      const countRows = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(skillRegistrations)
+        .where(eq(skillRegistrations.projectId, id));
+      return c.json({
+        alreadyBootstrapped: true,
+        skillsBound: Number(countRows[0]?.count ?? 0),
+        pipelineEnabled: currentPipeline.enabled === true,
+      });
+    }
+
+    // Look up global skills referenced by STATUS_TO_SKILL. Each entry in the
+    // map points to a `forge-<type>` skill name + the auto* toggle key.
+    const desiredSkillNames = Array.from(
+      new Set(Object.values(STATUS_TO_SKILL).map((s) => `forge-${s.type}`)),
+    );
+    const globalSkills = await db
+      .select({ id: skills.id, name: skills.name })
+      .from(skills)
+      .where(and(eq(skills.scope, 'global')));
+    const skillByName = new Map(globalSkills.map((s) => [s.name, s.id]));
+
+    // Build registration rows: one per (status → skill) pair where the
+    // global skill exists. Missing skills are skipped (logged) so a partial
+    // builtin seed doesn't crash bootstrap.
+    const toInsert: Array<{ projectId: string; skillId: string; stage: string; registeredBy: string }> =
+      [];
+    for (const [status, mapping] of Object.entries(STATUS_TO_SKILL)) {
+      const skillName = `forge-${mapping.type}`;
+      const skillId = skillByName.get(skillName);
+      if (!skillId) continue;
+      toInsert.push({ projectId: id, skillId, stage: status, registeredBy: userId });
+    }
+
+    if (toInsert.length === 0) {
+      throw new HTTPException(503, {
+        message: 'no global skills available — server skill seed has not run',
+        cause: { code: 'NO_GLOBAL_SKILLS' },
+      });
+    }
+
+    await db.insert(skillRegistrations).values(toInsert);
+
+    // Apply the Balanced preset only when no pipelineConfig.enabled flag has
+    // been set yet — never clobber a user's deliberate config.
+    const shouldSetPreset = currentPipeline.enabled === undefined;
+    if (shouldSetPreset) {
+      const merged = { ...currentAc, pipelineConfig: { ...currentPipeline, ...BALANCED_PRESET } };
+      await db
+        .update(projects)
+        .set({ agentConfig: merged })
+        .where(eq(projects.id, id));
+    }
+
+    const skillsBound = toInsert.length;
+    const pipelineEnabled = shouldSetPreset
+      ? BALANCED_PRESET.enabled
+      : currentPipeline.enabled === true;
+
+    return c.json(
+      {
+        alreadyBootstrapped: false,
+        skillsBound,
+        pipelineEnabled,
+        ...(desiredSkillNames.length > 0 ? { desiredSkillNames } : {}),
+      },
+      201,
+    );
   },
 );

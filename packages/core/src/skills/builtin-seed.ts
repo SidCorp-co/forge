@@ -88,8 +88,16 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
     const prompt = body;
 
     // Look up the current row (if any) and decide insert / update / unchanged.
+    // ISS-2: also pull `skill_md` so we can detect rows seeded by an older
+    // build that hashed the full file but only persisted `prompt` (body),
+    // leaving `skill_md` null. Those rows must re-emit content even when
+    // contentHash already matches.
     const existing = await db
-      .select({ contentHash: skills.contentHash, version: skills.version })
+      .select({
+        contentHash: skills.contentHash,
+        version: skills.version,
+        skillMd: skills.skillMd,
+      })
       .from(skills)
       .where(and(eq(skills.name, name), eq(skills.scope, 'global')))
       .limit(1);
@@ -107,16 +115,22 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
         source: 'builtin',
         version: 1,
         contentHash,
+        skillMd: rawText,
       });
       result.inserted += 1;
       continue;
     }
 
-    if (current.contentHash === contentHash) {
+    const skillMdMissing = !current.skillMd;
+    if (current.contentHash === contentHash && !skillMdMissing) {
       result.unchanged += 1;
       continue;
     }
 
+    // Bump version only when the underlying content actually changed; a pure
+    // skill_md backfill (hash already matches) re-renders bytes without
+    // signalling a logical update to clients.
+    const versionChanged = current.contentHash !== contentHash;
     await db
       .update(skills)
       .set({
@@ -125,7 +139,8 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
         tools,
         manifest: frontmatter,
         contentHash,
-        version: current.version + 1,
+        skillMd: rawText,
+        version: versionChanged ? current.version + 1 : current.version,
         updatedAt: sql`now()`,
       })
       .where(and(eq(skills.name, name), eq(skills.scope, 'global')));
