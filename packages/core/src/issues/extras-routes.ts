@@ -11,8 +11,23 @@ import { isUniqueViolation } from '../lib/db-errors.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { logger } from '../logger.js';
+import { ActiveJobConflictError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
+
+const stageEnum = z.enum([
+  'triage',
+  'plan',
+  'code',
+  'review',
+  'test',
+  'fix',
+  'release',
+  'clarify',
+]);
+const runPipelineStepBodySchema = z
+  .object({ stage: stageEnum.optional() })
+  .strict();
 
 const pipelineTimingQuerySchema = z
   .object({
@@ -89,6 +104,68 @@ issueExtrasRoutes.post(
     }
 
     return c.json({ issueId: issue.id, jobId: job.id, status: job.status }, 202);
+  },
+);
+
+// POST /api/issues/:id/run-pipeline-step
+// ISS-5: manual trigger for a pipeline stage. Bypasses the per-stage `auto*`
+// toggles so the user can re-fire forge-plan / forge-code / etc. without
+// bouncing the issue status. Body `{ stage? }` overrides the default stage
+// resolved from the issue's current status (STATUS_TO_SKILL).
+issueExtrasRoutes.post(
+  '/:id/run-pipeline-step',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('json', runPipelineStepBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id: issueId } = c.req.valid('param');
+    const { stage } = c.req.valid('json');
+    const userId = c.get('userId');
+
+    const [issue] = await db
+      .select({ id: issues.id, projectId: issues.projectId, status: issues.status })
+      .from(issues)
+      .where(eq(issues.id, issueId))
+      .limit(1);
+    if (!issue) throw notFound('issue not found');
+
+    const access = await loadProjectAccess(issue.projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+
+    try {
+      const result = await triggerPipelineStepManual({
+        projectId: issue.projectId,
+        issueId: issue.id,
+        status: issue.status,
+        ...(stage ? { stage } : {}),
+        actor: { type: 'user', id: userId },
+        reason: { manual: true },
+      });
+      return c.json(
+        { issueId: issue.id, jobId: result.jobId, stage: result.type, status: 'queued' },
+        202,
+      );
+    } catch (err) {
+      if (err instanceof ActiveJobConflictError) {
+        throw new HTTPException(409, {
+          message: `active ${err.type} job already running for this issue`,
+          cause: {
+            code: 'JOB_ALREADY_ACTIVE',
+            existingJobId: err.existingJobId,
+            type: err.type,
+          },
+        });
+      }
+      if (err instanceof Error && err.message === 'no skill mapped for this status') {
+        throw badRequest({
+          message: `cannot run pipeline for status ${issue.status} without explicit stage`,
+        });
+      }
+      throw err;
+    }
   },
 );
 

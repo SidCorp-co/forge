@@ -92,4 +92,29 @@ export const issueApi = {
     }),
 
   remove: (id: string) => apiClient<void>(`/issues/${id}`, { method: 'DELETE' }),
+
+  runPipelineStep: (id: string, stage?: PipelineStage) =>
+    apiClient<RunPipelineStepResponse>(`/issues/${id}/run-pipeline-step`, {
+      method: 'POST',
+      body: JSON.stringify(stage ? { stage } : {}),
+    }),
 };
+
+export const PIPELINE_STAGES = [
+  'triage',
+  'plan',
+  'code',
+  'review',
+  'test',
+  'fix',
+  'release',
+  'clarify',
+] as const;
+export type PipelineStage = (typeof PIPELINE_STAGES)[number];
+
+export interface RunPipelineStepResponse {
+  issueId: string;
+  jobId: string;
+  stage: PipelineStage;
+  status: 'queued';
+}

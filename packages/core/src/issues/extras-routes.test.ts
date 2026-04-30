@@ -118,6 +118,124 @@ describe('POST /api/issues/:id/enrich', () => {
   });
 });
 
+describe('POST /api/issues/:id/run-pipeline-step', () => {
+  // Sequence of selectLimit calls per request:
+  //   1. emailVerifiedAt lookup (authVerified)
+  //   2. issue { id, projectId, status }
+  //   3. loadPipelineConfig — projects { agentConfig, ownerId }
+  //   4. findActiveJob — jobs { id } or empty for no-conflict
+  function setupHappyPath(opts: { status?: string } = {}) {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      { id: ISSUE_ID, projectId: PROJECT_ID, status: opts.status ?? 'confirmed' },
+    ]);
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      ownerId: USER_ID,
+      role: 'member',
+    });
+    selectLimit.mockResolvedValueOnce([{ agentConfig: null, ownerId: USER_ID }]);
+    selectLimit.mockResolvedValueOnce([]); // findActiveJob → no conflict
+    insertReturning.mockResolvedValueOnce([{ id: JOB_ID }]);
+    enqueueJobMock.mockResolvedValueOnce(undefined);
+  }
+
+  it('202 default-stage from issue status (confirmed → plan)', async () => {
+    setupHappyPath({ status: 'confirmed' });
+
+    const res = await buildApp().request(`/api/issues/${ISSUE_ID}/run-pipeline-step`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${await token()}`,
+        'content-type': 'application/json',
+      },
+      body: '{}',
+    });
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as {
+      issueId: string;
+      jobId: string;
+      stage: string;
+      status: string;
+    };
+    expect(body).toEqual({
+      issueId: ISSUE_ID,
+      jobId: JOB_ID,
+      stage: 'plan',
+      status: 'queued',
+    });
+    expect(enqueueJobMock).toHaveBeenCalledWith(JOB_ID);
+  });
+
+  it('202 explicit stage override', async () => {
+    // Issue is at `approved` (mapped to code) but caller forces `review`.
+    setupHappyPath({ status: 'approved' });
+
+    const res = await buildApp().request(`/api/issues/${ISSUE_ID}/run-pipeline-step`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${await token()}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ stage: 'review' }),
+    });
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as { stage: string };
+    expect(body.stage).toBe('review');
+  });
+
+  it('409 when an active job already exists for the same (issueId, type)', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'confirmed' },
+    ]);
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      ownerId: USER_ID,
+      role: 'member',
+    });
+    selectLimit.mockResolvedValueOnce([{ agentConfig: null, ownerId: USER_ID }]);
+    selectLimit.mockResolvedValueOnce([{ id: 'existing-job-id' }]); // findActiveJob hit
+
+    const res = await buildApp().request(`/api/issues/${ISSUE_ID}/run-pipeline-step`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${await token()}`,
+        'content-type': 'application/json',
+      },
+      body: '{}',
+    });
+    expect(res.status).toBe(409);
+    expect(insertReturning).not.toHaveBeenCalled();
+    expect(enqueueJobMock).not.toHaveBeenCalled();
+  });
+
+  it('400 when issue status has no skill mapping and no explicit stage', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'on_hold' },
+    ]);
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      ownerId: USER_ID,
+      role: 'member',
+    });
+    // No projects/jobs select mocks — the resolveSkillForStatus check throws
+    // before triggerPipelineStepManual reaches loadPipelineConfig.
+
+    const res = await buildApp().request(`/api/issues/${ISSUE_ID}/run-pipeline-step`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${await token()}`,
+        'content-type': 'application/json',
+      },
+      body: '{}',
+    });
+    expect(res.status).toBe(400);
+    expect(enqueueJobMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('GET /api/issues/pipeline-timing', () => {
   it('401 without token', async () => {
     const res = await buildApp().request(

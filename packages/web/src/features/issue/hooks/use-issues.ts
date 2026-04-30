@@ -10,6 +10,7 @@ import {
 import {
   type IssueListParams,
   type IssueSearchParams,
+  type PipelineStage,
   issueApi,
 } from '../api/issue-api';
 
@@ -132,6 +133,24 @@ export function useTransitionIssue() {
     onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: issueKeys.lists });
       qc.invalidateQueries({ queryKey: issueKeys.searches });
+      qc.invalidateQueries({ queryKey: issueKeys.details });
+    },
+  });
+}
+
+/**
+ * ISS-5: manually fire a pipeline stage for an issue. Bypasses the project's
+ * `auto*` toggles. `stage` undefined → server resolves from current status.
+ */
+export function useRunPipelineStep() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, stage }: { id: string; stage?: PipelineStage }) =>
+      issueApi.runPipelineStep(id, stage),
+    onSuccess: () => {
+      // Job → agent_sessions row (ISS-4) appears via WS; explicit invalidate so
+      // the issue's Agent Sessions tab refetches immediately on click.
+      qc.invalidateQueries({ queryKey: ['agent-sessions'] });
       qc.invalidateQueries({ queryKey: issueKeys.details });
     },
   });
