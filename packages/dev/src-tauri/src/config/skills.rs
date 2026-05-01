@@ -55,7 +55,7 @@ fn skills_dir() -> PathBuf {
     path
 }
 
-pub(crate) fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
+pub fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
     fs::create_dir_all(dst).map_err(|e| e.to_string())?;
     for entry in fs::read_dir(src).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -516,5 +516,15 @@ pub fn clear_skill_local_override(slug: String, name: String) -> Result<(), Stri
 /// which skills are kept-local + their last-installed baseline.
 pub fn get_skill_state() -> super::skill_state::SkillState {
     super::skill_state::load_state()
+}
+
+/// Returns true if the library SKILL.md for `name` exists and has non-zero size.
+/// The JS sync layer calls this to decide whether the hash-equality short
+/// circuit is safe — pre-guard installs left some files at 0 bytes, and
+/// without this check the skip-on-hash-match path keeps them broken forever
+/// (server hash matches the cached local hash, install never re-fires).
+pub fn library_skill_body_ok(name: &str) -> bool {
+    let path = skills_dir().join(name).join("SKILL.md");
+    std::fs::metadata(&path).map(|m| m.len() > 0).unwrap_or(false)
 }
 

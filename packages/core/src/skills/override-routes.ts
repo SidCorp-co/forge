@@ -8,6 +8,7 @@ import { db } from '../db/client.js';
 import { projectMembers, projectSkillOverrides, projects, skills } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
+import { hashSkillBody } from './hash.js';
 
 const overrideParamSchema = z.object({
   projectId: z.uuid(),
@@ -110,14 +111,29 @@ skillOverrideRoutes.get(
 
     const overrideBySkillId = new Map(overrides.map((o) => [o.skillId, o]));
 
+    // Legacy skills (seeded pre-v0.1) only have `prompt` populated; `skillMd`
+    // is NULL. Without this fallback they install on the desktop as 0-byte
+    // SKILL.md and break `/forge-*`. Hash is recomputed from the effective
+    // body so a cached legacy contentHash doesn't pin clients on the empty
+    // install.
+    const effectiveGlobal = (g: typeof globals[number]) => {
+      if (g.skillMd && g.skillMd.trim()) return { md: g.skillMd, hash: g.contentHash };
+      const md = g.prompt ?? '';
+      if (!md.trim()) return { md: '', hash: g.contentHash };
+      return { md, hash: hashSkillBody(md, g.files) };
+    };
+
     const result = globals.map((g) => {
+      const eff = effectiveGlobal(g);
       const ov = overrideBySkillId.get(g.id);
       if (!ov) {
         return {
           ...g,
+          skillMd: eff.md,
+          contentHash: eff.hash,
           isOverridden: false as const,
           overrideId: null,
-          globalContentHash: g.contentHash,
+          globalContentHash: eff.hash,
         };
       }
       return {
@@ -128,7 +144,7 @@ skillOverrideRoutes.get(
         updatedAt: ov.updatedAt,
         isOverridden: true as const,
         overrideId: ov.id,
-        globalContentHash: g.contentHash,
+        globalContentHash: eff.hash,
       };
     });
 

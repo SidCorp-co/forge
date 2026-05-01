@@ -99,7 +99,22 @@ export async function syncProjectSkills(slug: string, _repoPath: string): Promis
   let installed = 0;
 
   for (const skill of effective) {
-    if (skill.contentHash && localHashes[skill.name] === skill.contentHash) continue;
+    if (skill.contentHash && localHashes[skill.name] === skill.contentHash) {
+      // Hash equality is necessary but not sufficient: pre-guard installs
+      // left some SKILL.md files at 0 bytes whose cached hash still matches
+      // the server. The disk check forces a re-fetch in that case. Catch
+      // missing-command (older builds) by treating as OK so we don't loop.
+      let bodyOK = true;
+      try {
+        // invoke types as `boolean | null`; ?? preserves the conservative
+        // "treat null as OK" default so a missing command doesn't loop.
+        bodyOK = (await invoke<boolean>("library_skill_body_ok", { name: skill.name })) ?? true;
+      } catch {
+        // Older desktop without the command — preserve original skip behavior.
+      }
+      if (bodyOK) continue;
+      console.warn(`[skill-sync] hash matches but library SKILL.md is empty — re-installing ${skill.name}`);
+    }
     // Skip skills with no body: packages/core registers some skills as
     // metadata-only (the legacy Strapi MCP uploads SKILL.md separately).
     // Writing an empty body wipes the existing local file and breaks the

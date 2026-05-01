@@ -93,6 +93,19 @@ pub async fn create_worktree(repo_path: &str, branch_name: &str) -> Result<Strin
     }
 
     log(&format!("[worktree] created: {} -> {}", branch_name, wt_path.display()));
+
+    // `.claude/skills/` is gitignored, so `git worktree add` leaves the new
+    // tree without the SKILL.md files claude resolves /forge-* against.
+    // Pre-check exists to avoid copy_dir_recursive eagerly creating an empty
+    // `.claude/skills/` dst dir before failing on missing src.
+    let main_skills = repo.join(".claude").join("skills");
+    if main_skills.exists() {
+        let dst = wt_path.join(".claude").join("skills");
+        if let Err(e) = crate::config::copy_dir_recursive(&main_skills, &dst) {
+            log(&format!("[worktree] skill copy skipped: {e}"));
+        }
+    }
+
     Ok(wt_path.to_string_lossy().to_string())
 }
 

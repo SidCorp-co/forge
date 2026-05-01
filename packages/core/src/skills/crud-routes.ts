@@ -3,8 +3,8 @@ import { and, asc, eq, inArray, or, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { createHash } from 'node:crypto';
 import { db } from '../db/client.js';
+import { hashSkillBody } from './hash.js';
 import {
   jobs,
   projectMembers,
@@ -97,11 +97,6 @@ async function loadCallerRole(projectId: string, userId: string) {
     .limit(1);
 
   return { ownerId: project.ownerId, role: member?.role ?? null };
-}
-
-function hashSkillBody(skillMd: string, files: unknown): string {
-  const payload = JSON.stringify({ skillMd, files: files ?? [] });
-  return createHash('sha256').update(payload).digest('hex');
 }
 
 export const skillCrudRoutes = new Hono<{ Variables: AuthVars }>();

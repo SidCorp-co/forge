@@ -298,6 +298,11 @@ async fn refresh_enabled_skills() -> Result<config::SkillSyncLog, String> {
 }
 
 #[tauri::command]
+fn library_skill_body_ok(name: String) -> bool {
+    config::library_skill_body_ok(&name)
+}
+
+#[tauri::command]
 async fn read_sync_log() -> Result<Option<config::SkillSyncLog>, String> {
     tokio::task::spawn_blocking(config::read_sync_log)
         .await
@@ -532,6 +537,7 @@ fn main() {
             install_skill_guide,
             get_skill_hashes,
             refresh_enabled_skills,
+            library_skill_body_ok,
             read_sync_log,
             force_install_skill_to_project,
             accept_local_skill,

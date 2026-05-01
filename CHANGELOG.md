@@ -16,6 +16,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+## [0.1.28] - 2026-05-01
+
+Pipeline robustness: skill content reaches workers reliably (legacy seeds + 0-byte recovery), and Rust-created worktrees carry skills.
+
+### Fixed
+
+- **`/forge-*` slash commands silently broken after a stale install.** Pre-guard builds (before the empty-body guard in `install_skill_from_strapi`) wrote 0-byte `~/.config/forge-beta/skills/<name>/SKILL.md` files when the server returned an empty `skillMd`. Subsequent syncs short-circuited on hash equality and never re-fetched, leaving the local files broken until a manual reinstall. The desktop now also verifies the on-disk body is non-zero before honoring the hash match — empty files trigger a fresh install on the next sync, and the install path's existing guard rejects subsequent empty payloads. Older builds without the new `library_skill_body_ok` command fall back to the original behavior.
+- **Empty `skillMd` returned by `/projects/:id/skills/effective` for legacy skills.** Skills seeded before v0.1 only have the `prompt` column populated; `skillMd` is NULL. The endpoint now falls back to `prompt` when `skillMd` is empty and recomputes `contentHash` from the effective body so cached legacy hashes don't pin the desktop on a 0-byte install.
+
+### Added
+
+- **Skills auto-copy into Rust-created worktrees.** `.claude/skills/` is gitignored in most forge projects, so `git worktree add` would otherwise drop a fresh worktree without any `SKILL.md`. The desktop now copies `<repo>/.claude/skills/` into the new worktree right after `git worktree add` succeeds (manual chat sessions that opt into worktree mode). Pipeline-driven sessions still run in the main checkout — the agent owns worktree creation through SKILL.md instructions.
+
 ## [0.1.22] - 2026-04-29
 
 Patch: self-heal stale `config.coreUrl` for users who logged in before v0.1.21 on subdomain-split deploys.

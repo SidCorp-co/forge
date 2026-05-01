@@ -13,7 +13,7 @@ pub(crate) mod wsl;
 // Re-export public items from submodules
 pub use sessions::{SessionMeta, SessionData, list_sessions, save_session, load_session, delete_session};
 pub use mcp::{detect_mcp_servers, read_knowledge_index, read_conventions, read_agent_files, seed_agent_files, install_mcp_to_cli, list_library_mcp, add_library_mcp, remove_library_mcp, toggle_mcp};
-pub use skills::{install_skill_from_strapi, install_skill_guide, StrapiSkillData, StrapiSkillGuideData, get_skill_hashes, refresh_enabled_skills, read_sync_log, SkillSyncLog, force_install_skill_to_project, accept_local_skill, clear_skill_local_override, get_skill_state};
+pub use skills::{install_skill_from_strapi, install_skill_guide, StrapiSkillData, StrapiSkillGuideData, get_skill_hashes, refresh_enabled_skills, read_sync_log, SkillSyncLog, force_install_skill_to_project, accept_local_skill, clear_skill_local_override, get_skill_state, library_skill_body_ok, copy_dir_recursive};
 
 // ── Atomic file write (write to .tmp then rename) ──
 
