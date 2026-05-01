@@ -24,8 +24,11 @@ services:
   # same origin and proxies to /api.
   core:
     build:
-      context: ./packages/core
-      dockerfile: Dockerfile
+      # Build context = repo root so pnpm workspace can resolve
+      # workspace:* deps (@forge/observability, future shared packages).
+      # Mirrors the web service's pattern.
+      context: .
+      dockerfile: packages/core/Dockerfile
     restart: unless-stopped
     depends_on:
       postgres:
