@@ -123,6 +123,13 @@ jobs:
       - name: Install JS deps (workspace)
         run: pnpm install --frozen-lockfile
 
+      - name: Prebuild emit-only workspace deps
+        # @forge/observability ships compiled JS — the renderer imports it as
+        # `@forge/observability` and Node 22 refuses to load .ts under
+        # node_modules. Mirrors the pre-push hook's prebuild step so fresh CI
+        # checkouts compile the dist/ before tauri-action invokes vite.
+        run: pnpm --filter @forge/observability build
+
       - name: Build + sign + upload Tauri artifacts
         uses: tauri-apps/tauri-action@v0
         env:

@@ -157,6 +157,12 @@ jobs:
           pnpm --filter forge-beta exec tauri signer generate -p "" -w /tmp/smoke.key
           echo "TAURI_SIGNING_PRIVATE_KEY=$(cat /tmp/smoke.key)" >> "$GITHUB_ENV"
           echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=" >> "$GITHUB_ENV"
+      - name: Prebuild emit-only workspace deps
+        # @forge/observability ships compiled JS (Node 22 won't load .ts under
+        # node_modules); without this the renderer's `import "@forge/observability"`
+        # fails at vite TS-resolution. Pre-push hook does the same; CI must
+        # mirror it because GitHub runners check out fresh.
+        run: pnpm --filter @forge/observability build
       - name: Build (deb only)
         working-directory: packages/dev
         run: pnpm tauri build --bundles deb
