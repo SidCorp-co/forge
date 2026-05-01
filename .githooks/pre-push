@@ -108,7 +108,21 @@ for pkg in $packages; do
     echo "[pre-push] skip $pkg — directory missing"
     continue
   fi
-  echo "[pre-push] $pkg → pnpm build"
+  echo "[pre-push] $pkg → pnpm build (with workspace deps prebuilt)"
+  # Workspace packages that emit compiled JS (e.g. @forge/observability
+  # → dist/) MUST run their own build before any consumer's build kicks
+  # off, otherwise the consumer's import resolves to a non-existent
+  # file. pnpm's `--filter pkg...` selectors don't reliably walk into
+  # those deps and run their build script (verified empirically with
+  # pnpm 9.15: `--filter ...web` selects only web, not its deps).
+  # Pre-build the known emit-only deps as a small explicit list — cheap
+  # (single tsc) and leaves no room for ordering bugs.
+  if [ -d "$repo_root/packages/observability" ]; then
+    (cd "$repo_root" && pnpm --filter @forge/observability build) || {
+      echo "[pre-push] FAIL: @forge/observability build broke (consumer of $pkg)."
+      exit 1
+    }
+  fi
   (cd "$pkg_dir" && pnpm build) || {
     echo "[pre-push] FAIL: $pkg build broke. Push aborted."
     exit 1

@@ -12,6 +12,13 @@ COPY packages ./packages
 # Install only web's transitive deps (web package name is "web", not "@forge/web")
 RUN pnpm install --frozen-lockfile --filter web...
 
+# Build workspace deps that ship compiled output (e.g. @forge/observability
+# emits dist/index.js — Node 22 refuses to load .ts under node_modules).
+# Running this BEFORE the Next.js build means web's bundler sees a
+# resolvable import; the env-driven NEXT_PUBLIC_SENTRY_DSN below is
+# specific to web's own bundle and must remain in this stage.
+RUN pnpm --filter @forge/observability build
+
 # Build
 WORKDIR /repo/packages/web
 ARG NEXT_PUBLIC_API_URL=http://localhost:8080/api
