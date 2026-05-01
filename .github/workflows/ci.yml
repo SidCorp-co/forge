@@ -1,5 +1,21 @@
 name: CI
 
+# This repo is a pnpm workspace. CI contract:
+#   1. ALL jobs that touch a workspace package call the composite action
+#      `.github/actions/setup-workspace` for checkout-aware pnpm + Node 22 +
+#      frozen-lockfile install. Do NOT add per-job pnpm/setup-node/install
+#      steps — the composite is the single source of truth.
+#   2. Run commands from the repo root using `pnpm --filter <pkg>`. Do NOT
+#      set `defaults.working-directory` — that pattern blocks workspace
+#      filters and was the root cause of the npm/pnpm drift in the old
+#      `dev` job.
+#   3. There is NO per-package package-lock.json. The only lockfile is the
+#      root `pnpm-lock.yaml`.
+#   4. The `install-check` job runs on every PR with no `if` gate — it
+#      catches lockfile/install drift even when no package-specific job
+#      fires. If you find yourself disabling it, you're papering over real
+#      drift; fix the lockfile instead.
+
 on:
   push:
     branches: [main]
@@ -20,6 +36,19 @@ permissions:
   pull-requests: read
 
 jobs:
+  # Always-on guardrail: catches lockfile drift, missing package.json
+  # entries, and workspace misconfiguration on every PR — including PRs
+  # that wouldn't trigger any package-specific job. Cheap (~30s warm,
+  # ~90s cold) and high signal: if this fails, every other job would
+  # fail too once a path filter happens to match.
+  install-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-workspace
+        with:
+          prebuild-observability: "false"
+
   changes:
     runs-on: ubuntu-latest
     outputs:
@@ -65,19 +94,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "pnpm"
-          cache-dependency-path: pnpm-lock.yaml
-      - name: Install workspace dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Prebuild emit-only workspace deps
-        # web's instrumentation.ts imports @forge/observability — Next.js
-        # turbopack resolves it from node_modules expecting compiled dist/.
-        # Mirror the pre-push hook's prebuild so fresh CI checkouts work.
-        run: pnpm --filter @forge/observability build
+      - uses: ./.github/actions/setup-workspace
       # Lint debt — eslint-plugin-react-compiler flags pre-existing
       # patterns (setState in effects, impure-during-render) across landing
       # + protected pages. Tracked for cleanup; don't block CI.
@@ -92,16 +109,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.dev == 'true'
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: packages/dev
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: packages/dev/package-lock.json
+      - uses: ./.github/actions/setup-workspace
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -110,8 +120,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-      - run: npm ci
-      - run: npx vitest run --passWithNoTests
+      - run: pnpm --filter forge-beta exec vitest run --passWithNoTests
       # Format/clippy debt — pre-existing drift (cargo fmt + 14 clippy
       # warnings). Tracked for cleanup as a separate ISS. Don't block CI.
       - name: Rust check
@@ -137,12 +146,7 @@ jobs:
         run: |
           jq -e '.bundle.active == true' packages/dev/src-tauri/tauri.conf.json \
             || { echo "::error file=packages/dev/src-tauri/tauri.conf.json::bundle.active must be true (release builds skip bundling otherwise)"; exit 1; }
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
+      - uses: ./.github/actions/setup-workspace
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -151,8 +155,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-      - name: Install workspace deps
-        run: pnpm install --frozen-lockfile
       - name: Generate throwaway updater signing key
         # tauri-cli aborts with "public key found, but no private key" when
         # tauri.conf.json declares an updater pubkey. Generate a smoke-only
@@ -162,12 +164,6 @@ jobs:
           pnpm --filter forge-beta exec tauri signer generate -p "" -w /tmp/smoke.key
           echo "TAURI_SIGNING_PRIVATE_KEY=$(cat /tmp/smoke.key)" >> "$GITHUB_ENV"
           echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=" >> "$GITHUB_ENV"
-      - name: Prebuild emit-only workspace deps
-        # @forge/observability ships compiled JS (Node 22 won't load .ts under
-        # node_modules); without this the renderer's `import "@forge/observability"`
-        # fails at vite TS-resolution. Pre-push hook does the same; CI must
-        # mirror it because GitHub runners check out fresh.
-        run: pnpm --filter @forge/observability build
       - name: Build (deb only)
         working-directory: packages/dev
         run: pnpm tauri build --bundles deb
@@ -186,26 +182,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.core == 'true'
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: packages/core
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "pnpm"
-          cache-dependency-path: pnpm-lock.yaml
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-        working-directory: .
-      - name: Prebuild emit-only workspace deps
-        # core's observability layer imports @forge/observability — Node 22
-        # refuses to load .ts under node_modules so the dist/ has to exist
-        # before vitest/tsc runs. Mirror the pre-push hook's prebuild.
-        run: pnpm --filter @forge/observability build
-        working-directory: .
+      - uses: ./.github/actions/setup-workspace
       # Lint debt — biome reports many pre-existing errors in core (test files
       # mostly: noExplicitAny, noNonNullAssertion). Tracked for cleanup as a
       # separate ISS. Don't block CI on it for now.
