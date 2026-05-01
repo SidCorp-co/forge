@@ -87,18 +87,37 @@ async function unregisterDesktopBestEffort(deviceId: string | null | undefined):
   }
 }
 
-async function persistKeychain(token: string | null): Promise<void> {
-  // Token write/clear is best-effort — see plan §"Risks": a failed keychain
-  // write means the next reload re-prompts login, which is acceptable.
-  try {
-    if (token) await invoke("store_user_jwt", { token });
-    else await invoke("clear_user_jwt");
-  } catch (err) {
-    Sentry.captureException(err, {
-      tags: { auth_phase: token ? "store_user_jwt" : "clear_user_jwt" },
-      level: token ? "warning" : "error",
-    });
-  }
+// Single in-flight queue for keychain writes. Without serialization, a
+// `void persistKeychain()` dispatched by `expire()` could race an awaited
+// one from a concurrent `login()` and leave the wrong value on disk.
+// Serializing forces strict call-order resolution, not OS-scheduler luck.
+//
+// Each queued write also re-reads the auth store *at execution time* and
+// derives the JWT from the current phase — not from a captured intent. So
+// if `expire()` flips phase to `expired` AFTER `login()` has enqueued its
+// write but BEFORE that write runs, the resolved disk state still matches
+// the in-memory phase (clear keychain), preventing the
+// "memory says expired but disk says authenticated" divergence.
+let keychainWriteChain: Promise<void> = Promise.resolve();
+
+function persistKeychain(): Promise<void> {
+  const next = keychainWriteChain.then(async () => {
+    const cur = useAuthStore.getState();
+    const token = cur.phase === "authenticated" ? cur.token : null;
+    try {
+      if (token) await invoke("store_user_jwt", { token });
+      else await invoke("clear_user_jwt");
+    } catch (err) {
+      // Best-effort — see plan §"Risks": a failed keychain write means the
+      // next reload re-prompts login, which is acceptable.
+      Sentry.captureException(err, {
+        tags: { auth_phase: token ? "store_user_jwt" : "clear_user_jwt" },
+        level: token ? "warning" : "error",
+      });
+    }
+  });
+  keychainWriteChain = next;
+  return next;
 }
 
 async function saveConfigBestEffort(config: AppConfig): Promise<void> {
@@ -259,7 +278,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     if (finalDeviceId) Sentry.setUser({ id: finalDeviceId });
     breadcrumb("auth.transition.login", { coreUrl });
 
-    await persistKeychain(token);
+    await persistKeychain();
 
     const settings = await readDeviceSettings();
     await saveConfigBestEffort(
@@ -296,10 +315,23 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       // `token` field hanging on the new phase shape otherwise.
       token: undefined,
     } as Partial<AuthStore>);
+    // Drop Sentry user tagging too — we no longer have an authenticated
+    // session, so subsequent error reports until re-login should be
+    // anonymous. logout() does the same.
+    Sentry.setUser(null);
+    // Invalidate caches keyed to the now-dead session. The user JWT is
+    // gone (request() will throw on the phase guard) but jobs.ts caches
+    // the device token separately; without this, a later re-login that
+    // happens to reuse the same coreUrl could send /jobs requests with
+    // a device token paired to a different account if the user logged
+    // into a different core in between. Same invariant as login()/logout().
+    void clearApiCaches();
     // Clear keychain in the background — re-login from the same machine
     // should reuse the existing device row but must not re-hydrate the
-    // dead JWT on next launch.
-    void persistKeychain(null);
+    // dead JWT on next launch. Serialized through `keychainWriteChain` so
+    // a concurrent login()'s `persistKeychain(token)` cannot land out of
+    // order with this wipe.
+    void persistKeychain();
   },
 
   logout: async ({ unregisterDesktop = false } = {}) => {
@@ -328,7 +360,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     } as Partial<AuthStore>);
     breadcrumb("auth.transition.logout", { unregisterDesktop });
 
-    await persistKeychain(null);
+    await persistKeychain();
 
     const settings = await readDeviceSettings();
     await saveConfigBestEffort(
@@ -343,13 +375,12 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   setDeviceId: (deviceId) => {
     const cur = get();
-    if (cur.phase === "authenticated") {
-      set({ ...cur, deviceId });
-    } else if (cur.phase === "expired") {
-      set({ ...cur, deviceId });
-    } else if (cur.phase === "unauthenticated") {
-      set({ ...cur, deviceId });
-    }
+    // Hydrating has no backing state to attach a deviceId to — and a stray
+    // call here would still bind Sentry.setUser without a real session.
+    if (cur.phase === "hydrating") return;
+    if (cur.phase === "authenticated") set({ ...cur, deviceId });
+    else if (cur.phase === "expired") set({ ...cur, deviceId });
+    else if (cur.phase === "unauthenticated") set({ ...cur, deviceId });
     if (deviceId) Sentry.setUser({ id: deviceId });
   },
 }));

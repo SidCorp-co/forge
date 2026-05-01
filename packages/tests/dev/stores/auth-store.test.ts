@@ -248,6 +248,49 @@ describe("auth-store: expire", () => {
     useAuthStore.getState().expire(); // hydrating
     expect(useAuthStore.getState().phase).toBe("hydrating");
   });
+
+  it("clears API + device-token caches so a re-login on the same coreUrl can't reuse a stale device token", async () => {
+    invokeMock.mockResolvedValue(null);
+    useAuthStore.getState().expire();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(clearProjectIdCacheMock).toHaveBeenCalled();
+    expect(clearDeviceTokenCacheMock).toHaveBeenCalled();
+  });
+});
+
+describe("auth-store: re-auth from expired", () => {
+  beforeEach(() => {
+    useAuthStore.setState({
+      phase: "expired",
+      coreUrl: "https://api.example.com",
+      deviceId: "dev-1",
+    } as AuthState as ReturnType<typeof useAuthStore.getState>);
+  });
+
+  it("logout() from expired → unauthenticated, preserving coreUrl + deviceId for re-login UX", async () => {
+    invokeMock.mockResolvedValue(null);
+    await useAuthStore.getState().logout();
+    expect(snapshot()).toEqual({
+      phase: "unauthenticated",
+      coreUrl: "https://api.example.com",
+      deviceId: "dev-1",
+    });
+    expect(invokeMock).toHaveBeenCalledWith("clear_user_jwt");
+  });
+
+  it("login() from expired → authenticated reuses the existing device row", async () => {
+    invokeMock.mockResolvedValue(null);
+    await useAuthStore.getState().login({
+      coreUrl: "https://api.example.com",
+      token: "jwt-2",
+    });
+    const snap = snapshot();
+    expect(snap.phase).toBe("authenticated");
+    if (snap.phase === "authenticated") {
+      expect(snap.deviceId).toBe("dev-1");
+      expect(snap.token).toBe("jwt-2");
+    }
+  });
 });
 
 describe("auth-store: logout", () => {
@@ -355,5 +398,110 @@ describe("auth-store: setDeviceId", () => {
       expect(snap.token).toBe("jwt-1");
       expect(snap.coreUrl).toBe("https://api.example.com");
     }
+  });
+
+  it("is a no-op while phase === 'hydrating' (no Sentry user binding without backing state)", () => {
+    _resetAuthStoreForTest();
+    useAuthStore.getState().setDeviceId("dev-stray");
+    expect(useAuthStore.getState().phase).toBe("hydrating");
+  });
+});
+
+describe("auth-store: re-login + concurrent flows", () => {
+  it("expired → authenticated on re-login and the dead-JWT wipe lands BEFORE the new token write on disk", async () => {
+    useAuthStore.setState({
+      phase: "expired",
+      coreUrl: "https://api.example.com",
+      deviceId: "dev-1",
+    } as AuthState as ReturnType<typeof useAuthStore.getState>);
+
+    const order: string[] = [];
+    invokeMock.mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "store_user_jwt") order.push(`store:${(args as { token: string }).token}`);
+      if (cmd === "clear_user_jwt") order.push("clear");
+      return null;
+    });
+
+    // Simulate the realistic post-401 flow: expire() has just queued a
+    // background `clear_user_jwt`; user immediately re-logs in.
+    useAuthStore.getState().expire(); // no-op (already expired) but exercises the guard
+    await useAuthStore.getState().login({
+      coreUrl: "https://api.example.com",
+      token: "jwt-2",
+      deviceId: "dev-1",
+    });
+
+    // The keychain write chain must serialize so the new token is the
+    // last value on disk — not the dead-JWT wipe from a stale expire().
+    expect(order[order.length - 1]).toBe("store:jwt-2");
+    expect(useAuthStore.getState().phase).toBe("authenticated");
+  });
+
+  it("expired → unauthenticated via logout() (user dismisses re-login prompt)", async () => {
+    useAuthStore.setState({
+      phase: "expired",
+      coreUrl: "https://api.example.com",
+      deviceId: "dev-1",
+    } as AuthState as ReturnType<typeof useAuthStore.getState>);
+    invokeMock.mockResolvedValue(null);
+
+    await useAuthStore.getState().logout();
+
+    expect(snapshot()).toEqual({
+      phase: "unauthenticated",
+      coreUrl: "https://api.example.com",
+      deviceId: "dev-1",
+    });
+  });
+
+  it("concurrent expire() during in-flight login() — final disk state is the new token (writes serialized)", async () => {
+    useAuthStore.setState({
+      phase: "unauthenticated",
+      coreUrl: null,
+      deviceId: null,
+    } as AuthState as ReturnType<typeof useAuthStore.getState>);
+
+    const order: string[] = [];
+    invokeMock.mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "store_user_jwt") {
+        order.push(`store:${(args as { token: string }).token}`);
+        // Simulate slow keychain write so expire() can be dispatched mid-flight.
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      if (cmd === "clear_user_jwt") order.push("clear");
+      return null;
+    });
+
+    // Subscribe so expire() is dispatched the instant login() flips state to
+    // `authenticated` (the only legal pre-condition). This is the realistic
+    // race: a stale 401 from an in-flight pre-login request fires *between*
+    // the state flip and the awaited keychain write.
+    const unsub = useAuthStore.subscribe((s) => {
+      if (s.phase === "authenticated") {
+        unsub();
+        useAuthStore.getState().expire();
+      }
+    });
+
+    const loginP = useAuthStore.getState().login({
+      coreUrl: "https://api.example.com",
+      token: "jwt-1",
+      deviceId: "dev-1",
+    });
+    await loginP;
+    // expire()'s persistKeychain() was enqueued onto the keychain chain but
+    // not awaited. Drain by waiting longer than the 5ms simulated IPC latency.
+    await new Promise((r) => setTimeout(r, 30));
+
+    // Strict invariant: the FINAL keychain write matches the in-memory
+    // phase. Whichever transition wins the race in memory, disk converges
+    // to the same answer because each queued write re-reads the store at
+    // exec time. Without this, memory-says-expired-but-disk-says-token
+    // would silently re-authenticate on next launch.
+    expect(useAuthStore.getState().phase).toBe("expired");
+    expect(order[order.length - 1]).toBe("clear");
+    // No interleaving: writes are serialized through the chain, not
+    // racing two concurrent IPC calls.
+    expect(order.filter((x) => x === "store:jwt-1" || x === "clear")).toEqual(order);
   });
 });

@@ -391,9 +391,14 @@ export function useWebSocket() {
         const unlisten2 = await listen("ws:disconnected", async () => {
           setWsConnected(false);
           stopHeartbeat();
-          try {
-            await unregisterDesktop(deviceId || "");
-          } catch { /* ignore */ }
+          // Skip the un-pair call when deviceId is empty — happens during
+          // logout (auth-store flips deviceId to null and the WS effect
+          // tears down). Sending an empty string would 400 on the server.
+          if (deviceId) {
+            try {
+              await unregisterDesktop(deviceId);
+            } catch { /* ignore */ }
+          }
         });
         const unlisten3 = await listen<unknown>("ws:message", (event) => {
           handleMessage(event.payload);

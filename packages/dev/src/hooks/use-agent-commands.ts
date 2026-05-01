@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { useAppStore } from "@/stores/app-store";
-import { useAuthStore } from "@/stores/auth-store";
+import { useAuthStore, type AuthState } from "@/stores/auth-store";
 import { invoke } from "./use-tauri-ipc";
 import { relayAgentEvent, relayPromptBuilt, getIssue, getProject, getAgents, setDeviceProjectPath } from "@/lib/api";
 import { buildIssuePrompt, buildMultiIssuePrompt } from "@/lib/prompt-builders";
@@ -135,18 +135,21 @@ async function buildSetupPreamble(projectSlug: string): Promise<string> {
  */
 export function useAgentCommandHandler(tracker: SessionTracker) {
   const deviceSettings = useAppStore((s) => s.deviceSettings);
-  const authState = useAuthStore();
+  // Selector: subscribe to deviceId only — `useAuthStore()` without a
+  // selector re-renders on every transition (including token rotations) and
+  // defeats the point of the configRef pattern below.
+  const deviceId = useAuthStore((s: AuthState) =>
+    s.phase === "authenticated" || s.phase === "expired"
+      ? s.deviceId
+      : s.phase === "unauthenticated"
+        ? s.deviceId ?? ""
+        : "",
+  );
   // Mirror the legacy `configRef` shape so the existing string-keyed lookups
   // inside `ensureRepoPath` (`configRef.current.projects[slug]`,
   // `configRef.current.deviceId`, `configRef.current.projectsRoot`) keep
   // working. We rebuild the snapshot from the auth + device-settings stores
   // on every render so handlers always see fresh values.
-  const deviceId =
-    authState.phase === "authenticated" || authState.phase === "expired"
-      ? authState.deviceId
-      : authState.phase === "unauthenticated"
-        ? authState.deviceId ?? ""
-        : "";
   const snapshot = {
     projects: deviceSettings.projects ?? {},
     projectsRoot: deviceSettings.projectsRoot,
