@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { PIPELINE_STAGES, type PipelineStage } from '@/features/issue/api/issue-api';
 import { useRunPipelineStep } from '@/features/issue/hooks/use-issues';
+import { ApiError } from '@/lib/api/client';
 
 interface Props {
   issueId: string;
@@ -46,6 +47,10 @@ export function IssuePipelineActions({ issueId, status }: Props) {
       const res = await mutation.mutateAsync(stage ? { id: issueId, stage } : { id: issueId });
       flash('ok', `Queued forge-${res.stage}`);
     } catch (err) {
+      if (err instanceof ApiError && err.code === 'JOB_ALREADY_ACTIVE') {
+        flash('err', 'Job already running, cancel first');
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Failed to queue job';
       flash('err', msg);
     }
