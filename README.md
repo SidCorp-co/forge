@@ -6,6 +6,7 @@
 [![CI](https://github.com/SidCorp-co/forge/actions/workflows/ci.yml/badge.svg)](https://github.com/SidCorp-co/forge/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-alpha-yellow.svg)]()
+[![SafeSkill 48/100](https://img.shields.io/badge/SafeSkill-48%2F100_Use%20with%20Caution-orange)](https://safeskill.dev/scan/sidcorp-co-forge)
 
 **Status:** alpha — not production-ready. Expect breaking changes across `v0.x`.
 
