@@ -20,6 +20,12 @@ ARG NEXT_PUBLIC_WS_URL=
 ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
 ARG NEXT_PUBLIC_ENV_LABEL=
 ENV NEXT_PUBLIC_ENV_LABEL=$NEXT_PUBLIC_ENV_LABEL
+# Next.js inlines NEXT_PUBLIC_* into the client bundle at build time, not
+# runtime — passing this only via `environment:` would leave the browser
+# DSN as the empty string. The `:-` default keeps source-only builds
+# (operator chooses not to set the var) Sentry-disabled.
+ARG NEXT_PUBLIC_SENTRY_DSN=
+ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
 RUN pnpm build
 
 # Production runtime — Next.js monorepo standalone places server.js at packages/web/

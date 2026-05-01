@@ -86,6 +86,12 @@ services:
       EMBEDDINGS_API_KEY: ${EMBEDDINGS_API_KEY:-}
       EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL:-}
       EMBEDDINGS_DIM: ${EMBEDDINGS_DIM:-}
+      # Optional Sentry telemetry. Use SENTRY_DSN_CORE in `.env` (not bare
+      # SENTRY_DSN) so core and web can route to separate Sentry projects
+      # — they share the same compose interpolation namespace. Empty =
+      # SDK no-op; @sentry/node never attaches. See packages/core/src/
+      # observability/sentry.ts for the opt-in contract.
+      SENTRY_DSN: ${SENTRY_DSN_CORE:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 10s
@@ -101,6 +107,10 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api}
         NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-}
         NEXT_PUBLIC_ENV_LABEL: ${NEXT_PUBLIC_ENV_LABEL:-}
+        # Next.js bakes NEXT_PUBLIC_* into the client bundle at build
+        # time, so this MUST be a build arg (matching environment: below
+        # without an arg would leave the browser DSN empty).
+        NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN_WEB:-}
     restart: unless-stopped
     depends_on:
       - core
@@ -108,6 +118,12 @@ services:
       - "127.0.0.1:19451:3000"
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api}
+      # SENTRY_DSN_WEB drives both surfaces: the client SDK reads
+      # NEXT_PUBLIC_SENTRY_DSN (already baked in at build), and the
+      # server runtime reads SENTRY_DSN inside instrumentation.ts's
+      # `register()` hook.
+      NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN_WEB:-}
+      SENTRY_DSN: ${SENTRY_DSN_WEB:-}
 
 volumes:
   postgres_data:
