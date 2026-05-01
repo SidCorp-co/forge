@@ -73,6 +73,11 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
+      - name: Prebuild emit-only workspace deps
+        # web's instrumentation.ts imports @forge/observability — Next.js
+        # turbopack resolves it from node_modules expecting compiled dist/.
+        # Mirror the pre-push hook's prebuild so fresh CI checkouts work.
+        run: pnpm --filter @forge/observability build
       # Lint debt — eslint-plugin-react-compiler flags pre-existing
       # patterns (setState in effects, impure-during-render) across landing
       # + protected pages. Tracked for cleanup; don't block CI.
@@ -194,6 +199,12 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+        working-directory: .
+      - name: Prebuild emit-only workspace deps
+        # core's observability layer imports @forge/observability — Node 22
+        # refuses to load .ts under node_modules so the dist/ has to exist
+        # before vitest/tsc runs. Mirror the pre-push hook's prebuild.
+        run: pnpm --filter @forge/observability build
         working-directory: .
       # Lint debt — biome reports many pre-existing errors in core (test files
       # mostly: noExplicitAny, noNonNullAssertion). Tracked for cleanup as a
