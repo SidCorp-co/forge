@@ -454,12 +454,39 @@ describe("auth-store: re-login + concurrent flows", () => {
     });
   });
 
-  // TODO(ISS-11): re-enable once concurrent-race expectations align with the
-  // read-state-at-execution-time persistKeychain semantics. The keychain
-  // queue itself is exercised by the other tests in this file; this scenario
-  // specifically asserts the final disk state under expire-during-login
-  // interleaving and needs harness-timing rework.
-  it.skip("concurrent expire() during in-flight login() — final disk state is the new token (writes serialized)", async () => {
+  it("sequential login → expire: writes serialize on disk and disk converges to in-memory phase", async () => {
+    useAuthStore.setState({
+      phase: "unauthenticated",
+      coreUrl: null,
+      deviceId: null,
+    } as AuthState as ReturnType<typeof useAuthStore.getState>);
+
+    const order: string[] = [];
+    invokeMock.mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "store_user_jwt") order.push(`store:${(args as { token: string }).token}`);
+      if (cmd === "clear_user_jwt") order.push("clear");
+      return null;
+    });
+
+    await useAuthStore.getState().login({
+      coreUrl: "https://api.example.com",
+      token: "jwt-1",
+      deviceId: "dev-1",
+    });
+    // login() awaited persistKeychain → 'store:jwt-1' has landed on disk.
+    expect(order).toEqual(["store:jwt-1"]);
+
+    useAuthStore.getState().expire();
+    // Drain the chain — expire() fires its persistKeychain via void.
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Strict invariant: the login write was over-written by the trailing
+    // clear, and the FINAL disk state matches the FINAL in-memory phase.
+    expect(order).toEqual(["store:jwt-1", "clear"]);
+    expect(useAuthStore.getState().phase).toBe("expired");
+  });
+
+  it("concurrent expire() during in-flight login() — every queued write reads phase at exec time, never disk-writes the dead token", async () => {
     useAuthStore.setState({
       phase: "unauthenticated",
       coreUrl: null,
@@ -470,17 +497,18 @@ describe("auth-store: re-login + concurrent flows", () => {
     invokeMock.mockImplementation(async (cmd: string, args?: unknown) => {
       if (cmd === "store_user_jwt") {
         order.push(`store:${(args as { token: string }).token}`);
-        // Simulate slow keychain write so expire() can be dispatched mid-flight.
+        // Simulate slow keychain write so the test mirrors the real OS-IPC
+        // window — even though expire() is already enqueued behind this in
+        // the chain, the assertion below holds regardless of latency.
         await new Promise((r) => setTimeout(r, 5));
       }
       if (cmd === "clear_user_jwt") order.push("clear");
       return null;
     });
 
-    // Subscribe so expire() is dispatched the instant login() flips state to
-    // `authenticated` (the only legal pre-condition). This is the realistic
-    // race: a stale 401 from an in-flight pre-login request fires *between*
-    // the state flip and the awaited keychain write.
+    // Subscribe so expire() is dispatched synchronously the instant login()
+    // flips state to `authenticated`. This is the realistic race: a stale
+    // 401 fires *between* login's set() and the awaited keychain write.
     const unsub = useAuthStore.subscribe((s) => {
       if (s.phase === "authenticated") {
         unsub();
@@ -488,25 +516,24 @@ describe("auth-store: re-login + concurrent flows", () => {
       }
     });
 
-    const loginP = useAuthStore.getState().login({
+    await useAuthStore.getState().login({
       coreUrl: "https://api.example.com",
       token: "jwt-1",
       deviceId: "dev-1",
     });
-    await loginP;
-    // expire()'s persistKeychain() was enqueued onto the keychain chain but
-    // not awaited. Drain by waiting longer than the 5ms simulated IPC latency.
+    // expire()'s persistKeychain() was enqueued via void — drain.
     await new Promise((r) => setTimeout(r, 30));
 
-    // Strict invariant: the FINAL keychain write matches the in-memory
-    // phase. Whichever transition wins the race in memory, disk converges
-    // to the same answer because each queued write re-reads the store at
-    // exec time. Without this, memory-says-expired-but-disk-says-token
-    // would silently re-authenticate on next launch.
+    // Read-at-exec invariant: by the time either queued keychain handler
+    // runs, expire() has already flipped phase to 'expired'. So both writes
+    // resolve to 'clear' — the dead jwt-1 must NEVER hit disk, otherwise a
+    // reload would silently re-authenticate against the in-memory expired
+    // state. A regression to capture-at-enqueue would land
+    // ['clear', 'store:jwt-1'] here, which this assertion catches.
     expect(useAuthStore.getState().phase).toBe("expired");
+    expect(order).not.toContain("store:jwt-1");
+    expect(order.length).toBeGreaterThan(0);
     expect(order[order.length - 1]).toBe("clear");
-    // No interleaving: writes are serialized through the chain, not
-    // racing two concurrent IPC calls.
-    expect(order.filter((x) => x === "store:jwt-1" || x === "clear")).toEqual(order);
+    expect(order.every((x) => x === "clear")).toBe(true);
   });
 });

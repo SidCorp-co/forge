@@ -17,6 +17,7 @@ export function useWebSocket() {
   const setWsConnected = useAppStore((s) => s.setWsConnected);
   const setDeviceSettings = useAppStore((s) => s.setDeviceSettings);
   const auth = useAuth();
+  const phase = auth.phase;
   const coreUrl = auth.coreUrl;
   const deviceId = auth.deviceId;
   const token = auth.token;
@@ -28,6 +29,12 @@ export function useWebSocket() {
   const { handlerRef: handleJobAssignedRef, jobSessionsRef, cancelledJobsRef } = useJobAssignedHandler(tracker);
 
   useEffect(() => {
+    // Only connect when fully authenticated. On `expire()` the auth store
+    // flips token → null and phase → 'expired'; without this guard the effect
+    // tore the WS down and immediately reconnected without a JWT subprotocol,
+    // which raced the navigate-to-/login subscriber and triggered an
+    // unauthenticated `device:register`.
+    if (phase !== "authenticated") return;
     if (!coreUrl) return;
 
     // ISS-286: token never goes in the URL — it leaks via nginx access logs,
@@ -688,5 +695,5 @@ export function useWebSocket() {
       cancelled = true;
       cleanup?.();
     };
-  }, [coreUrl, deviceId, token, setWsConnected, setDeviceSettings, queryClient, handleAgentCommandRef, handleJobAssignedRef, jobSessionsRef, cancelledJobsRef]);
+  }, [phase, coreUrl, deviceId, token, setWsConnected, setDeviceSettings, queryClient, handleAgentCommandRef, handleJobAssignedRef, jobSessionsRef, cancelledJobsRef]);
 }

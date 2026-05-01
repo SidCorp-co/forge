@@ -95,6 +95,7 @@ async function ensureRepoPath(
       pc.repoPath = dir;
       projects[projectSlug] = pc;
       await invoke("save_config", { config: { ...diskCfg, projects } });
+      useAppStore.getState().patchDeviceSettings({ projects });
       const cfg = configRef.current;
       cfg.projects = projects;
       await emitInitLog(slug, "Save local config", "ok");
