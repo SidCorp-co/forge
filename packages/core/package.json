@@ -16,7 +16,8 @@
   "files": [
     "dist",
     "skills",
-    "drizzle"
+    "drizzle",
+    "public"
   ],
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=.env src/index.ts",

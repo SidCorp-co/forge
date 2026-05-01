@@ -5,14 +5,23 @@
   "license": "Apache-2.0",
   "description": "Shared observability primitives — privacy/PII scrubbing constants used by every Sentry adapter (dev renderer, core, web). Single source of truth so the privacy contract can't drift across surfaces.",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     }
   },
-  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist"
+  },
   "files": [
+    "dist",
     "src"
-  ]
+  ],
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
 }
