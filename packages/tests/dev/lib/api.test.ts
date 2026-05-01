@@ -1,13 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { configureApi, getProjects, updateTask } from "@/lib/api";
+import { useAuthStore, _resetAuthStoreForTest } from "@/stores/auth-store";
+import { getProjects, updateTask } from "@/lib/api";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
+function setAuth(coreUrl: string, token: string): void {
+  useAuthStore.setState({
+    phase: "authenticated",
+    coreUrl,
+    token,
+    deviceId: "dev-1",
+  } as any);
+}
+
 describe("api client", () => {
   beforeEach(() => {
     mockFetch.mockReset();
-    configureApi("http://localhost:8080", "test-token");
+    _resetAuthStoreForTest();
+    setAuth("http://localhost:8080", "test-token");
   });
 
   it("GET request: correct URL and auth header", async () => {
@@ -56,8 +67,8 @@ describe("api client", () => {
     await expect(getProjects()).rejects.toThrow("API error: 404 Not Found");
   });
 
-  it("configureApi: updates base URL and token", async () => {
-    configureApi("http://other:9999/", "new-token");
+  it("auth-store updates: subsequent requests pick up the new base URL and token", async () => {
+    setAuth("http://other:9999/", "new-token");
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ data: [] }),

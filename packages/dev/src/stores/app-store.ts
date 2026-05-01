@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { AgentMessage, AppConfig } from "@/lib/types";
+import type { AgentMessage, McpServerConfig, ProjectConfig, SkillLibraryEntry } from "@/lib/types";
 
 export interface AgentUsage {
   /** Last turn's full context (input + cacheRead + cacheWrite) */
@@ -18,7 +18,29 @@ export interface AgentUsage {
 
 export { CONTEXT_LIMIT } from "@/lib/constants";
 
-const EMPTY_USAGE: AgentUsage = { contextUsed: 0, inputTotal: 0, outputTotal: 0, cacheRead: 0, cacheWrite: 0, turns: 0 };
+const EMPTY_USAGE: AgentUsage = {
+  contextUsed: 0,
+  inputTotal: 0,
+  outputTotal: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  turns: 0,
+};
+
+/**
+ * Renderer-side device settings — projects map, skill library, MCP library,
+ * and the projects-root parent dir. Auth-bearing fields (`coreUrl`, `token`,
+ * `deviceId`) live in `auth-store.ts` so they cannot drift out of sync with
+ * the api client and keychain. Fields here are orthogonal to auth.
+ */
+export interface DeviceSettings {
+  projects: Record<string, ProjectConfig>;
+  projectsRoot?: string;
+  skillLibrary?: Record<string, SkillLibraryEntry>;
+  mcpLibrary?: Record<string, McpServerConfig>;
+}
+
+const EMPTY_DEVICE_SETTINGS: DeviceSettings = { projects: {} };
 
 interface AppState {
   activeProject: string | null;
@@ -39,15 +61,9 @@ interface AppState {
   updateAgentUsageFromStored: (usage: AgentUsage) => void;
   resetAgentUsage: () => void;
 
-  config: AppConfig;
-  setConfig: (c: AppConfig) => void;
-  /**
-   * False until `useLocalConfig` finishes hydrating from disk + the OS
-   * keychain. RequireAuth and LoginPage gate on this so a fresh launch
-   * doesn't bounce the user to /login while the JWT is still loading.
-   */
-  configReady: boolean;
-  setConfigReady: (v: boolean) => void;
+  deviceSettings: DeviceSettings;
+  setDeviceSettings: (s: DeviceSettings) => void;
+  patchDeviceSettings: (patch: Partial<DeviceSettings>) => void;
 
   sidebarOpen: boolean;
   toggleSidebar: () => void;
@@ -64,16 +80,15 @@ export const useAppStore = create<AppState>((set) => ({
   agentRunning: false,
   agentSessionId: null,
   agentUsage: EMPTY_USAGE,
-  addAgentMessage: (msg) =>
-    set((s) => ({ agentMessages: [...s.agentMessages, msg] })),
+  addAgentMessage: (msg) => set((s) => ({ agentMessages: [...s.agentMessages, msg] })),
   clearAgentMessages: () => set({ agentMessages: [] }),
   setAgentRunning: (v) => set({ agentRunning: v }),
   setAgentSessionId: (id) => set({ agentSessionId: id }),
   updateAgentUsage: (usage) =>
     set((s) => {
       const inp = usage.input_tokens || 0;
-      const cr  = usage.cache_read_input_tokens || 0;
-      const cw  = usage.cache_creation_input_tokens || 0;
+      const cr = usage.cache_read_input_tokens || 0;
+      const cw = usage.cache_creation_input_tokens || 0;
       return {
         agentUsage: {
           contextUsed: inp + cr + cw,
@@ -86,24 +101,12 @@ export const useAppStore = create<AppState>((set) => ({
       };
     }),
   updateAgentUsageFromStored: (usage) => set({ agentUsage: { ...EMPTY_USAGE, ...usage } }),
-  resetAgentUsage: () =>
-    set({ agentUsage: EMPTY_USAGE }),
+  resetAgentUsage: () => set({ agentUsage: EMPTY_USAGE }),
 
-  config: {
-    // No coreUrl default. `useLocalConfig` is the only legitimate source —
-    // it calls configureApi() before publishing the hydrated config to the
-    // store. A non-empty default here caused the v0.1.25 logout race: an
-    // operator's local dev core on localhost:8080 returned 401
-    // INVALID_TOKEN to a pre-hydrate query and tripped the auth-expired
-    // wipe. Empty matches the default in lib/api/client.ts.
-    coreUrl: "",
-    authToken: "",
-    projects: {},
-    deviceId: "",
-  },
-  setConfig: (c) => set({ config: c }),
-  configReady: false,
-  setConfigReady: (v) => set({ configReady: v }),
+  deviceSettings: EMPTY_DEVICE_SETTINGS,
+  setDeviceSettings: (s) => set({ deviceSettings: s }),
+  patchDeviceSettings: (patch) =>
+    set((s) => ({ deviceSettings: { ...s.deviceSettings, ...patch } })),
 
   sidebarOpen: true,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),

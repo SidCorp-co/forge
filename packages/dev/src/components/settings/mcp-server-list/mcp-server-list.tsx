@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { McpServerConfig } from "@/lib/types";
 import { invoke } from "@/hooks/use-tauri-ipc";
-import { useAppStore } from "@/stores/app-store";
+import { useAuth } from "@/hooks/useAuth";
 import { McpServerEditor } from "@/components/settings/mcp-server-editor";
 import { Button, EmptyState } from "@/components/ui";
 import { ForgeServerRow, LibraryServerRow, ProjectServerRow } from "./mcp-server-row";
@@ -36,12 +36,12 @@ export function McpServerList({
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [installedCli, setInstalledCli] = useState<Record<string, "ok" | "err">>({});
-  const { config } = useAppStore();
+  const auth = useAuth();
 
-  const forgeServer: McpServerConfig | null = config.coreUrl
+  const forgeServer: McpServerConfig | null = auth.coreUrl
     ? {
         type: "http",
-        url: `${config.coreUrl}/mcp`,
+        url: `${auth.coreUrl}/mcp`,
         headers: {
           ...(projectApiKey ? { "X-Forge-API-Key": projectApiKey } : {}),
           ...(projectSlug ? { "X-Forge-Project-Slug": projectSlug } : {}),

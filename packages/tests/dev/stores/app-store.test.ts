@@ -1,17 +1,19 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useAppStore } from "@/stores/app-store";
-import type { AgentMessage, AppConfig } from "@/lib/types";
+import type { AgentMessage } from "@/lib/types";
 
 describe("app-store", () => {
   beforeEach(() => {
-    // Reset store to initial state
+    // Reset store to initial state. Auth-bearing fields (coreUrl/token/deviceId)
+    // moved to auth-store; only device-side settings + ephemeral UI state live
+    // here now.
     useAppStore.setState({
       activeProject: null,
       wsConnected: false,
       agentMessages: [],
       agentRunning: false,
       agentSessionId: null,
-      config: { strapiUrl: "http://localhost:8080", authToken: "", projects: {} },
+      deviceSettings: { projects: {} },
       sidebarOpen: true,
     });
   });
@@ -22,7 +24,7 @@ describe("app-store", () => {
     expect(state.wsConnected).toBe(false);
     expect(state.agentMessages).toEqual([]);
     expect(state.agentRunning).toBe(false);
-    expect(state.config.strapiUrl).toBe("http://localhost:8080");
+    expect(state.deviceSettings.projects).toEqual({});
     expect(state.sidebarOpen).toBe(true);
   });
 
@@ -60,13 +62,23 @@ describe("app-store", () => {
     expect(useAppStore.getState().agentMessages).toEqual([]);
   });
 
-  it("setConfig updates config", () => {
-    const newConfig: AppConfig = {
-      strapiUrl: "http://example.com",
-      authToken: "abc123",
-      projects: {},
-    };
-    useAppStore.getState().setConfig(newConfig);
-    expect(useAppStore.getState().config).toEqual(newConfig);
+  it("setDeviceSettings replaces the slice", () => {
+    useAppStore.getState().setDeviceSettings({
+      projects: { demo: { slug: "demo", repoPath: "/r/demo" } },
+      projectsRoot: "/forge",
+    });
+    const s = useAppStore.getState().deviceSettings;
+    expect(s.projects.demo?.repoPath).toBe("/r/demo");
+    expect(s.projectsRoot).toBe("/forge");
+  });
+
+  it("patchDeviceSettings merges into the slice", () => {
+    useAppStore.getState().setDeviceSettings({
+      projects: { demo: { slug: "demo", repoPath: "/r/demo" } },
+    });
+    useAppStore.getState().patchDeviceSettings({ projectsRoot: "/forge" });
+    const s = useAppStore.getState().deviceSettings;
+    expect(s.projects.demo?.repoPath).toBe("/r/demo");
+    expect(s.projectsRoot).toBe("/forge");
   });
 });

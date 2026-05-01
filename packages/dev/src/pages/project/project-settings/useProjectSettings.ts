@@ -1,14 +1,17 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { useAppStore } from "@/stores/app-store";
+import { useAuth } from "@/hooks/useAuth";
 import { invoke } from "@/hooks/use-tauri-ipc";
 import { getProject, setDeviceProjectPath } from "@/lib/api";
 import type { AppConfig, McpServerConfig } from "@/lib/types";
 
 export function useProjectSettings() {
   const { slug } = useParams<{ slug: string }>();
-  const { config, setConfig } = useAppStore();
-  const projectConfig = slug ? config.projects[slug] : undefined;
+  const auth = useAuth();
+  const deviceSettings = useAppStore((s) => s.deviceSettings);
+  const patchDeviceSettings = useAppStore((s) => s.patchDeviceSettings);
+  const projectConfig = slug ? deviceSettings.projects[slug] : undefined;
 
   const [repoPath, setRepoPath] = useState(projectConfig?.repoPath ?? "");
   const [branch, setBranch] = useState(projectConfig?.branch ?? "main");
@@ -186,7 +189,7 @@ export function useProjectSettings() {
       ...servers,
       forge: {
         type: "http",
-        url: `${config.coreUrl}/mcp`,
+        url: `${auth.coreUrl ?? ""}/mcp`,
         headers,
         enabled: existing?.enabled ?? true,
       },
@@ -248,15 +251,16 @@ export function useProjectSettings() {
 
     // Save local config
     try {
-      const updated: AppConfig = {
-        ...config,
-        projects: {
-          ...config.projects,
-          [slug]: { slug, repoPath, branch, instructions, mcpServers },
-        },
+      const nextProjects = {
+        ...deviceSettings.projects,
+        [slug]: { slug, repoPath, branch, instructions, mcpServers },
       };
-      setConfig(updated);
-      await invoke("save_config", { config: updated });
+      patchDeviceSettings({ projects: nextProjects });
+      // Round-trip through the disk snapshot so save_config carries the auth
+      // fields the Rust IPC expects. Auth fields are owned by auth-store and
+      // already on disk — re-reading is the simplest way to avoid drift.
+      const disk = (await invoke("get_config")) as AppConfig;
+      await invoke("save_config", { config: { ...disk, projects: nextProjects } });
       addLog("Save local config", "ok");
     } catch (err) {
       addLog("Save local config", "error", String(err));
@@ -265,10 +269,10 @@ export function useProjectSettings() {
     }
 
     // Sync repoPath to device record in Strapi
-    if (repoPath && config.deviceId) {
+    if (repoPath && auth.deviceId) {
       try {
-        await setDeviceProjectPath(config.deviceId, slug, repoPath);
-        addLog("Sync to server", "ok", `Device ${config.deviceId}`);
+        await setDeviceProjectPath(auth.deviceId, slug, repoPath);
+        addLog("Sync to server", "ok", `Device ${auth.deviceId}`);
       } catch (err) {
         addLog("Sync to server", "error", String(err));
       }

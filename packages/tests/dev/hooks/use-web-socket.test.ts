@@ -19,11 +19,38 @@ vi.mock("@/hooks/use-tauri-ipc", () => ({
 }));
 
 const mockSetWsConnected = vi.fn();
+const mockSetDeviceSettings = vi.fn();
 vi.mock("@/stores/app-store", () => ({
-  useAppStore: () => ({
-    config: { strapiUrl: "http://localhost:8080" },
-    wsConnected: false,
-    setWsConnected: mockSetWsConnected,
+  useAppStore: Object.assign(
+    (selector?: (s: any) => any) => {
+      const state = {
+        wsConnected: false,
+        setWsConnected: mockSetWsConnected,
+        setDeviceSettings: mockSetDeviceSettings,
+        deviceSettings: { projects: {} },
+      };
+      return selector ? selector(state) : state;
+    },
+    {
+      getState: () => ({
+        deviceSettings: { projects: {} },
+        setDeviceSettings: mockSetDeviceSettings,
+      }),
+    },
+  ),
+}));
+
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({
+    phase: "authenticated",
+    coreUrl: "http://localhost:8080",
+    deviceId: "dev-1",
+    token: "jwt-token",
+    login: vi.fn(),
+    logout: vi.fn(),
+    expire: vi.fn(),
+    setDeviceId: vi.fn(),
+    hydrateFromDisk: vi.fn(),
   }),
 }));
 
@@ -46,10 +73,9 @@ describe("useWebSocket", () => {
       expect(listeners.has("ws:error")).toBe(true);
     });
 
-    // Verify invoke was called with the correct WebSocket URL
-    expect(mockInvoke).toHaveBeenCalledWith("connect_ws", {
+    expect(mockInvoke).toHaveBeenCalledWith("connect_ws", expect.objectContaining({
       url: "ws://localhost:8080/ws",
-    });
+    }));
   });
 
   it("ws:connected sets connected=true via event flow", async () => {
@@ -65,7 +91,7 @@ describe("useWebSocket", () => {
     expect(mockSetWsConnected).toHaveBeenCalledWith(true);
   });
 
-  it("ws:error event fires and sets connected=false", async () => {
+  it("ws:error event is a no-op (does not flip connected state)", async () => {
     const { useWebSocket } = await import("@/hooks/use-web-socket");
     renderHook(() => useWebSocket());
 
@@ -75,7 +101,9 @@ describe("useWebSocket", () => {
       listeners.get("ws:error")!({ payload: "connection lost" });
     });
 
-    expect(mockSetWsConnected).toHaveBeenCalledWith(false);
+    // ws:error fires per failed reconnect attempt — by design it does NOT
+    // flip wsConnected (only ws:disconnected does).
+    expect(mockSetWsConnected).not.toHaveBeenCalledWith(false);
   });
 
   it("ws:disconnected event fires and sets connected=false", async () => {
@@ -104,20 +132,10 @@ describe("useWebSocket", () => {
     // Advance timers to allow the cleanup promise to resolve
     await vi.advanceTimersByTimeAsync(0);
 
-    for (const [event, fn] of unlistenFns) {
+    for (const [, fn] of unlistenFns) {
       expect(fn).toHaveBeenCalled();
     }
 
     vi.useRealTimers();
-  });
-
-  it("does nothing when strapiUrl is empty", async () => {
-    // This test verifies the early return guard
-    // The mock always provides a URL, so listeners and invoke will be set up.
-    // The source code checks `if (!config.strapiUrl) return;`
-    // We verify the hook doesn't throw with a valid URL instead.
-    const { useWebSocket } = await import("@/hooks/use-web-socket");
-    const { result } = renderHook(() => useWebSocket());
-    expect(result.current.wsConnected).toBe(false);
   });
 });

@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAppStore } from "@/stores/app-store";
+import { useAuth } from "@/hooks/useAuth";
+import { useAuthStore } from "@/stores/auth-store";
 import { invoke } from "@/hooks/use-tauri-ipc";
 import { setDeviceProjectsRoot } from "@/lib/api";
 import { syncAllProjectSkills } from "@/lib/skill-sync";
@@ -7,9 +9,13 @@ import { PageShell } from "@/components/ui/page-shell";
 import { FormInput } from "@/components/ui/form-input";
 import { useLogout } from "@/hooks/use-logout";
 import { useAutoUpdater } from "@/hooks/use-auto-updater";
+import type { AppConfig } from "@/lib/types";
 
 export function Settings() {
-  const { config, setConfig, wsConnected } = useAppStore();
+  const deviceSettings = useAppStore((s) => s.deviceSettings);
+  const patchDeviceSettings = useAppStore((s) => s.patchDeviceSettings);
+  const wsConnected = useAppStore((s) => s.wsConnected);
+  const auth = useAuth();
   const logout = useLogout();
   const updater = useAutoUpdater();
   const [appVersion, setAppVersion] = useState("");
@@ -25,7 +31,7 @@ export function Settings() {
     })();
   }, []);
 
-  const [projectsRoot, setProjectsRoot] = useState(config.projectsRoot ?? "");
+  const [projectsRoot, setProjectsRoot] = useState(deviceSettings.projectsRoot ?? "");
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "synced" | "error">("idle");
@@ -35,7 +41,7 @@ export function Settings() {
     setSyncStatus("syncing");
     setSyncMsg("");
     try {
-      const any = await syncAllProjectSkills(config);
+      const any = await syncAllProjectSkills(deviceSettings.projects);
       setSyncStatus("synced");
       setSyncMsg(any ? "Skills synced." : "All skills already up to date.");
       setTimeout(() => setSyncStatus("idle"), 3000);
@@ -54,14 +60,25 @@ export function Settings() {
     }
   }
 
+  function buildAppConfig(nextProjectsRoot: string | undefined): AppConfig {
+    return {
+      coreUrl: auth.coreUrl ?? "",
+      authToken: auth.token ?? "",
+      deviceId: auth.deviceId ?? "",
+      projects: deviceSettings.projects,
+      projectsRoot: nextProjectsRoot,
+      skillLibrary: deviceSettings.skillLibrary,
+      mcpLibrary: deviceSettings.mcpLibrary,
+    };
+  }
+
   async function handleSave() {
     const trimmed = projectsRoot.trim();
     if (!trimmed) {
       // Clear the setting — will use default ~/forge-projects
-      const updated = { ...config, projectsRoot: undefined };
-      setConfig(updated);
-      await invoke("save_config", { config: updated });
-      if (config.deviceId) setDeviceProjectsRoot(config.deviceId, null).catch(() => {});
+      patchDeviceSettings({ projectsRoot: undefined });
+      await invoke("save_config", { config: buildAppConfig(undefined) });
+      if (auth.deviceId) setDeviceProjectsRoot(auth.deviceId, null).catch(() => {});
       setStatus("saved");
       setTimeout(() => setStatus("idle"), 2000);
       return;
@@ -86,10 +103,9 @@ export function Settings() {
       return;
     }
 
-    const updated = { ...config, projectsRoot: trimmed };
-    setConfig(updated);
-    await invoke("save_config", { config: updated });
-    if (config.deviceId) setDeviceProjectsRoot(config.deviceId, trimmed).catch(() => {});
+    patchDeviceSettings({ projectsRoot: trimmed });
+    await invoke("save_config", { config: buildAppConfig(trimmed) });
+    if (auth.deviceId) setDeviceProjectsRoot(auth.deviceId, trimmed).catch(() => {});
     setStatus("saved");
     setTimeout(() => setStatus("idle"), 2000);
   }
@@ -101,7 +117,7 @@ export function Settings() {
           <div className="flex items-center gap-2">
             <span className={`h-2.5 w-2.5 rounded-full ${wsConnected ? "bg-green-500" : "bg-red-400"}`} />
             <span className="text-sm font-medium text-gray-700">
-              {wsConnected ? "Connected to" : "Disconnected from"} {config.coreUrl}
+              {wsConnected ? "Connected to" : "Disconnected from"} {auth.coreUrl ?? ""}
             </span>
           </div>
           <button
@@ -238,7 +254,8 @@ export function Settings() {
 }
 
 function PairDeviceCard() {
-  const { config, setConfig } = useAppStore();
+  const auth = useAuth();
+  const deviceSettings = useAppStore((s) => s.deviceSettings);
   const [code, setCode] = useState("");
   const [name, setName] = useState("Beta-" + (typeof navigator !== "undefined" ? navigator.platform.slice(0, 8) : "device"));
   const [status, setStatus] = useState<"idle" | "pairing" | "ok" | "error">("idle");
@@ -249,14 +266,25 @@ function PairDeviceCard() {
     setMsg("");
     try {
       const res = await invoke<{ deviceId: string; projectId?: string }>("pair_device", {
-        coreUrl: config.coreUrl,
+        coreUrl: auth.coreUrl ?? "",
         code: code.trim(),
         name: name.trim() || "device",
       });
       if (!res) throw new Error("pair_device returned no payload");
-      const updated = { ...config, deviceId: res.deviceId };
-      setConfig(updated);
-      await invoke("save_config", { config: updated });
+      useAuthStore.getState().setDeviceId(res.deviceId);
+      // Persist the new deviceId — save_config carries the full disk-shape
+      // AppConfig (auth fields + device settings).
+      await invoke("save_config", {
+        config: {
+          coreUrl: auth.coreUrl ?? "",
+          authToken: auth.token ?? "",
+          deviceId: res.deviceId,
+          projects: deviceSettings.projects,
+          projectsRoot: deviceSettings.projectsRoot,
+          skillLibrary: deviceSettings.skillLibrary,
+          mcpLibrary: deviceSettings.mcpLibrary,
+        },
+      });
       setStatus("ok");
       setMsg(`Paired as device ${res.deviceId}`);
       setCode("");

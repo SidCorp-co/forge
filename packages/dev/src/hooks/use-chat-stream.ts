@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from "react";
-import { useAppStore } from "@/stores/app-store";
+import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ChatMessageData, ToolCallData } from "@/lib/types";
 
@@ -7,7 +7,7 @@ export function useChatStream(
   sessionId: string | null,
   setMessages: React.Dispatch<React.SetStateAction<ChatMessageData[]>>,
 ) {
-  const config = useAppStore((s) => s.config);
+  const auth = useAuth();
   const queryClient = useQueryClient();
   const queryClientRef = useRef(queryClient);
   queryClientRef.current = queryClient;
@@ -29,7 +29,8 @@ export function useChatStream(
   }, []);
 
   useEffect(() => {
-    const wsUrl = config.coreUrl.replace(/^http/, "ws") + "/ws";
+    if (!auth.coreUrl) return;
+    const wsUrl = auth.coreUrl.replace(/^http/, "ws") + "/ws";
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

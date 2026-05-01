@@ -1,12 +1,11 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "@/stores/app-store";
+import { useAuth } from "@/hooks/useAuth";
 import { invoke } from "./use-tauri-ipc";
-import { registerDesktop, unregisterDesktop, registerDevice, relayAgentEvent, relayPromptBuilt, patchAgentSession, getIssue, getComments, getProject, getAgents, syncKnowledgeToStrapi, syncAgentFiles, postJobEvents, completeJob, failJob, type JobEventInput } from "@/lib/api";
-import { buildIssuePrompt, buildMultiIssuePrompt } from "@/lib/prompt-builders";
-import { buildAgentPrompt, buildAgentReindexPrompt, type AgentConfig } from "@/lib/agent-prompt";
-import { SessionTracker } from "@/lib/session-tracker";
+import { registerDesktop, unregisterDesktop, registerDevice, relayAgentEvent, patchAgentSession, getProject, getAgents, syncKnowledgeToStrapi, syncAgentFiles, postJobEvents, completeJob, type JobEventInput } from "@/lib/api";
 import { syncAllProjectSkills, syncProjectSkills } from "@/lib/skill-sync";
+import { SessionTracker } from "@/lib/session-tracker";
 import { useAgentCommandHandler } from "./use-agent-commands";
 import { useJobAssignedHandler } from "./use-job-handler";
 import { mapStreamChunkToJobEvents } from "@/lib/job-event-mapper";
@@ -15,7 +14,12 @@ import { mapStreamChunkToJobEvents } from "@/lib/job-event-mapper";
 const tracker = new SessionTracker();
 
 export function useWebSocket() {
-  const { config, setConfig, setWsConnected } = useAppStore();
+  const setWsConnected = useAppStore((s) => s.setWsConnected);
+  const setDeviceSettings = useAppStore((s) => s.setDeviceSettings);
+  const auth = useAuth();
+  const coreUrl = auth.coreUrl;
+  const deviceId = auth.deviceId;
+  const token = auth.token;
   const queryClient = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -24,13 +28,13 @@ export function useWebSocket() {
   const { handlerRef: handleJobAssignedRef, jobSessionsRef, cancelledJobsRef } = useJobAssignedHandler(tracker);
 
   useEffect(() => {
-    if (!config.coreUrl) return;
+    if (!coreUrl) return;
 
     // ISS-286: token never goes in the URL — it leaks via nginx access logs,
     // browser history, and Referer. Tauri Rust path attaches the device
     // token via Authorization header (see websocket/mod.rs); browser fallback
     // path uses the `forge.bearer.<jwt>` Sec-WebSocket-Protocol subprotocol.
-    const wsUrl = config.coreUrl.replace(/^http/, "ws") + "/ws";
+    const wsUrl = coreUrl.replace(/^http/, "ws") + "/ws";
 
     async function handleSkillsPush(data: any) {
       const skills: Array<{
@@ -88,11 +92,11 @@ export function useWebSocket() {
       }
 
       // Sync project paths from server before refreshing, so newly-initialized
-      // projects are in config.projects and receive the skill files.
+      // projects are in deviceSettings.projects and receive the skill files.
       try {
-        const deviceId = config.deviceId || "";
+        const did = deviceId || "";
         const hostname = await invoke<string>("get_hostname").catch(() => "Desktop");
-        const device = await registerDevice(deviceId, hostname as string);
+        const device = await registerDevice(did, hostname as string);
         if (device?.projectPaths) {
           const currentConfig = await invoke<any>("get_config");
           const merged = { ...currentConfig.projects };
@@ -241,8 +245,7 @@ export function useWebSocket() {
 
     function registerAsDesktop(ws: WebSocket) {
       if (ws.readyState === WebSocket.OPEN) {
-        const deviceId = config.deviceId || "";
-        ws.send(JSON.stringify({ type: "desktop:register", deviceId }));
+        ws.send(JSON.stringify({ type: "desktop:register", deviceId: deviceId || "" }));
       }
     }
 
@@ -258,8 +261,9 @@ export function useWebSocket() {
     // `ws:connected` listener above.
     async function registerAsRunner(ws: WebSocket) {
       if (ws.readyState !== WebSocket.OPEN) return;
-      const projectSlug = Object.keys(config.projects ?? {})[0];
-      const projects = config.projects as Record<string, { documentId?: string }> | undefined;
+      const settings = useAppStore.getState().deviceSettings;
+      const projectSlug = Object.keys(settings.projects ?? {})[0];
+      const projects = settings.projects as Record<string, { documentId?: string }> | undefined;
       const projectId = projectSlug ? projects?.[projectSlug]?.documentId : undefined;
       if (!projectId) return;
       let skills: string[] = [];
@@ -298,8 +302,8 @@ export function useWebSocket() {
         async function pingHeartbeat() {
           try {
             const tok = await invoke<string | null>("load_device_token");
-            if (!tok || !config.coreUrl) return;
-            await invoke("heartbeat", { coreUrl: config.coreUrl, deviceToken: tok });
+            if (!tok || !coreUrl) return;
+            await invoke("heartbeat", { coreUrl: coreUrl, deviceToken: tok });
           } catch {
             // ignore — keychain unavailable or device not yet paired
           }
@@ -322,17 +326,18 @@ export function useWebSocket() {
           setWsConnected(true);
           queryClient.invalidateQueries();
           startHeartbeat();
-          const deviceId = config.deviceId || "";
+          const did = deviceId || "";
           try {
-            await registerDesktop(deviceId);
+            await registerDesktop(did);
           } catch { /* ignore */ }
           // Register device entity with a hostname, sync projectsRoot + projectPaths from server
           try {
             const hostname = await invoke<string>("get_hostname").catch(() => "Desktop");
-            const device = await registerDevice(deviceId, hostname as string);
+            const device = await registerDevice(did, hostname as string);
+            const settings = useAppStore.getState().deviceSettings;
+            const updated = { ...settings };
             let needsSave = false;
-            const updated = { ...config };
-            if (device?.projectsRoot && !config.projectsRoot) {
+            if (device?.projectsRoot && !settings.projectsRoot) {
               updated.projectsRoot = device.projectsRoot;
               needsSave = true;
             }
@@ -352,24 +357,42 @@ export function useWebSocket() {
               if (needsSave) updated.projects = merged;
             }
             if (needsSave) {
-              await invoke("save_config", { config: updated });
+              setDeviceSettings(updated);
+              await invoke("save_config", {
+                config: {
+                  coreUrl: coreUrl ?? "",
+                  authToken: token ?? "",
+                  deviceId: did,
+                  projects: updated.projects,
+                  projectsRoot: updated.projectsRoot,
+                  skillLibrary: updated.skillLibrary,
+                  mcpLibrary: updated.mcpLibrary,
+                },
+              });
             }
           } catch { /* ignore */ }
           // Auto-sync skills from Strapi for all configured projects
           try {
-            const synced = await syncAllProjectSkills(config);
+            const settings = useAppStore.getState().deviceSettings;
+            const synced = await syncAllProjectSkills(settings.projects);
             if (synced) {
-              const updated = await invoke("get_config");
-              if (updated) setConfig(updated as any);
+              const updatedDisk = await invoke<any>("get_config");
+              if (updatedDisk) {
+                setDeviceSettings({
+                  projects: updatedDisk.projects ?? {},
+                  projectsRoot: updatedDisk.projectsRoot,
+                  skillLibrary: updatedDisk.skillLibrary,
+                  mcpLibrary: updatedDisk.mcpLibrary,
+                });
+              }
             }
           } catch { /* ignore */ }
         });
         const unlisten2 = await listen("ws:disconnected", async () => {
           setWsConnected(false);
           stopHeartbeat();
-          const deviceId = config.deviceId || "";
           try {
-            await unregisterDesktop(deviceId);
+            await unregisterDesktop(deviceId || "");
           } catch { /* ignore */ }
         });
         const unlisten3 = await listen<unknown>("ws:message", (event) => {
@@ -605,7 +628,7 @@ export function useWebSocket() {
         await invoke("connect_ws", {
           url: wsUrl,
           deviceToken,
-          deviceId: config.deviceId || undefined,
+          deviceId: deviceId || undefined,
         });
 
         return () => {
@@ -627,19 +650,17 @@ export function useWebSocket() {
         // via Sec-WebSocket-Protocol subprotocol (ISS-286) so the token
         // never appears in the URL / access logs / Referer.
         console.warn("[ws-debug] tauri listen() failed → browser fallback", err);
-        const protocols = config.authToken
-          ? [`forge.bearer.${config.authToken}`]
-          : undefined;
+        const protocols = token ? [`forge.bearer.${token}`] : undefined;
         const ws = protocols ? new WebSocket(wsUrl, protocols) : new WebSocket(wsUrl);
         wsRef.current = ws;
         ws.onopen = () => {
-          console.warn("[ws-debug] browser WS open — sending subscribe device:", config.deviceId);
+          console.warn("[ws-debug] browser WS open — sending subscribe device:", deviceId);
           setWsConnected(true);
           queryClient.invalidateQueries();
           registerAsDesktop(ws);
           // Subscribe to device room so dispatcher events reach us in browser fallback path
-          if (config.deviceId) {
-            ws.send(JSON.stringify({ type: "subscribe", room: `device:${config.deviceId}` }));
+          if (deviceId) {
+            ws.send(JSON.stringify({ type: "subscribe", room: `device:${deviceId}` }));
           }
           void registerAsRunner(ws);
         };
@@ -662,5 +683,5 @@ export function useWebSocket() {
       cancelled = true;
       cleanup?.();
     };
-  }, [config.coreUrl, config.deviceId, setWsConnected, queryClient]);
+  }, [coreUrl, deviceId, token, setWsConnected, setDeviceSettings, queryClient, handleAgentCommandRef, handleJobAssignedRef, jobSessionsRef, cancelledJobsRef]);
 }

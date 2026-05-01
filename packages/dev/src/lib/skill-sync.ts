@@ -208,10 +208,12 @@ async function emitConflicts(log: SkillSyncLog | null | undefined): Promise<void
   }
 }
 
-/** Sync skills for every project in config — call on app start. */
-export async function syncAllProjectSkills(config: AppConfig): Promise<boolean> {
+/** Sync skills for every project in the projects map — call on app start. */
+export async function syncAllProjectSkills(
+  projects: AppConfig["projects"] | undefined,
+): Promise<boolean> {
   let any = false;
-  for (const [slug, project] of Object.entries(config.projects ?? {})) {
+  for (const [slug, project] of Object.entries(projects ?? {})) {
     if (!project?.repoPath) continue;
     try {
       const synced = await syncProjectSkills(slug, project.repoPath);

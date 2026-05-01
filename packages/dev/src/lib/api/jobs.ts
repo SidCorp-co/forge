@@ -13,8 +13,9 @@ export interface JobEventInput {
 // that `request()` carries. Cache the token in module scope and reload on 401.
 let cachedDeviceToken: string | null = null;
 
-// Wipe the cached device token. configureApi() calls this so a token paired
-// with a previous coreUrl doesn't leak to a freshly-configured server.
+// Wipe the cached device token. The auth-store calls this on every login /
+// logout / hydrate transition so a token paired with a previous coreUrl
+// doesn't leak to a freshly-configured server.
 export function clearDeviceTokenCache() {
   cachedDeviceToken = null;
 }

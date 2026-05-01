@@ -24,7 +24,7 @@ beforeEach(() => {
 
 function makeCtx(projects: Record<string, { repoPath?: string; mcpServers?: Record<string, unknown> }>): JobHandlerCtx & { tracker: { start: ReturnType<typeof vi.fn> } } {
   return {
-    config: { projects },
+    projects: projects as JobHandlerCtx["projects"],
     tracker: { start: vi.fn() },
     jobSessions: new Set<string>(),
   };
