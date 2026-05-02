@@ -113,4 +113,22 @@ describe('@forge/core MCP server', () => {
       await server.close();
     }
   });
+
+  it('exposes the Phase 1 diagnostic toolset (ISS-7)', async () => {
+    const { client, server } = await connectClient();
+    try {
+      const res = await client.listTools();
+      const names = new Set(res.tools.map((t) => t.name));
+      expect(names.has('forge_jobs.list')).toBe(true);
+      expect(names.has('forge_jobs.get')).toBe(true);
+      expect(names.has('forge_jobs.events')).toBe(true);
+      expect(names.has('forge_agent_sessions.list')).toBe(true);
+      expect(names.has('forge_agent_sessions.get')).toBe(true);
+      expect(names.has('forge_projects.list')).toBe(true);
+      expect(names.has('forge_health')).toBe(true);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
 });
