@@ -1,57 +1,42 @@
-import { clearDeviceTokenCache } from "./jobs";
+import { useAuthStore } from "@/stores/auth-store";
 
-// `baseUrl` starts empty so any request fired before `configureApi` runs
-// (i.e. before useLocalConfig hydrates from disk + keychain) fails loudly
-// instead of silently hitting localhost:8080 — the v0.1.25 logout-on-reload
-// regression was caused by an operator's local dev core at that address
-// returning 401 INVALID_TOKEN to a pre-hydrate query and triggering the
-// auth-expired wipe. An empty baseUrl makes the same race observable
-// during dev (no fetch goes out) instead of dangerous in prod.
-let baseUrl = "";
-let authToken = "";
+// `request()` and the URL helpers below read coreUrl + token from the auth
+// state machine — there is intentionally no module-level mutable auth state
+// here. The pre-v0.1.28 design held `let baseUrl, authToken` at module scope
+// and depended on `useLocalConfig` calling `configureApi()` before any
+// component subscribed to the store could fire a request. A reorder in that
+// hook silently shipped the v0.1.25 logout-on-reload race; the state machine
+// makes the reorder impossible by removing the second source of truth.
 
-export function configureApi(url: string, token: string) {
-  baseUrl = url.replace(/\/$/, "");
-  authToken = token;
-  clearProjectIdCache();
-  // The cached device token is bound to the previous coreUrl; wipe it so we
-  // don't send the old core's credentials to a newly-configured server.
-  clearDeviceTokenCache();
+function snapshotAuth(): { coreUrl: string | null; token: string | null; phase: string } {
+  const s = useAuthStore.getState();
+  if (s.phase === "authenticated") return { coreUrl: s.coreUrl, token: s.token, phase: s.phase };
+  if (s.phase === "expired") return { coreUrl: s.coreUrl, token: null, phase: s.phase };
+  if (s.phase === "unauthenticated") return { coreUrl: s.coreUrl, token: null, phase: s.phase };
+  return { coreUrl: null, token: null, phase: s.phase };
 }
 
 /** Resolve a Strapi media URL — returns absolute URL for both relative and absolute inputs. */
 export function strapiMediaUrl(url: string): string {
   if (!url) return url;
-  if (url.startsWith('http://') || url.startsWith('https://')) return url;
-  return `${baseUrl}${url}`;
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  const { coreUrl } = snapshotAuth();
+  return `${coreUrl ?? ""}${url}`;
 }
 
-/**
- * Listener installed by app-store on boot. Fires once per request that comes
- * back 401 with `INVALID_TOKEN` / `UNAUTHENTICATED` — the store clears its
- * authToken and routes to /login. Decoupled via a callback so client.ts
- * doesn't have to import the store (avoids the React → fetch cycle).
- */
-let onAuthExpired: (() => void) | null = null;
-export function setAuthExpiredHandler(fn: (() => void) | null): void {
-  onAuthExpired = fn;
-}
-
-const AUTH_FAIL_CODES = new Set(['INVALID_TOKEN', 'UNAUTHENTICATED']);
+const AUTH_FAIL_CODES = new Set(["INVALID_TOKEN", "UNAUTHENTICATED"]);
 
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  if (!baseUrl) {
-    // Pre-hydrate request — refuse rather than silently fall back to a
-    // hostname the renderer never knew about. Callers gate on configReady
-    // (RequireAuth, query enabled flags); this throw is a safety net for
-    // anything that slips through.
-    throw new Error('API not configured: request before configureApi()');
+  const { coreUrl, token, phase } = snapshotAuth();
+  if (phase !== "authenticated" || !coreUrl || !token) {
+    throw new Error(`API not configured: request in phase ${phase}`);
   }
-  const res = await fetch(`${baseUrl}/api${path}`, {
+  const base = coreUrl.replace(/\/$/, "");
+  const res = await fetch(`${base}/api${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      Authorization: `Bearer ${token}`,
       ...options?.headers,
     },
   });
@@ -64,7 +49,7 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
       let message = res.statusText;
       try {
         const body = await res.clone().json();
-        if (body && typeof body === 'object') {
+        if (body && typeof body === "object") {
           code = (body as { code?: string }).code;
           message = (body as { message?: string }).message ?? message;
         }
@@ -73,9 +58,10 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
       }
       if (!code || AUTH_FAIL_CODES.has(code)) {
         // Schedule on next tick so the caller still observes the throw before
-        // the page navigates away. The store handler is responsible for
-        // clearing local state + redirecting.
-        if (onAuthExpired) queueMicrotask(onAuthExpired);
+        // the auth state flips to expired and any subscribed component
+        // navigates away. The store's `expire()` action drives the keychain
+        // wipe + Sentry breadcrumb; client.ts no longer holds a callback.
+        queueMicrotask(() => useAuthStore.getState().expire());
       }
       throw new Error(`API error: 401 ${message}`);
     }
@@ -85,13 +71,25 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
   return json.data ?? json;
 }
 
-/** Raw fetch against baseUrl (bypasses /api prefix and JSON content-type). Used by upload/knowledge. */
-export function getBaseUrl() {
-  return baseUrl;
+/**
+ * Compat shim — returns the current API origin from the auth state machine.
+ * Used by `lib/api/jobs.ts` (device-token fetch) and `lib/api/misc.ts` (raw
+ * upload + knowledge ingest). These callsites run inside `<RequireAuth>` so
+ * the read normally lands in `authenticated`. Returns the cached coreUrl in
+ * `expired` / `unauthenticated` so a background heartbeat doesn't crash on
+ * a transient state flip; falls back to "" in `hydrating`.
+ */
+export function getBaseUrl(): string {
+  const s = useAuthStore.getState();
+  if (s.phase === "authenticated" || s.phase === "expired") return s.coreUrl;
+  if (s.phase === "unauthenticated") return s.coreUrl ?? "";
+  return "";
 }
 
-export function getAuthToken() {
-  return authToken;
+/** Compat shim — returns the user JWT only when phase === 'authenticated'. */
+export function getAuthToken(): string {
+  const s = useAuthStore.getState();
+  return s.phase === "authenticated" ? s.token : "";
 }
 
 // --- Project slug → id resolver -------------------------------------------------
@@ -102,7 +100,7 @@ export function getAuthToken() {
 let projectIdCache: Map<string, string> | null = null;
 
 async function fetchProjectIndex(): Promise<Map<string, string>> {
-  const rows = await request<Array<{ id: string; slug: string }>>('/projects');
+  const rows = await request<Array<{ id: string; slug: string }>>("/projects");
   return new Map(rows.map((p) => [p.slug, p.id]));
 }
 

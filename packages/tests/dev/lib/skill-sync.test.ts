@@ -197,17 +197,12 @@ describe('syncAllProjectSkills', () => {
       return Promise.resolve();
     });
 
-    const config = {
-      coreUrl: '',
-      authToken: '',
-      deviceId: '',
-      projects: {
-        a: { slug: 'a', repoPath: '/r/a' },
-        b: { slug: 'b', repoPath: '/r/b' },
-      },
-    } as unknown as AppConfig;
+    const projects: AppConfig['projects'] = {
+      a: { slug: 'a', repoPath: '/r/a' },
+      b: { slug: 'b', repoPath: '/r/b' },
+    };
 
-    const synced = await syncAllProjectSkills(config);
+    const synced = await syncAllProjectSkills(projects);
     expect(synced).toBe(true);
     expect(requestMock).toHaveBeenCalledTimes(2);
   });
@@ -215,15 +210,10 @@ describe('syncAllProjectSkills', () => {
   it('skips projects without a repoPath', async () => {
     requestMock.mockResolvedValue([]);
     invokeMock.mockResolvedValue({});
-    const config = {
-      coreUrl: '',
-      authToken: '',
-      deviceId: '',
-      projects: {
-        no: { slug: 'no' }, // no repoPath
-      },
-    } as unknown as AppConfig;
-    const synced = await syncAllProjectSkills(config);
+    const projects: AppConfig['projects'] = {
+      no: { slug: 'no' }, // no repoPath
+    };
+    const synced = await syncAllProjectSkills(projects);
     expect(synced).toBe(false);
     expect(requestMock).not.toHaveBeenCalled();
   });

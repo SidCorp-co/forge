@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { useAppStore } from "@/stores/app-store";
-import { configureApi } from "@/lib/api";
-import { invoke } from "@/hooks/use-tauri-ipc";
+import { useAuth } from "@/hooks/useAuth";
 import { FormInput } from "@/components/ui/form-input";
 import {
   cancelInFlight,
@@ -11,28 +9,25 @@ import {
   type OAuthProvider,
 } from "@/lib/desktop-oauth";
 import { clearApiCache, resolveApiBase } from "@/lib/api-discovery";
-import type { AppConfig } from "@/lib/types";
 
 export function LoginPage() {
-  const { config, setConfig } = useAppStore();
-  const configReady = useAppStore((s) => s.configReady);
+  const auth = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/";
 
-  const [coreUrl, setStrapiUrl] = useState(config.coreUrl || "http://localhost:8080");
-  // useLocalConfig() loads the disk config asynchronously after this
-  // component mounts, so on first render `config.coreUrl` is empty and the
-  // useState initializer above falls back to localhost. Sync once when the
-  // real value arrives — guarded by `synced` so we don't clobber any URL
-  // the user has already started typing.
+  const [coreUrl, setStrapiUrl] = useState(auth.coreUrl || "http://localhost:8080");
+  // The auth state machine hydrates async on mount, so on first render
+  // `auth.coreUrl` is null and the useState initializer falls back to
+  // localhost. Sync once when the real value arrives — guarded by `synced`
+  // so we don't clobber any URL the user has already started typing.
   const synced = useRef(false);
   useEffect(() => {
-    if (!synced.current && config.coreUrl) {
+    if (!synced.current && auth.coreUrl) {
       synced.current = true;
-      setStrapiUrl(config.coreUrl);
+      setStrapiUrl(auth.coreUrl);
     }
-  }, [config.coreUrl]);
+  }, [auth.coreUrl]);
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -40,18 +35,13 @@ export function LoginPage() {
   const [providers, setProviders] = useState<OAuthProvider[]>([]);
   const [oauthLoading, setOauthLoading] = useState<string | null>(null);
 
-  // Redirect if already logged in. Calling `navigate()` inside the render
-  // body is unsupported in React Router 6+; do it from an effect so React
-  // schedules the navigation correctly. Also gate on `configReady` so the
-  // very first render (before the keychain hydrate completes) does not
-  // mistake the empty initial token for a logged-out session.
+  // Redirect if already logged in. Calling navigate() in the render body is
+  // unsupported in React Router 6+; do it from an effect.
   useEffect(() => {
-    if (!configReady) return;
-    if (config.authToken) {
-      console.warn("[auth-trace] LoginPage redirect-back to", from);
+    if (auth.phase === "authenticated") {
       navigate(from, { replace: true });
     }
-  }, [configReady, config.authToken, from, navigate]);
+  }, [auth.phase, from, navigate]);
 
   // Refresh provider list whenever the server URL changes. Discovery and
   // provider fetch happen inside fetchEnabledProviders → resolveApiBase →
@@ -70,11 +60,7 @@ export function LoginPage() {
     });
     return () => {
       cancelled = true;
-      // Drop any pending OAuth flow when the user changes the server URL —
-      // the verifier is bound to the URL the start request was sent to.
       cancelInFlight();
-      // Drop the discovery cache so the next probe picks up the new URL
-      // (and any operator-side env var change in between).
       clearApiCache();
     };
   }, [coreUrl]);
@@ -85,26 +71,9 @@ export function LoginPage() {
     try {
       const userUrl = coreUrl.replace(/\/+$/, "");
       const { token, user } = await signInWithProvider({ coreUrl: userUrl, provider: providerId });
-      // Persist the resolved API origin (not the user-typed URL) — post-login
-      // surfaces (WS, heartbeat, REST client) read config.coreUrl directly and
-      // need the API host. Discovery already happened inside signInWithProvider
-      // and the result is cached, so this is a free lookup.
       const apiUrl = await resolveApiBase(userUrl);
-      const updated: AppConfig = {
-        coreUrl: apiUrl,
-        authToken: token,
-        projects: config.projects,
-        deviceId: config.deviceId || "",
-      };
-      setConfig(updated);
-      configureApi(apiUrl, token);
-      // Stash the JWT in the OS keychain so it survives reload —
-      // config.json deliberately drops auth_token (ADR 0004).
-      await invoke("store_user_jwt", { token });
-      await invoke("save_config", { config: updated });
+      await auth.login({ coreUrl: apiUrl, token, deviceId: auth.deviceId ?? "" });
       navigate(from, { replace: true });
-      // user.email is intentionally not persisted here — the next call to
-      // /me will hydrate it; storing two sources of truth invites drift.
       void user;
     } catch (err) {
       setError(err instanceof Error ? err.message : `Sign-in with ${providerId} failed`);
@@ -119,10 +88,6 @@ export function LoginPage() {
     setLoading(true);
     try {
       const userUrl = coreUrl.replace(/\/$/, "");
-      // Resolve the actual API origin via /.well-known/forge-config.json.
-      // Same helper used by the OAuth flow — single-origin deploys keep
-      // working with zero configuration; subdomain-split deploys discover
-      // the API host instead of forcing the user to know the difference.
       const url = await resolveApiBase(userUrl);
       // packages/core uses { email, password } and returns { token }; legacy
       // Strapi used { identifier, password } and returned { jwt }. Send both
@@ -142,18 +107,7 @@ export function LoginPage() {
         setError("Auth response missing token");
         return;
       }
-      const updated: AppConfig = {
-        coreUrl: url,
-        authToken: token,
-        projects: config.projects,
-        deviceId: config.deviceId || "",
-      };
-      setConfig(updated);
-      configureApi(url, token);
-      // Stash the JWT in the OS keychain so it survives reload —
-      // config.json deliberately drops auth_token (ADR 0004).
-      await invoke("store_user_jwt", { token });
-      await invoke("save_config", { config: updated });
+      await auth.login({ coreUrl: url, token, deviceId: auth.deviceId ?? "" });
       navigate(from, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? `Cannot connect to ${coreUrl}: ${err.message}` : `Cannot connect to ${coreUrl}`);
@@ -165,7 +119,7 @@ export function LoginPage() {
   // Splash until the keychain hydrate finishes, or while the redirect-back
   // effect is about to fire. Showing the form during this window would let
   // a logged-in user briefly see the login screen on every reload.
-  if (!configReady || config.authToken) {
+  if (auth.phase === "hydrating" || auth.phase === "authenticated") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-xs font-mono uppercase tracking-widest text-gray-400">

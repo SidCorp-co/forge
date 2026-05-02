@@ -22,7 +22,7 @@ export function useAgentChat() {
   const taskDocId = searchParams.get("taskId");
   const issueDocId = searchParams.get("issueId");
   const issueIdsParam = searchParams.get("issueIds");
-  const config = useAppStore((s) => s.config);
+  const deviceSettings = useAppStore((s) => s.deviceSettings);
   const agentUsage = useAppStore((s) => s.agentUsage);
   const updateAgentUsageFromStored = useAppStore((s) => s.updateAgentUsageFromStored);
   const resetAgentUsage = useAppStore((s) => s.resetAgentUsage);
@@ -38,7 +38,7 @@ export function useAgentChat() {
     ? issueIdsParam.split(",").map((id) => issues?.find((i) => i.documentId === id)).filter(Boolean) as Issue[]
     : [];
   const activeItem = task || issue || (multiIssues.length > 0 ? multiIssues[0] : null);
-  const projectConfig = slug ? config.projects[slug] : undefined;
+  const projectConfig = slug ? deviceSettings.projects[slug] : undefined;
   const hasRepoPath = !!projectConfig?.repoPath;
 
   const [messages, setMessages] = useState<AgentMessage[]>([]);

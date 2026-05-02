@@ -1,10 +1,10 @@
 import { useNavigate } from "react-router-dom";
-import { clearAuthState } from "@/lib/clear-auth";
+import { useAuthStore } from "@/stores/auth-store";
 
 export function useLogout() {
   const navigate = useNavigate();
   return async () => {
-    await clearAuthState({ unregisterDesktop: true });
+    await useAuthStore.getState().logout({ unregisterDesktop: true });
     navigate("/login", { replace: true });
   };
 }

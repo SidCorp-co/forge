@@ -12,8 +12,8 @@ import type { KnowledgeIndex } from "@/lib/types";
 
 export function KnowledgePage() {
   const { slug } = useParams<{ slug: string }>();
-  const { config } = useAppStore();
-  const projectConfig = slug ? config.projects[slug] : undefined;
+  const deviceSettings = useAppStore((s) => s.deviceSettings);
+  const projectConfig = slug ? deviceSettings.projects[slug] : undefined;
   const repoPath = projectConfig?.repoPath ?? "";
 
   const { data: project } = useQuery({

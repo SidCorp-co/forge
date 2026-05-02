@@ -22,8 +22,8 @@ export function useAgentRun({ agent, slug }: UseAgentRunOptions): AgentRunState 
   const [runLog, setRunLog] = useState<string[]>([]);
   const runSessionRef = useRef<string | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
-  const { config } = useAppStore();
-  const projectConfig = config.projects?.[slug];
+  const deviceSettings = useAppStore((s) => s.deviceSettings);
+  const projectConfig = deviceSettings.projects?.[slug];
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;

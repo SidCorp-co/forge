@@ -10,10 +10,12 @@ import type { AppConfig, McpServerConfig } from "@/lib/types";
 
 export function McpPage() {
   const { slug } = useParams<{ slug: string }>();
-  const { config, setConfig } = useAppStore();
-  const projectConfig = slug ? config.projects[slug] : undefined;
+  const deviceSettings = useAppStore((s) => s.deviceSettings);
+  const setDeviceSettings = useAppStore((s) => s.setDeviceSettings);
+  const patchDeviceSettings = useAppStore((s) => s.patchDeviceSettings);
+  const projectConfig = slug ? deviceSettings.projects[slug] : undefined;
   const mcpServers = projectConfig?.mcpServers ?? {};
-  const mcpLibrary = config.mcpLibrary ?? {};
+  const mcpLibrary = deviceSettings.mcpLibrary ?? {};
   const enabledMcpServers = projectConfig?.enabledMcpServers ?? [];
   const [projectApiKey, setProjectApiKey] = useState<string | undefined>();
   const [sentryProject, setSentryProject] = useState<string | undefined>();
@@ -29,21 +31,32 @@ export function McpPage() {
   const [showPaste, setShowPaste] = useState(false);
 
   async function reloadConfig() {
-    const updated = await invoke("get_config") as AppConfig;
-    setConfig(updated);
+    // Disk shape carries auth fields — but the renderer's deviceSettings
+    // slice only mirrors the device-side fields. Refresh those from disk.
+    const updated = (await invoke("get_config")) as AppConfig;
+    setDeviceSettings({
+      projects: updated.projects ?? {},
+      projectsRoot: updated.projectsRoot,
+      skillLibrary: updated.skillLibrary,
+      mcpLibrary: updated.mcpLibrary,
+    });
   }
 
   async function handleChange(servers: Record<string, McpServerConfig>) {
     if (!slug || !projectConfig) return;
-    const updated: AppConfig = {
-      ...config,
-      projects: {
-        ...config.projects,
-        [slug]: { ...projectConfig, mcpServers: servers },
-      },
+    const nextProjects = {
+      ...deviceSettings.projects,
+      [slug]: { ...projectConfig, mcpServers: servers },
     };
-    setConfig(updated);
-    await invoke("save_config", { config: updated });
+    patchDeviceSettings({ projects: nextProjects });
+    // Round-trip via disk so save_config carries the full shape (Rust IPC
+    // contract). Auth fields come from the latest disk snapshot — do NOT
+    // reach into auth-store here; this code path runs inside <RequireAuth>
+    // so the disk copy is always current.
+    const disk = (await invoke("get_config")) as AppConfig;
+    await invoke("save_config", {
+      config: { ...disk, projects: nextProjects },
+    });
   }
 
   async function handleLibraryToggle(name: string, enabled: boolean) {

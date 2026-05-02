@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { useAppStore } from "@/stores/app-store";
+import { useAuthStore, type AuthState } from "@/stores/auth-store";
 import { invoke } from "./use-tauri-ipc";
 import { relayAgentEvent, relayPromptBuilt, getIssue, getProject, getAgents, setDeviceProjectPath } from "@/lib/api";
 import { buildIssuePrompt, buildMultiIssuePrompt } from "@/lib/prompt-builders";
@@ -82,14 +83,21 @@ async function ensureRepoPath(
     }
   }
 
-  // Persist to local desktop config
+  // Persist to local desktop config — read the full AppConfig from disk
+  // (Rust serde requires the full shape) then update the projects map. The
+  // snapshot in configRef holds renderer-side device settings only; the
+  // auth fields (coreUrl/authToken/deviceId) live on disk.
   if (configRef && projectSlug) {
     try {
-      const cfg = configRef.current;
-      const pc = cfg.projects[projectSlug] || { slug: projectSlug, repoPath: "" };
+      const diskCfg = (await invoke<any>("get_config")) ?? {};
+      const projects = { ...(diskCfg.projects ?? {}) };
+      const pc = projects[projectSlug] || { slug: projectSlug, repoPath: "" };
       pc.repoPath = dir;
-      cfg.projects[projectSlug] = pc;
-      await invoke("save_config", { config: cfg });
+      projects[projectSlug] = pc;
+      await invoke("save_config", { config: { ...diskCfg, projects } });
+      useAppStore.getState().patchDeviceSettings({ projects });
+      const cfg = configRef.current;
+      cfg.projects = projects;
       await emitInitLog(slug, "Save local config", "ok");
     } catch (err) {
       await emitInitLog(slug, "Save local config", "error", String(err));
@@ -127,9 +135,29 @@ async function buildSetupPreamble(projectSlug: string): Promise<string> {
  * without recreating the WebSocket connection.
  */
 export function useAgentCommandHandler(tracker: SessionTracker) {
-  const { config } = useAppStore();
-  const configRef = useRef(config);
-  configRef.current = config;
+  const deviceSettings = useAppStore((s) => s.deviceSettings);
+  // Selector: subscribe to deviceId only — `useAuthStore()` without a
+  // selector re-renders on every transition (including token rotations) and
+  // defeats the point of the configRef pattern below.
+  const deviceId = useAuthStore((s: AuthState) =>
+    s.phase === "authenticated" || s.phase === "expired"
+      ? s.deviceId
+      : s.phase === "unauthenticated"
+        ? s.deviceId ?? ""
+        : "",
+  );
+  // Mirror the legacy `configRef` shape so the existing string-keyed lookups
+  // inside `ensureRepoPath` (`configRef.current.projects[slug]`,
+  // `configRef.current.deviceId`, `configRef.current.projectsRoot`) keep
+  // working. We rebuild the snapshot from the auth + device-settings stores
+  // on every render so handlers always see fresh values.
+  const snapshot = {
+    projects: deviceSettings.projects ?? {},
+    projectsRoot: deviceSettings.projectsRoot,
+    deviceId,
+  };
+  const configRef = useRef(snapshot);
+  configRef.current = snapshot;
 
   const handlerRef = useRef(async (_event: string, _data: any) => {});
 

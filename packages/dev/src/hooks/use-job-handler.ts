@@ -3,7 +3,7 @@ import { useAppStore } from "@/stores/app-store";
 import { invoke, isTauri } from "./use-tauri-ipc";
 import { failJob, resolveProjectSlug } from "@/lib/api";
 import type { SessionTracker } from "@/lib/session-tracker";
-import type { AppConfig, JobAssignedPayload } from "@/lib/types";
+import type { JobAssignedPayload, ProjectConfig } from "@/lib/types";
 
 const SUPPORTED_TYPES = ["plan", "code", "review", "fix", "triage"] as const;
 
@@ -16,7 +16,7 @@ export function buildJobPrompt(type: string, issueId: string | undefined | null)
 }
 
 export interface JobHandlerCtx {
-  config: Pick<AppConfig, "projects">;
+  projects: Record<string, ProjectConfig>;
   tracker: Pick<SessionTracker, "start">;
   jobSessions: Set<string>;
 }
@@ -59,7 +59,7 @@ export async function handleJobAssigned(
     return;
   }
 
-  const pc = ctx.config.projects?.[slug];
+  const pc = ctx.projects?.[slug];
   if (!pc?.repoPath) {
     try { await failJob(jobId, `no repoPath configured for project ${slug}`); } catch { /* ignore */ }
     return;
@@ -109,9 +109,9 @@ export interface JobAssignedHandlerRefs {
  * the eventual agent:complete reports the right exitCode (-1 = cancelled).
  */
 export function useJobAssignedHandler(tracker: SessionTracker): JobAssignedHandlerRefs {
-  const { config } = useAppStore();
-  const configRef = useRef(config);
-  configRef.current = config;
+  const projects = useAppStore((s) => s.deviceSettings.projects);
+  const projectsRef = useRef(projects);
+  projectsRef.current = projects;
 
   const jobSessionsRef = useRef(new Set<string>());
   const cancelledJobsRef = useRef(new Set<string>());
@@ -119,7 +119,7 @@ export function useJobAssignedHandler(tracker: SessionTracker): JobAssignedHandl
 
   handlerRef.current = (data: JobAssignedPayload) =>
     handleJobAssigned(data, {
-      config: configRef.current,
+      projects: projectsRef.current,
       tracker,
       jobSessions: jobSessionsRef.current,
     });

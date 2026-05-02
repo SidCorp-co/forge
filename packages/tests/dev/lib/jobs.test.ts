@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { configureApi } from "@/lib/api";
 import { postJobEvents, completeJob, failJob, _resetDeviceTokenCacheForTest } from "@/lib/api/jobs";
+import { useAuthStore, type AuthState } from "@/stores/auth-store";
 
 const mockInvoke = vi.fn();
 vi.mock("@/hooks/use-tauri-ipc", () => ({
@@ -14,7 +14,14 @@ beforeEach(() => {
   mockInvoke.mockReset();
   mockFetch.mockReset();
   _resetDeviceTokenCacheForTest();
-  configureApi("http://localhost:8080", "user-token");
+  // jobs.ts reads coreUrl via getBaseUrl() → auth store. Drive the store
+  // into authenticated so getBaseUrl returns the test origin.
+  useAuthStore.setState({
+    phase: "authenticated",
+    coreUrl: "http://localhost:8080",
+    token: "user-token",
+    deviceId: "dev-1",
+  } as AuthState as ReturnType<typeof useAuthStore.getState>);
 });
 
 describe("api/jobs", () => {

@@ -1,4 +1,4 @@
-export { configureApi, strapiMediaUrl } from "./client";
+export { strapiMediaUrl } from "./client";
 export { getProjects, getProject, updateProject } from "./projects";
 export { getAllIssues, getIssues, getIssue, createIssue, updateIssue, enrichIssue, getIssueCostSummary } from "./issues";
 export type { IssueCostSummary } from "./issues";
