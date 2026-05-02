@@ -1,0 +1,39 @@
+name: Setup workspace
+description: |
+  Checkout-aware composite for forge's pnpm workspace. Handles pnpm + Node
+  setup, frozen-lockfile install, and the @forge/observability prebuild that
+  every consumer needs (Node 22 won't load .ts under node_modules so dist/
+  must exist before vitest/tsc/build commands resolve it).
+
+  Use this in every job that touches a workspace package. Do NOT add per-job
+  pnpm/setup-node/install steps — drift between jobs is exactly what this
+  composite exists to prevent.
+
+inputs:
+  prebuild-observability:
+    description: |
+      Set to "false" to skip the @forge/observability dist build. Default
+      "true" matches what every package consumer needs. Skip only for jobs
+      that don't import @forge/observability (e.g. docs).
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v4
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+        cache: pnpm
+        cache-dependency-path: pnpm-lock.yaml
+
+    - name: Install workspace dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile
+
+    - name: Prebuild emit-only workspace deps
+      if: inputs.prebuild-observability == 'true'
+      shell: bash
+      run: pnpm --filter @forge/observability build
