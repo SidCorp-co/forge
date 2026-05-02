@@ -1,6 +1,6 @@
 import { and, eq, ne, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, skillRegistrations, skills } from '../db/schema.js';
+import { type IssueStatus, type SkillTarget, skillRegistrations, skills } from '../db/schema.js';
 import { hooks } from '../pipeline/hooks.js';
 
 /**
@@ -17,9 +17,35 @@ export type SkillRow = {
   projectId: string | null;
   prompt: string;
   tools: unknown;
+  manifest: unknown;
   version: number;
   contentHash: string;
+  skillMd: string | null;
+  target: SkillTarget | null;
+  files: unknown;
+  changelog: unknown;
+  localGuide: string | null;
+  evalScore: number | null;
 };
+
+const skillProjection = {
+  id: skills.id,
+  name: skills.name,
+  description: skills.description,
+  scope: skills.scope,
+  projectId: skills.projectId,
+  prompt: skills.prompt,
+  tools: skills.tools,
+  manifest: skills.manifest,
+  version: skills.version,
+  contentHash: skills.contentHash,
+  skillMd: skills.skillMd,
+  target: skills.target,
+  files: skills.files,
+  changelog: skills.changelog,
+  localGuide: skills.localGuide,
+  evalScore: skills.evalScore,
+} as const;
 
 /**
  * List all skills visible to a project: its own project-scoped skills plus
@@ -28,17 +54,7 @@ export type SkillRow = {
  */
 export async function listProjectSkills(projectId: string): Promise<SkillRow[]> {
   return db
-    .select({
-      id: skills.id,
-      name: skills.name,
-      description: skills.description,
-      scope: skills.scope,
-      projectId: skills.projectId,
-      prompt: skills.prompt,
-      tools: skills.tools,
-      version: skills.version,
-      contentHash: skills.contentHash,
-    })
+    .select(skillProjection)
     .from(skills)
     .where(or(eq(skills.scope, 'global'), eq(skills.projectId, projectId)))
     .orderBy(skills.scope, skills.name) as Promise<SkillRow[]>;
@@ -55,17 +71,7 @@ export async function getSkillForProject(
   projectId: string,
 ): Promise<SkillRow | null> {
   const [row] = (await db
-    .select({
-      id: skills.id,
-      name: skills.name,
-      description: skills.description,
-      scope: skills.scope,
-      projectId: skills.projectId,
-      prompt: skills.prompt,
-      tools: skills.tools,
-      version: skills.version,
-      contentHash: skills.contentHash,
-    })
+    .select(skillProjection)
     .from(skills)
     .where(eq(skills.id, skillId))
     .limit(1)) as SkillRow[];

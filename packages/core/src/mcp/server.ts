@@ -1,10 +1,21 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import pkg from '../../package.json' with { type: 'json' };
+import {
+  forgeAgentSessionsGetTool,
+  forgeAgentSessionsListTool,
+} from './tools/forge-agent-sessions.js';
 import { forgeCommentsTool } from './tools/forge-comments.js';
 import { forgeConfigTool } from './tools/forge-config.js';
+import { forgeHealthTool } from './tools/forge-health.js';
 import { forgeIssuesTool } from './tools/forge-issues.js';
+import {
+  forgeJobsEventsTool,
+  forgeJobsGetTool,
+  forgeJobsListTool,
+} from './tools/forge-jobs.js';
 import { forgeMemorySearchTool } from './tools/forge-memory.js';
+import { forgeProjectsListTool } from './tools/forge-projects.js';
 import {
   forgeSkillsGetTool,
   forgeSkillsListTool,
@@ -26,6 +37,14 @@ import type { McpContext } from './tools/lib.js';
  *  - `forge_issues` / `forge_comments` / `forge_config` / `forge_tasks` —
  *    action-based parity with the legacy Strapi MCP so existing `/forge-*`
  *    skills work unchanged (ISS-293).
+ *  - `forge_jobs.list` / `.get` / `.events` — read-only diagnostic surfaces
+ *    over jobs + job_events (ISS-7).
+ *  - `forge_agent_sessions.list` / `.get` — read-only access to
+ *    `agent_sessions` rows (ISS-7).
+ *  - `forge_projects.list` — enumerate projects visible to the device owner
+ *    (ISS-7, pre-req for ISS-9).
+ *  - `forge_health` — server snapshot: db/queue/ws + last seed + active jobs
+ *    (ISS-7). Device-token only.
  */
 export function createMcpServer(ctx: McpContext): Server {
   const { device } = ctx;
@@ -39,6 +58,13 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeCommentsTool(ctx),
     forgeConfigTool(ctx),
     forgeTasksTool(ctx),
+    forgeJobsListTool(device),
+    forgeJobsGetTool(device),
+    forgeJobsEventsTool(device),
+    forgeAgentSessionsListTool(device),
+    forgeAgentSessionsGetTool(device),
+    forgeProjectsListTool(device),
+    forgeHealthTool(device),
   ];
   const toolMap = new Map(tools.map((t) => [t.name, t]));
 
