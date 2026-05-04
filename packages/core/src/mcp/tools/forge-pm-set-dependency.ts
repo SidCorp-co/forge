@@ -2,6 +2,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { issueDependencies, issueDependencyKinds, issues } from '../../db/schema.js';
+import { hooks } from '../../pipeline/hooks.js';
 import {
   type DeviceScopedMcpToolFactory,
   assertPmActor,
@@ -14,9 +15,8 @@ import {
  * `(project_id, from_issue_id, to_issue_id, kind)` from Epic 1; duplicates
  * return the existing row with `created: false`.
  *
- * NOTE: Epic 4 introduces a `dependencyChanged` hook so triggers can react
- * to graph changes. The hook payload type isn't defined yet — emit is
- * deferred to that epic. See TODO below.
+ * Epic 4 (ISS-20) wires the `dependencyChanged` hook emit on first insert so
+ * PM spawn triggers react to graph mutations.
  */
 
 const inputSchema = z
@@ -80,8 +80,13 @@ export const forgePmSetDependencyTool: DeviceScopedMcpToolFactory = (device) => 
     if (inserted.length > 0) {
       const id = inserted[0]?.id;
       if (!id) throw new Error('forge_pm.set_dependency: insert returned no row');
-      // TODO(Epic 4): emit `dependencyChanged` hook so PM triggers react to
-      // graph mutations. Hook payload type lands with Epic 4.
+      await hooks.emit('dependencyChanged', {
+        projectId: input.projectId,
+        edgeId: id,
+        fromIssueId: input.fromIssueId,
+        toIssueId: input.toIssueId,
+        kind: input.kind,
+      });
       return { id, created: true };
     }
 

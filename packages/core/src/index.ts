@@ -79,6 +79,13 @@ import { hooks } from './pipeline/hooks.js';
 import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
 import { registerActivitySubscribers } from './pipeline/subscribers.js';
 import { registerPipelineSweeper } from './pipeline/sweeper.js';
+import {
+  registerPmCadenceTicker,
+  unregisterPmCadenceTicker,
+} from './pm/cadence.js';
+import { registerPmQueuePressureSweeper } from './pm/queue-pressure.js';
+import { pmRoutes } from './pm/routes.js';
+import { registerPmSubscribers } from './pm/subscribers.js';
 import { projectHealthRoutes } from './projects/health-routes.js';
 import { invitationRoutes } from './projects/invitations-routes.js';
 import { memberRoutes } from './projects/members-routes.js';
@@ -180,6 +187,7 @@ export async function runShutdown(
     await unregisterDispatcher();
     await unregisterPmDispatcher();
     await unregisterScheduleTicker();
+    await unregisterPmCadenceTicker();
     await stopBoss();
     await httpClosed;
     await closeDb();
@@ -202,6 +210,7 @@ registerActivitySubscribers(hooks);
 registerWsBroadcastSubscribers(hooks);
 registerMemoryIndexer(hooks);
 registerNotifyMentionsSubscriber(hooks);
+registerPmSubscribers(hooks);
 
 // MCP endpoint requires device authentication (ISS-202). Tool handlers
 // close over the authenticated Device to enforce project-scope. This is a
@@ -231,6 +240,7 @@ app.route('/api/auth', desktopRoutes);
 // 400-reject the literal "health" segment.
 app.route('/api/projects', projectHealthRoutes);
 app.route('/api/projects', projectRoutes);
+app.route('/api/projects', pmRoutes);
 app.route('/api/projects', memberRoutes);
 app.route('/api/projects', skillSyncRoutes);
 app.route('/api/projects', skillRegisterRoutes);
@@ -330,6 +340,8 @@ if (isMain) {
   await registerPipelineSweeper();
   await registerOutboundDeliveryWorker();
   await registerScheduleTicker();
+  await registerPmCadenceTicker();
+  await registerPmQueuePressureSweeper();
   registerWebhookSubscribers(hooks);
   registerPipelineOrchestrator(hooks);
 

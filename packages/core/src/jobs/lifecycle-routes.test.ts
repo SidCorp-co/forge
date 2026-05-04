@@ -77,6 +77,7 @@ const { jobLifecycleDeviceRoutes, jobLifecycleUserRoutes } = await import('./lif
 const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
 const { signUserToken } = await import('../auth/jwt.js');
+const { hooks } = await import('../pipeline/hooks.js');
 
 function buildApp() {
   const app = new Hono<{ Variables: import('../middleware/request-id.js').RequestIdVars }>();
@@ -292,5 +293,115 @@ describe('POST /:id/cancel (user)', () => {
     expect(r.status).toBe(409);
     const json = (await r.json()) as { code?: string };
     expect(json.code).toBe('NOT_CANCELLABLE');
+  });
+});
+
+// ISS-20 — hook emits feed PM spawn triggers. Cancelled lifecycle does not
+// emit; failed must include `failureKind` (set by scheduleRetry).
+describe('jobFailed / jobCompleted hook emits', () => {
+  const failedSpy = vi.fn();
+  const completedSpy = vi.fn();
+
+  beforeEach(() => {
+    hooks.reset();
+    failedSpy.mockReset();
+    completedSpy.mockReset();
+    hooks.on('jobFailed', (p) => failedSpy(p));
+    hooks.on('jobCompleted', (p) => completedSpy(p));
+  });
+
+  it('emits jobCompleted exactly once on exitCode=0, never jobFailed', async () => {
+    selectLimit.mockResolvedValueOnce([jobRow]);
+    updateReturning.mockResolvedValueOnce([
+      { ...jobRow, status: 'done', exitCode: 0 },
+    ]);
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/complete`, {
+        method: 'POST',
+        deviceToken: 'dev-1-token',
+        body: JSON.stringify({ exitCode: 0 }),
+      }),
+    );
+    expect(r.status).toBe(200);
+    expect(completedSpy).toHaveBeenCalledTimes(1);
+    expect(completedSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 'j1', projectId: 'p1', type: 'plan' }),
+    );
+    expect(failedSpy).not.toHaveBeenCalled();
+  });
+
+  it('emits jobFailed with failureKind on exitCode=1', async () => {
+    selectLimit.mockResolvedValueOnce([jobRow]);
+    updateReturning.mockResolvedValueOnce([
+      {
+        ...jobRow,
+        status: 'failed',
+        exitCode: 1,
+        error: 'crashed',
+        failureKind: 'transient',
+        failureReason: 'classified',
+      },
+    ]);
+    scheduleRetryMock.mockResolvedValueOnce({ scheduled: true });
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/complete`, {
+        method: 'POST',
+        deviceToken: 'dev-1-token',
+        body: JSON.stringify({ exitCode: 1, error: 'crashed' }),
+      }),
+    );
+    expect(r.status).toBe(200);
+    expect(failedSpy).toHaveBeenCalledTimes(1);
+    expect(failedSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ failureKind: 'transient', failureReason: 'classified' }),
+    );
+    expect(completedSpy).not.toHaveBeenCalled();
+  });
+
+  it('emits neither on exitCode=-1 (cancelled)', async () => {
+    selectLimit.mockResolvedValueOnce([jobRow]);
+    updateReturning.mockResolvedValueOnce([
+      { ...jobRow, status: 'cancelled', exitCode: -1 },
+    ]);
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/complete`, {
+        method: 'POST',
+        deviceToken: 'dev-1-token',
+        body: JSON.stringify({ exitCode: -1 }),
+      }),
+    );
+    expect(r.status).toBe(200);
+    expect(failedSpy).not.toHaveBeenCalled();
+    expect(completedSpy).not.toHaveBeenCalled();
+  });
+
+  it('POST /:id/fail emits jobFailed with classified failureKind', async () => {
+    selectLimit.mockResolvedValueOnce([jobRow]);
+    updateReturning.mockResolvedValueOnce([
+      {
+        ...jobRow,
+        status: 'failed',
+        error: 'segfault',
+        failureKind: 'unknown',
+        failureReason: 'unmapped',
+      },
+    ]);
+    scheduleRetryMock.mockResolvedValueOnce({ scheduled: false });
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/fail`, {
+        method: 'POST',
+        deviceToken: 'dev-1-token',
+        body: JSON.stringify({ error: 'segfault' }),
+      }),
+    );
+    expect(r.status).toBe(200);
+    expect(failedSpy).toHaveBeenCalledTimes(1);
+    expect(failedSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ failureKind: 'unknown', failureReason: 'unmapped' }),
+    );
   });
 });

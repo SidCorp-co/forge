@@ -1,4 +1,4 @@
-import type { IssueStatus } from '../db/schema.js';
+import type { IssueDependencyKind, IssueStatus, JobType } from '../db/schema.js';
 import { logger } from '../logger.js';
 import type { Actor } from './activity.js';
 
@@ -34,6 +34,33 @@ export interface HookPayloads {
     to: IssueStatus;
     reason?: string;
     reopenCount: number;
+  };
+  // ISS-20 (Epic 4) — terminal job lifecycle events. PM subscribers branch on
+  // `failureKind` so they react differently to transient/permanent/unknown
+  // classifications. Emitted from `jobs/lifecycle-routes.ts` after
+  // `scheduleRetry` writes the classification onto the row.
+  jobFailed: {
+    jobId: string;
+    projectId: string;
+    issueId: string | null;
+    type: JobType;
+    failureKind: 'transient' | 'permanent' | 'unknown' | null;
+    failureReason: string | null;
+  };
+  jobCompleted: {
+    jobId: string;
+    projectId: string;
+    issueId: string | null;
+    type: JobType;
+  };
+  // ISS-20 (Epic 4) — dependency graph mutation. Fire-and-forget; carries
+  // enough to trigger a graph re-read but not the full graph.
+  dependencyChanged: {
+    projectId: string;
+    edgeId: string;
+    fromIssueId: string;
+    toIssueId: string;
+    kind: IssueDependencyKind;
   };
   commentCreated: {
     issueId: string;

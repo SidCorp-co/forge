@@ -31,6 +31,7 @@ vi.mock('../../db/client.js', () => ({
 }));
 
 const { forgePmSetDependencyTool } = await import('./forge-pm-set-dependency.js');
+const { hooks } = await import('../../pipeline/hooks.js');
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const FROM_ID = '22222222-2222-4222-8222-222222222222';
@@ -95,7 +96,7 @@ describe('forge_pm.set_dependency', () => {
     ).rejects.toThrow(/projectId/);
   });
 
-  it('inserts a new edge → created:true', async () => {
+  it('inserts a new edge → created:true and emits dependencyChanged', async () => {
     const tool = forgePmSetDependencyTool(fakeDevice);
     pushPmActorOk();
     queue.push([
@@ -103,6 +104,10 @@ describe('forge_pm.set_dependency', () => {
       { id: TO_ID, projectId: PROJECT_ID },
     ]);
     queue.push([{ id: EDGE_ID }]); // insert returning
+
+    hooks.reset();
+    const depSpy = vi.fn();
+    hooks.on('dependencyChanged', (p) => depSpy(p));
 
     const result = (await tool.handler({
       projectId: PROJECT_ID,
@@ -113,9 +118,16 @@ describe('forge_pm.set_dependency', () => {
 
     expect(result.created).toBe(true);
     expect(result.id).toBe(EDGE_ID);
+    expect(depSpy).toHaveBeenCalledWith({
+      projectId: PROJECT_ID,
+      edgeId: EDGE_ID,
+      fromIssueId: FROM_ID,
+      toIssueId: TO_ID,
+      kind: 'blocks',
+    });
   });
 
-  it('returns existing edge → created:false on conflict', async () => {
+  it('returns existing edge → created:false on conflict, no hook emit', async () => {
     const tool = forgePmSetDependencyTool(fakeDevice);
     pushPmActorOk();
     queue.push([
@@ -124,6 +136,10 @@ describe('forge_pm.set_dependency', () => {
     ]);
     queue.push([]); // insert returns no row (conflict)
     queue.push([{ id: EDGE_ID }]); // existing row lookup
+
+    hooks.reset();
+    const depSpy = vi.fn();
+    hooks.on('dependencyChanged', (p) => depSpy(p));
 
     const result = (await tool.handler({
       projectId: PROJECT_ID,
@@ -134,5 +150,6 @@ describe('forge_pm.set_dependency', () => {
 
     expect(result.created).toBe(false);
     expect(result.id).toBe(EDGE_ID);
+    expect(depSpy).not.toHaveBeenCalled();
   });
 });
