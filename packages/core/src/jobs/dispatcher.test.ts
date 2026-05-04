@@ -257,6 +257,7 @@ describe('jobs/dispatcher PM path', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    // biome-ignore lint/performance/noDelete: matches existing teardown pattern at top of file
     delete process.env.FEATURE_RUNNER_FRAMEWORK;
   });
 

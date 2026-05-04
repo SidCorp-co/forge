@@ -312,6 +312,7 @@ export async function registerPmDispatcher(): Promise<void> {
   const id = (await (boss as any).work(
     PM_QUEUE_NAME,
     { batchSize: 1, teamSize: 1, teamConcurrency: 1 },
+    // biome-ignore lint/suspicious/noExplicitAny: pg-boss handler arg type varies across versions
     async (arg: any) => {
       const entries = Array.isArray(arg) ? arg : [arg];
       for (const entry of entries) {
