@@ -8,6 +8,7 @@ import { jobs } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { hooks } from '../pipeline/hooks.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
@@ -106,6 +107,26 @@ jobLifecycleDeviceRoutes.post(
       data: { jobId: updated.id, status, exitCode: updated.exitCode },
     });
 
+    // ISS-20 — emit hooks AFTER scheduleRetry so PM subscribers see the
+    // populated `failureKind`. Cancelled jobs do not emit either event.
+    if (status === 'failed') {
+      await hooks.emit('jobFailed', {
+        jobId: updated.id,
+        projectId: updated.projectId,
+        issueId: updated.issueId,
+        type: updated.type,
+        failureKind: updated.failureKind ?? null,
+        failureReason: updated.failureReason ?? null,
+      });
+    } else if (status === 'done') {
+      await hooks.emit('jobCompleted', {
+        jobId: updated.id,
+        projectId: updated.projectId,
+        issueId: updated.issueId,
+        type: updated.type,
+      });
+    }
+
     return c.json({
       jobId: updated.id,
       status: updated.status,
@@ -154,6 +175,15 @@ jobLifecycleDeviceRoutes.post(
     roomManager.publish(projectRoom(updated.projectId), {
       event: 'job.failed',
       data: { jobId: updated.id, status: 'failed', error: updated.error },
+    });
+
+    await hooks.emit('jobFailed', {
+      jobId: updated.id,
+      projectId: updated.projectId,
+      issueId: updated.issueId,
+      type: updated.type,
+      failureKind: updated.failureKind ?? null,
+      failureReason: updated.failureReason ?? null,
     });
 
     return c.json({
