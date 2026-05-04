@@ -3,6 +3,28 @@ import { db } from '../db/client.js';
 import type { RunnerType } from '../db/schema.js';
 import type { RequiredCapabilities, Runner } from './types.js';
 
+/**
+ * Decide the initial `capabilities` jsonb for a freshly-created runner row.
+ *
+ * Dev-mode (`NODE_ENV !== 'production'`) defaults `claude-code` runners with
+ * `pm: true` so a stock `pnpm dev` setup can pick up PM jobs without an
+ * extra opt-in step. Production never auto-grants PM — operators must enable
+ * it explicitly via PATCH /api/runners/:id (ISS-18 requirement).
+ *
+ * Always returns the caller-provided capabilities verbatim when they are
+ * supplied, so explicit `{}` from a callsite still clears the default.
+ */
+export function defaultRunnerCapabilities(
+  type: RunnerType,
+  provided?: Record<string, unknown>,
+): Record<string, unknown> {
+  if (provided !== undefined) return provided;
+  if (type === 'claude-code' && process.env.NODE_ENV !== 'production') {
+    return { pm: true };
+  }
+  return {};
+}
+
 interface SelectInput {
   projectId: string;
   requiredCapabilities?: RequiredCapabilities;

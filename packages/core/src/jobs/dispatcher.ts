@@ -1,6 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, jobs, projects, runners } from '../db/schema.js';
+import type { RunnerType } from '../db/schema.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import { logger } from '../logger.js';
 import { resolveRunnerChainForJob } from '../pipeline/resolve-step-runner.js';
@@ -12,13 +13,14 @@ import { deviceRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { getActiveDeviceId } from './active-device.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
-import { JOB_QUEUE_NAME } from './queue-name.js';
+import { JOB_QUEUE_NAME, PM_QUEUE_NAME } from './queue-name.js';
 
 interface DispatchMessage {
   jobId: string;
 }
 
 let workerId: string | null = null;
+let pmWorkerId: string | null = null;
 
 export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched' | 'skipped'> {
   const { jobId } = msg;
@@ -37,6 +39,32 @@ export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched'
     return dispatchViaRunner(job);
   }
   return dispatchViaDevice(job);
+}
+
+/**
+ * PM-isolated dispatch. Always runner-path, always requires `capabilities.pm`,
+ * and ignores any caller-supplied `requiredCapabilities` for the PM filter so
+ * a malicious or buggy producer cannot opt out. Fallback chain is hard-coded
+ * to `['claude-code']` — antigravity does not run PM in v0.1.
+ */
+export async function handlePmDispatch(msg: DispatchMessage): Promise<'dispatched' | 'skipped'> {
+  const { jobId } = msg;
+  const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+  if (!job) {
+    logger.warn({ jobId }, 'pm-dispatcher: job not found');
+    return 'skipped';
+  }
+  if (job.status !== 'queued') {
+    logger.debug({ jobId, status: job.status }, 'pm-dispatcher: non-queued job, skipping');
+    return 'skipped';
+  }
+  if (job.type !== 'pm') {
+    // Defensive: a non-PM job should never land on this queue. Skip rather
+    // than dispatch via the PM-only path.
+    logger.warn({ jobId, type: job.type }, 'pm-dispatcher: non-pm job on pm queue, skipping');
+    return 'skipped';
+  }
+  return dispatchViaRunner(job, { pm: true }, ['claude-code']);
 }
 
 async function dispatchViaDevice(job: typeof jobs.$inferSelect): Promise<'dispatched' | 'skipped'> {
@@ -109,17 +137,34 @@ async function loadRepoPath(projectId: string): Promise<string | null> {
   return typeof ac.repoPath === 'string' ? ac.repoPath : null;
 }
 
-async function dispatchViaRunner(job: typeof jobs.$inferSelect): Promise<'dispatched' | 'skipped'> {
-  const payload = (job.payload ?? {}) as { requiredCapabilities?: RequiredCapabilities };
-  const required = payload.requiredCapabilities ?? {};
+/**
+ * Shared runner dispatch. Default behaviour reads capabilities + fallback
+ * chain off the job/project; the PM path passes `forcedCapabilities` and
+ * `forcedChain` to lock the filter regardless of payload.
+ */
+async function dispatchViaRunner(
+  job: typeof jobs.$inferSelect,
+  forcedCapabilities?: RequiredCapabilities,
+  forcedChain?: RunnerType[],
+): Promise<'dispatched' | 'skipped'> {
+  let required: RequiredCapabilities;
+  let fallbackChain: RunnerType[];
 
-  const [project] = await db
-    .select({ agentConfig: projects.agentConfig })
-    .from(projects)
-    .where(eq(projects.id, job.projectId))
-    .limit(1);
-  const agentConfig = (project?.agentConfig ?? {}) as Record<string, unknown>;
-  const fallbackChain = resolveRunnerChainForJob(job.type, agentConfig);
+  if (forcedCapabilities !== undefined || forcedChain !== undefined) {
+    required = forcedCapabilities ?? {};
+    fallbackChain = forcedChain ?? [];
+  } else {
+    const payload = (job.payload ?? {}) as { requiredCapabilities?: RequiredCapabilities };
+    required = payload.requiredCapabilities ?? {};
+
+    const [project] = await db
+      .select({ agentConfig: projects.agentConfig })
+      .from(projects)
+      .where(eq(projects.id, job.projectId))
+      .limit(1);
+    const agentConfig = (project?.agentConfig ?? {}) as Record<string, unknown>;
+    fallbackChain = resolveRunnerChainForJob(job.type, agentConfig);
+  }
 
   const runner = await selectRunnerForJob({
     projectId: job.projectId,
@@ -202,9 +247,7 @@ async function dispatchViaRunner(job: typeof jobs.$inferSelect): Promise<'dispat
         error: result.errorReason ?? 'adapter dispatch failed',
         attempts: sql`${jobs.attempts} + 1`,
       })
-      .where(
-        and(eq(jobs.id, job.id), eq(jobs.status, 'dispatched'), eq(jobs.runnerId, runner.id)),
-      );
+      .where(and(eq(jobs.id, job.id), eq(jobs.status, 'dispatched'), eq(jobs.runnerId, runner.id)));
     // Also flag the runner as last-error for surface visibility.
     await db
       .update(runners)
@@ -256,4 +299,44 @@ export async function unregisterDispatcher(): Promise<void> {
 
 export function isDispatcherRegistered(): boolean {
   return workerId !== null;
+}
+
+export async function registerPmDispatcher(): Promise<void> {
+  if (pmWorkerId) return;
+  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
+  await (boss as any).createQueue(PM_QUEUE_NAME);
+  // teamSize/teamConcurrency=1 caps in-flight PM work per process at one,
+  // matching the per-project DB-level cap from `jobs_pm_per_project_unique_idx`.
+  // The DB index is the source of truth; this is defence-in-depth.
+  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
+  const id = (await (boss as any).work(
+    PM_QUEUE_NAME,
+    { batchSize: 1, teamSize: 1, teamConcurrency: 1 },
+    async (arg: any) => {
+      const entries = Array.isArray(arg) ? arg : [arg];
+      for (const entry of entries) {
+        const data = entry?.data as DispatchMessage | undefined;
+        if (!data || typeof data.jobId !== 'string') continue;
+        try {
+          await handlePmDispatch(data);
+        } catch (err) {
+          logger.error({ err, jobId: data.jobId }, 'pm-dispatcher: handler threw');
+          throw err;
+        }
+      }
+    },
+  )) as string;
+  pmWorkerId = id;
+}
+
+export async function unregisterPmDispatcher(): Promise<void> {
+  if (!pmWorkerId) return;
+  const id = pmWorkerId;
+  pmWorkerId = null;
+  // biome-ignore lint/suspicious/noExplicitAny: see registerPmDispatcher above.
+  await (boss as any).offWork(id);
+}
+
+export function isPmDispatcherRegistered(): boolean {
+  return pmWorkerId !== null;
 }

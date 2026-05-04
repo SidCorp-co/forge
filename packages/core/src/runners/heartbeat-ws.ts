@@ -6,6 +6,7 @@ import { runnerTypes, runners } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { roomManager } from '../ws/server.js';
 import { projectRoom, runnerRoom } from '../ws/rooms.js';
+import { defaultRunnerCapabilities } from './select.js';
 
 type DevicePrincipal = { type: 'device'; deviceId: string; ownerId: string };
 
@@ -96,7 +97,7 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
           deviceId: principal.deviceId,
           name: input.name,
           labels: input.labels ?? [],
-          capabilities: input.capabilities ?? {},
+          capabilities: defaultRunnerCapabilities(input.type, input.capabilities),
           config: input.config ?? {},
           status: 'online',
           lastSeenAt: new Date(),

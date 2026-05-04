@@ -8,6 +8,19 @@ vi.mock('../db/client.js', () => {
   };
 });
 
+vi.mock('../runners/select.js', () => ({
+  selectRunnerForJob: vi.fn(),
+  defaultRunnerCapabilities: vi.fn((_t: string, p?: Record<string, unknown>) => p ?? {}),
+}));
+
+vi.mock('../runners/registry.js', () => ({
+  getRunnerAdapter: vi.fn(),
+}));
+
+vi.mock('../pipeline/resolve-step-runner.js', () => ({
+  resolveRunnerChainForJob: vi.fn(() => []),
+}));
+
 vi.mock('./active-device.js', () => ({
   getActiveDeviceId: vi.fn(),
 }));
@@ -38,10 +51,20 @@ vi.mock('./agent-session-link.js', () => ({
 
 const { db } = await import('../db/client.js');
 const { getActiveDeviceId } = await import('./active-device.js');
-const { handleDispatch, registerDispatcher, unregisterDispatcher, isDispatcherRegistered } =
-  await import('./dispatcher.js');
+const {
+  handleDispatch,
+  handlePmDispatch,
+  registerDispatcher,
+  registerPmDispatcher,
+  unregisterDispatcher,
+  unregisterPmDispatcher,
+  isDispatcherRegistered,
+  isPmDispatcherRegistered,
+} = await import('./dispatcher.js');
 const { boss } = await import('../queue/boss.js');
 const { roomManager } = await import('../ws/server.js');
+const { selectRunnerForJob } = await import('../runners/select.js');
+const { getRunnerAdapter } = await import('../runners/registry.js');
 
 type Row = Record<string, unknown>;
 
@@ -220,5 +243,113 @@ describe('jobs/dispatcher', () => {
     // biome-ignore lint/suspicious/noExplicitAny: test-only mock
     expect((boss as any).offWork).toHaveBeenCalledTimes(1);
     expect(isDispatcherRegistered()).toBe(false);
+  });
+});
+
+describe('jobs/dispatcher PM path', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // PM path always runs through dispatchViaRunner regardless of the
+    // runnerFramework flag, but flip it on for parity with prod and to keep
+    // future readers from second-guessing.
+    process.env.FEATURE_RUNNER_FRAMEWORK = 'true';
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    delete process.env.FEATURE_RUNNER_FRAMEWORK;
+  });
+
+  it('dispatches a pm job to a pm-capable runner with forced {pm:true} filter', async () => {
+    mockSelectOnce([
+      { id: 'pm-1', status: 'queued', projectId: 'p1', type: 'pm', payload: {}, issueId: null },
+    ]);
+    (selectRunnerForJob as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: 'r1',
+      type: 'claude-code',
+      deviceId: 'd1',
+    });
+    (getRunnerAdapter as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+      dispatch: vi.fn(async () => ({ status: 'dispatched' })),
+    });
+    mockUpdateReturn([{ id: 'pm-1' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
+
+    const result = await handlePmDispatch({ jobId: 'pm-1' });
+    expect(result).toBe('dispatched');
+    expect(selectRunnerForJob).toHaveBeenCalledWith({
+      projectId: 'p1',
+      requiredCapabilities: { pm: true },
+      fallbackChain: ['claude-code'],
+    });
+  });
+
+  it('forces the {pm:true} filter even when payload tries to override it', async () => {
+    mockSelectOnce([
+      {
+        id: 'pm-2',
+        status: 'queued',
+        projectId: 'p1',
+        type: 'pm',
+        // Producer attempts to clear the filter — handlePmDispatch must ignore.
+        payload: { requiredCapabilities: {} },
+        issueId: null,
+      },
+    ]);
+    (selectRunnerForJob as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+
+    const result = await handlePmDispatch({ jobId: 'pm-2' });
+    expect(result).toBe('skipped');
+    expect(selectRunnerForJob).toHaveBeenCalledWith({
+      projectId: 'p1',
+      requiredCapabilities: { pm: true },
+      fallbackChain: ['claude-code'],
+    });
+  });
+
+  it('skips when no pm-capable runner is online (job stays queued)', async () => {
+    mockSelectOnce([
+      { id: 'pm-3', status: 'queued', projectId: 'p1', type: 'pm', payload: {}, issueId: null },
+    ]);
+    (selectRunnerForJob as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+
+    const result = await handlePmDispatch({ jobId: 'pm-3' });
+    expect(result).toBe('skipped');
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock
+    expect((db as any).update).not.toHaveBeenCalled();
+  });
+
+  it('refuses non-pm jobs that land on the pm queue (defence-in-depth)', async () => {
+    mockSelectOnce([
+      { id: 'j1', status: 'queued', projectId: 'p1', type: 'plan', payload: {}, issueId: null },
+    ]);
+    const result = await handlePmDispatch({ jobId: 'j1' });
+    expect(result).toBe('skipped');
+    expect(selectRunnerForJob).not.toHaveBeenCalled();
+  });
+
+  it('skips when pm job is missing or non-queued', async () => {
+    mockSelectOnce([]);
+    expect(await handlePmDispatch({ jobId: 'missing' })).toBe('skipped');
+
+    mockSelectOnce([{ id: 'pm-x', status: 'dispatched', projectId: 'p1', type: 'pm' }]);
+    expect(await handlePmDispatch({ jobId: 'pm-x' })).toBe('skipped');
+  });
+
+  it('register/unregister is idempotent and creates the PM_QUEUE_NAME queue', async () => {
+    await registerPmDispatcher();
+    await registerPmDispatcher();
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock
+    const createQueueCalls = (boss as any).createQueue.mock.calls.map((c: unknown[]) => c[0]);
+    expect(createQueueCalls).toContain('forge.pm-jobs');
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock
+    expect((boss as any).work).toHaveBeenCalledTimes(1);
+    expect(isPmDispatcherRegistered()).toBe(true);
+
+    await unregisterPmDispatcher();
+    await unregisterPmDispatcher();
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock
+    expect((boss as any).offWork).toHaveBeenCalledTimes(1);
+    expect(isPmDispatcherRegistered()).toBe(false);
   });
 });
