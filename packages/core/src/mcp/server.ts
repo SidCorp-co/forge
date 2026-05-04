@@ -15,6 +15,14 @@ import {
   forgeJobsListTool,
 } from './tools/forge-jobs.js';
 import { forgeMemorySearchTool } from './tools/forge-memory.js';
+import { forgePmDispatchTool } from './tools/forge-pm-dispatch.js';
+import { forgePmEscalateTool } from './tools/forge-pm-escalate.js';
+import { forgePmFlagBlockerTool } from './tools/forge-pm-flag-blocker.js';
+import { forgePmGraphTool } from './tools/forge-pm-graph.js';
+import { forgePmRunnerLoadTool } from './tools/forge-pm-runner-load.js';
+import { forgePmSetDependencyTool } from './tools/forge-pm-set-dependency.js';
+import { forgePmSnapshotTool } from './tools/forge-pm-snapshot.js';
+import { forgePmWriteDecisionTool } from './tools/forge-pm-write-decision.js';
 import { forgeProjectsListTool } from './tools/forge-projects.js';
 import {
   forgeSkillsGetTool,
@@ -64,6 +72,14 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeAgentSessionsListTool(device),
     forgeAgentSessionsGetTool(device),
     forgeProjectsListTool(device),
+    forgePmSnapshotTool(device),
+    forgePmGraphTool(device),
+    forgePmRunnerLoadTool(device),
+    forgePmDispatchTool(device),
+    forgePmSetDependencyTool(device),
+    forgePmFlagBlockerTool(device),
+    forgePmEscalateTool(device),
+    forgePmWriteDecisionTool(device),
     forgeHealthTool(device),
   ];
   const toolMap = new Map(tools.map((t) => [t.name, t]));

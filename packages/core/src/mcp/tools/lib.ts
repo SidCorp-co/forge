@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Device } from '../../auth/deviceToken.js';
 import { db } from '../../db/client.js';
-import { projectMembers, projects } from '../../db/schema.js';
+import { projectMembers, projects, runners } from '../../db/schema.js';
 import type { McpTool } from './forge-version.js';
 
 /**
@@ -90,6 +90,33 @@ export async function assertDeviceOwnerIsAdmin(device: Device, projectId: string
   if (!role) throw new Error('FORBIDDEN: project not found or not accessible');
   if (!role.isAdmin) {
     throw new Error('FORBIDDEN: requires owner or admin on the project');
+  }
+}
+
+/**
+ * Gate for `forge_pm.*` write tools (Epic 3, ISS-19). Caller must:
+ *   1. be a member of the project, AND
+ *   2. own a `claude-code` runner whose `capabilities.pm` is `true`.
+ *
+ * The `capabilities.pm` flag is the explicit opt-in that lets a single
+ * `claude-code` runner act as the PM agent for the project. The
+ * `runners_device_type_uq` partial unique index pins at most one
+ * `claude-code` runner per device, so toggling the flag on that row is the
+ * only path to enable PM tools for the device.
+ */
+export async function assertPmActor(device: Device, projectId: string): Promise<void> {
+  await assertDeviceOwnerIsMember(device, projectId);
+  const [runner] = await db
+    .select({ capabilities: runners.capabilities })
+    .from(runners)
+    .where(and(eq(runners.deviceId, device.id), eq(runners.type, 'claude-code')))
+    .limit(1);
+  if (!runner) {
+    throw new Error('FORBIDDEN: device has no claude-code runner registered');
+  }
+  const caps = (runner.capabilities ?? {}) as Record<string, unknown>;
+  if (caps.pm !== true) {
+    throw new Error('FORBIDDEN: PM tools require runner capabilities.pm=true');
   }
 }
 
