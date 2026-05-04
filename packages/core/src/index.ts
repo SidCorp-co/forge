@@ -37,7 +37,6 @@ import {
   devicePublicRoutes,
   deviceUserRoutes,
 } from './devices/routes.js';
-import { pipelineAnalyticsRoutes } from './pipeline/analytics-routes.js';
 import { registerDeviceStaleDetector } from './devices/stale-detector.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { seedDomainTemplates } from './domain-templates/seed.js';
@@ -46,21 +45,23 @@ import { issueExtrasRoutes } from './issues/extras-routes.js';
 import { issueProjectRoutes, issueRoutes } from './issues/routes.js';
 import { searchRoutes } from './issues/search.js';
 import { transitionRoutes } from './issues/transition.js';
-import { registerDispatcher, unregisterDispatcher } from './jobs/dispatcher.js';
+import {
+  registerDispatcher,
+  registerPmDispatcher,
+  unregisterDispatcher,
+  unregisterPmDispatcher,
+} from './jobs/dispatcher.js';
 import { jobEventsListRoutes, jobEventsRoutes } from './jobs/events-routes.js';
 import { jobLifecycleDeviceRoutes, jobLifecycleUserRoutes } from './jobs/lifecycle-routes.js';
 import { registerQueuedWatchdog } from './jobs/queued-watchdog.js';
 import { registerRetentionSweeper } from './jobs/retention-sweeper.js';
-import { registerStuckWatcher } from './jobs/stuck-watcher.js';
 import { jobProjectRoutes, jobRoutes } from './jobs/routes.js';
 import { registerStaleDetector } from './jobs/stale-detector.js';
-import { isEnabled } from './lib/feature-flags.js';
-import { bootstrapRunnerAdapters } from './runners/bootstrap.js';
-import { runnerCallbackRoutes, runnerRoutes } from './runners/routes.js';
-import { registerRunnerStaleDetector } from './runners/stale-detector.js';
+import { registerStuckWatcher } from './jobs/stuck-watcher.js';
 import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
 import { knowledgeIngestRoutes } from './knowledge/ingest-routes.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
+import { isEnabled } from './lib/feature-flags.js';
 import { logger } from './logger.js';
 import { mcpHandler } from './mcp/handler.js';
 import { meAttentionRoutes } from './me/attention-routes.js';
@@ -73,15 +74,19 @@ import { type RequestIdVars, requestId } from './middleware/request-id.js';
 import { requireDevice } from './middleware/require-device.js';
 import { registerNotifyMentionsSubscriber } from './notifications/notify-mentions.js';
 import { notificationRoutes } from './notifications/routes.js';
+import { pipelineAnalyticsRoutes } from './pipeline/analytics-routes.js';
 import { hooks } from './pipeline/hooks.js';
 import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
-import { registerPipelineSweeper } from './pipeline/sweeper.js';
 import { registerActivitySubscribers } from './pipeline/subscribers.js';
+import { registerPipelineSweeper } from './pipeline/sweeper.js';
 import { projectHealthRoutes } from './projects/health-routes.js';
 import { invitationRoutes } from './projects/invitations-routes.js';
 import { memberRoutes } from './projects/members-routes.js';
 import { projectRoutes } from './projects/routes.js';
 import { isBossStarted, startBoss, stopBoss } from './queue/boss.js';
+import { bootstrapRunnerAdapters } from './runners/bootstrap.js';
+import { runnerCallbackRoutes, runnerRoutes } from './runners/routes.js';
+import { registerRunnerStaleDetector } from './runners/stale-detector.js';
 import { scheduleRoutes } from './schedules/routes.js';
 import { registerScheduleTicker, unregisterScheduleTicker } from './schedules/runner.js';
 import { seedBuiltinSkills } from './skills/builtin-seed.js';
@@ -91,9 +96,9 @@ import { skillRegisterRoutes, skillSyncRoutes } from './skills/routes.js';
 import { taskIssueRoutes, taskRoutes } from './tasks/routes.js';
 import { usageRecordRoutes } from './usage-records/routes.js';
 import { webhookInboundRoutes } from './webhooks/inbound-routes.js';
-import { widgetBundleRoutes } from './widget/bundle-routes.js';
 import { registerOutboundDeliveryWorker } from './webhooks/outbound.js';
 import { registerWebhookSubscribers } from './webhooks/subscribers.js';
+import { widgetBundleRoutes } from './widget/bundle-routes.js';
 import { registerWsBroadcastSubscribers } from './ws/broadcast-subscribers.js';
 import { attachWs, closeWs, isWsListening } from './ws/server.js';
 
@@ -173,6 +178,7 @@ export async function runShutdown(
   const sequence = (async () => {
     await closeWs();
     await unregisterDispatcher();
+    await unregisterPmDispatcher();
     await unregisterScheduleTicker();
     await stopBoss();
     await httpClosed;
@@ -312,6 +318,7 @@ if (isMain) {
   }
   bootstrapRunnerAdapters();
   await registerDispatcher();
+  await registerPmDispatcher();
   await registerStaleDetector();
   await registerDeviceStaleDetector();
   if (isEnabled('runnerFramework')) {

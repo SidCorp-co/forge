@@ -80,7 +80,10 @@ export async function ensureAgentSessionForJob(
     const title = buildTitle(skillName, job.type, issueTitle);
 
     const metadata: Record<string, unknown> = {
-      type: 'pipeline',
+      // PM jobs surface under the `pm` metadata.type filter
+      // (see agent-sessions/routes.ts metadataType filter); pipeline jobs
+      // keep the historical `pipeline` value.
+      type: job.type === 'pm' ? 'pm' : 'pipeline',
       jobId: job.id,
       jobType: job.type,
     };
@@ -106,10 +109,7 @@ export async function ensureAgentSessionForJob(
       return null;
     }
 
-    await db
-      .update(jobs)
-      .set({ agentSessionId: inserted.id })
-      .where(eq(jobs.id, job.id));
+    await db.update(jobs).set({ agentSessionId: inserted.id }).where(eq(jobs.id, job.id));
 
     broadcastSessionEvent(inserted.id, job.projectId, job.deviceId, 'agent-session.created', {
       title,
