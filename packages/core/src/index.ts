@@ -79,10 +79,11 @@ import { hooks } from './pipeline/hooks.js';
 import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
 import { registerActivitySubscribers } from './pipeline/subscribers.js';
 import { registerPipelineSweeper } from './pipeline/sweeper.js';
+import { registerPmCadenceTicker, unregisterPmCadenceTicker } from './pm/cadence.js';
 import {
-  registerPmCadenceTicker,
-  unregisterPmCadenceTicker,
-} from './pm/cadence.js';
+  registerPmEscalationSweeper,
+  unregisterPmEscalationSweeper,
+} from './pm/escalation-sweeper.js';
 import { registerPmQueuePressureSweeper } from './pm/queue-pressure.js';
 import { pmRoutes } from './pm/routes.js';
 import { registerPmSubscribers } from './pm/subscribers.js';
@@ -188,6 +189,7 @@ export async function runShutdown(
     await unregisterPmDispatcher();
     await unregisterScheduleTicker();
     await unregisterPmCadenceTicker();
+    await unregisterPmEscalationSweeper();
     await stopBoss();
     await httpClosed;
     await closeDb();
@@ -342,6 +344,7 @@ if (isMain) {
   await registerScheduleTicker();
   await registerPmCadenceTicker();
   await registerPmQueuePressureSweeper();
+  await registerPmEscalationSweeper();
   registerWebhookSubscribers(hooks);
   registerPipelineOrchestrator(hooks);
 
