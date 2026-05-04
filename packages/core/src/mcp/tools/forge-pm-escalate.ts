@@ -3,11 +3,7 @@ import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { notifications, pmDecisions, projects } from '../../db/schema.js';
 import { hooks } from '../../pipeline/hooks.js';
-import {
-  type DeviceScopedMcpToolFactory,
-  assertPmActor,
-  zodToMcpSchema,
-} from './lib.js';
+import { type DeviceScopedMcpToolFactory, assertPmActor, zodToMcpSchema } from './lib.js';
 
 /**
  * `forge_pm.escalate` (Epic 3, ISS-19) — PM agent surfaces a decision back
@@ -93,6 +89,7 @@ export const forgePmEscalateTool: DeviceScopedMcpToolFactory = (device) => ({
       title,
       issueId: null,
       agentSessionId: null,
+      decisionId: input.decisionId,
     });
 
     return { notificationId: inserted.id, expiresAt: input.expiresAt };

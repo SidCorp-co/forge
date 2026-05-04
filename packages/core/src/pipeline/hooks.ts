@@ -164,6 +164,10 @@ export interface HookPayloads {
     title: string;
     issueId: string | null;
     agentSessionId: string | null;
+    // Epic 5 (ISS-21): set when `type === 'pm_escalation'` so the WS bridge
+    // can include it in the project-room broadcast without re-reading the
+    // notification body.
+    decisionId?: string | null;
   };
   notificationRead: {
     notificationId: string;

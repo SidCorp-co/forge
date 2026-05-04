@@ -100,6 +100,24 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
         agentSessionId: p.agentSessionId,
       },
     });
+
+    // Epic 5 (ISS-21) — additionally fan out PM escalations to the project
+    // room so any operator with the project open (not just the recipient
+    // user) receives the prompt. The two publishes are intentional: the
+    // user-room event drives the global notification badge; the project
+    // event drives the in-context modal/banner.
+    if (p.type === 'pm_escalation' && p.projectId) {
+      roomManager.publish(projectRoom(p.projectId), {
+        event: 'pm.escalation',
+        data: {
+          notificationId: p.notificationId,
+          projectId: p.projectId,
+          decisionId: p.decisionId ?? null,
+          title: p.title,
+          userId: p.userId,
+        },
+      });
+    }
   });
 
   bus.on('notificationRead', (p) => {
