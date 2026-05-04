@@ -82,9 +82,13 @@ export async function redeemPairingCode(input: PairInput): Promise<PairResult> {
       // JS Tauri client does not yet send `runner:register` on the Rust WS
       // path; until it does, pair-time creation is the contract for v0.1.
       // ON CONFLICT DO NOTHING because (device_id, type) is uniquely indexed.
+      // Dev-mode seeds `capabilities.pm = true` so PM jobs dispatch without
+      // a separate opt-in (ISS-18). Production keeps it empty.
+      const pmCap =
+        process.env.NODE_ENV === 'production' ? sql`'{}'::jsonb` : sql`'{"pm": true}'::jsonb`;
       await tx.execute(sql`
-        INSERT INTO runners (project_id, type, host, device_id, name, status, last_seen_at)
-        VALUES (${row.project_id}, 'claude-code', 'device', ${device.id}, ${input.name}, 'online', now())
+        INSERT INTO runners (project_id, type, host, device_id, name, capabilities, status, last_seen_at)
+        VALUES (${row.project_id}, 'claude-code', 'device', ${device.id}, ${input.name}, ${pmCap}, 'online', now())
         ON CONFLICT DO NOTHING
       `);
     }

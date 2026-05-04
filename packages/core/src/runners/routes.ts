@@ -23,6 +23,7 @@ import { roomManager } from '../ws/server.js';
 import { projectRoom } from '../ws/rooms.js';
 import { normalizeAntigravityEvent } from './event-normalizer.js';
 import { getRunnerAdapter, listRunnerTypes } from './registry.js';
+import { defaultRunnerCapabilities } from './select.js';
 import type { Runner } from './types.js';
 
 const badRequest = (details: unknown) =>
@@ -186,7 +187,7 @@ runnerRoutes.post(
         deviceId: input.deviceId ?? null,
         name: input.name,
         labels: input.labels ?? [],
-        capabilities: input.capabilities ?? {},
+        capabilities: defaultRunnerCapabilities(input.type, input.capabilities),
         config: result.config,
       })
       .returning();

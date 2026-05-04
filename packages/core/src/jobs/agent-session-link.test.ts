@@ -104,10 +104,9 @@ describe('jobs/agent-session-link', () => {
 
     it('reuses the parent session for a retry job', async () => {
       pushSelect({ agentSessionId: 'sess-parent' });
-      const result = await ensureAgentSessionForJob(
-        { ...baseJob, retryOf: 'job-0' } as never,
-        { repoPath: '/r' },
-      );
+      const result = await ensureAgentSessionForJob({ ...baseJob, retryOf: 'job-0' } as never, {
+        repoPath: '/r',
+      });
       expect(result).toBe('sess-parent');
       // 1) flip parent session back to running, 2) link this job to parent's session
       expect(updateCalls.map((c) => c.table)).toEqual(['agent_sessions', 'jobs']);
@@ -118,10 +117,9 @@ describe('jobs/agent-session-link', () => {
 
     it('creates a new agent_sessions row when the job has no parent session', async () => {
       pushSelect({ title: 'Fix login bug', createdById: 'user-1' });
-      const result = await ensureAgentSessionForJob(
-        { ...baseJob, issueId: 'iss-1' } as never,
-        { repoPath: '/r' },
-      );
+      const result = await ensureAgentSessionForJob({ ...baseJob, issueId: 'iss-1' } as never, {
+        repoPath: '/r',
+      });
       expect(result).toBe('sess-new');
       expect(insertCalls).toHaveLength(1);
       const inserted = insertCalls[0];
@@ -142,6 +140,29 @@ describe('jobs/agent-session-link', () => {
       // broadcasts created event
       expect(publishMock).toHaveBeenCalled();
     });
+
+    it("tags pm jobs with metadata.type='pm' so the pm session filter scopes them", async () => {
+      // No issue lookup for project-scoped pm jobs (issueId stays null).
+      const result = await ensureAgentSessionForJob(
+        { ...baseJob, type: 'pm', payload: {}, issueId: null } as never,
+        { repoPath: '/r' },
+      );
+      expect(result).toBe('sess-new');
+      expect(insertCalls).toHaveLength(1);
+      const meta = insertCalls[0]?.values.metadata as Record<string, unknown>;
+      expect(meta.type).toBe('pm');
+      expect(meta.jobType).toBe('pm');
+    });
+
+    it("keeps metadata.type='pipeline' for non-pm job types", async () => {
+      pushSelect({ title: 'Bug', createdById: 'user-1' });
+      await ensureAgentSessionForJob({ ...baseJob, type: 'code', issueId: 'iss-2' } as never, {
+        repoPath: '/r',
+      });
+      const meta = insertCalls[0]?.values.metadata as Record<string, unknown>;
+      expect(meta.type).toBe('pipeline');
+      expect(meta.jobType).toBe('code');
+    });
   });
 
   describe('syncAgentSessionLifecycle', () => {
@@ -152,10 +173,7 @@ describe('jobs/agent-session-link', () => {
     });
 
     it('maps done → completed', async () => {
-      await syncAgentSessionLifecycle(
-        { ...baseJob, agentSessionId: 'sess-1' } as never,
-        'done',
-      );
+      await syncAgentSessionLifecycle({ ...baseJob, agentSessionId: 'sess-1' } as never, 'done');
       expect(updateCalls[0]?.set.status).toBe('completed');
     });
 
@@ -168,10 +186,7 @@ describe('jobs/agent-session-link', () => {
     });
 
     it('maps failed → failed', async () => {
-      await syncAgentSessionLifecycle(
-        { ...baseJob, agentSessionId: 'sess-1' } as never,
-        'failed',
-      );
+      await syncAgentSessionLifecycle({ ...baseJob, agentSessionId: 'sess-1' } as never, 'failed');
       expect(updateCalls[0]?.set.status).toBe('failed');
     });
   });
