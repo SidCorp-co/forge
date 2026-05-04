@@ -98,11 +98,11 @@ export async function assertDeviceOwnerIsAdmin(device: Device, projectId: string
  *   1. be a member of the project, AND
  *   2. own a `claude-code` runner whose `capabilities.pm` is `true`.
  *
- * The capabilities flag is the explicit opt-in that distinguishes a PM-agent
- * runner from a coder runner on the same device — so two runner rows on the
- * same device can fan out to PM and coder fleets independently. Lookup is
- * keyed on (deviceId, type='claude-code'); the `runners_device_type_uq`
- * partial unique index guarantees at most one such row per device.
+ * The `capabilities.pm` flag is the explicit opt-in that lets a single
+ * `claude-code` runner act as the PM agent for the project. The
+ * `runners_device_type_uq` partial unique index pins at most one
+ * `claude-code` runner per device, so toggling the flag on that row is the
+ * only path to enable PM tools for the device.
  */
 export async function assertPmActor(device: Device, projectId: string): Promise<void> {
   await assertDeviceOwnerIsMember(device, projectId);

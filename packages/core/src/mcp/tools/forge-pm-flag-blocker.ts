@@ -79,6 +79,10 @@ export const forgePmFlagBlockerTool: DeviceScopedMcpToolFactory = (device) => ({
       parentId: inserted.parentId,
     });
 
+    // Comment was just persisted; if we throw from the transition the caller
+    // will retry and duplicate the comment. So errors from the state machine
+    // (illegal transition, stale concurrent update) are surfaced as
+    // `transitioned:false + blockedReason` rather than re-thrown.
     let transitioned = false;
     let blockedReason: string | null = null;
     if (input.severity === 'high') {
@@ -87,17 +91,24 @@ export const forgePmFlagBlockerTool: DeviceScopedMcpToolFactory = (device) => ({
       } else if (issue.status === 'closed') {
         blockedReason = 'cannot_hold_closed_issue';
       } else {
-        await applyStatusTransition(
-          {
-            id: issue.id,
-            projectId: issue.projectId,
-            status: issue.status as IssueStatus,
-            reopenCount: issue.reopenCount,
-          },
-          'on_hold',
-          device,
-        );
-        transitioned = true;
+        try {
+          await applyStatusTransition(
+            {
+              id: issue.id,
+              projectId: issue.projectId,
+              status: issue.status as IssueStatus,
+              reopenCount: issue.reopenCount,
+            },
+            'on_hold',
+            device,
+          );
+          transitioned = true;
+        } catch (err) {
+          blockedReason =
+            err instanceof Error
+              ? `transition_failed: ${err.message.split(':')[0] ?? 'UNKNOWN'}`
+              : 'transition_failed';
+        }
       }
     }
 

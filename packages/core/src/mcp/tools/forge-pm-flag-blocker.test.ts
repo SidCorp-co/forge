@@ -136,6 +136,27 @@ describe('forge_pm.flag_blocker', () => {
     expect(applyStatusTransitionSpy).not.toHaveBeenCalled();
   });
 
+  it('high severity but transition throws: comment persisted, transitioned=false with reason', async () => {
+    const tool = forgePmFlagBlockerTool(fakeDevice);
+    pushPmActorOk();
+    queue.push([{ id: ISSUE_ID, projectId: PROJECT_ID, status: 'in_progress', reopenCount: 0 }]);
+    queue.push([{ id: COMMENT_ID, issueId: ISSUE_ID, body: '...', parentId: null }]);
+    applyStatusTransitionSpy.mockRejectedValueOnce(
+      new Error('STALE_TRANSITION: issue status changed concurrently'),
+    );
+
+    const result = (await tool.handler({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      severity: 'high',
+      reason: 'race',
+    })) as { commentId: string; transitioned: boolean; blockedReason?: string };
+
+    expect(result.commentId).toBe(COMMENT_ID);
+    expect(result.transitioned).toBe(false);
+    expect(result.blockedReason).toMatch(/transition_failed/);
+  });
+
   it('high severity on closed issue: transitioned=false with blockedReason', async () => {
     const tool = forgePmFlagBlockerTool(fakeDevice);
     pushPmActorOk();
