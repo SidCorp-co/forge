@@ -10,6 +10,7 @@ const TYPE_ICONS: Record<NotificationType, string> = {
   comment_added: "💬",
   agent_completed: "🤖",
   mention: "@",
+  pm_escalation: "⚠️",
 };
 
 function timeAgo(dateStr: string): string {
@@ -67,11 +68,16 @@ export function NotificationBell() {
   }, [open]);
 
   function handleClick(n: Notification) {
+    if (n.type === "pm_escalation") {
+      setOpen(false);
+      navigate("/pm");
+      return;
+    }
     if (!n.read) markRead.mutate(n.id);
     setOpen(false);
-    // Notification routing in dev needs a projectId → slug lookup. Until that
-    // wire-up lands, just close the popup and let the user navigate manually.
-    // The cloud bell handles the slug-based deep link.
+    // Other notification routing in dev needs a projectId → slug lookup. Until
+    // that wire-up lands, just close the popup and let the user navigate
+    // manually.
     void navigate;
   }
 

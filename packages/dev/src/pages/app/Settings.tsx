@@ -249,7 +249,45 @@ export function Settings() {
       <p className="mt-6 text-sm text-gray-400">
         Project settings (repo path, instructions) are configured within each project page.
       </p>
+
+      <PmAgentDeeplinkCard coreUrl={auth.coreUrl ?? ""} />
     </PageShell>
+  );
+}
+
+function PmAgentDeeplinkCard({ coreUrl }: { coreUrl: string }) {
+  // Desktop intentionally does not host the full PM Agent config form (per
+  // ISS-22 scope — web is the canonical surface). This card surfaces the
+  // deeplink so users can jump to the cloud UI without hunting for it.
+  const base = coreUrl.replace(/\/api\/?$/, "").replace(/\/$/, "");
+  const target = base ? `${base}/projects` : "";
+
+  async function handleOpen() {
+    if (!target) return;
+    try {
+      const { open } = await import("@tauri-apps/plugin-shell");
+      await open(target);
+    } catch {
+      window.open(target, "_blank", "noopener,noreferrer");
+    }
+  }
+
+  return (
+    <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4">
+      <h3 className="text-sm font-medium text-gray-900">PM Agent</h3>
+      <p className="mt-1 text-xs text-gray-500">
+        Configure cadence, triggers, and policies in the web app. Desktop only
+        surfaces escalations that need a human response.
+      </p>
+      <button
+        type="button"
+        onClick={handleOpen}
+        disabled={!target}
+        className="mt-3 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-black disabled:opacity-50"
+      >
+        Open PM Agent settings ↗
+      </button>
+    </div>
   );
 }
 

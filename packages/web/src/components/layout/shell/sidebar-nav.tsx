@@ -41,6 +41,7 @@ const PROJECT_SUB_LINKS = [
   { path: '/knowledge', label: 'Knowledge' },
   { path: '/memory', label: 'Memory' },
   { path: '/schedules', label: 'Schedules' },
+  { path: '/pm', label: 'PM Agent' },
   { path: '/settings', label: 'Settings' },
 ];
 

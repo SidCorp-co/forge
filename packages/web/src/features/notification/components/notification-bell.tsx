@@ -1,9 +1,12 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useNotifications, useUnreadCount, useMarkAsRead, useMarkAllRead } from '../hooks/use-notifications';
 import type { Notification, NotificationType } from '../types';
+import { useProjectBySlug } from '@/features/project/hooks/use-projects';
+import { PmEscalationModal } from '@/features/pm/components/pm-escalation-modal';
+import type { PmEscalation } from '@/features/pm/hooks/use-pm-escalations';
 import { cn } from '@/lib/utils/cn';
 
 const TYPE_ICONS: Record<NotificationType, string> = {
@@ -11,7 +14,28 @@ const TYPE_ICONS: Record<NotificationType, string> = {
   comment_added: '💬',
   agent_completed: '🤖',
   mention: '@',
+  pm_escalation: '⚠️',
 };
+
+function parsePmEscalation(n: Notification): PmEscalation | null {
+  if (n.type !== 'pm_escalation' || !n.body) return null;
+  try {
+    const parsed = JSON.parse(n.body);
+    if (!parsed?.decisionId || !Array.isArray(parsed.options)) return null;
+    return {
+      decisionId: parsed.decisionId,
+      severity: parsed.severity ?? 'medium',
+      question: parsed.question ?? '',
+      options: parsed.options,
+      expiresAt: parsed.expiresAt ?? '',
+      notificationId: n.id,
+      title: n.title,
+      createdAt: n.createdAt,
+    };
+  } catch {
+    return null;
+  }
+}
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -29,15 +53,28 @@ export function NotificationBell({ align = 'right' }: { align?: 'left' | 'right'
   const panelRef = useRef<HTMLDivElement>(null);
   const params = useParams();
   const projectSlug = params?.slug as string | undefined;
+  const project = useProjectBySlug(projectSlug);
 
   const { data: countData } = useUnreadCount();
   const { data: notifData, isLoading } = useNotifications(open);
   const markAsRead = useMarkAsRead();
   const markAllRead = useMarkAllRead();
   const router = useRouter();
+  const [activeEscalation, setActiveEscalation] = useState<{
+    escalation: PmEscalation;
+    projectId: string;
+  } | null>(null);
 
   const unreadCount = countData?.data?.count ?? 0;
   const notifications = notifData?.data ?? [];
+  const escalationByNotificationId = useMemo(() => {
+    const map = new Map<string, PmEscalation>();
+    for (const n of notifications) {
+      const e = parsePmEscalation(n);
+      if (e) map.set(n.id, e);
+    }
+    return map;
+  }, [notifications]);
 
   // Close panel on click outside
   useEffect(() => {
@@ -52,6 +89,19 @@ export function NotificationBell({ align = 'right' }: { align?: 'left' | 'right'
   }, [open]);
 
   function handleClick(n: Notification) {
+    if (n.type === 'pm_escalation') {
+      const escalation = escalationByNotificationId.get(n.id);
+      const projectId = n.projectId ?? project?.id;
+      if (escalation && projectId) {
+        setActiveEscalation({ escalation, projectId });
+        setOpen(false);
+        return;
+      }
+      if (!n.read) markAsRead.mutate(n.id);
+      setOpen(false);
+      if (projectSlug) router.push(`/projects/${projectSlug}/pm`);
+      return;
+    }
     if (!n.read) markAsRead.mutate(n.id);
     setOpen(false);
     if (n.issueId && projectSlug) {
@@ -130,6 +180,13 @@ export function NotificationBell({ align = 'right' }: { align?: 'left' | 'right'
             }
           </div>
         </div>
+      )}
+      {activeEscalation && (
+        <PmEscalationModal
+          projectId={activeEscalation.projectId}
+          escalation={activeEscalation.escalation}
+          onClose={() => setActiveEscalation(null)}
+        />
       )}
     </div>
   );

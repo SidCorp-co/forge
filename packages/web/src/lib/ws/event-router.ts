@@ -64,6 +64,19 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
       qc.invalidateQueries({ queryKey: ['user-prefs'] });
       return;
     }
+    case 'notification.created':
+    case 'notification.read': {
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+      qc.invalidateQueries({ queryKey: ['notifications-unread'] });
+      return;
+    }
+    case 'pm.escalation': {
+      // Web `usePmEscalations` is derived off `useNotifications`, so the
+      // notifications invalidation is the only key that matters here.
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+      qc.invalidateQueries({ queryKey: ['notifications-unread'] });
+      return;
+    }
     default: {
       // Unknown event: no-op. Log once per event kind in dev to surface
       // missing wiring on the client side.

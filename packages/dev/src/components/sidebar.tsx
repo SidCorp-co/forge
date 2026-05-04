@@ -104,6 +104,18 @@ export function Sidebar() {
         })}
 
         <Link
+          to="/pm"
+          className={clsx(
+            "block px-4 py-2 text-sm",
+            location.pathname === "/pm"
+              ? "bg-gray-200 text-gray-900 font-medium"
+              : "text-gray-600 hover:text-gray-900 hover:bg-gray-100",
+          )}
+        >
+          PM Inbox
+        </Link>
+
+        <Link
           to="/usage"
           className={clsx(
             "block px-4 py-2 text-sm",

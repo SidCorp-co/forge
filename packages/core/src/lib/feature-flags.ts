@@ -61,6 +61,12 @@ const flagDefs = {
   // the entire social-auth code path even when env vars are present.
   socialAuth: true,
 
+  // ISS-22 (PM Agent Epic 6) — pm_config CRUD + web/dev escalation surfaces.
+  // Gates `/api/projects/:id/pm/*` route mounting and the web /pm page.
+  // Backend escalation publish + sweeper land in Epics 4/5 (also default-on
+  // when those flags are added). Disable with FEATURE_PM_AGENT=false.
+  pmAgent: true,
+
   // ADR 0017 — Desktop OAuth via PKCE handoff. Gates /api/auth/desktop/*
   // and the Tauri "Sign in with <provider>" buttons. Default-on as of
   // v0.1.19 (the first release that ships the desktop client UI). End-to-end
@@ -69,7 +75,6 @@ const flagDefs = {
   // re-disable the API surface (e.g. an operator who explicitly does not
   // want desktop OAuth at all).
   desktopOauth: true,
-
 } as const;
 
 export type FeatureFlag = keyof typeof flagDefs;

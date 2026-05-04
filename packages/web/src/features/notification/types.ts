@@ -2,7 +2,8 @@ export type NotificationType =
   | 'issue_status_changed'
   | 'comment_added'
   | 'agent_completed'
-  | 'mention';
+  | 'mention'
+  | 'pm_escalation';
 
 export interface Notification {
   id: string;

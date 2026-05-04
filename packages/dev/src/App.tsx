@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams, Outlet } from "react-router-dom";
 import { Sentry } from "@/lib/sentry";
 import { Sidebar } from "@/components/sidebar";
-import { Dashboard, Settings, LoginPage, UsagePage } from "@/pages/app";
+import { Dashboard, PmInbox, Settings, LoginPage, UsagePage } from "@/pages/app";
 import { ProjectIssues, NewIssuePage, ProjectBoard, AgentChat, ProjectSettings, KnowledgePage, McpPage, ProjectOverview, ProjectPipeline } from "@/pages/project";
 import { ProjectAgents } from "@/pages/project/ProjectAgents";
 import { ChatSidebar } from "@/components/chat-sidebar";
@@ -135,6 +135,7 @@ function AppInner() {
               <Route path="settings" element={<ProjectSettings />} />
             </Route>
             <Route path="/usage" element={<RequireAuth><UsagePage /></RequireAuth>} />
+            <Route path="/pm" element={<RequireAuth><PmInbox /></RequireAuth>} />
             <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
           </Routes>
         </main>
