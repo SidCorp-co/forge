@@ -328,6 +328,7 @@ export const jobTypes = [
   'release',
   'fix',
   'custom',
+  'pm',
 ] as const;
 export type JobType = (typeof jobTypes)[number];
 
@@ -390,6 +391,11 @@ export const jobs = pgTable(
     activeUniqueIdx: uniqueIndex('jobs_active_unique')
       .on(t.issueId, t.type)
       .where(sql`status IN ('queued','dispatched','running') AND issue_id IS NOT NULL`),
+    // PM jobs may have a NULL issue_id (project-scoped coordinator), so the
+    // existing per-issue index does not cover them. ISS-17.
+    pmActiveUniqueIdx: uniqueIndex('jobs_pm_per_project_unique_idx')
+      .on(t.projectId)
+      .where(sql`type = 'pm' AND status IN ('queued','dispatched','running')`),
   }),
 );
 
@@ -887,7 +893,15 @@ export const projectSkillOverrides = pgTable(
   }),
 );
 
-export const memorySources = ['issue', 'comment', 'job', 'note', 'knowledge'] as const;
+export const memorySources = [
+  'issue',
+  'comment',
+  'job',
+  'note',
+  'knowledge',
+  'decision',
+  'policy',
+] as const;
 export type MemorySource = (typeof memorySources)[number];
 
 export const MEMORY_EMBEDDING_DIM = 1536;
@@ -1127,6 +1141,7 @@ export const notificationTypes = [
   'comment_added',
   'agent_completed',
   'mention',
+  'pm_escalation',
 ] as const;
 export type NotificationType = (typeof notificationTypes)[number];
 
@@ -1353,4 +1368,155 @@ export const retrievalAnalytics = pgTable(
 
 export const retrievalAnalyticsRelations = relations(retrievalAnalytics, ({ one }) => ({
   project: one(projects, { fields: [retrievalAnalytics.projectId], references: [projects.id] }),
+}));
+
+// ===== PM Agent (ISS-17) =====================================================
+// Stateless coordinator agent supplementing the per-issue pipeline. See parent
+// epic ISS-16 and `.forge/pm-agent-requirements.md` for the design. Tables:
+//   - issue_dependencies: cross-issue edges (blocks/relates/duplicates/parent)
+//   - pm_decisions:       audit log of every PM session output
+//   - pm_config:          per-project enable/cadence/triggers (one row/project)
+//   - pm_policies:        free-text Markdown policies, embedded for retrieval
+
+export const issueDependencyKinds = ['blocks', 'relates', 'duplicates', 'parent'] as const;
+export type IssueDependencyKind = (typeof issueDependencyKinds)[number];
+
+export const issueDependencies = pgTable(
+  'issue_dependencies',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    fromIssueId: uuid('from_issue_id')
+      .notNull()
+      .references(() => issues.id, { onDelete: 'cascade' }),
+    toIssueId: uuid('to_issue_id')
+      .notNull()
+      .references(() => issues.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: issueDependencyKinds }).notNull(),
+    reason: text('reason'),
+    createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    validUntil: timestamp('valid_until', { withTimezone: true }),
+  },
+  (t) => ({
+    uniqueEdgeIdx: uniqueIndex('issue_dependencies_unique_edge_idx').on(
+      t.projectId,
+      t.fromIssueId,
+      t.toIssueId,
+      t.kind,
+    ),
+    projectFromIdx: index('issue_dependencies_project_from_idx').on(t.projectId, t.fromIssueId),
+    projectToIdx: index('issue_dependencies_project_to_idx').on(t.projectId, t.toIssueId),
+  }),
+);
+
+export const issueDependenciesRelations = relations(issueDependencies, ({ one }) => ({
+  project: one(projects, {
+    fields: [issueDependencies.projectId],
+    references: [projects.id],
+  }),
+  fromIssue: one(issues, {
+    fields: [issueDependencies.fromIssueId],
+    references: [issues.id],
+    relationName: 'issueDependenciesFrom',
+  }),
+  toIssue: one(issues, {
+    fields: [issueDependencies.toIssueId],
+    references: [issues.id],
+    relationName: 'issueDependenciesTo',
+  }),
+  createdBy: one(users, {
+    fields: [issueDependencies.createdById],
+    references: [users.id],
+  }),
+}));
+
+export const pmDecisions = pgTable(
+  'pm_decisions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    // Bare uuid (no FK) — mirrors notifications.agent_session_id; the
+    // observability `agent_sessions` row may be GC'd before the decision is.
+    sessionId: uuid('session_id'),
+    cause: text('cause').notNull(),
+    eventRef: jsonb('event_ref').notNull().default(sql`'{}'::jsonb`),
+    summary: text('summary').notNull(),
+    actions: jsonb('actions').notNull().default(sql`'[]'::jsonb`),
+    confidence: real('confidence'),
+    modelTier: text('model_tier'),
+    tookMs: integer('took_ms'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectCreatedIdx: index('pm_decisions_project_created_idx').on(
+      t.projectId,
+      sql`${t.createdAt} DESC`,
+    ),
+  }),
+);
+
+export const pmDecisionsRelations = relations(pmDecisions, ({ one }) => ({
+  project: one(projects, { fields: [pmDecisions.projectId], references: [projects.id] }),
+}));
+
+export const pmConfig = pgTable('pm_config', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id')
+    .notNull()
+    .unique()
+    .references(() => projects.id, { onDelete: 'cascade' }),
+  enabled: boolean('enabled').notNull().default(false),
+  // null = event-only, no cron tick
+  cadenceCron: text('cadence_cron'),
+  eventTriggers: jsonb('event_triggers').notNull().default(
+    sql`'{"jobFailed":true,"pipelineStalled":true,"needsInfo":true,"queuePressure":true,"graphChanged":true}'::jsonb`,
+  ),
+  customInstructions: text('custom_instructions'),
+  // null = use app_config default model
+  modelOverride: text('model_override'),
+  maxRunsPerHour: integer('max_runs_per_hour').notNull().default(6),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const pmConfigRelations = relations(pmConfig, ({ one }) => ({
+  project: one(projects, { fields: [pmConfig.projectId], references: [projects.id] }),
+}));
+
+export const pmPolicies = pgTable(
+  'pm_policies',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    body: text('body').notNull(),
+    // Nullable: filled asynchronously by the memory indexer (Epic 6).
+    embedding: pgVector(MEMORY_EMBEDDING_DIM)('embedding'),
+    enabled: boolean('enabled').notNull().default(true),
+    priority: integer('priority').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectEnabledPriorityIdx: index('pm_policies_project_enabled_priority_idx').on(
+      t.projectId,
+      t.enabled,
+      sql`${t.priority} DESC`,
+    ),
+    embeddingHnswIdx: index('pm_policies_embedding_hnsw_idx').using(
+      'hnsw',
+      sql`"embedding" vector_cosine_ops`,
+    ),
+  }),
+);
+
+export const pmPoliciesRelations = relations(pmPolicies, ({ one }) => ({
+  project: one(projects, { fields: [pmPolicies.projectId], references: [projects.id] }),
 }));

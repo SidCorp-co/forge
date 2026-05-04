@@ -8,6 +8,8 @@ import {
   deviceStatuses,
   devices,
   emailVerificationTokens,
+  issueDependencies,
+  issueDependencyKinds,
   issueLabels,
   issuePriorities,
   issueStatuses,
@@ -18,8 +20,13 @@ import {
   jobTypes,
   jobs,
   labels,
+  memorySources,
   modelTiers,
+  notificationTypes,
   pairingCodes,
+  pmConfig,
+  pmDecisions,
+  pmPolicies,
   projectInvitations,
   projectIssCounters,
   projectMemberRoles,
@@ -492,6 +499,7 @@ describe('db/schema — jobs', () => {
       'release',
       'fix',
       'custom',
+      'pm',
     ]);
     expect(modelTiers).toEqual(['haiku', 'sonnet', 'opus']);
   });
@@ -989,5 +997,234 @@ describe('db/schema — activity_log', () => {
   it('has composite index on (issue_id, created_at)', () => {
     const cfg = getTableConfig(activityLog);
     expect(cfg.indexes.some((i) => i.config.name === 'activity_log_issue_created_idx')).toBe(true);
+  });
+});
+
+// ===== PM Agent (ISS-17) =====================================================
+
+describe('db/schema — pm agent enum extensions', () => {
+  it('memorySources includes decision and policy', () => {
+    expect(memorySources).toContain('decision');
+    expect(memorySources).toContain('policy');
+  });
+
+  it('notificationTypes includes pm_escalation', () => {
+    expect(notificationTypes).toContain('pm_escalation');
+  });
+
+  it('jobTypes includes pm', () => {
+    expect(jobTypes).toContain('pm');
+  });
+
+  it('jobs has partial unique index jobs_pm_per_project_unique_idx', () => {
+    const cfg = getTableConfig(jobs);
+    const idx = cfg.indexes.find((i) => i.config.name === 'jobs_pm_per_project_unique_idx');
+    if (!idx) throw new Error('expected jobs_pm_per_project_unique_idx');
+    expect(idx.config.unique).toBe(true);
+    expect(idx.config.columns.map((c) => (c as { name?: string }).name)).toEqual(['project_id']);
+  });
+});
+
+describe('db/schema — issue_dependencies', () => {
+  it('exports the kind enum values', () => {
+    expect(issueDependencyKinds).toEqual(['blocks', 'relates', 'duplicates', 'parent']);
+  });
+
+  it('has the documented columns', () => {
+    const names = getTableConfig(issueDependencies).columns.map((c) => c.name);
+    expect(names.sort()).toEqual(
+      [
+        'created_at',
+        'created_by_id',
+        'from_issue_id',
+        'id',
+        'kind',
+        'project_id',
+        'reason',
+        'to_issue_id',
+        'valid_until',
+      ].sort(),
+    );
+  });
+
+  it('FKs: project + from_issue + to_issue cascade, created_by set null', () => {
+    const cfg = getTableConfig(issueDependencies);
+    expect(cfg.foreignKeys).toHaveLength(4);
+    const byCol = new Map(
+      cfg.foreignKeys.map((fk) => [fk.reference().columns[0]?.name ?? '', fk] as const),
+    );
+    expect(byCol.get('project_id')?.onDelete).toBe('cascade');
+    expect(byCol.get('from_issue_id')?.onDelete).toBe('cascade');
+    expect(byCol.get('to_issue_id')?.onDelete).toBe('cascade');
+    expect(byCol.get('created_by_id')?.onDelete).toBe('set null');
+  });
+
+  it('has unique edge index and project-from / project-to indexes', () => {
+    const cfg = getTableConfig(issueDependencies);
+    const uq = cfg.indexes.find((i) => i.config.name === 'issue_dependencies_unique_edge_idx');
+    if (!uq) throw new Error('expected unique edge idx');
+    expect(uq.config.unique).toBe(true);
+    expect(
+      cfg.indexes.some((i) => i.config.name === 'issue_dependencies_project_from_idx'),
+    ).toBe(true);
+    expect(cfg.indexes.some((i) => i.config.name === 'issue_dependencies_project_to_idx')).toBe(
+      true,
+    );
+  });
+
+  it('kind enum matches issueDependencyKinds', () => {
+    const k = getTableConfig(issueDependencies).columns.find((c) => c.name === 'kind');
+    if (!k) throw new Error('kind column not found');
+    expect(k.notNull).toBe(true);
+    expect(k.enumValues).toEqual([...issueDependencyKinds]);
+  });
+});
+
+describe('db/schema — pm_decisions', () => {
+  it('has the documented columns', () => {
+    const names = getTableConfig(pmDecisions).columns.map((c) => c.name);
+    expect(names.sort()).toEqual(
+      [
+        'actions',
+        'cause',
+        'confidence',
+        'created_at',
+        'event_ref',
+        'id',
+        'model_tier',
+        'project_id',
+        'session_id',
+        'summary',
+        'took_ms',
+      ].sort(),
+    );
+  });
+
+  it('project_id cascades on project delete; session_id is bare uuid (no FK)', () => {
+    const cfg = getTableConfig(pmDecisions);
+    expect(cfg.foreignKeys).toHaveLength(1);
+    expect(cfg.foreignKeys[0]?.reference().columns[0]?.name).toBe('project_id');
+    expect(cfg.foreignKeys[0]?.onDelete).toBe('cascade');
+  });
+
+  it('has index on (project_id, created_at)', () => {
+    const cfg = getTableConfig(pmDecisions);
+    expect(cfg.indexes.some((i) => i.config.name === 'pm_decisions_project_created_idx')).toBe(
+      true,
+    );
+  });
+
+  it('actions and event_ref are notNull jsonb with defaults', () => {
+    const cols = getTableConfig(pmDecisions).columns;
+    const actions = cols.find((c) => c.name === 'actions');
+    const eventRef = cols.find((c) => c.name === 'event_ref');
+    if (!actions || !eventRef) throw new Error('actions/event_ref column not found');
+    expect(actions.notNull).toBe(true);
+    expect(actions.columnType).toBe('PgJsonb');
+    expect(actions.hasDefault).toBe(true);
+    expect(eventRef.notNull).toBe(true);
+    expect(eventRef.columnType).toBe('PgJsonb');
+    expect(eventRef.hasDefault).toBe(true);
+  });
+});
+
+describe('db/schema — pm_config', () => {
+  it('has the documented columns', () => {
+    const names = getTableConfig(pmConfig).columns.map((c) => c.name);
+    expect(names.sort()).toEqual(
+      [
+        'cadence_cron',
+        'created_at',
+        'custom_instructions',
+        'enabled',
+        'event_triggers',
+        'id',
+        'max_runs_per_hour',
+        'model_override',
+        'project_id',
+        'updated_at',
+      ].sort(),
+    );
+  });
+
+  it('project_id is unique and cascades', () => {
+    const cfg = getTableConfig(pmConfig);
+    const projectId = cfg.columns.find((c) => c.name === 'project_id');
+    if (!projectId) throw new Error('project_id column not found');
+    expect(projectId.notNull).toBe(true);
+    expect(projectId.isUnique).toBe(true);
+    expect(cfg.foreignKeys).toHaveLength(1);
+    expect(cfg.foreignKeys[0]?.onDelete).toBe('cascade');
+  });
+
+  it('enabled defaults to false', () => {
+    const enabled = getTableConfig(pmConfig).columns.find((c) => c.name === 'enabled');
+    if (!enabled) throw new Error('enabled column not found');
+    expect(enabled.notNull).toBe(true);
+    expect(enabled.hasDefault).toBe(true);
+    expect(enabled.default).toBe(false);
+  });
+
+  it('max_runs_per_hour defaults to 6', () => {
+    const c = getTableConfig(pmConfig).columns.find((c) => c.name === 'max_runs_per_hour');
+    if (!c) throw new Error('max_runs_per_hour column not found');
+    expect(c.notNull).toBe(true);
+    expect(c.default).toBe(6);
+  });
+
+  it('cadence_cron is nullable text', () => {
+    const c = getTableConfig(pmConfig).columns.find((c) => c.name === 'cadence_cron');
+    if (!c) throw new Error('cadence_cron column not found');
+    expect(c.notNull).toBe(false);
+    expect(c.columnType).toBe('PgText');
+  });
+});
+
+describe('db/schema — pm_policies', () => {
+  it('has the documented columns', () => {
+    const names = getTableConfig(pmPolicies).columns.map((c) => c.name);
+    expect(names.sort()).toEqual(
+      [
+        'body',
+        'created_at',
+        'embedding',
+        'enabled',
+        'id',
+        'name',
+        'priority',
+        'project_id',
+        'updated_at',
+      ].sort(),
+    );
+  });
+
+  it('project_id cascades', () => {
+    const cfg = getTableConfig(pmPolicies);
+    expect(cfg.foreignKeys).toHaveLength(1);
+    expect(cfg.foreignKeys[0]?.onDelete).toBe('cascade');
+  });
+
+  it('embedding is nullable vector(1536)', () => {
+    const c = getTableConfig(pmPolicies).columns.find((c) => c.name === 'embedding');
+    if (!c) throw new Error('embedding column not found');
+    expect(c.notNull).toBe(false);
+    expect(c.getSQLType()).toBe('vector(1536)');
+  });
+
+  it('enabled defaults to true and priority defaults to 0', () => {
+    const cols = getTableConfig(pmPolicies).columns;
+    const enabled = cols.find((c) => c.name === 'enabled');
+    const priority = cols.find((c) => c.name === 'priority');
+    if (!enabled || !priority) throw new Error('enabled/priority column not found');
+    expect(enabled.default).toBe(true);
+    expect(priority.default).toBe(0);
+  });
+
+  it('has project/enabled/priority and HNSW embedding indexes', () => {
+    const cfg = getTableConfig(pmPolicies);
+    expect(
+      cfg.indexes.some((i) => i.config.name === 'pm_policies_project_enabled_priority_idx'),
+    ).toBe(true);
+    expect(cfg.indexes.some((i) => i.config.name === 'pm_policies_embedding_hnsw_idx')).toBe(true);
   });
 });
