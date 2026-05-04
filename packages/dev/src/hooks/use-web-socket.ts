@@ -226,10 +226,19 @@ export function useWebSocket() {
           return;
         }
 
-        if (event === "notification:created") {
-          ["notifications", "notifications-unread"].forEach((k) =>
+        if (event === "notification:created" || event === "notification.created") {
+          ["notifications", "notifications-unread", "pm-escalations"].forEach((k) =>
             queryClient.invalidateQueries({ queryKey: [k], refetchType: "all" }),
           );
+        }
+
+        // ISS-22 — PM agent escalation. Broadcast by Epic 5; refresh the
+        // inbox + notifications cache so the bell badge and PmInbox pick it up.
+        if (event === "pm.escalation") {
+          ["pm-escalations", "notifications", "notifications-unread"].forEach((k) =>
+            queryClient.invalidateQueries({ queryKey: [k], refetchType: "all" }),
+          );
+          return;
         }
 
         if (

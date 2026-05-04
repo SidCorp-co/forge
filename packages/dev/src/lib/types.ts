@@ -339,7 +339,7 @@ export interface ToolCallData {
   isError?: boolean;
 }
 
-export type NotificationType = "issue_status_changed" | "comment_added" | "agent_completed" | "mention";
+export type NotificationType = "issue_status_changed" | "comment_added" | "agent_completed" | "mention" | "pm_escalation";
 
 export interface Notification {
   id: string;

@@ -242,7 +242,6 @@ app.route('/api/auth', desktopRoutes);
 // 400-reject the literal "health" segment.
 app.route('/api/projects', projectHealthRoutes);
 app.route('/api/projects', projectRoutes);
-app.route('/api/projects', pmRoutes);
 app.route('/api/projects', memberRoutes);
 app.route('/api/projects', skillSyncRoutes);
 app.route('/api/projects', skillRegisterRoutes);
@@ -301,6 +300,12 @@ app.route('/api/runners', runnerCallbackRoutes);
 if (isEnabled('chatProvider')) {
   app.route('/api/chat', chatRoutes);
   app.route('/api/widget/chat', widgetChatRoutes);
+}
+
+// ISS-22 (PM Agent Epic 6) — config / policies / decisions CRUD + escalation
+// respond endpoint. Mounted under /api/projects/:projectId/pm/*.
+if (isEnabled('pmAgent')) {
+  app.route('/api/projects', pmRoutes);
 }
 
 // Widget bundle (ISS-295 PR-C) — public, project-scoped delivery of the
