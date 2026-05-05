@@ -8,6 +8,7 @@ import {
   memories,
 } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { Sentry } from '../observability/sentry.js';
 import { allowedRoleVisibilityPairs } from './visibility.js';
 
 export interface SearchInput {
@@ -108,6 +109,18 @@ export async function searchMemories(input: SearchInput): Promise<MemoryHit[]> {
       .then(() => undefined)
       .catch((err: unknown) => {
         logger.warn({ err, ids }, 'memory-search: retrieval_count update failed');
+        // Persistent UPDATE failures would silently freeze retrieval_count and
+        // let the prune sweeper age out actively-used memories. Surface to
+        // Sentry so the regression isn't invisible. Guarded — Sentry no-op
+        // when not initialised must never throw out of fire-and-forget.
+        try {
+          Sentry.captureException(err, {
+            tags: { surface: 'memory-search', op: 'retrieval_count_update' },
+            extra: { idCount: ids.length },
+          });
+        } catch {
+          // ignore
+        }
       });
     pendingRetrievalUpdates.add(pending);
     void pending.finally(() => pendingRetrievalUpdates.delete(pending));

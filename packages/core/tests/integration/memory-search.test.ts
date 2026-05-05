@@ -376,7 +376,7 @@ describe('F3 memory search + indexer integration', () => {
     });
     stubEmbedding(hotVector(0));
 
-    const N = 25;
+    const N = 100;
     await Promise.all(
       Array.from({ length: N }, () =>
         app.request('/api/memory/search', {

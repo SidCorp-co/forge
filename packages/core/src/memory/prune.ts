@@ -1,6 +1,7 @@
 import { inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { knowledgeEdges } from '../db/schema.js';
+import { logger } from '../logger.js';
 
 const BATCH_SIZE = 10_000;
 const MAX_ITERS = 1000;
@@ -55,7 +56,18 @@ async function deleteBatchWithEdgeCascade(
         SELECT id::text AS id FROM del
       `);
       const ids = extractIds(result);
-      const batchLocal = ids.length || affectedCount(result);
+      const rowCount = affectedCount(result);
+      // If a driver ever reports rows-affected without RETURNING ids (e.g. a
+      // future swap from postgres-js), the edge cascade below would silently
+      // skip and leave orphans. Surface it loudly so the divergence is fixed
+      // before it ships rather than discovered via dangling edges.
+      if (rowCount > 0 && ids.length === 0) {
+        logger.warn(
+          { rowCount },
+          'memory-prune: driver returned rowCount without RETURNING ids — edge cascade skipped',
+        );
+      }
+      const batchLocal = ids.length || rowCount;
       let edgesLocal = 0;
       if (ids.length > 0) {
         // Use Drizzle's inArray so the driver serializes the parameter array
@@ -96,17 +108,34 @@ export async function runMemoryPrune(): Promise<{
     sql`retrieval_count < 3 AND updated_at < now() - interval '90 days'`,
   );
 
-  const invalidate = await db.execute(sql`
-    UPDATE knowledge_edges
-    SET valid_until = now()
-    WHERE valid_until IS NULL
-      AND created_at < now() - interval '60 days'
-  `);
+  // Batch the open-edge invalidation so a backlog can't hold a single
+  // long-running write lock the way an unbounded UPDATE would. Mirrors the
+  // 10k-row cap of the memory-delete path. `ctid` keys the batch so each
+  // pass touches a different physical-row slice and we don't rescan rows
+  // already advanced past `valid_until IS NULL`.
+  let invalidatedEdges = 0;
+  for (let i = 0; i < MAX_ITERS; i++) {
+    const result = await db.execute(sql`
+      WITH victims AS (
+        SELECT ctid FROM knowledge_edges
+        WHERE valid_until IS NULL
+          AND created_at < now() - interval '60 days'
+        LIMIT ${BATCH_SIZE}
+      )
+      UPDATE knowledge_edges
+      SET valid_until = now()
+      WHERE ctid IN (SELECT ctid FROM victims)
+    `);
+    const batch = affectedCount(result);
+    if (batch === 0) break;
+    invalidatedEdges += batch;
+    if (batch < BATCH_SIZE) break;
+  }
 
   return {
     prunedMemories: stale.deleted + rare.deleted,
     cascadedEdges: stale.cascadedEdges + rare.cascadedEdges,
-    invalidatedEdges: affectedCount(invalidate),
+    invalidatedEdges,
     durationMs: Date.now() - t0,
   };
 }

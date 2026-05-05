@@ -15,6 +15,11 @@ vi.mock('../db/client.js', () => ({
   db: { execute: executeMock, delete: deleteMock, transaction: transactionMock },
 }));
 
+const warnMock = vi.fn();
+vi.mock('../logger.js', () => ({
+  logger: { info: vi.fn(), warn: warnMock, error: vi.fn() },
+}));
+
 const { runMemoryPrune } = await import('./prune.js');
 
 beforeEach(() => {
@@ -22,6 +27,7 @@ beforeEach(() => {
   deleteWhereMock.mockReset();
   deleteMock.mockClear();
   transactionMock.mockClear();
+  warnMock.mockClear();
 });
 
 describe('memory/prune — runMemoryPrune', () => {
@@ -86,5 +92,37 @@ describe('memory/prune — runMemoryPrune', () => {
     expect(result.cascadedEdges).toBe(0);
     expect(executeMock).toHaveBeenCalledTimes(3);
     expect(deleteMock).not.toHaveBeenCalled();
+  });
+
+  it('warns when a driver reports rowCount>0 but no RETURNING ids (cascade would be skipped)', async () => {
+    // Hypothetical future driver path: counts deletes via rowCount but does
+    // not surface RETURNING rows. Without the warning, the edge cascade
+    // would silently no-op and leave orphan knowledge_edges rows.
+    executeMock.mockResolvedValueOnce({ rowCount: 7 });
+    executeMock.mockResolvedValueOnce([]);
+    executeMock.mockResolvedValueOnce({ count: 0 });
+
+    const result = await runMemoryPrune();
+    expect(result.prunedMemories).toBe(7);
+    expect(result.cascadedEdges).toBe(0);
+    expect(deleteMock).not.toHaveBeenCalled();
+    expect(warnMock).toHaveBeenCalledWith(
+      expect.objectContaining({ rowCount: 7 }),
+      expect.stringContaining('edge cascade skipped'),
+    );
+  });
+
+  it('iterates the edge invalidation in batches until a short batch signals completion', async () => {
+    // Memory deletes both empty.
+    executeMock.mockResolvedValueOnce([]);
+    executeMock.mockResolvedValueOnce([]);
+    // Edge invalidation: full batch then short batch.
+    executeMock.mockResolvedValueOnce({ count: 10_000 });
+    executeMock.mockResolvedValueOnce({ count: 42 });
+
+    const result = await runMemoryPrune();
+    expect(result.invalidatedEdges).toBe(10_042);
+    // 2 memory-DELETE CTEs + 2 edge-UPDATE CTEs.
+    expect(executeMock).toHaveBeenCalledTimes(4);
   });
 });
