@@ -224,6 +224,7 @@ async function findResumableSessionForIssue(
   messages: unknown;
   metadata: unknown;
   usage: unknown;
+  startedAt: Date | null;
 } | null> {
   const rows = await db
     .select({
@@ -233,6 +234,7 @@ async function findResumableSessionForIssue(
       metadata: agentSessions.metadata,
       usage: agentSessions.usage,
       status: agentSessions.status,
+      startedAt: agentSessions.startedAt,
     })
     .from(agentSessions)
     .where(
@@ -337,9 +339,21 @@ agentSessionRoutes.post(
       if (resumable) {
         const prevMessages = Array.isArray(resumable.messages) ? resumable.messages : [];
         const messages = [...prevMessages, userMessage];
+        const nowDate = new Date();
         const [updated] = await db
           .update(agentSessions)
-          .set({ status: 'running', messages, title, updatedAt: new Date() })
+          .set({
+            status: 'running',
+            messages,
+            title,
+            // ISS-34: resume = a worker is taking action. If we never recorded
+            // startedAt (was queued before), stamp it now; bump heartbeat so
+            // the sweeper doesn't immediately classify this as stalled.
+            startedAt: resumable.startedAt ?? nowDate,
+            lastHeartbeatAt: nowDate,
+            failureReason: null,
+            updatedAt: nowDate,
+          })
           .where(eq(agentSessions.id, resumable.id))
           .returning();
         if (!updated) throw notFound('agent session not found');
@@ -365,6 +379,12 @@ agentSessionRoutes.post(
       metadata.issueId = input.issueIds[0];
     }
 
+    // ISS-34: interactive (non-pipeline) sessions start `running` because the
+    // user is actively interacting and the worker is expected to begin
+    // streaming within seconds. Stamp startedAt + heartbeat so the sweeper
+    // (which only operates on pipeline-typed sessions) treats them sanely
+    // even if the predicate is ever loosened.
+    const nowDate = new Date();
     const [inserted] = await db
       .insert(agentSessions)
       .values({
@@ -373,6 +393,8 @@ agentSessionRoutes.post(
         deviceId,
         title,
         status: 'running',
+        startedAt: nowDate,
+        lastHeartbeatAt: nowDate,
         repoPath: rp,
         messages: [userMessage] as never,
         metadata: metadata as never,
@@ -455,9 +477,22 @@ agentSessionRoutes.post(
       ...prevMessages,
       { role: 'user', content: input.message, timestamp: Date.now() },
     ];
+    // ISS-34: appending a message means a worker is engaged. CAS queued →
+    // running so the lifecycle stamps reflect first-claim time, and bump
+    // heartbeat so the sweeper sees fresh activity.
+    const sendNow = new Date();
+    const sendUpdates: Record<string, unknown> = {
+      messages: messages as never,
+      status: 'running',
+      lastHeartbeatAt: sendNow,
+      updatedAt: sendNow,
+    };
+    if (session.status === 'queued' || session.startedAt == null) {
+      sendUpdates.startedAt = sendNow;
+    }
     const [updated] = await db
       .update(agentSessions)
-      .set({ messages: messages as never, status: 'running', updatedAt: new Date() })
+      .set(sendUpdates)
       .where(eq(agentSessions.id, input.sessionId))
       .returning();
     if (!updated) throw notFound('agent session not found');
@@ -831,7 +866,8 @@ agentSessionRoutes.patch(
     const access = await loadProjectAccess(existing.projectId, userId);
     if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
 
-    const updates: Record<string, unknown> = { updatedAt: new Date() };
+    const patchNow = new Date();
+    const updates: Record<string, unknown> = { updatedAt: patchNow };
     if (patch.title !== undefined) updates.title = patch.title;
     if (patch.status !== undefined) updates.status = patch.status;
     if (patch.claudeSessionId !== undefined) updates.claudeSessionId = patch.claudeSessionId;
@@ -840,6 +876,39 @@ agentSessionRoutes.patch(
     if (patch.usage !== undefined) updates.usage = patch.usage;
     if (patch.metadata !== undefined) updates.metadata = patch.metadata;
     if (patch.diff !== undefined) updates.diff = patch.diff;
+
+    // ISS-34: any worker-side write (messages append, claudeSessionId set,
+    // status change, usage update) is a heartbeat signal. Bump the stamp so
+    // the sweeper doesn't classify a still-active session as stalled.
+    const isWorkerActivity =
+      patch.messages !== undefined ||
+      patch.claudeSessionId !== undefined ||
+      patch.usage !== undefined ||
+      patch.status !== undefined ||
+      patch.diff !== undefined;
+    if (isWorkerActivity) {
+      updates.lastHeartbeatAt = patchNow;
+    }
+    // CAS queued → running on first worker write. If status is being patched
+    // explicitly, respect that instead.
+    if (
+      patch.status === undefined &&
+      isWorkerActivity &&
+      existing.status === 'queued'
+    ) {
+      updates.status = 'running';
+      updates.startedAt = patchNow;
+    } else if (patch.status === 'running' && existing.startedAt == null) {
+      updates.startedAt = patchNow;
+    }
+    // Clear failureReason on revival (queued/running write after a previous
+    // failure shouldn't keep the stale reason hanging around).
+    if (
+      (updates.status === 'running' || updates.status === 'queued') &&
+      existing.failureReason
+    ) {
+      updates.failureReason = null;
+    }
 
     const [updated] = await db
       .update(agentSessions)

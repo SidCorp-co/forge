@@ -51,15 +51,25 @@ export async function ensureAgentSessionForJob(
         .where(eq(jobs.id, job.retryOf))
         .limit(1);
       if (parent?.agentSessionId) {
+        // ISS-34: re-queue the parent session for the retry. The worker will
+        // CAS it back to `running` when it claims (see routes.ts patch path).
+        const now = new Date();
         await db
           .update(agentSessions)
-          .set({ status: 'running', updatedAt: new Date() })
+          .set({
+            status: 'queued',
+            dispatchedAt: now,
+            startedAt: null,
+            lastHeartbeatAt: null,
+            failureReason: null,
+            updatedAt: now,
+          })
           .where(eq(agentSessions.id, parent.agentSessionId));
         await db
           .update(jobs)
           .set({ agentSessionId: parent.agentSessionId })
           .where(eq(jobs.id, job.id));
-        broadcastSessionStatus(parent.agentSessionId, job.projectId, job.deviceId, 'running');
+        broadcastSessionStatus(parent.agentSessionId, job.projectId, job.deviceId, 'queued');
         return parent.agentSessionId;
       }
     }
@@ -91,6 +101,10 @@ export async function ensureAgentSessionForJob(
     if (skillName) metadata.skillName = skillName;
     if (job.deviceId) metadata.deviceId = job.deviceId;
 
+    // ISS-34: pipeline sessions start `queued`. Worker flips to `running`
+    // (CAS) when it actually claims the job — see routes.ts PATCH /:id and
+    // /send hooks. This separates "enqueued, waiting for worker" from
+    // "worker is actually streaming" so the sweeper can fail zombies.
     const [inserted] = await db
       .insert(agentSessions)
       .values({
@@ -98,7 +112,8 @@ export async function ensureAgentSessionForJob(
         userId: issueOwnerId,
         deviceId: job.deviceId,
         title,
-        status: 'running',
+        status: 'queued',
+        dispatchedAt: new Date(),
         repoPath: context.repoPath,
         metadata: metadata as never,
       })
@@ -138,9 +153,11 @@ export async function syncAgentSessionLifecycle(
     // leaves the running state. The job row keeps the precise terminal status.
     const status: 'completed' | 'failed' =
       outcome === 'done' || outcome === 'cancelled' ? 'completed' : 'failed';
+    const updates: Record<string, unknown> = { status, updatedAt: new Date() };
+    if (status === 'failed') updates.failureReason = 'job_failed';
     await db
       .update(agentSessions)
-      .set({ status, updatedAt: new Date() })
+      .set(updates)
       .where(eq(agentSessions.id, job.agentSessionId));
     broadcastSessionStatus(job.agentSessionId, job.projectId, job.deviceId, status);
   } catch (err) {

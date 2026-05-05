@@ -58,10 +58,28 @@ export interface BranchDiff {
   total_deletions: number;
 }
 
+export type AgentSessionStatus = 'idle' | 'queued' | 'running' | 'completed' | 'failed';
+
+// ISS-34: synthetic status surfaced to UI when a `running` session has not
+// emitted a heartbeat for STALLED_THRESHOLD_MS. Backend persists `running`
+// (it's only a presentation distinction); UI uses `deriveSessionDisplayStatus`
+// to decide whether to show the amber stalled badge.
+export type AgentSessionDisplayStatus = AgentSessionStatus | 'stalled';
+
+export const STALLED_THRESHOLD_MS = 60_000;
+
+export type SessionFailureReason =
+  | 'queue_timeout'
+  | 'heartbeat_timeout'
+  | 'no_worker_online'
+  | 'user_cancelled'
+  | 'job_failed'
+  | 'migration_zombie_cleanup';
+
 export interface AgentSession {
   documentId: string;
   title: string;
-  status: 'idle' | 'queued' | 'running' | 'completed' | 'failed';
+  status: AgentSessionStatus;
   messages: any[];
   claudeSessionId?: string;
   repoPath?: string;
@@ -69,11 +87,41 @@ export interface AgentSession {
   metadata?: Record<string, unknown>;
   diff?: BranchDiff | null;
   user?: { id: number; documentId: string; username: string };
+  // ISS-34 lifecycle stamps. Optional because pre-migration rows + interactive
+  // sessions may have nulls.
+  dispatchedAt?: string | null;
+  startedAt?: string | null;
+  lastHeartbeatAt?: string | null;
+  failureReason?: SessionFailureReason | string | null;
   createdAt: string;
   updatedAt: string;
 }
 
 export type AgentSessionSummary = Omit<AgentSession, 'messages'>;
+
+/**
+ * ISS-34 — translate raw status into the display variant. A session is
+ * "stalled" when it claims to be running but the worker hasn't sent a
+ * heartbeat (or any update) in STALLED_THRESHOLD_MS. Stalled is purely a
+ * presentation hint — the sweeper turns true zombies into `failed` after
+ * HEARTBEAT_TIMEOUT_MS (3min default), so stalled is the warning band
+ * between "fresh" and "the sweeper will kill it next tick".
+ */
+export function deriveSessionDisplayStatus(
+  session: Pick<
+    AgentSession,
+    'status' | 'lastHeartbeatAt' | 'startedAt' | 'updatedAt'
+  >,
+  nowMs: number = Date.now(),
+): AgentSessionDisplayStatus {
+  if (session.status !== 'running') return session.status;
+  const lastSignal =
+    session.lastHeartbeatAt ?? session.startedAt ?? session.updatedAt;
+  if (!lastSignal) return 'running';
+  const lastMs = new Date(lastSignal).getTime();
+  if (Number.isNaN(lastMs)) return 'running';
+  return nowMs - lastMs > STALLED_THRESHOLD_MS ? 'stalled' : 'running';
+}
 
 /**
  * Interactive agent runs (start / send / abort / build-prompt) ship with

@@ -5,6 +5,7 @@ import { X, ExternalLink } from 'lucide-react';
 import { ChatMessages } from './chat-messages';
 import { ChatInput } from './chat-input';
 import { ContextUsageBar } from './context-usage-bar';
+import { SessionPlaceholder } from './session-placeholder';
 import { useAgentStreamContext } from '@/hooks/agent-stream-context';
 import { uploadAndFormatMessage } from '@/lib/utils/upload-files';
 
@@ -79,8 +80,13 @@ export function AgentSessionPanel({ sessionId: targetSessionId, projectSlug, onC
         </div>
       </div>
 
-      {/* Messages */}
-      <ChatMessages messages={messages} />
+      {/* Messages — show pipeline placeholder when there's a target session
+          but no messages yet (zombie / queued / freshly-claimed). */}
+      {messages.length === 0 && targetSessionId ? (
+        <SessionPlaceholder sessionId={targetSessionId} />
+      ) : (
+        <ChatMessages messages={messages} />
+      )}
 
       {/* Input */}
       <ChatInput
