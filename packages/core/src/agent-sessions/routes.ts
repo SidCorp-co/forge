@@ -346,9 +346,6 @@ agentSessionRoutes.post(
             status: 'running',
             messages,
             title,
-            // ISS-34: resume = a worker is taking action. If we never recorded
-            // startedAt (was queued before), stamp it now; bump heartbeat so
-            // the sweeper doesn't immediately classify this as stalled.
             startedAt: resumable.startedAt ?? nowDate,
             lastHeartbeatAt: nowDate,
             failureReason: null,
@@ -379,11 +376,8 @@ agentSessionRoutes.post(
       metadata.issueId = input.issueIds[0];
     }
 
-    // ISS-34: interactive (non-pipeline) sessions start `running` because the
-    // user is actively interacting and the worker is expected to begin
-    // streaming within seconds. Stamp startedAt + heartbeat so the sweeper
-    // (which only operates on pipeline-typed sessions) treats them sanely
-    // even if the predicate is ever loosened.
+    // Interactive sessions start `running` (worker streams within seconds);
+    // stamp startedAt + heartbeat for parity with the pipeline path.
     const nowDate = new Date();
     const [inserted] = await db
       .insert(agentSessions)
@@ -477,9 +471,7 @@ agentSessionRoutes.post(
       ...prevMessages,
       { role: 'user', content: input.message, timestamp: Date.now() },
     ];
-    // ISS-34: appending a message means a worker is engaged. CAS queued →
-    // running so the lifecycle stamps reflect first-claim time, and bump
-    // heartbeat so the sweeper sees fresh activity.
+    // Worker activity → CAS queued→running and bump heartbeat for the sweeper.
     const sendNow = new Date();
     const sendUpdates: Record<string, unknown> = {
       messages: messages as never,
@@ -583,11 +575,13 @@ agentSessionRoutes.post(
   },
 );
 
-// ISS-34 PR 2 — explicit user cancel. Different from /abort (which sets
-// 'idle' for resume). Cancel marks the session terminal as `failed` with
-// reason='user_cancelled' so the issue sweeper can pick it up and route the
-// associated job through recovery (or escalate). Also fires agent:abort so
-// any in-flight worker stops immediately.
+// Pipeline-session types for the retry endpoint. Mirrors the predicate
+// used by sweeper.ts and the migration backfill.
+const PIPELINE_SESSION_TYPES = new Set<string>(['pipeline', 'pm']);
+
+// /cancel marks terminal as `failed` with reason='user_cancelled' (vs
+// /abort which sets 'idle' so the user can resume). The sweeper then
+// routes the linked job through recovery or escalation.
 agentSessionRoutes.post(
   '/:id/cancel',
   zValidator('param', idParamSchema, (r) => {
@@ -641,10 +635,9 @@ agentSessionRoutes.post(
   },
 );
 
-// ISS-34 PR 2 — re-enqueue the underlying pipeline job. Only valid for
-// pipeline-typed sessions with metadata.issueId. Idempotency relies on
-// orchestrator.reEnqueueForIssue + the unique-active-job index: if a job
-// is already queued/running, the call is effectively a no-op.
+// Idempotency on /retry comes from orchestrator.reEnqueueForIssue + the
+// unique-active-job index — re-firing while a job is queued/running is a
+// no-op.
 agentSessionRoutes.post(
   '/:id/retry',
   zValidator('param', idParamSchema, (r) => {
@@ -665,7 +658,7 @@ agentSessionRoutes.post(
     if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
 
     const meta = (session.metadata ?? {}) as { type?: string; issueId?: string };
-    if (meta.type !== 'pipeline' && meta.type !== 'pm') {
+    if (!meta.type || !PIPELINE_SESSION_TYPES.has(meta.type)) {
       throw new HTTPException(400, {
         message: 'retry only supported for pipeline sessions',
         cause: { code: 'NOT_PIPELINE_SESSION' },
@@ -690,9 +683,7 @@ agentSessionRoutes.post(
       });
     }
 
-    // Lazy-import to avoid a circular dep between agent-sessions and
-    // pipeline. The orchestrator pulls in skill-mapping which doesn't need
-    // agent-sessions at boot, but the bundler resolves both on first import.
+    // Lazy-import breaks the agent-sessions ↔ pipeline import cycle.
     const { reEnqueueForIssue } = await import('../pipeline/orchestrator.js');
     await reEnqueueForIssue({
       projectId: issue.projectId,
@@ -706,8 +697,7 @@ agentSessionRoutes.post(
   },
 );
 
-// ISS-34 PR 2 — queue depth per device for a project. Used by the worker
-// panel + session placeholder to surface "N queued / running for worker X".
+// Queue depth per device — backs the worker panel + session placeholder.
 const queueStatsQuerySchema = z
   .object({
     projectId: z.uuid(),
@@ -756,8 +746,7 @@ agentSessionRoutes.get(
   },
 );
 
-// ISS-34 PR 2 — manual sweep trigger. Useful when the maintainer wants to
-// flush zombies without waiting for the next cron tick. Owner/admin only.
+// Manual sweep trigger — flush zombies without waiting for the cron tick.
 const sweepQuerySchema = z
   .object({
     projectId: z.uuid(),
@@ -1076,9 +1065,8 @@ agentSessionRoutes.patch(
     if (patch.metadata !== undefined) updates.metadata = patch.metadata;
     if (patch.diff !== undefined) updates.diff = patch.diff;
 
-    // ISS-34: any worker-side write (messages append, claudeSessionId set,
-    // status change, usage update) is a heartbeat signal. Bump the stamp so
-    // the sweeper doesn't classify a still-active session as stalled.
+    // Any worker-side write is a heartbeat signal; CAS queued→running on
+    // first activity so the sweeper sees a fresh stamp.
     const isWorkerActivity =
       patch.messages !== undefined ||
       patch.claudeSessionId !== undefined ||
@@ -1088,8 +1076,6 @@ agentSessionRoutes.patch(
     if (isWorkerActivity) {
       updates.lastHeartbeatAt = patchNow;
     }
-    // CAS queued → running on first worker write. If status is being patched
-    // explicitly, respect that instead.
     if (
       patch.status === undefined &&
       isWorkerActivity &&
@@ -1100,8 +1086,7 @@ agentSessionRoutes.patch(
     } else if (patch.status === 'running' && existing.startedAt == null) {
       updates.startedAt = patchNow;
     }
-    // Clear failureReason on revival (queued/running write after a previous
-    // failure shouldn't keep the stale reason hanging around).
+    // Revival clears any stale failure reason from a prior terminal pass.
     if (
       (updates.status === 'running' || updates.status === 'queued') &&
       existing.failureReason

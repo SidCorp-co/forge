@@ -60,10 +60,8 @@ export interface BranchDiff {
 
 export type AgentSessionStatus = 'idle' | 'queued' | 'running' | 'completed' | 'failed';
 
-// ISS-34: synthetic status surfaced to UI when a `running` session has not
-// emitted a heartbeat for STALLED_THRESHOLD_MS. Backend persists `running`
-// (it's only a presentation distinction); UI uses `deriveSessionDisplayStatus`
-// to decide whether to show the amber stalled badge.
+// Synthetic UI-only state derived from heartbeat freshness. Backend
+// persists `running`; the `stalled` distinction is presentational only.
 export type AgentSessionDisplayStatus = AgentSessionStatus | 'stalled';
 
 export const STALLED_THRESHOLD_MS = 60_000;
@@ -87,8 +85,7 @@ export interface AgentSession {
   metadata?: Record<string, unknown>;
   diff?: BranchDiff | null;
   user?: { id: number; documentId: string; username: string };
-  // ISS-34 lifecycle stamps. Optional because pre-migration rows + interactive
-  // sessions may have nulls.
+  // Lifecycle stamps — null on pre-migration rows + interactive sessions.
   dispatchedAt?: string | null;
   startedAt?: string | null;
   lastHeartbeatAt?: string | null;
@@ -100,12 +97,8 @@ export interface AgentSession {
 export type AgentSessionSummary = Omit<AgentSession, 'messages'>;
 
 /**
- * ISS-34 — translate raw status into the display variant. A session is
- * "stalled" when it claims to be running but the worker hasn't sent a
- * heartbeat (or any update) in STALLED_THRESHOLD_MS. Stalled is purely a
- * presentation hint — the sweeper turns true zombies into `failed` after
- * HEARTBEAT_TIMEOUT_MS (3min default), so stalled is the warning band
- * between "fresh" and "the sweeper will kill it next tick".
+ * Promote `running` → `stalled` when no heartbeat for STALLED_THRESHOLD_MS.
+ * Warning band between "fresh" and the sweeper's heartbeat_timeout cutoff.
  */
 export function deriveSessionDisplayStatus(
   session: Pick<
@@ -252,23 +245,19 @@ export const agentApi = {
       body: JSON.stringify({ issueDocumentId }),
     }),
 
-  // ISS-34 PR 2 — explicit cancel (terminal failed + agent:abort fan-out).
   cancelSession: (sessionId: string) =>
     apiClient<AgentSession>(`/agent-sessions/${sessionId}/cancel`, { method: 'POST' }),
 
-  // ISS-34 PR 2 — re-enqueue the underlying pipeline job for the linked issue.
   retrySession: (sessionId: string) =>
     apiClient<{ ok: boolean; issueId: string }>(`/agent-sessions/${sessionId}/retry`, {
       method: 'POST',
     }),
 
-  // ISS-34 PR 2 — queue depth per device for the worker panel.
   queueStats: (projectId: string) =>
     apiClient<{
       devices: { deviceId: string | null; queued: number; running: number }[];
     }>(`/agent-sessions/queue-stats?projectId=${encodeURIComponent(projectId)}`),
 
-  // ISS-34 PR 2 — manual sweep trigger (admin/owner only).
   sweepZombies: (projectId: string) =>
     apiClient<{ queueTimedOut: number; heartbeatTimedOut: number }>(
       `/agent-sessions/sweep-zombies?projectId=${encodeURIComponent(projectId)}`,

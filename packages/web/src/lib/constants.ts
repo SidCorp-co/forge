@@ -98,11 +98,8 @@ export const TASK_STATUS_COLORS: Record<string, string> = {
   backlog: 'bg-surface-container-low text-primary-fixed',
 };
 
-// ISS-34 — Queued must be visually distinct from Running. Material-tone
-// neutrals were too close to "idle/disabled". Violet for queued, blue for
-// running, amber for stalled (derived), emerald for completed, red for
-// failed. Slate is reserved for genuinely-inactive (idle/cancelled) so
-// users can't confuse a waiting-for-worker session with a dormant one.
+// Slate reserved for idle/cancelled — never reuse for active states or
+// "queued" reads as "dormant" to users.
 export const AGENT_STATUS_COLORS: Record<string, string> = {
   idle: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
   queued:

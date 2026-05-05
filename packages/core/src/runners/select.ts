@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { RunnerType } from '../db/schema.js';
+import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import type { RequiredCapabilities, Runner } from './types.js';
 
 /**
@@ -75,15 +76,10 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
   const { projectId, requiredCapabilities, fallbackChain } = input;
   const required = JSON.stringify(requiredCapabilities ?? {});
 
-  // ISS-34 PR 3 — also exclude runners whose last_seen_at is staler than
-  // the dispatch liveness window. status='online' alone can lag reality
-  // by up to the stale-detector cron interval.
-  const livenessMs = (() => {
-    const raw = process.env.DISPATCH_LIVENESS_MS;
-    const n = raw ? Number(raw) : Number.NaN;
-    return Number.isFinite(n) && n >= 10_000 ? n : 60_000;
-  })();
-  const livenessSeconds = Math.floor(livenessMs / 1000);
+  // Exclude runners whose last_seen_at is staler than the dispatch
+  // liveness window — `status='online'` lags reality up to the
+  // stale-detector cron interval.
+  const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
 
   if (fallbackChain && fallbackChain.length > 0) {
     for (const type of fallbackChain) {
@@ -98,7 +94,7 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
             AND capabilities @> ${required}::jsonb
             AND last_seen_at IS NOT NULL
             AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
-          ORDER BY last_seen_at DESC NULLS LAST, RANDOM()
+          ORDER BY last_seen_at DESC, RANDOM()
           LIMIT 1
         `,
       );

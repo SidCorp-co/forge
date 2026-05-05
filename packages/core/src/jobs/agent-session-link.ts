@@ -51,8 +51,7 @@ export async function ensureAgentSessionForJob(
         .where(eq(jobs.id, job.retryOf))
         .limit(1);
       if (parent?.agentSessionId) {
-        // ISS-34: re-queue the parent session for the retry. The worker will
-        // CAS it back to `running` when it claims (see routes.ts patch path).
+        // Re-queue the parent for retry; worker CAS flips to running on claim.
         const now = new Date();
         await db
           .update(agentSessions)
@@ -101,10 +100,9 @@ export async function ensureAgentSessionForJob(
     if (skillName) metadata.skillName = skillName;
     if (job.deviceId) metadata.deviceId = job.deviceId;
 
-    // ISS-34: pipeline sessions start `queued`. Worker flips to `running`
-    // (CAS) when it actually claims the job — see routes.ts PATCH /:id and
-    // /send hooks. This separates "enqueued, waiting for worker" from
-    // "worker is actually streaming" so the sweeper can fail zombies.
+    // Pipeline sessions enter `queued`; worker CAS flips to `running` on
+    // first write (routes.ts PATCH/send). Separates "waiting for worker"
+    // from "actually streaming" so the sweeper can distinguish zombies.
     const [inserted] = await db
       .insert(agentSessions)
       .values({
@@ -168,7 +166,7 @@ export async function syncAgentSessionLifecycle(
   }
 }
 
-function broadcastSessionEvent(
+export function broadcastSessionEvent(
   sessionId: string,
   projectId: string,
   deviceId: string | null,

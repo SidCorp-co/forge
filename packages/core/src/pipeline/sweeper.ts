@@ -29,9 +29,10 @@ import {
   jobs,
   projects,
 } from '../db/schema.js';
+import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
-import { deviceRoom, projectRoom } from '../ws/rooms.js';
+import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { reEnqueueForIssue } from './orchestrator.js';
 import { type RecoveryConfig, decideRecovery } from './recovery-policy.js';
@@ -39,19 +40,19 @@ import { resolveSkillForStatus } from './skill-mapping.js';
 
 export const PIPELINE_SWEEPER_QUEUE = 'pipeline-sweeper';
 
-// ISS-34 zombie thresholds. Env-overridable so we can tune per environment
-// without a redeploy of code; values clamp into a sane range to prevent
-// foot-guns (a 10s timeout would constantly kill healthy sessions).
-const QUEUE_TIMEOUT_MS_DEFAULT = 5 * 60_000; // 5 minutes
-const HEARTBEAT_TIMEOUT_MS_DEFAULT = 3 * 60_000; // 3 minutes
+// Zombie thresholds clamp at MIN_TIMEOUT_MS so a low env override can't
+// slaughter healthy sessions (a 10s heartbeat threshold would).
+const QUEUE_TIMEOUT_MS_DEFAULT = 5 * 60_000;
+const HEARTBEAT_TIMEOUT_MS_DEFAULT = 3 * 60_000;
 const MIN_TIMEOUT_MS = 30_000;
+
+const PIPELINE_METADATA_TYPES = sql`('pipeline','pm')`;
 
 function readTimeoutEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (!raw) return fallback;
   const n = Number(raw);
-  if (!Number.isFinite(n) || n < MIN_TIMEOUT_MS) return fallback;
-  return n;
+  return Number.isFinite(n) && n >= MIN_TIMEOUT_MS ? n : fallback;
 }
 
 export function getZombieThresholds(): { queueMs: number; heartbeatMs: number } {
@@ -105,11 +106,9 @@ export interface StuckIssueRow {
 }
 
 export async function runPipelineSweep(now: Date = new Date()): Promise<SweepResult> {
-  // ISS-34: zombie session sweep runs FIRST so any pipeline session whose
-  // worker abandoned it (queued past timeout, or running with stale
-  // heartbeat) is flipped to `failed` before the issue-stuck pass scans.
-  // The issue scan's `NOT EXISTS (... a.status='running')` clause then
-  // matches and the recovery policy retries the work.
+  // Zombie session sweep runs first; flipping abandoned sessions to `failed`
+  // unblocks the stuck-issue scan (NOT EXISTS predicate matches once the
+  // session leaves queued/running) so recovery policy retries the work.
   const zombieSessions = await sweepZombieSessions(now);
   const stuck = await selectStuckIssues();
   const result = await processStuckIssues(stuck, now);
@@ -117,40 +116,30 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
 }
 
 /**
- * ISS-34 — fail pipeline sessions whose worker abandoned them.
+ * Fail pipeline sessions abandoned by their worker.
  *
- * Two failure modes:
- *   • `queue_timeout`: session was inserted by the dispatcher, no worker
- *     ever picked it up (status stayed `queued` past QUEUE_TIMEOUT_MS).
- *   • `heartbeat_timeout`: a worker did claim (status='running') but stopped
- *     pinging — `last_heartbeat_at` (or fallback `started_at`) is older than
- *     HEARTBEAT_TIMEOUT_MS.
+ *  - `queue_timeout`: session sat at `queued` past QUEUE_TIMEOUT_MS — no
+ *    worker ever claimed it.
+ *  - `heartbeat_timeout`: worker claimed (status='running') but stopped
+ *    pinging past HEARTBEAT_TIMEOUT_MS.
  *
- * Scoped to `metadata.type IN ('pipeline','pm')`. Interactive chat sessions
- * are out of scope here — a user-driven session sitting at running with no
- * activity is a separate (and lower-stakes) problem.
+ * Scoped to pipeline/pm sessions; interactive chat sessions are out of
+ * scope (their idle behaviour is by design).
  */
 export async function sweepZombieSessions(now: Date): Promise<ZombieSweepResult> {
   const { queueMs, heartbeatMs } = getZombieThresholds();
   const queueCutoff = new Date(now.getTime() - queueMs);
   const heartbeatCutoff = new Date(now.getTime() - heartbeatMs);
 
-  let queueTimedOut = 0;
-  let heartbeatTimedOut = 0;
-
-  // Pass 1: queued > queueMs → failed.
-  const queueZombies = await db
-    .select({
-      id: agentSessions.id,
-      projectId: agentSessions.projectId,
-      deviceId: agentSessions.deviceId,
-    })
-    .from(agentSessions)
+  // Pass 1: queued past timeout. CAS via WHERE status='queued' so a worker
+  // that claims concurrently isn't stomped. dispatchedAt falls back to
+  // createdAt for rows that pre-date the migration.
+  const queuedFailed = await db
+    .update(agentSessions)
+    .set({ status: 'failed', failureReason: 'queue_timeout', updatedAt: now })
     .where(
       and(
         eq(agentSessions.status, 'queued'),
-        // Fall back to createdAt when dispatchedAt was never set (defensive
-        // for rows pre-migration that get re-queued via retry).
         or(
           and(isNotNull(agentSessions.dispatchedAt), lt(agentSessions.dispatchedAt, queueCutoff)),
           and(
@@ -158,31 +147,24 @@ export async function sweepZombieSessions(now: Date): Promise<ZombieSweepResult>
             lt(agentSessions.createdAt, queueCutoff),
           ),
         ),
-        sql`${agentSessions.metadata}->>'type' IN ('pipeline','pm')`,
+        sql`${agentSessions.metadata}->>'type' IN ${PIPELINE_METADATA_TYPES}`,
       ),
-    );
-
-  for (const z of queueZombies) {
-    try {
-      await db
-        .update(agentSessions)
-        .set({ status: 'failed', failureReason: 'queue_timeout', updatedAt: now })
-        .where(and(eq(agentSessions.id, z.id), eq(agentSessions.status, 'queued')));
-      broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'queue_timeout');
-      queueTimedOut++;
-    } catch (err) {
-      logger.warn({ err, sessionId: z.id }, 'pipeline-sweeper: queue zombie update failed');
-    }
-  }
-
-  // Pass 2: running with stale heartbeat → failed.
-  const heartbeatZombies = await db
-    .select({
+    )
+    .returning({
       id: agentSessions.id,
       projectId: agentSessions.projectId,
       deviceId: agentSessions.deviceId,
-    })
-    .from(agentSessions)
+    });
+
+  for (const z of queuedFailed) {
+    broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'queue_timeout');
+  }
+
+  // Pass 2: running with stale heartbeat (or no heartbeat ever, falling
+  // back to startedAt → createdAt).
+  const heartbeatFailed = await db
+    .update(agentSessions)
+    .set({ status: 'failed', failureReason: 'heartbeat_timeout', updatedAt: now })
     .where(
       and(
         eq(agentSessions.status, 'running'),
@@ -202,22 +184,21 @@ export async function sweepZombieSessions(now: Date): Promise<ZombieSweepResult>
             lt(agentSessions.createdAt, heartbeatCutoff),
           ),
         ),
-        sql`${agentSessions.metadata}->>'type' IN ('pipeline','pm')`,
+        sql`${agentSessions.metadata}->>'type' IN ${PIPELINE_METADATA_TYPES}`,
       ),
-    );
+    )
+    .returning({
+      id: agentSessions.id,
+      projectId: agentSessions.projectId,
+      deviceId: agentSessions.deviceId,
+    });
 
-  for (const z of heartbeatZombies) {
-    try {
-      await db
-        .update(agentSessions)
-        .set({ status: 'failed', failureReason: 'heartbeat_timeout', updatedAt: now })
-        .where(and(eq(agentSessions.id, z.id), eq(agentSessions.status, 'running')));
-      broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'heartbeat_timeout');
-      heartbeatTimedOut++;
-    } catch (err) {
-      logger.warn({ err, sessionId: z.id }, 'pipeline-sweeper: heartbeat zombie update failed');
-    }
+  for (const z of heartbeatFailed) {
+    broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'heartbeat_timeout');
   }
+
+  const queueTimedOut = queuedFailed.length;
+  const heartbeatTimedOut = heartbeatFailed.length;
 
   if (queueTimedOut > 0 || heartbeatTimedOut > 0) {
     logger.info(
@@ -235,12 +216,10 @@ function broadcastZombieTransition(
   deviceId: string | null,
   reason: 'queue_timeout' | 'heartbeat_timeout',
 ): void {
-  const payload = {
-    event: 'agent-session.status' as const,
-    data: { sessionId, projectId, deviceId, status: 'failed', failureReason: reason },
-  };
-  roomManager.publish(projectRoom(projectId), payload);
-  if (deviceId) roomManager.publish(deviceRoom(deviceId), payload);
+  broadcastSessionEvent(sessionId, projectId, deviceId, 'agent-session.status', {
+    status: 'failed',
+    failureReason: reason,
+  });
 }
 
 /**

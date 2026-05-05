@@ -1,9 +1,8 @@
 import clsx from "clsx";
 import { STATUS_COLORS } from "@/lib/constants";
 
-// ISS-34 — Queued must NOT be gray (gray belongs to idle/disabled). Running
-// is now blue (was amber); amber is reserved for the derived `stalled`
-// state. Slate is the neutral idle/cancelled tone.
+// Slate is reserved for idle/disabled; amber is reserved for the
+// derived `stalled` state — keep these distinct from Queued/Running.
 const extraColors: Record<string, string> = {
   backlog: "bg-gray-100 text-gray-600",
   todo: "bg-blue-100 text-blue-700",

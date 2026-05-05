@@ -81,8 +81,7 @@ export function AgentSessionPanel({ sessionId: targetSessionId, projectSlug, onC
         </div>
       </div>
 
-      {/* Messages — show pipeline placeholder when there's a target session
-          but no messages yet (zombie / queued / freshly-claimed). */}
+      {/* Pipeline placeholder when a target session has no messages yet. */}
       {messages.length === 0 && targetSessionId ? (
         <SessionPlaceholder
           sessionId={targetSessionId}
