@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { schedules, scheduleRunners } from '../db/schema.js';
+import { projects, schedules, scheduleRunners } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -54,6 +54,28 @@ const notFound = (message: string) =>
 
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
+
+// Cross-project routing via `targetProjectSlug` would otherwise let the source
+// project's owner plant jobs on any project they know the slug of. Require the
+// actor to be a member of the target project before accepting the slug, both
+// when persisting it (POST/PUT) and when manually triggering (`/:id/run`).
+async function assertTargetProjectAccess(slug: string, userId: string): Promise<void> {
+  const [target] = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(eq(projects.slug, slug))
+    .limit(1);
+  if (!target) {
+    throw new HTTPException(400, {
+      message: 'targetProjectSlug not found',
+      cause: { code: 'INVALID_TARGET_PROJECT' },
+    });
+  }
+  const access = await loadProjectAccess(target.id, userId);
+  if (!access.role && access.ownerId !== userId) {
+    throw forbidden('not a member of target project');
+  }
+}
 
 export const scheduleRoutes = new Hono<{ Variables: AuthVars }>();
 scheduleRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -122,6 +144,10 @@ scheduleRoutes.post(
       });
     }
 
+    if (input.targetProjectSlug) {
+      await assertTargetProjectAccess(input.targetProjectSlug, userId);
+    }
+
     const enabled = input.enabled ?? true;
     const nextRunAt = enabled ? nextRunFor(input.cron) : null;
 
@@ -163,6 +189,10 @@ scheduleRoutes.put(
 
     const access = await loadProjectAccess(row.projectId, userId);
     if (access.ownerId !== userId && access.role !== 'owner') throw forbidden('not a project owner');
+
+    if (patch.targetProjectSlug !== undefined && patch.targetProjectSlug !== null) {
+      await assertTargetProjectAccess(patch.targetProjectSlug, userId);
+    }
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (patch.name !== undefined) updates.name = patch.name;
@@ -239,6 +269,12 @@ scheduleRoutes.post(
 
     const access = await loadProjectAccess(schedule.projectId, userId);
     if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+
+    // Defensive re-check: rows persisted before the create/update gate landed
+    // could carry a `targetProjectSlug` the actor has no business triggering.
+    if (schedule.targetProjectSlug) {
+      await assertTargetProjectAccess(schedule.targetProjectSlug, userId);
+    }
 
     let result: Awaited<ReturnType<typeof dispatchScheduleRun>>;
     try {
