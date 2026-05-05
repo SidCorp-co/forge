@@ -4,12 +4,14 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { jobEventKinds, jobEvents, jobs } from '../db/schema.js';
+import { agentSessions, jobEventKinds, jobEvents, jobs } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/project-access.js';
+import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import { broadcastSessionEvent } from './agent-session-link.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -154,6 +156,70 @@ jobEventsRoutes.post(
           data: row.data,
         },
       });
+    }
+
+    // Heartbeat sync: bump the linked agent_sessions row so the zombie sweeper
+    // doesn't kill an in-flight pipeline job. CAS queued→running on first event
+    // stamps startedAt; later batches bump lastHeartbeatAt only. Best-effort —
+    // failures here must not break event ingest.
+    //
+    // Why here and not in the desktop worker: the worker uses `jobId` as its
+    // local session key and would need to know the linked `agentSessionId` to
+    // PATCH the row directly. Doing it server-side keeps the worker oblivious
+    // to the linkage; PR-B will surface `agentSessionId` to the worker so the
+    // session row also gets messages/diff streamed live.
+    if (job.agentSessionId) {
+      try {
+        const heartbeatNow = new Date();
+        const flipped = await db
+          .update(agentSessions)
+          .set({
+            status: 'running',
+            startedAt: heartbeatNow,
+            lastHeartbeatAt: heartbeatNow,
+            updatedAt: heartbeatNow,
+          })
+          .where(
+            and(
+              eq(agentSessions.id, job.agentSessionId),
+              eq(agentSessions.status, 'queued'),
+            ),
+          )
+          .returning({
+            id: agentSessions.id,
+            projectId: agentSessions.projectId,
+            deviceId: agentSessions.deviceId,
+          });
+        if (flipped.length > 0) {
+          const row = flipped[0];
+          if (row) {
+            broadcastSessionEvent(
+              row.id,
+              row.projectId,
+              row.deviceId,
+              'agent-session.status',
+              { status: 'running' },
+            );
+          }
+        } else {
+          // Already running (or terminal). Bump heartbeat only — guarded so we
+          // don't revive cancelled/failed/completed rows.
+          await db
+            .update(agentSessions)
+            .set({ lastHeartbeatAt: heartbeatNow, updatedAt: heartbeatNow })
+            .where(
+              and(
+                eq(agentSessions.id, job.agentSessionId),
+                eq(agentSessions.status, 'running'),
+              ),
+            );
+        }
+      } catch (err) {
+        logger.warn(
+          { err, jobId, agentSessionId: job.agentSessionId },
+          'events-routes: agent_sessions heartbeat sync failed',
+        );
+      }
     }
 
     const first = inserted[0];

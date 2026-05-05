@@ -7,11 +7,18 @@ vi.mock('../config/env.js', () => ({
   env: { DEVICE_TOKEN_PEPPER: TEST_PEPPER, NODE_ENV: 'test' },
 }));
 
-const jobRow = {
+const jobRow: {
+  id: string;
+  projectId: string;
+  deviceId: string;
+  status: string;
+  agentSessionId: string | null;
+} = {
   id: 'job-1',
   projectId: 'proj-1',
   deviceId: 'dev-1',
-  status: 'running' as string,
+  status: 'running',
+  agentSessionId: null,
 };
 
 const verifyDeviceToken = vi.fn(async (token: string) => {
@@ -47,8 +54,22 @@ const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 const dbSelect = vi.fn(() => ({ from: selectFrom }));
 
+// Heartbeat sync chain: db.update(agentSessions).set(...).where(...)[.returning(...)]
+// First call (CAS queued→running) ends with .returning() — second call (heartbeat
+// bump) ends at .where(). Both branches exercised in dedicated tests below.
+const updateReturning = vi.fn(async () => [] as unknown[]);
+const updateWhere = vi.fn(() => {
+  const p: { returning: typeof updateReturning } & PromiseLike<unknown> = {
+    returning: updateReturning,
+    then: (resolve: (v: unknown) => unknown) => Promise.resolve(undefined).then(resolve),
+  };
+  return p;
+});
+const updateSet = vi.fn(() => ({ where: updateWhere }));
+const dbUpdate = vi.fn(() => ({ set: updateSet }));
+
 vi.mock('../db/client.js', () => ({
-  db: { select: dbSelect, transaction },
+  db: { select: dbSelect, transaction, update: dbUpdate },
 }));
 
 const publishMock = vi.fn(() => 0);
@@ -82,8 +103,14 @@ describe('jobs/events-routes POST /:id/events', () => {
     selectLimit.mockImplementation(async () => [jobRow]);
     jobRow.status = 'running';
     jobRow.deviceId = 'dev-1';
+    jobRow.agentSessionId = null;
     insertReturning.mockReset();
     txExecute.mockReset();
+    updateReturning.mockReset();
+    updateReturning.mockResolvedValue([]);
+    updateSet.mockClear();
+    updateWhere.mockClear();
+    dbUpdate.mockClear();
   });
 
   afterEach(() => {
@@ -222,6 +249,109 @@ describe('jobs/events-routes POST /:id/events', () => {
         data: expect.objectContaining({ jobId: validJobId, seq: 1 }),
       }),
     );
+  });
+
+  it('flips linked agent_session queued→running on first event and broadcasts status', async () => {
+    jobRow.agentSessionId = 'session-1';
+    txExecute.mockResolvedValueOnce([]);
+    txExecute.mockResolvedValueOnce([{ max_seq: 0 }]);
+    insertReturning.mockResolvedValueOnce([
+      { seq: 1, kind: 'stdout', ts: new Date(), data: {} },
+    ]);
+    // CAS UPDATE returns the flipped row.
+    updateReturning.mockResolvedValueOnce([
+      { id: 'session-1', projectId: 'proj-1', deviceId: 'dev-1' },
+    ]);
+
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/events`, {
+        method: 'POST',
+        token: 'dev-1-token',
+        body: body([{ kind: 'stdout', data: {} }]),
+      }),
+    );
+    expect(r.status).toBe(200);
+
+    // 1 update call (CAS queued→running) — the heartbeat-only fallback path
+    // is skipped because the CAS returned a row.
+    expect(dbUpdate).toHaveBeenCalledTimes(1);
+    const setArg = updateSet.mock.calls[0]?.[0] as { status?: string; startedAt?: Date };
+    expect(setArg?.status).toBe('running');
+    expect(setArg?.startedAt).toBeInstanceOf(Date);
+
+    // job.event (1) + agent-session.status to projectRoom + deviceRoom = 3 publishes
+    expect(publishMock).toHaveBeenCalledTimes(3);
+    expect(publishMock).toHaveBeenCalledWith(
+      'project:proj-1',
+      expect.objectContaining({
+        event: 'agent-session.status',
+        data: expect.objectContaining({ sessionId: 'session-1', status: 'running' }),
+      }),
+    );
+    expect(publishMock).toHaveBeenCalledWith(
+      'device:dev-1',
+      expect.objectContaining({ event: 'agent-session.status' }),
+    );
+  });
+
+  it('falls through to heartbeat-only update when session is already running', async () => {
+    jobRow.agentSessionId = 'session-1';
+    txExecute.mockResolvedValueOnce([]);
+    txExecute.mockResolvedValueOnce([{ max_seq: 0 }]);
+    insertReturning.mockResolvedValueOnce([
+      { seq: 1, kind: 'stdout', ts: new Date(), data: {} },
+    ]);
+    // CAS UPDATE returns no row (status was not 'queued').
+    updateReturning.mockResolvedValueOnce([]);
+
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/events`, {
+        method: 'POST',
+        token: 'dev-1-token',
+        body: body([{ kind: 'stdout', data: {} }]),
+      }),
+    );
+    expect(r.status).toBe(200);
+
+    // 2 update calls: failed CAS + heartbeat-only bump.
+    expect(dbUpdate).toHaveBeenCalledTimes(2);
+    const heartbeatSetArg = updateSet.mock.calls[1]?.[0] as {
+      status?: string;
+      lastHeartbeatAt?: Date;
+    };
+    expect(heartbeatSetArg?.status).toBeUndefined();
+    expect(heartbeatSetArg?.lastHeartbeatAt).toBeInstanceOf(Date);
+
+    // No agent-session.status broadcast — only the job.event publish.
+    expect(publishMock).toHaveBeenCalledTimes(1);
+    expect(publishMock).toHaveBeenCalledWith(
+      'project:proj-1',
+      expect.objectContaining({ event: 'job.event' }),
+    );
+  });
+
+  it('skips agent_sessions update when job has no linked session', async () => {
+    jobRow.agentSessionId = null;
+    txExecute.mockResolvedValueOnce([]);
+    txExecute.mockResolvedValueOnce([{ max_seq: 0 }]);
+    insertReturning.mockResolvedValueOnce([
+      { seq: 1, kind: 'stdout', ts: new Date(), data: {} },
+    ]);
+
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/events`, {
+        method: 'POST',
+        token: 'dev-1-token',
+        body: body([{ kind: 'stdout', data: {} }]),
+      }),
+    );
+    expect(r.status).toBe(200);
+
+    expect(dbUpdate).not.toHaveBeenCalled();
+    expect(publishMock).toHaveBeenCalledTimes(1);
   });
 
   it('continues seq across batches (baseSeq = prior MAX)', async () => {
