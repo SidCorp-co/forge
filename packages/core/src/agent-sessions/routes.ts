@@ -215,7 +215,9 @@ async function loadProjectBySlug(slug: string) {
   return row ?? null;
 }
 
-async function findResumableSessionForIssue(
+export async function findResumableSessionForIssue(
+  projectId: string,
+  userId: string,
   issueId: string,
   deviceId: string | null,
 ): Promise<{
@@ -226,6 +228,16 @@ async function findResumableSessionForIssue(
   usage: unknown;
   startedAt: Date | null;
 } | null> {
+  const predicates: SQL[] = [
+    eq(agentSessions.projectId, projectId),
+    eq(agentSessions.userId, userId),
+    inArray(agentSessions.status, ['completed', 'idle']),
+    sql`${agentSessions.metadata}->>'issueId' = ${issueId}`,
+  ];
+  if (deviceId) {
+    predicates.push(sql`${agentSessions.metadata}->>'deviceId' = ${deviceId}`);
+  }
+
   const rows = await db
     .select({
       id: agentSessions.id,
@@ -237,26 +249,12 @@ async function findResumableSessionForIssue(
       startedAt: agentSessions.startedAt,
     })
     .from(agentSessions)
-    .where(
-      and(
-        eq(
-          // jsonb metadata.issueId equality is encoded as a JSONB ->> 'issueId' compare.
-          // We avoid heavy SQL fragments here — the session list per device is
-          // small enough that filtering in app code is fine.
-          agentSessions.id,
-          agentSessions.id,
-        ),
-        inArray(agentSessions.status, ['completed', 'idle']),
-      ),
-    )
+    .where(and(...predicates))
     .orderBy(desc(agentSessions.updatedAt))
     .limit(20);
 
   for (const r of rows) {
     if (!r.claudeSessionId) continue;
-    const meta = r.metadata as { issueId?: string; deviceId?: string } | null;
-    if (meta?.issueId !== issueId) continue;
-    if (deviceId && meta?.deviceId !== deviceId) continue;
     const usage = r.usage as { contextUsed?: number } | null;
     if ((usage?.contextUsed ?? 0) > MAX_RESUMABLE_CONTEXT) continue;
     return r as never;
@@ -335,7 +333,12 @@ agentSessionRoutes.post(
       input.issueIds[0]
     ) {
       const firstIssueId = input.issueIds[0];
-      const resumable = await findResumableSessionForIssue(firstIssueId, deviceId);
+      const resumable = await findResumableSessionForIssue(
+        project.id,
+        userId,
+        firstIssueId,
+        deviceId,
+      );
       if (resumable) {
         const prevMessages = Array.isArray(resumable.messages) ? resumable.messages : [];
         const messages = [...prevMessages, userMessage];

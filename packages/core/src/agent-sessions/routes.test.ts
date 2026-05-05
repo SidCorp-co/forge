@@ -332,6 +332,121 @@ describe('POST /api/agent-sessions/:id/relay', () => {
   });
 });
 
+describe('findResumableSessionForIssue', () => {
+  const RESUMABLE_PROJECT_ID = '66666666-6666-4666-8666-666666666666';
+  const RESUMABLE_USER_ID = '77777777-7777-4777-8777-777777777777';
+  const RESUMABLE_ISSUE_ID = '88888888-8888-4888-8888-888888888888';
+  const RESUMABLE_DEVICE_ID = '99999999-9999-4999-8999-999999999999';
+
+  function serializePredicate(arg: unknown): string {
+    const seen = new WeakSet<object>();
+    return JSON.stringify(arg, (_k, v) => {
+      if (typeof v === 'object' && v !== null) {
+        if (seen.has(v as object)) return undefined;
+        seen.add(v as object);
+      }
+      if (typeof v === 'function' || typeof v === 'symbol') return undefined;
+      return v;
+    }) ?? '';
+  }
+
+  it('scopes the SQL predicate by projectId, userId, issueId, deviceId (no tautology)', async () => {
+    const { findResumableSessionForIssue } = await import('./routes.js');
+    selectOrderByLimit.mockResolvedValueOnce([]);
+    await findResumableSessionForIssue(
+      RESUMABLE_PROJECT_ID,
+      RESUMABLE_USER_ID,
+      RESUMABLE_ISSUE_ID,
+      RESUMABLE_DEVICE_ID,
+    );
+    expect(selectWhere).toHaveBeenCalledTimes(1);
+    const text = serializePredicate(selectWhere.mock.calls[0]?.[0]);
+    expect(text).toContain(RESUMABLE_PROJECT_ID);
+    expect(text).toContain(RESUMABLE_USER_ID);
+    expect(text).toContain(RESUMABLE_ISSUE_ID);
+    expect(text).toContain(RESUMABLE_DEVICE_ID);
+  });
+
+  it('omits the deviceId predicate when deviceId is null', async () => {
+    const { findResumableSessionForIssue } = await import('./routes.js');
+    selectOrderByLimit.mockResolvedValueOnce([]);
+    await findResumableSessionForIssue(
+      RESUMABLE_PROJECT_ID,
+      RESUMABLE_USER_ID,
+      RESUMABLE_ISSUE_ID,
+      null,
+    );
+    const text = serializePredicate(selectWhere.mock.calls[0]?.[0]);
+    expect(text).toContain(RESUMABLE_ISSUE_ID);
+    expect(text).not.toContain(RESUMABLE_DEVICE_ID);
+  });
+
+  it('returns the row when DB yields a usable session', async () => {
+    const { findResumableSessionForIssue } = await import('./routes.js');
+    const row = {
+      id: SESSION_ID,
+      claudeSessionId: 'claude-abc',
+      messages: [],
+      metadata: { issueId: RESUMABLE_ISSUE_ID, deviceId: RESUMABLE_DEVICE_ID },
+      usage: { contextUsed: 1000 },
+      status: 'completed',
+      startedAt: new Date(),
+    };
+    selectOrderByLimit.mockResolvedValueOnce([row]);
+    const got = await findResumableSessionForIssue(
+      RESUMABLE_PROJECT_ID,
+      RESUMABLE_USER_ID,
+      RESUMABLE_ISSUE_ID,
+      RESUMABLE_DEVICE_ID,
+    );
+    expect(got?.id).toBe(SESSION_ID);
+    expect(got?.claudeSessionId).toBe('claude-abc');
+  });
+
+  it('returns null when DB yields no rows', async () => {
+    const { findResumableSessionForIssue } = await import('./routes.js');
+    selectOrderByLimit.mockResolvedValueOnce([]);
+    const got = await findResumableSessionForIssue(
+      RESUMABLE_PROJECT_ID,
+      RESUMABLE_USER_ID,
+      RESUMABLE_ISSUE_ID,
+      RESUMABLE_DEVICE_ID,
+    );
+    expect(got).toBeNull();
+  });
+
+  it('skips rows missing claudeSessionId or over context quota', async () => {
+    const { findResumableSessionForIssue } = await import('./routes.js');
+    selectOrderByLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        claudeSessionId: null,
+        messages: [],
+        metadata: { issueId: RESUMABLE_ISSUE_ID },
+        usage: { contextUsed: 0 },
+        status: 'completed',
+        startedAt: new Date(),
+      },
+      {
+        id: SESSION_ID,
+        claudeSessionId: 'claude-too-big',
+        messages: [],
+        metadata: { issueId: RESUMABLE_ISSUE_ID },
+        usage: { contextUsed: 999_999_999 },
+        status: 'completed',
+        startedAt: new Date(),
+      },
+    ]);
+    const got = await findResumableSessionForIssue(
+      RESUMABLE_PROJECT_ID,
+      RESUMABLE_USER_ID,
+      RESUMABLE_ISSUE_ID,
+      null,
+    );
+    expect(got).toBeNull();
+  });
+});
+
 describe('POST /api/agent-sessions/desktop/status', () => {
   it('updates status for the listed session', async () => {
     authVerified();
