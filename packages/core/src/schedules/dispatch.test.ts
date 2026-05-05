@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const selectLimit = vi.fn();
-const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 // `db.select(...).from(...).where(...)` resolves directly when no `.limit`
 // (used for the count(*) query); the `.where` mock returns a thenable so
 // `await db...where(...)` works AND a `.limit` chain still works.
@@ -29,8 +28,9 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
+const enqueueMock = vi.fn(async () => undefined as unknown);
 vi.mock('../jobs/enqueue.js', () => ({
-  enqueueJob: vi.fn(async () => undefined),
+  enqueueJob: (...args: unknown[]) => enqueueMock(...args),
 }));
 
 const { dispatchScheduleRun } = await import('./dispatch.js');
@@ -46,6 +46,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   selectLimit.mockReset();
   insertReturning.mockReset();
+  enqueueMock.mockReset();
+  enqueueMock.mockResolvedValue(undefined);
   hooksModule.hooks.reset();
 });
 
@@ -172,6 +174,55 @@ describe('dispatchScheduleRun', () => {
     expect(result.ok).toBe(true);
     // No selectLimit calls expected (no slug, actorUserId set, tick !== true).
     expect(selectLimit).not.toHaveBeenCalled();
+  });
+
+  it('enqueueJob throws → marks job failed (no orphan queued row), no hook emit', async () => {
+    insertReturning.mockResolvedValueOnce([{ id: JOB_ID }]);
+    enqueueMock.mockRejectedValueOnce(new Error('boss down'));
+
+    let emitted: unknown = null;
+    hooksModule.hooks.on('scheduleRun', (p) => {
+      emitted = p;
+    });
+
+    const result = await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: 'p',
+        runner: 'antigravity',
+        targetProjectSlug: null,
+      },
+      actorUserId: USER_ID,
+    });
+
+    expect(result).toEqual({ ok: false, reason: 'enqueue-failed', status: 'failed', jobId: JOB_ID });
+    // The cleanup must flip the freshly-inserted row to status='failed' so it
+    // doesn't sit in `queued` forever with no boss message backing it.
+    const setPayloads = updateSet.mock.calls.map((c) => c[0] as { status?: string });
+    expect(setPayloads.some((p) => p?.status === 'failed')).toBe(true);
+    expect(emitted).toBeNull();
+  });
+
+  it('hook subscriber throws → dispatch still returns success (best-effort emit)', async () => {
+    insertReturning.mockResolvedValueOnce([{ id: JOB_ID }]);
+    hooksModule.hooks.on('scheduleRun', () => {
+      throw new Error('subscriber blew up');
+    });
+
+    const result = await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: 'p',
+        runner: 'antigravity',
+        targetProjectSlug: null,
+      },
+      actorUserId: USER_ID,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.status).toBe('success');
   });
 
   it('desktop runner with online runner → enqueues', async () => {

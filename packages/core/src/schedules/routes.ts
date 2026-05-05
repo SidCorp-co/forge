@@ -240,16 +240,32 @@ scheduleRoutes.post(
     const access = await loadProjectAccess(schedule.projectId, userId);
     if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
 
-    const result = await dispatchScheduleRun({
-      schedule: {
-        id: schedule.id,
-        projectId: schedule.projectId,
-        prompt: schedule.prompt,
-        runner: schedule.runner,
-        targetProjectSlug: schedule.targetProjectSlug ?? null,
-      },
-      actorUserId: userId,
-    });
+    let result: Awaited<ReturnType<typeof dispatchScheduleRun>>;
+    try {
+      result = await dispatchScheduleRun({
+        schedule: {
+          id: schedule.id,
+          projectId: schedule.projectId,
+          prompt: schedule.prompt,
+          runner: schedule.runner,
+          targetProjectSlug: schedule.targetProjectSlug ?? null,
+        },
+        actorUserId: userId,
+      });
+    } catch (err) {
+      // Ensure `lastStatus` doesn't get pinned to a stale value on dispatcher
+      // throws — record the failure so /list reflects reality.
+      logger.error({ err, scheduleId: schedule.id }, 'schedule.run: dispatch threw');
+      try {
+        await db
+          .update(schedules)
+          .set({ lastStatus: 'failed' })
+          .where(eq(schedules.id, schedule.id));
+      } catch (statusErr) {
+        logger.error({ err: statusErr, scheduleId: schedule.id }, 'schedule.run: lastStatus update threw');
+      }
+      throw err;
+    }
 
     await db
       .update(schedules)
@@ -303,21 +319,37 @@ export async function runScheduleTickOnce(now: Date = new Date()): Promise<strin
         .returning({ id: schedules.id });
       if (claimed.length === 0) continue; // another ticker won the race
 
-      const result = await dispatchScheduleRun({
-        schedule: {
-          id: schedule.id,
-          projectId: schedule.projectId,
-          prompt: schedule.prompt,
-          runner: schedule.runner,
-          targetProjectSlug: schedule.targetProjectSlug ?? null,
-        },
-        // FIXME(iss-257): system-initiated jobs attribute to the project owner
-        // because jobs.created_by is NOT NULL. A sentinel system user
-        // requires a separate migration — tracked for follow-up. Consumers
-        // can detect tick-driven jobs by payload.kind === 'schedule.run'
-        // && payload.tick === true.
-        tick: true,
-      });
+      let result: Awaited<ReturnType<typeof dispatchScheduleRun>>;
+      try {
+        result = await dispatchScheduleRun({
+          schedule: {
+            id: schedule.id,
+            projectId: schedule.projectId,
+            prompt: schedule.prompt,
+            runner: schedule.runner,
+            targetProjectSlug: schedule.targetProjectSlug ?? null,
+          },
+          // FIXME(iss-257): system-initiated jobs attribute to the project owner
+          // because jobs.created_by is NOT NULL. A sentinel system user
+          // requires a separate migration — tracked for follow-up. Consumers
+          // can detect tick-driven jobs by payload.kind === 'schedule.run'
+          // && payload.tick === true.
+          tick: true,
+        });
+      } catch (dispatchErr) {
+        // Don't leave `lastStatus='running'` if dispatch throws after the
+        // atomic claim — flip to 'failed' so the row reflects reality.
+        logger.error({ err: dispatchErr, scheduleId: schedule.id }, 'schedule.tick: dispatch threw');
+        try {
+          await db
+            .update(schedules)
+            .set({ lastStatus: 'failed' })
+            .where(eq(schedules.id, schedule.id));
+        } catch (statusErr) {
+          logger.error({ err: statusErr, scheduleId: schedule.id }, 'schedule.tick: lastStatus reset threw');
+        }
+        continue;
+      }
 
       await db
         .update(schedules)

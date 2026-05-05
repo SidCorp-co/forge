@@ -61,6 +61,11 @@ export async function dispatchScheduleRun(
   // Tick (system-driven) skips the run when no desktop runner is online so the
   // job doesn't pile up unattended. Manual triggers (`tick !== true`) always
   // queue — the user is explicitly asking, so let it wait for a runner.
+  //
+  // NOTE: `schedules.runner` and `runners.type` are independent enums that
+  // happen to map 1:1 today: `'desktop'` schedule → `'claude-code'` runner;
+  // `'antigravity'` is identical on both sides. If either enum is renamed in
+  // the future, update this mapping in lockstep — there is no shared source.
   if (input.tick && schedule.runner === 'desktop') {
     const [row] = await db
       .select({ count: sql<number>`count(*)::int` })
@@ -100,6 +105,19 @@ export async function dispatchScheduleRun(
     await enqueueJob(job.id);
   } catch (err) {
     logger.error({ err, jobId: job.id }, 'schedule.dispatch: enqueueJob failed');
+    // Avoid leaving a `queued` row that no worker will ever pick up — flip the
+    // freshly-inserted job to `failed` so the table doesn't accumulate orphans.
+    try {
+      await db
+        .update(jobs)
+        .set({ status: 'failed', error: 'enqueue-failed' })
+        .where(eq(jobs.id, job.id));
+    } catch (cleanupErr) {
+      logger.error(
+        { err: cleanupErr, jobId: job.id },
+        'schedule.dispatch: failed to mark orphaned job',
+      );
+    }
     return { ok: false, reason: 'enqueue-failed', status: 'failed', jobId: job.id };
   }
 
@@ -110,12 +128,22 @@ export async function dispatchScheduleRun(
     .set({ lastSessionId: job.id })
     .where(eq(schedules.id, schedule.id));
 
-  await hooks.emit('scheduleRun', {
-    scheduleId: schedule.id,
-    projectId: resolvedProjectId,
-    jobId: job.id,
-    actorUserId: createdBy,
-  });
+  // Hook subscribers are best-effort — a throw here must not fail the dispatch
+  // (the job is already enqueued; the caller would otherwise see a 5xx while
+  // the runner picks it up).
+  try {
+    await hooks.emit('scheduleRun', {
+      scheduleId: schedule.id,
+      projectId: resolvedProjectId,
+      jobId: job.id,
+      actorUserId: createdBy,
+    });
+  } catch (err) {
+    logger.error(
+      { err, scheduleId: schedule.id, jobId: job.id },
+      'schedule.dispatch: scheduleRun hook threw',
+    );
+  }
 
   return { ok: true, jobId: job.id, status: 'success', resolvedProjectId };
 }

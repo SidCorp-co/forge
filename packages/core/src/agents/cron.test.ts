@@ -1,11 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const selectMock = vi.fn();
+let lastWhereArg: unknown = undefined;
 vi.mock('../db/client.js', () => ({
   db: {
     select: (...args: unknown[]) => selectMock(...args),
   },
 }));
+
+// Recursively scan a drizzle SQL value (or any nested object) for an exact
+// string match. Used to assert that the WHERE clause references particular
+// column names without being coupled to drizzle's internal SQL shape.
+function findString(node: unknown, target: string, depth = 0): boolean {
+  if (depth > 12 || node == null) return false;
+  if (typeof node === 'string') return node === target;
+  if (typeof node !== 'object') return false;
+  if (Array.isArray(node)) return node.some((v) => findString(v, target, depth + 1));
+  for (const v of Object.values(node as Record<string, unknown>)) {
+    if (findString(v, target, depth + 1)) return true;
+  }
+  return false;
+}
 
 const spawnMock = vi.fn(async () => ({ ok: true, jobId: 'pm-1' }) as const);
 vi.mock('../pm/spawner.js', () => ({
@@ -34,7 +49,10 @@ interface AgentRow {
 function queueAgents(rows: AgentRow[]): void {
   selectMock.mockImplementationOnce(() => ({
     from: () => ({
-      where: async () => rows,
+      where: async (cond: unknown) => {
+        lastWhereArg = cond;
+        return rows;
+      },
     }),
   }));
 }
@@ -42,6 +60,7 @@ function queueAgents(rows: AgentRow[]): void {
 beforeEach(() => {
   selectMock.mockReset();
   spawnMock.mockClear();
+  lastWhereArg = undefined;
 });
 
 const MONDAY_2026_05_04 = new Date('2026-05-04T00:00:00Z');
@@ -94,6 +113,18 @@ describe('runAgentCronTickOnce', () => {
     expect(spawnMock).toHaveBeenCalledTimes(1);
   });
 
+  it("WHERE clause filters by enabled=true AND schedule != 'off' (regression guard)", async () => {
+    // Pin the SQL filter so a future refactor that drops `enabled=true` or the
+    // `schedule != 'off'` predicate fails this test. Runtime only checks
+    // `shouldRunToday`, so without the SQL filter, disabled agents would leak
+    // through on a Monday — the real DB column names must appear in the chunks.
+    queueAgents([]);
+    await runAgentCronTickOnce(MONDAY_2026_05_04);
+    expect(lastWhereArg).toBeDefined();
+    expect(findString(lastWhereArg, 'enabled')).toBe(true);
+    expect(findString(lastWhereArg, 'schedule')).toBe(true);
+  });
+
   it('continues if spawn throws for one agent', async () => {
     queueAgents([
       { id: 'agent-1', projectId: 'p1', type: 'po', schedule: 'weekly' },
@@ -102,5 +133,26 @@ describe('runAgentCronTickOnce', () => {
     spawnMock.mockRejectedValueOnce(new Error('boom'));
     const fired = await runAgentCronTickOnce(MONDAY_2026_05_04);
     expect(fired).toEqual(['agent-2']);
+  });
+
+  it('UC-5: two ticks in the same day → only one effective spawn (already-active resolves the second)', async () => {
+    // First tick → spawn returns ok:true; second tick → existing
+    // jobs_pm_per_project_unique_idx forces spawnPmSession to return
+    // {ok:false, reason:'already-active'}. The cron must propagate that as a
+    // no-op (no duplicate fired entry) without throwing.
+    queueAgents([
+      { id: 'agent-1', projectId: 'proj-1', type: 'po', schedule: 'weekly' },
+    ]);
+    const first = await runAgentCronTickOnce(MONDAY_2026_05_04);
+    expect(first).toEqual(['agent-1']);
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+
+    queueAgents([
+      { id: 'agent-1', projectId: 'proj-1', type: 'po', schedule: 'weekly' },
+    ]);
+    spawnMock.mockResolvedValueOnce({ ok: false, reason: 'already-active' } as never);
+    const second = await runAgentCronTickOnce(MONDAY_2026_05_04);
+    expect(second).toEqual([]);
+    expect(spawnMock).toHaveBeenCalledTimes(2);
   });
 });
