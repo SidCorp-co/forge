@@ -43,6 +43,11 @@ export const claudeCodeAdapter: RunnerAdapter = {
         runnerId: runner.id,
         runnerType: runner.type,
         dispatchedAt: job.dispatchedAt.toISOString(),
+        // Forwarded so the desktop can PATCH the canonical agent_sessions row
+        // on completion (messages, claudeSessionId, diff). The runner uses
+        // `jobId` as its local session key, so without this it has no way to
+        // map back to the DB row created by ensureAgentSessionForJob.
+        ...(job.agentSessionId ? { agentSessionId: job.agentSessionId } : {}),
       },
     });
     logger.info(

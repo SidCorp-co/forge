@@ -26,7 +26,7 @@ export function useWebSocket() {
 
   // Stable ref for agent command handling — avoids re-creating WS on config changes
   const handleAgentCommandRef = useAgentCommandHandler(tracker);
-  const { handlerRef: handleJobAssignedRef, jobSessionsRef, cancelledJobsRef } = useJobAssignedHandler(tracker);
+  const { handlerRef: handleJobAssignedRef, jobSessionsRef, cancelledJobsRef, jobAgentSessionsRef } = useJobAssignedHandler(tracker);
 
   useEffect(() => {
     // Only connect when fully authenticated. On `expire()` the auth store
@@ -548,6 +548,29 @@ export function useWebSocket() {
               } catch (err) {
                 console.error(`[job-events] completeJob failed for ${sessionId}:`, err);
               }
+
+              // Persist the canonical agent_sessions row so a browser opening
+              // the pipeline session AFTER completion sees the assistant
+              // reply, claudeSessionId, and (eventual) diff. completeJob
+              // above only flips the row's status via syncAgentSessionLifecycle
+              // — without this PATCH the row keeps messages=[] forever.
+              // The agentSessionId is surfaced by core in the job.assigned WS
+              // payload (PR-B); absent against older server builds, in which
+              // case we silently skip — the status sync still applied.
+              const agentSessionId = jobAgentSessionsRef.current.get(sessionId);
+              if (agentSessionId) {
+                try {
+                  const snap = tracker.getSnapshot(sessionId);
+                  await patchAgentSession(agentSessionId, {
+                    status: wasCancelled ? "completed" : rest.error ? "failed" : "completed",
+                    ...(snap ? { messages: snap.messages, claudeSessionId: snap.claudeSessionId } : {}),
+                  });
+                } catch (err) {
+                  console.warn(`[agent:complete] PATCH session row failed for job ${sessionId}:`, err);
+                }
+                jobAgentSessionsRef.current.delete(sessionId);
+              }
+
               tracker.complete(sessionId);
               return;
             }
@@ -704,5 +727,5 @@ export function useWebSocket() {
       cancelled = true;
       cleanup?.();
     };
-  }, [phase, coreUrl, deviceId, token, setWsConnected, setDeviceSettings, queryClient, handleAgentCommandRef, handleJobAssignedRef, jobSessionsRef, cancelledJobsRef]);
+  }, [phase, coreUrl, deviceId, token, setWsConnected, setDeviceSettings, queryClient, handleAgentCommandRef, handleJobAssignedRef, jobSessionsRef, cancelledJobsRef, jobAgentSessionsRef]);
 }

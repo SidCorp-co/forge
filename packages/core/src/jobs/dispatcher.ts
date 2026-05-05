@@ -224,7 +224,7 @@ async function dispatchViaRunner(
   }
 
   const repoPath = await loadRepoPath(job.projectId);
-  await ensureAgentSessionForJob(
+  const agentSessionId = await ensureAgentSessionForJob(
     {
       ...job,
       status: 'dispatched',
@@ -243,6 +243,7 @@ async function dispatchViaRunner(
       type: job.type,
       payload: job.payload,
       dispatchedAt,
+      agentSessionId,
     },
     runner,
   });

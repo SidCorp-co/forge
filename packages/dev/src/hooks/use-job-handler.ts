@@ -19,6 +19,14 @@ export interface JobHandlerCtx {
   projects: Record<string, ProjectConfig>;
   tracker: Pick<SessionTracker, "start">;
   jobSessions: Set<string>;
+  /**
+   * Maps a local job/session key (jobId, since the runner uses jobId as
+   * sessionId locally) to the linked agent_sessions row id surfaced by the
+   * server in the `job.assigned` WS payload. The agent:complete handler
+   * looks this up to PATCH the canonical session row with final messages,
+   * claudeSessionId, and diff.
+   */
+  jobAgentSessions: Map<string, string>;
 }
 
 /**
@@ -78,6 +86,13 @@ export async function handleJobAssigned(
   // marker — late agent:* events for this jobId must not leak to chat UIs;
   // jobId is a UUID so growth is bounded and won't collide with real sessions.
   ctx.jobSessions.add(jobId);
+  if (data.agentSessionId) {
+    // Stored so agent:complete can PATCH the canonical session row. Absent
+    // when running against an older server build (legacy path or pre-PR-B);
+    // in that case the completion still reaches /api/jobs/:id/complete which
+    // moves the linked row through syncAgentSessionLifecycle.
+    ctx.jobAgentSessions.set(jobId, data.agentSessionId);
+  }
   ctx.tracker.start(jobId, slug, prompt, { repoPath: pc.repoPath });
 
   try {
@@ -99,6 +114,7 @@ export interface JobAssignedHandlerRefs {
   handlerRef: React.MutableRefObject<(data: JobAssignedPayload) => Promise<void>>;
   jobSessionsRef: React.MutableRefObject<Set<string>>;
   cancelledJobsRef: React.MutableRefObject<Set<string>>;
+  jobAgentSessionsRef: React.MutableRefObject<Map<string, string>>;
 }
 
 /**
@@ -115,6 +131,7 @@ export function useJobAssignedHandler(tracker: SessionTracker): JobAssignedHandl
 
   const jobSessionsRef = useRef(new Set<string>());
   const cancelledJobsRef = useRef(new Set<string>());
+  const jobAgentSessionsRef = useRef(new Map<string, string>());
   const handlerRef = useRef<(data: JobAssignedPayload) => Promise<void>>(async () => {});
 
   handlerRef.current = (data: JobAssignedPayload) =>
@@ -122,7 +139,8 @@ export function useJobAssignedHandler(tracker: SessionTracker): JobAssignedHandl
       projects: projectsRef.current,
       tracker,
       jobSessions: jobSessionsRef.current,
+      jobAgentSessions: jobAgentSessionsRef.current,
     });
 
-  return { handlerRef, jobSessionsRef, cancelledJobsRef };
+  return { handlerRef, jobSessionsRef, cancelledJobsRef, jobAgentSessionsRef };
 }
