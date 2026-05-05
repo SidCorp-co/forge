@@ -1,9 +1,13 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, type JobType, jobs, projects } from '../db/schema.js';
+import { type IssueStatus, type JobType, issues, jobs, projects } from '../db/schema.js';
 import { enqueueJob } from '../jobs/enqueue.js';
 import { logger } from '../logger.js';
 import type { Actor } from './activity.js';
+import {
+  type PreventivePattern,
+  queryPreventivePatterns,
+} from './ci-fix-pattern-query.js';
 import type { HooksBus } from './hooks.js';
 import { resolveSkillForStatus } from './skill-mapping.js';
 
@@ -61,6 +65,34 @@ function resolveCreatedBy(actor: Actor, ownerId: string | null): string {
 
 function isUniqueViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && (err as { code?: string }).code === '23505';
+}
+
+/**
+ * ISS-32 — Build the `preventiveContext` block injected into forge-code job
+ * payloads. Only runs for `code` jobs (the fix-loop avoidance is specific to
+ * implementation work). Always returns a defined object so downstream
+ * consumers don't need to defensively check for `undefined`.
+ */
+async function buildPreventiveContext(
+  jobType: JobType,
+  projectId: string,
+  issueId: string,
+): Promise<{ patterns: PreventivePattern[] }> {
+  if (jobType !== 'code') return { patterns: [] };
+  const issueText = await loadIssueText(issueId);
+  if (!issueText) return { patterns: [] };
+  const patterns = await queryPreventivePatterns({ projectId, issueText });
+  return { patterns };
+}
+
+async function loadIssueText(issueId: string): Promise<string> {
+  const [row] = await db
+    .select({ title: issues.title, description: issues.description })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  if (!row) return '';
+  return [row.title, row.description ?? ''].filter(Boolean).join('\n\n');
 }
 
 /**
@@ -122,6 +154,12 @@ export async function triggerPipelineStepManual(args: {
 
   const createdBy = resolveCreatedBy(args.actor, ownerId);
 
+  const preventiveContext = await buildPreventiveContext(
+    skill.type,
+    args.projectId,
+    args.issueId,
+  );
+
   let insertedId: string | null = null;
   try {
     const [inserted] = await db
@@ -131,7 +169,7 @@ export async function triggerPipelineStepManual(args: {
         issueId: args.issueId,
         createdBy,
         type: skill.type,
-        payload: { skillName: `forge-${skill.type}`, ...args.reason },
+        payload: { skillName: `forge-${skill.type}`, ...args.reason, preventiveContext },
         status: 'queued',
       })
       .returning({ id: jobs.id });
@@ -188,6 +226,12 @@ async function considerEnqueue(args: {
 
   const createdBy = resolveCreatedBy(args.actor, ownerId);
 
+  const preventiveContext = await buildPreventiveContext(
+    skill.type,
+    args.projectId,
+    args.issueId,
+  );
+
   let insertedId: string | null = null;
   try {
     const [inserted] = await db
@@ -200,6 +244,7 @@ async function considerEnqueue(args: {
         payload: {
           skillName: `forge-${skill.type}`,
           ...args.reason,
+          preventiveContext,
         },
         status: 'queued',
       })

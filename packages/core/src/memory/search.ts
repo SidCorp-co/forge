@@ -8,6 +8,13 @@ export interface SearchInput {
   queryVec: number[];
   topK?: number | undefined;
   sourceFilter?: MemorySource[] | undefined;
+  /**
+   * Optional JSONB metadata filter. Currently supports an exact `kind` match
+   * against `memories.metadata->>'kind'`. Used by the CI-fix pattern learner
+   * (ISS-32) to scope similarity search to `kind:'ci_fix_pattern'` rows; a
+   * richer API will likely arrive with ISS-RAG-1.
+   */
+  metadataFilter?: { kind?: string } | undefined;
 }
 
 export interface MemoryHit {
@@ -29,6 +36,9 @@ export async function searchMemories(input: SearchInput): Promise<MemoryHit[]> {
   const whereClauses = [eq(memories.projectId, input.projectId)];
   if (input.sourceFilter && input.sourceFilter.length > 0) {
     whereClauses.push(inArray(memories.source, input.sourceFilter));
+  }
+  if (input.metadataFilter?.kind) {
+    whereClauses.push(sql`${memories.metadata}->>'kind' = ${input.metadataFilter.kind}`);
   }
 
   const rows = await db

@@ -66,6 +66,7 @@ import { logger } from './logger.js';
 import { mcpHandler } from './mcp/handler.js';
 import { meAttentionRoutes } from './me/attention-routes.js';
 import { registerMemoryIndexer } from './memory/indexer.js';
+import { registerCiFixPatternLearner } from './pipeline/ci-fix-pattern-learn.js';
 import { memoryListRoutes } from './memory/list-routes.js';
 import { memorySearchRoutes } from './memory/search-routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
@@ -211,6 +212,7 @@ export async function runShutdown(
 registerActivitySubscribers(hooks);
 registerWsBroadcastSubscribers(hooks);
 registerMemoryIndexer(hooks);
+registerCiFixPatternLearner(hooks);
 registerNotifyMentionsSubscriber(hooks);
 registerPmSubscribers(hooks);
 
