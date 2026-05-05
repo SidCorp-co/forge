@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useReducer, useState, type ComponentType } from 'react';
-import { Clock, AlertTriangle, X, CheckCircle2, RefreshCw, MessageSquare } from 'lucide-react';
+import { useCallback, useEffect, useState, type ComponentType } from 'react';
+import { Clock, AlertTriangle, X, CheckCircle2, RefreshCw, MessageSquare, Loader2 } from 'lucide-react';
 import { agentApi } from '@/features/agent/api';
 import {
   type AgentSession,
@@ -14,9 +14,11 @@ import { relativeTime } from '@/lib/utils/relative-time';
 
 interface SessionPlaceholderProps {
   sessionId: string;
-  onRetry: () => void;
-  onCancel: () => void;
+  onRetry: () => Promise<void> | void;
+  onCancel: () => Promise<void> | void;
 }
+
+const REFRESH_INTERVAL_MS = 10_000;
 
 interface Presentation {
   Icon: ComponentType<{ className?: string }>;
@@ -58,30 +60,62 @@ const PRESENTATION: Record<AgentSessionDisplayStatus, Presentation> = {
 // no signal when a worker had abandoned the session.
 export function SessionPlaceholder({ sessionId, onRetry, onCancel }: SessionPlaceholderProps) {
   const [session, setSession] = useState<AgentSession | null>(null);
-  // Force re-render every 10s so elapsed time + derived stalled status stay fresh.
-  const [, forceTick] = useReducer((c: number) => c + 1, 0);
+  const [retryPending, setRetryPending] = useState(false);
+  const [cancelPending, setCancelPending] = useState(false);
 
-  useEffect(() => {
-    let alive = true;
-    agentApi
-      .getSession(sessionId)
-      .then((res) => {
-        if (!alive) return;
+  const fetchSession = useCallback(
+    async (signal?: { cancelled: boolean }) => {
+      try {
+        const res = await agentApi.getSession(sessionId);
+        if (signal?.cancelled) return;
         const wrapped = (res as unknown as { data?: AgentSession }).data;
         setSession(wrapped ?? (res as unknown as AgentSession));
-      })
-      .catch(() => {
-        // Best-effort — fall back to minimal UI when the fetch fails.
-      });
-    return () => {
-      alive = false;
-    };
-  }, [sessionId]);
+      } catch {
+        // Best-effort — keep prior session state on failure.
+      }
+    },
+    [sessionId],
+  );
 
+  // Poll while non-terminal so the placeholder reflects live status changes
+  // (queued → running, running → failed via sweeper, etc.). Without this the
+  // placeholder would sit forever on its initial fetch — the very zombie
+  // scenario this UI was meant to surface.
   useEffect(() => {
-    const id = setInterval(forceTick, 10_000);
-    return () => clearInterval(id);
-  }, []);
+    const signal = { cancelled: false };
+    void fetchSession(signal);
+    const id = setInterval(() => {
+      const status = session?.status;
+      if (status === 'completed' || status === 'failed') return;
+      void fetchSession(signal);
+    }, REFRESH_INTERVAL_MS);
+    return () => {
+      signal.cancelled = true;
+      clearInterval(id);
+    };
+  }, [fetchSession, session?.status]);
+
+  const handleRetry = useCallback(async () => {
+    if (retryPending) return;
+    setRetryPending(true);
+    try {
+      await onRetry();
+      await fetchSession();
+    } finally {
+      setRetryPending(false);
+    }
+  }, [retryPending, onRetry, fetchSession]);
+
+  const handleCancel = useCallback(async () => {
+    if (cancelPending) return;
+    setCancelPending(true);
+    try {
+      await onCancel();
+      await fetchSession();
+    } finally {
+      setCancelPending(false);
+    }
+  }, [cancelPending, onCancel, fetchSession]);
 
   if (!session) {
     return (
@@ -146,21 +180,36 @@ export function SessionPlaceholder({ sessionId, onRetry, onCancel }: SessionPlac
 
         {display !== 'completed' && (
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onRetry}
-              className="inline-flex items-center gap-1.5 rounded-sm border border-outline-variant/40 bg-surface-container px-3 py-1.5 text-xs font-medium text-on-surface hover:bg-surface-container-high"
-            >
-              <RefreshCw className="h-3 w-3" />
-              Retry
-            </button>
+            {/* Retry only on terminal failure — server enforces the same in
+              * routes.ts /retry, but hide the button so users don't probe the
+              * 409. */}
+            {display === 'failed' && (
+              <button
+                type="button"
+                onClick={handleRetry}
+                disabled={retryPending}
+                className="inline-flex items-center gap-1.5 rounded-sm border border-outline-variant/40 bg-surface-container px-3 py-1.5 text-xs font-medium text-on-surface hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {retryPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3 w-3" />
+                )}
+                Retry
+              </button>
+            )}
             {display !== 'failed' && (
               <button
                 type="button"
-                onClick={onCancel}
-                className="inline-flex items-center gap-1.5 rounded-sm border border-outline-variant/40 bg-surface-container px-3 py-1.5 text-xs font-medium text-on-surface hover:bg-surface-container-high"
+                onClick={handleCancel}
+                disabled={cancelPending}
+                className="inline-flex items-center gap-1.5 rounded-sm border border-outline-variant/40 bg-surface-container px-3 py-1.5 text-xs font-medium text-on-surface hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <X className="h-3 w-3" />
+                {cancelPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <X className="h-3 w-3" />
+                )}
                 Cancel
               </button>
             )}

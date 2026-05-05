@@ -363,6 +363,29 @@ describe('POST /api/agent-sessions/:id/retry', () => {
     expect(reEnqueueForIssueSpy).not.toHaveBeenCalled();
   });
 
+  it('rejects when session status is not failed (no-op retry on healthy session)', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        userId: USER_ID,
+        status: 'running',
+        failureReason: null,
+        metadata: { type: 'pipeline', issueId: ISSUE_ID },
+      },
+    ]);
+    projectAccessAsOwner();
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}/retry`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(409);
+    const json = (await res.json()) as { code?: string };
+    expect(json.code).toBe('SESSION_NOT_FAILED');
+    expect(reEnqueueForIssueSpy).not.toHaveBeenCalled();
+  });
+
   it('rejects when linked issue is in a different project (defence-in-depth)', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([

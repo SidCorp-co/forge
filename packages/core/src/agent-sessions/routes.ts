@@ -706,6 +706,17 @@ agentSessionRoutes.post(
         cause: { code: 'NOT_PIPELINE_SESSION' },
       });
     }
+    // Retry is recovery-only — only a terminally-failed session can be
+    // re-enqueued. Without this, a user mashing the (UI-hidden) retry CTA on
+    // a healthy queued/running session re-fires reEnqueueForIssue and relies
+    // on the unique-active-job index for idempotency. Reject up front so the
+    // intent stays explicit.
+    if (session.status !== 'failed') {
+      throw new HTTPException(409, {
+        message: `cannot retry session in status '${session.status}'`,
+        cause: { code: 'SESSION_NOT_FAILED', status: session.status },
+      });
+    }
     if (!meta.issueId) {
       throw new HTTPException(400, {
         message: 'session has no linked issue',
