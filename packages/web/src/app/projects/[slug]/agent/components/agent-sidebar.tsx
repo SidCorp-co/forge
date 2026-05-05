@@ -1,11 +1,16 @@
 'use client';
 
+import { useEffect, useReducer } from 'react';
 import { Plus, Monitor, MonitorOff } from 'lucide-react';
 import { SessionList } from '@/components/chat/session-list';
 import { Button, StatusDot } from '@/components/ui';
 import { cn } from '@/lib/utils/cn';
-import { AGENT_INTERACTIVE_ENABLED } from '@/features/agent/api';
+import {
+  AGENT_INTERACTIVE_ENABLED,
+  deriveSessionDisplayStatus,
+} from '@/features/agent/api';
 import type { AgentSessionSummary } from '@/features/agent/api';
+import { relativeTime } from '@/lib/utils/relative-time';
 
 interface AgentSidebarProps {
   slug: string;
@@ -20,6 +25,36 @@ interface AgentSidebarProps {
   width?: number;
 }
 
+function statusTooltip(
+  session: AgentSessionSummary,
+  display: ReturnType<typeof deriveSessionDisplayStatus>,
+): string | undefined {
+  switch (display) {
+    case 'running': {
+      const stamp = session.lastHeartbeatAt ?? session.startedAt ?? session.updatedAt;
+      return stamp ? `last activity ${relativeTime(stamp)}` : 'running';
+    }
+    case 'stalled': {
+      const stamp = session.lastHeartbeatAt ?? session.startedAt ?? session.updatedAt;
+      return stamp ? `no heartbeat since ${relativeTime(stamp)}` : 'no heartbeat';
+    }
+    case 'queued': {
+      const stamp = session.dispatchedAt ?? session.createdAt;
+      return stamp ? `waiting ${relativeTime(stamp)}` : 'waiting';
+    }
+    case 'failed':
+      return session.failureReason
+        ? `failed: ${session.failureReason}`
+        : 'failed';
+    case 'completed':
+      return 'completed';
+    case 'idle':
+      return 'idle';
+    default:
+      return undefined;
+  }
+}
+
 export function AgentSidebar({
   slug,
   sessions,
@@ -32,6 +67,14 @@ export function AgentSidebar({
   onSearch,
   width,
 }: AgentSidebarProps) {
+  // Force-tick every 15s so heartbeat-derived `running → stalled` flips on
+  // schedule without waiting for a backend refetch.
+  const [, tick] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    const id = setInterval(tick, 15_000);
+    return () => clearInterval(id);
+  }, []);
+
   return (
     <div
       className={cn(
@@ -71,7 +114,10 @@ export function AgentSidebar({
           activeSessionId={activeSessionId}
           onSelect={onSelectSession}
           onNew={onNewChat}
-          statusDot={(s) => <StatusDot status={s.status} />}
+          statusDot={(s) => {
+            const display = deriveSessionDisplayStatus(s);
+            return <StatusDot status={display} title={statusTooltip(s, display)} />;
+          }}
           getHref={(s) => `/projects/${slug}/agent?session=${s.documentId}`}
           theme="dark"
           onSearch={onSearch}
