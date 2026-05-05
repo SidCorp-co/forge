@@ -366,4 +366,10 @@ export interface JobAssignedPayload {
   type: string;
   payload?: Record<string, unknown>;
   dispatchedAt?: string;
+  /**
+   * Linked `agent_sessions` row id (optional). When present, the runner uses
+   * it to PATCH the canonical session row on completion (messages,
+   * claudeSessionId, diff). Absent for older server builds and legacy paths.
+   */
+  agentSessionId?: string | null;
 }

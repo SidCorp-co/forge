@@ -23,6 +23,7 @@ describe('claude-code adapter', () => {
       job: {
         id: 'job-1',
         projectId: 'p-1',
+        issueId: null,
         type: 'code',
         payload: { prompt: 'hi' },
         dispatchedAt: new Date('2026-04-26T00:00:00.000Z'),
@@ -49,11 +50,73 @@ describe('claude-code adapter', () => {
     expect((call?.[1] as { event: string }).event).toBe('job.assigned');
   });
 
+  it('forwards agentSessionId in the WS payload when provided', async () => {
+    await claudeCodeAdapter.dispatch({
+      job: {
+        id: 'job-1',
+        projectId: 'p-1',
+        issueId: null,
+        type: 'code',
+        payload: {},
+        dispatchedAt: new Date(),
+        agentSessionId: 'sess-abc',
+      },
+      runner: {
+        id: 'r-1',
+        projectId: 'p-1',
+        type: 'claude-code',
+        host: 'device',
+        deviceId: 'd-1',
+        name: 'desk',
+        labels: [],
+        capabilities: {},
+        config: {},
+        status: 'online',
+        lastSeenAt: new Date(),
+        lastError: null,
+      },
+    });
+    const call = publish.mock.calls[0];
+    const data = (call?.[1] as { data: { agentSessionId?: string } }).data;
+    expect(data.agentSessionId).toBe('sess-abc');
+  });
+
+  it('omits agentSessionId from the payload when not provided', async () => {
+    await claudeCodeAdapter.dispatch({
+      job: {
+        id: 'job-1',
+        projectId: 'p-1',
+        issueId: null,
+        type: 'code',
+        payload: {},
+        dispatchedAt: new Date(),
+      },
+      runner: {
+        id: 'r-1',
+        projectId: 'p-1',
+        type: 'claude-code',
+        host: 'device',
+        deviceId: 'd-1',
+        name: 'desk',
+        labels: [],
+        capabilities: {},
+        config: {},
+        status: 'online',
+        lastSeenAt: new Date(),
+        lastError: null,
+      },
+    });
+    const call = publish.mock.calls[0];
+    const data = (call?.[1] as { data: Record<string, unknown> }).data;
+    expect('agentSessionId' in data).toBe(false);
+  });
+
   it('returns failed when runner has no deviceId', async () => {
     const result = await claudeCodeAdapter.dispatch({
       job: {
         id: 'job-2',
         projectId: 'p-1',
+        issueId: null,
         type: 'code',
         payload: {},
         dispatchedAt: new Date(),
