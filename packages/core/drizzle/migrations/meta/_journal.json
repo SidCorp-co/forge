@@ -295,6 +295,20 @@
       "when": 1778100000000,
       "tag": "0041_pm_agent",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1778200000000,
+      "tag": "0042_agent_sessions_zombie_fix",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1778300000000,
+      "tag": "0043_agent_sessions_zombie_fix_redo",
+      "breakpoints": true
     }
   ]
 }
