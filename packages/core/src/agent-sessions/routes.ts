@@ -610,6 +610,9 @@ agentSessionRoutes.post(
     }
 
     const cancelNow = new Date();
+    // CAS on the active statuses we observed: a worker write that lands
+    // between the SELECT and this UPDATE will not be in queued/running
+    // anymore, and we'd silently no-op rather than stomp it.
     const [updated] = await db
       .update(agentSessions)
       .set({
@@ -617,9 +620,23 @@ agentSessionRoutes.post(
         failureReason: 'user_cancelled',
         updatedAt: cancelNow,
       })
-      .where(eq(agentSessions.id, id))
+      .where(
+        and(
+          eq(agentSessions.id, id),
+          inArray(agentSessions.status, ['queued', 'running', 'idle']),
+        ),
+      )
       .returning();
-    if (!updated) throw notFound('agent session not found');
+    if (!updated) {
+      // CAS lost — return the current row so the client can re-render.
+      const [current] = await db
+        .select()
+        .from(agentSessions)
+        .where(eq(agentSessions.id, id))
+        .limit(1);
+      if (!current) throw notFound('agent session not found');
+      return c.json(current);
+    }
 
     const meta = (updated.metadata ?? {}) as { deviceId?: string };
     const targetDeviceId = meta.deviceId ?? updated.deviceId ?? null;
@@ -766,7 +783,7 @@ agentSessionRoutes.post(
     if (!isOwnerOrAdmin(access, userId)) throw forbidden('owner or admin role required');
 
     const { sweepZombieSessions } = await import('../pipeline/sweeper.js');
-    const result = await sweepZombieSessions(new Date());
+    const result = await sweepZombieSessions(new Date(), { projectId });
     return c.json(result);
   },
 );
@@ -1073,7 +1090,17 @@ agentSessionRoutes.patch(
       patch.usage !== undefined ||
       patch.status !== undefined ||
       patch.diff !== undefined;
-    if (isWorkerActivity) {
+    // A user_cancelled session must never silently revive — once cancelled,
+    // a worker stream that arrives late should be dropped, not re-attached.
+    const isUserCancelled =
+      existing.status === 'failed' && existing.failureReason === 'user_cancelled';
+    if (isUserCancelled && (patch.status === 'running' || patch.status === 'queued')) {
+      throw new HTTPException(409, {
+        message: 'session was cancelled by user',
+        cause: { code: 'SESSION_CANCELLED' },
+      });
+    }
+    if (isWorkerActivity && !isUserCancelled) {
       updates.lastHeartbeatAt = patchNow;
     }
     if (
@@ -1086,10 +1113,11 @@ agentSessionRoutes.patch(
     } else if (patch.status === 'running' && existing.startedAt == null) {
       updates.startedAt = patchNow;
     }
-    // Revival clears any stale failure reason from a prior terminal pass.
+    // Revival clears stale reason — but never overrides user_cancelled (guarded above).
     if (
       (updates.status === 'running' || updates.status === 'queued') &&
-      existing.failureReason
+      existing.failureReason &&
+      existing.failureReason !== 'user_cancelled'
     ) {
       updates.failureReason = null;
     }

@@ -115,6 +115,10 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   return { ...result, zombieSessions };
 }
 
+interface SweepScope {
+  projectId?: string;
+}
+
 /**
  * Fail pipeline sessions abandoned by their worker.
  *
@@ -124,12 +128,18 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
  *    pinging past HEARTBEAT_TIMEOUT_MS.
  *
  * Scoped to pipeline/pm sessions; interactive chat sessions are out of
- * scope (their idle behaviour is by design).
+ * scope (their idle behaviour is by design). Optional `projectId` scope
+ * lets the manual /sweep-zombies endpoint contain blast radius to one
+ * project rather than flushing the whole instance.
  */
-export async function sweepZombieSessions(now: Date): Promise<ZombieSweepResult> {
+export async function sweepZombieSessions(
+  now: Date,
+  scope: SweepScope = {},
+): Promise<ZombieSweepResult> {
   const { queueMs, heartbeatMs } = getZombieThresholds();
   const queueCutoff = new Date(now.getTime() - queueMs);
   const heartbeatCutoff = new Date(now.getTime() - heartbeatMs);
+  const projectFilter = scope.projectId ? eq(agentSessions.projectId, scope.projectId) : undefined;
 
   // Pass 1: queued past timeout. CAS via WHERE status='queued' so a worker
   // that claims concurrently isn't stomped. dispatchedAt falls back to
@@ -148,6 +158,7 @@ export async function sweepZombieSessions(now: Date): Promise<ZombieSweepResult>
           ),
         ),
         sql`${agentSessions.metadata}->>'type' IN ${PIPELINE_METADATA_TYPES}`,
+        ...(projectFilter ? [projectFilter] : []),
       ),
     )
     .returning({
@@ -160,8 +171,10 @@ export async function sweepZombieSessions(now: Date): Promise<ZombieSweepResult>
     broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'queue_timeout');
   }
 
-  // Pass 2: running with stale heartbeat (or no heartbeat ever, falling
-  // back to startedAt → createdAt).
+  // Pass 2: running with stale heartbeat. Falls back through startedAt →
+  // updatedAt → createdAt so a rolling deploy with workers still running
+  // older code (no heartbeat columns set) doesn't over-sweep — `updatedAt`
+  // bumps on every legacy worker write so a >3min-busy job stays alive.
   const heartbeatFailed = await db
     .update(agentSessions)
     .set({ status: 'failed', failureReason: 'heartbeat_timeout', updatedAt: now })
@@ -177,14 +190,17 @@ export async function sweepZombieSessions(now: Date): Promise<ZombieSweepResult>
             sql`${agentSessions.lastHeartbeatAt} IS NULL`,
             isNotNull(agentSessions.startedAt),
             lt(agentSessions.startedAt, heartbeatCutoff),
+            lt(agentSessions.updatedAt, heartbeatCutoff),
           ),
           and(
             sql`${agentSessions.lastHeartbeatAt} IS NULL`,
             sql`${agentSessions.startedAt} IS NULL`,
+            lt(agentSessions.updatedAt, heartbeatCutoff),
             lt(agentSessions.createdAt, heartbeatCutoff),
           ),
         ),
         sql`${agentSessions.metadata}->>'type' IN ${PIPELINE_METADATA_TYPES}`,
+        ...(projectFilter ? [projectFilter] : []),
       ),
     )
     .returning({

@@ -116,7 +116,7 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
         AND capabilities @> ${required}::jsonb
         AND last_seen_at IS NOT NULL
         AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
-      ORDER BY last_seen_at DESC NULLS LAST, RANDOM()
+      ORDER BY last_seen_at DESC, RANDOM()
       LIMIT 1
     `,
   );
