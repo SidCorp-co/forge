@@ -323,6 +323,18 @@ describe('F3 memory search + indexer integration', () => {
     expect(texts).not.toContain('dev gossip (same-only)');
   });
 
+  it('search: rejects an explicit empty allowedRoles array with 400', async () => {
+    const { projectId, token } = await seedMember();
+    stubEmbedding(hotVector(0));
+
+    const res = await app.request('/api/memory/search', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ projectId, query: 'q', allowedRoles: [] }),
+    });
+    expect(res.status).toBe(400);
+  });
+
   it('search: increments retrieval_count atomically for returned hits', async () => {
     const { projectId, token } = await seedMember();
     const ref = randomUUID();

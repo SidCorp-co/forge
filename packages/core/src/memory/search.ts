@@ -14,9 +14,11 @@ export interface SearchInput {
   queryVec: number[];
   topK?: number | undefined;
   sourceFilter?: MemorySource[] | undefined;
-  // When non-empty, restricts hits to the (role, visibility) pairs the
-  // viewer can see. Omitted ⇒ no role filter (back-compat for callers that
-  // haven't been wired up yet).
+  // Omitted ⇒ no role filter (back-compat for callers that haven't been
+  // wired up yet). An explicit empty array means "narrow to nothing" and
+  // short-circuits to []; non-empty restricts hits to the (role, visibility)
+  // pairs the viewer can see. The REST/MCP schemas reject `[]` upstream so
+  // the short-circuit only fires for internal callers passing `[]` directly.
   allowedRoles?: MemoryRole[] | undefined;
 }
 
@@ -45,7 +47,11 @@ export async function searchMemories(input: SearchInput): Promise<MemoryHit[]> {
     whereClauses.push(inArray(memories.source, input.sourceFilter));
   }
 
-  if (input.allowedRoles && input.allowedRoles.length > 0) {
+  if (input.allowedRoles !== undefined) {
+    // Explicit empty array ⇒ caller wants no results. Treating it as
+    // "no filter" silently would be surprising (and a security smell if
+    // an upstream bug ever produced an empty list).
+    if (input.allowedRoles.length === 0) return [];
     const pairs = allowedRoleVisibilityPairs(input.allowedRoles);
     if (pairs.length === 0) return [];
     const pairClauses = pairs.map((p) =>

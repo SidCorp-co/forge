@@ -38,31 +38,39 @@ async function deleteBatchWithEdgeCascade(
   let totalDeleted = 0;
   let totalEdges = 0;
   for (let i = 0; i < MAX_ITERS; i++) {
-    const result = await db.execute(sql`
-      WITH victims AS (
-        SELECT id FROM memories
-        WHERE ${whereSql}
-        LIMIT ${BATCH_SIZE}
-      ),
-      del AS (
-        DELETE FROM memories WHERE id IN (SELECT id FROM victims)
-        RETURNING id
-      )
-      SELECT id::text AS id FROM del
-    `);
-    const ids = extractIds(result);
-    const batch = ids.length || affectedCount(result);
+    // Each batch is its own transaction so a crash mid-cascade can't leave
+    // edges pointing at deleted memory uuids — both the memory delete and
+    // its edge cleanup commit together or roll back together.
+    const { batch, edges } = await db.transaction(async (tx) => {
+      const result = await tx.execute(sql`
+        WITH victims AS (
+          SELECT id FROM memories
+          WHERE ${whereSql}
+          LIMIT ${BATCH_SIZE}
+        ),
+        del AS (
+          DELETE FROM memories WHERE id IN (SELECT id FROM victims)
+          RETURNING id
+        )
+        SELECT id::text AS id FROM del
+      `);
+      const ids = extractIds(result);
+      const batchLocal = ids.length || affectedCount(result);
+      let edgesLocal = 0;
+      if (ids.length > 0) {
+        // Use Drizzle's inArray so the driver serializes the parameter array
+        // correctly. postgres-js cannot bind a JS string[] to a single
+        // `text[]`-cast positional parameter via the tagged template.
+        const edgeRes = await tx
+          .delete(knowledgeEdges)
+          .where(inArray(knowledgeEdges.sourceMemoryId, ids));
+        edgesLocal = affectedCount(edgeRes);
+      }
+      return { batch: batchLocal, edges: edgesLocal };
+    });
     if (batch === 0) break;
     totalDeleted += batch;
-    if (ids.length > 0) {
-      // Use Drizzle's inArray so the driver serializes the parameter array
-      // correctly. postgres-js cannot bind a JS string[] to a single
-      // `text[]`-cast positional parameter via the tagged template.
-      const edgeRes = await db
-        .delete(knowledgeEdges)
-        .where(inArray(knowledgeEdges.sourceMemoryId, ids));
-      totalEdges += affectedCount(edgeRes);
-    }
+    totalEdges += edges;
     if (batch < BATCH_SIZE) break;
   }
   return { deleted: totalDeleted, cascadedEdges: totalEdges };

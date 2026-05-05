@@ -11,7 +11,9 @@ const inputSchema = z.object({
   // Match REST default so MCP callers omitting topK get the same 10 hits.
   topK: z.number().int().min(1).max(50).default(10),
   sourceFilter: z.array(z.enum(memorySources)).optional(),
-  allowedRoles: z.array(z.enum(memoryRoles)).optional(),
+  // Non-empty when present: an explicit empty array is rejected so callers
+  // are forced to be unambiguous about "narrow to nothing" vs "no filter".
+  allowedRoles: z.array(z.enum(memoryRoles)).min(1).optional(),
 });
 
 /**

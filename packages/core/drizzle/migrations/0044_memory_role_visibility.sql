@@ -25,3 +25,13 @@ CREATE INDEX IF NOT EXISTS "memories_retention_idx"
 CREATE INDEX IF NOT EXISTS "memories_stale_zero_idx"
   ON "memories" ("created_at")
   WHERE "retrieval_count" = 0;
+--> statement-breakpoint
+
+-- Prune cascades `DELETE FROM knowledge_edges WHERE source_memory_id = ANY(...)`
+-- with up-to-10k id batches. Without this index the daily sweep degrades to a
+-- seq scan once the edges table grows. Partial WHERE keeps the index small
+-- (most edges have non-null source_memory_id but we skip null entries either
+-- way).
+CREATE INDEX IF NOT EXISTS "knowledge_edges_source_memory_idx"
+  ON "knowledge_edges" ("source_memory_id")
+  WHERE "source_memory_id" IS NOT NULL;

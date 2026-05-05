@@ -1079,6 +1079,9 @@ export const knowledgeEdges = pgTable(
       t.projectId,
       t.predicate,
     ),
+    sourceMemoryIdx: index('knowledge_edges_source_memory_idx')
+      .on(t.sourceMemoryId)
+      .where(sql`${t.sourceMemoryId} IS NOT NULL`),
   }),
 );
 

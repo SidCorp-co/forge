@@ -3,9 +3,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const executeMock = vi.fn();
 const deleteWhereMock = vi.fn();
 const deleteMock = vi.fn(() => ({ where: deleteWhereMock }));
+// Memory-prune now wraps each batch in `db.transaction`. The mock invokes
+// the callback synchronously with a tx that proxies to the same execute/
+// delete spies the existing tests assert against.
+const transactionMock = vi.fn(
+  async (cb: (tx: { execute: typeof executeMock; delete: typeof deleteMock }) => unknown) =>
+    cb({ execute: executeMock, delete: deleteMock }),
+);
 
 vi.mock('../db/client.js', () => ({
-  db: { execute: executeMock, delete: deleteMock },
+  db: { execute: executeMock, delete: deleteMock, transaction: transactionMock },
 }));
 
 const { runMemoryPrune } = await import('./prune.js');
@@ -14,6 +21,7 @@ beforeEach(() => {
   executeMock.mockReset();
   deleteWhereMock.mockReset();
   deleteMock.mockClear();
+  transactionMock.mockClear();
 });
 
 describe('memory/prune — runMemoryPrune', () => {
