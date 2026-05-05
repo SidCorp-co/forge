@@ -92,20 +92,22 @@ export async function queryPreventivePatterns(
     timer.unref?.();
   });
 
-  try {
-    return await Promise.race([
-      runQuery(input).then((res) => {
-        if (timer) clearTimeout(timer);
-        return res;
-      }),
-      timeout,
-    ]);
-  } catch (err) {
-    if (timer) clearTimeout(timer);
-    logger.warn(
-      { err: (err as Error).message, projectId: input.projectId },
-      'ci_fix_pattern.query: lookup failed, returning empty preventive context',
-    );
-    return [];
-  }
+  // Attach the failure handler before racing so a late rejection (runQuery
+  // rejects *after* the timeout has already resolved with []) is swallowed
+  // here rather than escaping as an UnhandledPromiseRejection.
+  const query = runQuery(input)
+    .then((res) => {
+      if (timer) clearTimeout(timer);
+      return res;
+    })
+    .catch((err) => {
+      if (timer) clearTimeout(timer);
+      logger.warn(
+        { err: (err as Error).message, projectId: input.projectId },
+        'ci_fix_pattern.query: lookup failed, returning empty preventive context',
+      );
+      return [] as PreventivePattern[];
+    });
+
+  return Promise.race([query, timeout]);
 }

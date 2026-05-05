@@ -116,6 +116,29 @@ describe('storeCiFixPattern', () => {
     expect(dbExecute).toHaveBeenCalledTimes(2);
   });
 
+  it('cap DELETE evicts oldest extras (ORDER BY DESC + OFFSET)', async () => {
+    // Locks in the SQL direction so the ASC/DESC bug from the first review
+    // round cannot regress without a test failure: DESC + OFFSET N selects
+    // the rows beyond the N newest — i.e. the oldest extras — and deletes
+    // them. ASC + OFFSET N would do the inverse and evict the newest row.
+    dbExecute.mockResolvedValue({ rows: [] });
+    await storeCiFixPattern({
+      projectId: 'proj-1',
+      pattern: {
+        errorTypes: ['module_not_found'],
+        fileTypes: ['ts'],
+        diffSummary: '',
+      },
+    });
+    expect(dbExecute).toHaveBeenCalledTimes(1);
+    const sqlArg = dbExecute.mock.calls[0]?.[0];
+    const serialized = JSON.stringify(sqlArg);
+    expect(serialized).toContain('DELETE FROM memories');
+    expect(serialized).toContain('ORDER BY created_at DESC');
+    expect(serialized).not.toContain('ORDER BY created_at ASC');
+    expect(serialized).toContain('OFFSET ');
+  });
+
   it('cap defaults to 5 patterns/errorType', () => {
     expect(MAX_PATTERNS_PER_ERROR_TYPE).toBe(5);
   });

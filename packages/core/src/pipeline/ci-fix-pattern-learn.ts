@@ -145,6 +145,9 @@ export async function storeCiFixPattern(args: {
  */
 export async function enforcePatternCap(projectId: string, errorType: string): Promise<void> {
   const errorTypeJson = JSON.stringify([errorType]);
+  // Sort newest-first and skip the freshest MAX rows; the remainder are the
+  // oldest extras and get deleted. Using ASC + OFFSET would do the inverse
+  // and evict the just-stored row instead.
   await db.execute(sql`
     DELETE FROM memories
     WHERE id IN (
@@ -153,7 +156,7 @@ export async function enforcePatternCap(projectId: string, errorType: string): P
         AND source = 'note'
         AND metadata->>'kind' = 'ci_fix_pattern'
         AND metadata->'errorTypes' @> ${errorTypeJson}::jsonb
-      ORDER BY created_at ASC
+      ORDER BY created_at DESC
       OFFSET ${MAX_PATTERNS_PER_ERROR_TYPE}
     )
   `);
