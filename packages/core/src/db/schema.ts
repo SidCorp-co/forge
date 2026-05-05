@@ -1280,6 +1280,17 @@ export const agentSessions = pgTable(
     pipelineControl: jsonb('pipeline_control').$type<import('../agent-sessions/pipeline-control-types.js').PipelineControl | null>(),
     pipelineTelemetry: jsonb('pipeline_telemetry'),
     pipelineHealth: jsonb('pipeline_health').$type<import('../agent-sessions/pipeline-control-types.js').PipelineHealth | null>(),
+    // ISS-34 zombie-fix lifecycle stamps. `dispatchedAt` is set when the
+    // pipeline enqueues; `startedAt` when a worker actually claims (CAS from
+    // queued → running); `lastHeartbeatAt` is bumped on every worker write
+    // (message append, claudeSessionId set, status patch). `failureReason`
+    // records terminal cause: `queue_timeout` / `heartbeat_timeout` /
+    // `no_worker_online` / `user_cancelled` / `job_failed` /
+    // `migration_zombie_cleanup`.
+    dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    lastHeartbeatAt: timestamp('last_heartbeat_at', { withTimezone: true }),
+    failureReason: text('failure_reason'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1287,6 +1298,8 @@ export const agentSessions = pgTable(
     projectStatusIdx: index('agent_sessions_project_status_idx').on(t.projectId, t.status),
     deviceIdx: index('agent_sessions_device_idx').on(t.deviceId),
     userIdx: index('agent_sessions_user_idx').on(t.userId),
+    statusHeartbeatIdx: index('agent_sessions_status_heartbeat_idx').on(t.status, t.lastHeartbeatAt),
+    statusDispatchedIdx: index('agent_sessions_status_dispatched_idx').on(t.status, t.dispatchedAt),
   }),
 );
 

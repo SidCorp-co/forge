@@ -224,6 +224,7 @@ async function findResumableSessionForIssue(
   messages: unknown;
   metadata: unknown;
   usage: unknown;
+  startedAt: Date | null;
 } | null> {
   const rows = await db
     .select({
@@ -233,6 +234,7 @@ async function findResumableSessionForIssue(
       metadata: agentSessions.metadata,
       usage: agentSessions.usage,
       status: agentSessions.status,
+      startedAt: agentSessions.startedAt,
     })
     .from(agentSessions)
     .where(
@@ -337,9 +339,18 @@ agentSessionRoutes.post(
       if (resumable) {
         const prevMessages = Array.isArray(resumable.messages) ? resumable.messages : [];
         const messages = [...prevMessages, userMessage];
+        const nowDate = new Date();
         const [updated] = await db
           .update(agentSessions)
-          .set({ status: 'running', messages, title, updatedAt: new Date() })
+          .set({
+            status: 'running',
+            messages,
+            title,
+            startedAt: resumable.startedAt ?? nowDate,
+            lastHeartbeatAt: nowDate,
+            failureReason: null,
+            updatedAt: nowDate,
+          })
           .where(eq(agentSessions.id, resumable.id))
           .returning();
         if (!updated) throw notFound('agent session not found');
@@ -365,6 +376,9 @@ agentSessionRoutes.post(
       metadata.issueId = input.issueIds[0];
     }
 
+    // Interactive sessions start `running` (worker streams within seconds);
+    // stamp startedAt + heartbeat for parity with the pipeline path.
+    const nowDate = new Date();
     const [inserted] = await db
       .insert(agentSessions)
       .values({
@@ -373,6 +387,8 @@ agentSessionRoutes.post(
         deviceId,
         title,
         status: 'running',
+        startedAt: nowDate,
+        lastHeartbeatAt: nowDate,
         repoPath: rp,
         messages: [userMessage] as never,
         metadata: metadata as never,
@@ -455,9 +471,20 @@ agentSessionRoutes.post(
       ...prevMessages,
       { role: 'user', content: input.message, timestamp: Date.now() },
     ];
+    // Worker activity → CAS queued→running and bump heartbeat for the sweeper.
+    const sendNow = new Date();
+    const sendUpdates: Record<string, unknown> = {
+      messages: messages as never,
+      status: 'running',
+      lastHeartbeatAt: sendNow,
+      updatedAt: sendNow,
+    };
+    if (session.status === 'queued' || session.startedAt == null) {
+      sendUpdates.startedAt = sendNow;
+    }
     const [updated] = await db
       .update(agentSessions)
-      .set({ messages: messages as never, status: 'running', updatedAt: new Date() })
+      .set(sendUpdates)
       .where(eq(agentSessions.id, input.sessionId))
       .returning();
     if (!updated) throw notFound('agent session not found');
@@ -545,6 +572,219 @@ agentSessionRoutes.post(
 
     broadcastSession(updated, 'agent-session.status');
     return c.json({ ok: true });
+  },
+);
+
+// Pipeline-session types for the retry endpoint. Mirrors the predicate
+// used by sweeper.ts and the migration backfill.
+const PIPELINE_SESSION_TYPES = new Set<string>(['pipeline', 'pm']);
+
+// /cancel marks terminal as `failed` with reason='user_cancelled' (vs
+// /abort which sets 'idle' so the user can resume). The sweeper then
+// routes the linked job through recovery or escalation.
+agentSessionRoutes.post(
+  '/:id/cancel',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const [session] = await db
+      .select()
+      .from(agentSessions)
+      .where(eq(agentSessions.id, id))
+      .limit(1);
+    if (!session) throw notFound('agent session not found');
+
+    const access = await loadProjectAccess(session.projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (session.userId && session.userId !== userId && !isOwnerOrAdmin(access, userId)) {
+      throw forbidden('not the session owner');
+    }
+
+    if (session.status === 'completed' || session.status === 'failed') {
+      // Already terminal — return current state, idempotent.
+      return c.json(session);
+    }
+
+    const cancelNow = new Date();
+    // CAS on the active statuses we observed: a worker write that lands
+    // between the SELECT and this UPDATE will not be in queued/running
+    // anymore, and we'd silently no-op rather than stomp it.
+    const [updated] = await db
+      .update(agentSessions)
+      .set({
+        status: 'failed',
+        failureReason: 'user_cancelled',
+        updatedAt: cancelNow,
+      })
+      .where(
+        and(
+          eq(agentSessions.id, id),
+          inArray(agentSessions.status, ['queued', 'running', 'idle']),
+        ),
+      )
+      .returning();
+    if (!updated) {
+      // CAS lost — return the current row so the client can re-render.
+      const [current] = await db
+        .select()
+        .from(agentSessions)
+        .where(eq(agentSessions.id, id))
+        .limit(1);
+      if (!current) throw notFound('agent session not found');
+      return c.json(current);
+    }
+
+    const meta = (updated.metadata ?? {}) as { deviceId?: string };
+    const targetDeviceId = meta.deviceId ?? updated.deviceId ?? null;
+    if (targetDeviceId) {
+      roomManager.publish(deviceRoom(targetDeviceId), {
+        event: 'agent:abort',
+        data: { sessionId: updated.id, reason: 'user_cancelled' },
+      });
+    }
+
+    broadcastSession(updated, 'agent-session.status', { failureReason: 'user_cancelled' });
+    return c.json(updated);
+  },
+);
+
+// Idempotency on /retry comes from orchestrator.reEnqueueForIssue + the
+// unique-active-job index — re-firing while a job is queued/running is a
+// no-op.
+agentSessionRoutes.post(
+  '/:id/retry',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const [session] = await db
+      .select()
+      .from(agentSessions)
+      .where(eq(agentSessions.id, id))
+      .limit(1);
+    if (!session) throw notFound('agent session not found');
+
+    const access = await loadProjectAccess(session.projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+
+    const meta = (session.metadata ?? {}) as { type?: string; issueId?: string };
+    if (!meta.type || !PIPELINE_SESSION_TYPES.has(meta.type)) {
+      throw new HTTPException(400, {
+        message: 'retry only supported for pipeline sessions',
+        cause: { code: 'NOT_PIPELINE_SESSION' },
+      });
+    }
+    if (!meta.issueId) {
+      throw new HTTPException(400, {
+        message: 'session has no linked issue',
+        cause: { code: 'NO_ISSUE_LINK' },
+      });
+    }
+
+    const [issue] = await db
+      .select({ id: issues.id, status: issues.status, projectId: issues.projectId })
+      .from(issues)
+      .where(eq(issues.id, meta.issueId))
+      .limit(1);
+    if (!issue) {
+      throw new HTTPException(404, {
+        message: 'linked issue not found',
+        cause: { code: 'ISSUE_NOT_FOUND' },
+      });
+    }
+
+    // Lazy-import breaks the agent-sessions ↔ pipeline import cycle.
+    const { reEnqueueForIssue } = await import('../pipeline/orchestrator.js');
+    await reEnqueueForIssue({
+      projectId: issue.projectId,
+      issueId: issue.id,
+      status: issue.status,
+      actor: { type: 'user', id: userId },
+      reason: { manualRetry: { sessionId: id, prevFailureReason: session.failureReason } },
+    });
+
+    return c.json({ ok: true, issueId: issue.id });
+  },
+);
+
+// Queue depth per device — backs the worker panel + session placeholder.
+const queueStatsQuerySchema = z
+  .object({
+    projectId: z.uuid(),
+  })
+  .strict();
+
+agentSessionRoutes.get(
+  '/queue-stats',
+  zValidator('query', queueStatsQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId } = c.req.valid('query');
+    const userId = c.get('userId');
+
+    const access = await loadProjectAccess(projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+
+    // Group counts by deviceId × status. Devices without any active session
+    // simply don't appear; the UI lists those via the standard devices API.
+    const rows = await db
+      .select({
+        deviceId: agentSessions.deviceId,
+        status: agentSessions.status,
+        count: count(),
+      })
+      .from(agentSessions)
+      .where(
+        and(
+          eq(agentSessions.projectId, projectId),
+          inArray(agentSessions.status, ['queued', 'running']),
+        ),
+      )
+      .groupBy(agentSessions.deviceId, agentSessions.status);
+
+    type Bucket = { deviceId: string | null; queued: number; running: number };
+    const buckets = new Map<string, Bucket>();
+    for (const r of rows) {
+      const key = r.deviceId ?? '__null__';
+      const b = buckets.get(key) ?? { deviceId: r.deviceId, queued: 0, running: 0 };
+      if (r.status === 'queued') b.queued = Number(r.count);
+      if (r.status === 'running') b.running = Number(r.count);
+      buckets.set(key, b);
+    }
+    return c.json({ devices: Array.from(buckets.values()) });
+  },
+);
+
+// Manual sweep trigger — flush zombies without waiting for the cron tick.
+const sweepQuerySchema = z
+  .object({
+    projectId: z.uuid(),
+  })
+  .strict();
+
+agentSessionRoutes.post(
+  '/sweep-zombies',
+  zValidator('query', sweepQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId } = c.req.valid('query');
+    const userId = c.get('userId');
+
+    const access = await loadProjectAccess(projectId, userId);
+    if (!isOwnerOrAdmin(access, userId)) throw forbidden('owner or admin role required');
+
+    const { sweepZombieSessions } = await import('../pipeline/sweeper.js');
+    const result = await sweepZombieSessions(new Date(), { projectId });
+    return c.json(result);
   },
 );
 
@@ -831,7 +1071,8 @@ agentSessionRoutes.patch(
     const access = await loadProjectAccess(existing.projectId, userId);
     if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
 
-    const updates: Record<string, unknown> = { updatedAt: new Date() };
+    const patchNow = new Date();
+    const updates: Record<string, unknown> = { updatedAt: patchNow };
     if (patch.title !== undefined) updates.title = patch.title;
     if (patch.status !== undefined) updates.status = patch.status;
     if (patch.claudeSessionId !== undefined) updates.claudeSessionId = patch.claudeSessionId;
@@ -840,6 +1081,46 @@ agentSessionRoutes.patch(
     if (patch.usage !== undefined) updates.usage = patch.usage;
     if (patch.metadata !== undefined) updates.metadata = patch.metadata;
     if (patch.diff !== undefined) updates.diff = patch.diff;
+
+    // Any worker-side write is a heartbeat signal; CAS queued→running on
+    // first activity so the sweeper sees a fresh stamp.
+    const isWorkerActivity =
+      patch.messages !== undefined ||
+      patch.claudeSessionId !== undefined ||
+      patch.usage !== undefined ||
+      patch.status !== undefined ||
+      patch.diff !== undefined;
+    // A user_cancelled session must never silently revive — once cancelled,
+    // a worker stream that arrives late should be dropped, not re-attached.
+    const isUserCancelled =
+      existing.status === 'failed' && existing.failureReason === 'user_cancelled';
+    if (isUserCancelled && (patch.status === 'running' || patch.status === 'queued')) {
+      throw new HTTPException(409, {
+        message: 'session was cancelled by user',
+        cause: { code: 'SESSION_CANCELLED' },
+      });
+    }
+    if (isWorkerActivity && !isUserCancelled) {
+      updates.lastHeartbeatAt = patchNow;
+    }
+    if (
+      patch.status === undefined &&
+      isWorkerActivity &&
+      existing.status === 'queued'
+    ) {
+      updates.status = 'running';
+      updates.startedAt = patchNow;
+    } else if (patch.status === 'running' && existing.startedAt == null) {
+      updates.startedAt = patchNow;
+    }
+    // Revival clears stale reason — but never overrides user_cancelled (guarded above).
+    if (
+      (updates.status === 'running' || updates.status === 'queued') &&
+      existing.failureReason &&
+      existing.failureReason !== 'user_cancelled'
+    ) {
+      updates.failureReason = null;
+    }
 
     const [updated] = await db
       .update(agentSessions)

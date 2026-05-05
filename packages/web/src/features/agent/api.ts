@@ -58,10 +58,26 @@ export interface BranchDiff {
   total_deletions: number;
 }
 
+export type AgentSessionStatus = 'idle' | 'queued' | 'running' | 'completed' | 'failed';
+
+// Synthetic UI-only state derived from heartbeat freshness. Backend
+// persists `running`; the `stalled` distinction is presentational only.
+export type AgentSessionDisplayStatus = AgentSessionStatus | 'stalled';
+
+export const STALLED_THRESHOLD_MS = 60_000;
+
+export type SessionFailureReason =
+  | 'queue_timeout'
+  | 'heartbeat_timeout'
+  | 'no_worker_online'
+  | 'user_cancelled'
+  | 'job_failed'
+  | 'migration_zombie_cleanup';
+
 export interface AgentSession {
   documentId: string;
   title: string;
-  status: 'idle' | 'queued' | 'running' | 'completed' | 'failed';
+  status: AgentSessionStatus;
   messages: any[];
   claudeSessionId?: string;
   repoPath?: string;
@@ -69,11 +85,36 @@ export interface AgentSession {
   metadata?: Record<string, unknown>;
   diff?: BranchDiff | null;
   user?: { id: number; documentId: string; username: string };
+  // Lifecycle stamps — null on pre-migration rows + interactive sessions.
+  dispatchedAt?: string | null;
+  startedAt?: string | null;
+  lastHeartbeatAt?: string | null;
+  failureReason?: SessionFailureReason | string | null;
   createdAt: string;
   updatedAt: string;
 }
 
 export type AgentSessionSummary = Omit<AgentSession, 'messages'>;
+
+/**
+ * Promote `running` → `stalled` when no heartbeat for STALLED_THRESHOLD_MS.
+ * Warning band between "fresh" and the sweeper's heartbeat_timeout cutoff.
+ */
+export function deriveSessionDisplayStatus(
+  session: Pick<
+    AgentSession,
+    'status' | 'lastHeartbeatAt' | 'startedAt' | 'updatedAt'
+  >,
+  nowMs: number = Date.now(),
+): AgentSessionDisplayStatus {
+  if (session.status !== 'running') return session.status;
+  const lastSignal =
+    session.lastHeartbeatAt ?? session.startedAt ?? session.updatedAt;
+  if (!lastSignal) return 'running';
+  const lastMs = new Date(lastSignal).getTime();
+  if (Number.isNaN(lastMs)) return 'running';
+  return nowMs - lastMs > STALLED_THRESHOLD_MS ? 'stalled' : 'running';
+}
 
 /**
  * Interactive agent runs (start / send / abort / build-prompt) ship with
@@ -203,4 +244,23 @@ export const agentApi = {
       method: 'POST',
       body: JSON.stringify({ issueDocumentId }),
     }),
+
+  cancelSession: (sessionId: string) =>
+    apiClient<AgentSession>(`/agent-sessions/${sessionId}/cancel`, { method: 'POST' }),
+
+  retrySession: (sessionId: string) =>
+    apiClient<{ ok: boolean; issueId: string }>(`/agent-sessions/${sessionId}/retry`, {
+      method: 'POST',
+    }),
+
+  queueStats: (projectId: string) =>
+    apiClient<{
+      devices: { deviceId: string | null; queued: number; running: number }[];
+    }>(`/agent-sessions/queue-stats?projectId=${encodeURIComponent(projectId)}`),
+
+  sweepZombies: (projectId: string) =>
+    apiClient<{ queueTimedOut: number; heartbeatTimedOut: number }>(
+      `/agent-sessions/sweep-zombies?projectId=${encodeURIComponent(projectId)}`,
+      { method: 'POST' },
+    ),
 };

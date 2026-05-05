@@ -2,6 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, jobs, projects, runners } from '../db/schema.js';
 import type { RunnerType } from '../db/schema.js';
+import { dispatchLivenessMs, isLastSeenFresh } from '../lib/dispatch-liveness.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import { logger } from '../logger.js';
 import { resolveRunnerChainForJob } from '../pipeline/resolve-step-runner.js';
@@ -86,6 +87,20 @@ async function dispatchViaDevice(job: typeof jobs.$inferSelect): Promise<'dispat
     logger.warn(
       { jobId: job.id, deviceId, status: device.status },
       'dispatcher: device offline, leaving queued',
+    );
+    return 'skipped';
+  }
+  // Belt-and-braces against a stale `online` flag — stale-detector lags
+  // up to 2min, but a missed liveness window means no worker will claim.
+  if (!isLastSeenFresh(device.lastSeenAt)) {
+    logger.warn(
+      {
+        jobId: job.id,
+        deviceId,
+        lastSeenAt: device.lastSeenAt,
+        livenessMs: dispatchLivenessMs(),
+      },
+      'dispatcher: device heartbeat stale, leaving queued',
     );
     return 'skipped';
   }

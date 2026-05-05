@@ -108,9 +108,15 @@ describe('jobs/agent-session-link', () => {
         repoPath: '/r',
       });
       expect(result).toBe('sess-parent');
-      // 1) flip parent session back to running, 2) link this job to parent's session
+      // ISS-34: retry re-queues parent (status='queued'); worker CAS flips
+      // it back to running on first claim. Stamp dispatchedAt; clear stale
+      // started/heartbeat/failure fields from the prior attempt.
       expect(updateCalls.map((c) => c.table)).toEqual(['agent_sessions', 'jobs']);
-      expect(updateCalls[0]?.set.status).toBe('running');
+      expect(updateCalls[0]?.set.status).toBe('queued');
+      expect(updateCalls[0]?.set.dispatchedAt).toBeInstanceOf(Date);
+      expect(updateCalls[0]?.set.startedAt).toBeNull();
+      expect(updateCalls[0]?.set.lastHeartbeatAt).toBeNull();
+      expect(updateCalls[0]?.set.failureReason).toBeNull();
       expect(updateCalls[1]?.set.agentSessionId).toBe('sess-parent');
       expect(insertCalls).toHaveLength(0);
     });
@@ -126,7 +132,9 @@ describe('jobs/agent-session-link', () => {
       expect(inserted?.table).toBe('agent_sessions');
       expect(inserted?.values.projectId).toBe('proj-1');
       expect(inserted?.values.userId).toBe('user-1');
-      expect(inserted?.values.status).toBe('running');
+      // ISS-34: pipeline sessions enter `queued`; worker flips to running on claim.
+      expect(inserted?.values.status).toBe('queued');
+      expect(inserted?.values.dispatchedAt).toBeInstanceOf(Date);
       expect(inserted?.values.title).toContain('forge-plan');
       expect(inserted?.values.title).toContain('Fix login bug');
       const meta = inserted?.values.metadata as Record<string, unknown>;

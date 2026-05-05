@@ -161,7 +161,8 @@ describe('jobs/dispatcher', () => {
         },
       ]);
       (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
-      mockSelectOnce([{ id: 'd1', status: 'online' }]);
+      // ISS-34: dispatcher requires fresh `lastSeenAt` (within DISPATCH_LIVENESS_MS).
+    mockSelectOnce([{ id: 'd1', status: 'online', lastSeenAt: new Date() }]);
       mockUpdateReturn([{ id: 'j1' }]);
       // After UPDATE, dispatchViaDevice calls loadRepoPath which selects from
       // projects to feed ensureAgentSessionForJob. Mock the row so the chain
@@ -205,7 +206,8 @@ describe('jobs/dispatcher', () => {
       },
     ]);
     (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
-    mockSelectOnce([{ id: 'd1', status: 'online' }]);
+    // ISS-34: dispatcher requires fresh `lastSeenAt` (within DISPATCH_LIVENESS_MS).
+    mockSelectOnce([{ id: 'd1', status: 'online', lastSeenAt: new Date() }]);
     mockUpdateReturn([{ id: 'j2' }]);
     mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
 
@@ -222,7 +224,8 @@ describe('jobs/dispatcher', () => {
   it('skips when racing UPDATE returns zero rows and does NOT publish', async () => {
     mockSelectOnce([{ id: 'j1', status: 'queued', projectId: 'p1', type: 'plan', payload: {} }]);
     (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
-    mockSelectOnce([{ id: 'd1', status: 'online' }]);
+    // ISS-34: dispatcher requires fresh `lastSeenAt` (within DISPATCH_LIVENESS_MS).
+    mockSelectOnce([{ id: 'd1', status: 'online', lastSeenAt: new Date() }]);
     mockUpdateReturn([]);
 
     const result = await handleDispatch({ jobId: 'j1' });
