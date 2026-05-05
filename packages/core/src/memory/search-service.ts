@@ -1,5 +1,5 @@
 import { env } from '../config/env.js';
-import type { MemorySource } from '../db/schema.js';
+import type { MemoryRole, MemorySource } from '../db/schema.js';
 import { embed } from '../embeddings/index.js';
 import { type MemoryHit, searchMemories } from './search.js';
 
@@ -16,6 +16,7 @@ export interface RunMemorySearchInput {
   query: string;
   topK?: number | undefined;
   sourceFilter?: MemorySource[] | undefined;
+  allowedRoles?: MemoryRole[] | undefined;
 }
 
 export interface MemorySearchResult {
@@ -32,6 +33,7 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
     queryVec,
     topK: input.topK,
     sourceFilter: input.sourceFilter,
+    allowedRoles: input.allowedRoles,
   });
   return {
     hits,

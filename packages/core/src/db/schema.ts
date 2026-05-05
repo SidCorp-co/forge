@@ -904,6 +904,12 @@ export const memorySources = [
 ] as const;
 export type MemorySource = (typeof memorySources)[number];
 
+export const memoryRoles = ['ceo', 'cto', 'pm', 'po', 'techlead', 'dev', 'qa', 'devops'] as const;
+export type MemoryRole = (typeof memoryRoles)[number];
+
+export const memoryVisibilities = ['down', 'same', 'up', 'all'] as const;
+export type MemoryVisibility = (typeof memoryVisibilities)[number];
+
 export const MEMORY_EMBEDDING_DIM = 1536;
 
 export const memories = pgTable(
@@ -918,6 +924,10 @@ export const memories = pgTable(
     textContent: text('text_content').notNull(),
     embedding: pgVector(MEMORY_EMBEDDING_DIM)('embedding').notNull(),
     metadata: jsonb('metadata').notNull().default({}),
+    role: text('role', { enum: memoryRoles }).notNull().default('dev'),
+    visibility: text('visibility', { enum: memoryVisibilities }).notNull().default('all'),
+    retrievalCount: integer('retrieval_count').notNull().default(0),
+    category: text('category'),
     embeddedAt: timestamp('embedded_at', { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -934,6 +944,11 @@ export const memories = pgTable(
       'hnsw',
       sql`"embedding" vector_cosine_ops`,
     ),
+    projectRoleIdx: index('memories_project_role_idx').on(t.projectId, t.role),
+    retentionIdx: index('memories_retention_idx').on(t.retrievalCount, t.updatedAt),
+    staleZeroIdx: index('memories_stale_zero_idx')
+      .on(t.createdAt)
+      .where(sql`${t.retrievalCount} = 0`),
   }),
 );
 

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { memorySources } from '../../db/schema.js';
+import { memoryRoles, memorySources } from '../../db/schema.js';
 import { EmbeddingUnavailableError } from '../../embeddings/index.js';
 import { runMemorySearch } from '../../memory/search-service.js';
 import { assertDeviceOwnerIsMember, zodToMcpSchema } from './lib.js';
@@ -11,6 +11,7 @@ const inputSchema = z.object({
   // Match REST default so MCP callers omitting topK get the same 10 hits.
   topK: z.number().int().min(1).max(50).default(10),
   sourceFilter: z.array(z.enum(memorySources)).optional(),
+  allowedRoles: z.array(z.enum(memoryRoles)).optional(),
 });
 
 /**

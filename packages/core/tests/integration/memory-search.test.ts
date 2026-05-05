@@ -84,12 +84,24 @@ describe('F3 memory search + indexer integration', () => {
 
   async function insertMemory(
     projectId: string,
-    opts: { source: string; sourceRef: string; text: string; vec: number[] },
+    opts: {
+      source: string;
+      sourceRef: string;
+      text: string;
+      vec: number[];
+      role?: string;
+      visibility?: string;
+    },
   ): Promise<void> {
     const vecLiteral = `[${opts.vec.join(',')}]`;
+    const role = opts.role ?? 'dev';
+    const visibility = opts.visibility ?? 'all';
     await harness.db.execute(sql`
-      INSERT INTO memories (project_id, source, source_ref, text_content, embedding, metadata)
-      VALUES (${projectId}, ${opts.source}, ${opts.sourceRef}, ${opts.text}, ${vecLiteral}::vector, '{}'::jsonb)
+      INSERT INTO memories
+        (project_id, source, source_ref, text_content, embedding, metadata, role, visibility)
+      VALUES
+        (${projectId}, ${opts.source}, ${opts.sourceRef}, ${opts.text},
+         ${vecLiteral}::vector, '{}'::jsonb, ${role}, ${visibility})
     `);
   }
 
@@ -259,6 +271,112 @@ describe('F3 memory search + indexer integration', () => {
     });
     const body = (await res.json()) as { hits: Array<{ text: string }> };
     expect(body.hits.map((h) => h.text)).toEqual(['project A memory']);
+  });
+
+  it('search: allowedRoles filters out memories the viewer cannot see', async () => {
+    const { projectId, token } = await seedMember();
+
+    await insertMemory(projectId, {
+      source: 'note',
+      sourceRef: randomUUID(),
+      text: 'ceo decision (visible to all)',
+      vec: hotVector(0),
+      role: 'ceo',
+      visibility: 'all',
+    });
+    await insertMemory(projectId, {
+      source: 'note',
+      sourceRef: randomUUID(),
+      text: 'dev gossip (same-only)',
+      vec: hotVector(1),
+      role: 'dev',
+      visibility: 'same',
+    });
+    await insertMemory(projectId, {
+      source: 'note',
+      sourceRef: randomUUID(),
+      text: 'techlead memo (down)',
+      vec: hotVector(2),
+      role: 'techlead',
+      visibility: 'down',
+    });
+
+    stubEmbedding(hotVector(0));
+
+    const res = await app.request('/api/memory/search', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ projectId, query: 'q', allowedRoles: ['ceo', 'techlead'] }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { hits: Array<{ text: string; role: string }> };
+    const texts = body.hits.map((h) => h.text);
+    // ceo/all: visible (both viewer roles see "all")
+    expect(texts).toContain('ceo decision (visible to all)');
+    // techlead/down: viewer 'ceo' is more senior than techlead → NOT visible.
+    //   viewer 'techlead' → same role, "down" requires a junior → NOT visible.
+    expect(texts).not.toContain('techlead memo (down)');
+    // dev/same: neither viewer role is 'dev' → hidden.
+    expect(texts).not.toContain('dev gossip (same-only)');
+  });
+
+  it('search: increments retrieval_count atomically for returned hits', async () => {
+    const { projectId, token } = await seedMember();
+    const ref = randomUUID();
+    await insertMemory(projectId, {
+      source: 'note',
+      sourceRef: ref,
+      text: 'hot',
+      vec: hotVector(0),
+    });
+    stubEmbedding(hotVector(0));
+
+    await app.request('/api/memory/search', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ projectId, query: 'q', topK: 1 }),
+    });
+    await app.request('/api/memory/search', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ projectId, query: 'q', topK: 1 }),
+    });
+
+    const rows = await harness.db.execute<{ retrieval_count: number }>(
+      sql`SELECT retrieval_count FROM memories WHERE project_id = ${projectId} AND source_ref = ${ref}`,
+    );
+    expect((rows[0] as { retrieval_count: number }).retrieval_count).toBe(2);
+  });
+
+  it('search: concurrent searches contribute exactly N increments to retrieval_count', async () => {
+    const { projectId, token } = await seedMember();
+    const ref = randomUUID();
+    await insertMemory(projectId, {
+      source: 'note',
+      sourceRef: ref,
+      text: 'race target',
+      vec: hotVector(0),
+    });
+    stubEmbedding(hotVector(0));
+
+    const N = 25;
+    await Promise.all(
+      Array.from({ length: N }, () =>
+        app.request('/api/memory/search', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+          body: JSON.stringify({ projectId, query: 'q', topK: 1 }),
+        }),
+      ),
+    );
+
+    const rows = await harness.db.execute<{ retrieval_count: number }>(
+      sql`SELECT retrieval_count FROM memories WHERE project_id = ${projectId} AND source_ref = ${ref}`,
+    );
+    expect((rows[0] as { retrieval_count: number }).retrieval_count).toBe(N);
   });
 
   it('search: 503 when embeddings circuit breaker is open', async () => {

@@ -4,16 +4,23 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { memorySources, projectMembers, projects } from '../db/schema.js';
+import { memoryRoles, memorySources, projectMembers, projects } from '../db/schema.js';
 import { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError } from '../embeddings/index.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { runMemorySearch } from './search-service.js';
 
+// `allowedRoles` is a skill-context narrowing filter, NOT a per-user access
+// boundary. Project membership is the authentication boundary (asserted
+// below); within a project, all members may read all memories. The role
+// hierarchy controls which *skill persona* receives which memories so
+// e.g. forge-plan can opt into seeing only ceo/cto/techlead-tagged memory
+// without coupling that scoping to user identity.
 const searchBodySchema = z.object({
   projectId: z.uuid(),
   query: z.string().trim().min(1).max(4000),
   topK: z.number().int().min(1).max(50).default(10),
   sourceFilter: z.array(z.enum(memorySources)).optional(),
+  allowedRoles: z.array(z.enum(memoryRoles)).optional(),
 });
 
 const badRequest = (details: unknown) =>
@@ -63,6 +70,7 @@ memorySearchRoutes.post(
         query: body.query,
         topK: body.topK,
         sourceFilter: body.sourceFilter,
+        allowedRoles: body.allowedRoles,
       });
     } catch (err) {
       if (err instanceof EmbeddingUnavailableError) {

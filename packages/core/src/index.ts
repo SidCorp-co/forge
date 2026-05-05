@@ -67,6 +67,7 @@ import { mcpHandler } from './mcp/handler.js';
 import { meAttentionRoutes } from './me/attention-routes.js';
 import { registerMemoryIndexer } from './memory/indexer.js';
 import { memoryListRoutes } from './memory/list-routes.js';
+import { registerMemoryPruneSweeper } from './memory/prune-cron.js';
 import { memorySearchRoutes } from './memory/search-routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
@@ -342,6 +343,7 @@ if (isMain) {
     await registerRunnerStaleDetector();
   }
   await registerRetentionSweeper();
+  await registerMemoryPruneSweeper();
   await registerStuckWatcher();
   await registerQueuedWatchdog();
   await registerPipelineSweeper();
