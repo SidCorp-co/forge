@@ -67,6 +67,25 @@ export async function handlePmDispatch(msg: DispatchMessage): Promise<'dispatche
   return dispatchViaRunner(job, { pm: true }, ['claude-code']);
 }
 
+// ISS-34 PR 3 — fail-fast threshold for "device claims to be online but
+// hasn't pinged recently". Stale-detector marks rows offline every 2min
+// (devices/stale-detector.ts), so there's a window where status='online'
+// is stale. The desktop client pings /heartbeat every ~30s; treat anything
+// older than DISPATCH_LIVENESS_MS as effectively offline so we don't hand
+// the job off to a worker that won't claim.
+const DISPATCH_LIVENESS_MS_DEFAULT = 60_000;
+function dispatchLivenessMs(): number {
+  const raw = process.env.DISPATCH_LIVENESS_MS;
+  if (!raw) return DISPATCH_LIVENESS_MS_DEFAULT;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 10_000 ? n : DISPATCH_LIVENESS_MS_DEFAULT;
+}
+
+function isLastSeenFresh(lastSeenAt: Date | null): boolean {
+  if (!lastSeenAt) return false;
+  return Date.now() - lastSeenAt.getTime() < dispatchLivenessMs();
+}
+
 async function dispatchViaDevice(job: typeof jobs.$inferSelect): Promise<'dispatched' | 'skipped'> {
   const deviceId = await getActiveDeviceId(job.projectId);
   if (!deviceId) {
@@ -86,6 +105,22 @@ async function dispatchViaDevice(job: typeof jobs.$inferSelect): Promise<'dispat
     logger.warn(
       { jobId: job.id, deviceId, status: device.status },
       'dispatcher: device offline, leaving queued',
+    );
+    return 'skipped';
+  }
+  // ISS-34: belt-and-braces against a stale `online` flag — if the device
+  // hasn't pinged within the liveness window it's effectively gone, even
+  // if the stale-detector hasn't flipped it yet. Skipping here keeps the
+  // job queued (and surface-visible) instead of creating a zombie session.
+  if (!isLastSeenFresh(device.lastSeenAt)) {
+    logger.warn(
+      {
+        jobId: job.id,
+        deviceId,
+        lastSeenAt: device.lastSeenAt,
+        livenessMs: dispatchLivenessMs(),
+      },
+      'dispatcher: device heartbeat stale, leaving queued',
     );
     return 'skipped';
   }

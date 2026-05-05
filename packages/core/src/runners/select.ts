@@ -75,6 +75,16 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
   const { projectId, requiredCapabilities, fallbackChain } = input;
   const required = JSON.stringify(requiredCapabilities ?? {});
 
+  // ISS-34 PR 3 — also exclude runners whose last_seen_at is staler than
+  // the dispatch liveness window. status='online' alone can lag reality
+  // by up to the stale-detector cron interval.
+  const livenessMs = (() => {
+    const raw = process.env.DISPATCH_LIVENESS_MS;
+    const n = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(n) && n >= 10_000 ? n : 60_000;
+  })();
+  const livenessSeconds = Math.floor(livenessMs / 1000);
+
   if (fallbackChain && fallbackChain.length > 0) {
     for (const type of fallbackChain) {
       const rows = await db.execute<RunnerRow>(
@@ -86,6 +96,8 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
             AND status = 'online'
             AND type = ${type}
             AND capabilities @> ${required}::jsonb
+            AND last_seen_at IS NOT NULL
+            AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
           ORDER BY last_seen_at DESC NULLS LAST, RANDOM()
           LIMIT 1
         `,
@@ -106,6 +118,8 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
       WHERE project_id = ${projectId}
         AND status = 'online'
         AND capabilities @> ${required}::jsonb
+        AND last_seen_at IS NOT NULL
+        AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
       ORDER BY last_seen_at DESC NULLS LAST, RANDOM()
       LIMIT 1
     `,
