@@ -63,6 +63,8 @@ async function runQuery(input: QueryPreventivePatternsInput): Promise<Preventive
   const patterns: PreventivePattern[] = [];
   for (const hit of hits) {
     const meta = (hit.metadata ?? {}) as PatternMetadata;
+    // Belt-and-braces: searchMemories already filters by metadata.kind, but guard
+    // here too in case the filter API loosens in a future RAG refactor.
     if (meta.kind !== 'ci_fix_pattern') continue;
     const pattern: PreventivePattern = {
       errorTypes: asStringArray(meta.errorTypes),
