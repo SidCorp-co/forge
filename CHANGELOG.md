@@ -16,6 +16,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+## [0.1.29] - 2026-05-05
+
+Pipeline session fix: long-running jobs (plan/code/fix/review) no longer get killed by the queue_timeout sweeper, and a completed pipeline session opened in the browser shows the assistant reply + claudeSessionId instead of an empty placeholder.
+
+### Fixed
+
+- **Pipeline jobs killed by `queue_timeout` sweeper after ~5min** (server, ISS-36 / PR #85). Every plan/code/fix/review session was being marked `failed` with `failureReason='queue_timeout'` ~5 minutes after dispatch. Root cause: the desktop runner uses `jobId` as its local session key, so its `PATCH /api/agent-sessions/:id` and relay calls 404'd against the actual `agent_sessions` row UUID. Pre-#83 the session was inserted at `status='running'` so the queue_timeout sweeper didn't match; #83 changed insert to `'queued'` and the sweeper started killing every long-running session before completion. Fix: when a device POSTs `/api/jobs/:id/events`, the server now also CASes the linked `agent_sessions` row `queued → running` (stamps `startedAt`) and bumps `lastHeartbeatAt`. Best-effort, doesn't break event ingest. No desktop change required for this part.
+- **Completed pipeline sessions show empty messages in the browser** (server + desktop, ISS-37 / PR #86). The session row's `messages`, `claudeSessionId`, and `diff` stayed empty after the job finished — only the row's status got updated via `syncAgentSessionLifecycle`. Fix: server threads the linked `agentSessionId` through the claude-code adapter into the WS `job.assigned` payload; desktop tracks the `jobId → agentSessionId` mapping and calls `patchAgentSession(agentSessionId, { status, messages, claudeSessionId })` on `agent:complete` so the canonical session row is persisted with the final state. Backward-compatible: older server builds that don't emit the field cause the desktop to silently skip the PATCH (status sync via `completeJob` still applies).
+
 ## [0.1.28] - 2026-05-01
 
 Pipeline robustness: skill content reaches workers reliably (legacy seeds + 0-byte recovery), and Rust-created worktrees carry skills.
