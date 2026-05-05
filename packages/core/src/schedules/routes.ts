@@ -59,9 +59,26 @@ const forbidden = (message: string) =>
 // project's owner plant jobs on any project they know the slug of. Require the
 // actor to be a member of the target project before accepting the slug, both
 // when persisting it (POST/PUT) and when manually triggering (`/:id/run`).
-async function assertTargetProjectAccess(slug: string, userId: string): Promise<void> {
+// Reset `lastStatus` to 'failed' after a dispatcher throw so the row never
+// gets pinned to 'running' or a stale 'success'. Errors during the reset are
+// logged but never propagated — the original dispatch failure is what matters.
+async function markScheduleFailed(scheduleId: string, ctx: string): Promise<void> {
+  try {
+    await db
+      .update(schedules)
+      .set({ lastStatus: 'failed' })
+      .where(eq(schedules.id, scheduleId));
+  } catch (err) {
+    logger.error({ err, scheduleId }, `${ctx}: lastStatus reset threw`);
+  }
+}
+
+async function assertTargetProjectAccess(
+  slug: string,
+  userId: string,
+): Promise<{ id: string; ownerId: string }> {
   const [target] = await db
-    .select({ id: projects.id })
+    .select({ id: projects.id, ownerId: projects.ownerId })
     .from(projects)
     .where(eq(projects.slug, slug))
     .limit(1);
@@ -75,6 +92,7 @@ async function assertTargetProjectAccess(slug: string, userId: string): Promise<
   if (!access.role && access.ownerId !== userId) {
     throw forbidden('not a member of target project');
   }
+  return target;
 }
 
 export const scheduleRoutes = new Hono<{ Variables: AuthVars }>();
@@ -272,8 +290,9 @@ scheduleRoutes.post(
 
     // Defensive re-check: rows persisted before the create/update gate landed
     // could carry a `targetProjectSlug` the actor has no business triggering.
+    let resolvedTarget: { id: string; ownerId: string } | undefined;
     if (schedule.targetProjectSlug) {
-      await assertTargetProjectAccess(schedule.targetProjectSlug, userId);
+      resolvedTarget = await assertTargetProjectAccess(schedule.targetProjectSlug, userId);
     }
 
     let result: Awaited<ReturnType<typeof dispatchScheduleRun>>;
@@ -287,19 +306,11 @@ scheduleRoutes.post(
           targetProjectSlug: schedule.targetProjectSlug ?? null,
         },
         actorUserId: userId,
+        ...(resolvedTarget ? { resolvedTarget } : {}),
       });
     } catch (err) {
-      // Ensure `lastStatus` doesn't get pinned to a stale value on dispatcher
-      // throws — record the failure so /list reflects reality.
       logger.error({ err, scheduleId: schedule.id }, 'schedule.run: dispatch threw');
-      try {
-        await db
-          .update(schedules)
-          .set({ lastStatus: 'failed' })
-          .where(eq(schedules.id, schedule.id));
-      } catch (statusErr) {
-        logger.error({ err: statusErr, scheduleId: schedule.id }, 'schedule.run: lastStatus update threw');
-      }
+      await markScheduleFailed(schedule.id, 'schedule.run');
       throw err;
     }
 
@@ -376,14 +387,7 @@ export async function runScheduleTickOnce(now: Date = new Date()): Promise<strin
         // Don't leave `lastStatus='running'` if dispatch throws after the
         // atomic claim — flip to 'failed' so the row reflects reality.
         logger.error({ err: dispatchErr, scheduleId: schedule.id }, 'schedule.tick: dispatch threw');
-        try {
-          await db
-            .update(schedules)
-            .set({ lastStatus: 'failed' })
-            .where(eq(schedules.id, schedule.id));
-        } catch (statusErr) {
-          logger.error({ err: statusErr, scheduleId: schedule.id }, 'schedule.tick: lastStatus reset threw');
-        }
+        await markScheduleFailed(schedule.id, 'schedule.tick');
         continue;
       }
 

@@ -22,6 +22,9 @@ export interface DispatchScheduleInput {
   // Marks the resulting job payload so consumers can distinguish tick-driven
   // runs from manual /:id/run triggers.
   tick?: boolean;
+  // When the caller has already resolved `targetProjectSlug` (e.g. the route's
+  // auth gate), pass the resolved project here to skip a redundant lookup.
+  resolvedTarget?: { id: string; ownerId: string };
 }
 
 export type DispatchScheduleResult =
@@ -45,11 +48,15 @@ export async function dispatchScheduleRun(
   let resolvedOwnerId: string | undefined;
 
   if (schedule.targetProjectSlug) {
-    const [target] = await db
-      .select({ id: projects.id, ownerId: projects.ownerId })
-      .from(projects)
-      .where(eq(projects.slug, schedule.targetProjectSlug))
-      .limit(1);
+    const target =
+      input.resolvedTarget ??
+      (
+        await db
+          .select({ id: projects.id, ownerId: projects.ownerId })
+          .from(projects)
+          .where(eq(projects.slug, schedule.targetProjectSlug))
+          .limit(1)
+      )[0];
     if (!target) return { ok: false, reason: 'project-not-found', status: 'skipped' };
     resolvedProjectId = target.id;
     resolvedOwnerId = target.ownerId;
@@ -101,12 +108,19 @@ export async function dispatchScheduleRun(
     .returning({ id: jobs.id });
   if (!job) throw new Error('schedule.dispatch: insert returned no row');
 
+  // Point lastSessionId at this attempt as soon as the row exists — the UI's
+  // "last run" link should track the latest dispatch attempt, even when it
+  // ends up `failed` because of enqueue trouble. Orphan-cleanup below flips
+  // the row to `status='failed'` rather than leaving it `queued`.
+  await db
+    .update(schedules)
+    .set({ lastSessionId: job.id })
+    .where(eq(schedules.id, schedule.id));
+
   try {
     await enqueueJob(job.id);
   } catch (err) {
     logger.error({ err, jobId: job.id }, 'schedule.dispatch: enqueueJob failed');
-    // Avoid leaving a `queued` row that no worker will ever pick up — flip the
-    // freshly-inserted job to `failed` so the table doesn't accumulate orphans.
     try {
       await db
         .update(jobs)
@@ -120,13 +134,6 @@ export async function dispatchScheduleRun(
     }
     return { ok: false, reason: 'enqueue-failed', status: 'failed', jobId: job.id };
   }
-
-  // Only point lastSessionId at jobs that actually made it onto the queue, so
-  // the UI's "last run" link never lands on an orphaned `queued` row.
-  await db
-    .update(schedules)
-    .set({ lastSessionId: job.id })
-    .where(eq(schedules.id, schedule.id));
 
   // Hook subscribers are best-effort — a throw here must not fail the dispatch
   // (the job is already enqueued; the caller would otherwise see a 5xx while
