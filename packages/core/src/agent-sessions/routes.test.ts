@@ -47,6 +47,11 @@ vi.mock('../pipeline/activity.js', () => ({
   safeRecordActivity: safeRecordActivitySpy,
 }));
 
+const reEnqueueForIssueSpy = vi.fn(async () => {});
+vi.mock('../pipeline/orchestrator.js', () => ({
+  reEnqueueForIssue: reEnqueueForIssueSpy,
+}));
+
 const { agentSessionRoutes } = await import('./routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
@@ -329,6 +334,136 @@ describe('POST /api/agent-sessions/:id/relay', () => {
     expect(res.status).toBe(200);
     const events = publishSpy.mock.calls.map((c) => (c[1] as { event: string }).event);
     expect(events).toContain('agent-session.relay.log');
+  });
+});
+
+describe('POST /api/agent-sessions/:id/retry', () => {
+  const ISSUE_ID = '66666666-6666-4666-8666-666666666666';
+  const OTHER_USER_ID = '77777777-7777-4777-8777-777777777777';
+  const OTHER_PROJECT_ID = '88888888-8888-4888-8888-888888888888';
+
+  it('rejects when caller is a plain member and is not the session owner', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        userId: OTHER_USER_ID,
+        status: 'failed',
+        failureReason: 'heartbeat_timeout',
+        metadata: { type: 'pipeline', issueId: ISSUE_ID },
+      },
+    ]);
+    projectAccessAsMember();
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}/retry`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(403);
+    expect(reEnqueueForIssueSpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects when linked issue is in a different project (defence-in-depth)', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        userId: USER_ID,
+        status: 'failed',
+        failureReason: 'heartbeat_timeout',
+        metadata: { type: 'pipeline', issueId: ISSUE_ID },
+      },
+    ]);
+    projectAccessAsOwner();
+    selectLimit.mockResolvedValueOnce([
+      { id: ISSUE_ID, status: 'approved', projectId: OTHER_PROJECT_ID },
+    ]);
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}/retry`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(403);
+    expect(reEnqueueForIssueSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('PATCH /api/agent-sessions/:id user_cancelled guard', () => {
+  it('rejects late worker terminal flip (status=completed) on a user_cancelled session', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'failed',
+        failureReason: 'user_cancelled',
+      },
+    ]);
+    projectAccessAsMember();
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ status: 'completed' }),
+    });
+    expect(res.status).toBe(409);
+    const json = (await res.json()) as { code?: string };
+    expect(json.code).toBe('SESSION_CANCELLED');
+    expect(updateReturning).not.toHaveBeenCalled();
+  });
+
+  it('rejects worker data write (messages only) on a user_cancelled session', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'failed',
+        failureReason: 'user_cancelled',
+      },
+    ]);
+    projectAccessAsMember();
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ messages: [{ role: 'assistant', content: 'late event' }] }),
+    });
+    expect(res.status).toBe(409);
+    expect(updateReturning).not.toHaveBeenCalled();
+  });
+
+  it('does not refresh lastHeartbeatAt for a worker write on a heartbeat_timeout-failed session', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'failed',
+        failureReason: 'heartbeat_timeout',
+        startedAt: new Date(),
+      },
+    ]);
+    projectAccessAsMember();
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: DEVICE_ID,
+        status: 'failed',
+        failureReason: 'heartbeat_timeout',
+      },
+    ]);
+    const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ messages: [{ role: 'assistant', content: 'late tail' }] }),
+    });
+    expect(res.status).toBe(200);
+    const updates = updateSet.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+    expect(updates).toBeDefined();
+    expect(updates).not.toHaveProperty('lastHeartbeatAt');
   });
 });
 
