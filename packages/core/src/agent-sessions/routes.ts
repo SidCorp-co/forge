@@ -673,6 +673,9 @@ agentSessionRoutes.post(
 
     const access = await loadProjectAccess(session.projectId, userId);
     if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (session.userId && session.userId !== userId && !isOwnerOrAdmin(access, userId)) {
+      throw forbidden('not the session owner');
+    }
 
     const meta = (session.metadata ?? {}) as { type?: string; issueId?: string };
     if (!meta.type || !PIPELINE_SESSION_TYPES.has(meta.type)) {
@@ -1092,9 +1095,12 @@ agentSessionRoutes.patch(
       patch.diff !== undefined;
     // A user_cancelled session must never silently revive — once cancelled,
     // a worker stream that arrives late should be dropped, not re-attached.
+    // Reject any worker write (status flip OR data write), even terminal
+    // ones like 'completed'/'failed' that would otherwise clobber
+    // failureReason='user_cancelled' and erase the cancel from history.
     const isUserCancelled =
       existing.status === 'failed' && existing.failureReason === 'user_cancelled';
-    if (isUserCancelled && (patch.status === 'running' || patch.status === 'queued')) {
+    if (isUserCancelled && isWorkerActivity) {
       throw new HTTPException(409, {
         message: 'session was cancelled by user',
         cause: { code: 'SESSION_CANCELLED' },

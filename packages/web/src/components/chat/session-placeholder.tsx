@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useReducer, useState, type ComponentType } from 'react';
-import { Clock, AlertTriangle, X, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Clock, AlertTriangle, X, CheckCircle2, RefreshCw, MessageSquare } from 'lucide-react';
 import { agentApi } from '@/features/agent/api';
 import {
   type AgentSession,
@@ -101,36 +101,48 @@ export function SessionPlaceholder({ sessionId, onRetry, onCancel }: SessionPlac
     ((session as unknown as { deviceId?: string }).deviceId ?? null);
   const isPipeline = meta.type === 'pipeline' || meta.type === 'pm';
 
+  // Interactive (non-pipeline) sessions get the standard empty state — no
+  // Retry/Cancel CTAs (they'd 400 with NOT_PIPELINE_SESSION) and no
+  // pipeline metadata block.
+  if (!isPipeline) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-surface">
+        <div className="text-center">
+          <MessageSquare className="h-10 w-10 text-on-surface-variant mx-auto mb-3" />
+          <p className="text-sm font-sans text-on-surface-variant">Ask anything about this project</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 overflow-auto bg-surface px-6 py-8">
       <div className="mx-auto max-w-xl space-y-4">
         <StatusHeadline display={display} session={session} />
 
-        {isPipeline && (
-          <div className="rounded-md border border-outline-variant/40 bg-surface-container-low p-4 text-sm text-on-surface space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] uppercase tracking-wider text-on-surface-variant">
-                Pipeline session
-              </span>
-              <StatusBadge display={display} />
-            </div>
-            <dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-1.5 text-xs">
-              {jobType && <PlaceholderField label="Job" value={jobType} mono />}
-              {skillName && <PlaceholderField label="Skill" value={skillName} mono />}
-              {issueId && <PlaceholderField label="Issue" value={issueId} mono />}
-              {deviceId && <PlaceholderField label="Worker" value={deviceId} mono />}
-              {session.dispatchedAt && (
-                <PlaceholderField label="Dispatched" value={relativeTime(session.dispatchedAt)} />
-              )}
-              {session.lastHeartbeatAt && (
-                <PlaceholderField label="Heartbeat" value={relativeTime(session.lastHeartbeatAt)} />
-              )}
-              {session.failureReason && (
-                <PlaceholderField label="Reason" value={String(session.failureReason)} mono error />
-              )}
-            </dl>
+        <div className="rounded-md border border-outline-variant/40 bg-surface-container-low p-4 text-sm text-on-surface space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] uppercase tracking-wider text-on-surface-variant">
+              Pipeline session
+            </span>
+            <StatusBadge display={display} />
           </div>
-        )}
+          <dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-1.5 text-xs">
+            {jobType && <PlaceholderField label="Job" value={jobType} mono />}
+            {skillName && <PlaceholderField label="Skill" value={skillName} mono />}
+            {issueId && <PlaceholderField label="Issue" value={issueId} mono />}
+            {deviceId && <PlaceholderField label="Worker" value={deviceId} mono />}
+            {session.dispatchedAt && (
+              <PlaceholderField label="Dispatched" value={relativeTime(session.dispatchedAt)} />
+            )}
+            {session.lastHeartbeatAt && (
+              <PlaceholderField label="Heartbeat" value={relativeTime(session.lastHeartbeatAt)} />
+            )}
+            {session.failureReason && (
+              <PlaceholderField label="Reason" value={String(session.failureReason)} mono error />
+            )}
+          </dl>
+        </div>
 
         {display !== 'completed' && (
           <div className="flex items-center gap-2">
