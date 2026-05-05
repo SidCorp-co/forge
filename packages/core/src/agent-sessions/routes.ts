@@ -10,6 +10,7 @@ import {
   agentSessions,
   devices,
   issues,
+  jobs,
   projectMembers,
   projects,
   users,
@@ -638,6 +639,27 @@ agentSessionRoutes.post(
       return c.json(current);
     }
 
+    // Fail the linked job inline so the issue can be retried immediately.
+     // Without this, the job stays at `running`/`dispatched` until
+     // `jobs/stale-detector` (5-min cron) sweeps it, blocking the pipeline
+     // sweeper's stuck-issue scan (NOT EXISTS active-job AND NOT EXISTS
+     // active-session) — net UX delay of up to 5min before retry works.
+     // No scheduleRetry: cancellation is an explicit user action, not a
+     // transient failure.
+     await db
+      .update(jobs)
+      .set({
+        status: 'failed',
+        finishedAt: cancelNow,
+        error: 'agent session cancelled by user',
+      })
+      .where(
+        and(
+          eq(jobs.agentSessionId, updated.id),
+          inArray(jobs.status, ['queued', 'dispatched', 'running']),
+        ),
+      );
+
     const meta = (updated.metadata ?? {}) as { deviceId?: string };
     const targetDeviceId = meta.deviceId ?? updated.deviceId ?? null;
     if (targetDeviceId) {
@@ -701,6 +723,13 @@ agentSessionRoutes.post(
         message: 'linked issue not found',
         cause: { code: 'ISSUE_NOT_FOUND' },
       });
+    }
+    // Defence in depth — metadata.issueId is set at session creation to a
+    // same-project issue, but `metadata` is mutable via PATCH. A cross-project
+    // metadata.issueId would let a member of project A reEnqueue against
+    // project B; reject before reaching the orchestrator.
+    if (issue.projectId !== session.projectId) {
+      throw forbidden('linked issue is not in the session project');
     }
 
     // Lazy-import breaks the agent-sessions ↔ pipeline import cycle.
@@ -1106,7 +1135,16 @@ agentSessionRoutes.patch(
         cause: { code: 'SESSION_CANCELLED' },
       });
     }
-    if (isWorkerActivity && !isUserCancelled) {
+    // Only stamp the heartbeat while the session is in an active lifecycle
+     // state. A late worker write to a session the sweeper just failed
+     // (heartbeat_timeout / queue_timeout) would otherwise refresh
+     // lastHeartbeatAt on a row whose status is `failed`, producing the
+     // paradox "failed session with fresh heartbeat" in the audit trail.
+    if (
+      isWorkerActivity &&
+      !isUserCancelled &&
+      (existing.status === 'queued' || existing.status === 'running')
+    ) {
       updates.lastHeartbeatAt = patchNow;
     }
     if (

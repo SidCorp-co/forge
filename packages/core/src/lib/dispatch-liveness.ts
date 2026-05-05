@@ -15,6 +15,13 @@ export function dispatchLivenessMs(): number {
   return Number.isFinite(n) && n >= MIN_MS ? n : DEFAULT_MS;
 }
 
+// Invariant audit (ISS-34 review #2 finding #4): every code path that flips
+// `devices.status` to 'online' (devices/routes.ts POST /heartbeat — the
+// only writer) stamps `lastSeenAt` in the same UPDATE. So `status='online'
+// AND lastSeenAt IS NULL` should not occur. If it does (future regression
+// that adds a new write path), the dispatcher will skip and the
+// queued-watchdog will fail the job at 10min — preferred over gambling on
+// a possibly-dead device.
 export function isLastSeenFresh(lastSeenAt: Date | null): boolean {
   if (!lastSeenAt) return false;
   return Date.now() - lastSeenAt.getTime() < dispatchLivenessMs();
