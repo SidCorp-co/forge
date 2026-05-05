@@ -1,6 +1,7 @@
 import { env } from '../config/env.js';
 import type { MemoryRole, MemorySource } from '../db/schema.js';
 import { embed } from '../embeddings/index.js';
+import { logger } from '../logger.js';
 import { type MemoryHit, searchMemories } from './search.js';
 import { SKILL_MEMORY_ROLES } from './visibility.js';
 
@@ -33,8 +34,18 @@ export interface MemorySearchResult {
 export async function runMemorySearch(input: RunMemorySearchInput): Promise<MemorySearchResult> {
   const startedAt = Date.now();
   const queryVec = await embed(input.query);
-  const resolvedAllowedRoles =
-    input.allowedRoles ?? (input.skill ? SKILL_MEMORY_ROLES[input.skill] : undefined);
+  let resolvedAllowedRoles: MemoryRole[] | undefined = input.allowedRoles;
+  if (resolvedAllowedRoles === undefined && input.skill) {
+    const fromMap = SKILL_MEMORY_ROLES[input.skill];
+    if (fromMap) {
+      resolvedAllowedRoles = fromMap;
+    } else {
+      logger.warn(
+        { skill: input.skill, projectId: input.projectId },
+        'memory.search.unknown_skill',
+      );
+    }
+  }
   const hits = await searchMemories({
     projectId: input.projectId,
     queryVec,
