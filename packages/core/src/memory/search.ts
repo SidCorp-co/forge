@@ -7,6 +7,7 @@ import {
   type MemoryVisibility,
   memories,
 } from '../db/schema.js';
+import { logger } from '../logger.js';
 import { allowedRoleVisibilityPairs } from './visibility.js';
 
 export interface SearchInput {
@@ -38,6 +39,21 @@ export interface MemoryHit {
 
 const MIN_TOP_K = 1;
 const MAX_TOP_K = 50;
+
+// Tracks in-flight fire-and-forget retrieval_count UPDATEs so tests (and
+// graceful-shutdown callers) can wait for bookkeeping to settle before
+// asserting on the column or letting the process exit.
+const pendingRetrievalUpdates = new Set<Promise<void>>();
+
+/**
+ * Wait for any in-flight retrieval_count bookkeeping UPDATEs to settle.
+ * Useful in tests that assert on the column right after a search call,
+ * and as a hook for graceful shutdown.
+ */
+export async function flushPendingRetrievalUpdates(): Promise<void> {
+  if (pendingRetrievalUpdates.size === 0) return;
+  await Promise.allSettled([...pendingRetrievalUpdates]);
+}
 
 export async function searchMemories(input: SearchInput): Promise<MemoryHit[]> {
   const topK = Math.min(Math.max(input.topK ?? 10, MIN_TOP_K), MAX_TOP_K);
@@ -82,12 +98,19 @@ export async function searchMemories(input: SearchInput): Promise<MemoryHit[]> {
 
   if (rows.length > 0) {
     // Atomic SQL-side `+ 1` so 100 concurrent searches over the same memory
-    // each contribute exactly one increment.
+    // each contribute exactly one increment. Fire-and-forget so retrieval
+    // bookkeeping doesn't add a round-trip to user-visible search latency.
     const ids = rows.map((r) => r.id);
-    await db
+    const pending = db
       .update(memories)
       .set({ retrievalCount: sql`${memories.retrievalCount} + 1` })
-      .where(inArray(memories.id, ids));
+      .where(inArray(memories.id, ids))
+      .then(() => undefined)
+      .catch((err: unknown) => {
+        logger.warn({ err, ids }, 'memory-search: retrieval_count update failed');
+      });
+    pendingRetrievalUpdates.add(pending);
+    void pending.finally(() => pendingRetrievalUpdates.delete(pending));
   }
 
   return rows.map((r) => ({

@@ -23,6 +23,9 @@ const searchBodySchema = z.object({
   // Non-empty when present: an explicit empty array is rejected so callers
   // are forced to be unambiguous about "narrow to nothing" vs "no filter".
   allowedRoles: z.array(z.enum(memoryRoles)).min(1).optional(),
+  // Skill identifier for falling back to a default role scope from
+  // SKILL_MEMORY_ROLES when `allowedRoles` is not provided.
+  skill: z.string().min(1).max(100).optional(),
 });
 
 const badRequest = (details: unknown) =>
@@ -73,6 +76,7 @@ memorySearchRoutes.post(
         topK: body.topK,
         sourceFilter: body.sourceFilter,
         allowedRoles: body.allowedRoles,
+        skill: body.skill,
       });
     } catch (err) {
       if (err instanceof EmbeddingUnavailableError) {

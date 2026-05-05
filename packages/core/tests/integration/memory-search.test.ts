@@ -357,6 +357,8 @@ describe('F3 memory search + indexer integration', () => {
       body: JSON.stringify({ projectId, query: 'q', topK: 1 }),
     });
 
+    const { flushPendingRetrievalUpdates } = await import('../../src/memory/search.js');
+    await flushPendingRetrievalUpdates();
     const rows = await harness.db.execute<{ retrieval_count: number }>(
       sql`SELECT retrieval_count FROM memories WHERE project_id = ${projectId} AND source_ref = ${ref}`,
     );
@@ -385,6 +387,8 @@ describe('F3 memory search + indexer integration', () => {
       ),
     );
 
+    const { flushPendingRetrievalUpdates } = await import('../../src/memory/search.js');
+    await flushPendingRetrievalUpdates();
     const rows = await harness.db.execute<{ retrieval_count: number }>(
       sql`SELECT retrieval_count FROM memories WHERE project_id = ${projectId} AND source_ref = ${ref}`,
     );
