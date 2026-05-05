@@ -85,6 +85,10 @@ async function buildPreventiveContext(
   return { patterns };
 }
 
+// Mirror the indexer's MAX_EMBED_CHARS so the query path matches the
+// storage path's bounded contract (description schema cap is 100k).
+const MAX_QUERY_EMBED_CHARS = 8192;
+
 async function loadIssueText(issueId: string): Promise<string> {
   const [row] = await db
     .select({ title: issues.title, description: issues.description })
@@ -92,7 +96,8 @@ async function loadIssueText(issueId: string): Promise<string> {
     .where(eq(issues.id, issueId))
     .limit(1);
   if (!row) return '';
-  return [row.title, row.description ?? ''].filter(Boolean).join('\n\n');
+  const text = [row.title, row.description ?? ''].filter(Boolean).join('\n\n');
+  return text.length > MAX_QUERY_EMBED_CHARS ? text.slice(0, MAX_QUERY_EMBED_CHARS) : text;
 }
 
 /**
