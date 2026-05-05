@@ -1,11 +1,16 @@
 'use client';
 
+import { useEffect, useReducer } from 'react';
 import { Plus, Monitor, MonitorOff } from 'lucide-react';
 import { SessionList } from '@/components/chat/session-list';
 import { Button, StatusDot } from '@/components/ui';
 import { cn } from '@/lib/utils/cn';
-import { AGENT_INTERACTIVE_ENABLED } from '@/features/agent/api';
+import {
+  AGENT_INTERACTIVE_ENABLED,
+  deriveSessionDisplayStatus,
+} from '@/features/agent/api';
 import type { AgentSessionSummary } from '@/features/agent/api';
+import { relativeTime } from '@/lib/utils/relative-time';
 
 interface AgentSidebarProps {
   slug: string;
@@ -32,6 +37,15 @@ export function AgentSidebar({
   onSearch,
   width,
 }: AgentSidebarProps) {
+  // Re-render every 15s so heartbeat-derived `stalled` flips on schedule
+  // without waiting for the parent's react-query refetch. The session row
+  // doesn't change between these ticks; only the rendered display state does.
+  const [, forceTick] = useReducer((c: number) => c + 1, 0);
+  useEffect(() => {
+    const id = setInterval(forceTick, 15_000);
+    return () => clearInterval(id);
+  }, []);
+
   return (
     <div
       className={cn(
@@ -71,7 +85,23 @@ export function AgentSidebar({
           activeSessionId={activeSessionId}
           onSelect={onSelectSession}
           onNew={onNewChat}
-          statusDot={(s) => <StatusDot status={s.status} />}
+          statusDot={(s) => {
+            const display = deriveSessionDisplayStatus(s);
+            const lastSignal = s.lastHeartbeatAt ?? s.startedAt ?? s.updatedAt;
+            const elapsed = lastSignal ? relativeTime(lastSignal) : null;
+            let title: string = display;
+            if (display === 'running' && elapsed) {
+              title = `running · last activity ${elapsed}`;
+            } else if (display === 'stalled' && elapsed) {
+              title = `stalled · no heartbeat ${elapsed}`;
+            } else if (display === 'queued') {
+              const dispatched = s.dispatchedAt ? relativeTime(s.dispatchedAt) : null;
+              title = dispatched ? `queued · waiting ${dispatched}` : 'queued · waiting for worker';
+            } else if (display === 'failed' && s.failureReason) {
+              title = `failed · ${String(s.failureReason)}`;
+            }
+            return <StatusDot status={display} title={title} />;
+          }}
           getHref={(s) => `/projects/${slug}/agent?session=${s.documentId}`}
           theme="dark"
           onSearch={onSearch}
