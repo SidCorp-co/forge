@@ -5,13 +5,22 @@ import { ArrowDown, MessageSquare, Search, X } from 'lucide-react';
 import { ChatMessage } from './chat-message';
 import type { ChatMessageData } from './chat-message';
 import { DiffSummary } from './chat-message/diff-summary';
+import { SessionPlaceholder } from './session-placeholder';
 
 interface ChatMessagesProps {
   messages: ChatMessageData[];
   variant?: 'agent' | 'chat';
+  /**
+   * When set + `messages` is empty, render a pipeline-aware placeholder
+   * (Status / Worker / Issue / Retry-Cancel) instead of the generic
+   * "Ask anything…" empty state. The placeholder fetches the session row
+   * itself, so a route that opens a pipeline session via `?session=…` can
+   * just thread the id through without any extra plumbing.
+   */
+  sessionId?: string | null;
 }
 
-export function ChatMessages({ messages, variant = 'agent' }: ChatMessagesProps) {
+export function ChatMessages({ messages, variant = 'agent', sessionId }: ChatMessagesProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
@@ -51,6 +60,9 @@ export function ChatMessages({ messages, variant = 'agent' }: ChatMessagesProps)
   }, [messages, scrollToBottom]);
 
   if (messages.length === 0) {
+    if (sessionId) {
+      return <SessionPlaceholder sessionId={sessionId} />;
+    }
     return (
       <div className="flex-1 flex items-center justify-center bg-surface">
         <div className="text-center">

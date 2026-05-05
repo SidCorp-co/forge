@@ -143,7 +143,7 @@ export function AgentChatArea({
           ) : (
             <>
               <ChatSendProvider send={onSend}>
-              <ChatMessages messages={messages} />
+              <ChatMessages messages={messages} sessionId={sessionId} />
               </ChatSendProvider>
               {AGENT_INTERACTIVE_ENABLED && (
                 <ChatInput
