@@ -251,4 +251,27 @@ export const agentApi = {
       method: 'POST',
       body: JSON.stringify({ issueDocumentId }),
     }),
+
+  // ISS-34 PR 2 — explicit cancel (terminal failed + agent:abort fan-out).
+  cancelSession: (sessionId: string) =>
+    apiClient<AgentSession>(`/agent-sessions/${sessionId}/cancel`, { method: 'POST' }),
+
+  // ISS-34 PR 2 — re-enqueue the underlying pipeline job for the linked issue.
+  retrySession: (sessionId: string) =>
+    apiClient<{ ok: boolean; issueId: string }>(`/agent-sessions/${sessionId}/retry`, {
+      method: 'POST',
+    }),
+
+  // ISS-34 PR 2 — queue depth per device for the worker panel.
+  queueStats: (projectId: string) =>
+    apiClient<{
+      devices: { deviceId: string | null; queued: number; running: number }[];
+    }>(`/agent-sessions/queue-stats?projectId=${encodeURIComponent(projectId)}`),
+
+  // ISS-34 PR 2 — manual sweep trigger (admin/owner only).
+  sweepZombies: (projectId: string) =>
+    apiClient<{ queueTimedOut: number; heartbeatTimedOut: number }>(
+      `/agent-sessions/sweep-zombies?projectId=${encodeURIComponent(projectId)}`,
+      { method: 'POST' },
+    ),
 };

@@ -583,6 +583,205 @@ agentSessionRoutes.post(
   },
 );
 
+// ISS-34 PR 2 — explicit user cancel. Different from /abort (which sets
+// 'idle' for resume). Cancel marks the session terminal as `failed` with
+// reason='user_cancelled' so the issue sweeper can pick it up and route the
+// associated job through recovery (or escalate). Also fires agent:abort so
+// any in-flight worker stops immediately.
+agentSessionRoutes.post(
+  '/:id/cancel',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const [session] = await db
+      .select()
+      .from(agentSessions)
+      .where(eq(agentSessions.id, id))
+      .limit(1);
+    if (!session) throw notFound('agent session not found');
+
+    const access = await loadProjectAccess(session.projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (session.userId && session.userId !== userId && !isOwnerOrAdmin(access, userId)) {
+      throw forbidden('not the session owner');
+    }
+
+    if (session.status === 'completed' || session.status === 'failed') {
+      // Already terminal — return current state, idempotent.
+      return c.json(session);
+    }
+
+    const cancelNow = new Date();
+    const [updated] = await db
+      .update(agentSessions)
+      .set({
+        status: 'failed',
+        failureReason: 'user_cancelled',
+        updatedAt: cancelNow,
+      })
+      .where(eq(agentSessions.id, id))
+      .returning();
+    if (!updated) throw notFound('agent session not found');
+
+    const meta = (updated.metadata ?? {}) as { deviceId?: string };
+    const targetDeviceId = meta.deviceId ?? updated.deviceId ?? null;
+    if (targetDeviceId) {
+      roomManager.publish(deviceRoom(targetDeviceId), {
+        event: 'agent:abort',
+        data: { sessionId: updated.id, reason: 'user_cancelled' },
+      });
+    }
+
+    broadcastSession(updated, 'agent-session.status', { failureReason: 'user_cancelled' });
+    return c.json(updated);
+  },
+);
+
+// ISS-34 PR 2 — re-enqueue the underlying pipeline job. Only valid for
+// pipeline-typed sessions with metadata.issueId. Idempotency relies on
+// orchestrator.reEnqueueForIssue + the unique-active-job index: if a job
+// is already queued/running, the call is effectively a no-op.
+agentSessionRoutes.post(
+  '/:id/retry',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const [session] = await db
+      .select()
+      .from(agentSessions)
+      .where(eq(agentSessions.id, id))
+      .limit(1);
+    if (!session) throw notFound('agent session not found');
+
+    const access = await loadProjectAccess(session.projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+
+    const meta = (session.metadata ?? {}) as { type?: string; issueId?: string };
+    if (meta.type !== 'pipeline' && meta.type !== 'pm') {
+      throw new HTTPException(400, {
+        message: 'retry only supported for pipeline sessions',
+        cause: { code: 'NOT_PIPELINE_SESSION' },
+      });
+    }
+    if (!meta.issueId) {
+      throw new HTTPException(400, {
+        message: 'session has no linked issue',
+        cause: { code: 'NO_ISSUE_LINK' },
+      });
+    }
+
+    const [issue] = await db
+      .select({ id: issues.id, status: issues.status, projectId: issues.projectId })
+      .from(issues)
+      .where(eq(issues.id, meta.issueId))
+      .limit(1);
+    if (!issue) {
+      throw new HTTPException(404, {
+        message: 'linked issue not found',
+        cause: { code: 'ISSUE_NOT_FOUND' },
+      });
+    }
+
+    // Lazy-import to avoid a circular dep between agent-sessions and
+    // pipeline. The orchestrator pulls in skill-mapping which doesn't need
+    // agent-sessions at boot, but the bundler resolves both on first import.
+    const { reEnqueueForIssue } = await import('../pipeline/orchestrator.js');
+    await reEnqueueForIssue({
+      projectId: issue.projectId,
+      issueId: issue.id,
+      status: issue.status,
+      actor: { type: 'user', id: userId },
+      reason: { manualRetry: { sessionId: id, prevFailureReason: session.failureReason } },
+    });
+
+    return c.json({ ok: true, issueId: issue.id });
+  },
+);
+
+// ISS-34 PR 2 — queue depth per device for a project. Used by the worker
+// panel + session placeholder to surface "N queued / running for worker X".
+const queueStatsQuerySchema = z
+  .object({
+    projectId: z.uuid(),
+  })
+  .strict();
+
+agentSessionRoutes.get(
+  '/queue-stats',
+  zValidator('query', queueStatsQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId } = c.req.valid('query');
+    const userId = c.get('userId');
+
+    const access = await loadProjectAccess(projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+
+    // Group counts by deviceId × status. Devices without any active session
+    // simply don't appear; the UI lists those via the standard devices API.
+    const rows = await db
+      .select({
+        deviceId: agentSessions.deviceId,
+        status: agentSessions.status,
+        count: count(),
+      })
+      .from(agentSessions)
+      .where(
+        and(
+          eq(agentSessions.projectId, projectId),
+          inArray(agentSessions.status, ['queued', 'running']),
+        ),
+      )
+      .groupBy(agentSessions.deviceId, agentSessions.status);
+
+    type Bucket = { deviceId: string | null; queued: number; running: number };
+    const buckets = new Map<string, Bucket>();
+    for (const r of rows) {
+      const key = r.deviceId ?? '__null__';
+      const b = buckets.get(key) ?? { deviceId: r.deviceId, queued: 0, running: 0 };
+      if (r.status === 'queued') b.queued = Number(r.count);
+      if (r.status === 'running') b.running = Number(r.count);
+      buckets.set(key, b);
+    }
+    return c.json({ devices: Array.from(buckets.values()) });
+  },
+);
+
+// ISS-34 PR 2 — manual sweep trigger. Useful when the maintainer wants to
+// flush zombies without waiting for the next cron tick. Owner/admin only.
+const sweepQuerySchema = z
+  .object({
+    projectId: z.uuid(),
+  })
+  .strict();
+
+agentSessionRoutes.post(
+  '/sweep-zombies',
+  zValidator('query', sweepQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId } = c.req.valid('query');
+    const userId = c.get('userId');
+
+    const access = await loadProjectAccess(projectId, userId);
+    if (!isOwnerOrAdmin(access, userId)) throw forbidden('owner or admin role required');
+
+    const { sweepZombieSessions } = await import('../pipeline/sweeper.js');
+    const result = await sweepZombieSessions(new Date());
+    return c.json(result);
+  },
+);
+
 agentSessionRoutes.post(
   '/build-prompt',
   zValidator('json', buildPromptBodySchema, (r) => {

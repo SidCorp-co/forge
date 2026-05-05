@@ -8,6 +8,7 @@ import { ContextUsageBar } from './context-usage-bar';
 import { SessionPlaceholder } from './session-placeholder';
 import { useAgentStreamContext } from '@/hooks/agent-stream-context';
 import { uploadAndFormatMessage } from '@/lib/utils/upload-files';
+import { agentApi } from '@/features/agent/api';
 
 interface AgentSessionPanelProps {
   sessionId: string;
@@ -83,7 +84,23 @@ export function AgentSessionPanel({ sessionId: targetSessionId, projectSlug, onC
       {/* Messages — show pipeline placeholder when there's a target session
           but no messages yet (zombie / queued / freshly-claimed). */}
       {messages.length === 0 && targetSessionId ? (
-        <SessionPlaceholder sessionId={targetSessionId} />
+        <SessionPlaceholder
+          sessionId={targetSessionId}
+          onRetry={async () => {
+            try {
+              await agentApi.retrySession(targetSessionId);
+            } catch (err) {
+              console.error('retry failed', err);
+            }
+          }}
+          onCancel={async () => {
+            try {
+              await agentApi.cancelSession(targetSessionId);
+            } catch (err) {
+              console.error('cancel failed', err);
+            }
+          }}
+        />
       ) : (
         <ChatMessages messages={messages} />
       )}
