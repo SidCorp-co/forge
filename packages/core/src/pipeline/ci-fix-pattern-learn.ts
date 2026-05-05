@@ -129,9 +129,19 @@ export async function storeCiFixPattern(args: {
 
 /**
  * Delete the oldest `ci_fix_pattern` rows for a given errorType once the
- * count exceeds `MAX_PATTERNS_PER_ERROR_TYPE`. Uses a single SQL statement
- * with `DELETE ... WHERE id IN (SELECT ... ORDER BY created_at OFFSET N)` so
- * concurrent learners cannot race past the cap.
+ * count exceeds `MAX_PATTERNS_PER_ERROR_TYPE`. Uses a single
+ * `DELETE ... WHERE id IN (SELECT ... ORDER BY created_at OFFSET N)`.
+ *
+ * Best-effort cap: two concurrent learners on the same errorType can
+ * momentarily leave 6+ rows because each sees a snapshot taken before the
+ * other commits. A stray row is harmless (it just falls out on the next
+ * insert), so we do not lock or serialise — this is a quality-of-life
+ * pruner, not a hard invariant.
+ *
+ * Multi-errorType skew: a row tagged `errorTypes:['a','b']` counts toward
+ * both caps. Eviction is by `created_at` regardless, so the multi-type row
+ * may survive longer than a same-age single-type row simply because its
+ * insertion was the most recent for both buckets. Acceptable for v1.
  */
 export async function enforcePatternCap(projectId: string, errorType: string): Promise<void> {
   const errorTypeJson = JSON.stringify([errorType]);
