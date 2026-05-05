@@ -14,8 +14,14 @@ import { relativeTime } from '@/lib/utils/relative-time';
 
 interface SessionPlaceholderProps {
   sessionId: string;
-  onRetry: () => void;
-  onCancel: () => void;
+  /**
+   * Optional. When omitted, the placeholder calls
+   * `agentApi.retrySession(sessionId)` directly. Provide a custom handler if
+   * the parent wants to refetch a react-query cache or surface UI feedback.
+   */
+  onRetry?: () => void;
+  /** Optional, mirrors `onRetry`. Defaults to `agentApi.cancelSession`. */
+  onCancel?: () => void;
 }
 
 interface Presentation {
@@ -60,6 +66,23 @@ export function SessionPlaceholder({ sessionId, onRetry, onCancel }: SessionPlac
   const [session, setSession] = useState<AgentSession | null>(null);
   // Force re-render every 10s so elapsed time + derived stalled status stay fresh.
   const [, forceTick] = useReducer((c: number) => c + 1, 0);
+
+  // Fallbacks call the API directly. Errors surface via console — UI doesn't
+  // need a toast for an explicit user action that the backend acknowledges.
+  const handleRetry =
+    onRetry ??
+    (() => {
+      agentApi.retrySession(sessionId).catch((err) => {
+        console.warn('[session-placeholder] retry failed:', err);
+      });
+    });
+  const handleCancel =
+    onCancel ??
+    (() => {
+      agentApi.cancelSession(sessionId).catch((err) => {
+        console.warn('[session-placeholder] cancel failed:', err);
+      });
+    });
 
   useEffect(() => {
     let alive = true;
@@ -136,7 +159,7 @@ export function SessionPlaceholder({ sessionId, onRetry, onCancel }: SessionPlac
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={onRetry}
+              onClick={handleRetry}
               className="inline-flex items-center gap-1.5 rounded-sm border border-outline-variant/40 bg-surface-container px-3 py-1.5 text-xs font-medium text-on-surface hover:bg-surface-container-high"
             >
               <RefreshCw className="h-3 w-3" />
@@ -145,7 +168,7 @@ export function SessionPlaceholder({ sessionId, onRetry, onCancel }: SessionPlac
             {display !== 'failed' && (
               <button
                 type="button"
-                onClick={onCancel}
+                onClick={handleCancel}
                 className="inline-flex items-center gap-1.5 rounded-sm border border-outline-variant/40 bg-surface-container px-3 py-1.5 text-xs font-medium text-on-surface hover:bg-surface-container-high"
               >
                 <X className="h-3 w-3" />
