@@ -200,7 +200,13 @@ async function dispatchViaRunner(
   // PM (it counts agent_sessions with issueId, PM sessions don't have one).
   const isPm = job.type === 'pm';
   if (!isPm && job.issueId) {
-    const l1 = await checkLayer1IssueBusy(job.issueId, { excludeJobId: job.id });
+    const l1 = await checkLayer1IssueBusy(job.issueId, {
+      excludeJobId: job.id,
+      // The pipeline pre-creates `agent_sessions` for issue-driven jobs and
+      // links via `job.agent_session_id`. Exclude that row so a single
+      // queued session doesn't self-trip the gate.
+      excludeSessionId: job.agentSessionId ?? undefined,
+    });
     if (!l1.pass) return reportGateSkip(job.id, l1, 'L1');
 
     const l2 = await checkLayer2Dependencies(job.issueId);

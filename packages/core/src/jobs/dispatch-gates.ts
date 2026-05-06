@@ -47,12 +47,15 @@ const RUNNER_DEFAULT_FALLBACK = 2;
  * another agent_sessions row (`queued|running`) exists for the same issueId,
  * OR another job row (`dispatched|running`) is alive for the same issueId.
  *
- * `excludeJobId` lets the caller exclude the candidate job itself so the
- * just-being-dispatched row doesn't count as "another active job".
+ * `excludeJobId` excludes the candidate job from the jobs check;
+ * `excludeSessionId` excludes the candidate's own pipeline session from the
+ * sessions check (the pipeline pre-creates the session at status-transition
+ * time, so by the time the job dispatches, the session row already exists
+ * and would otherwise self-trip the gate).
  */
 export async function checkLayer1IssueBusy(
   issueId: string,
-  options?: { excludeJobId?: string },
+  options?: { excludeJobId?: string; excludeSessionId?: string },
 ): Promise<GateResult> {
   if (!issueId) return PASS;
 
@@ -62,6 +65,7 @@ export async function checkLayer1IssueBusy(
     FROM agent_sessions
     WHERE status IN ('queued', 'running')
       AND (metadata->>'issueId') = ${issueId}
+      ${options?.excludeSessionId ? sql`AND id <> ${options.excludeSessionId}` : sql``}
   `);
   const sessionCount = Number(sessionRows[0]?.count ?? '0');
 

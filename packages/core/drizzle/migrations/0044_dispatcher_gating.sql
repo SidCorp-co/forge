@@ -13,12 +13,17 @@
 -- Layer 3 default: per-project max concurrent issues = 3.
 -- Stored under projects.agent_config.pipelineConfig.maxConcurrentIssues so
 -- we don't add a new column. Only set if not already configured.
+--
+-- Note: `jsonb_set` does NOT auto-create intermediate object keys (only the
+-- leaf), so a row with `agent_config = {}` or NULL would silently skip the
+-- update. Using deep-merge with the `||` operator + `jsonb_build_object`
+-- handles the nested-create correctly.
 UPDATE "projects"
-   SET "agent_config" = jsonb_set(
-         COALESCE("agent_config", '{}'::jsonb),
-         '{pipelineConfig,maxConcurrentIssues}',
-         '3'::jsonb,
-         true)
+   SET "agent_config" = COALESCE("agent_config", '{}'::jsonb)
+                      || jsonb_build_object(
+                           'pipelineConfig',
+                           COALESCE("agent_config" -> 'pipelineConfig', '{}'::jsonb)
+                             || jsonb_build_object('maxConcurrentIssues', 3))
  WHERE COALESCE("agent_config" #> '{pipelineConfig,maxConcurrentIssues}', 'null'::jsonb) = 'null'::jsonb;
 --> statement-breakpoint
 

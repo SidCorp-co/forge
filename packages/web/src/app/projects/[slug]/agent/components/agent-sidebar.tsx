@@ -10,41 +10,8 @@ import {
   deriveSessionDisplayStatus,
 } from '@/features/agent/api';
 import type { AgentSessionSummary } from '@/features/agent/api';
+import { renderGatedTooltip } from '@/features/agent/gated-tooltip';
 import { relativeTime } from '@/lib/utils/relative-time';
-
-/**
- * ISS-40 PR-E — render a tooltip for a queued session that was skipped by
- * one of the dispatcher's 4 gating layers. Returns null when the session
- * has no recognised gating reason (caller falls back to the generic
- * "waiting for worker" copy). Vietnamese, matching the rest of this file.
- */
-function renderGatedTooltip(s: AgentSessionSummary): string | null {
-  const reason = s.failureReason;
-  if (!reason) return null;
-  switch (reason) {
-    case 'issue_busy':
-      return 'Issue đang chạy session khác — chờ session hiện tại kết thúc';
-    case 'project_full':
-      return 'Project đang chạy tối đa số issue song song';
-    case 'runner_full':
-      return 'Runner đã đầy slot — chờ slot trống';
-    case 'waiting_on_dep': {
-      const meta = (s.metadata ?? {}) as Record<string, unknown>;
-      const waitingOn = Array.isArray(meta.waitingOn) ? (meta.waitingOn as Array<unknown>) : [];
-      const labels = waitingOn
-        .map((row) => {
-          if (!row || typeof row !== 'object') return null;
-          const seq = (row as { issSeq?: number }).issSeq;
-          return typeof seq === 'number' ? `ISS-${seq}` : null;
-        })
-        .filter((v): v is string => v !== null);
-      if (labels.length === 0) return 'Đợi issue phụ thuộc hoàn tất';
-      return `Đợi ${labels.join(', ')} hoàn tất`;
-    }
-    default:
-      return null; // forward-compat: unknown reasons fall back to default
-  }
-}
 
 interface AgentSidebarProps {
   slug: string;
