@@ -30,6 +30,15 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
+// ISS-40 PR-E added a cycle pre-check on `kind='blocks'` inserts that walks
+// the dependency graph via its own `db.select` chain. The queue-mock above
+// is shaped for the tool's own calls, not the cycle walk; stub the helper
+// to return `null` (no cycle) so this test stays focused on the tool's own
+// branches. Cycle detection itself is covered by `dependency-routes.test.ts`.
+vi.mock('../../issues/dependency-routes.js', () => ({
+  detectCycle: vi.fn(async () => null),
+}));
+
 const { forgePmSetDependencyTool } = await import('./forge-pm-set-dependency.js');
 const { hooks } = await import('../../pipeline/hooks.js');
 
@@ -103,6 +112,8 @@ describe('forge_pm.set_dependency', () => {
       { id: FROM_ID, projectId: PROJECT_ID },
       { id: TO_ID, projectId: PROJECT_ID },
     ]);
+    // detectCycle is module-mocked to return null — does NOT consume the
+    // queue, so we go straight to insert.
     queue.push([{ id: EDGE_ID }]); // insert returning
 
     hooks.reset();
@@ -134,6 +145,7 @@ describe('forge_pm.set_dependency', () => {
       { id: FROM_ID, projectId: PROJECT_ID },
       { id: TO_ID, projectId: PROJECT_ID },
     ]);
+    // detectCycle is module-mocked to return null — does NOT consume the queue.
     queue.push([]); // insert returns no row (conflict)
     queue.push([{ id: EDGE_ID }]); // existing row lookup
 

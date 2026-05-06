@@ -1260,6 +1260,30 @@ export const chatSessionsRelations = relations(chatSessions, ({ one }) => ({
 export const agentSessionStatuses = ['idle', 'queued', 'running', 'completed', 'failed'] as const;
 export type AgentSessionStatus = (typeof agentSessionStatuses)[number];
 
+// Terminal/skip cause written to `agent_sessions.failure_reason`. The column
+// itself stays plain `text` (no DB CHECK constraint) — this tuple is the
+// canonical TS-side enum referenced by the dispatcher, the queued-watchdog,
+// and web sidebar tooltips. Adding a new reason here without writing it from
+// somewhere is harmless; the sidebar falls back to a generic label for
+// unknown values (forward-compat).
+export const agentSessionFailureReasons = [
+  // ISS-34 zombie sweeper + lifecycle terminal causes.
+  'queue_timeout',
+  'heartbeat_timeout',
+  'no_worker_online',
+  'user_cancelled',
+  'job_failed',
+  'migration_zombie_cleanup',
+  // ISS-40 PR-E dispatcher gating skip-reasons. Sessions stay queued — the
+  // job row is NOT moved to failed, only the surface signal is updated so
+  // the UI can explain why the session hasn't started yet.
+  'issue_busy',
+  'waiting_on_dep',
+  'project_full',
+  'runner_full',
+] as const;
+export type AgentSessionFailureReason = (typeof agentSessionFailureReasons)[number];
+
 export const agentSessions = pgTable(
   'agent_sessions',
   {
@@ -1284,9 +1308,9 @@ export const agentSessions = pgTable(
     // pipeline enqueues; `startedAt` when a worker actually claims (CAS from
     // queued → running); `lastHeartbeatAt` is bumped on every worker write
     // (message append, claudeSessionId set, status patch). `failureReason`
-    // records terminal cause: `queue_timeout` / `heartbeat_timeout` /
-    // `no_worker_online` / `user_cancelled` / `job_failed` /
-    // `migration_zombie_cleanup`.
+    // is a free-form text column whose canonical values are listed in
+    // `agentSessionFailureReasons` above (terminal causes from ISS-34 plus
+    // ISS-40 PR-E dispatcher skip reasons).
     dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
     startedAt: timestamp('started_at', { withTimezone: true }),
     lastHeartbeatAt: timestamp('last_heartbeat_at', { withTimezone: true }),
@@ -1390,6 +1414,12 @@ export const retrievalAnalyticsRelations = relations(retrievalAnalytics, ({ one 
 //   - pm_decisions:       audit log of every PM session output
 //   - pm_config:          per-project enable/cadence/triggers (one row/project)
 //   - pm_policies:        free-text Markdown policies, embedded for retrieval
+//
+// Dispatcher convention (ISS-40 PR-E Layer 2): only rows with `kind='blocks'`
+// gate dispatch. An edge `(from=A, to=B, kind='blocks')` means **A must
+// reach a terminal status (`released`/`closed`/`pipeline_failed`) before B
+// can dispatch**. Other kinds (`relates`, `duplicates`, `parent`) are PM/UX
+// metadata only and do not affect dispatch. Cross-project edges are allowed.
 
 export const issueDependencyKinds = ['blocks', 'relates', 'duplicates', 'parent'] as const;
 export type IssueDependencyKind = (typeof issueDependencyKinds)[number];

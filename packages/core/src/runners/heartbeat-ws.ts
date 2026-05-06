@@ -3,6 +3,7 @@ import type { WebSocket } from 'ws';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { runnerTypes, runners } from '../db/schema.js';
+import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import { logger } from '../logger.js';
 import { roomManager } from '../ws/server.js';
 import { projectRoom, runnerRoom } from '../ws/rooms.js';
@@ -67,6 +68,7 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
     .where(and(eq(runners.deviceId, principal.deviceId), eq(runners.type, input.type)))
     .limit(1);
 
+  const wasOffline = !existing || existing.status !== 'online';
   let runnerId: string;
   if (existing) {
     const [updated] = await db
@@ -140,6 +142,11 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
     event: 'runner.status',
     data: { runnerId, status: 'online' },
   });
+  // ISS-40 PR-E — runner came online (or is brand-new): re-tick the project
+  // in case any queued jobs were waiting on `runner_full` / `no_worker_online`.
+  if (wasOffline) {
+    void dispatchTickForProject(input.projectId);
+  }
   // Echo back so the daemon learns its runnerId.
   try {
     ws.send(

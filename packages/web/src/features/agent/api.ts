@@ -72,7 +72,14 @@ export type SessionFailureReason =
   | 'no_worker_online'
   | 'user_cancelled'
   | 'job_failed'
-  | 'migration_zombie_cleanup';
+  | 'migration_zombie_cleanup'
+  // ISS-40 PR-E dispatcher gating skip-reasons. Sessions with these stay
+  // queued (they're not terminal) — only the surface signal flips so the
+  // UI can render a useful tooltip.
+  | 'issue_busy'
+  | 'waiting_on_dep'
+  | 'project_full'
+  | 'runner_full';
 
 export interface AgentSession {
   documentId: string;

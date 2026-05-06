@@ -41,6 +41,7 @@ import { registerDeviceStaleDetector } from './devices/stale-detector.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { seedDomainTemplates } from './domain-templates/seed.js';
 import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-routes.js';
+import { issueDependencyRoutes } from './issues/dependency-routes.js';
 import { issueExtrasRoutes } from './issues/extras-routes.js';
 import { issueProjectRoutes, issueRoutes } from './issues/routes.js';
 import { searchRoutes } from './issues/search.js';
@@ -51,6 +52,7 @@ import {
   unregisterDispatcher,
   unregisterPmDispatcher,
 } from './jobs/dispatcher.js';
+import { registerDispatchTickBackstop } from './jobs/dispatch-tick.js';
 import { jobEventsListRoutes, jobEventsRoutes } from './jobs/events-routes.js';
 import { jobLifecycleDeviceRoutes, jobLifecycleUserRoutes } from './jobs/lifecycle-routes.js';
 import { registerQueuedWatchdog } from './jobs/queued-watchdog.js';
@@ -259,6 +261,7 @@ app.route('/api/issues', issueExtrasRoutes);
 app.route('/api/issues', issueRoutes);
 app.route('/api/issues', transitionRoutes);
 app.route('/api/issues', issueActivityRoutes);
+app.route('/api/issues', issueDependencyRoutes);
 app.route('/api/issues', taskIssueRoutes);
 app.route('/api/tasks', taskRoutes);
 app.route('/api/comments', commentRoutes);
@@ -336,6 +339,9 @@ if (isMain) {
   bootstrapRunnerAdapters();
   await registerDispatcher();
   await registerPmDispatcher();
+  // ISS-40 PR-E — 60s backstop sweep that re-evaluates queued jobs across
+  // every project; complements the in-process dispatchTickForProject lock.
+  await registerDispatchTickBackstop();
   await registerStaleDetector();
   await registerDeviceStaleDetector();
   if (isEnabled('runnerFramework')) {

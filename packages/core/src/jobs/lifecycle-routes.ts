@@ -12,6 +12,7 @@ import { hooks } from '../pipeline/hooks.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
+import { dispatchTickForProject } from './dispatch-tick.js';
 import { scheduleRetry } from './retry.js';
 
 const badRequest = (details: unknown) =>
@@ -127,6 +128,10 @@ jobLifecycleDeviceRoutes.post(
       });
     }
 
+    // ISS-40 PR-E — re-tick the project so newly-freed slots get filled.
+    // Fire-and-forget; never await.
+    void dispatchTickForProject(updated.projectId);
+
     return c.json({
       jobId: updated.id,
       status: updated.status,
@@ -186,6 +191,8 @@ jobLifecycleDeviceRoutes.post(
       failureReason: updated.failureReason ?? null,
     });
 
+    void dispatchTickForProject(updated.projectId);
+
     return c.json({
       jobId: updated.id,
       status: updated.status,
@@ -233,6 +240,9 @@ jobLifecycleUserRoutes.post(
         event: 'job.cancelled',
         data: { jobId: updated.id, status: 'cancelled' },
       });
+
+      // Cancelling a queued job frees a slot — re-tick.
+      void dispatchTickForProject(updated.projectId);
 
       return c.json({
         jobId: updated.id,

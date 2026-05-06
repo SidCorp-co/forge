@@ -10,6 +10,7 @@ import {
   deriveSessionDisplayStatus,
 } from '@/features/agent/api';
 import type { AgentSessionSummary } from '@/features/agent/api';
+import { renderGatedTooltip } from '@/features/agent/gated-tooltip';
 import { relativeTime } from '@/lib/utils/relative-time';
 
 interface AgentSidebarProps {
@@ -95,8 +96,19 @@ export function AgentSidebar({
             } else if (display === 'stalled' && elapsed) {
               title = `stalled · no heartbeat ${elapsed}`;
             } else if (display === 'queued') {
-              const dispatched = s.dispatchedAt ? relativeTime(s.dispatchedAt) : null;
-              title = dispatched ? `queued · waiting ${dispatched}` : 'queued · waiting for worker';
+              // ISS-40 PR-E — sessions skipped by the dispatcher's 4-layer
+              // gating stay queued and surface a typed reason on
+              // `failureReason`. Use it to render a more useful tooltip
+              // than a generic "waiting for worker".
+              const gateTitle = renderGatedTooltip(s);
+              if (gateTitle) {
+                title = gateTitle;
+              } else {
+                const dispatched = s.dispatchedAt ? relativeTime(s.dispatchedAt) : null;
+                title = dispatched
+                  ? `queued · waiting ${dispatched}`
+                  : 'queued · waiting for worker';
+              }
             } else if (display === 'failed' && s.failureReason) {
               title = `failed · ${String(s.failureReason)}`;
             }

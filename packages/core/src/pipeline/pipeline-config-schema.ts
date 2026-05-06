@@ -102,6 +102,10 @@ export const pipelineConfigSchema = z
     autoTest: stepToggleSchema.optional(),
     autoFix: stepToggleSchema.optional(),
     autoRelease: stepToggleSchema.optional(),
+    // ISS-40 PR-E — Layer 3 (per-project) dispatcher cap. DISTINCT issue_ids
+    // with running agent_sessions; sessions beyond the cap stay queued with
+    // failure_reason='project_full'. Backfilled to 3 by migration 0044.
+    maxConcurrentIssues: z.number().int().positive().max(50).optional(),
   })
   .merge(recoveryPolicySchema);
 
