@@ -14,6 +14,14 @@ import { deviceRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { getActiveDeviceId } from './active-device.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
+import {
+  checkLayer1IssueBusy,
+  checkLayer2Dependencies,
+  checkLayer3ProjectFull,
+  checkLayer4RunnerFull,
+  type GateResult,
+  markSessionGated,
+} from './dispatch-gates.js';
 import { JOB_QUEUE_NAME, PM_QUEUE_NAME } from './queue-name.js';
 
 interface DispatchMessage {
@@ -140,6 +148,30 @@ async function dispatchViaDevice(job: typeof jobs.$inferSelect): Promise<'dispat
   return 'dispatched';
 }
 
+/**
+ * Centralised "gate failed → leave queued" path. Mirrors the cause onto the
+ * linked agent_sessions row so the UI can render a useful tooltip, then
+ * returns 'skipped' so the caller short-circuits.
+ */
+async function reportGateSkip(
+  jobId: string,
+  result: GateResult,
+  layer: 'L1' | 'L2' | 'L3' | 'L4',
+): Promise<'skipped'> {
+  if (result.pass) return 'skipped'; // unreachable but keeps the type narrow
+  await markSessionGated(jobId, result.reason, result.hint, result.metadata);
+  logger.info(
+    {
+      jobId,
+      layer,
+      reason: result.reason,
+      hint: result.hint,
+    },
+    'dispatcher: gate failed, leaving queued',
+  );
+  return 'skipped';
+}
+
 async function loadRepoPath(projectId: string): Promise<string | null> {
   const [row] = await db
     .select({ repoPath: projects.repoPath, agentConfig: projects.agentConfig })
@@ -162,6 +194,23 @@ async function dispatchViaRunner(
   forcedCapabilities?: RequiredCapabilities,
   forcedChain?: RunnerType[],
 ): Promise<'dispatched' | 'skipped'> {
+  // ISS-40 PR-E — pre-runner-selection gates. PM jobs (issueId=null) bypass
+  // L1+L2 since they are project-scoped coordinators governed by the
+  // existing `jobs_pm_per_project_unique_idx`. Layer 3 is also a no-op for
+  // PM (it counts agent_sessions with issueId, PM sessions don't have one).
+  const isPm = job.type === 'pm';
+  if (!isPm && job.issueId) {
+    const l1 = await checkLayer1IssueBusy(job.issueId, { excludeJobId: job.id });
+    if (!l1.pass) return reportGateSkip(job.id, l1, 'L1');
+
+    const l2 = await checkLayer2Dependencies(job.issueId);
+    if (!l2.pass) return reportGateSkip(job.id, l2, 'L2');
+  }
+  if (!isPm) {
+    const l3 = await checkLayer3ProjectFull(job.projectId, job.issueId);
+    if (!l3.pass) return reportGateSkip(job.id, l3, 'L3');
+  }
+
   let required: RequiredCapabilities;
   let fallbackChain: RunnerType[];
 
@@ -202,6 +251,12 @@ async function dispatchViaRunner(
     );
     return 'skipped';
   }
+
+  // L4 — runner-cap check after we've picked a runner. We don't pre-filter
+  // full runners in selectRunnerForJob to keep its signature simple; if a
+  // runner is full we just skip and the next tick will retry.
+  const l4 = await checkLayer4RunnerFull(runner.id, { excludeJobId: job.id });
+  if (!l4.pass) return reportGateSkip(job.id, l4, 'L4');
 
   const dispatchedAt = new Date();
   const updated = await db

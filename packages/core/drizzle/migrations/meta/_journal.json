@@ -309,6 +309,13 @@
       "when": 1778300000000,
       "tag": "0043_agent_sessions_zombie_fix_redo",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1778400000000,
+      "tag": "0044_dispatcher_gating",
+      "breakpoints": true
     }
   ]
 }

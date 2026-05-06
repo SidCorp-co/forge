@@ -2,6 +2,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { issueDependencies, issueDependencyKinds, issues } from '../../db/schema.js';
+import { detectCycle } from '../../issues/dependency-routes.js';
 import { hooks } from '../../pipeline/hooks.js';
 import {
   type DeviceScopedMcpToolFactory,
@@ -33,7 +34,7 @@ const inputSchema = z
 export const forgePmSetDependencyTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_pm.set_dependency',
   description:
-    'Record a dependency edge (blocks/relates/duplicates/parent) between two issues in the same project. Idempotent. Requires PM-actor capability.',
+    "Record a dependency edge (blocks/relates/duplicates/parent) between two issues in the same project. Idempotent. Requires PM-actor capability. Dispatcher convention (ISS-40 PR-E): only `kind='blocks'` rows gate dispatch — `(from=A, to=B, kind='blocks')` means A must reach a terminal status (released/closed/pipeline_failed) before B can dispatch. For `blocks` edges, cycles are rejected with a CYCLE_DETECTED error.",
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -53,6 +54,18 @@ export const forgePmSetDependencyTool: DeviceScopedMcpToolFactory = (device) => 
     for (const s of sides) {
       if (s.projectId !== input.projectId) {
         throw new Error('BAD_REQUEST: both issues must belong to projectId');
+      }
+    }
+
+    // ISS-40 PR-E — only `blocks` edges gate dispatch, so they're the only
+    // ones that can deadlock the dispatcher. Cycle-check before insert.
+    if (input.kind === 'blocks') {
+      const cycle = await detectCycle(input.toIssueId, input.fromIssueId);
+      if (cycle === 'cycle') {
+        throw new Error('CYCLE_DETECTED: adding this blocks edge would form a loop');
+      }
+      if (cycle === 'depth_exceeded') {
+        throw new Error('CYCLE_DEPTH_EXCEEDED: dependency graph exceeds detection depth');
       }
     }
 

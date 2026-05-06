@@ -4,7 +4,15 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { type IssueStatus, issueStatuses, issues, projectMembers, projects } from '../db/schema.js';
+import {
+  type IssueStatus,
+  issueDependencies,
+  issueStatuses,
+  issues,
+  projectMembers,
+  projects,
+} from '../db/schema.js';
+import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import {
@@ -34,6 +42,9 @@ const notFound = () =>
 
 const forbidden = (message: string, code = 'FORBIDDEN') =>
   new HTTPException(403, { message, cause: { code } });
+
+/** Issue statuses that satisfy a `kind='blocks'` dependency edge (Layer 2). */
+const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(['released', 'closed', 'pipeline_failed']);
 
 export const transitionRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -163,6 +174,31 @@ transitionRoutes.post(
         at: updated.updatedAt,
       },
     });
+
+    // ISS-40 PR-E — when an issue reaches a terminal status it may unblock
+    // children via Layer 2. Tick this project, plus every distinct child
+    // project for cross-project blocking edges.
+    if (TERMINAL_FOR_DISPATCH.has(toStatus)) {
+      void dispatchTickForProject(issue.projectId);
+      try {
+        const children = await db
+          .selectDistinct({ projectId: issueDependencies.projectId })
+          .from(issueDependencies)
+          .where(
+            and(
+              eq(issueDependencies.fromIssueId, issue.id),
+              eq(issueDependencies.kind, 'blocks'),
+            ),
+          );
+        for (const child of children) {
+          if (child.projectId && child.projectId !== issue.projectId) {
+            void dispatchTickForProject(child.projectId);
+          }
+        }
+      } catch {
+        // Tick fan-out is best-effort; the 60s backstop catches missed unblocks.
+      }
+    }
 
     return c.json({
       id: updated.id,

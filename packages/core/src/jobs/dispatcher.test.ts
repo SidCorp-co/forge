@@ -3,8 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../db/client.js', () => {
   const select = vi.fn();
   const update = vi.fn();
+  // ISS-40 PR-E — Layer 4 gate runs db.execute against the jobs table.
+  // Default to "0 in-flight" so the gate passes; tests that exercise the
+  // runner-full branch override per-call with mockResolvedValueOnce.
+  const execute = vi.fn(async () => [{ count: '0' }]);
   return {
-    db: { select, update },
+    db: { select, update, execute },
   };
 });
 
@@ -47,6 +51,18 @@ vi.mock('../ws/server.js', () => ({
 // it ends up in the job.assigned data when relevant.
 vi.mock('./agent-session-link.js', () => ({
   ensureAgentSessionForJob: vi.fn(async () => 'sess-test'),
+}));
+
+// ISS-40 PR-E — gates run inside dispatchViaRunner. They have their own
+// dedicated coverage in `dispatch-gates.test.ts`; here we stub them all to
+// pass so the dispatcher tests can keep asserting their own envelope shape
+// without seeding fake row counts for gate-internal queries.
+vi.mock('./dispatch-gates.js', () => ({
+  checkLayer1IssueBusy: vi.fn(async () => ({ pass: true })),
+  checkLayer2Dependencies: vi.fn(async () => ({ pass: true })),
+  checkLayer3ProjectFull: vi.fn(async () => ({ pass: true })),
+  checkLayer4RunnerFull: vi.fn(async () => ({ pass: true })),
+  markSessionGated: vi.fn(async () => {}),
 }));
 
 const { db } = await import('../db/client.js');
