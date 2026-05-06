@@ -253,10 +253,9 @@ issueDependencyRoutes.delete(
       .limit(1);
     if (!edge) throw notFound('edge not found');
 
-    if (edge.fromIssueId !== issueId && edge.toIssueId !== issueId) {
-      throw badRequest({ message: 'edge does not involve this issue' }, 'EDGE_MISMATCH');
-    }
-
+    // Membership check BEFORE the EDGE_MISMATCH check — otherwise a non-member
+    // who pairs an arbitrary `:edgeId` with their own `:id` learns whether the
+    // edge exists (404 vs 400 vs 403 leaks state).
     const [member] = await db
       .select({ role: projectMembers.role })
       .from(projectMembers)
@@ -265,6 +264,10 @@ issueDependencyRoutes.delete(
       )
       .limit(1);
     if (!member) throw forbidden('not a project member');
+
+    if (edge.fromIssueId !== issueId && edge.toIssueId !== issueId) {
+      throw badRequest({ message: 'edge does not involve this issue' }, 'EDGE_MISMATCH');
+    }
 
     await db.delete(issueDependencies).where(eq(issueDependencies.id, edgeId));
 

@@ -14,8 +14,9 @@ vi.mock('./dispatch-gates.js', () => ({
   pickNextDispatchableJobForProject: pickFn,
 }));
 
-// dispatch-tick lazy-imports './dispatcher.js' inside runTickInner. Mock the
-// path under both forms — vi.mock matches by source string.
+// dispatch-tick statically imports `handleDispatch` from './dispatcher.js'.
+// vi.mock hoists above the static import so the mocked module is in place
+// before runTickInner ever runs.
 vi.mock('./dispatcher.js', () => ({
   handleDispatch,
 }));

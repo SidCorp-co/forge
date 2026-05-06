@@ -213,7 +213,12 @@ async function dispatchViaRunner(
     const l2 = await checkLayer2Dependencies(job.issueId);
     if (!l2.pass) return reportGateSkip(job.id, l2, 'L2');
   }
-  if (!isPm) {
+  if (!isPm && job.issueId) {
+    // Skip L3 for non-PM jobs without an issueId: the gate's "exclude
+    // candidate's own issue from the running count" logic only works when
+    // we have a candidateIssueId to exclude. Such jobs are rare (PM is the
+    // designed bypass) but typing allows them; treat as PASS rather than
+    // applying a one-stricter cap.
     const l3 = await checkLayer3ProjectFull(job.projectId, job.issueId);
     if (!l3.pass) return reportGateSkip(job.id, l3, 'L3');
   }
