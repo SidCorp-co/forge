@@ -30,7 +30,7 @@ export interface AuthActions {
   /** Server rejected the JWT. Transitions authenticated → expired. */
   expire: () => void;
   /** Explicit user logout. Transitions authenticated|expired → unauthenticated. */
-  logout: (opts?: { unregisterDesktop?: boolean }) => Promise<void>;
+  logout: () => Promise<void>;
   /**
    * Update the deviceId without changing phase. Used by the Settings pair-device
    * flow (which runs while authenticated). Lazy-loaded into the unauthenticated
@@ -72,19 +72,6 @@ async function clearApiCaches(): Promise<void> {
   ]);
   clearProjectIdCache();
   clearDeviceTokenCache();
-}
-
-async function unregisterDesktopBestEffort(deviceId: string | null | undefined): Promise<void> {
-  if (!deviceId) return;
-  try {
-    const { unregisterDesktop } = await import("@/lib/api");
-    await unregisterDesktop(deviceId);
-  } catch (err) {
-    Sentry.captureException(err, {
-      tags: { auth_phase: "unregister_desktop" },
-      level: "warning",
-    });
-  }
 }
 
 // Single in-flight queue for keychain writes. Without serialization, a
@@ -334,7 +321,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     void persistKeychain();
   },
 
-  logout: async ({ unregisterDesktop = false } = {}) => {
+  logout: async () => {
     const cur = get();
     // Logout is only legal from authenticated|expired. Hydrating /
     // unauthenticated have nothing to log out of.
@@ -349,8 +336,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     const coreUrl = cur.coreUrl;
     const deviceId = cur.deviceId;
 
-    if (unregisterDesktop) await unregisterDesktopBestEffort(deviceId);
-
     await clearApiCaches();
     set({
       phase: "unauthenticated",
@@ -358,7 +343,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       deviceId,
       token: undefined,
     } as Partial<AuthStore>);
-    breadcrumb("auth.transition.logout", { unregisterDesktop });
+    breadcrumb("auth.transition.logout");
 
     await persistKeychain();
 

@@ -10,32 +10,69 @@ use tokio::sync::mpsc;
 /// Default agent timeout: 30 minutes.
 const AGENT_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
-/// Resolve the claude binary path by checking common locations.
-/// Caches result in a OnceLock for subsequent calls.
+/// Resolve the claude binary path. Cached in a OnceLock.
+///
+/// Strategy (in order):
+///   1. Walk `$PATH` looking for `claude`. PATH was already corrected at
+///      app startup by `env_path::fix_gui_path()` (login-shell probe), so
+///      under GUI launches this picks up Homebrew / nvm / `~/.local/bin`
+///      that the OS-inherited PATH would have missed.
+///   2. Probe a list of common install locations on macOS/Linux. Belt-and-
+///      suspenders for exotic setups where the user's shell rc doesn't
+///      export the install dir, or where the login-shell probe failed
+///      (timeout, broken rc).
+///   3. Fall back to the literal `"claude"` and let Tokio's spawn surface
+///      ENOENT — better than silently masking the error.
 #[cfg(not(target_os = "windows"))]
 fn resolve_claude_bin() -> &'static str {
     use std::sync::OnceLock;
     static CLAUDE_BIN: OnceLock<String> = OnceLock::new();
     CLAUDE_BIN.get_or_init(|| {
-        // Try to resolve via NVM on the host (non-Windows)
-        #[cfg(not(target_os = "windows"))]
-        {
-            if let Ok(output) = std::process::Command::new("bash")
-                .args(["-lc", "which claude"])
-                .output()
-            {
-                if output.status.success() {
-                    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    if !path.is_empty() {
-                        log(&format!("[resolve] claude binary: {path}"));
-                        return path;
-                    }
-                }
+        if let Some(path) = which_on_path("claude") {
+            log(&format!("[resolve] claude on PATH: {}", path.display()));
+            return path.to_string_lossy().into_owned();
+        }
+
+        let home = std::env::var("HOME").unwrap_or_default();
+        let mut candidates: Vec<String> = vec![
+            "/opt/homebrew/bin/claude".into(),
+            "/usr/local/bin/claude".into(),
+            format!("{home}/.local/bin/claude"),
+            format!("{home}/.npm-global/bin/claude"),
+            format!("{home}/.bun/bin/claude"),
+        ];
+        if let Ok(entries) = std::fs::read_dir(format!("{home}/.nvm/versions/node")) {
+            let mut versions: Vec<String> = entries
+                .filter_map(|e| e.ok())
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect();
+            versions.sort();
+            if let Some(latest) = versions.last() {
+                candidates.push(format!("{home}/.nvm/versions/node/{latest}/bin/claude"));
             }
         }
-        // Fallback: assume it's in PATH
+        for path in &candidates {
+            if std::path::Path::new(path).is_file() {
+                log(&format!("[resolve] claude via fallback: {path}"));
+                return path.clone();
+            }
+        }
+
+        log("[resolve] claude not found on PATH or in fallback list — spawn will likely ENOENT");
         "claude".to_string()
     })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn which_on_path(bin: &str) -> Option<std::path::PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path) {
+        let candidate = dir.join(bin);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
 }
 
 /// Check if claude CLI is available natively on Windows (not WSL).

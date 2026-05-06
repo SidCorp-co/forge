@@ -24,15 +24,6 @@ vi.mock("@/lib/api/jobs", async () => {
   };
 });
 
-const unregisterDesktopMock = vi.fn();
-vi.mock("@/lib/api", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
-  return {
-    ...actual,
-    unregisterDesktop: (...args: unknown[]) => unregisterDesktopMock(...args),
-  };
-});
-
 const resolveApiBaseMock = vi.fn();
 vi.mock("@/lib/api-discovery", () => ({
   resolveApiBase: (...args: unknown[]) => resolveApiBaseMock(...args),
@@ -43,7 +34,6 @@ beforeEach(() => {
   invokeMock.mockReset();
   clearProjectIdCacheMock.mockReset();
   clearDeviceTokenCacheMock.mockReset();
-  unregisterDesktopMock.mockReset();
   resolveApiBaseMock.mockReset();
   resolveApiBaseMock.mockImplementation(async (url: string) => url);
   _resetAuthStoreForTest();
@@ -315,27 +305,6 @@ describe("auth-store: logout", () => {
     expect(invokeMock).toHaveBeenCalledWith("save_config", expect.anything());
   });
 
-  it("unregisterDesktop=true triggers the un-pair API call BEFORE keychain wipe", async () => {
-    invokeMock.mockResolvedValue(null);
-    unregisterDesktopMock.mockResolvedValue(null);
-    const order: string[] = [];
-    unregisterDesktopMock.mockImplementation(() => { order.push("unregister"); });
-    invokeMock.mockImplementation(async (cmd: string) => {
-      if (cmd === "clear_user_jwt") order.push("clear_user_jwt");
-      return null;
-    });
-
-    await useAuthStore.getState().logout({ unregisterDesktop: true });
-    expect(order.indexOf("unregister")).toBeLessThan(order.indexOf("clear_user_jwt"));
-  });
-
-  it("unregister failure does not block keychain wipe / state transition", async () => {
-    invokeMock.mockResolvedValue(null);
-    unregisterDesktopMock.mockRejectedValue(new Error("network"));
-    await useAuthStore.getState().logout({ unregisterDesktop: true });
-    expect(useAuthStore.getState().phase).toBe("unauthenticated");
-    expect(invokeMock).toHaveBeenCalledWith("clear_user_jwt");
-  });
 });
 
 describe("auth-store: illegal transitions", () => {

@@ -2,7 +2,7 @@ import { useRef } from "react";
 import { useAppStore } from "@/stores/app-store";
 import { useAuthStore, type AuthState } from "@/stores/auth-store";
 import { invoke } from "./use-tauri-ipc";
-import { relayAgentEvent, relayPromptBuilt, getIssue, getProject, getAgents, setDeviceProjectPath } from "@/lib/api";
+import { relayAgentEvent, relayPromptBuilt, getIssue, getProject, getAgents } from "@/lib/api";
 import { buildIssuePrompt, buildMultiIssuePrompt } from "@/lib/prompt-builders";
 import { buildAgentPrompt, buildAgentReindexPrompt, type AgentConfig } from "@/lib/agent-prompt";
 import { SessionTracker } from "@/lib/session-tracker";
@@ -10,7 +10,7 @@ import { SessionTracker } from "@/lib/session-tracker";
 /**
  * Auto-create a local working directory for a project if no repoPath is configured.
  * Uses ~/forge-projects/<slug>/ as the standard location.
- * Persists the path to device record + local desktop config for reuse.
+ * Persists the path to local desktop config for reuse.
  * Returns { dir, isNew } — isNew=true when the directory was just created (needs git clone).
  */
 /** Emit an init log entry visible in project settings */
@@ -36,12 +36,6 @@ async function ensureRepoPath(
       await emitInitLog(slug, "Validate repo path", "ok", repoPath);
     } catch (err) {
       await emitInitLog(slug, "Validate repo path", "error", `Cannot access ${repoPath}: ${err}`);
-    }
-    // Persist to device record so web UI shows as initialized
-    if (configRef?.current?.deviceId && projectSlug) {
-      try {
-        await setDeviceProjectPath(configRef.current.deviceId, projectSlug, repoPath);
-      } catch { /* ignore */ }
     }
     return { dir: repoPath, isNew: false };
   }
@@ -71,16 +65,6 @@ async function ensureRepoPath(
     await emitInitLog(slug, "Create directory", "ok", dir);
   } catch (err) {
     await emitInitLog(slug, "Create directory", "error", `${dir}: ${err}`);
-  }
-
-  // Persist to device's projectPaths in Strapi
-  if (configRef?.current?.deviceId && projectSlug) {
-    try {
-      await setDeviceProjectPath(configRef.current.deviceId, projectSlug, dir);
-      await emitInitLog(slug, "Sync to server", "ok");
-    } catch (err) {
-      await emitInitLog(slug, "Sync to server", "error", String(err));
-    }
   }
 
   // Persist to local desktop config — read the full AppConfig from disk

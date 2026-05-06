@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "@/stores/app-store";
 import { useAuth } from "@/hooks/useAuth";
 import { invoke } from "./use-tauri-ipc";
-import { registerDesktop, unregisterDesktop, registerDevice, relayAgentEvent, patchAgentSession, getProject, getAgents, syncKnowledgeToStrapi, syncAgentFiles, postJobEvents, completeJob, type JobEventInput } from "@/lib/api";
+import { relayAgentEvent, patchAgentSession, getProject, getAgents, syncKnowledgeToStrapi, syncAgentFiles, postJobEvents, completeJob, type JobEventInput } from "@/lib/api";
 import { syncAllProjectSkills, syncProjectSkills } from "@/lib/skill-sync";
 import { SessionTracker } from "@/lib/session-tracker";
 import { useAgentCommandHandler } from "./use-agent-commands";
@@ -97,32 +97,6 @@ export function useWebSocket() {
           console.error(`[skills:push] Failed: ${skill.name}`, err);
         }
       }
-
-      // Sync project paths from server before refreshing, so newly-initialized
-      // projects are in deviceSettings.projects and receive the skill files.
-      try {
-        const did = deviceId || "";
-        const hostname = await invoke<string>("get_hostname").catch(() => "Desktop");
-        const device = await registerDevice(did, hostname as string);
-        if (device?.projectPaths) {
-          const currentConfig = await invoke<any>("get_config");
-          const merged = { ...currentConfig.projects };
-          let changed = false;
-          for (const [slug, path] of Object.entries(device.projectPaths)) {
-            if (!path) continue;
-            if (!merged[slug]) {
-              merged[slug] = { slug, repoPath: path };
-              changed = true;
-            } else if (!merged[slug].repoPath) {
-              merged[slug] = { ...merged[slug], repoPath: path };
-              changed = true;
-            }
-          }
-          if (changed) {
-            await invoke("save_config", { config: { ...currentConfig, projects: merged } });
-          }
-        }
-      } catch { /* ignore */ }
 
       // Refresh all projects — this saves the sync log to disk
       try {
@@ -342,51 +316,6 @@ export function useWebSocket() {
           setWsConnected(true);
           queryClient.invalidateQueries();
           startHeartbeat();
-          const did = deviceId || "";
-          try {
-            await registerDesktop(did);
-          } catch { /* ignore */ }
-          // Register device entity with a hostname, sync projectsRoot + projectPaths from server
-          try {
-            const hostname = await invoke<string>("get_hostname").catch(() => "Desktop");
-            const device = await registerDevice(did, hostname as string);
-            const settings = useAppStore.getState().deviceSettings;
-            const updated = { ...settings };
-            let needsSave = false;
-            if (device?.projectsRoot && !settings.projectsRoot) {
-              updated.projectsRoot = device.projectsRoot;
-              needsSave = true;
-            }
-            // Restore per-project repo paths from device record
-            if (device?.projectPaths) {
-              const merged = { ...updated.projects };
-              for (const [slug, path] of Object.entries(device.projectPaths)) {
-                if (!path) continue;
-                if (!merged[slug]) {
-                  merged[slug] = { slug, repoPath: path };
-                  needsSave = true;
-                } else if (!merged[slug].repoPath) {
-                  merged[slug] = { ...merged[slug], repoPath: path };
-                  needsSave = true;
-                }
-              }
-              if (needsSave) updated.projects = merged;
-            }
-            if (needsSave) {
-              setDeviceSettings(updated);
-              await invoke("save_config", {
-                config: {
-                  coreUrl: coreUrl ?? "",
-                  authToken: token ?? "",
-                  deviceId: did,
-                  projects: updated.projects,
-                  projectsRoot: updated.projectsRoot,
-                  skillLibrary: updated.skillLibrary,
-                  mcpLibrary: updated.mcpLibrary,
-                },
-              });
-            }
-          } catch { /* ignore */ }
           // Auto-sync skills from Strapi for all configured projects
           try {
             const settings = useAppStore.getState().deviceSettings;
@@ -407,14 +336,6 @@ export function useWebSocket() {
         const unlisten2 = await listen("ws:disconnected", async () => {
           setWsConnected(false);
           stopHeartbeat();
-          // Skip the un-pair call when deviceId is empty — happens during
-          // logout (auth-store flips deviceId to null and the WS effect
-          // tears down). Sending an empty string would 400 on the server.
-          if (deviceId) {
-            try {
-              await unregisterDesktop(deviceId);
-            } catch { /* ignore */ }
-          }
         });
         const unlisten3 = await listen<unknown>("ws:message", (event) => {
           handleMessage(event.payload);

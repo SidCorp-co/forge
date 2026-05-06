@@ -30,40 +30,6 @@ export async function sendAgentSession(
   });
 }
 
-export async function registerDesktop(_deviceId: string): Promise<void> {
-  // packages/core has no /agent-sessions/desktop/register endpoint — the real
-  // device registration goes through /api/devices/register (handled by
-  // registerDevice in this same file). The "desktop" register/unregister
-  // pair was a Strapi-era shim; on core, the WebSocket connection itself
-  // is the live presence signal and per-session status is reported via
-  // /agent-sessions/:id/desktop/status. No-op here.
-}
-
-export async function unregisterDesktop(_deviceId: string): Promise<void> {
-  // See registerDesktop — no-op on packages/core.
-}
-
-export async function registerDevice(deviceId: string, name: string): Promise<{ projectsRoot?: string | null; projectPaths?: Record<string, string> | null }> {
-  return request("/devices/register", {
-    method: "POST",
-    body: JSON.stringify({ deviceId, name }),
-  });
-}
-
-export async function setDeviceProjectPath(deviceId: string, projectSlug: string, repoPath: string): Promise<void> {
-  await request("/devices/project-path", {
-    method: "PUT",
-    body: JSON.stringify({ deviceId, projectSlug, repoPath }),
-  });
-}
-
-export async function setDeviceProjectsRoot(deviceId: string, projectsRoot: string | null): Promise<void> {
-  await request("/devices/projects-root", {
-    method: "PUT",
-    body: JSON.stringify({ deviceId, projectsRoot }),
-  });
-}
-
 /**
  * PATCH the persisted session row on completion (ISS-307).
  *

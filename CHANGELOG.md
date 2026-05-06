@@ -16,6 +16,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+## [0.1.30] - 2026-05-06
+
+Desktop fixes for fresh installs on macOS Apple Silicon.
+
+### Fixed
+
+- **`Failed to spawn claude: No such file or directory (os error 2)` on macOS** (desktop). GUI launches inherit a minimal `PATH` (`/usr/bin:/bin:/usr/sbin:/sbin`) that misses Homebrew (`/opt/homebrew/bin`), nvm, npm-global, and `~/.local/bin`, so `Command::new("claude")` returned ENOENT even with the CLI installed. Fix at process startup: probe the user's login shell once with `$SHELL -lc 'echo $PATH'`, sentinel-parse, and `setenv("PATH", …)` for the whole process. All subsequent spawns (claude, git, gh) resolve against the user's real PATH. Same approach VS Code / Atom / GitHub Desktop / JetBrains use.
+- **`Sync to server Error: API error: 404` from Project Settings save** (desktop). The desktop was calling three Strapi-era endpoints — `POST /api/devices/register`, `PUT /api/devices/project-path`, `PUT /api/devices/projects-root` — that were never ported to `packages/core`. The backend has no schema for per-device project paths and the dispatcher reads project-level `projects.repoPath` instead, so the round-trip was dead weight. Removed the three frontend callers; per-device paths still persist locally in `~/.config/forge-beta/config.json` and survive restarts.
+
+### Removed
+
+- `registerDesktop` / `unregisterDesktop` / `registerDevice` / `setDeviceProjectPath` / `setDeviceProjectsRoot` from `packages/dev` — all five were no-ops or 404s on `packages/core`. Logout no longer takes an `unregisterDesktop` flag.
+
 ## [0.1.29] - 2026-05-05
 
 Pipeline session fix: long-running jobs (plan/code/fix/review) no longer get killed by the queue_timeout sweeper, and a completed pipeline session opened in the browser shows the assistant reply + claudeSessionId instead of an empty placeholder.

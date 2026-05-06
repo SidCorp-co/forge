@@ -3,7 +3,6 @@ import { useAppStore } from "@/stores/app-store";
 import { useAuth } from "@/hooks/useAuth";
 import { useAuthStore } from "@/stores/auth-store";
 import { invoke } from "@/hooks/use-tauri-ipc";
-import { setDeviceProjectsRoot } from "@/lib/api";
 import { syncAllProjectSkills } from "@/lib/skill-sync";
 import { PageShell } from "@/components/ui/page-shell";
 import { FormInput } from "@/components/ui/form-input";
@@ -78,7 +77,6 @@ export function Settings() {
       // Clear the setting — will use default ~/forge-projects
       patchDeviceSettings({ projectsRoot: undefined });
       await invoke("save_config", { config: buildAppConfig(undefined) });
-      if (auth.deviceId) setDeviceProjectsRoot(auth.deviceId, null).catch(() => {});
       setStatus("saved");
       setTimeout(() => setStatus("idle"), 2000);
       return;
@@ -105,7 +103,6 @@ export function Settings() {
 
     patchDeviceSettings({ projectsRoot: trimmed });
     await invoke("save_config", { config: buildAppConfig(trimmed) });
-    if (auth.deviceId) setDeviceProjectsRoot(auth.deviceId, trimmed).catch(() => {});
     setStatus("saved");
     setTimeout(() => setStatus("idle"), 2000);
   }

@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import { useAppStore } from "@/stores/app-store";
 import { useAuth } from "@/hooks/useAuth";
 import { invoke } from "@/hooks/use-tauri-ipc";
-import { getProject, setDeviceProjectPath } from "@/lib/api";
+import { getProject } from "@/lib/api";
 import type { AppConfig, McpServerConfig } from "@/lib/types";
 
 export function useProjectSettings() {
@@ -266,18 +266,6 @@ export function useProjectSettings() {
       addLog("Save local config", "error", String(err));
       setSaving(false);
       return;
-    }
-
-    // Sync repoPath to device record in Strapi
-    if (repoPath && auth.deviceId) {
-      try {
-        await setDeviceProjectPath(auth.deviceId, slug, repoPath);
-        addLog("Sync to server", "ok", `Device ${auth.deviceId}`);
-      } catch (err) {
-        addLog("Sync to server", "error", String(err));
-      }
-    } else {
-      addLog("Sync to server", "skip", !repoPath ? "No path" : "No device ID");
     }
 
     setSaving(false);

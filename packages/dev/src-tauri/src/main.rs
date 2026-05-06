@@ -3,6 +3,7 @@
 mod claude_cli;
 mod config;
 mod devices;
+mod env_path;
 mod jobs;
 mod keychain;
 mod websocket;
@@ -430,6 +431,13 @@ async fn get_branch_diff(repo_path: String, branch: String, base: String) -> Res
 }
 
 fn main() {
+    // Inherit the user's real PATH from their login shell before anything
+    // else spawns subprocesses. macOS/Linux GUI launches start with a
+    // minimal PATH that misses Homebrew, nvm, ~/.local/bin, etc., so
+    // `Command::new("claude")` (and git, gh) would ENOENT. This call is
+    // a no-op on Windows. See env_path.rs for the full rationale.
+    env_path::fix_gui_path();
+
     // Opt-in Sentry init. `option_env!` reads at compile time — official
     // release builds set FORGE_SENTRY_DSN_RUST in CI, source builds leave it
     // unset and the guard returns None so the SDK never attaches. The

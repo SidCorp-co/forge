@@ -8,8 +8,6 @@ export { getChatSessions, getChatSession, sendChatMessage } from "./chat";
 export { getUsageSummary, createUsageRecord, ingestCliUsage } from "./usage";
 export {
   startAgentSession, sendAgentSession,
-  registerDesktop, unregisterDesktop,
-  registerDevice, setDeviceProjectPath, setDeviceProjectsRoot,
   relayAgentEvent, relayPromptBuilt, patchAgentSession,
   getPipelineTelemetry,
 } from "./agent-sessions";
