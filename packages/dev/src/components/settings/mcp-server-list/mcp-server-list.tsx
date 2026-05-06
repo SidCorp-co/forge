@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { McpServerConfig } from "@/lib/types";
 import { invoke } from "@/hooks/use-tauri-ipc";
 import { useAuth } from "@/hooks/useAuth";
@@ -11,7 +11,6 @@ interface McpServerListProps {
   onChange: (servers: Record<string, McpServerConfig>) => void;
   repoPath?: string;
   projectSlug?: string;
-  projectApiKey?: string;
   sentryProject?: string;
   libraryServers?: Record<string, McpServerConfig>;
   enabledLibraryServers?: string[];
@@ -25,7 +24,6 @@ export function McpServerList({
   onChange,
   repoPath,
   projectSlug,
-  projectApiKey,
   sentryProject,
   libraryServers = {},
   enabledLibraryServers = [],
@@ -36,14 +34,24 @@ export function McpServerList({
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [installedCli, setInstalledCli] = useState<Record<string, "ok" | "err">>({});
+  const [deviceToken, setDeviceToken] = useState<string | null>(null);
   const auth = useAuth();
+
+  // packages/core /mcp requires Authorization: Bearer <device-token>
+  // (ISS-202). Read the token from the OS keychain via Tauri IPC; fall back
+  // to no header so the row still renders (install will fail loudly).
+  useEffect(() => {
+    invoke<string | null>("load_device_token")
+      .then(setDeviceToken)
+      .catch(() => setDeviceToken(null));
+  }, []);
 
   const forgeServer: McpServerConfig | null = auth.coreUrl
     ? {
         type: "http",
         url: `${auth.coreUrl}/mcp`,
         headers: {
-          ...(projectApiKey ? { "X-Forge-API-Key": projectApiKey } : {}),
+          ...(deviceToken ? { Authorization: `Bearer ${deviceToken}` } : {}),
           ...(projectSlug ? { "X-Forge-Project-Slug": projectSlug } : {}),
           ...(sentryProject ? { "X-Sentry-Project": sentryProject } : {}),
         },

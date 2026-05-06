@@ -17,13 +17,11 @@ export function McpPage() {
   const mcpServers = projectConfig?.mcpServers ?? {};
   const mcpLibrary = deviceSettings.mcpLibrary ?? {};
   const enabledMcpServers = projectConfig?.enabledMcpServers ?? [];
-  const [projectApiKey, setProjectApiKey] = useState<string | undefined>();
   const [sentryProject, setSentryProject] = useState<string | undefined>();
 
   useEffect(() => {
     if (!slug) return;
     getProject(slug).then((p) => {
-      setProjectApiKey(p?.apiKey);
       setSentryProject(p?.sentryProject);
     }).catch(() => {});
   }, [slug]);
@@ -92,7 +90,6 @@ export function McpPage() {
           onChange={handleChange}
           repoPath={projectConfig?.repoPath}
           projectSlug={slug}
-          projectApiKey={projectApiKey}
           sentryProject={sentryProject}
           libraryServers={mcpLibrary}
           enabledLibraryServers={enabledMcpServers}

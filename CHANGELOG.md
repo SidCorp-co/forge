@@ -14,9 +14,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
-- **MCP install on a fresh project always 401'd** (server). The desktop's Project Settings save fetches the project to read `apiKey` for the Forge MCP `X-Forge-API-Key` header, but `GET /api/projects` and `GET /api/projects/:id` redacted the key to `fk_…xxxx` (~9 chars) even for verified members. The middleware then rejected the header at the length check (`key.length < 16`) before the DB lookup, returning 401 `API_KEY_REQUIRED`. The same bug also broke the web widget snippet generator (which embedded the redacted key into the copy-paste snippet). Fix: stop redacting for project members on both list + detail GETs (members are already authorized by `loadMembership`); also include `apiKey` in the `POST /api/projects` create response so the desktop receives the real key without an extra round-trip. ADR 0013 explicitly documents that the threat model does not change by exposing the key to members — it is embedded verbatim in the public widget page anyway.
-
 ### Security
+
+## [0.1.31] - 2026-05-06
+
+Persistent Forge MCP config sent the wrong credential — fixed.
+
+### Fixed
+
+- **Forge MCP `/mcp` always 401'd from Claude CLI, then OAuth fallback 404'd** (desktop). The persistent MCP config written into `<repo>/.mcp.json` by Project Settings → Save / MCP page → Install had `X-Forge-API-Key` as the auth header. But `packages/core` migrated `/mcp` to device authentication in ISS-202 — the only accepted credential is `Authorization: Bearer <device-token>`. With the wrong header the request 401'd; Claude CLI's MCP SDK then auto-attempted OAuth dynamic-client registration (`POST /register`) which the backend doesn't implement, surfacing as `HTTP 404: Invalid OAuth error response: ZodError` with raw body `{"code":"NOT_FOUND","message":"Not Found: POST /register"}`. The ephemeral MCP config emitted by the Tauri runtime in `claude_cli/mcp.rs` already used the Bearer header — only the persistent path was stale. Fix: `useProjectSettings.ts:ensureForgeMcp`, `mcp-server-list.tsx`, and `McpPage.tsx` now load the device token from the OS keychain via `load_device_token` IPC and write `Authorization: Bearer <token>` instead of `X-Forge-API-Key`. The project apiKey path is dropped from the desktop MCP install entirely (it remains valid for the web widget, which is unrelated).
+
+## [0.1.30] - 2026-05-06
 
 ## [0.1.30] - 2026-05-06
 

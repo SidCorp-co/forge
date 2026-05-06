@@ -175,11 +175,16 @@ export function useProjectSettings() {
     }
   }
 
-  function ensureForgeMcp(servers: Record<string, McpServerConfig>, projectApiKey?: string, sentryProject?: string): Record<string, McpServerConfig> {
+  function ensureForgeMcp(servers: Record<string, McpServerConfig>, deviceToken: string | null, sentryProject?: string): Record<string, McpServerConfig> {
     const existing = servers["forge"];
     const headers: Record<string, string> = {};
-    if (projectApiKey) {
-      headers["X-Forge-API-Key"] = projectApiKey;
+    if (deviceToken) {
+      // packages/core /mcp is gated by requireDevice() — only accepts
+      // `Authorization: Bearer <device-token>`. The legacy `X-Forge-API-Key`
+      // path was removed in ISS-202; sending the project apiKey here causes
+      // 401 → Claude CLI MCP SDK falls back to OAuth dynamic-client
+      // registration → 404 on POST /register.
+      headers["Authorization"] = `Bearer ${deviceToken}`;
     }
     headers["X-Forge-Project-Slug"] = slug ?? "";
     if (sentryProject) {
@@ -220,14 +225,23 @@ export function useProjectSettings() {
       addLog("Validate repo path", "skip", "No path set");
     }
 
-    // Fetch project API key for MCP auth
-    let projectApiKey: string | undefined;
+    // Load the device token from the OS keychain — it's the only accepted
+    // credential for the Forge MCP /mcp endpoint (ISS-202).
+    let deviceToken: string | null = null;
+    try {
+      deviceToken = await invoke<string | null>("load_device_token");
+      addLog("Load device token", deviceToken ? "ok" : "skip", deviceToken ? undefined : "device not paired");
+    } catch (err) {
+      addLog("Load device token", "error", String(err));
+    }
+
+    // Fetch project for Sentry-Project header (no longer for apiKey — see
+    // ensureForgeMcp comment).
     let sentryProject: string | undefined;
     try {
       const project = await getProject(slug);
-      projectApiKey = project?.apiKey;
       sentryProject = project?.sentryProject;
-      addLog("Fetch project config", "ok", projectApiKey ? "API key found" : "No API key");
+      addLog("Fetch project config", "ok", sentryProject ? `Sentry: ${sentryProject}` : "no Sentry project");
     } catch (err) {
       addLog("Fetch project config", "error", String(err));
     }
@@ -247,7 +261,7 @@ export function useProjectSettings() {
         addLog("Detect MCP servers", "error", String(err));
       }
     }
-    mcpServers = ensureForgeMcp(mcpServers, projectApiKey, sentryProject);
+    mcpServers = ensureForgeMcp(mcpServers, deviceToken, sentryProject);
 
     // Save local config
     try {
