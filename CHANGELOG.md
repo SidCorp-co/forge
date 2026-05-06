@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **MCP install on a fresh project always 401'd** (server). The desktop's Project Settings save fetches the project to read `apiKey` for the Forge MCP `X-Forge-API-Key` header, but `GET /api/projects` and `GET /api/projects/:id` redacted the key to `fk_…xxxx` (~9 chars) even for verified members. The middleware then rejected the header at the length check (`key.length < 16`) before the DB lookup, returning 401 `API_KEY_REQUIRED`. The same bug also broke the web widget snippet generator (which embedded the redacted key into the copy-paste snippet). Fix: stop redacting for project members on both list + detail GETs (members are already authorized by `loadMembership`); also include `apiKey` in the `POST /api/projects` create response so the desktop receives the real key without an extra round-trip. ADR 0013 explicitly documents that the threat model does not change by exposing the key to members — it is embedded verbatim in the public widget page anyway.
+
 ### Security
 
 ## [0.1.30] - 2026-05-06

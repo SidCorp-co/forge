@@ -288,6 +288,47 @@ describe('GET /api/projects/:id', () => {
     expect(body.labels).toHaveLength(1);
     expect(body.devicePool).toHaveLength(1);
   });
+
+  it('returns the full apiKey to project members (no redaction)', async () => {
+    const token = await signUserToken('uuid-user');
+    const fullKey = 'fk_aaaabbbbccccddddeeeeffff00001111222233334444555566667777';
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-user' }])
+      .mockResolvedValueOnce([{ role: 'owner' }])
+      .mockResolvedValueOnce([
+        {
+          id: 'p1',
+          slug: 'p-one',
+          name: 'P One',
+          ownerId: 'uuid-user',
+          description: null,
+          repoPath: null,
+          baseBranch: null,
+          productionBranch: null,
+          defaultDeviceId: null,
+          agentConfig: null,
+          webhookSecret: null,
+          apiKey: fullKey,
+          createdAt: new Date('2026-04-01T00:00:00Z'),
+        },
+      ]);
+    selectWhere
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockResolvedValueOnce([{ userId: 'uuid-user', role: 'owner' }])
+      .mockResolvedValueOnce([{ id: 'l1', name: 'bug', color: '#f00' }])
+      .mockResolvedValueOnce([
+        { id: 'd1', name: 'Beta-Linux', platform: 'linux', status: 'online', lastSeenAt: null },
+      ]);
+
+    const res = await req('/11111111-1111-4111-8111-111111111111', { token });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { apiKey: string };
+    expect(body.apiKey).toBe(fullKey);
+  });
 });
 
 describe('PATCH /api/projects/:id', () => {

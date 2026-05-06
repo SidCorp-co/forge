@@ -29,17 +29,6 @@ function generateApiKey(): string {
   return `fk_${randomBytes(24).toString('hex')}`;
 }
 
-function redactApiKey(key: string | null): string | null {
-  if (!key) return null;
-  // Generated keys are 51 chars (`fk_` + 48 hex). The branch below is
-  // unreachable for keys produced by `generateApiKey`; it's a defensive
-  // fallback for legacy/short keys discovered in the wild and renders an
-  // unambiguous "exists but not previewable" placeholder rather than the
-  // null we'd otherwise indistinguish from "no key at all".
-  if (key.length < 8) return 'fk_…';
-  return `${key.slice(0, 3)}…${key.slice(-4)}`;
-}
-
 export const createProjectSchema = z.object({
   slug: z
     .string()
@@ -125,6 +114,7 @@ projectRoutes.post(
             slug: projects.slug,
             name: projects.name,
             ownerId: projects.ownerId,
+            apiKey: projects.apiKey,
             createdAt: projects.createdAt,
           });
         const project = inserted[0];
@@ -170,7 +160,12 @@ projectRoutes.get('/', async (c) => {
     .innerJoin(projects, eq(projects.id, projectMembers.projectId))
     .where(eq(projectMembers.userId, userId));
 
-  return c.json(rows.map((r) => ({ ...r, apiKey: redactApiKey(r.apiKey) })));
+  // apiKey is returned as-is — the caller is the project member (rows are
+  // joined through projectMembers.userId = me) and ADR 0013 documents that
+  // the key is embedded in the widget page anyway, so the threat model
+  // doesn't change by exposing it here. Redacting broke the desktop MCP
+  // install (key.length < 16 → 401) and the web widget snippet generator.
+  return c.json(rows);
 });
 
 projectRoutes.get(
@@ -228,9 +223,10 @@ projectRoutes.get(
       .innerJoin(devices, eq(devices.id, projectDevices.deviceId))
       .where(eq(projectDevices.projectId, id));
 
+    // apiKey returned as-is — caller passed loadMembership() above. See the
+    // GET / list comment for the same reasoning.
     return c.json({
       ...project,
-      apiKey: redactApiKey(project.apiKey),
       members,
       labels: labelRows,
       devicePool,
