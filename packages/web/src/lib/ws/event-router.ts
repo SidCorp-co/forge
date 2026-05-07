@@ -70,6 +70,17 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
       qc.invalidateQueries({ queryKey: ['notifications-unread'] });
       return;
     }
+    case 'dependencyChanged': {
+      if (data?.fromIssueId) {
+        qc.invalidateQueries({ queryKey: ['issue', data.fromIssueId, 'dependencies'] });
+        qc.invalidateQueries({ queryKey: ['issue', data.fromIssueId] });
+      }
+      if (data?.toIssueId) {
+        qc.invalidateQueries({ queryKey: ['issue', data.toIssueId, 'dependencies'] });
+        qc.invalidateQueries({ queryKey: ['issue', data.toIssueId] });
+      }
+      return;
+    }
     case 'pm.escalation': {
       // Web `usePmEscalations` is derived off `useNotifications`, so the
       // notifications invalidation is the only key that matters here.

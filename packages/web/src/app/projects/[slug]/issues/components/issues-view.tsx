@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Eye } from 'lucide-react';
 import { Button, Input, Select, Skeleton } from '@/components/ui';
 import { ALL_PRIORITIES, COMPLEXITY_COLORS } from '@/lib/constants';
 import type { Issue } from '@forge/contracts';
@@ -9,6 +10,7 @@ import type { IssueComplexity } from '@/features/issue/types';
 import { useIssuesPage } from '../hooks';
 import { StatusMultiSelect } from './status-multi-select';
 import type { IssueStatus } from '@/features/issue/types';
+import { IssueDetailModal } from '@/components/issue/issue-detail-modal/issue-detail-modal';
 
 /**
  * Phase 3.1 (ISS-248): adds a search box + status/priority filter
@@ -36,6 +38,7 @@ export function IssuesView() {
     [issues],
   );
 
+  const [previewIssueId, setPreviewIssueId] = useState<string | null>(null);
   const [localSearch, setLocalSearch] = useState(searchQuery);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => { setLocalSearch(searchQuery); }, [searchQuery]);
@@ -118,10 +121,23 @@ export function IssuesView() {
       ) : (
         <ul className="divide-y divide-outline-variant/20 overflow-hidden rounded-sm border border-outline-variant/20 bg-surface">
           {issues.map((issue: Issue) => (
-            <li key={issue.id}>
+            <li key={issue.id} className="flex items-center pr-2">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  setPreviewIssueId(issue.id);
+                }}
+                className="ml-2 mr-1 shrink-0 rounded-sm p-1.5 text-outline transition-colors hover:bg-surface-container-high hover:text-on-surface"
+                aria-label={`Quick preview ${issue.displayId}`}
+                title="Quick preview"
+              >
+                <Eye className="h-3.5 w-3.5" />
+              </button>
               <Link
                 href={`/projects/${slug}/issues/${issue.displayId}`}
-                className="flex items-center gap-4 px-4 py-3 text-sm transition-colors hover:bg-surface-container-low"
+                className="flex flex-1 items-center gap-4 px-2 py-3 text-sm transition-colors hover:bg-surface-container-low"
               >
                 <span className="w-20 font-mono text-[11px] text-primary">
                   {issue.displayId}
@@ -160,6 +176,12 @@ export function IssuesView() {
           ))}
         </ul>
       )}
+      <IssueDetailModal
+        open={!!previewIssueId}
+        issueId={previewIssueId}
+        projectSlug={slug}
+        onClose={() => setPreviewIssueId(null)}
+      />
     </div>
   );
 }

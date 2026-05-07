@@ -14,6 +14,7 @@ type BoardState = ReturnType<typeof useBoard>;
 
 export function BoardView(props: BoardState) {
   const {
+    slug,
     viewMode, setViewMode, loading,
     issues, selectedIssueId, setSelectedIssueId, changedIssueIds,
     visibleCols, showColPicker, setShowColPicker, toggleCol, handleIssueDrop,
@@ -114,9 +115,13 @@ export function BoardView(props: BoardState) {
         </div>
       )}
 
-      {selectedIssueId && (
-        <IssueDetailModal issueId={selectedIssueId} onClose={() => setSelectedIssueId(null)} />
-      )}
+      <IssueDetailModal
+        open={!!selectedIssueId}
+        issueId={selectedIssueId}
+        projectSlug={slug}
+        onClose={() => setSelectedIssueId(null)}
+      />
+
 
       <ToastContainer toasts={toasts} />
     </div>
