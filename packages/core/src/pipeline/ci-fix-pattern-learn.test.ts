@@ -116,11 +116,13 @@ describe('storeCiFixPattern', () => {
     expect(dbExecute).toHaveBeenCalledTimes(2);
   });
 
-  it('cap DELETE evicts oldest extras (ORDER BY DESC + OFFSET)', async () => {
-    // Locks in the SQL direction so the ASC/DESC bug from the first review
-    // round cannot regress without a test failure: DESC + OFFSET N selects
-    // the rows beyond the N newest — i.e. the oldest extras — and deletes
-    // them. ASC + OFFSET N would do the inverse and evict the newest row.
+  it('cap DELETE evicts least-recently-updated extras (ORDER BY updated_at DESC + OFFSET)', async () => {
+    // Locks in two invariants:
+    //   1. Direction is DESC + OFFSET (ASC would evict the just-stored row).
+    //   2. Sort key is `updated_at`, not `created_at` — `indexMemory`'s
+    //      onConflictDoUpdate refreshes updated_at on every re-store, so
+    //      `created_at` would evict frequently-updated high-signal rows
+    //      while preserving stale ones (round-4 review #1).
     dbExecute.mockResolvedValue({ rows: [] });
     await storeCiFixPattern({
       projectId: 'proj-1',
@@ -134,8 +136,9 @@ describe('storeCiFixPattern', () => {
     const sqlArg = dbExecute.mock.calls[0]?.[0];
     const serialized = JSON.stringify(sqlArg);
     expect(serialized).toContain('DELETE FROM memories');
-    expect(serialized).toContain('ORDER BY created_at DESC');
-    expect(serialized).not.toContain('ORDER BY created_at ASC');
+    expect(serialized).toContain('ORDER BY updated_at DESC');
+    expect(serialized).not.toContain('ORDER BY updated_at ASC');
+    expect(serialized).not.toContain('ORDER BY created_at');
     expect(serialized).toContain('OFFSET ');
   });
 

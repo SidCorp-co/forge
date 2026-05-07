@@ -91,12 +91,35 @@ const MAX_QUERY_EMBED_CHARS = 8192;
 
 async function loadIssueText(issueId: string): Promise<string> {
   const [row] = await db
-    .select({ title: issues.title, description: issues.description })
+    .select({
+      title: issues.title,
+      description: issues.description,
+      sessionContext: issues.sessionContext,
+    })
     .from(issues)
     .where(eq(issues.id, issueId))
     .limit(1);
   if (!row) return '';
-  const text = [row.title, row.description ?? ''].filter(Boolean).join('\n\n');
+
+  // Pull errorTypes from the issue's existing ciFixContext (set when a
+  // prior code job failed CI) and prepend them to the embed text. The
+  // store side embeds `errorTypes.join(' ') | diffSummary`, so without
+  // this prefix the query side embeds title+description with zero
+  // shared vocabulary — a known recall hit (round-4 review #2).
+  const ctx = row.sessionContext as { ciFixContext?: { errors?: Array<{ type?: unknown }> } } | null;
+  const errorTypes = Array.from(
+    new Set(
+      (ctx?.ciFixContext?.errors ?? [])
+        .map((e) => (typeof e?.type === 'string' ? e.type : null))
+        .filter((v): v is string => v !== null && v.length > 0),
+    ),
+  );
+
+  const parts: string[] = [];
+  if (errorTypes.length > 0) parts.push(errorTypes.join(' '));
+  if (row.title) parts.push(row.title);
+  if (row.description) parts.push(row.description);
+  const text = parts.join('\n\n');
   return text.length > MAX_QUERY_EMBED_CHARS ? text.slice(0, MAX_QUERY_EMBED_CHARS) : text;
 }
 

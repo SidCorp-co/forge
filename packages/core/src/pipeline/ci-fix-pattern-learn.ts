@@ -23,7 +23,7 @@ import type { HooksBus } from './hooks.js';
  * a second `reopen → developed` with the same error+file signature updates
  * the existing row instead of inserting a duplicate. After upsert we enforce
  * a per-(errorType) cap of `MAX_PATTERNS_PER_ERROR_TYPE` rows by deleting
- * the oldest by `created_at`.
+ * the least-recently-updated entries (see `enforcePatternCap`).
  */
 
 const MAX_DIFF_SUMMARY_CHARS = 1024;
@@ -96,7 +96,7 @@ function sourceRefFor(pattern: FixPattern): string {
 /**
  * Upsert a pattern memory and enforce the per-errorType cap. Safe to call
  * concurrently — the upsert relies on the unique index, the cap pass uses a
- * `created_at`-ordered delete that is idempotent under repetition.
+ * `updated_at`-ordered delete that is idempotent under repetition.
  */
 export async function storeCiFixPattern(args: {
   projectId: string;
@@ -128,9 +128,16 @@ export async function storeCiFixPattern(args: {
 }
 
 /**
- * Delete the oldest `ci_fix_pattern` rows for a given errorType once the
- * count exceeds `MAX_PATTERNS_PER_ERROR_TYPE`. Uses a single
- * `DELETE ... WHERE id IN (SELECT ... ORDER BY created_at OFFSET N)`.
+ * Delete the least-recently-updated `ci_fix_pattern` rows for a given
+ * errorType once the count exceeds `MAX_PATTERNS_PER_ERROR_TYPE`.
+ *
+ * Why `updated_at`, not `created_at`: `indexMemory` upserts via
+ * `onConflictDoUpdate` and refreshes `updated_at` (and `embedded_at`) on
+ * every re-store, while `created_at` is preserved across upserts. Sorting
+ * by `created_at` would evict a frequently-updated, high-signal pattern
+ * the moment a 6th distinct sibling appears, while a stale row that has
+ * never been re-encountered survives. Eviction by `updated_at` keeps the
+ * patterns we keep seeing and drops the ones we've stopped seeing.
  *
  * Best-effort cap: two concurrent learners on the same errorType can
  * momentarily leave 6+ rows because each sees a snapshot taken before the
@@ -139,15 +146,15 @@ export async function storeCiFixPattern(args: {
  * pruner, not a hard invariant.
  *
  * Multi-errorType skew: a row tagged `errorTypes:['a','b']` counts toward
- * both caps. Eviction is by `created_at` regardless, so the multi-type row
+ * both caps. Eviction is by `updated_at` regardless, so the multi-type row
  * may survive longer than a same-age single-type row simply because its
- * insertion was the most recent for both buckets. Acceptable for v1.
+ * latest upsert was the most recent for both buckets. Acceptable for v1.
  */
 export async function enforcePatternCap(projectId: string, errorType: string): Promise<void> {
   const errorTypeJson = JSON.stringify([errorType]);
-  // Sort newest-first and skip the freshest MAX rows; the remainder are the
-  // oldest extras and get deleted. Using ASC + OFFSET would do the inverse
-  // and evict the just-stored row instead.
+  // Sort newest-updated-first and skip the freshest MAX rows; the remainder
+  // are the stalest extras and get deleted. Using ASC + OFFSET would do the
+  // inverse and evict the just-stored row instead.
   await db.execute(sql`
     DELETE FROM memories
     WHERE id IN (
@@ -156,7 +163,7 @@ export async function enforcePatternCap(projectId: string, errorType: string): P
         AND source = 'note'
         AND metadata->>'kind' = 'ci_fix_pattern'
         AND metadata->'errorTypes' @> ${errorTypeJson}::jsonb
-      ORDER BY created_at DESC
+      ORDER BY updated_at DESC
       OFFSET ${MAX_PATTERNS_PER_ERROR_TYPE}
     )
   `);
