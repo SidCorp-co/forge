@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Lock, LockOpen } from 'lucide-react';
@@ -67,6 +67,7 @@ function flattenCommentTree(nodes: CoreCommentNode[]): CoreComment[] {
 export default function IssueDetailPage() {
   const { slug, id } = useParams<{ slug: string; id: string }>();
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const sessionParam = searchParams.get('session');
   const isDisplayId = DISPLAY_ID_RE.test(id);
@@ -101,9 +102,8 @@ export default function IssueDetailPage() {
   );
 
   const handlePatch = useCallback(
-    (issueIdValue: string, patch: IssuePatchInput) => {
-      patchIssue.mutate({ id: issueIdValue, patch });
-    },
+    (issueIdValue: string, patch: IssuePatchInput) =>
+      patchIssue.mutateAsync({ id: issueIdValue, patch }),
     [patchIssue],
   );
 
@@ -113,9 +113,9 @@ export default function IssueDetailPage() {
       if (sid) params.set('session', sid);
       else params.delete('session');
       const qs = params.toString();
-      router.replace(qs ? `?${qs}` : '?', { scroll: false });
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     },
-    [router, searchParams],
+    [pathname, router, searchParams],
   );
 
   if (isLoading) {
@@ -296,16 +296,39 @@ interface EditableSectionProps {
   title: string;
   value: string | null | undefined;
   placeholder: string;
-  onSave: (value: string) => void;
+  onSave: (value: string) => Promise<unknown>;
 }
 
 function EditableMarkdownSection({ title, value, placeholder, onSave }: EditableSectionProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? '');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!editing) setDraft(value ?? '');
   }, [value, editing]);
+
+  const dirty = draft !== (value ?? '');
+
+  async function handleSave() {
+    if (!dirty) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await onSave(draft);
+      setEditing(false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Save failed';
+      setSaveError(msg);
+      // Keep editing open so the user's draft is preserved.
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <section className="rounded-sm border border-outline-variant/20 bg-surface">
@@ -330,25 +353,24 @@ function EditableMarkdownSection({ title, value, placeholder, onSave }: Editable
               placeholder={placeholder}
               autoFocus
             />
+            {saveError && (
+              <p className="text-[10px] uppercase tracking-widest text-error">{saveError}</p>
+            )}
             <div className="flex justify-end gap-2">
               <Button
                 size="xs"
                 variant="ghost"
+                disabled={saving}
                 onClick={() => {
                   setEditing(false);
                   setDraft(value ?? '');
+                  setSaveError(null);
                 }}
               >
                 Cancel
               </Button>
-              <Button
-                size="xs"
-                onClick={() => {
-                  onSave(draft);
-                  setEditing(false);
-                }}
-              >
-                Save
+              <Button size="xs" disabled={saving || !dirty} onClick={handleSave}>
+                {saving ? 'Saving…' : 'Save'}
               </Button>
             </div>
           </div>

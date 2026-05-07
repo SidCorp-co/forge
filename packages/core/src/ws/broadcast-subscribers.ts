@@ -141,6 +141,21 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
     });
   });
 
+  // ISS-43 — fan out dependency edge add/remove to the project room so other
+//   clients viewing the affected issues invalidate their relations queries.
+  bus.on('dependencyChanged', (p) => {
+    roomManager.publish(projectRoom(p.projectId), {
+      event: 'dependencyChanged',
+      data: {
+        projectId: p.projectId,
+        edgeId: p.edgeId,
+        fromIssueId: p.fromIssueId,
+        toIssueId: p.toIssueId,
+        kind: p.kind,
+      },
+    });
+  });
+
   bus.on('skillUpdated', (p) => {
     roomManager.publish(projectRoom(p.projectId), {
       event: 'skill.updated',

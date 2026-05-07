@@ -220,8 +220,7 @@ issueExtrasRoutes.post(
           message: `active ${err.type} job already running for this issue`,
           cause: {
             code: 'JOB_ALREADY_ACTIVE',
-            existingJobId: err.existingJobId,
-            type: err.type,
+            details: { existingJobId: err.existingJobId, type: err.type },
           },
         });
       }

@@ -12,7 +12,7 @@ import { ToastContainer } from '@/components/ui/toast-container';
 import { ApiError } from '@/lib/api/client';
 import { formatApiError } from '@/lib/api/error';
 import { IssueRelationsAddModal } from './issue-relations-add-modal';
-import type { DependencyEdge, DependencyKind } from '@/features/issue/api/issue-api';
+import { DEPENDENCY_KINDS, type DependencyEdge, type DependencyKind } from '@/features/issue/api/issue-api';
 
 interface IssueRelationsProps {
   issueId: string;
@@ -74,7 +74,7 @@ export function IssueRelations({ issueId, projectId, projectSlug }: IssueRelatio
           <p className="text-[11px] text-outline">Chưa có quan hệ nào.</p>
         ) : (
           <ul className="space-y-3">
-            {(['blocks', 'relates', 'duplicates', 'parent'] as DependencyKind[]).map((kind) => {
+            {DEPENDENCY_KINDS.map((kind) => {
               const group = relations.groups[kind];
               if (group.outgoing.length === 0 && group.incoming.length === 0) return null;
               return (

@@ -71,12 +71,12 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
       return;
     }
     case 'dependencyChanged': {
+      // React Query prefix-matches, so invalidating ['issue', uuid] also
+      // invalidates ['issue', uuid, 'dependencies'] — no separate call needed.
       if (data?.fromIssueId) {
-        qc.invalidateQueries({ queryKey: ['issue', data.fromIssueId, 'dependencies'] });
         qc.invalidateQueries({ queryKey: ['issue', data.fromIssueId] });
       }
       if (data?.toIssueId) {
-        qc.invalidateQueries({ queryKey: ['issue', data.toIssueId, 'dependencies'] });
         qc.invalidateQueries({ queryKey: ['issue', data.toIssueId] });
       }
       return;

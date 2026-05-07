@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef, useState, type MutableRefObject } from 'react';
 import { PIPELINE_STAGES, type PipelineStage } from '@/features/issue/api/issue-api';
 import { useRunPipelineStep } from '@/features/issue/hooks/use-issues';
 import { useEnrichIssue } from '@/features/issue/hooks/use-enrich';
@@ -45,7 +45,11 @@ const RATE_LIMIT_MS = 2000;
 export function IssuePipelineActions({ issueId, status }: Props) {
   const [open, setOpen] = useState(false);
   const [feedback, setFeedback] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
-  const lastFireRef = useRef<number>(0);
+  // Separate timers per intent so an Enrich click doesn't get blocked by a
+  // recent Run-pipeline click (and vice-versa). The rate-limit only exists to
+  // prevent double-trigger of the *same* action.
+  const lastRunRef = useRef<number>(0);
+  const lastEnrichRef = useRef<number>(0);
   const runMutation = useRunPipelineStep();
   const enrichMutation = useEnrichIssue();
 
@@ -54,19 +58,19 @@ export function IssuePipelineActions({ issueId, status }: Props) {
     setTimeout(() => setFeedback((cur) => (cur?.text === text ? null : cur)), 4000);
   }
 
-  function rateLimited(): boolean {
+  function rateLimited(ref: MutableRefObject<number>): boolean {
     const now = Date.now();
-    if (now - lastFireRef.current < RATE_LIMIT_MS) {
+    if (now - ref.current < RATE_LIMIT_MS) {
       flash('err', 'Đợi 2s rồi click lại');
       return true;
     }
-    lastFireRef.current = now;
+    ref.current = now;
     return false;
   }
 
   async function fire(stage?: PipelineStage) {
     setOpen(false);
-    if (rateLimited()) return;
+    if (rateLimited(lastRunRef)) return;
     if (stage && DESTRUCTIVE_STAGES.has(stage)) {
       const ok = window.confirm(
         `Fire ${STAGE_LABEL[stage]} for this issue? This is a destructive stage (release / production deploy).`,
@@ -79,8 +83,10 @@ export function IssuePipelineActions({ issueId, status }: Props) {
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.code === 'JOB_ALREADY_ACTIVE') {
-          const details = (err.details as { jobId?: string } | null) ?? null;
-          const jobId = details?.jobId ? ` (job ${details.jobId.slice(0, 8)})` : '';
+          const details = (err.details as { existingJobId?: string } | null) ?? null;
+          const jobId = details?.existingJobId
+            ? ` (job ${details.existingJobId.slice(0, 8)})`
+            : '';
           flash('err', `Pipeline đang chạy rồi${jobId}`);
           return;
         }
@@ -93,7 +99,7 @@ export function IssuePipelineActions({ issueId, status }: Props) {
             flash('err', 'Đề nghị chọn stage thủ công');
             // Reset rate-limit so the user can immediately pick a stage from
             // the override dropdown without bumping into "Đợi 2s rồi click lại".
-            lastFireRef.current = 0;
+            lastRunRef.current = 0;
             setOpen(true);
           } else {
             flash('err', err.message);
@@ -109,7 +115,7 @@ export function IssuePipelineActions({ issueId, status }: Props) {
   }
 
   async function fireEnrich() {
-    if (rateLimited()) return;
+    if (rateLimited(lastEnrichRef)) return;
     try {
       await enrichMutation.mutateAsync(issueId);
       flash('ok', 'Enrichment queued');

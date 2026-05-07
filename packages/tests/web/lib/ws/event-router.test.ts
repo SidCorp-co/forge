@@ -9,7 +9,7 @@ function makeClient() {
 }
 
 describe('routeEvent — dependencyChanged', () => {
-  it('invalidates dependency queries for both sides of the edge', () => {
+  it('invalidates issue queries for both sides of the edge (prefix covers dependencies)', () => {
     const { qc, spy } = makeClient();
     routeEvent(
       {
@@ -19,10 +19,9 @@ describe('routeEvent — dependencyChanged', () => {
       },
       qc,
     );
-    expect(spy).toHaveBeenCalledWith({ queryKey: ['issue', 'a', 'dependencies'] });
-    expect(spy).toHaveBeenCalledWith({ queryKey: ['issue', 'b', 'dependencies'] });
     expect(spy).toHaveBeenCalledWith({ queryKey: ['issue', 'a'] });
     expect(spy).toHaveBeenCalledWith({ queryKey: ['issue', 'b'] });
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 
   it('skips invalidations when payload is missing ids', () => {

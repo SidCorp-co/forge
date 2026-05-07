@@ -38,6 +38,7 @@ export const issueAgentSessionsKey = (issueId: string | undefined) =>
 
 export function IssueAgentSessions({ issueId, onSelect, selectedSessionId }: IssueAgentSessionsProps) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const sessionsQuery = useQuery({
     queryKey: issueAgentSessionsKey(issueId),
@@ -53,6 +54,7 @@ export function IssueAgentSessions({ issueId, onSelect, selectedSessionId }: Iss
   const handleToggleNoResume = async (e: React.MouseEvent, session: AgentSessionRow) => {
     e.stopPropagation();
     setActionLoading(session.id);
+    setActionError(null);
     try {
       const current = session.metadata?.noResume ?? false;
       await apiClient(`/agent-sessions/${session.id}`, {
@@ -61,17 +63,24 @@ export function IssueAgentSessions({ issueId, onSelect, selectedSessionId }: Iss
       });
       sessionsQuery.refetch();
     } catch (err) {
-      console.error('Failed to toggle noResume:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to toggle noResume';
+      setActionError(msg);
+      setTimeout(() => setActionError((cur) => (cur === msg ? null : cur)), 4000);
     }
     setActionLoading(null);
   };
 
   return (
     <section className="rounded-sm border border-outline-variant/20 bg-surface">
-      <div className="border-b border-outline-variant/20 bg-surface-container-low px-4 py-2">
+      <div className="flex items-center justify-between gap-2 border-b border-outline-variant/20 bg-surface-container-low px-4 py-2">
         <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">
           Agent sessions
         </h3>
+        {actionError && (
+          <span className="text-[10px] font-mono uppercase tracking-widest text-error">
+            {actionError}
+          </span>
+        )}
       </div>
       <div className="p-4">
         {sessionsQuery.isLoading ? (
