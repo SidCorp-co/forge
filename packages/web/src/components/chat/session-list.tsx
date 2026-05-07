@@ -99,6 +99,15 @@ export function SessionList<T extends SessionBase>({ sessions, loading, activeSe
               <p className={cn('text-sm font-medium truncate flex-1', isDark && 'text-on-surface')}>{s.title || 'Untitled'}</p>
             </div>
             <div className={cn('flex items-center gap-2 text-xs mt-0.5', statusDot && 'ml-4')}>
+              {/* Pipeline / issue-bound sessions stamp `metadata.issSeq` at
+                  creation time so multiple skill-stages of the same issue
+                  glance-link on the sidebar without opening the issue
+                  detail. Free-chat sessions have no issSeq → badge skipped. */}
+              {typeof (s as any).metadata?.issSeq === 'number' && (
+                <span className="text-on-surface-variant font-mono tabular-nums">
+                  ISS-{(s as any).metadata.issSeq}
+                </span>
+              )}
               <span className="text-on-surface-variant">
                 {relativeTime(s.updatedAt || s.createdAt)}
               </span>
