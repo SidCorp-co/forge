@@ -21,7 +21,7 @@ export const SKILL_MEMORY_ROLES: Record<string, MemoryRole[]> = {
   'forge-triage': ['ceo', 'cto', 'pm', 'po', 'techlead'],
   'forge-code': ['ceo', 'cto', 'po', 'techlead', 'pm', 'dev'],
   'forge-review': ['ceo', 'cto', 'techlead', 'dev'],
-  'forge-clarify': ['ceo', 'cto', 'pm', 'po', 'techlead', 'dev', 'qa'],
+  'forge-clarify': ['ceo', 'cto', 'pm', 'po', 'techlead', 'dev', 'qa', 'devops'],
 };
 
 function knownRoles(viewerRoles: readonly string[]): MemoryRole[] {
