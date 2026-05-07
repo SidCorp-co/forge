@@ -16,6 +16,12 @@ let workerId: string | null = null;
  * each whose schedule fires today, enqueue a PM session via the canonical
  * spawner. Per-project dedup is enforced by `jobs_pm_per_project_unique_idx`,
  * so a second tick on the same day resolves cleanly to `already-active`.
+ *
+ * Scope note: `agents.type` is open-ended `text` (no enum). Today PM is the
+ * canonical cron entry-point for every agent that opts in via `schedule`, so
+ * we don't filter on `type`. If a future agent type needs different cron
+ * behaviour (e.g. its own queue), branch on `row.type` here instead of
+ * unconditionally calling `spawnPmSession`.
  */
 export async function runAgentCronTickOnce(now: Date = new Date()): Promise<string[]> {
   const rows = await db
@@ -37,7 +43,17 @@ export async function runAgentCronTickOnce(now: Date = new Date()): Promise<stri
         cause: 'agent-cron',
         eventRef: { agentId: row.id, agentType: row.type, schedule: row.schedule },
       });
-      if (result.ok) fired.push(row.id);
+      if (result.ok) {
+        fired.push(row.id);
+      } else {
+        // Surface skipped/rate-limited spawns at info level so operators can
+        // diagnose missing daily runs (e.g. project hit `maxRunsPerHour` from
+        // unrelated triggers and silently dropped today's agent-cron tick).
+        logger.info(
+          { agentId: row.id, projectId: row.projectId, reason: result.reason },
+          'agent.cron: spawn skipped',
+        );
+      }
     } catch (err) {
       logger.error({ err, agentId: row.id }, 'agent.cron: spawn threw');
     }

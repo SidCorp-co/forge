@@ -108,15 +108,10 @@ export async function dispatchScheduleRun(
     .returning({ id: jobs.id });
   if (!job) throw new Error('schedule.dispatch: insert returned no row');
 
-  // Point lastSessionId at this attempt as soon as the row exists — the UI's
-  // "last run" link should track the latest dispatch attempt, even when it
-  // ends up `failed` because of enqueue trouble. Orphan-cleanup below flips
-  // the row to `status='failed'` rather than leaving it `queued`.
-  await db
-    .update(schedules)
-    .set({ lastSessionId: job.id })
-    .where(eq(schedules.id, schedule.id));
-
+  // Enqueue first — if the boss publish fails the job row is the only thing
+  // that needs cleanup. We deliberately do NOT update `schedules.lastSessionId`
+  // before this point: a throw between insert and enqueue would otherwise
+  // orphan the row (stuck `'queued'`, no boss message, schedule pointing at it).
   try {
     await enqueueJob(job.id);
   } catch (err) {
@@ -133,6 +128,21 @@ export async function dispatchScheduleRun(
       );
     }
     return { ok: false, reason: 'enqueue-failed', status: 'failed', jobId: job.id };
+  }
+
+  // Point lastSessionId at this attempt now that the job is safely on the
+  // queue. Best-effort: a failure here means the UI's "last run" link is
+  // stale, but the job will still execute.
+  try {
+    await db
+      .update(schedules)
+      .set({ lastSessionId: job.id })
+      .where(eq(schedules.id, schedule.id));
+  } catch (err) {
+    logger.error(
+      { err, scheduleId: schedule.id, jobId: job.id },
+      'schedule.dispatch: lastSessionId update failed',
+    );
   }
 
   // Hook subscribers are best-effort — a throw here must not fail the dispatch

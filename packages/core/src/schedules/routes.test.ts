@@ -241,10 +241,7 @@ describe('POST /api/schedules/:id/run', () => {
       ownerId: 'someone-else',
       role: 'member',
     });
-    // 5. dispatcher's own project lookup by slug
-    selectLimit.mockResolvedValueOnce([
-      { id: TARGET_PROJECT_ID, ownerId: 'someone-else' },
-    ]);
+    // Dispatcher reuses the route's `resolvedTarget`, so no second slug lookup.
     insertReturning.mockResolvedValueOnce([{ id: JOB_ID }]);
 
     let emitted: { projectId?: string } | null = null;
