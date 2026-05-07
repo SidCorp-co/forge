@@ -21,7 +21,9 @@ export type IssueStatus =
 
 export type IssuePriority = 'critical' | 'high' | 'medium' | 'low' | 'none';
 
-export type IssueComplexity = 'Simple' | 'Medium' | 'Complex';
+// ISS-42 C2 — t-shirt sizing matches the core Drizzle enum
+// (`packages/core/src/db/schema.ts:issueComplexities`).
+export type IssueComplexity = 'xs' | 's' | 'm' | 'l' | 'xl';
 
 export interface IssueHistoryEntry {
   field: string;

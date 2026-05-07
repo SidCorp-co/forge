@@ -50,7 +50,11 @@ function selectChainOnce(rows: unknown[]): void {
 }
 
 describe('checkLayer1IssueBusy', () => {
+  // ISS-42 C1 added a manual_hold short-circuit before the existing busy
+  // check. Each test now queues a `manualHold: false` lookup first so the
+  // existing assertions still exercise the busy-check branch.
   it('passes when no active sessions or jobs for the issue', async () => {
+    selectChainOnce([{ manualHold: false }]);
     dbExecute.mockResolvedValueOnce([{ count: '0' }]);
     selectChainOnce([]);
     const r = await checkLayer1IssueBusy('iss-1');
@@ -58,6 +62,7 @@ describe('checkLayer1IssueBusy', () => {
   });
 
   it('fails when an active session exists for the same issue', async () => {
+    selectChainOnce([{ manualHold: false }]);
     dbExecute.mockResolvedValueOnce([{ count: '2' }]);
     selectChainOnce([]);
     const r = await checkLayer1IssueBusy('iss-1');
@@ -65,10 +70,17 @@ describe('checkLayer1IssueBusy', () => {
   });
 
   it('fails when an active job exists for the same issue', async () => {
+    selectChainOnce([{ manualHold: false }]);
     dbExecute.mockResolvedValueOnce([{ count: '0' }]);
     selectChainOnce([{ id: 'j-other' }]);
     const r = await checkLayer1IssueBusy('iss-1');
     expect(r).toMatchObject({ pass: false, reason: 'issue_busy' });
+  });
+
+  it('fails with manual_hold when issue is on hold', async () => {
+    selectChainOnce([{ manualHold: true }]);
+    const r = await checkLayer1IssueBusy('iss-1');
+    expect(r).toMatchObject({ pass: false, reason: 'manual_hold' });
   });
 
   it('passes for empty issueId (PM-style call)', async () => {

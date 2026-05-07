@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, count, desc, eq, exists, inArray, or, sql } from 'drizzle-orm';
+import { and, count, eq, exists, inArray, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -8,9 +8,13 @@ import { issueLabels, issuePriorities, issueStatuses, issues } from '../db/schem
 import { setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { buildIssueOrderBy, issueSortValues } from './sort.js';
 
 const coerceArray = <T>(v: T | T[] | undefined): T[] | undefined =>
   v === undefined ? undefined : Array.isArray(v) ? v : [v];
+
+export { issueSortValues } from './sort.js';
+export type { IssueSort } from './sort.js';
 
 const searchQuerySchema = z
   .object({
@@ -28,6 +32,8 @@ const searchQuerySchema = z
       .optional()
       .transform(coerceArray),
     assignee: z.uuid().optional(),
+    category: z.string().trim().min(1).max(100).optional(),
+    sort: z.enum(issueSortValues).optional().default('createdAt:desc'),
     limit: z.coerce.number().int().min(1).max(200).default(50),
     offset: z.coerce.number().int().min(0).default(0),
   })
@@ -90,6 +96,9 @@ searchRoutes.get(
     if (q.assignee) {
       conditions.push(eq(issues.assigneeId, q.assignee));
     }
+    if (q.category) {
+      conditions.push(eq(issues.category, q.category));
+    }
     if (q.label && q.label.length > 0) {
       const labelIds = q.label;
       conditions.push(
@@ -106,11 +115,13 @@ searchRoutes.get(
 
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(issues).where(where);
 
+    const orderBy = buildIssueOrderBy(q.sort);
+
     const rows = await db
       .select()
       .from(issues)
       .where(where)
-      .orderBy(desc(issues.createdAt))
+      .orderBy(orderBy)
       .limit(q.limit)
       .offset(q.offset);
 

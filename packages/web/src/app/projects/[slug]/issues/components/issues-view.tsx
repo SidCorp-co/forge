@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Input, Select, Skeleton } from '@/components/ui';
-import { ALL_PRIORITIES } from '@/lib/constants';
+import { ALL_PRIORITIES, COMPLEXITY_COLORS } from '@/lib/constants';
 import type { Issue } from '@forge/contracts';
+import type { IssueComplexity } from '@/features/issue/types';
 import { useIssuesPage } from '../hooks';
 import { StatusMultiSelect } from './status-multi-select';
 import type { IssueStatus } from '@/features/issue/types';
@@ -24,9 +25,16 @@ export function IssuesView() {
     total,
     statusFilter,
     priorityFilter,
+    categoryFilter,
+    sortBy,
     searchQuery,
     setParam,
   } = useIssuesPage();
+
+  const visibleCategories = useMemo(
+    () => [...new Set(issues.map((i) => i.category).filter((c): c is string => !!c))].sort(),
+    [issues],
+  );
 
   const [localSearch, setLocalSearch] = useState(searchQuery);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -64,6 +72,28 @@ export function IssuesView() {
             <option key={p.value} value={p.value}>{p.label}</option>
           ))}
         </Select>
+        {visibleCategories.length > 0 && (
+          <Select
+            value={categoryFilter}
+            onChange={(e) => setParam('category', e.currentTarget.value)}
+            aria-label="Filter by category"
+          >
+            <option value="all">All categories</option>
+            {visibleCategories.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </Select>
+        )}
+        <Select
+          value={sortBy}
+          onChange={(e) => setParam('sort', e.currentTarget.value)}
+          aria-label="Sort issues"
+        >
+          <option value="newest">Newest</option>
+          <option value="oldest">Oldest</option>
+          <option value="priority">Priority</option>
+          <option value="updated">Recently updated</option>
+        </Select>
       </div>
 
       <div className="flex items-center justify-between">
@@ -99,6 +129,26 @@ export function IssuesView() {
                 <span className="flex-1 truncate font-medium text-on-surface">
                   {issue.title}
                 </span>
+                {issue.manualHold && (
+                  <span
+                    className="rounded-sm bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-amber-400"
+                    title="Manual hold — automation paused"
+                  >
+                    Paused
+                  </span>
+                )}
+                {issue.complexity && (
+                  <span
+                    className={`rounded-sm px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-widest ${COMPLEXITY_COLORS[issue.complexity as IssueComplexity]}`}
+                  >
+                    {issue.complexity}
+                  </span>
+                )}
+                {issue.category && (
+                  <span className="text-[10px] uppercase tracking-widest text-outline">
+                    {issue.category}
+                  </span>
+                )}
                 <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
                   {issue.status}
                 </span>

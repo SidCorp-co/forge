@@ -3,9 +3,20 @@
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useIssueSearch, usePatchIssue } from '@/features/issue/hooks/use-issues';
+import type { IssueSort } from '@/features/issue/api/issue-api';
 import { useProjectBySlug } from '@/features/project/hooks/use-projects';
 import type { Issue, IssuePatchInput } from '@forge/contracts';
 import { PAGE_SIZE, type SortOption, type ViewMode } from '../constants';
+
+// ISS-42 B1 — map the toolbar's user-facing SortOption values to the core
+// `searchQuerySchema` enum so the new sort+category flags actually reach the
+// REST query string.
+const SORT_TO_API: Record<SortOption, IssueSort> = {
+  newest: 'createdAt:desc',
+  oldest: 'createdAt:asc',
+  updated: 'updatedAt:desc',
+  priority: 'priority:asc',
+};
 
 const PERSISTED_KEYS = ['status', 'priority', 'sort', 'q', 'view'] as const;
 
@@ -30,6 +41,7 @@ export function useIssuesPage() {
   const priorityParam = searchParams.get('priority') ?? 'all';
   const priorityFilter = priorityParam === 'all' ? [] : [priorityParam];
   const sortBy = (searchParams.get('sort') ?? 'newest') as SortOption;
+  const categoryFilter = searchParams.get('category') ?? 'all';
   const searchQuery = searchParams.get('q') ?? '';
   const currentPage = Number(searchParams.get('page') ?? '1');
 
@@ -40,6 +52,8 @@ export function useIssuesPage() {
     ...(searchQuery ? { q: searchQuery } : {}),
     ...(statusFilter.length > 0 ? { status: statusFilter } : {}),
     ...(priorityFilter.length > 0 ? { priority: priorityFilter } : {}),
+    ...(categoryFilter !== 'all' ? { category: categoryFilter } : {}),
+    sort: SORT_TO_API[sortBy],
     limit: PAGE_SIZE,
     offset: (currentPage - 1) * PAGE_SIZE,
   });
@@ -67,6 +81,7 @@ export function useIssuesPage() {
   const activeFilterCount = [
     statusFilter.length > 0,
     priorityFilter.length > 0,
+    categoryFilter !== 'all',
   ].filter(Boolean).length;
 
   const setParam = useCallback(
@@ -177,7 +192,7 @@ export function useIssuesPage() {
     setSelectedIssueId,
     statusFilter,
     priorityFilter: (priorityFilter[0] ?? 'all') as string,
-    categoryFilter: 'all',
+    categoryFilter,
     sortBy,
     searchQuery,
     categories,

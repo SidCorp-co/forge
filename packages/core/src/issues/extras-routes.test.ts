@@ -17,10 +17,19 @@ const selectFrom = vi.fn(() => ({ where: selectWhere, innerJoin: selectInnerJoin
 const insertReturning = vi.fn();
 const insertValues = vi.fn(() => ({ returning: insertReturning }));
 
+const txUpdateWhere = vi.fn(async () => undefined);
+const txUpdateSet = vi.fn(() => ({ where: txUpdateWhere }));
+const txUpdate = vi.fn(() => ({ set: txUpdateSet }));
+const txInsertValues = vi.fn(async () => undefined);
+const txInsert = vi.fn(() => ({ values: txInsertValues }));
+const txProxy = { update: txUpdate, insert: txInsert };
+const transactionMock = vi.fn(async (cb: (tx: typeof txProxy) => Promise<unknown>) => cb(txProxy));
+
 vi.mock('../db/client.js', () => ({
   db: {
     select: vi.fn(() => ({ from: selectFrom })),
     insert: vi.fn(() => ({ values: insertValues })),
+    transaction: (cb: (tx: typeof txProxy) => Promise<unknown>) => transactionMock(cb),
   },
 }));
 
@@ -59,6 +68,12 @@ beforeEach(() => {
   projectAccess.mockReset();
   enqueueJobMock.mockReset();
   insertReturning.mockReset();
+  txUpdate.mockClear();
+  txUpdateSet.mockClear();
+  txUpdateWhere.mockClear();
+  txInsert.mockClear();
+  txInsertValues.mockClear();
+  transactionMock.mockClear();
 });
 
 function authVerified() {
@@ -297,5 +312,133 @@ describe('GET /api/issues/pipeline-timing', () => {
     expect(byStatus.open?.avgMs).toBe(60 * 60 * 1000);
     expect(byStatus.confirmed?.avgMs).toBe(2 * 60 * 60 * 1000);
     expect(byStatus.approved).toBeUndefined();
+  });
+});
+
+describe('PATCH /api/issues/:id/manual-hold', () => {
+  const url = `/api/issues/${ISSUE_ID}/manual-hold`;
+  const headers = async () => ({
+    authorization: `Bearer ${await token()}`,
+    'content-type': 'application/json',
+  });
+
+  it('401 without token', async () => {
+    const res = await buildApp().request(url, {
+      method: 'PATCH',
+      body: JSON.stringify({ value: true }),
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('400 when body is missing/invalid', async () => {
+    authVerified();
+    const res = await buildApp().request(url, {
+      method: 'PATCH',
+      headers: await headers(),
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('404 when issue is missing', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([]); // issue lookup empty
+    const res = await buildApp().request(url, {
+      method: 'PATCH',
+      headers: await headers(),
+      body: JSON.stringify({ value: true }),
+    });
+    expect(res.status).toBe(404);
+    expect(transactionMock).not.toHaveBeenCalled();
+  });
+
+  it('403 when not a project member', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      { id: ISSUE_ID, projectId: PROJECT_ID, manualHold: false },
+    ]);
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: 'other', role: null });
+    const res = await buildApp().request(url, {
+      method: 'PATCH',
+      headers: await headers(),
+      body: JSON.stringify({ value: true }),
+    });
+    expect(res.status).toBe(403);
+    expect(transactionMock).not.toHaveBeenCalled();
+  });
+
+  it('200 toggles on, writes activity log, returns new state', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      { id: ISSUE_ID, projectId: PROJECT_ID, manualHold: false },
+    ]);
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      ownerId: USER_ID,
+      role: 'member',
+    });
+
+    const res = await buildApp().request(url, {
+      method: 'PATCH',
+      headers: await headers(),
+      body: JSON.stringify({ value: true }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ issueId: ISSUE_ID, manualHold: true });
+    // Transactional write + activity log entry both ran.
+    expect(transactionMock).toHaveBeenCalledTimes(1);
+    expect(txUpdateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ manualHold: true }),
+    );
+    expect(txInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'issue.manualHold.set' }),
+    );
+  });
+
+  it('200 toggles off and writes the cleared activity action', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      { id: ISSUE_ID, projectId: PROJECT_ID, manualHold: true },
+    ]);
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      ownerId: USER_ID,
+      role: 'member',
+    });
+
+    const res = await buildApp().request(url, {
+      method: 'PATCH',
+      headers: await headers(),
+      body: JSON.stringify({ value: false }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ issueId: ISSUE_ID, manualHold: false });
+    expect(txInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'issue.manualHold.cleared' }),
+    );
+  });
+
+  it('200 no-op when value matches current state (no write, no activity)', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      { id: ISSUE_ID, projectId: PROJECT_ID, manualHold: true },
+    ]);
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      ownerId: USER_ID,
+      role: 'member',
+    });
+
+    const res = await buildApp().request(url, {
+      method: 'PATCH',
+      headers: await headers(),
+      body: JSON.stringify({ value: true }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ issueId: ISSUE_ID, manualHold: true });
+    expect(transactionMock).not.toHaveBeenCalled();
+    expect(txUpdate).not.toHaveBeenCalled();
+    expect(txInsertValues).not.toHaveBeenCalled();
   });
 });

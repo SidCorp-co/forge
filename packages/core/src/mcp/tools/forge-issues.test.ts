@@ -21,11 +21,20 @@ const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn(() => ({ where: updateWhere }));
 
+const txUpdateWhere = vi.fn(async () => undefined);
+const txUpdateSet = vi.fn(() => ({ where: txUpdateWhere }));
+const txUpdate = vi.fn(() => ({ set: txUpdateSet }));
+const txInsertValues = vi.fn(async () => undefined);
+const txInsert = vi.fn(() => ({ values: txInsertValues }));
+const txProxy = { update: txUpdate, insert: txInsert };
+const transactionMock = vi.fn(async (cb: (tx: typeof txProxy) => Promise<unknown>) => cb(txProxy));
+
 vi.mock('../../db/client.js', () => ({
   db: {
     select: vi.fn(() => ({ from: selectFrom })),
     insert: vi.fn(() => ({ values: insertValues })),
     update: vi.fn(() => ({ set: updateSet })),
+    transaction: (cb: (tx: typeof txProxy) => Promise<unknown>) => transactionMock(cb),
   },
 }));
 
@@ -197,8 +206,63 @@ describe('forge_issues tool', () => {
     })) as { plan: string | null; status: string };
 
     expect(result.plan).toBe('new plan');
-    expect(updateSet).toHaveBeenCalledWith(
+    expect(txUpdateSet).toHaveBeenCalledWith(
       expect.objectContaining({ plan: 'new plan', updatedAt: expect.anything() }),
+    );
+  });
+
+  it('update with manualHold journals an activity entry and emits issueUpdated', async () => {
+    const tool = forgeIssuesTool({ device: fakeDevice, projectSlug: PROJECT_SLUG });
+    // loadIssue (manualHold currently false)
+    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, manualHold: false }]);
+    // membership check
+    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    // re-load fresh after update
+    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, manualHold: true }]);
+
+    const { hooks } = await import('../../pipeline/hooks.js');
+
+    await tool.handler({
+      action: 'update',
+      documentId: ISSUE_ID,
+      data: { manualHold: true },
+    });
+
+    expect(txInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'issue.manualHold.set' }),
+    );
+    expect(hooks.emit).toHaveBeenCalledWith(
+      'issueUpdated',
+      expect.objectContaining({
+        issueId: ISSUE_ID,
+        fields: ['manualHold'],
+        before: { manualHold: false },
+        after: { manualHold: true },
+      }),
+    );
+  });
+
+  it('update with manualHold no-op (value matches) skips activity + hook', async () => {
+    const tool = forgeIssuesTool({ device: fakeDevice, projectSlug: PROJECT_SLUG });
+    // loadIssue (manualHold already true)
+    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, manualHold: true }]);
+    // membership check
+    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    // re-load fresh
+    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, manualHold: true }]);
+
+    const { hooks } = await import('../../pipeline/hooks.js');
+
+    await tool.handler({
+      action: 'update',
+      documentId: ISSUE_ID,
+      data: { manualHold: true },
+    });
+
+    expect(txInsertValues).not.toHaveBeenCalled();
+    expect(hooks.emit).not.toHaveBeenCalledWith(
+      'issueUpdated',
+      expect.objectContaining({ fields: ['manualHold'] }),
     );
   });
 

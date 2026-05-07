@@ -3,11 +3,13 @@ import { z } from 'zod';
 import { db } from '../../db/client.js';
 import {
   type IssueStatus,
+  issueComplexities,
   issuePriorities,
   issueStatuses,
   issues,
 } from '../../db/schema.js';
 import { applyStatusTransition } from '../../issues/apply-transition.js';
+import { recordActivityTx } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
 import {
   type ContextScopedMcpToolFactory,
@@ -45,6 +47,8 @@ const dataSchema = z
     status: z.enum(issueStatuses).optional(),
     priority: z.enum(issuePriorities).optional(),
     category: z.string().trim().min(1).max(100).nullable().optional(),
+    complexity: z.enum(issueComplexities).nullable().optional(),
+    manualHold: z.boolean().optional(),
     acceptanceCriteria: z.string().max(100_000).nullable().optional(),
     suggestedSolution: z.string().max(100_000).nullable().optional(),
     plan: z.string().max(200_000).nullable().optional(),
@@ -87,6 +91,8 @@ type IssueRow = {
   status: IssueStatus;
   priority: string;
   category: string | null;
+  complexity: string | null;
+  manualHold: boolean;
   assigneeId: string | null;
   createdById: string;
   parentIssueId: string | null;
@@ -110,6 +116,8 @@ function serialize(row: IssueRow): Record<string, unknown> {
     status: row.status,
     priority: row.priority,
     category: row.category,
+    complexity: row.complexity,
+    manualHold: row.manualHold,
     assigneeId: row.assigneeId,
     parentIssueId: row.parentIssueId,
     reopenCount: row.reopenCount,
@@ -210,6 +218,8 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             description: input.data.description ?? null,
             priority: input.data.priority ?? 'medium',
             category: input.data.category ?? null,
+            complexity: input.data.complexity ?? null,
+            manualHold: input.data.manualHold ?? false,
             createdById: device.ownerId,
             plan: input.data.plan ?? null,
             acceptanceCriteria: input.data.acceptanceCriteria ?? null,
@@ -255,6 +265,20 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (input.data.description !== undefined) updates.description = input.data.description;
         if (input.data.priority !== undefined) updates.priority = input.data.priority;
         if (input.data.category !== undefined) updates.category = input.data.category;
+        if (input.data.complexity !== undefined) updates.complexity = input.data.complexity;
+        // manualHold is journalled separately so MCP-driven holds emit the
+        // same activity entry + WS broadcast as the dedicated REST handler
+        // (`PATCH /api/issues/:id/manual-hold`). Without this, dispatcher
+        // gating still works (DB read is canonical) but other clients miss
+        // the toggle on the timeline + real-time UI.
+        let manualHoldChange: { before: boolean; after: boolean } | null = null;
+        if (
+          input.data.manualHold !== undefined &&
+          input.data.manualHold !== issue.manualHold
+        ) {
+          manualHoldChange = { before: issue.manualHold, after: input.data.manualHold };
+          updates.manualHold = input.data.manualHold;
+        }
         if (input.data.plan !== undefined) updates.plan = input.data.plan;
         if (input.data.acceptanceCriteria !== undefined) {
           updates.acceptanceCriteria = input.data.acceptanceCriteria;
@@ -271,7 +295,30 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           // combined status+fields update has a single canonical timestamp
           // source rather than mixing JS Date and DB now().
           updates.updatedAt = sql`now()`;
-          await db.update(issues).set(updates).where(eq(issues.id, issue.id));
+          await db.transaction(async (tx) => {
+            await tx.update(issues).set(updates).where(eq(issues.id, issue.id));
+            if (manualHoldChange) {
+              await recordActivityTx(tx, {
+                issueId: issue.id,
+                actor: { type: 'device' as const, id: device.id },
+                action: manualHoldChange.after
+                  ? 'issue.manualHold.set'
+                  : 'issue.manualHold.cleared',
+                payload: { manualHold: manualHoldChange.after },
+              });
+            }
+          });
+
+          if (manualHoldChange) {
+            await hooks.emit('issueUpdated', {
+              issueId: issue.id,
+              projectId: issue.projectId,
+              actor: { type: 'device' as const, id: device.id },
+              fields: ['manualHold'],
+              before: { manualHold: manualHoldChange.before },
+              after: { manualHold: manualHoldChange.after },
+            });
+          }
         }
 
         const fresh = await loadIssue(issue.id);

@@ -1,13 +1,14 @@
 'use client';
 
+import type { Issue } from '@forge/contracts';
 import { cn } from '@/lib/utils/cn';
+import type { IssuePriority, IssueStatus } from '@/features/issue/types';
 import { BOARD_COLUMNS } from '../constants';
 import { BoardCard } from './board-card';
-import type { Issue } from '@/features/issue/types';
 
 interface IssuesBoardViewProps {
   filtered: Issue[];
-  onUpdate: (id: string, data: Partial<Issue>) => void;
+  onUpdate: (id: string, data: { status?: IssueStatus; priority?: IssuePriority }) => void;
   onSelect: (id: string) => void;
 }
 

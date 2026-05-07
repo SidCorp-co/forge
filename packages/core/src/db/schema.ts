@@ -535,6 +535,12 @@ export type IssueStatus = (typeof issueStatuses)[number];
 export const issuePriorities = ['critical', 'high', 'medium', 'low', 'none'] as const;
 export type IssuePriority = (typeof issuePriorities)[number];
 
+// ISS-42 C2 — t-shirt sizing for issue scope. Mirrored by the
+// `issues_complexity_chk` CHECK constraint (migration 0046). NULL means
+// "not yet sized".
+export const issueComplexities = ['xs', 's', 'm', 'l', 'xl'] as const;
+export type IssueComplexity = (typeof issueComplexities)[number];
+
 export const issueSources = ['manual', 'github'] as const;
 export type IssueSource = (typeof issueSources)[number];
 
@@ -563,6 +569,12 @@ export const issues = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
     parentIssueId: uuid('parent_issue_id'),
+    // ISS-42 C1 — when true the dispatcher's Layer 1 short-circuits with
+    // skip-reason 'manual_hold' so no new automation jobs spawn for this
+    // issue. In-flight jobs are not killed.
+    manualHold: boolean('manual_hold').notNull().default(false),
+    // ISS-42 C2 — t-shirt sizing (xs/s/m/l/xl) for scoping. NULL = unsized.
+    complexity: text('complexity', { enum: issueComplexities }),
     reopenCount: integer('reopen_count').notNull().default(0),
     source: text('source', { enum: issueSources }).notNull().default('manual'),
     externalId: text('external_id'),
