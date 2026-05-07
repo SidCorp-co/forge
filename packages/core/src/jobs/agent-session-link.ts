@@ -75,14 +75,20 @@ export async function ensureAgentSessionForJob(
 
     let issueTitle: string | null = null;
     let issueOwnerId: string | null = null;
+    let issueIssSeq: number | null = null;
     if (job.issueId) {
       const [row] = await db
-        .select({ title: issues.title, createdById: issues.createdById })
+        .select({
+          title: issues.title,
+          createdById: issues.createdById,
+          issSeq: issues.issSeq,
+        })
         .from(issues)
         .where(eq(issues.id, job.issueId))
         .limit(1);
       issueTitle = row?.title ?? null;
       issueOwnerId = row?.createdById ?? null;
+      issueIssSeq = row?.issSeq ?? null;
     }
 
     const skillName = deriveSkillName(job.payload);
@@ -97,6 +103,10 @@ export async function ensureAgentSessionForJob(
       jobType: job.type,
     };
     if (job.issueId) metadata.issueId = job.issueId;
+    // Stamp the human-readable issue sequence so the sidebar can render
+    // "ISS-N" sub-text without an extra issue lookup. Frozen at session
+    // creation time — issSeq is immutable per project anyway.
+    if (issueIssSeq !== null) metadata.issSeq = issueIssSeq;
     if (skillName) metadata.skillName = skillName;
     if (job.deviceId) metadata.deviceId = job.deviceId;
 
