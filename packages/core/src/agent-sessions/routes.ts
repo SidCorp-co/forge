@@ -153,6 +153,49 @@ agentSessionRoutes.use('*', requireAuth(), assertEmailVerified());
 // Strapi parity), so core just resolves a device, persists the session row,
 // and publishes the right event into the device's room.
 
+// Bubble panel auto-injects which page (and which issue) the user is on so
+// the agent can ground its replies without the user typing "ISS-XX" by hand.
+const pageContextSchema = z
+  .object({
+    page: z.string().min(1).max(40),
+    issueId: z.uuid().optional(),
+    issueDisplayId: z.string().max(40).optional(),
+    issueTitle: z.string().max(500).optional(),
+    issueStatus: z.string().max(40).optional(),
+  })
+  .strict();
+
+type PageContext = z.infer<typeof pageContextSchema>;
+
+function formatPageContextLine(ctx: PageContext): string {
+  const sanitize = (s: string) => s.replace(/[\r\n\]]/g, ' ').replace(/'/g, '');
+  const parts: string[] = [`page=${sanitize(ctx.page)}`];
+  if (ctx.issueDisplayId) parts.push(sanitize(ctx.issueDisplayId));
+  if (ctx.issueTitle) parts.push(`'${sanitize(ctx.issueTitle)}'`);
+  if (ctx.issueStatus) parts.push(`status=${sanitize(ctx.issueStatus)}`);
+  return `[Context: ${parts.join(' ')}]`;
+}
+
+// Re-validate persisted pageContext on read — corrupt jsonb rows could feed
+// garbage into samePageContext / formatPageContextLine. safeParse failure is
+// treated as "no prior context" so the next turn re-prepends the header.
+function readPersistedPageContext(value: unknown): PageContext | null {
+  if (!value || typeof value !== 'object') return null;
+  const parsed = pageContextSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function samePageContext(a: PageContext | null | undefined, b: PageContext): boolean {
+  if (!a) return false;
+  if (a.page !== b.page) return false;
+  // If both sides have an issueId, they must match. When one side is missing
+  // (the issue query hadn't resolved yet on the previous turn, or this turn),
+  // treat the same page as a match — otherwise we'd echo the [Context: …] line
+  // every time the issue data races into place.
+  if (a.issueId && b.issueId) return a.issueId === b.issueId;
+  return true;
+}
+
 const startBodySchema = z
   .object({
     projectSlug: z.string().min(1).max(120),
@@ -162,6 +205,7 @@ const startBodySchema = z
     issueIds: z.array(z.uuid()).max(50).optional(),
     type: z.string().max(80).optional(),
     origin: z.string().max(40).optional(),
+    pageContext: pageContextSchema.optional(),
   })
   .strict();
 
@@ -171,6 +215,7 @@ const sendBodySchema = z
     message: z.string().min(1).max(40_000),
     claudeSessionId: z.string().max(500).nullable().optional(),
     origin: z.string().max(40).optional(),
+    pageContext: pageContextSchema.optional(),
   })
   .strict();
 
@@ -295,8 +340,12 @@ agentSessionRoutes.post(
     }
 
     const agentName = input.type ?? 'agent';
-    const effectivePrompt =
+    const rawPrompt =
       input.prompt ?? (isReindex ? `${agentName}: Knowledge Reindex` : `${agentName}: Review`);
+    const effectivePrompt =
+      input.pageContext && !isAgentSession
+        ? `${formatPageContextLine(input.pageContext)}\n${rawPrompt}`
+        : rawPrompt;
 
     let title: string;
     if (isAgentSession) {
@@ -311,10 +360,10 @@ agentSessionRoutes.post(
       } else if (issueRows.length > 1) {
         title = issueRows.map((i) => `ISS-${i.issSeq}`).join(', ').slice(0, 120);
       } else {
-        title = effectivePrompt.slice(0, 120);
+        title = rawPrompt.slice(0, 120);
       }
     } else {
-      title = effectivePrompt
+      title = rawPrompt
         .replace(/^You are working on issue:\s*/i, '')
         .replace(/^You are working on the following issues:\s*/i, '')
         .replace(/^You are working on:\s*/i, '')
@@ -337,20 +386,37 @@ agentSessionRoutes.post(
       const firstIssueId = input.issueIds[0];
       const resumable = await findResumableSessionForIssue(firstIssueId, deviceId);
       if (resumable) {
+        // Resumable replays through /start but persists like /send: re-prepend
+        // the [Context: …] header only when page or issue changed since the
+        // previous turn so a long-lived chat doesn't echo it every reply.
+        const prevMeta = (resumable.metadata ?? {}) as Record<string, unknown> & {
+          pageContext?: unknown;
+        };
+        const lastPageContext = readPersistedPageContext(prevMeta.pageContext);
+        const shouldPrepend =
+          input.pageContext && !samePageContext(lastPageContext, input.pageContext);
+        const resumablePrompt = shouldPrepend
+          ? `${formatPageContextLine(input.pageContext as PageContext)}\n${rawPrompt}`
+          : rawPrompt;
+        const resumableUserMessage = { role: 'user', content: resumablePrompt, timestamp: now };
         const prevMessages = Array.isArray(resumable.messages) ? resumable.messages : [];
-        const messages = [...prevMessages, userMessage];
+        const messages = [...prevMessages, resumableUserMessage];
         const nowDate = new Date();
+        const resumableUpdates: Record<string, unknown> = {
+          status: 'running',
+          messages,
+          title,
+          startedAt: resumable.startedAt ?? nowDate,
+          lastHeartbeatAt: nowDate,
+          failureReason: null,
+          updatedAt: nowDate,
+        };
+        if (input.pageContext) {
+          resumableUpdates.metadata = { ...prevMeta, pageContext: input.pageContext };
+        }
         const [updated] = await db
           .update(agentSessions)
-          .set({
-            status: 'running',
-            messages,
-            title,
-            startedAt: resumable.startedAt ?? nowDate,
-            lastHeartbeatAt: nowDate,
-            failureReason: null,
-            updatedAt: nowDate,
-          })
+          .set(resumableUpdates)
           .where(eq(agentSessions.id, resumable.id))
           .returning();
         if (!updated) throw notFound('agent session not found');
@@ -359,7 +425,7 @@ agentSessionRoutes.post(
           event: 'agent:send',
           data: {
             sessionId: updated.id,
-            message: effectivePrompt,
+            message: resumablePrompt,
             claudeSessionId: resumable.claudeSessionId,
             repoPath: rp,
             projectSlug: input.projectSlug,
@@ -374,6 +440,13 @@ agentSessionRoutes.post(
     if (deviceId) metadata.deviceId = deviceId;
     if (input.issueIds?.length === 1 && input.issueIds[0]) {
       metadata.issueId = input.issueIds[0];
+    }
+    // Agent (review/reindex) sessions skip the prepended [Context: …] line, so
+    // don't persist pageContext on metadata either — otherwise a follow-up
+    // /send would see a non-null lastPageContext and dedup against context the
+    // agent never actually saw.
+    if (input.pageContext && !isAgentSession) {
+      metadata.pageContext = input.pageContext;
     }
 
     // Interactive sessions start `running` (worker streams within seconds);
@@ -466,10 +539,23 @@ agentSessionRoutes.post(
       throw forbidden('not the session owner');
     }
 
+    const prevMeta = (session.metadata ?? {}) as Record<string, unknown> & {
+      pageContext?: unknown;
+    };
+    const lastPageContext = readPersistedPageContext(prevMeta.pageContext);
+    // Re-prepend the [Context: …] line only when the user has switched page or
+    // issue since the previous turn — otherwise every send would echo the same
+    // header to the agent.
+    const shouldPrepend =
+      input.pageContext && !samePageContext(lastPageContext, input.pageContext);
+    const decoratedMessage = shouldPrepend
+      ? `${formatPageContextLine(input.pageContext as PageContext)}\n${input.message}`
+      : input.message;
+
     const prevMessages = Array.isArray(session.messages) ? session.messages : [];
     const messages = [
       ...prevMessages,
-      { role: 'user', content: input.message, timestamp: Date.now() },
+      { role: 'user', content: decoratedMessage, timestamp: Date.now() },
     ];
     // Worker activity → CAS queued→running and bump heartbeat for the sweeper.
     const sendNow = new Date();
@@ -479,6 +565,9 @@ agentSessionRoutes.post(
       lastHeartbeatAt: sendNow,
       updatedAt: sendNow,
     };
+    if (input.pageContext) {
+      sendUpdates.metadata = { ...prevMeta, pageContext: input.pageContext };
+    }
     if (session.status === 'queued' || session.startedAt == null) {
       sendUpdates.startedAt = sendNow;
     }
@@ -492,7 +581,7 @@ agentSessionRoutes.post(
     if (input.origin === 'desktop') {
       roomManager.publish(projectRoom(updated.projectId), {
         event: 'agent:user-message',
-        data: { sessionId: updated.id, content: input.message },
+        data: { sessionId: updated.id, content: decoratedMessage },
       });
     }
 
@@ -509,7 +598,7 @@ agentSessionRoutes.post(
           event: 'agent:send',
           data: {
             sessionId: updated.id,
-            message: input.message,
+            message: decoratedMessage,
             claudeSessionId: input.claudeSessionId ?? updated.claudeSessionId ?? null,
             repoPath: updated.repoPath ?? null,
             projectSlug: project?.slug ?? null,

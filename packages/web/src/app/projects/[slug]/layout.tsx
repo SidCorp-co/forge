@@ -1,12 +1,14 @@
 'use client';
 
 import { useParams, usePathname } from 'next/navigation';
-import { type ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
+import { ProjectChatBubble } from '@/components/chat/project-chat-bubble';
 import { Shell } from '@/components/layout/shell';
 import { useProjectBySlug } from '@/features/project/hooks/use-projects';
+import { AgentStreamProvider } from '@/hooks/agent-stream-context';
+import { useSetPageTitle } from '@/hooks/use-page-title';
 import { projectRoom } from '@/lib/ws/rooms';
 import { useRoom } from '@/lib/ws/use-room';
-import { useSetPageTitle } from '@/hooks/use-page-title';
 import { cn } from '@/lib/utils/cn';
 
 export default function ProjectLayout({ children }: { children: ReactNode }) {
@@ -23,23 +25,31 @@ export default function ProjectLayout({ children }: { children: ReactNode }) {
       {!project ? (
         <p className="text-sm text-primary-fixed">Loading project...</p>
       ) : (
-        <div
-          className={cn(
-            'flex flex-1 min-h-0 overflow-hidden gap-0',
-            isAgentPage && 'bg-background',
-          )}
-        >
+        <AgentStreamProvider projectSlug={slug}>
           <div
             className={cn(
-              'flex-1 min-w-0 min-h-0 flex flex-col',
-              isAgentPage
-                ? 'overflow-hidden'
-                : 'overflow-y-auto overflow-x-hidden px-2 py-3 sm:p-6',
+              'flex flex-1 min-h-0 overflow-hidden gap-0',
+              isAgentPage && 'bg-background',
             )}
           >
-            {children}
+            <div
+              className={cn(
+                'flex-1 min-w-0 min-h-0 flex flex-col',
+                isAgentPage
+                  ? 'overflow-hidden'
+                  : 'overflow-y-auto overflow-x-hidden px-2 py-3 sm:p-6',
+              )}
+            >
+              {children}
+            </div>
           </div>
-        </div>
+          {/* Suspense boundary keeps useSearchParams() (used inside the bubble
+              via useProjectChatState) from forcing the whole layout into
+              fully-dynamic rendering under Next 16. */}
+          <Suspense fallback={null}>
+            <ProjectChatBubble />
+          </Suspense>
+        </AgentStreamProvider>
       )}
     </Shell>
   );

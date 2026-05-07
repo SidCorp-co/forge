@@ -3,7 +3,7 @@
 import { useCallback } from 'react';
 import type { ChatMessageData, ContentBlock } from '@/components/chat/chat-message';
 import { convertTodoWriteToTodosBlock, deduplicateTodosBlocks } from '@/lib/utils/todo-blocks';
-import { agentApi, type AgentUsage } from '@/features/agent/api';
+import { agentApi, type AgentUsage, type PageContext } from '@/features/agent/api';
 
 const EMPTY_USAGE: AgentUsage = { contextUsed: 0, inputTotal: 0, outputTotal: 0, cacheRead: 0, cacheWrite: 0, turns: 0 };
 
@@ -40,7 +40,7 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
     finalize,
   } = opts;
 
-  const startAgent = useCallback(async (prompt: string, startOpts?: { preBuilt?: boolean; issueIds?: string[] }) => {
+  const startAgent = useCallback(async (prompt: string, startOpts?: { preBuilt?: boolean; issueIds?: string[]; pageContext?: PageContext }) => {
     const userMsg: ChatMessageData = {
       id: crypto.randomUUID(),
       role: 'user',
@@ -55,7 +55,13 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
     setUsage(EMPTY_USAGE);
 
     try {
-      const res = await agentApi.start(projectSlug, prompt, undefined, startOpts?.preBuilt, startOpts?.issueIds);
+      const res = await agentApi.start({
+        projectSlug,
+        prompt,
+        preBuilt: startOpts?.preBuilt,
+        issueIds: startOpts?.issueIds,
+        pageContext: startOpts?.pageContext,
+      });
       if (!mountedRef.current) return;
       const sid = res.data.documentId;
       setSessionId(sid);
@@ -69,7 +75,7 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
     }
   }, [projectSlug, mountedRef, streamingMsgId, streamingTextRef, wsRef, setMessages, setIsRunning, setSessionId, setUsage]);
 
-  const sendMessage = useCallback(async (message: string) => {
+  const sendMessage = useCallback(async (message: string, sendOpts?: { pageContext?: PageContext }) => {
     if (!sessionId) return;
 
     const userMsg: ChatMessageData = {
@@ -85,7 +91,12 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
     setIsRunning(true);
 
     try {
-      await agentApi.send(sessionId, message, claudeSessionId || undefined);
+      await agentApi.send({
+        sessionId,
+        message,
+        claudeSessionId: claudeSessionId || undefined,
+        pageContext: sendOpts?.pageContext,
+      });
     } catch (err) {
       if (!mountedRef.current) return;
       setMessages((prev) => [...prev, errorMessage(err, 'Failed to send message')]);

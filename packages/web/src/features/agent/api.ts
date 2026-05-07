@@ -58,6 +58,21 @@ export interface BranchDiff {
   total_deletions: number;
 }
 
+/**
+ * Page-scoped context auto-injected by the project chat bubble. Core prepends
+ * a `[Context: …]` line to the user message and stores the same shape under
+ * `metadata.pageContext` so the agent grounds replies without the user typing
+ * `ISS-XX` by hand. Keep in sync with `pageContextSchema` in
+ * `packages/core/src/agent-sessions/routes.ts`.
+ */
+export interface PageContext {
+  page: string;
+  issueId?: string;
+  issueDisplayId?: string;
+  issueTitle?: string;
+  issueStatus?: string;
+}
+
 export type AgentSessionStatus = 'idle' | 'queued' | 'running' | 'completed' | 'failed';
 
 // Synthetic UI-only state derived from heartbeat freshness. Backend
@@ -185,18 +200,30 @@ export const agentApi = {
   // Core returns the flat agent_sessions row with `id` (uuid). Wrap it in
   // the Strapi envelope `{data: {...documentId}}` so existing callers that
   // read `result.data.documentId` keep working unchanged.
-  start: (projectSlug: string, prompt: string, repoPath?: string, preBuilt?: boolean, issueIds?: string[]) =>
+  start: (opts: {
+    projectSlug: string;
+    prompt: string;
+    repoPath?: string;
+    preBuilt?: boolean;
+    issueIds?: string[];
+    pageContext?: PageContext;
+  }) =>
     apiClient<Record<string, unknown>>('/agent-sessions/start', {
       method: 'POST',
-      body: JSON.stringify({ projectSlug, prompt, repoPath, preBuilt, issueIds }),
+      body: JSON.stringify(opts),
     }).then((row) => ({
       data: { ...(row as object), documentId: row['id'] as string } as unknown as AgentSession,
     })),
 
-  send: (sessionId: string, message: string, claudeSessionId?: string) =>
+  send: (opts: {
+    sessionId: string;
+    message: string;
+    claudeSessionId?: string;
+    pageContext?: PageContext;
+  }) =>
     apiClient<{ ok: boolean }>('/agent-sessions/send', {
       method: 'POST',
-      body: JSON.stringify({ sessionId, message, claudeSessionId }),
+      body: JSON.stringify(opts),
     }).then((row) => ({ data: row })),
 
   abort: (sessionId: string) =>

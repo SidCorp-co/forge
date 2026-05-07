@@ -29,7 +29,6 @@ import { IssueCostSummary } from '@/components/issue/issue-detail-modal/issue-co
 import { IssuePipelineTiming } from '@/components/issue/issue-pipeline-timing';
 import { IssueRelations } from '@/components/issue/issue-relations';
 import { AgentSessionPanel } from '@/components/chat/agent-session-panel';
-import { AgentStreamProvider } from '@/hooks/agent-stream-context';
 import type { Issue } from '@forge/contracts';
 import type { IssuePatchInput } from '@forge/contracts';
 import type { IssueStatus } from '@/features/issue/types';
@@ -564,14 +563,12 @@ function SessionSplitPane({
   return (
     <div className="fixed inset-0 z-40 flex bg-on-primary/40 backdrop-blur-sm md:relative md:inset-auto md:z-auto md:block md:bg-transparent md:backdrop-blur-none">
       <div className="ml-auto flex h-full w-full flex-col border-l border-outline-variant/20 bg-surface md:sticky md:top-6 md:max-h-[calc(100dvh-3rem)] md:rounded-sm md:border md:shadow-lg">
-        <AgentStreamProvider projectSlug={projectSlug}>
-          <AgentSessionPanel
-            sessionId={sessionId}
-            projectSlug={projectSlug}
-            onClose={onClose}
-            onOpenFull={() => router.push(`/projects/${projectSlug}/agent?session=${sessionId}`)}
-          />
-        </AgentStreamProvider>
+        <AgentSessionPanel
+          sessionId={sessionId}
+          projectSlug={projectSlug}
+          onClose={onClose}
+          onOpenFull={() => router.push(`/projects/${projectSlug}/agent?session=${sessionId}`)}
+        />
       </div>
     </div>
   );
