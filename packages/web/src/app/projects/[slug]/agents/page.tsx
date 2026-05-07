@@ -12,7 +12,9 @@ import {
 } from '@/features/agent/hooks/use-agents';
 import { AgentConfigPanel } from '@/features/agent/components/agent-card/agent-config-panel';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ToastContainer } from '@/components/ui/toast-container';
 import { useSetPageTitle } from '@/hooks/use-page-title';
+import { useToast } from '@/hooks/use-toast';
 import { formatApiError } from '@/lib/api/error';
 import { cn } from '@/lib/utils/cn';
 import type { Agent } from '@/features/agent/api';
@@ -33,6 +35,7 @@ export default function AgentsPage() {
   const [newType, setNewType] = useState('');
   const [configOpenId, setConfigOpenId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Partial<Agent>>>({});
+  const { toasts, addToast } = useToast();
 
   function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -69,8 +72,13 @@ export default function AgentsPage() {
   async function handleSave(agent: Agent) {
     const draft = drafts[agent.documentId];
     if (!draft) return;
-    await updateAgent.mutateAsync({ id: agent.documentId, data: draft });
-    setConfigOpenId(null);
+    try {
+      await updateAgent.mutateAsync({ id: agent.documentId, data: draft });
+      setConfigOpenId(null);
+      addToast('Configuration saved');
+    } catch (err) {
+      addToast(`Save failed: ${formatApiError(err)}`);
+    }
   }
 
   function handleDelete(agent: Agent) {
@@ -221,34 +229,28 @@ export default function AgentsPage() {
                 </div>
 
                 {open && drafts[agent.documentId] && (
-                  <>
-                    <AgentConfigPanel
-                      agent={agent}
-                      draft={drafts[agent.documentId]!}
-                      saving={updateAgent.isPending}
-                      onDraftChange={(patch) =>
-                        setDrafts((prev) => ({
-                          ...prev,
-                          [agent.documentId]: {
-                            ...prev[agent.documentId],
-                            ...patch,
-                          },
-                        }))
-                      }
-                      onSave={() => handleSave(agent)}
-                    />
-                    {updateAgent.error && (
-                      <p className="px-5 pb-3 text-[10px] uppercase tracking-widest text-error">
-                        {formatApiError(updateAgent.error)}
-                      </p>
-                    )}
-                  </>
+                  <AgentConfigPanel
+                    agent={agent}
+                    draft={drafts[agent.documentId]!}
+                    saving={updateAgent.isPending}
+                    onDraftChange={(patch) =>
+                      setDrafts((prev) => ({
+                        ...prev,
+                        [agent.documentId]: {
+                          ...prev[agent.documentId],
+                          ...patch,
+                        },
+                      }))
+                    }
+                    onSave={() => handleSave(agent)}
+                  />
                 )}
               </div>
             );
           })}
         </div>
       )}
+      <ToastContainer toasts={toasts} />
     </div>
   );
 }

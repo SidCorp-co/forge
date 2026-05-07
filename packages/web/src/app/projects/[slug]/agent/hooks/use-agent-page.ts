@@ -7,7 +7,6 @@ import { useAuth } from '@/providers/auth-provider';
 import { useProjectBySlug } from '@/features/project/hooks/use-projects';
 import {
   agentApi,
-  AGENT_INTERACTIVE_ENABLED,
   type AgentSessionSummary,
   type BranchDiff,
 } from '@/features/agent/api';
@@ -108,11 +107,8 @@ export function useAgentPage() {
 
   // When draft prompt arrives from an issue trigger, auto-send it.
   // If pendingIssueIds exist it came from a trigger button — send immediately.
-  // Otherwise just populate the editor for manual review. Skipped while the
-  // agent page is read-only (AGENT_INTERACTIVE_ENABLED) so we don't fire
-  // start/send against unimplemented core endpoints.
+  // Otherwise just populate the editor for manual review.
   useEffect(() => {
-    if (!AGENT_INTERACTIVE_ENABLED) return;
     if (draftPrompt) {
       setShowSessions(false);
       if (pendingIssueIds && pendingIssueIds.length > 0) {

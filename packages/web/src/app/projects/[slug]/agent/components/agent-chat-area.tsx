@@ -1,6 +1,6 @@
 'use client';
 
-import { Info, List } from 'lucide-react';
+import { List } from 'lucide-react';
 import { ChatMessages } from '@/components/chat/chat-messages';
 import { ChatInput } from '@/components/chat/chat-input';
 import { DiffSummary } from '@/components/chat/diff-summary';
@@ -8,7 +8,7 @@ import { PromptEditor } from './prompt-editor';
 import { formatTokens, CONTEXT_LIMIT } from '@/lib/utils/format-tokens';
 import { cn } from '@/lib/utils/cn';
 import type { ViewTab } from '../hooks';
-import { AGENT_INTERACTIVE_ENABLED, type BranchDiff } from '@/features/agent/api';
+import type { BranchDiff } from '@/features/agent/api';
 import type { ChatMessageData } from '@/components/chat/chat-message';
 import { ChatSendProvider } from '@/components/chat/chat-message/chat-send-context';
 
@@ -89,15 +89,8 @@ export function AgentChatArea({
         </div>
       </div>
 
-      {!AGENT_INTERACTIVE_ENABLED && (
-        <div className="flex items-center gap-2 border-b border-warning-dim/30 bg-warning-dim/10 px-4 py-2 text-xs text-warning shrink-0">
-          <Info className="h-3.5 w-3.5 shrink-0" />
-          <span>Read-only session viewer. Start/send/abort coming v0.1.x.</span>
-        </div>
-      )}
-
       {/* Body */}
-      {showDraftEditor && AGENT_INTERACTIVE_ENABLED ? (
+      {showDraftEditor ? (
         <div className="flex-1 min-h-0 flex flex-col">
           <PromptEditor
             isBuildingPrompt={isBuildingPrompt}
@@ -145,14 +138,12 @@ export function AgentChatArea({
               <ChatSendProvider send={onSend}>
               <ChatMessages messages={messages} sessionId={sessionId} />
               </ChatSendProvider>
-              {AGENT_INTERACTIVE_ENABLED && (
-                <ChatInput
-                  onSend={(text, _files) => onSend(text)}
-                  isRunning={isRunning}
-                  onStop={isSessionOwner ? onStop : undefined}
-                  disabled={!isSessionOwner}
-                />
-              )}
+              <ChatInput
+                onSend={(text, _files) => onSend(text)}
+                isRunning={isRunning}
+                onStop={isSessionOwner ? onStop : undefined}
+                disabled={!isSessionOwner}
+              />
             </>
           )}
         </>

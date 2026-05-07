@@ -123,15 +123,6 @@ export function deriveSessionDisplayStatus(
   return nowMs - lastMs > STALLED_THRESHOLD_MS ? 'stalled' : 'running';
 }
 
-/**
- * Interactive agent runs (start / send / abort / build-prompt) ship with
- * v0.1.9 (ISS-300). Core publishes `agent:start | agent:send | agent:abort |
- * agent:review | agent:reindex | agent:build-prompt` events to the device's
- * WS room; packages/dev (Tauri) listens for these events and drives the local
- * Claude CLI. Streaming responses come back via the project + session rooms.
- */
-export const AGENT_INTERACTIVE_ENABLED = true;
-
 function adaptAgent(row: Record<string, unknown>): Agent {
   // core returns flat rows with `id` (uuid). Existing components read `documentId` —
   // mirror id → documentId so the rest of the agent UI keeps working unchanged.
