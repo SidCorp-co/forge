@@ -127,6 +127,7 @@ export function useBoard() {
   );
 
   return {
+    slug,
     viewMode,
     setViewMode,
     loading: viewMode === 'issues' ? isLoading : tasksLoading,

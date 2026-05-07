@@ -132,6 +132,23 @@ export const issueApi = {
       method: 'PATCH',
       body: JSON.stringify({ value }),
     }),
+
+  enrich: (id: string) =>
+    apiClient<EnrichResponse>(`/issues/${id}/enrich`, { method: 'POST' }),
+
+  getDependencies: (id: string) =>
+    apiClient<DependencyEdgesResponse>(`/issues/${id}/dependencies`),
+
+  addDependency: (id: string, body: AddDependencyInput) =>
+    apiClient<AddDependencyResponse>(`/issues/${id}/dependencies`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  deleteDependency: (id: string, edgeId: string) =>
+    apiClient<{ deleted: true }>(`/issues/${id}/dependencies/${edgeId}`, {
+      method: 'DELETE',
+    }),
 };
 
 export interface IssueCostSummary {
@@ -176,4 +193,41 @@ export interface RunPipelineStepResponse {
   jobId: string;
   stage: PipelineStage;
   status: 'queued';
+}
+
+export interface EnrichResponse {
+  issueId: string;
+  jobId: string;
+  status: string;
+}
+
+export const DEPENDENCY_KINDS = ['blocks', 'relates', 'duplicates', 'parent'] as const;
+export type DependencyKind = (typeof DEPENDENCY_KINDS)[number];
+
+export interface DependencyEdge {
+  id: string;
+  projectId: string;
+  fromIssueId: string;
+  toIssueId: string;
+  kind: DependencyKind;
+  reason: string | null;
+  validUntil: string | null;
+  createdById: string | null;
+  createdAt: string;
+}
+
+export interface DependencyEdgesResponse {
+  outgoing: DependencyEdge[];
+  incoming: DependencyEdge[];
+}
+
+export interface AddDependencyInput {
+  dependsOnId: string;
+  kind: DependencyKind;
+  reason?: string;
+}
+
+export interface AddDependencyResponse {
+  id: string;
+  created: boolean;
 }
