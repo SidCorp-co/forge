@@ -43,9 +43,9 @@ export function IssueRelations({ issueId, projectId, projectSlug }: IssueRelatio
   async function handleDelete(edgeId: string) {
     try {
       await deleteDep.mutateAsync(edgeId);
-      addToast('Xoá thành công');
+      addToast('Removed');
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Xoá thất bại';
+      const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Remove failed';
       addToast(msg);
     }
   }
@@ -54,10 +54,10 @@ export function IssueRelations({ issueId, projectId, projectSlug }: IssueRelatio
     <section className="rounded-sm border border-outline-variant/20 bg-surface">
       <div className="flex items-center justify-between border-b border-outline-variant/20 bg-surface-container-low px-4 py-2">
         <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">
-          Quan hệ
+          Relations
         </h3>
-        <Button size="xs" variant="ghost" onClick={() => setAddOpen(true)} aria-label="Thêm quan hệ">
-          <Plus className="h-3.5 w-3.5" /> Thêm
+        <Button size="xs" variant="ghost" onClick={() => setAddOpen(true)} aria-label="Add relation">
+          <Plus className="h-3.5 w-3.5" /> Add
         </Button>
       </div>
       <div className="p-4 text-sm">
@@ -71,7 +71,7 @@ export function IssueRelations({ issueId, projectId, projectSlug }: IssueRelatio
             {formatApiError(relations.error)}
           </p>
         ) : relations.total === 0 ? (
-          <p className="text-[11px] text-outline">Chưa có quan hệ nào.</p>
+          <p className="text-[11px] text-outline">No relations yet.</p>
         ) : (
           <ul className="space-y-3">
             {(['blocks', 'relates', 'duplicates', 'parent'] as DependencyKind[]).map((kind) => {
@@ -176,7 +176,7 @@ function RelationRow({
         disabled={deleting}
         onClick={onDelete}
         className="shrink-0 rounded-sm p-1 text-outline transition-colors hover:bg-error-container/40 hover:text-error disabled:opacity-50"
-        aria-label="Xoá quan hệ"
+        aria-label="Remove relation"
       >
         <X className="h-3.5 w-3.5" />
       </button>

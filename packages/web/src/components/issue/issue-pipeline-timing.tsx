@@ -50,7 +50,7 @@ export function IssuePipelineTiming({ projectId }: IssuePipelineTimingProps) {
             {formatApiError(error)}
           </p>
         ) : !data || data.stats.length === 0 ? (
-          <p className="text-[11px] text-outline">Chưa đủ dữ liệu thống kê.</p>
+          <p className="text-[11px] text-outline">Not enough data.</p>
         ) : (
           <Chart stats={data.stats} />
         )}

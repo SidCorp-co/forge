@@ -57,7 +57,7 @@ export function IssuePipelineActions({ issueId, status }: Props) {
   function rateLimited(): boolean {
     const now = Date.now();
     if (now - lastFireRef.current < RATE_LIMIT_MS) {
-      flash('err', 'Đợi 2s rồi click lại');
+      flash('err', 'Wait 2s before clicking again');
       return true;
     }
     lastFireRef.current = now;
@@ -81,11 +81,11 @@ export function IssuePipelineActions({ issueId, status }: Props) {
         if (err.code === 'JOB_ALREADY_ACTIVE') {
           const details = (err.details as { jobId?: string } | null) ?? null;
           const jobId = details?.jobId ? ` (job ${details.jobId.slice(0, 8)})` : '';
-          flash('err', `Pipeline đang chạy rồi${jobId}`);
+          flash('err', `Pipeline already running${jobId}`);
           return;
         }
         if (err.code === 'BAD_REQUEST') {
-          flash('err', 'Đề nghị chọn stage thủ công');
+          flash('err', 'Pick a stage manually');
           setOpen(true);
           return;
         }
@@ -104,7 +104,7 @@ export function IssuePipelineActions({ issueId, status }: Props) {
       flash('ok', 'Enrichment queued');
     } catch (err) {
       if (err instanceof ApiError && err.code === 'ENRICH_ALREADY_QUEUED') {
-        flash('err', 'Enrichment đã queued, đợi nhé');
+        flash('err', 'Enrichment queued, please wait');
         return;
       }
       const msg = err instanceof Error ? err.message : 'Failed to queue enrich';

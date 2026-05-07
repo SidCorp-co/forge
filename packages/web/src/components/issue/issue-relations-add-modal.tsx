@@ -78,21 +78,21 @@ export function IssueRelationsAddModal({ open, onClose, issueId, projectId }: Pr
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.code === 'CYCLE_DETECTED') {
-          setErrorMsg('Cảnh báo vòng lặp — cạnh này tạo loop.');
+          setErrorMsg('Cycle detected — this edge would create a loop.');
           return;
         }
         if (err.code === 'CROSS_PROJECT') {
-          setErrorMsg('Chỉ chọn issue trong cùng project.');
+          setErrorMsg('Pick an issue in the same project.');
           return;
         }
         if (err.code === 'SELF_DEP') {
-          setErrorMsg('Không thể self-link.');
+          setErrorMsg('Cannot self-link.');
           return;
         }
         setErrorMsg(err.message);
         return;
       }
-      setErrorMsg(err instanceof Error ? err.message : 'Thêm thất bại');
+      setErrorMsg(err instanceof Error ? err.message : 'Add failed');
     }
   }
 
@@ -100,18 +100,18 @@ export function IssueRelationsAddModal({ open, onClose, issueId, projectId }: Pr
     <Modal open={open} onClose={onClose}>
       <div className="px-5 py-4 sm:px-6">
         <h3 className="mb-4 text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">
-          Thêm quan hệ
+          Add relation
         </h3>
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div>
             <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-outline">
-              Tìm issue
+              Find issue
             </label>
             <Input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="ISS-12 hoặc tiêu đề…"
+              placeholder="ISS-12 or title…"
               autoFocus
             />
             <div className="mt-2 max-h-48 overflow-y-auto rounded-sm border border-outline-variant/20 bg-surface-container-low">
@@ -121,7 +121,7 @@ export function IssueRelationsAddModal({ open, onClose, issueId, projectId }: Pr
                   <Skeleton className="h-6 w-full" />
                 </div>
               ) : candidates.length === 0 ? (
-                <div className="p-3 text-[11px] text-outline">Không tìm thấy issue.</div>
+                <div className="p-3 text-[11px] text-outline">No issues found.</div>
               ) : (
                 <ul className="divide-y divide-outline-variant/10">
                   {candidates.map((i) => (
@@ -149,7 +149,7 @@ export function IssueRelationsAddModal({ open, onClose, issueId, projectId }: Pr
 
           <div>
             <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-outline">
-              Loại quan hệ
+              Relation type
             </label>
             <Select value={kind} onChange={(e) => setKind(e.currentTarget.value as DependencyKind)}>
               {DEPENDENCY_KINDS.map((k) => (
@@ -162,13 +162,13 @@ export function IssueRelationsAddModal({ open, onClose, issueId, projectId }: Pr
 
           <div>
             <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-outline">
-              Lý do (tuỳ chọn)
+              Reason (optional)
             </label>
             <Textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={3}
-              placeholder="Vì sao thêm quan hệ này?"
+              placeholder="Why add this relation?"
             />
           </div>
 
@@ -178,13 +178,13 @@ export function IssueRelationsAddModal({ open, onClose, issueId, projectId }: Pr
 
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={onClose}>
-              Huỷ
+              Cancel
             </Button>
             <Button
               type="submit"
               disabled={!selectedId || isSelfEdge || addMutation.isPending}
             >
-              {addMutation.isPending ? 'Đang thêm…' : 'Thêm'}
+              {addMutation.isPending ? 'Adding…' : 'Add'}
             </Button>
           </div>
         </form>

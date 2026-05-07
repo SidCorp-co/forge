@@ -23,30 +23,30 @@ describe('renderGatedTooltip', () => {
     expect(renderGatedTooltip(makeSession({ failureReason: '' }))).toBeNull();
   });
 
-  it('maps issue_busy → vietnamese same-issue tooltip', () => {
+  it('maps issue_busy → same-issue tooltip', () => {
     const out = renderGatedTooltip(makeSession({ failureReason: 'issue_busy' }));
-    expect(out).toBe('Issue đang chạy session khác — chờ session hiện tại kết thúc');
+    expect(out).toBe('Another session is running on this issue — wait for it to finish');
   });
 
-  it('maps project_full → vietnamese project-cap tooltip', () => {
+  it('maps project_full → project-cap tooltip', () => {
     const out = renderGatedTooltip(makeSession({ failureReason: 'project_full' }));
-    expect(out).toBe('Project đang chạy tối đa số issue song song');
+    expect(out).toBe('Project is at max parallel issues');
   });
 
-  it('maps runner_full → vietnamese runner-slot tooltip', () => {
+  it('maps runner_full → runner-slot tooltip', () => {
     const out = renderGatedTooltip(makeSession({ failureReason: 'runner_full' }));
-    expect(out).toBe('Runner đã đầy slot — chờ slot trống');
+    expect(out).toBe('Runner slots are full — waiting for one to free up');
   });
 
   describe('waiting_on_dep', () => {
-    it('renders "Đợi ISS-X hoàn tất" with a single waitingOn entry', () => {
+    it('renders "Waiting on ISS-X to complete" with a single waitingOn entry', () => {
       const out = renderGatedTooltip(
         makeSession({
           failureReason: 'waiting_on_dep',
           metadata: { waitingOn: [{ issSeq: 12, issueId: 'uuid-1', status: 'in_progress' }] },
         }),
       );
-      expect(out).toBe('Đợi ISS-12 hoàn tất');
+      expect(out).toBe('Waiting on ISS-12 to complete');
     });
 
     it('joins multiple waitingOn entries with comma', () => {
@@ -61,14 +61,14 @@ describe('renderGatedTooltip', () => {
           },
         }),
       );
-      expect(out).toBe('Đợi ISS-12, ISS-15 hoàn tất');
+      expect(out).toBe('Waiting on ISS-12, ISS-15 to complete');
     });
 
     it('falls back to generic copy when metadata.waitingOn is missing', () => {
       const out = renderGatedTooltip(
         makeSession({ failureReason: 'waiting_on_dep', metadata: {} }),
       );
-      expect(out).toBe('Đợi issue phụ thuộc hoàn tất');
+      expect(out).toBe('Waiting on dependency issue to complete');
     });
 
     it('falls back when waitingOn is not an array', () => {
@@ -78,7 +78,7 @@ describe('renderGatedTooltip', () => {
           metadata: { waitingOn: 'not-an-array' },
         }),
       );
-      expect(out).toBe('Đợi issue phụ thuộc hoàn tất');
+      expect(out).toBe('Waiting on dependency issue to complete');
     });
 
     it('skips waitingOn rows that are not objects or lack issSeq', () => {
@@ -97,7 +97,7 @@ describe('renderGatedTooltip', () => {
           },
         }),
       );
-      expect(out).toBe('Đợi ISS-7, ISS-8 hoàn tất');
+      expect(out).toBe('Waiting on ISS-7, ISS-8 to complete');
     });
 
     it('falls back when all waitingOn rows are filtered out', () => {
@@ -107,7 +107,7 @@ describe('renderGatedTooltip', () => {
           metadata: { waitingOn: [null, { irrelevant: true }, 'string'] },
         }),
       );
-      expect(out).toBe('Đợi issue phụ thuộc hoàn tất');
+      expect(out).toBe('Waiting on dependency issue to complete');
     });
   });
 

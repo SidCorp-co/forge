@@ -80,7 +80,7 @@ export function IssueAgentSessions({ issueId, onSelect, selectedSessionId }: Iss
             <Skeleton className="h-10 w-full" />
           </div>
         ) : sessions.length === 0 ? (
-          <p className="text-[11px] text-outline">Chưa có phiên.</p>
+          <p className="text-[11px] text-outline">No sessions yet.</p>
         ) : (
           <ul className="space-y-2">
             {sessions.map((s) => {

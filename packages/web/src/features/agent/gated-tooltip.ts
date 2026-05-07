@@ -4,7 +4,7 @@ import type { AgentSessionSummary } from './api';
  * ISS-40 PR-E — render a tooltip for a queued session that was skipped by
  * one of the dispatcher's 4 gating layers. Returns null when the session
  * has no recognised gating reason (caller falls back to the generic
- * "waiting for worker" copy). Vietnamese, matching the rest of the agent UI.
+ * "waiting for worker" copy).
  *
  * Pure function so it can be unit-tested in isolation; rendering happens in
  * `agent-sidebar.tsx`.
@@ -14,11 +14,11 @@ export function renderGatedTooltip(s: AgentSessionSummary): string | null {
   if (!reason) return null;
   switch (reason) {
     case 'issue_busy':
-      return 'Issue đang chạy session khác — chờ session hiện tại kết thúc';
+      return 'Another session is running on this issue — wait for it to finish';
     case 'project_full':
-      return 'Project đang chạy tối đa số issue song song';
+      return 'Project is at max parallel issues';
     case 'runner_full':
-      return 'Runner đã đầy slot — chờ slot trống';
+      return 'Runner slots are full — waiting for one to free up';
     case 'waiting_on_dep': {
       const meta = (s.metadata ?? {}) as Record<string, unknown>;
       const waitingOn = Array.isArray(meta.waitingOn) ? (meta.waitingOn as Array<unknown>) : [];
@@ -29,8 +29,8 @@ export function renderGatedTooltip(s: AgentSessionSummary): string | null {
           return typeof seq === 'number' ? `ISS-${seq}` : null;
         })
         .filter((v): v is string => v !== null);
-      if (labels.length === 0) return 'Đợi issue phụ thuộc hoàn tất';
-      return `Đợi ${labels.join(', ')} hoàn tất`;
+      if (labels.length === 0) return 'Waiting on dependency issue to complete';
+      return `Waiting on ${labels.join(', ')} to complete`;
     }
     default:
       return null; // forward-compat: unknown reasons fall back to default

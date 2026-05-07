@@ -190,28 +190,28 @@ export default function IssueDetailPage() {
               <EditableMarkdownSection
                 title="Description"
                 value={issue.description}
-                placeholder="Chưa có mô tả. Click Edit để thêm."
+                placeholder="No description. Click Edit to add one."
                 onSave={(v) => handlePatch(issueId, { description: v })}
               />
 
               <EditableMarkdownSection
                 title="Acceptance Criteria"
                 value={issue.acceptanceCriteria}
-                placeholder="Chưa có acceptance criteria. Click Edit để thêm."
+                placeholder="No acceptance criteria. Click Edit to add."
                 onSave={(v) => handlePatch(issueId, { acceptanceCriteria: v })}
               />
 
               <EditableMarkdownSection
                 title="Suggested Solution"
                 value={issue.suggestedSolution}
-                placeholder="Chưa có suggested solution. Click Edit để thêm."
+                placeholder="No suggested solution. Click Edit to add."
                 onSave={(v) => handlePatch(issueId, { suggestedSolution: v })}
               />
 
               <EditableMarkdownSection
                 title="Plan"
                 value={issue.plan}
-                placeholder="Chưa có plan. Click Edit để thêm."
+                placeholder="No plan. Click Edit to add."
                 onSave={(v) => handlePatch(issueId, { plan: v })}
               />
 

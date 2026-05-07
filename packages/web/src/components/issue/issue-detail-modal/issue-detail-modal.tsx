@@ -16,7 +16,7 @@ interface IssueDetailModalProps {
 /**
  * A1.6 quick-preview. Loads only the issue row (no comments, no activity)
  * and renders description + key metadata. Esc + click-outside close — both
- * handled by `<Modal>`. The "Mở full" link navigates to the dedicated
+ * handled by `<Modal>`. The "Open full" link navigates to the dedicated
  * detail page where comments and pipeline actions live.
  */
 export function IssueDetailModal({ open, issueId, projectSlug, onClose }: IssueDetailModalProps) {
@@ -73,14 +73,14 @@ export function IssueDetailModal({ open, issueId, projectSlug, onClose }: IssueD
 
             <footer className="flex items-center justify-end gap-2">
               <Button variant="ghost" onClick={onClose} size="xs">
-                Đóng
+                Close
               </Button>
               <Link
                 href={`/projects/${projectSlug}/issues/${issue.displayId}`}
                 onClick={onClose}
               >
                 <Button size="xs">
-                  <ExternalLink className="h-3 w-3" /> Mở full
+                  <ExternalLink className="h-3 w-3" /> Open full
                 </Button>
               </Link>
             </footer>
