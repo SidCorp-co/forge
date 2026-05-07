@@ -6,6 +6,8 @@
  * failing gate decides the skip reason and short-circuits the dispatch.
  *
  *   L1 issue_busy     — at most one active session per issue
+ *                       (also short-circuits on `issues.manual_hold = true`,
+ *                        skip-reason 'manual_hold' — ISS-42 C1)
  *   L2 waiting_on_dep — every `kind='blocks'` parent must be terminal
  *   L3 project_full   — DISTINCT running issue_ids per project < cap
  *   L4 runner_full    — in-flight jobs on the chosen runner < runner cap
@@ -21,7 +23,12 @@ import { db } from '../db/client.js';
 import { agentSessions, issues, jobs, projects, runners } from '../db/schema.js';
 import { logger } from '../logger.js';
 
-export type GateSkipReason = 'issue_busy' | 'waiting_on_dep' | 'project_full' | 'runner_full';
+export type GateSkipReason =
+  | 'issue_busy'
+  | 'manual_hold'
+  | 'waiting_on_dep'
+  | 'project_full'
+  | 'runner_full';
 
 export type GateResult =
   | { pass: true }
@@ -58,6 +65,23 @@ export async function checkLayer1IssueBusy(
   options?: { excludeJobId?: string; excludeSessionId?: string },
 ): Promise<GateResult> {
   if (!issueId) return PASS;
+
+  // ISS-42 C1 — manual hold short-circuit. We check this BEFORE the busy
+  // check because the user-visible reason is more informative ("paused" beats
+  // "another session active"). A user who sets manual_hold while a job is in
+  // flight will not stop the in-flight job; they'll just block follow-ups.
+  const [holdRow] = await db
+    .select({ manualHold: issues.manualHold })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  if (holdRow?.manualHold) {
+    return {
+      pass: false,
+      reason: 'manual_hold',
+      hint: 'issue is on manual hold; toggle off to resume automation',
+    };
+  }
 
   // Active session for the same issue (issueId lives in metadata).
   const sessionRows = await db.execute<{ count: string }>(sql`

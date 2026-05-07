@@ -33,16 +33,21 @@ export const PRIORITY_COLORS: Record<IssuePriority, string> = {
   none: 'bg-surface-container-low text-primary-fixed',
 };
 
+// ISS-42 C2 — t-shirt sizes mirror the core Drizzle enum.
 export const COMPLEXITY_COLORS: Record<IssueComplexity, string> = {
-  Simple: 'bg-surface-variant text-on-surface-variant',
-  Medium: 'bg-outline-variant/40 text-tertiary',
-  Complex: 'bg-on-surface/15 text-on-surface',
+  xs: 'bg-emerald-500/15 text-emerald-400',
+  s: 'bg-green-500/15 text-green-400',
+  m: 'bg-amber-500/15 text-amber-400',
+  l: 'bg-orange-500/15 text-orange-400',
+  xl: 'bg-rose-500/15 text-rose-400',
 };
 
 export const ALL_COMPLEXITIES: { value: IssueComplexity; label: string }[] = [
-  { value: 'Simple', label: 'Simple' },
-  { value: 'Medium', label: 'Medium' },
-  { value: 'Complex', label: 'Complex' },
+  { value: 'xs', label: 'XS' },
+  { value: 's', label: 'S' },
+  { value: 'm', label: 'M' },
+  { value: 'l', label: 'L' },
+  { value: 'xl', label: 'XL' },
 ];
 
 export const ALL_STATUSES: { value: IssueStatus; label: string }[] = [

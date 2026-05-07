@@ -1,6 +1,16 @@
 import type { Issue, IssueCreateInput, IssuePatchInput } from '@forge/contracts';
 import { apiClient, apiClientList } from '@/lib/api/client';
 
+export const ISSUE_SORT_VALUES = [
+  'createdAt:desc',
+  'createdAt:asc',
+  'updatedAt:desc',
+  'updatedAt:asc',
+  'priority:asc',
+  'priority:desc',
+] as const;
+export type IssueSort = (typeof ISSUE_SORT_VALUES)[number];
+
 export interface IssueListParams {
   projectId: string;
   limit?: number;
@@ -8,6 +18,8 @@ export interface IssueListParams {
   status?: string;
   priority?: string;
   assigneeId?: string;
+  category?: string;
+  sort?: IssueSort;
 }
 
 export interface IssueSearchParams {
@@ -17,6 +29,8 @@ export interface IssueSearchParams {
   priority?: string[];
   label?: string[];
   assignee?: string;
+  category?: string;
+  sort?: IssueSort;
   limit?: number;
   offset?: number;
 }
@@ -41,6 +55,8 @@ function buildListQs(p: Omit<IssueListParams, 'projectId'>): string {
   if (p.status && p.status !== 'all') qs.set('status', p.status);
   if (p.priority && p.priority !== 'all') qs.set('priority', p.priority);
   if (p.assigneeId) qs.set('assigneeId', p.assigneeId);
+  if (p.category && p.category !== 'all') qs.set('category', p.category);
+  if (p.sort) qs.set('sort', p.sort);
   return qs.toString();
 }
 
@@ -51,6 +67,8 @@ function buildSearchQs(q: Omit<IssueSearchParams, 'projectId'>): string {
   q.priority?.forEach((s) => qs.append('priority', s));
   q.label?.forEach((s) => qs.append('label', s));
   if (q.assignee) qs.set('assignee', q.assignee);
+  if (q.category && q.category !== 'all') qs.set('category', q.category);
+  if (q.sort) qs.set('sort', q.sort);
   qs.set('limit', String(q.limit ?? 50));
   qs.set('offset', String(q.offset ?? 0));
   return qs.toString();
@@ -98,7 +116,48 @@ export const issueApi = {
       method: 'POST',
       body: JSON.stringify(stage ? { stage } : {}),
     }),
+
+  getCostSummary: (id: string) =>
+    apiClient<IssueCostSummary>(`/issues/${id}/cost-summary`),
+
+  getPipelineTiming: (params: { projectId: string; from?: string; to?: string }) => {
+    const qs = new URLSearchParams({ projectId: params.projectId });
+    if (params.from) qs.set('from', params.from);
+    if (params.to) qs.set('to', params.to);
+    return apiClient<PipelineTimingResponse>(`/issues/pipeline-timing?${qs.toString()}`);
+  },
+
+  setManualHold: (id: string, value: boolean) =>
+    apiClient<{ issueId: string; manualHold: boolean }>(`/issues/${id}/manual-hold`, {
+      method: 'PATCH',
+      body: JSON.stringify({ value }),
+    }),
 };
+
+export interface IssueCostSummary {
+  issueId: string;
+  projectId: string;
+  estimatedCost: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  requests: number;
+  sampleCount: number;
+}
+
+export interface PipelineTimingStat {
+  status: string;
+  sampleCount: number;
+  avgMs: number;
+  medianMs: number;
+  p90Ms: number;
+}
+
+export interface PipelineTimingResponse {
+  projectId: string;
+  stats: PipelineTimingStat[];
+}
 
 export const PIPELINE_STAGES = [
   'triage',

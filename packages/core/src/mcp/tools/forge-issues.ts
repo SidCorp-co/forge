@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '../../db/client.js';
 import {
   type IssueStatus,
+  issueComplexities,
   issuePriorities,
   issueStatuses,
   issues,
@@ -45,6 +46,8 @@ const dataSchema = z
     status: z.enum(issueStatuses).optional(),
     priority: z.enum(issuePriorities).optional(),
     category: z.string().trim().min(1).max(100).nullable().optional(),
+    complexity: z.enum(issueComplexities).nullable().optional(),
+    manualHold: z.boolean().optional(),
     acceptanceCriteria: z.string().max(100_000).nullable().optional(),
     suggestedSolution: z.string().max(100_000).nullable().optional(),
     plan: z.string().max(200_000).nullable().optional(),
@@ -87,6 +90,8 @@ type IssueRow = {
   status: IssueStatus;
   priority: string;
   category: string | null;
+  complexity: string | null;
+  manualHold: boolean;
   assigneeId: string | null;
   createdById: string;
   parentIssueId: string | null;
@@ -110,6 +115,8 @@ function serialize(row: IssueRow): Record<string, unknown> {
     status: row.status,
     priority: row.priority,
     category: row.category,
+    complexity: row.complexity,
+    manualHold: row.manualHold,
     assigneeId: row.assigneeId,
     parentIssueId: row.parentIssueId,
     reopenCount: row.reopenCount,
@@ -210,6 +217,8 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             description: input.data.description ?? null,
             priority: input.data.priority ?? 'medium',
             category: input.data.category ?? null,
+            complexity: input.data.complexity ?? null,
+            manualHold: input.data.manualHold ?? false,
             createdById: device.ownerId,
             plan: input.data.plan ?? null,
             acceptanceCriteria: input.data.acceptanceCriteria ?? null,
@@ -255,6 +264,8 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (input.data.description !== undefined) updates.description = input.data.description;
         if (input.data.priority !== undefined) updates.priority = input.data.priority;
         if (input.data.category !== undefined) updates.category = input.data.category;
+        if (input.data.complexity !== undefined) updates.complexity = input.data.complexity;
+        if (input.data.manualHold !== undefined) updates.manualHold = input.data.manualHold;
         if (input.data.plan !== undefined) updates.plan = input.data.plan;
         if (input.data.acceptanceCriteria !== undefined) {
           updates.acceptanceCriteria = input.data.acceptanceCriteria;

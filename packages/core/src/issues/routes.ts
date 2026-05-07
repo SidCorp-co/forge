@@ -1,11 +1,12 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, count, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { registerIssueCommentRoutes } from '../comments/routes.js';
 import { db } from '../db/client.js';
 import {
+  issueComplexities,
   issueLabels,
   issuePriorities,
   issueStatuses,
@@ -25,6 +26,7 @@ export const issueCreateSchema = z
     description: z.string().max(100_000).nullable().optional(),
     priority: z.enum(issuePriorities).optional(),
     category: z.string().trim().min(1).max(100).nullable().optional(),
+    complexity: z.enum(issueComplexities).nullable().optional(),
     assigneeId: z.uuid().nullable().optional(),
     parentIssueId: z.uuid().nullable().optional(),
     labels: z.array(z.uuid()).max(100).optional(),
@@ -34,12 +36,18 @@ export const issueCreateSchema = z
 export type IssueCreateInput = z.infer<typeof issueCreateSchema>;
 
 // status is NOT accepted here — F4 transition endpoint owns status changes.
+// manualHold is NOT accepted here either — see PATCH /:id/manual-hold so the
+// toggle has its own activity entry + WS event.
 export const issuePatchSchema = z
   .object({
     title: z.string().trim().min(1).max(500).optional(),
     description: z.string().max(100_000).nullable().optional(),
     priority: z.enum(issuePriorities).optional(),
     category: z.string().trim().min(1).max(100).nullable().optional(),
+    complexity: z.enum(issueComplexities).nullable().optional(),
+    plan: z.string().max(200_000).nullable().optional(),
+    acceptanceCriteria: z.string().max(100_000).nullable().optional(),
+    suggestedSolution: z.string().max(100_000).nullable().optional(),
     assigneeId: z.uuid().nullable().optional(),
     labels: z.array(z.uuid()).max(100).optional(),
   })
@@ -52,6 +60,18 @@ export const issueFiltersSchema = paginationSchema.extend({
   status: z.enum(issueStatuses).optional(),
   priority: z.enum(issuePriorities).optional(),
   assigneeId: z.uuid().optional(),
+  category: z.string().trim().min(1).max(100).optional(),
+  sort: z
+    .enum([
+      'createdAt:desc',
+      'createdAt:asc',
+      'updatedAt:desc',
+      'updatedAt:asc',
+      'priority:asc',
+      'priority:desc',
+    ])
+    .optional()
+    .default('createdAt:desc'),
 });
 
 export type IssueFilters = z.infer<typeof issueFiltersSchema>;
@@ -77,6 +97,11 @@ type IssueRow = {
   status: string;
   priority: string;
   category: string | null;
+  complexity: string | null;
+  manualHold: boolean;
+  plan: string | null;
+  acceptanceCriteria: string | null;
+  suggestedSolution: string | null;
   assigneeId: string | null;
   createdById: string;
   parentIssueId: string | null;
@@ -151,6 +176,7 @@ issueProjectRoutes.post(
           description: input.description ?? null,
           priority: input.priority ?? 'medium',
           category: input.category ?? null,
+          complexity: input.complexity ?? null,
           assigneeId: input.assigneeId ?? null,
           parentIssueId: input.parentIssueId ?? null,
           createdById: userId,
@@ -247,15 +273,41 @@ issueProjectRoutes.get(
     if (q.status) conditions.push(eq(issues.status, q.status));
     if (q.priority) conditions.push(eq(issues.priority, q.priority));
     if (q.assigneeId) conditions.push(eq(issues.assigneeId, q.assigneeId));
+    if (q.category) conditions.push(eq(issues.category, q.category));
     const where = conditions.length === 1 ? conditions[0] : and(...conditions);
 
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(issues).where(where);
+
+    const priorityRank = sql`CASE ${issues.priority}
+      WHEN 'critical' THEN 1
+      WHEN 'high' THEN 2
+      WHEN 'medium' THEN 3
+      WHEN 'low' THEN 4
+      WHEN 'none' THEN 5
+      ELSE 6 END`;
+
+    const orderBy = (() => {
+      switch (q.sort) {
+        case 'createdAt:asc':
+          return asc(issues.createdAt);
+        case 'updatedAt:desc':
+          return desc(issues.updatedAt);
+        case 'updatedAt:asc':
+          return asc(issues.updatedAt);
+        case 'priority:asc':
+          return sql`${priorityRank} ASC`;
+        case 'priority:desc':
+          return sql`${priorityRank} DESC`;
+        default:
+          return desc(issues.createdAt);
+      }
+    })();
 
     const rows = await db
       .select()
       .from(issues)
       .where(where)
-      .orderBy(desc(issues.createdAt))
+      .orderBy(orderBy)
       .limit(q.limit)
       .offset(q.offset);
 
@@ -351,6 +403,22 @@ issueRoutes.patch(
     if (patch.category !== undefined) {
       updates.category = patch.category;
       track('category', patch.category);
+    }
+    if (patch.complexity !== undefined) {
+      updates.complexity = patch.complexity;
+      track('complexity', patch.complexity);
+    }
+    if (patch.plan !== undefined) {
+      updates.plan = patch.plan;
+      track('plan', patch.plan);
+    }
+    if (patch.acceptanceCriteria !== undefined) {
+      updates.acceptanceCriteria = patch.acceptanceCriteria;
+      track('acceptanceCriteria', patch.acceptanceCriteria);
+    }
+    if (patch.suggestedSolution !== undefined) {
+      updates.suggestedSolution = patch.suggestedSolution;
+      track('suggestedSolution', patch.suggestedSolution);
     }
     if (patch.assigneeId !== undefined) {
       updates.assigneeId = patch.assigneeId;

@@ -102,6 +102,20 @@ describe('GET /api/projects/:id/issues/search', () => {
     expect(res.status).toBe(400);
   });
 
+  it('400 on invalid sort value', async () => {
+    queueAuthSelect();
+    const t = await token();
+    const res = await req('?sort=bogus', t);
+    expect(res.status).toBe(400);
+  });
+
+  it('400 when category exceeds 100 chars', async () => {
+    queueAuthSelect();
+    const t = await token();
+    const res = await req(`?category=${'a'.repeat(101)}`, t);
+    expect(res.status).toBe(400);
+  });
+
   it('404 when project missing', async () => {
     queueAuthSelect();
     queueProjectMissing();

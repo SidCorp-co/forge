@@ -11,6 +11,8 @@ import { isUniqueViolation } from '../lib/db-errors.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { logger } from '../logger.js';
+import { recordActivityTx } from '../pipeline/activity.js';
+import { hooks } from '../pipeline/hooks.js';
 import { ActiveJobConflictError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
@@ -28,6 +30,8 @@ const stageEnum = z.enum([
 const runPipelineStepBodySchema = z
   .object({ stage: stageEnum.optional() })
   .strict();
+
+const manualHoldBodySchema = z.object({ value: z.boolean() }).strict();
 
 const pipelineTimingQuerySchema = z
   .object({
@@ -104,6 +108,68 @@ issueExtrasRoutes.post(
     }
 
     return c.json({ issueId: issue.id, jobId: job.id, status: job.status }, 202);
+  },
+);
+
+// PATCH /api/issues/:id/manual-hold
+// ISS-42 C1 — toggle the manual_hold flag. When true, the dispatcher's
+// Layer-1 short-circuits with skip-reason 'manual_hold' so no new automation
+// jobs spawn. In-flight jobs are not killed (acceptable race per plan).
+issueExtrasRoutes.patch(
+  '/:id/manual-hold',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('json', manualHoldBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id: issueId } = c.req.valid('param');
+    const { value } = c.req.valid('json');
+    const userId = c.get('userId');
+
+    const [issue] = await db
+      .select({
+        id: issues.id,
+        projectId: issues.projectId,
+        manualHold: issues.manualHold,
+      })
+      .from(issues)
+      .where(eq(issues.id, issueId))
+      .limit(1);
+    if (!issue) throw notFound('issue not found');
+
+    const access = await loadProjectAccess(issue.projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+
+    const before = issue.manualHold;
+    const actor = { type: 'user' as const, id: userId };
+
+    if (before !== value) {
+      await db.transaction(async (tx) => {
+        await tx
+          .update(issues)
+          .set({ manualHold: value, updatedAt: new Date() })
+          .where(eq(issues.id, issueId));
+        await recordActivityTx(tx, {
+          issueId,
+          actor,
+          action: value ? 'issue.manualHold.set' : 'issue.manualHold.cleared',
+          payload: { manualHold: value },
+        });
+      });
+
+      await hooks.emit('issueUpdated', {
+        issueId,
+        projectId: issue.projectId,
+        actor,
+        fields: ['manualHold'],
+        before: { manualHold: before },
+        after: { manualHold: value },
+      });
+    }
+
+    return c.json({ issueId, manualHold: value });
   },
 );
 
