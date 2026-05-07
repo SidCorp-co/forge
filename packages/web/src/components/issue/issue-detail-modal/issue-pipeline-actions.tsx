@@ -85,8 +85,19 @@ export function IssuePipelineActions({ issueId, status }: Props) {
           return;
         }
         if (err.code === 'BAD_REQUEST') {
-          flash('err', 'Đề nghị chọn stage thủ công');
-          setOpen(true);
+          // Core only emits BAD_REQUEST for the no-skill-mapping case via this
+          // copy (extras-routes.ts:228) — anything else is a schema validation
+          // failure and should surface the real message instead of the
+          // misleading "pick a stage" prompt.
+          if (err.message.includes('without explicit stage')) {
+            flash('err', 'Đề nghị chọn stage thủ công');
+            // Reset rate-limit so the user can immediately pick a stage from
+            // the override dropdown without bumping into "Đợi 2s rồi click lại".
+            lastFireRef.current = 0;
+            setOpen(true);
+          } else {
+            flash('err', err.message);
+          }
           return;
         }
         flash('err', err.message);

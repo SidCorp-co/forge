@@ -17,11 +17,15 @@ interface Props {
   projectId: string;
 }
 
+// Labels reflect the *incoming* direction: the API stores edges as
+// (from=dependsOnId, to=:id), so picking a target Y on issue X always
+// records "Y → X". From X's perspective the relationship is the incoming
+// label (e.g. picking "Blocks" wires Y as a blocker → "Blocked by Y").
 const KIND_LABELS: Record<DependencyKind, string> = {
-  blocks: 'Blocks',
+  blocks: 'Blocked by',
   relates: 'Relates to',
-  duplicates: 'Duplicates',
-  parent: 'Parent of',
+  duplicates: 'Duplicated by',
+  parent: 'Child of',
 };
 
 export function IssueRelationsAddModal({ open, onClose, issueId, projectId }: Props) {

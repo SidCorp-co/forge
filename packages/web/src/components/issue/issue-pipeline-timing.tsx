@@ -83,8 +83,8 @@ function Chart({ stats }: { stats: { status: string; sampleCount: number; avgMs:
           />
           <YAxis tick={{ fontSize: 10, fill: 'currentColor' }} tickFormatter={formatMs} />
           <Tooltip content={<TimingTooltip />} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
-          <Bar dataKey="avg" fill="rgb(var(--color-primary-rgb, 99 102 241))" radius={[2, 2, 0, 0]} />
-          <Bar dataKey="p90" fill="rgb(var(--color-tertiary-rgb, 168 85 247))" radius={[2, 2, 0, 0]} />
+          <Bar dataKey="avg" fill="var(--color-primary)" radius={[2, 2, 0, 0]} />
+          <Bar dataKey="p90" fill="var(--color-tertiary)" radius={[2, 2, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>
