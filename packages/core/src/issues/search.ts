@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, asc, count, desc, eq, exists, inArray, or, sql } from 'drizzle-orm';
+import { and, count, eq, exists, inArray, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -8,19 +8,13 @@ import { issueLabels, issuePriorities, issueStatuses, issues } from '../db/schem
 import { setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { buildIssueOrderBy, issueSortValues } from './sort.js';
 
 const coerceArray = <T>(v: T | T[] | undefined): T[] | undefined =>
   v === undefined ? undefined : Array.isArray(v) ? v : [v];
 
-export const issueSortValues = [
-  'createdAt:desc',
-  'createdAt:asc',
-  'updatedAt:desc',
-  'updatedAt:asc',
-  'priority:asc',
-  'priority:desc',
-] as const;
-export type IssueSort = (typeof issueSortValues)[number];
+export { issueSortValues } from './sort.js';
+export type { IssueSort } from './sort.js';
 
 const searchQuerySchema = z
   .object({
@@ -121,32 +115,7 @@ searchRoutes.get(
 
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(issues).where(where);
 
-    // priority is a text enum; alpha-sort would put 'critical' < 'high', which
-    // is misleading. Map to numeric ranks so :asc means most-urgent first.
-    const priorityRank = sql`CASE ${issues.priority}
-      WHEN 'critical' THEN 1
-      WHEN 'high' THEN 2
-      WHEN 'medium' THEN 3
-      WHEN 'low' THEN 4
-      WHEN 'none' THEN 5
-      ELSE 6 END`;
-
-    const orderBy = (() => {
-      switch (q.sort) {
-        case 'createdAt:asc':
-          return asc(issues.createdAt);
-        case 'updatedAt:desc':
-          return desc(issues.updatedAt);
-        case 'updatedAt:asc':
-          return asc(issues.updatedAt);
-        case 'priority:asc':
-          return sql`${priorityRank} ASC`;
-        case 'priority:desc':
-          return sql`${priorityRank} DESC`;
-        default:
-          return desc(issues.createdAt);
-      }
-    })();
+    const orderBy = buildIssueOrderBy(q.sort);
 
     const rows = await db
       .select()

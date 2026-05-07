@@ -9,6 +9,7 @@ import {
   issues,
 } from '../../db/schema.js';
 import { applyStatusTransition } from '../../issues/apply-transition.js';
+import { recordActivityTx } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
 import {
   type ContextScopedMcpToolFactory,
@@ -265,7 +266,19 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (input.data.priority !== undefined) updates.priority = input.data.priority;
         if (input.data.category !== undefined) updates.category = input.data.category;
         if (input.data.complexity !== undefined) updates.complexity = input.data.complexity;
-        if (input.data.manualHold !== undefined) updates.manualHold = input.data.manualHold;
+        // manualHold is journalled separately so MCP-driven holds emit the
+        // same activity entry + WS broadcast as the dedicated REST handler
+        // (`PATCH /api/issues/:id/manual-hold`). Without this, dispatcher
+        // gating still works (DB read is canonical) but other clients miss
+        // the toggle on the timeline + real-time UI.
+        let manualHoldChange: { before: boolean; after: boolean } | null = null;
+        if (
+          input.data.manualHold !== undefined &&
+          input.data.manualHold !== issue.manualHold
+        ) {
+          manualHoldChange = { before: issue.manualHold, after: input.data.manualHold };
+          updates.manualHold = input.data.manualHold;
+        }
         if (input.data.plan !== undefined) updates.plan = input.data.plan;
         if (input.data.acceptanceCriteria !== undefined) {
           updates.acceptanceCriteria = input.data.acceptanceCriteria;
@@ -282,7 +295,30 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           // combined status+fields update has a single canonical timestamp
           // source rather than mixing JS Date and DB now().
           updates.updatedAt = sql`now()`;
-          await db.update(issues).set(updates).where(eq(issues.id, issue.id));
+          await db.transaction(async (tx) => {
+            await tx.update(issues).set(updates).where(eq(issues.id, issue.id));
+            if (manualHoldChange) {
+              await recordActivityTx(tx, {
+                issueId: issue.id,
+                actor: { type: 'device' as const, id: device.id },
+                action: manualHoldChange.after
+                  ? 'issue.manualHold.set'
+                  : 'issue.manualHold.cleared',
+                payload: { manualHold: manualHoldChange.after },
+              });
+            }
+          });
+
+          if (manualHoldChange) {
+            await hooks.emit('issueUpdated', {
+              issueId: issue.id,
+              projectId: issue.projectId,
+              actor: { type: 'device' as const, id: device.id },
+              fields: ['manualHold'],
+              before: { manualHold: manualHoldChange.before },
+              after: { manualHold: manualHoldChange.after },
+            });
+          }
         }
 
         const fresh = await loadIssue(issue.id);

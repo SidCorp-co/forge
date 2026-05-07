@@ -3,11 +3,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { issueApi } from '../api/issue-api';
 
-export function useIssueCost(documentId: string | null | undefined) {
+export function useIssueCost(issueId: string | null | undefined) {
   return useQuery({
-    queryKey: ['issue-cost', documentId],
-    queryFn: () => issueApi.getCostSummary(documentId as string),
-    enabled: !!documentId,
+    queryKey: ['issue-cost', issueId],
+    queryFn: () => issueApi.getCostSummary(issueId as string),
+    enabled: !!issueId,
     staleTime: 30_000,
   });
 }
