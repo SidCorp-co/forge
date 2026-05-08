@@ -9,7 +9,24 @@ vi.mock('../config/env.js', () => ({
 
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
-const selectFrom = vi.fn(() => ({ where: selectWhere }));
+// ISS-64 — `triggerTerminalDispatch` reads dependents via
+// `db.select(...).from(issueDependencies).innerJoin(issues, ...).where(...)`.
+// The where step resolves to an array of dependent rows.
+const dependentsAwait = vi.fn(
+  async () =>
+    [] as Array<{
+      fromIssueId: string;
+      toIssueId: string;
+      depProjectId: string;
+      toIssSeq: number;
+    }>,
+);
+const dependentsWhere = vi.fn(() => dependentsAwait());
+const dependentsInnerJoin = vi.fn(() => ({ where: dependentsWhere }));
+const selectFrom = vi.fn(() => ({
+  where: selectWhere,
+  innerJoin: dependentsInnerJoin,
+}));
 
 const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
@@ -53,6 +70,8 @@ beforeEach(() => {
   selectLimit.mockReset();
   updateReturning.mockReset();
   publish.mockReset();
+  dependentsAwait.mockReset();
+  dependentsAwait.mockResolvedValue([]);
 });
 
 const ISSUE_ID = '11111111-1111-4111-8111-111111111111';
@@ -74,6 +93,7 @@ function queueAuthAndIssue(row: {
   reopenCount?: number;
   verified?: boolean;
   member?: boolean;
+  issSeq?: number;
 }) {
   // 1) assertEmailVerified select
   selectLimit.mockResolvedValueOnce([
@@ -81,7 +101,13 @@ function queueAuthAndIssue(row: {
   ]);
   // 2) issue row lookup
   selectLimit.mockResolvedValueOnce([
-    { id: ISSUE_ID, projectId: PROJECT_ID, status: row.status, reopenCount: row.reopenCount ?? 0 },
+    {
+      id: ISSUE_ID,
+      projectId: PROJECT_ID,
+      status: row.status,
+      reopenCount: row.reopenCount ?? 0,
+      issSeq: row.issSeq ?? 1,
+    },
   ]);
   // 3) project membership lookup
   selectLimit.mockResolvedValueOnce(row.member === false ? [] : [{ role: 'member' }]);
@@ -203,6 +229,54 @@ describe('POST /api/issues/:id/transition', () => {
     const [room, envelope] = publish.mock.calls[0] as [string, { event: string; data: unknown }];
     expect(room).toBe(`project:${PROJECT_ID}`);
     expect(envelope.event).toBe('issue.statusChanged');
+  });
+
+  it('terminal transition with outgoing blocks edges publishes issue.unblockCascade', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'staging', issSeq: 7 });
+    updateReturning.mockResolvedValueOnce([
+      { id: ISSUE_ID, status: 'released', reopenCount: 0, updatedAt: new Date() },
+    ]);
+    dependentsAwait.mockResolvedValueOnce([
+      {
+        fromIssueId: ISSUE_ID,
+        toIssueId: '44444444-4444-4444-8444-444444444444',
+        depProjectId: PROJECT_ID,
+        toIssSeq: 12,
+      },
+    ]);
+    const res = await req({ toStatus: 'released' }, token);
+    expect(res.status).toBe(200);
+    const cascadeCalls = publish.mock.calls.filter(
+      (c) => (c[1] as { event: string }).event === 'issue.unblockCascade',
+    );
+    expect(cascadeCalls).toHaveLength(1);
+    const [room, envelope] = cascadeCalls[0] as [
+      string,
+      { event: string; data: Record<string, unknown> },
+    ];
+    expect(room).toBe(`project:${PROJECT_ID}`);
+    expect(envelope.data).toMatchObject({
+      blockerId: ISSUE_ID,
+      blockerIssSeq: 7,
+      overflow: 0,
+      dependents: [{ issueId: '44444444-4444-4444-8444-444444444444', issSeq: 12 }],
+    });
+  });
+
+  it('terminal transition with NO outgoing blocks edges does not publish cascade', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'staging' });
+    updateReturning.mockResolvedValueOnce([
+      { id: ISSUE_ID, status: 'released', reopenCount: 0, updatedAt: new Date() },
+    ]);
+    dependentsAwait.mockResolvedValueOnce([]);
+    const res = await req({ toStatus: 'released' }, token);
+    expect(res.status).toBe(200);
+    const cascadeCalls = publish.mock.calls.filter(
+      (c) => (c[1] as { event: string }).event === 'issue.unblockCascade',
+    );
+    expect(cascadeCalls).toHaveLength(0);
   });
 
   it('409 STALE_TRANSITION when conditional UPDATE finds no matching row', async () => {

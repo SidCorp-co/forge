@@ -4,6 +4,7 @@ import { useParams, usePathname } from 'next/navigation';
 import { Suspense, type ReactNode } from 'react';
 import { ProjectChatBubble } from '@/components/chat/project-chat-bubble';
 import { Shell } from '@/components/layout/shell';
+import { UnblockToastSurface } from '@/features/issue/components/unblock-toast-surface';
 import { useProjectBySlug } from '@/features/project/hooks/use-projects';
 import { AgentStreamProvider } from '@/hooks/agent-stream-context';
 import { useSetPageTitle } from '@/hooks/use-page-title';
@@ -49,6 +50,7 @@ export default function ProjectLayout({ children }: { children: ReactNode }) {
           <Suspense fallback={null}>
             <ProjectChatBubble />
           </Suspense>
+          <UnblockToastSurface projectSlug={slug} />
         </AgentStreamProvider>
       )}
     </Shell>

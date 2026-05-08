@@ -50,17 +50,32 @@ const transactionMock = vi.fn(
   async (cb: (tx: typeof txProxy) => Promise<unknown>) => cb(txProxy),
 );
 
-// `db.selectDistinct(...).from(...).where(...)` is awaited for the cross-project
-// children read inside `triggerTerminalDispatch`. The where step resolves to a
-// list of `{ projectId }` rows.
-const selectDistinctAwait = vi.fn(async () => [] as Array<{ projectId: string }>);
-const selectDistinctWhere = vi.fn(() => selectDistinctAwait());
-const selectDistinctFrom = vi.fn(() => ({ where: selectDistinctWhere }));
+// ISS-64 — `triggerTerminalDispatch` runs a single
+// `db.select(...).from(issueDependencies).innerJoin(issues, ...).where(...)`
+// query that returns enriched dependent rows
+// `{ fromIssueId, toIssueId, depProjectId, toIssSeq }`.
+const dependentsAwait = vi.fn(
+  async () =>
+    [] as Array<{
+      fromIssueId: string;
+      toIssueId: string;
+      depProjectId: string;
+      toIssSeq: number;
+    }>,
+);
+const dependentsWhere = vi.fn(() => dependentsAwait());
+const dependentsInnerJoin = vi.fn(() => ({ where: dependentsWhere }));
+
+// Replace the original definition so `from()` exposes both the existing
+// where-thenable path AND the innerJoin path used by triggerTerminalDispatch.
+selectFrom.mockImplementation(() => ({
+  where: selectWhere,
+  innerJoin: dependentsInnerJoin,
+}));
 
 vi.mock('../db/client.js', () => ({
   db: {
     select: vi.fn(() => ({ from: selectFrom })),
-    selectDistinct: vi.fn(() => ({ from: selectDistinctFrom })),
     update: (...args: unknown[]) => updateMock(...args),
     transaction: (cb: (tx: typeof txProxy) => Promise<unknown>) => transactionMock(cb),
   },
@@ -149,8 +164,10 @@ beforeEach(() => {
   issueUpdatedEmit.mockClear();
   wsPublish.mockClear();
   dispatchTick.mockClear();
-  selectDistinctAwait.mockReset();
-  selectDistinctAwait.mockResolvedValue([]);
+  dependentsAwait.mockReset();
+  dependentsAwait.mockResolvedValue([]);
+  dependentsInnerJoin.mockClear();
+  dependentsWhere.mockClear();
 });
 
 const headers = async () => ({
@@ -324,11 +341,12 @@ describe('PATCH /api/issues/batch', () => {
     updateReturning.mockResolvedValueOnce([
       { id: ISS2, status: 'released', reopenCount: 0, updatedAt: new Date() },
     ]);
-    // The fan-out children query returns one row in PROJECT_B (cross-project
-    // blocking edge). The parent (PROJECT_A) is filtered out by the helper.
-    selectDistinctAwait.mockResolvedValueOnce([
-      { projectId: PROJECT_A },
-      { projectId: PROJECT_B },
+    // The fan-out dependents query returns rows in PROJECT_A (same project,
+    // so deduped by parentProjectIds) AND in PROJECT_B (cross-project blocking
+    // edge). The helper distincts child projects from parents on its own.
+    dependentsAwait.mockResolvedValueOnce([
+      { fromIssueId: ISS1, toIssueId: ISS3, depProjectId: PROJECT_A, toIssSeq: 11 },
+      { fromIssueId: ISS2, toIssueId: ISS3, depProjectId: PROJECT_B, toIssSeq: 22 },
     ]);
 
     const res = await buildApp().request('/api/issues/batch', {
@@ -346,7 +364,24 @@ describe('PATCH /api/issues/batch', () => {
     expect(calledProjects).toEqual([PROJECT_A, PROJECT_B].sort());
     // Children query runs once with `inArray(fromIssueId, [ISS1, ISS2])` —
     // not once per terminal issue.
-    expect(selectDistinctWhere).toHaveBeenCalledTimes(1);
+    expect(dependentsWhere).toHaveBeenCalledTimes(1);
+    // Each dispatch tick carries a `triggerBlockerIssueId` so the dispatcher
+    // can attribute any subsequent `dependency.unblocked` event.
+    for (const call of dispatchTick.mock.calls) {
+      const [, options] = call;
+      expect(options).toMatchObject({ triggerBlockerIssueId: expect.any(String) });
+    }
+    // Two `issue.unblockCascade` events broadcast — one per terminal blocker
+    // (ISS1, ISS2) since each has at least one outgoing `blocks` edge.
+    const cascadeCalls = wsPublish.mock.calls.filter(
+      (c) => (c[1] as { event: string }).event === 'issue.unblockCascade',
+    );
+    expect(cascadeCalls).toHaveLength(2);
+    for (const [room, envelope] of cascadeCalls) {
+      expect(room).toBe(`project:${PROJECT_A}`);
+      const data = (envelope as { data: { dependents: Array<{ issSeq: number }> } }).data;
+      expect(data.dependents).toHaveLength(1);
+    }
   });
 
   it('manual hold toggle on N issues writes activity per change', async () => {

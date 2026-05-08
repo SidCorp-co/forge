@@ -14,7 +14,9 @@ import { IssueDetailModal } from '@/components/issue/issue-detail-modal/issue-de
 import { AssigneePicker } from '@/components/issue/assignee-picker';
 import { BulkActionBar } from '@/components/issue/bulk-action-bar';
 import { usePatchIssue } from '@/features/issue/hooks/use-issues';
+import { useUnblockedIssueIds } from '@/features/issue/hooks/use-unblock-cascade';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils/cn';
 
 const REASON_LABELS: Record<string, string> = {
   illegal_transition: 'illegal transition',
@@ -53,6 +55,7 @@ export function IssuesView() {
   } = useIssuesPage();
   const { toasts, addToast } = useToast();
   const patchIssue = usePatchIssue();
+  const { ids: unblockedIssueIds, blockerSeqFor } = useUnblockedIssueIds();
 
   function handleAssigneeChange(issueId: string, assigneeId: string | null) {
     patchIssue.mutate(
@@ -276,8 +279,20 @@ export function IssuesView() {
             </span>
           </div>
           <ul className="divide-y divide-outline-variant/20">
-          {issues.map((issue: Issue) => (
-            <li key={issue.id} className="flex items-center pr-2">
+          {issues.map((issue: Issue) => {
+            const isUnblocked = unblockedIssueIds.has(issue.id);
+            const blockerSeq = isUnblocked ? blockerSeqFor(issue.id) : null;
+            const unblockedTitle = isUnblocked
+              ? blockerSeq != null
+                ? `Unblocked by ISS-${blockerSeq}`
+                : 'Unblocked'
+              : undefined;
+            return (
+            <li
+              key={issue.id}
+              className={cn('flex items-center pr-2', isUnblocked && 'animate-amber-pulse')}
+              title={unblockedTitle}
+            >
               <input
                 type="checkbox"
                 checked={checked.has(issue.id)}
@@ -345,7 +360,8 @@ export function IssuesView() {
                 />
               </span>
             </li>
-          ))}
+            );
+          })}
           </ul>
         </div>
       )}

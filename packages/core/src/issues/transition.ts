@@ -75,40 +75,89 @@ export function publishIssueStatusChange(
   });
 }
 
+/** Cap on the number of dependents named in a single `issue.unblockCascade`
+ *  event payload. Anything above is summarised as `+N more` on the toast. */
+const UNBLOCK_CASCADE_DEPENDENT_CAP = 10;
+
 /**
  * Layer-2 fan-out for terminal transitions: tick the parent project and any
  * distinct child project reachable via `kind='blocks'` outgoing edges from
  * the given issue ids. Best-effort — a 60s pg-boss backstop catches misses.
  *
- * Accepts a batch of (issueId, projectId) pairs so the batch route runs a
- * single `inArray` query for child fan-out instead of N per-issue queries.
+ * Accepts a batch of (issueId, projectId, issSeq) pairs so the batch route
+ * runs a single `inArray` query for child fan-out instead of N per-issue
+ * queries. `issSeq` is included so the project-room broadcast can name the
+ * blocker without a follow-up lookup. Per-blocker, this also publishes one
+ * `issue.unblockCascade` envelope into the blocker's project room when the
+ * blocker has at least one outgoing `kind='blocks'` dependent — the toast
+ * confirms the cascade fired before the dispatcher tick lands.
  */
 export async function triggerTerminalDispatch(
-  terminal: Array<{ issueId: string; projectId: string }>,
+  terminal: Array<{ issueId: string; projectId: string; issSeq?: number | null; at?: Date }>,
 ): Promise<void> {
   if (terminal.length === 0) return;
   const parentProjectIds = new Set(terminal.map((t) => t.projectId));
-  for (const projectId of parentProjectIds) {
-    void dispatchTickForProject(projectId);
-  }
+
+  const childTargets = new Map<string, string>(); // childProjectId -> blockerIssueId
   try {
     const issueIds = terminal.map((t) => t.issueId);
-    const children = await db
-      .selectDistinct({ projectId: issueDependencies.projectId })
+    const dependents = await db
+      .select({
+        fromIssueId: issueDependencies.fromIssueId,
+        toIssueId: issueDependencies.toIssueId,
+        depProjectId: issueDependencies.projectId,
+        toIssSeq: issues.issSeq,
+      })
       .from(issueDependencies)
+      .innerJoin(issues, eq(issues.id, issueDependencies.toIssueId))
       .where(
         and(
           inArray(issueDependencies.fromIssueId, issueIds),
           eq(issueDependencies.kind, 'blocks'),
+          sql`(${issueDependencies.validUntil} IS NULL OR ${issueDependencies.validUntil} > now())`,
         ),
       );
-    for (const child of children) {
-      if (child.projectId && !parentProjectIds.has(child.projectId)) {
-        void dispatchTickForProject(child.projectId);
+
+    const byBlocker = new Map<string, Array<{ issueId: string; issSeq: number }>>();
+    for (const row of dependents) {
+      if (row.depProjectId && !parentProjectIds.has(row.depProjectId)) {
+        if (!childTargets.has(row.depProjectId)) {
+          childTargets.set(row.depProjectId, row.fromIssueId);
+        }
       }
+      const list = byBlocker.get(row.fromIssueId) ?? [];
+      list.push({ issueId: row.toIssueId, issSeq: row.toIssSeq });
+      byBlocker.set(row.fromIssueId, list);
+    }
+
+    for (const t of terminal) {
+      const list = byBlocker.get(t.issueId);
+      if (!list || list.length === 0) continue;
+      roomManager.publish(projectRoom(t.projectId), {
+        event: 'issue.unblockCascade',
+        data: {
+          blockerId: t.issueId,
+          blockerIssSeq: t.issSeq ?? null,
+          dependents: list.slice(0, UNBLOCK_CASCADE_DEPENDENT_CAP),
+          overflow: Math.max(0, list.length - UNBLOCK_CASCADE_DEPENDENT_CAP),
+          at: (t.at ?? new Date()).toISOString(),
+        },
+      });
     }
   } catch {
-    // Tick fan-out is best-effort; the 60s backstop catches missed unblocks.
+    // Cascade broadcast + child collection are best-effort; the 60s backstop
+    // recovers missed unblocks and we'd rather lose a toast than a dispatch.
+  }
+
+  for (const projectId of parentProjectIds) {
+    const blockerIssueId = terminal.find((t) => t.projectId === projectId)?.issueId;
+    void dispatchTickForProject(
+      projectId,
+      blockerIssueId ? { triggerBlockerIssueId: blockerIssueId } : undefined,
+    );
+  }
+  for (const [childProjectId, blockerIssueId] of childTargets) {
+    void dispatchTickForProject(childProjectId, { triggerBlockerIssueId: blockerIssueId });
   }
 }
 
@@ -135,6 +184,7 @@ transitionRoutes.post(
         projectId: issues.projectId,
         status: issues.status,
         reopenCount: issues.reopenCount,
+        issSeq: issues.issSeq,
       })
       .from(issues)
       .where(eq(issues.id, id))
@@ -243,7 +293,12 @@ transitionRoutes.post(
     // project for cross-project blocking edges.
     if (TERMINAL_FOR_DISPATCH.has(toStatus)) {
       await triggerTerminalDispatch([
-        { issueId: issue.id, projectId: issue.projectId },
+        {
+          issueId: issue.id,
+          projectId: issue.projectId,
+          issSeq: issue.issSeq,
+          at: updated.updatedAt,
+        },
       ]);
     }
 

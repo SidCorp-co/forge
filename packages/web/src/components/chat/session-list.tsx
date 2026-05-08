@@ -25,9 +25,13 @@ interface Props<T extends SessionBase = SessionBase> {
   getSearchableText?: (session: T) => string;
   /** Server-side search — when provided, delegates filtering to parent instead of local filtering */
   onSearch?: (query: string) => void;
+  /** Optional extra className applied to a row, e.g. an animation class. */
+  rowClassName?: (session: T) => string | undefined;
+  /** Optional native `title` attribute applied to a row's anchor/button. */
+  rowTitle?: (session: T) => string | undefined;
 }
 
-export function SessionList<T extends SessionBase>({ sessions, loading, activeSessionId, onSelect, onNew, statusDot, theme = 'light', getHref, getSearchableText, onSearch }: Props<T>) {
+export function SessionList<T extends SessionBase>({ sessions, loading, activeSessionId, onSelect, onNew, statusDot, theme = 'light', getHref, getSearchableText, onSearch, rowClassName, rowTitle }: Props<T>) {
   const isDark = theme === 'dark';
   const [search, setSearch] = useState('');
 
@@ -90,8 +94,10 @@ export function SessionList<T extends SessionBase>({ sessions, loading, activeSe
           isDark
             ? 'hover:bg-surface-container'
             : 'hover:bg-surface-container-low',
-          activeSessionId === s.documentId && (isDark ? 'bg-surface-container' : 'bg-surface-container-high')
+          activeSessionId === s.documentId && (isDark ? 'bg-surface-container' : 'bg-surface-container-high'),
+          rowClassName?.(s),
         );
+        const rowTitleAttr = rowTitle?.(s);
         const content = (
           <>
             <div className="flex items-center gap-2">
@@ -126,11 +132,17 @@ export function SessionList<T extends SessionBase>({ sessions, loading, activeSe
             href={href}
             onClick={(e) => { e.preventDefault(); onSelect(s); }}
             className={itemClass}
+            title={rowTitleAttr}
           >
             {content}
           </a>
         ) : (
-          <button key={s.documentId} onClick={() => onSelect(s)} className={itemClass}>
+          <button
+            key={s.documentId}
+            onClick={() => onSelect(s)}
+            className={itemClass}
+            title={rowTitleAttr}
+          >
             {content}
           </button>
         );

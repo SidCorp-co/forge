@@ -101,6 +101,12 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
       }
       return;
     }
+    case 'issue.unblockCascade':
+    case 'dependency.unblocked': {
+      // Subscribers in `features/issue/hooks/use-unblock-cascade.ts` consume
+      // these directly via `wsClient.on`; React Query has nothing to refetch.
+      return;
+    }
     case 'pm.escalation': {
       // Web `usePmEscalations` is derived off `useNotifications`, so the
       // notifications invalidation is the only key that matters here.

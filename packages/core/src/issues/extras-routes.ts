@@ -179,7 +179,12 @@ issueExtrasRoutes.patch(
     // Layer-2 dispatch tick once at the end (parent project + cross-project
     // children via outgoing `kind='blocks'` edges). A single inArray query
     // for the children read keeps the cost flat regardless of N.
-    const terminalTransitions: Array<{ issueId: string; projectId: string }> = [];
+    const terminalTransitions: Array<{
+      issueId: string;
+      projectId: string;
+      issSeq: number;
+      at: Date;
+    }> = [];
 
     for (const row of rows) {
       const access = accessMap.get(row.projectId);
@@ -258,6 +263,8 @@ issueExtrasRoutes.patch(
                 terminalTransitions.push({
                   issueId: row.id,
                   projectId: row.projectId,
+                  issSeq: row.issSeq,
+                  at: updated.updatedAt,
                 });
               }
             }
