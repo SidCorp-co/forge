@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils/cn';
 import { deriveSessionDisplayStatus } from '@/features/agent/api';
 import type { AgentSessionSummary } from '@/features/agent/api';
 import { renderGatedTooltip } from '@/features/agent/gated-tooltip';
+import { useUnblockedIssueIds } from '@/features/issue/hooks/use-unblock-cascade';
 import { relativeTime } from '@/lib/utils/relative-time';
 
 interface AgentSidebarProps {
@@ -43,6 +44,13 @@ export function AgentSidebar({
     const id = setInterval(forceTick, 15_000);
     return () => clearInterval(id);
   }, []);
+
+  const { ids: unblockedIssueIds, blockerSeqFor } = useUnblockedIssueIds();
+  function sessionIssueId(s: AgentSessionSummary): string | null {
+    const meta = (s.metadata ?? {}) as Record<string, unknown>;
+    const id = meta.issueId;
+    return typeof id === 'string' ? id : null;
+  }
 
   return (
     <div
@@ -112,6 +120,18 @@ export function AgentSidebar({
           getHref={(s) => `/projects/${slug}/agent?session=${s.documentId}`}
           theme="dark"
           onSearch={onSearch}
+          rowClassName={(s) => {
+            const issueId = sessionIssueId(s);
+            return issueId && unblockedIssueIds.has(issueId)
+              ? 'animate-amber-pulse'
+              : undefined;
+          }}
+          rowTitle={(s) => {
+            const issueId = sessionIssueId(s);
+            if (!issueId || !unblockedIssueIds.has(issueId)) return undefined;
+            const seq = blockerSeqFor(issueId);
+            return seq != null ? `Unblocked by ISS-${seq}` : 'Unblocked';
+          }}
         />
       </div>
     </div>

@@ -39,17 +39,19 @@ describe('renderGatedTooltip', () => {
   });
 
   describe('waiting_on_dep', () => {
-    it('renders "Waiting on ISS-X to complete" with a single waitingOn entry', () => {
+    it('renders "Waiting on ISS-X to complete" plus auto-dispatch hint with a single waitingOn entry', () => {
       const out = renderGatedTooltip(
         makeSession({
           failureReason: 'waiting_on_dep',
           metadata: { waitingOn: [{ issSeq: 12, issueId: 'uuid-1', status: 'in_progress' }] },
         }),
       );
-      expect(out).toBe('Waiting on ISS-12 to complete');
+      expect(out).toBe(
+        'Waiting on ISS-12 to complete\nWill dispatch automatically within ~1 minute after ISS-12 closes.',
+      );
     });
 
-    it('joins multiple waitingOn entries with comma', () => {
+    it('joins multiple waitingOn entries with comma and names the first blocker in the hint', () => {
       const out = renderGatedTooltip(
         makeSession({
           failureReason: 'waiting_on_dep',
@@ -61,14 +63,18 @@ describe('renderGatedTooltip', () => {
           },
         }),
       );
-      expect(out).toBe('Waiting on ISS-12, ISS-15 to complete');
+      expect(out).toBe(
+        'Waiting on ISS-12, ISS-15 to complete\nWill dispatch automatically within ~1 minute after ISS-12 closes.',
+      );
     });
 
     it('falls back to generic copy when metadata.waitingOn is missing', () => {
       const out = renderGatedTooltip(
         makeSession({ failureReason: 'waiting_on_dep', metadata: {} }),
       );
-      expect(out).toBe('Waiting on dependency issue to complete');
+      expect(out).toBe(
+        'Waiting on dependency issue to complete\nWill dispatch automatically within ~1 minute after the blocker closes.',
+      );
     });
 
     it('falls back when waitingOn is not an array', () => {
@@ -78,7 +84,9 @@ describe('renderGatedTooltip', () => {
           metadata: { waitingOn: 'not-an-array' },
         }),
       );
-      expect(out).toBe('Waiting on dependency issue to complete');
+      expect(out).toBe(
+        'Waiting on dependency issue to complete\nWill dispatch automatically within ~1 minute after the blocker closes.',
+      );
     });
 
     it('skips waitingOn rows that are not objects or lack issSeq', () => {
@@ -97,7 +105,9 @@ describe('renderGatedTooltip', () => {
           },
         }),
       );
-      expect(out).toBe('Waiting on ISS-7, ISS-8 to complete');
+      expect(out).toBe(
+        'Waiting on ISS-7, ISS-8 to complete\nWill dispatch automatically within ~1 minute after ISS-7 closes.',
+      );
     });
 
     it('falls back when all waitingOn rows are filtered out', () => {
@@ -107,7 +117,9 @@ describe('renderGatedTooltip', () => {
           metadata: { waitingOn: [null, { irrelevant: true }, 'string'] },
         }),
       );
-      expect(out).toBe('Waiting on dependency issue to complete');
+      expect(out).toBe(
+        'Waiting on dependency issue to complete\nWill dispatch automatically within ~1 minute after the blocker closes.',
+      );
     });
   });
 

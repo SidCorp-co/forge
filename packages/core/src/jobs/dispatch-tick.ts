@@ -16,9 +16,12 @@
  * so the 60s pg-boss schedule is the recovery mechanism.
  */
 
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { agentSessions } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { projectRoom } from '../ws/rooms.js';
+import { roomManager } from '../ws/server.js';
 import { pickNextDispatchableJobForProject } from './dispatch-gates.js';
 import { handleDispatch } from './dispatcher.js';
 
@@ -39,13 +42,23 @@ const MAX_DISPATCH_PER_TICK = 50;
  *   - If a tick is already pending (queued behind the lock), drop the new request.
  *   - Otherwise chain a new sweep onto the project's tail promise.
  *
+ * `options.triggerBlockerIssueId` propagates from the terminal-transition
+ * cascade so any `dependency.unblocked` event emitted during this sweep
+ * names the blocker that triggered it. All other callers (job complete,
+ * runner online, backstop sweep) pass nothing and the event falls back to
+ * `blockerId: null` (front-end renders a generic `Unblocked` tooltip).
+ *
  * Always resolves; never rejects (errors are logged, not propagated).
  */
-export function dispatchTickForProject(projectId: string): Promise<void> {
+export function dispatchTickForProject(
+  projectId: string,
+  options?: { triggerBlockerIssueId?: string },
+): Promise<void> {
   if (!projectId) return Promise.resolve();
   if (pendingTrigger.has(projectId)) return Promise.resolve();
   pendingTrigger.add(projectId);
 
+  const triggerBlockerIssueId = options?.triggerBlockerIssueId;
   const tail = projectLocks.get(projectId) ?? Promise.resolve();
   const next = tail
     .catch(() => undefined) // isolate from prior tick errors
@@ -55,7 +68,7 @@ export function dispatchTickForProject(projectId: string): Promise<void> {
         await new Promise((r) => setTimeout(r, debounceMs));
       }
       try {
-        await runTickInner(projectId);
+        await runTickInner(projectId, triggerBlockerIssueId);
       } catch (err) {
         logger.error({ err, projectId }, 'dispatch-tick: inner sweep threw');
       }
@@ -68,7 +81,10 @@ export function dispatchTickForProject(projectId: string): Promise<void> {
   return next;
 }
 
-async function runTickInner(projectId: string): Promise<void> {
+async function runTickInner(
+  projectId: string,
+  triggerBlockerIssueId?: string,
+): Promise<void> {
   const seen = new Set<string>();
   for (let i = 0; i < MAX_DISPATCH_PER_TICK; i++) {
     const job = await pickNextDispatchableJobForProject(projectId);
@@ -78,7 +94,58 @@ async function runTickInner(projectId: string): Promise<void> {
     // a hot loop — the next external trigger will pick it up.
     if (seen.has(job.id)) return;
     seen.add(job.id);
+
+    // Snapshot the linked session's prior failure reason BEFORE dispatch so we
+    // can detect a `waiting_on_dep` clear and emit `dependency.unblocked`. We
+    // intentionally read here (and not after dispatch) because handleDispatch
+    // / its downstream code can race-write `failureReason`.
+    let priorFailureReason: string | null = null;
+    if (job.agentSessionId) {
+      try {
+        const [sessionRow] = await db
+          .select({ failureReason: agentSessions.failureReason })
+          .from(agentSessions)
+          .where(eq(agentSessions.id, job.agentSessionId))
+          .limit(1);
+        priorFailureReason = sessionRow?.failureReason ?? null;
+      } catch {
+        // Snapshot is best-effort; missing it just suppresses the WS event.
+      }
+    }
+
     const outcome = await handleDispatch({ jobId: job.id });
+
+    if (
+      outcome === 'dispatched' &&
+      priorFailureReason === 'waiting_on_dep' &&
+      job.issueId
+    ) {
+      // Clear the stale `waiting_on_dep` reason so a backstop sweep that
+      // re-picks this session (rare, but possible if the worker hasn't
+      // claimed it yet) doesn't double-emit the unblock event.
+      if (job.agentSessionId) {
+        try {
+          await db
+            .update(agentSessions)
+            .set({ failureReason: null, updatedAt: new Date() })
+            .where(eq(agentSessions.id, job.agentSessionId));
+        } catch (err) {
+          logger.warn(
+            { err, sessionId: job.agentSessionId },
+            'dispatch-tick: failed to clear waiting_on_dep failure_reason',
+          );
+        }
+      }
+      roomManager.publish(projectRoom(projectId), {
+        event: 'dependency.unblocked',
+        data: {
+          issueId: job.issueId,
+          blockerId: triggerBlockerIssueId ?? null,
+          at: new Date().toISOString(),
+        },
+      });
+    }
+
     if (outcome === 'skipped') {
       // Could be Layer 1/2/3/4 fail OR a no-runner branch. The next iter
       // will pick a different job (priority/queued_at order); seen-guard

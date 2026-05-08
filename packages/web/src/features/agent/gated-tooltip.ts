@@ -29,8 +29,10 @@ export function renderGatedTooltip(s: AgentSessionSummary): string | null {
           return typeof seq === 'number' ? `ISS-${seq}` : null;
         })
         .filter((v): v is string => v !== null);
-      if (labels.length === 0) return 'Waiting on dependency issue to complete';
-      return `Waiting on ${labels.join(', ')} to complete`;
+      if (labels.length === 0) {
+        return 'Waiting on dependency issue to complete\nWill dispatch automatically within ~1 minute after the blocker closes.';
+      }
+      return `Waiting on ${labels.join(', ')} to complete\nWill dispatch automatically within ~1 minute after ${labels[0]} closes.`;
     }
     default:
       return null; // forward-compat: unknown reasons fall back to default
