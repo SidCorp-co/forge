@@ -1290,6 +1290,7 @@ export const agentSessionFailureReasons = [
   // job row is NOT moved to failed, only the surface signal is updated so
   // the UI can explain why the session hasn't started yet.
   'issue_busy',
+  'manual_hold',
   'waiting_on_dep',
   'project_full',
   'runner_full',

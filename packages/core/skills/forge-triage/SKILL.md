@@ -179,3 +179,7 @@ forge_issues → update → { documentId: "<id>", data: { status: "confirmed" } 
 Keep it concise — this comment is read by both humans and downstream pipeline skills.
 
 **Always write triage comments in English**, regardless of what language the issue is written in. Downstream skills and pipeline automation parse these comments — they must be in English for consistency.
+
+## Pitfalls
+
+- **Do not set `manualHold: true` at create time.** The dispatcher's L1 gate skips on `manual_hold`, leaving the plan job queued; the queued-watchdog formerly counted that against the 5-retry recovery budget and tipped the issue into `pipeline_failed` (ISS-66). The fix in core now skips `manual_hold`-gated jobs, but the safer idiom is still to either (a) leave `manualHold` false at creation and toggle it after the issue settles, or (b) use `status: on_hold` for an explicit, deliberate pause.

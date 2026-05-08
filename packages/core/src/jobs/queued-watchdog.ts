@@ -12,7 +12,7 @@
  * different state.
  */
 
-import { and, eq, lt, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
@@ -36,23 +36,33 @@ export interface QueuedSweepResult {
 
 export async function runQueuedSweep(): Promise<QueuedSweepResult> {
   const t0 = Date.now();
-  const cutoffSql = sql.raw(`now() - interval '${QUEUED_GRACE_SECONDS} seconds'`);
+  const errorMessage = `queued > ${QUEUED_GRACE_SECONDS}s without dispatch (queued-watchdog)`;
 
-  const stuck = await db
-    .update(jobs)
-    .set({
-      status: 'failed',
-      finishedAt: new Date(),
-      error: `queued > ${QUEUED_GRACE_SECONDS}s without dispatch (queued-watchdog)`,
-      // Always classify as transient — a queued-but-not-dispatched job is
-      // almost always a queue/dispatcher hiccup, not a deterministic
-      // upstream rejection. The sweeper picks it up and retries.
-      failureKind: 'transient',
-      failureReason: 'queued without dispatch (likely pg-boss desync after core restart)',
-      classifierVersion: 1,
-    })
-    .where(and(eq(jobs.status, 'queued'), lt(jobs.queuedAt, cutoffSql as unknown as Date)))
-    .returning();
+  // Classify as transient — a queued-but-not-dispatched job is almost always
+  // a queue/dispatcher hiccup, not a deterministic upstream rejection.
+  //
+  // ISS-66: skip jobs gated by L1 manual_hold. That reason is sticky — only
+  // human action clears it — so sweeping the row would burn the recovery
+  // budget and eventually push the issue to pipeline_failed. Other gate
+  // reasons (waiting_on_dep, project_full, runner_full) self-clear and stay
+  // safe under the existing sweep.
+  const stuck = (await db.execute<typeof jobs.$inferSelect>(sql`
+    UPDATE jobs
+    SET status = 'failed',
+        finished_at = now(),
+        error = ${errorMessage},
+        failure_kind = 'transient',
+        failure_reason = 'queued without dispatch (likely pg-boss desync after core restart)',
+        classifier_version = 1
+    WHERE status = 'queued'
+      AND queued_at < now() - interval '${sql.raw(String(QUEUED_GRACE_SECONDS))} seconds'
+      AND NOT EXISTS (
+        SELECT 1 FROM agent_sessions s
+        WHERE s.id = jobs.agent_session_id
+          AND s.failure_reason = 'manual_hold'
+      )
+    RETURNING *
+  `)) as unknown as Array<typeof jobs.$inferSelect>;
 
   let retriesScheduled = 0;
   for (const row of stuck) {

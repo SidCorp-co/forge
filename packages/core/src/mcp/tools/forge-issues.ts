@@ -154,7 +154,10 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   description:
     'CRUD for project issues. Actions: list, get, create, update, transition. ' +
     'Project scope is derived from the X-Forge-Project-Slug header (or an ' +
-    'explicit projectId). Status changes route through the issue state machine.',
+    'explicit projectId). Status changes route through the issue state machine. ' +
+    'Avoid setting manualHold:true at create time — combine with confirmed ' +
+    'status transitions and the issue stalls. Toggle manualHold after the ' +
+    'issue settles, or use status:on_hold for a deliberate pause.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
