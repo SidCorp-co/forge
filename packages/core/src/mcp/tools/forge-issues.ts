@@ -98,6 +98,7 @@ type IssueRow = {
   status: IssueStatus;
   priority: string;
   category: string | null;
+  reportedBy: string | null;
   complexity: string | null;
   manualHold: boolean;
   assigneeId: string | null;
@@ -261,6 +262,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             description: created.description,
             priority: created.priority,
             category: created.category,
+            reportedBy: created.reportedBy,
             assigneeId: created.assigneeId,
             labels: [],
           },
