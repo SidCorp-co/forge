@@ -65,6 +65,13 @@ const dataSchema = z
         (v) => v == null || JSON.stringify(v).length <= 200_000,
         { message: 'sessionContext serialised size exceeds 200000 bytes' },
       ),
+    // ISS-59 — AI enrichment fields. Skill pipeline (forge-clarify /
+    // forge-plan) writes these via this tool; REST PATCH does not accept
+    // them (read-only from clients).
+    aiSummary: z.string().max(100_000).nullable().optional(),
+    aiSuggestedSolution: z.string().max(100_000).nullable().optional(),
+    aiAcceptanceCriteria: z.array(z.string().max(2_000)).max(50).nullable().optional(),
+    aiConfidence: z.number().min(0).max(1).nullable().optional(),
   })
   .strict()
   .optional();
@@ -103,6 +110,10 @@ type IssueRow = {
   acceptanceCriteria: string | null;
   suggestedSolution: string | null;
   sessionContext: unknown;
+  aiSummary: string | null;
+  aiSuggestedSolution: string | null;
+  aiAcceptanceCriteria: string[] | null;
+  aiConfidence: number | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -125,6 +136,10 @@ function serialize(row: IssueRow): Record<string, unknown> {
     acceptanceCriteria: row.acceptanceCriteria,
     suggestedSolution: row.suggestedSolution,
     sessionContext: row.sessionContext,
+    aiSummary: row.aiSummary,
+    aiSuggestedSolution: row.aiSuggestedSolution,
+    aiAcceptanceCriteria: row.aiAcceptanceCriteria,
+    aiConfidence: row.aiConfidence,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -228,6 +243,10 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             acceptanceCriteria: input.data.acceptanceCriteria ?? null,
             suggestedSolution: input.data.suggestedSolution ?? null,
             sessionContext: input.data.sessionContext ?? null,
+            aiSummary: input.data.aiSummary ?? null,
+            aiSuggestedSolution: input.data.aiSuggestedSolution ?? null,
+            aiAcceptanceCriteria: input.data.aiAcceptanceCriteria ?? null,
+            aiConfidence: input.data.aiConfidence ?? null,
           })
           .returning();
         if (!inserted) throw new Error('issues: insert returned no row');
@@ -291,6 +310,16 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
         if (input.data.sessionContext !== undefined) {
           updates.sessionContext = input.data.sessionContext;
+        }
+        if (input.data.aiSummary !== undefined) updates.aiSummary = input.data.aiSummary;
+        if (input.data.aiSuggestedSolution !== undefined) {
+          updates.aiSuggestedSolution = input.data.aiSuggestedSolution;
+        }
+        if (input.data.aiAcceptanceCriteria !== undefined) {
+          updates.aiAcceptanceCriteria = input.data.aiAcceptanceCriteria;
+        }
+        if (input.data.aiConfidence !== undefined) {
+          updates.aiConfidence = input.data.aiConfidence;
         }
 
         if (Object.keys(updates).length > 0) {

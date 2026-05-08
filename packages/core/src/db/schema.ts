@@ -585,6 +585,13 @@ export const issues = pgTable(
     acceptanceCriteria: text('acceptance_criteria'),
     suggestedSolution: text('suggested_solution'),
     sessionContext: jsonb('session_context'),
+    // ISS-59 — AI enrichment fields. Populated by the skill pipeline
+    // (forge-clarify / forge-plan) via the MCP forge_issues.update tool.
+    // Read-only from REST clients. Migration 0048.
+    aiSummary: text('ai_summary'),
+    aiSuggestedSolution: text('ai_suggested_solution'),
+    aiAcceptanceCriteria: jsonb('ai_acceptance_criteria').$type<string[]>(),
+    aiConfidence: real('ai_confidence'),
     // Pipeline self-healing (Phase H, ISS-306). The sweeper increments
     // recoveryAttempts every time it re-fires the orchestrator for this
     // issue. lastRecoveryAt anchors the sliding window; once

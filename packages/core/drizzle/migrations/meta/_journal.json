@@ -337,6 +337,13 @@
       "when": 1778600000000,
       "tag": "0047_agent_session_turns",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1778700000000,
+      "tag": "0048_issues_ai_enrichment",
+      "breakpoints": true
     }
   ]
 }

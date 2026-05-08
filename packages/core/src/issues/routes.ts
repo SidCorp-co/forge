@@ -93,6 +93,10 @@ type IssueRow = {
   plan: string | null;
   acceptanceCriteria: string | null;
   suggestedSolution: string | null;
+  aiSummary: string | null;
+  aiSuggestedSolution: string | null;
+  aiAcceptanceCriteria: string[] | null;
+  aiConfidence: number | null;
   assigneeId: string | null;
   createdById: string;
   parentIssueId: string | null;

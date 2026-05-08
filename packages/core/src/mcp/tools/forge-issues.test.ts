@@ -88,6 +88,10 @@ const baseIssueRow = {
   acceptanceCriteria: null,
   suggestedSolution: null,
   sessionContext: null,
+  aiSummary: null,
+  aiSuggestedSolution: null,
+  aiAcceptanceCriteria: null,
+  aiConfidence: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -303,6 +307,100 @@ describe('forge_issues tool', () => {
     })) as { status: string };
 
     expect(result.status).toBe('confirmed');
+  });
+
+  it('create persists AI enrichment fields and serializes them in the response', async () => {
+    const tool = forgeIssuesTool({ device: fakeDevice, projectSlug: PROJECT_SLUG });
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    insertReturning.mockResolvedValueOnce([
+      {
+        ...baseIssueRow,
+        aiSummary: 'one-line summary',
+        aiSuggestedSolution: 'do the thing',
+        aiAcceptanceCriteria: ['ac one', 'ac two'],
+        aiConfidence: 0.75,
+      },
+    ]);
+
+    const result = (await tool.handler({
+      action: 'create',
+      data: {
+        title: 'Enriched',
+        aiSummary: 'one-line summary',
+        aiSuggestedSolution: 'do the thing',
+        aiAcceptanceCriteria: ['ac one', 'ac two'],
+        aiConfidence: 0.75,
+      },
+    })) as {
+      aiSummary: string | null;
+      aiSuggestedSolution: string | null;
+      aiAcceptanceCriteria: string[] | null;
+      aiConfidence: number | null;
+    };
+
+    expect(result.aiSummary).toBe('one-line summary');
+    expect(result.aiSuggestedSolution).toBe('do the thing');
+    expect(result.aiAcceptanceCriteria).toEqual(['ac one', 'ac two']);
+    expect(result.aiConfidence).toBe(0.75);
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        aiSummary: 'one-line summary',
+        aiSuggestedSolution: 'do the thing',
+        aiAcceptanceCriteria: ['ac one', 'ac two'],
+        aiConfidence: 0.75,
+      }),
+    );
+  });
+
+  it('update writes AI enrichment fields onto an existing issue', async () => {
+    const tool = forgeIssuesTool({ device: fakeDevice, projectSlug: PROJECT_SLUG });
+    selectLimit.mockResolvedValueOnce([baseIssueRow]);
+    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([
+      {
+        ...baseIssueRow,
+        aiSummary: 'updated summary',
+        aiAcceptanceCriteria: ['x'],
+        aiConfidence: 0.9,
+      },
+    ]);
+
+    const result = (await tool.handler({
+      action: 'update',
+      documentId: ISSUE_ID,
+      data: {
+        aiSummary: 'updated summary',
+        aiAcceptanceCriteria: ['x'],
+        aiConfidence: 0.9,
+      },
+    })) as {
+      aiSummary: string | null;
+      aiAcceptanceCriteria: string[] | null;
+      aiConfidence: number | null;
+    };
+
+    expect(result.aiSummary).toBe('updated summary');
+    expect(result.aiAcceptanceCriteria).toEqual(['x']);
+    expect(result.aiConfidence).toBe(0.9);
+    expect(txUpdateSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        aiSummary: 'updated summary',
+        aiAcceptanceCriteria: ['x'],
+        aiConfidence: 0.9,
+      }),
+    );
+  });
+
+  it('update rejects aiConfidence outside [0,1]', async () => {
+    const tool = forgeIssuesTool({ device: fakeDevice, projectSlug: PROJECT_SLUG });
+    await expect(
+      tool.handler({
+        action: 'update',
+        documentId: ISSUE_ID,
+        data: { aiConfidence: 1.5 },
+      }),
+    ).rejects.toThrow();
   });
 
   it('transition surfaces STALE_TRANSITION when conditional update returns no row', async () => {

@@ -720,6 +720,10 @@ describe('db/schema — issues', () => {
     expect(names.sort()).toEqual(
       [
         'acceptance_criteria',
+        'ai_acceptance_criteria',
+        'ai_confidence',
+        'ai_suggested_solution',
+        'ai_summary',
         'assignee_id',
         'category',
         'complexity',
