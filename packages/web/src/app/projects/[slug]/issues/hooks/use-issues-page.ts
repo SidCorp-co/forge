@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useIssueSearch, usePatchIssue } from '@/features/issue/hooks/use-issues';
 import type { IssueSort } from '@/features/issue/api/issue-api';
 import { useProjectBySlug } from '@/features/project/hooks/use-projects';
+import { useProjectMembers } from '@/features/project/hooks/use-project-members';
 import type { Issue, IssuePatchInput } from '@forge/contracts';
 import { PAGE_SIZE, type SortOption, type ViewMode } from '../constants';
 
@@ -18,7 +19,7 @@ const SORT_TO_API: Record<SortOption, IssueSort> = {
   priority: 'priority:asc',
 };
 
-const PERSISTED_KEYS = ['status', 'priority', 'sort', 'q', 'view'] as const;
+const PERSISTED_KEYS = ['status', 'priority', 'sort', 'q', 'view', 'assignee'] as const;
 
 function storageKey(slug: string | undefined): string | null {
   return slug ? `issues-filters:${slug}` : null;
@@ -42,24 +43,36 @@ export function useIssuesPage() {
   const priorityFilter = priorityParam === 'all' ? [] : [priorityParam];
   const sortBy = (searchParams.get('sort') ?? 'newest') as SortOption;
   const categoryFilter = searchParams.get('category') ?? 'all';
+  const assigneeFilter = searchParams.get('assignee') ?? 'all';
   const searchQuery = searchParams.get('q') ?? '';
   const currentPage = Number(searchParams.get('page') ?? '1');
 
+  const { data: members = [] } = useProjectMembers(projectId);
+
   // Use `search` endpoint since it accepts multi-value status/priority and
   // supports `q` (ILIKE on title + description).
+  const isUuidAssignee =
+    assigneeFilter !== 'all' && assigneeFilter !== 'unassigned';
   const { data: paginatedData, isLoading } = useIssueSearch({
     projectId: projectId ?? '',
     ...(searchQuery ? { q: searchQuery } : {}),
     ...(statusFilter.length > 0 ? { status: statusFilter } : {}),
     ...(priorityFilter.length > 0 ? { priority: priorityFilter } : {}),
     ...(categoryFilter !== 'all' ? { category: categoryFilter } : {}),
+    ...(isUuidAssignee ? { assignee: assigneeFilter } : {}),
     sort: SORT_TO_API[sortBy],
     limit: PAGE_SIZE,
     offset: (currentPage - 1) * PAGE_SIZE,
   });
 
-  const issues: Issue[] = paginatedData?.items ?? [];
-  const total = paginatedData?.totalCount ?? 0;
+  const rawIssues: Issue[] = paginatedData?.items ?? [];
+  // Search endpoint accepts only a uuid for the assignee filter, so the
+  // 'unassigned' option is best-effort client-side over the current page.
+  const isUnassigned = assigneeFilter === 'unassigned';
+  const issues: Issue[] = isUnassigned
+    ? rawIssues.filter((i) => i.assigneeId == null)
+    : rawIssues;
+  const total = isUnassigned ? issues.length : (paginatedData?.totalCount ?? 0);
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const safePage = Math.min(currentPage, pageCount);
 
@@ -82,6 +95,7 @@ export function useIssuesPage() {
     statusFilter.length > 0,
     priorityFilter.length > 0,
     categoryFilter !== 'all',
+    assigneeFilter !== 'all',
   ].filter(Boolean).length;
 
   const setParam = useCallback(
@@ -193,6 +207,8 @@ export function useIssuesPage() {
     statusFilter,
     priorityFilter: (priorityFilter[0] ?? 'all') as string,
     categoryFilter,
+    assigneeFilter,
+    members,
     sortBy,
     searchQuery,
     categories,

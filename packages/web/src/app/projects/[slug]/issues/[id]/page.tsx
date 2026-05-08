@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Lock, LockOpen } from 'lucide-react';
 import { Markdown } from '@/components/ui/markdown';
-import { Button, Skeleton } from '@/components/ui';
+import { Button, Skeleton, ToastContainer } from '@/components/ui';
 import {
   issueKeys,
   useIssue,
@@ -16,10 +16,13 @@ import {
   useSetManualHold,
 } from '@/features/issue/hooks/use-issues';
 import { useProjectBySlug, useProjects } from '@/features/project/hooks/use-projects';
+import { useProjectMembers } from '@/features/project/hooks/use-project-members';
 import { useActivities, useEvaluateActivity } from '@/features/activity/hooks/use-activities';
 import type { Activity } from '@/features/activity/types';
 import { apiClient } from '@/lib/api/client';
 import { formatApiError } from '@/lib/api/error';
+import { useToast } from '@/hooks/use-toast';
+import { AssigneePicker } from '@/components/issue/assignee-picker';
 import { InlineStatusSelect } from '@/components/issue/inline-status-select';
 import { InlinePrioritySelect } from '@/components/issue/inline-priority-select';
 import { InlineComplexitySelect } from '@/components/issue/inline-complexity-select';
@@ -90,6 +93,8 @@ export default function IssueDetailPage() {
   const transitionIssue = useTransitionIssue();
   const patchIssue = usePatchIssue();
   const setManualHold = useSetManualHold();
+  const { toasts, addToast } = useToast();
+  const { data: members = [] } = useProjectMembers(projectId);
 
   const handleStatusUpdate = useCallback(
     (issueIdValue: string, data: { status: IssueStatus }) => {
@@ -101,9 +106,18 @@ export default function IssueDetailPage() {
 
   const handlePatch = useCallback(
     (issueIdValue: string, patch: IssuePatchInput) => {
-      patchIssue.mutate({ id: issueIdValue, patch });
+      patchIssue.mutate(
+        { id: issueIdValue, patch },
+        {
+          onSuccess: () => {
+            if (Object.prototype.hasOwnProperty.call(patch, 'assigneeId')) {
+              addToast('Assignee updated');
+            }
+          },
+        },
+      );
     },
-    [patchIssue],
+    [patchIssue, addToast],
   );
 
   const setSessionId = useCallback(
@@ -166,6 +180,16 @@ export default function IssueDetailPage() {
                   <InlineStatusSelect issue={issue} onUpdate={handleStatusUpdate} />
                   <InlinePrioritySelect issue={issue} onUpdate={handlePatch} />
                   <InlineComplexitySelect issue={issue} onUpdate={handlePatch} />
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                      Assignee
+                    </span>
+                    <AssigneePicker
+                      value={issue.assigneeId ?? null}
+                      members={members}
+                      onChange={(assigneeId) => handlePatch(issueId, { assigneeId })}
+                    />
+                  </span>
                   {issue.category && (
                     <span className="inline-flex items-center rounded-sm border border-outline-variant/30 bg-surface-container-high px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest">
                       {issue.category}
@@ -243,6 +267,7 @@ export default function IssueDetailPage() {
           />
         )}
       </div>
+      <ToastContainer toasts={toasts} />
     </div>
   );
 }

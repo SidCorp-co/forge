@@ -2,8 +2,11 @@
 
 import Link from 'next/link';
 import { ExternalLink } from 'lucide-react';
-import { Modal, Markdown, Skeleton, Button } from '@/components/ui';
-import { useIssue } from '@/features/issue/hooks/use-issues';
+import { Modal, Markdown, Skeleton, Button, ToastContainer } from '@/components/ui';
+import { useIssue, usePatchIssue } from '@/features/issue/hooks/use-issues';
+import { useProjectMembers } from '@/features/project/hooks/use-project-members';
+import { AssigneePicker } from '@/components/issue/assignee-picker';
+import { useToast } from '@/hooks/use-toast';
 import { formatApiError } from '@/lib/api/error';
 
 interface IssueDetailModalProps {
@@ -21,6 +24,9 @@ interface IssueDetailModalProps {
  */
 export function IssueDetailModal({ open, issueId, projectSlug, onClose }: IssueDetailModalProps) {
   const { data: issue, isLoading, error } = useIssue(open && issueId ? issueId : undefined);
+  const { data: members = [] } = useProjectMembers(issue?.projectId);
+  const patchIssue = usePatchIssue();
+  const { toasts, addToast } = useToast();
 
   return (
     <Modal open={open} onClose={onClose}>
@@ -57,10 +63,23 @@ export function IssueDetailModal({ open, issueId, projectSlug, onClose }: IssueD
               <Cell label="Priority" value={issue.priority} />
               <Cell label="Category" value={issue.category ?? '—'} />
               <Cell label="Complexity" value={issue.complexity ?? '—'} />
-              <Cell
-                label="Assignee"
-                value={issue.assigneeId ? issue.assigneeId.slice(0, 8) : '—'}
-              />
+              <div>
+                <dt className="text-[9px] font-bold uppercase tracking-widest text-outline">
+                  Assignee
+                </dt>
+                <dd className="mt-0.5">
+                  <AssigneePicker
+                    value={issue.assigneeId ?? null}
+                    members={members}
+                    onChange={(assigneeId) =>
+                      patchIssue.mutate(
+                        { id: issue.id, patch: { assigneeId } },
+                        { onSuccess: () => addToast('Assignee updated') },
+                      )
+                    }
+                  />
+                </dd>
+              </div>
             </dl>
 
             <section className="mb-4 max-h-[55vh] overflow-y-auto rounded-sm border border-outline-variant/20 bg-surface-container-low p-4 text-sm">
@@ -87,6 +106,7 @@ export function IssueDetailModal({ open, issueId, projectSlug, onClose }: IssueD
           </>
         )}
       </div>
+      <ToastContainer toasts={toasts} />
     </Modal>
   );
 }

@@ -1,6 +1,7 @@
 export { AgentRunningDot } from './agent-running-dot';
 export { AgentStatusIndicator } from './agent-status-indicator';
 export { AlertBanner } from './alert-banner';
+export { Avatar } from './avatar';
 export { Button } from './button';
 export { Checkbox } from './checkbox';
 export { EmptyState } from './empty-state';

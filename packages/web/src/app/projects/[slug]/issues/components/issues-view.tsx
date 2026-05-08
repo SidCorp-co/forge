@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Eye } from 'lucide-react';
-import { Button, Input, Select, Skeleton } from '@/components/ui';
+import { Button, Input, Select, Skeleton, ToastContainer } from '@/components/ui';
 import { ALL_PRIORITIES, COMPLEXITY_COLORS } from '@/lib/constants';
 import type { Issue } from '@forge/contracts';
 import type { IssueComplexity } from '@/features/issue/types';
@@ -11,6 +11,9 @@ import { useIssuesPage } from '../hooks';
 import { StatusMultiSelect } from './status-multi-select';
 import type { IssueStatus } from '@/features/issue/types';
 import { IssueDetailModal } from '@/components/issue/issue-detail-modal/issue-detail-modal';
+import { AssigneePicker } from '@/components/issue/assignee-picker';
+import { usePatchIssue } from '@/features/issue/hooks/use-issues';
+import { useToast } from '@/hooks/use-toast';
 
 /**
  * Phase 3.1 (ISS-248): adds a search box + status/priority filter
@@ -28,10 +31,21 @@ export function IssuesView() {
     statusFilter,
     priorityFilter,
     categoryFilter,
+    assigneeFilter,
+    members,
     sortBy,
     searchQuery,
     setParam,
   } = useIssuesPage();
+  const { toasts, addToast } = useToast();
+  const patchIssue = usePatchIssue();
+
+  function handleAssigneeChange(issueId: string, assigneeId: string | null) {
+    patchIssue.mutate(
+      { id: issueId, patch: { assigneeId } },
+      { onSuccess: () => addToast('Assignee updated') },
+    );
+  }
 
   const visibleCategories = useMemo(
     () => [...new Set(issues.map((i) => i.category).filter((c): c is string => !!c))].sort(),
@@ -87,6 +101,17 @@ export function IssuesView() {
             ))}
           </Select>
         )}
+        <Select
+          value={assigneeFilter}
+          onChange={(e) => setParam('assignee', e.currentTarget.value)}
+          aria-label="Filter by assignee"
+        >
+          <option value="all">All assignees</option>
+          <option value="unassigned">Unassigned</option>
+          {members.map((m) => (
+            <option key={m.userId} value={m.userId}>{m.email}</option>
+          ))}
+        </Select>
         <Select
           value={sortBy}
           onChange={(e) => setParam('sort', e.currentTarget.value)}
@@ -172,6 +197,14 @@ export function IssuesView() {
                   {issue.priority}
                 </span>
               </Link>
+              <span className="ml-2 shrink-0">
+                <AssigneePicker
+                  compact
+                  value={issue.assigneeId ?? null}
+                  members={members}
+                  onChange={(id) => handleAssigneeChange(issue.id, id)}
+                />
+              </span>
             </li>
           ))}
         </ul>
@@ -182,6 +215,7 @@ export function IssuesView() {
         projectSlug={slug}
         onClose={() => setPreviewIssueId(null)}
       />
+      <ToastContainer toasts={toasts} />
     </div>
   );
 }

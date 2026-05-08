@@ -2,9 +2,11 @@
 
 import type { Issue, IssuePatchInput } from '@forge/contracts';
 import { Loader2, Play } from 'lucide-react';
+import { AssigneePicker } from '@/components/issue/assignee-picker';
 import { InlineComplexitySelect } from '@/components/issue/inline-complexity-select';
 import { InlinePrioritySelect } from '@/components/issue/inline-priority-select';
 import { InlineStatusSelect } from '@/components/issue/inline-status-select';
+import { useProjectMembers } from '@/features/project/hooks/use-project-members';
 import type { IssueStatus } from '@/features/issue/types';
 
 interface IssueMetadataProps {
@@ -43,6 +45,7 @@ export function IssueMetadata({
   onUpdate,
   onStartSession,
 }: IssueMetadataProps) {
+  const { data: members = [] } = useProjectMembers(issue.projectId);
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-4 px-4 py-4 sm:px-8 border-b border-outline-variant/30 bg-background">
       <div className="flex items-center gap-2">
@@ -56,6 +59,14 @@ export function IssueMetadata({
       <div className="flex items-center gap-2">
         <span className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant">Priority</span>
         <InlinePrioritySelect issue={issue} onUpdate={(id, data) => onUpdate(id, data)} />
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant">Assignee</span>
+        <AssigneePicker
+          value={issue.assigneeId ?? null}
+          members={members}
+          onChange={(assigneeId) => onUpdate(issue.id, { assigneeId })}
+        />
       </div>
       {issue.category && (
         <span className="rounded-sm border border-outline-variant/30 bg-surface-container-low px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-tertiary">
