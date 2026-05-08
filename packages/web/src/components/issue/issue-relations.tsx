@@ -51,7 +51,7 @@ export function IssueRelations({ issueId, projectId, projectSlug }: IssueRelatio
   }
 
   return (
-    <section className="rounded-sm border border-outline-variant/20 bg-surface">
+    <section id="issue-relations" className="rounded-sm border border-outline-variant/20 bg-surface">
       <div className="flex items-center justify-between border-b border-outline-variant/20 bg-surface-container-low px-4 py-2">
         <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">
           Relations
