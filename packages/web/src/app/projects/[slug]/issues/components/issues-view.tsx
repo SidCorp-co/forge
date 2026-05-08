@@ -74,6 +74,7 @@ export function IssuesView() {
   const [localSearch, setLocalSearch] = useState(searchQuery);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lastCheckedRef = useRef<string | null>(null);
+  const shiftKeyRef = useRef(false);
   const masterRef = useRef<HTMLInputElement>(null);
   useEffect(() => { setLocalSearch(searchQuery); }, [searchQuery]);
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
@@ -105,18 +106,10 @@ export function IssuesView() {
     }
   }
 
-  function handleRowCheckClick(
-    e: React.MouseEvent<HTMLInputElement>,
-    issueId: string,
-  ) {
-    // Owning the click prevents the native toggle (which fires before React
-    // re-renders and visually flickers ahead of `checked`) and stops the row's
-    // <Link> navigation from firing on shift-range select.
-    e.preventDefault();
-    e.stopPropagation();
-    // Shift-click range select: toggle every id between the last clicked and
-    // the current one (inclusive) in the order they appear in the list.
-    if (e.shiftKey && lastCheckedRef.current && lastCheckedRef.current !== issueId) {
+  function handleRowToggle(issueId: string) {
+    const isShift = shiftKeyRef.current;
+    shiftKeyRef.current = false;
+    if (isShift && lastCheckedRef.current && lastCheckedRef.current !== issueId) {
       const lastId = lastCheckedRef.current;
       const ids = issues.map((i) => i.id);
       const lastIdx = ids.indexOf(lastId);
@@ -124,8 +117,6 @@ export function IssuesView() {
       if (lastIdx !== -1 && curIdx !== -1) {
         const [start, end] = lastIdx < curIdx ? [lastIdx, curIdx] : [curIdx, lastIdx];
         const next = new Set(checked);
-        // Choose the action based on the clicked row's current state — if it's
-        // unchecked, the range gets checked; if checked, the range gets cleared.
         const willCheck = !checked.has(issueId);
         for (let i = start; i <= end; i++) {
           const id = ids[i];
@@ -297,8 +288,9 @@ export function IssuesView() {
               <input
                 type="checkbox"
                 checked={checked.has(issue.id)}
-                onClick={(e) => handleRowCheckClick(e, issue.id)}
-                onChange={() => { /* click handler owns selection */ }}
+                onMouseDown={(e) => { shiftKeyRef.current = e.shiftKey; }}
+                onChange={() => handleRowToggle(issue.id)}
+                onClick={(e) => e.stopPropagation()}
                 aria-label={`Select ${issue.displayId}`}
                 className="ml-3 h-3.5 w-3.5 shrink-0 cursor-pointer accent-primary"
               />
