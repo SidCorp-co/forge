@@ -43,6 +43,22 @@ vi.mock('../jobs/enqueue.js', () => ({
   enqueueJob: (...args: unknown[]) => enqueueJobMock(...args),
 }));
 
+// Stub the WS server — extras-routes.ts imports helpers from
+// './transition.js' (publishIssueStatusChange / triggerTerminalDispatch)
+// which in turn touches `roomManager`. The real module pulls in pg-boss via
+// heartbeat-ws → dispatch-tick → dispatcher, which fails to load without
+// DATABASE_URL in the test env.
+vi.mock('../ws/server.js', () => ({
+  roomManager: { publish: vi.fn(), subscribe: vi.fn(), unsubscribe: vi.fn() },
+}));
+
+// transition.ts imports `dispatchTickForProject` directly, which transitively
+// loads `queue/boss.ts` (pg-boss init). Mock the leaf so the module graph
+// initialises without a DATABASE_URL.
+vi.mock('../jobs/dispatch-tick.js', () => ({
+  dispatchTickForProject: vi.fn(),
+}));
+
 const { issueExtrasRoutes } = await import('./extras-routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');

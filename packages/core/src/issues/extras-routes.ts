@@ -1,10 +1,18 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, asc, eq, gte, lte } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { activityLog, issues, jobs, usageRecords } from '../db/schema.js';
+import {
+  activityLog,
+  type IssueStatus,
+  issuePriorities,
+  issueStatuses,
+  issues,
+  jobs,
+  usageRecords,
+} from '../db/schema.js';
 import { sql } from 'drizzle-orm';
 import { enqueueJob } from '../jobs/enqueue.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
@@ -14,6 +22,16 @@ import { logger } from '../logger.js';
 import { recordActivityTx } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { ActiveJobConflictError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
+import {
+  REOPEN_CAP,
+  canTransition,
+  isReopenEntry,
+} from '../pipeline/state-machine.js';
+import {
+  TERMINAL_FOR_DISPATCH,
+  publishIssueStatusChange,
+  triggerTerminalDispatch,
+} from './transition.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -32,6 +50,25 @@ const runPipelineStepBodySchema = z
   .strict();
 
 const manualHoldBodySchema = z.object({ value: z.boolean() }).strict();
+
+// `complexity` is intentionally omitted: BulkActionBar does not expose a
+// complexity selector, so accepting it server-side would create a client/
+// server surface mismatch. If a future bulk-complexity affordance lands,
+// add `complexity` here AND in `BatchPatchData` on the web side.
+const batchPatchBodySchema = z
+  .object({
+    ids: z.array(z.uuid()).min(1).max(100),
+    data: z
+      .object({
+        status: z.enum(issueStatuses).optional(),
+        priority: z.enum(issuePriorities).optional(),
+        category: z.string().trim().min(1).max(100).nullable().optional(),
+        manualHold: z.boolean().optional(),
+      })
+      .strict()
+      .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' }),
+  })
+  .strict();
 
 const pipelineTimingQuerySchema = z
   .object({
@@ -53,6 +90,276 @@ const forbidden = (message: string) =>
 
 export const issueExtrasRoutes = new Hono<{ Variables: AuthVars }>();
 issueExtrasRoutes.use('*', requireAuth(), assertEmailVerified());
+
+type BatchSkipReason =
+  | 'forbidden'
+  | 'not_found'
+  | 'illegal_transition'
+  | 'no_op'
+  | 'reopen_cap_exceeded'
+  | 'stale';
+
+type BatchResult = {
+  updated: Array<{
+    id: string;
+    displayId: string;
+    skipReason?: BatchSkipReason;
+  }>;
+  skipped: Array<{ id: string; reason: BatchSkipReason }>;
+  failed: Array<{ id: string; error: string }>;
+};
+
+// PATCH /api/issues/batch — partial-success batch update across N issues.
+// Each field uses the per-issue mutation path (transition / manual-hold /
+// plain patch) so activity + WS semantics match the single-issue routes.
+// Inaccessible or invalid rows land in `skipped`; one failure does not abort
+// the rest. Registered before `/:id` so `/batch` matches ahead of the UUID.
+issueExtrasRoutes.patch(
+  '/batch',
+  zValidator('json', batchPatchBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { ids, data } = c.req.valid('json');
+    const userId = c.get('userId');
+    const actor = { type: 'user' as const, id: userId };
+
+    const result: BatchResult = { updated: [], skipped: [], failed: [] };
+
+    const rows = await db
+      .select({
+        id: issues.id,
+        issSeq: issues.issSeq,
+        projectId: issues.projectId,
+        status: issues.status,
+        priority: issues.priority,
+        category: issues.category,
+        complexity: issues.complexity,
+        manualHold: issues.manualHold,
+        reopenCount: issues.reopenCount,
+      })
+      .from(issues)
+      .where(inArray(issues.id, ids));
+
+    const foundIds = new Set(rows.map((r) => r.id));
+    for (const id of ids) {
+      if (!foundIds.has(id)) result.skipped.push({ id, reason: 'not_found' });
+    }
+
+    // Pre-load project access for every distinct project in parallel. The
+    // per-row loop below reads from the resolved map without re-awaiting,
+    // so 100 issues across K projects cost K lookups concurrently rather
+    // than K sequential round-trips. A 404 from `loadProjectAccess` (project
+    // deleted between the issue read and the access read) is mapped to a
+    // `not_found` skip instead of bubbling up to `failed`.
+    const distinctProjects = [...new Set(rows.map((r) => r.projectId))];
+    type ProjectAccessState = { allowed: boolean; missing?: boolean };
+    const accessMap = new Map<string, ProjectAccessState>();
+    const accessResolutions = await Promise.all(
+      distinctProjects.map(async (projectId): Promise<[string, ProjectAccessState]> => {
+        try {
+          const access = await loadProjectAccess(projectId, userId);
+          return [
+            projectId,
+            { allowed: !!(access.role || access.ownerId === userId) },
+          ];
+        } catch (err) {
+          if (err instanceof HTTPException && err.status === 404) {
+            return [projectId, { allowed: false, missing: true }];
+          }
+          throw err;
+        }
+      }),
+    );
+    for (const [projectId, state] of accessResolutions) {
+      accessMap.set(projectId, state);
+    }
+
+    // Track terminal transitions across the batch so we can fan out the
+    // Layer-2 dispatch tick once at the end (parent project + cross-project
+    // children via outgoing `kind='blocks'` edges). A single inArray query
+    // for the children read keeps the cost flat regardless of N.
+    const terminalTransitions: Array<{ issueId: string; projectId: string }> = [];
+
+    for (const row of rows) {
+      const access = accessMap.get(row.projectId);
+      if (access?.missing) {
+        result.skipped.push({ id: row.id, reason: 'not_found' });
+        continue;
+      }
+      if (!access?.allowed) {
+        result.skipped.push({ id: row.id, reason: 'forbidden' });
+        continue;
+      }
+
+      let touched = false;
+      let skipReason: BatchSkipReason | null = null;
+
+      try {
+        if (data.status !== undefined) {
+          const fromStatus = row.status as IssueStatus;
+          const toStatus = data.status;
+          if (toStatus === fromStatus) {
+            // Single-issue `/transition` 409s on NO_OP. The batch surfaces
+            // it via skipReason instead so callers can see that the status
+            // request was a no-op even when other fields succeeded.
+            skipReason = 'no_op';
+          } else if (!canTransition(fromStatus, toStatus)) {
+            skipReason = 'illegal_transition';
+          } else if (
+            isReopenEntry(fromStatus, toStatus) &&
+            row.reopenCount >= REOPEN_CAP
+          ) {
+            // No `override` in batch — bulk bar has no UI for owner-bypass.
+            skipReason = 'reopen_cap_exceeded';
+          } else {
+            const reopening = isReopenEntry(fromStatus, toStatus);
+            const [updated] = await db
+              .update(issues)
+              .set({
+                status: toStatus,
+                reopenCount: reopening
+                  ? sql`${issues.reopenCount} + 1`
+                  : issues.reopenCount,
+                updatedAt: sql`now()`,
+              })
+              .where(and(eq(issues.id, row.id), eq(issues.status, fromStatus)))
+              .returning({
+                id: issues.id,
+                status: issues.status,
+                reopenCount: issues.reopenCount,
+                updatedAt: issues.updatedAt,
+              });
+
+            if (!updated) {
+              skipReason = 'stale';
+            } else {
+              touched = true;
+              row.status = toStatus;
+              row.reopenCount = updated.reopenCount;
+              await hooks.emit('transition', {
+                issueId: row.id,
+                projectId: row.projectId,
+                actor,
+                from: fromStatus,
+                to: toStatus,
+                reopenCount: updated.reopenCount,
+              });
+              publishIssueStatusChange(row.projectId, {
+                issueId: row.id,
+                from: fromStatus,
+                to: toStatus,
+                reopenCount: updated.reopenCount,
+                actorId: userId,
+                reason: null,
+                at: updated.updatedAt,
+              });
+              if (TERMINAL_FOR_DISPATCH.has(toStatus)) {
+                terminalTransitions.push({
+                  issueId: row.id,
+                  projectId: row.projectId,
+                });
+              }
+            }
+          }
+        }
+
+        if (
+          data.manualHold !== undefined &&
+          row.manualHold !== data.manualHold
+        ) {
+          const before = row.manualHold;
+          const value = data.manualHold;
+          await db.transaction(async (tx) => {
+            await tx
+              .update(issues)
+              .set({ manualHold: value, updatedAt: sql`now()` })
+              .where(eq(issues.id, row.id));
+            await recordActivityTx(tx, {
+              issueId: row.id,
+              actor,
+              action: value
+                ? 'issue.manualHold.set'
+                : 'issue.manualHold.cleared',
+              payload: { manualHold: value },
+            });
+          });
+          row.manualHold = value;
+          touched = true;
+          await hooks.emit('issueUpdated', {
+            issueId: row.id,
+            projectId: row.projectId,
+            actor,
+            fields: ['manualHold'],
+            before: { manualHold: before },
+            after: { manualHold: value },
+          });
+        }
+
+        const plainUpdates: Record<string, unknown> = {};
+        const before: Record<string, unknown> = {};
+        const after: Record<string, unknown> = {};
+        const changedFields: string[] = [];
+        const plainFields = [
+          { key: 'priority' as const, next: data.priority, current: row.priority },
+          { key: 'category' as const, next: data.category, current: row.category },
+        ];
+        for (const f of plainFields) {
+          if (f.next !== undefined && f.next !== f.current) {
+            plainUpdates[f.key] = f.next;
+            before[f.key] = f.current;
+            after[f.key] = f.next;
+            changedFields.push(f.key);
+          }
+        }
+        if (changedFields.length > 0) {
+          await db
+            .update(issues)
+            .set({ ...plainUpdates, updatedAt: sql`now()` })
+            .where(eq(issues.id, row.id));
+          touched = true;
+          await hooks.emit('issueUpdated', {
+            issueId: row.id,
+            projectId: row.projectId,
+            actor,
+            fields: changedFields,
+            before,
+            after,
+          });
+        }
+      } catch (err) {
+        result.failed.push({
+          id: row.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        continue;
+      }
+
+      if (touched) {
+        const entry: { id: string; displayId: string; skipReason?: BatchSkipReason } = {
+          id: row.id,
+          displayId: `ISS-${row.issSeq}`,
+        };
+        // A status request that was rejected for this issue (no_op, illegal,
+        // reopen-cap, stale) must not be silently swallowed when other fields
+        // (priority/category/manualHold) succeeded. Surface it on the updated
+        // entry so the caller can show a partial-success diagnostic.
+        if (skipReason) entry.skipReason = skipReason;
+        result.updated.push(entry);
+      } else if (skipReason) {
+        result.skipped.push({ id: row.id, reason: skipReason });
+      } else {
+        result.skipped.push({ id: row.id, reason: 'no_op' });
+      }
+    }
+
+    if (terminalTransitions.length > 0) {
+      await triggerTerminalDispatch(terminalTransitions);
+    }
+
+    return c.json(result);
+  },
+);
 
 // POST /api/issues/:id/enrich
 // Enqueues a custom job to re-run AI enrichment for the issue. The desktop

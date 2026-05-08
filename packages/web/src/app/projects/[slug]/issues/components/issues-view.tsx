@@ -12,8 +12,18 @@ import { StatusMultiSelect } from './status-multi-select';
 import type { IssueStatus } from '@/features/issue/types';
 import { IssueDetailModal } from '@/components/issue/issue-detail-modal/issue-detail-modal';
 import { AssigneePicker } from '@/components/issue/assignee-picker';
+import { BulkActionBar } from '@/components/issue/bulk-action-bar';
 import { usePatchIssue } from '@/features/issue/hooks/use-issues';
 import { useToast } from '@/hooks/use-toast';
+
+const REASON_LABELS: Record<string, string> = {
+  illegal_transition: 'illegal transition',
+  reopen_cap_exceeded: 'hit reopen limit',
+  forbidden: 'no access',
+  not_found: 'not found',
+  stale: 'stale',
+  no_op: 'no change',
+};
 
 /**
  * Phase 3.1 (ISS-248): adds a search box + status/priority filter
@@ -36,6 +46,10 @@ export function IssuesView() {
     sortBy,
     searchQuery,
     setParam,
+    checked,
+    setChecked,
+    toggleCheck,
+    handleBulkUpdate,
   } = useIssuesPage();
   const { toasts, addToast } = useToast();
   const patchIssue = usePatchIssue();
@@ -55,6 +69,8 @@ export function IssuesView() {
   const [previewIssueId, setPreviewIssueId] = useState<string | null>(null);
   const [localSearch, setLocalSearch] = useState(searchQuery);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const lastCheckedRef = useRef<string | null>(null);
+  const masterRef = useRef<HTMLInputElement>(null);
   useEffect(() => { setLocalSearch(searchQuery); }, [searchQuery]);
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
@@ -62,6 +78,105 @@ export function IssuesView() {
     setLocalSearch(value);
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => setParam('q', value), 300);
+  }
+
+  const visibleCheckedCount = useMemo(
+    () => issues.reduce((n, i) => (checked.has(i.id) ? n + 1 : n), 0),
+    [issues, checked],
+  );
+  const allVisibleChecked =
+    issues.length > 0 && visibleCheckedCount === issues.length;
+  useEffect(() => {
+    if (masterRef.current) {
+      masterRef.current.indeterminate =
+        visibleCheckedCount > 0 && visibleCheckedCount < issues.length;
+    }
+  }, [visibleCheckedCount, issues.length]);
+
+  function handleMasterToggle() {
+    if (allVisibleChecked) {
+      setChecked(new Set());
+    } else {
+      setChecked(new Set(issues.map((i) => i.id)));
+    }
+  }
+
+  function handleRowCheckClick(
+    e: React.MouseEvent<HTMLInputElement>,
+    issueId: string,
+  ) {
+    // Owning the click prevents the native toggle (which fires before React
+    // re-renders and visually flickers ahead of `checked`) and stops the row's
+    // <Link> navigation from firing on shift-range select.
+    e.preventDefault();
+    e.stopPropagation();
+    // Shift-click range select: toggle every id between the last clicked and
+    // the current one (inclusive) in the order they appear in the list.
+    if (e.shiftKey && lastCheckedRef.current && lastCheckedRef.current !== issueId) {
+      const lastId = lastCheckedRef.current;
+      const ids = issues.map((i) => i.id);
+      const lastIdx = ids.indexOf(lastId);
+      const curIdx = ids.indexOf(issueId);
+      if (lastIdx !== -1 && curIdx !== -1) {
+        const [start, end] = lastIdx < curIdx ? [lastIdx, curIdx] : [curIdx, lastIdx];
+        const next = new Set(checked);
+        // Choose the action based on the clicked row's current state — if it's
+        // unchecked, the range gets checked; if checked, the range gets cleared.
+        const willCheck = !checked.has(issueId);
+        for (let i = start; i <= end; i++) {
+          const id = ids[i];
+          if (!id) continue;
+          if (willCheck) next.add(id);
+          else next.delete(id);
+        }
+        setChecked(next);
+        lastCheckedRef.current = issueId;
+        return;
+      }
+    }
+    toggleCheck(issueId);
+    lastCheckedRef.current = issueId;
+  }
+
+  async function handleBulkApply(data: {
+    status?: string;
+    priority?: string;
+    category?: string | null;
+    manualHold?: boolean;
+  }) {
+    const result = await handleBulkUpdate(data as Partial<Issue>);
+    if (!result) return;
+    if ('error' in result) {
+      addToast(`Bulk update failed: ${result.error}`);
+      return;
+    }
+    const upd = result.updated.length;
+    const partial = result.updated.filter((u) => u.skipReason).length;
+    const skipped = result.skipped.length;
+    const failed = result.failed.length;
+    if (upd === 0 && skipped === 0 && failed === 0) return;
+    const reasonCounts = new Map<string, number>();
+    for (const s of result.skipped) {
+      reasonCounts.set(s.reason, (reasonCounts.get(s.reason) ?? 0) + 1);
+    }
+    for (const u of result.updated) {
+      if (u.skipReason) {
+        reasonCounts.set(u.skipReason, (reasonCounts.get(u.skipReason) ?? 0) + 1);
+      }
+    }
+    const reasonSummary = [...reasonCounts.entries()]
+      .map(([r, n]) => `${n} ${REASON_LABELS[r] ?? r.replace(/_/g, ' ')}`)
+      .join(', ');
+    if (upd === 0) {
+      addToast(reasonSummary
+        ? `No changes applied (${reasonSummary})`
+        : `No changes applied (${skipped + failed} skipped)`);
+    } else if (skipped + failed + partial > 0) {
+      const detail = reasonSummary || `${skipped + failed + partial} skipped`;
+      addToast(`${upd} updated — ${detail}`);
+    } else {
+      addToast(`${upd} issue${upd === 1 ? '' : 's'} updated`);
+    }
   }
 
   return (
@@ -144,9 +259,33 @@ export function IssuesView() {
           <p className="text-sm text-outline">No issues yet.</p>
         </div>
       ) : (
-        <ul className="divide-y divide-outline-variant/20 overflow-hidden rounded-sm border border-outline-variant/20 bg-surface">
+        <div className="overflow-hidden rounded-sm border border-outline-variant/20 bg-surface">
+          <div className="flex items-center gap-2 border-b border-outline-variant/20 px-3 py-2">
+            <input
+              ref={masterRef}
+              type="checkbox"
+              checked={allVisibleChecked}
+              onChange={handleMasterToggle}
+              aria-label="Select all visible issues"
+              className="h-3.5 w-3.5 cursor-pointer accent-primary"
+            />
+            <span className="text-[10px] uppercase tracking-widest text-outline">
+              {checked.size > 0
+                ? `${checked.size} selected`
+                : `Select all (${issues.length})`}
+            </span>
+          </div>
+          <ul className="divide-y divide-outline-variant/20">
           {issues.map((issue: Issue) => (
             <li key={issue.id} className="flex items-center pr-2">
+              <input
+                type="checkbox"
+                checked={checked.has(issue.id)}
+                onClick={(e) => handleRowCheckClick(e, issue.id)}
+                onChange={() => { /* click handler owns selection */ }}
+                aria-label={`Select ${issue.displayId}`}
+                className="ml-3 h-3.5 w-3.5 shrink-0 cursor-pointer accent-primary"
+              />
               <button
                 type="button"
                 onClick={(e) => {
@@ -207,7 +346,15 @@ export function IssuesView() {
               </span>
             </li>
           ))}
-        </ul>
+          </ul>
+        </div>
+      )}
+      {checked.size > 0 && (
+        <BulkActionBar
+          count={checked.size}
+          onApply={(data) => { void handleBulkApply(data); }}
+          onClear={() => setChecked((prev) => (prev.size ? new Set() : prev))}
+        />
       )}
       <IssueDetailModal
         open={!!previewIssueId}

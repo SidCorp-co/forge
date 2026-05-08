@@ -1,0 +1,384 @@
+import { Hono } from 'hono';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
+
+vi.mock('../config/env.js', () => ({
+  env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
+}));
+
+// Chain for `db.select(...).from(...).where(...)` — awaitable directly so the
+// batch endpoint's `inArray` lookup resolves to a row array. Also has `.limit`
+// for the email-verified middleware path.
+const selectAwait = vi.fn();
+const selectWhere = vi.fn(() => {
+  const limit = vi.fn(() => selectAwait());
+  const thenable: PromiseLike<unknown> & { limit: typeof limit } = {
+    limit,
+    then: (resolve, reject) =>
+      Promise.resolve(selectAwait()).then(resolve as never, reject as never),
+  };
+  return thenable;
+});
+const selectFrom = vi.fn(() => ({ where: selectWhere }));
+
+// `db.update(table).set(values).where(cond)` is awaited directly by the
+// plain-field path, OR chains `.returning({...})` for the status path. The
+// where step is therefore both a thenable AND has a `.returning` method.
+const updateReturning = vi.fn();
+const updateWhere = vi.fn(() => {
+  const thenable: PromiseLike<unknown> & { returning: typeof updateReturning } = {
+    returning: updateReturning,
+    then: (resolve, reject) =>
+      Promise.resolve(undefined).then(resolve as never, reject as never),
+  };
+  return thenable;
+});
+const updateSet = vi.fn(() => ({ where: updateWhere }));
+const updateMock = vi.fn(() => ({ set: updateSet }));
+
+// Tx proxy for manual-hold + plain-patch: `tx.update(...).set(...).where(...)`
+// resolves directly (no .returning), and `tx.insert(...).values({...})` is the
+// activity-log write.
+const txUpdateWhere = vi.fn(async () => undefined);
+const txUpdateSet = vi.fn(() => ({ where: txUpdateWhere }));
+const txUpdate = vi.fn(() => ({ set: txUpdateSet }));
+const txInsertValues = vi.fn(async () => undefined);
+const txInsert = vi.fn(() => ({ values: txInsertValues }));
+const txProxy = { update: txUpdate, insert: txInsert };
+const transactionMock = vi.fn(
+  async (cb: (tx: typeof txProxy) => Promise<unknown>) => cb(txProxy),
+);
+
+// `db.selectDistinct(...).from(...).where(...)` is awaited for the cross-project
+// children read inside `triggerTerminalDispatch`. The where step resolves to a
+// list of `{ projectId }` rows.
+const selectDistinctAwait = vi.fn(async () => [] as Array<{ projectId: string }>);
+const selectDistinctWhere = vi.fn(() => selectDistinctAwait());
+const selectDistinctFrom = vi.fn(() => ({ where: selectDistinctWhere }));
+
+vi.mock('../db/client.js', () => ({
+  db: {
+    select: vi.fn(() => ({ from: selectFrom })),
+    selectDistinct: vi.fn(() => ({ from: selectDistinctFrom })),
+    update: (...args: unknown[]) => updateMock(...args),
+    transaction: (cb: (tx: typeof txProxy) => Promise<unknown>) => transactionMock(cb),
+  },
+}));
+
+const projectAccess = vi.fn();
+vi.mock('../lib/project-access.js', () => ({
+  loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
+}));
+
+vi.mock('../jobs/enqueue.js', () => ({ enqueueJob: vi.fn() }));
+
+const transitionEmit = vi.fn();
+const issueUpdatedEmit = vi.fn();
+vi.mock('../pipeline/hooks.js', () => ({
+  hooks: {
+    emit: (event: string, payload: unknown) => {
+      if (event === 'transition') transitionEmit(payload);
+      if (event === 'issueUpdated') issueUpdatedEmit(payload);
+      return Promise.resolve();
+    },
+    on: vi.fn(),
+  },
+}));
+
+const wsPublish = vi.fn();
+vi.mock('../ws/server.js', () => ({
+  roomManager: { publish: (...args: unknown[]) => wsPublish(...args) },
+}));
+
+// Mock dispatch-tick.js — extras-routes.ts now imports `triggerTerminalDispatch`
+// from `./transition.js`, which transitively pulls pg-boss via dispatcher.ts.
+// Mocking the leaf decouples this test from queue/runner module init.
+const dispatchTick = vi.fn();
+vi.mock('../jobs/dispatch-tick.js', () => ({
+  dispatchTickForProject: (...args: unknown[]) => dispatchTick(...args),
+}));
+
+const { issueExtrasRoutes } = await import('./extras-routes.js');
+const { signUserToken } = await import('../auth/jwt.js');
+const { errorHandler } = await import('../middleware/error.js');
+const { requestId } = await import('../middleware/request-id.js');
+
+function buildApp() {
+  const app = new Hono<{ Variables: import('../middleware/request-id.js').RequestIdVars }>();
+  app.use('*', requestId());
+  app.route('/api/issues', issueExtrasRoutes);
+  app.onError(errorHandler);
+  return app;
+}
+
+const USER_ID = '33333333-3333-4333-8333-333333333333';
+const PROJECT_A = '22222222-2222-4222-8222-22222222aaaa';
+const PROJECT_B = '22222222-2222-4222-8222-22222222bbbb';
+const ISS1 = '11111111-1111-4111-8111-111111111111';
+const ISS2 = '11111111-1111-4111-8111-111111111112';
+const ISS3 = '11111111-1111-4111-8111-111111111113';
+
+async function token() {
+  return signUserToken(USER_ID);
+}
+
+function authVerified() {
+  // requireAuth → assertEmailVerified runs `db.select(...).from(users).where(eq(...)).limit(1)`
+  // The `then` handler on the where-thenable would resolve first if we used
+  // selectAwait; but assertEmailVerified actually calls `.limit(1)`, so push a
+  // `selectAwait` value matching `[{ emailVerifiedAt }]` for the limit step.
+  selectAwait.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  selectAwait.mockReset();
+  projectAccess.mockReset();
+  updateReturning.mockReset();
+  updateMock.mockClear();
+  updateSet.mockClear();
+  updateWhere.mockClear();
+  txUpdate.mockClear();
+  txUpdateSet.mockClear();
+  txUpdateWhere.mockClear();
+  txInsert.mockClear();
+  txInsertValues.mockClear();
+  transactionMock.mockClear();
+  transitionEmit.mockClear();
+  issueUpdatedEmit.mockClear();
+  wsPublish.mockClear();
+  dispatchTick.mockClear();
+  selectDistinctAwait.mockReset();
+  selectDistinctAwait.mockResolvedValue([]);
+});
+
+const headers = async () => ({
+  authorization: `Bearer ${await token()}`,
+  'content-type': 'application/json',
+});
+
+describe('PATCH /api/issues/batch', () => {
+  it('401 without token', async () => {
+    const res = await buildApp().request('/api/issues/batch', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ids: [ISS1], data: { priority: 'high' } }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('400 when ids is empty', async () => {
+    authVerified();
+    const res = await buildApp().request('/api/issues/batch', {
+      method: 'PATCH',
+      headers: await headers(),
+      body: JSON.stringify({ ids: [], data: { priority: 'high' } }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('400 when data has no fields', async () => {
+    authVerified();
+    const res = await buildApp().request('/api/issues/batch', {
+      method: 'PATCH',
+      headers: await headers(),
+      body: JSON.stringify({ ids: [ISS1], data: {} }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('updates priority on 3 issues — emits issueUpdated 3×', async () => {
+    authVerified();
+    selectAwait.mockResolvedValueOnce([
+      { id: ISS1, issSeq: 1, projectId: PROJECT_A, status: 'open', priority: 'medium', category: null, complexity: null, manualHold: false, reopenCount: 0 },
+      { id: ISS2, issSeq: 2, projectId: PROJECT_A, status: 'open', priority: 'medium', category: null, complexity: null, manualHold: false, reopenCount: 0 },
+      { id: ISS3, issSeq: 3, projectId: PROJECT_A, status: 'open', priority: 'medium', category: null, complexity: null, manualHold: false, reopenCount: 0 },
+    ]);
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_A,
+      ownerId: USER_ID,
+      role: 'member',
+    });
+
+    const res = await buildApp().request('/api/issues/batch', {
+      method: 'PATCH',
+      headers: await headers(),
+      body: JSON.stringify({
+        ids: [ISS1, ISS2, ISS3],
+        data: { priority: 'high' },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { updated: unknown[]; skipped: unknown[]; failed: unknown[] };
+    expect(body.updated).toHaveLength(3);
+    expect(body.skipped).toHaveLength(0);
+    expect(body.failed).toHaveLength(0);
+    expect(updateMock).toHaveBeenCalledTimes(3);
+    expect(issueUpdatedEmit).toHaveBeenCalledTimes(3);
+    // Distinct project access pre-loaded in parallel — for one shared project,
+    // only one lookup runs.
+    expect(projectAccess).toHaveBeenCalledTimes(1);
+    // No terminal status transition → no Layer-2 dispatch tick.
+    expect(dispatchTick).not.toHaveBeenCalled();
+  });
+
+  it('mixed status + priority — illegal transition surfaces as skipReason on the partially-applied row', async () => {
+    authVerified();
+    selectAwait.mockResolvedValueOnce([
+      // ISS1 in `closed` cannot transition to `in_progress` directly
+      { id: ISS1, issSeq: 1, projectId: PROJECT_A, status: 'closed', priority: 'medium', category: null, complexity: null, manualHold: false, reopenCount: 0 },
+      // ISS2 in `approved` can transition to `in_progress`
+      { id: ISS2, issSeq: 2, projectId: PROJECT_A, status: 'approved', priority: 'medium', category: null, complexity: null, manualHold: false, reopenCount: 0 },
+    ]);
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_A,
+      ownerId: USER_ID,
+      role: 'member',
+    });
+    // ISS2's status update returns its row.
+    updateReturning.mockResolvedValueOnce([
+      { id: ISS2, status: 'in_progress', reopenCount: 0, updatedAt: new Date() },
+    ]);
+
+    const res = await buildApp().request('/api/issues/batch', {
+      method: 'PATCH',
+      headers: await headers(),
+      body: JSON.stringify({
+        ids: [ISS1, ISS2],
+        data: { status: 'in_progress', priority: 'high' },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      updated: { id: string; skipReason?: string }[];
+      skipped: { id: string; reason: string }[];
+    };
+    // Both rows had priority applied, so both end up in `updated`. ISS1's
+    // illegal status request is surfaced via `skipReason` on the entry rather
+    // than silently swallowed.
+    expect(body.updated.map((u) => u.id).sort()).toEqual([ISS1, ISS2].sort());
+    expect(body.skipped).toHaveLength(0);
+    const iss1Entry = body.updated.find((u) => u.id === ISS1);
+    expect(iss1Entry?.skipReason).toBe('illegal_transition');
+    const iss2Entry = body.updated.find((u) => u.id === ISS2);
+    expect(iss2Entry?.skipReason).toBeUndefined();
+    expect(transitionEmit).toHaveBeenCalledTimes(1);
+    // Bug fix: batch must publish `issue.statusChanged` inline alongside the
+    // transition hook (single-issue path does the same in transition.ts).
+    expect(wsPublish).toHaveBeenCalledTimes(1);
+    expect(wsPublish).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        event: 'issue.statusChanged',
+        data: expect.objectContaining({ issueId: ISS2, from: 'approved', to: 'in_progress' }),
+      }),
+    );
+  });
+
+  it('id in a project the caller cannot access ends up skipped:forbidden', async () => {
+    authVerified();
+    selectAwait.mockResolvedValueOnce([
+      { id: ISS1, issSeq: 1, projectId: PROJECT_A, status: 'open', priority: 'medium', category: null, complexity: null, manualHold: false, reopenCount: 0 },
+      { id: ISS2, issSeq: 2, projectId: PROJECT_B, status: 'open', priority: 'medium', category: null, complexity: null, manualHold: false, reopenCount: 0 },
+    ]);
+    projectAccess.mockImplementation(async (projectId: string) => {
+      if (projectId === PROJECT_A) {
+        return { projectId, ownerId: USER_ID, role: 'member' };
+      }
+      return { projectId, ownerId: 'other', role: null };
+    });
+
+    const res = await buildApp().request('/api/issues/batch', {
+      method: 'PATCH',
+      headers: await headers(),
+      body: JSON.stringify({
+        ids: [ISS1, ISS2],
+        data: { priority: 'high' },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      updated: { id: string }[];
+      skipped: { id: string; reason: string }[];
+    };
+    expect(body.updated.map((u) => u.id)).toEqual([ISS1]);
+    expect(body.skipped).toEqual([{ id: ISS2, reason: 'forbidden' }]);
+  });
+
+  it('terminal status transitions fan out Layer-2 dispatch ticks once per parent + child project', async () => {
+    authVerified();
+    selectAwait.mockResolvedValueOnce([
+      // Two issues in PROJECT_A, both at `staging` → `released` (terminal).
+      { id: ISS1, issSeq: 1, projectId: PROJECT_A, status: 'staging', priority: 'medium', category: null, complexity: null, manualHold: false, reopenCount: 0 },
+      { id: ISS2, issSeq: 2, projectId: PROJECT_A, status: 'staging', priority: 'medium', category: null, complexity: null, manualHold: false, reopenCount: 0 },
+    ]);
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_A,
+      ownerId: USER_ID,
+      role: 'member',
+    });
+    updateReturning.mockResolvedValueOnce([
+      { id: ISS1, status: 'released', reopenCount: 0, updatedAt: new Date() },
+    ]);
+    updateReturning.mockResolvedValueOnce([
+      { id: ISS2, status: 'released', reopenCount: 0, updatedAt: new Date() },
+    ]);
+    // The fan-out children query returns one row in PROJECT_B (cross-project
+    // blocking edge). The parent (PROJECT_A) is filtered out by the helper.
+    selectDistinctAwait.mockResolvedValueOnce([
+      { projectId: PROJECT_A },
+      { projectId: PROJECT_B },
+    ]);
+
+    const res = await buildApp().request('/api/issues/batch', {
+      method: 'PATCH',
+      headers: await headers(),
+      body: JSON.stringify({
+        ids: [ISS1, ISS2],
+        data: { status: 'released' },
+      }),
+    });
+    expect(res.status).toBe(200);
+    // Layer-2 fan-out: parent project ticked once (deduped across the two
+    // terminal issues) + the distinct child project from the IN-list query.
+    const calledProjects = dispatchTick.mock.calls.map((c) => c[0]).sort();
+    expect(calledProjects).toEqual([PROJECT_A, PROJECT_B].sort());
+    // Children query runs once with `inArray(fromIssueId, [ISS1, ISS2])` —
+    // not once per terminal issue.
+    expect(selectDistinctWhere).toHaveBeenCalledTimes(1);
+  });
+
+  it('manual hold toggle on N issues writes activity per change', async () => {
+    authVerified();
+    selectAwait.mockResolvedValueOnce([
+      { id: ISS1, issSeq: 1, projectId: PROJECT_A, status: 'open', priority: 'medium', category: null, complexity: null, manualHold: false, reopenCount: 0 },
+      { id: ISS2, issSeq: 2, projectId: PROJECT_A, status: 'open', priority: 'medium', category: null, complexity: null, manualHold: true, reopenCount: 0 },
+    ]);
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_A,
+      ownerId: USER_ID,
+      role: 'member',
+    });
+
+    const res = await buildApp().request('/api/issues/batch', {
+      method: 'PATCH',
+      headers: await headers(),
+      body: JSON.stringify({
+        ids: [ISS1, ISS2],
+        data: { manualHold: true },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      updated: { id: string }[];
+      skipped: { id: string; reason: string }[];
+    };
+    // ISS1 toggles, ISS2 already true → no_op.
+    expect(body.updated.map((u) => u.id)).toEqual([ISS1]);
+    expect(body.skipped).toEqual([{ id: ISS2, reason: 'no_op' }]);
+    expect(txInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'issue.manualHold.set' }),
+    );
+  });
+});

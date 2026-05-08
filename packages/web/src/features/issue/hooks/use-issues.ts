@@ -8,6 +8,8 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import {
+  type BatchPatchInput,
+  type BatchPatchResponse,
   type IssueListParams,
   type IssueSearchParams,
   type PipelineStage,
@@ -185,6 +187,21 @@ export function useSetManualHold() {
       qc.invalidateQueries({ queryKey: issueKeys.lists });
       qc.invalidateQueries({ queryKey: issueKeys.searches });
       qc.invalidateQueries({ queryKey: issueKeys.detail(id) });
+    },
+  });
+}
+
+// No optimistic update — partial-success per-issue is messy; rely on WS reconcile.
+export function useBatchPatchIssues() {
+  const qc = useQueryClient();
+  return useMutation<BatchPatchResponse, Error, BatchPatchInput>({
+    mutationFn: (input: BatchPatchInput) => issueApi.batchPatch(input),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: issueKeys.lists });
+      qc.invalidateQueries({ queryKey: issueKeys.searches });
+      for (const { id } of result.updated) {
+        qc.invalidateQueries({ queryKey: issueKeys.detail(id) });
+      }
     },
   });
 }

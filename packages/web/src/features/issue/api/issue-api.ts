@@ -1,5 +1,6 @@
 import type { Issue, IssueCreateInput, IssuePatchInput } from '@forge/contracts';
 import { apiClient, apiClientList } from '@/lib/api/client';
+import type { IssuePriority, IssueStatus } from '@/features/issue/types';
 
 export const ISSUE_SORT_VALUES = [
   'createdAt:desc',
@@ -133,6 +134,12 @@ export const issueApi = {
       body: JSON.stringify({ value }),
     }),
 
+  batchPatch: (input: BatchPatchInput) =>
+    apiClient<BatchPatchResponse>('/issues/batch', {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    }),
+
   enrich: (id: string) =>
     apiClient<EnrichResponse>(`/issues/${id}/enrich`, { method: 'POST' }),
 
@@ -230,4 +237,37 @@ export interface AddDependencyInput {
 export interface AddDependencyResponse {
   id: string;
   created: boolean;
+}
+
+// Mirrors `batchPatchBodySchema.data` on the server. `complexity` is
+// intentionally absent: BulkActionBar does not expose a complexity selector,
+// so the surface stays minimal on both sides.
+export interface BatchPatchData {
+  status?: IssueStatus;
+  priority?: IssuePriority;
+  category?: string | null;
+  manualHold?: boolean;
+}
+
+export interface BatchPatchInput {
+  ids: string[];
+  data: BatchPatchData;
+}
+
+export type BatchPatchSkipReason =
+  | 'forbidden'
+  | 'not_found'
+  | 'illegal_transition'
+  | 'no_op'
+  | 'reopen_cap_exceeded'
+  | 'stale';
+
+export interface BatchPatchResponse {
+  updated: Array<{
+    id: string;
+    displayId: string;
+    skipReason?: BatchPatchSkipReason;
+  }>;
+  skipped: Array<{ id: string; reason: BatchPatchSkipReason }>;
+  failed: Array<{ id: string; error: string }>;
 }

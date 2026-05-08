@@ -77,8 +77,8 @@ export function BulkActionBar({ count, onApply, onClear }: BulkActionBarProps) {
 
             <Select value={manualHold} onChange={(e) => setManualHold(e.currentTarget.value)} className="py-1.5 text-xs">
                 <option value="">Hold...</option>
-                <option value="true">🔴 Set on hold</option>
-                <option value="false">✅ Release hold</option>
+                <option value="true">Set on hold</option>
+                <option value="false">Release hold</option>
             </Select>
 
             <button

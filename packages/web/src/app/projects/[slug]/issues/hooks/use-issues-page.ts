@@ -2,8 +2,12 @@
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useIssueSearch, usePatchIssue } from '@/features/issue/hooks/use-issues';
-import type { IssueSort } from '@/features/issue/api/issue-api';
+import {
+  useBatchPatchIssues,
+  useIssueSearch,
+  usePatchIssue,
+} from '@/features/issue/hooks/use-issues';
+import type { BatchPatchData, IssueSort } from '@/features/issue/api/issue-api';
 import { useProjectBySlug } from '@/features/project/hooks/use-projects';
 import { useProjectMembers } from '@/features/project/hooks/use-project-members';
 import type { Issue, IssuePatchInput } from '@forge/contracts';
@@ -77,6 +81,7 @@ export function useIssuesPage() {
   const safePage = Math.min(currentPage, pageCount);
 
   const patchIssue = usePatchIssue();
+  const batchPatch = useBatchPatchIssues();
 
   // `category` filter is not a first-class server filter on core yet. Core
   // exposes free-form `category` as a column; the old Strapi `$eq` path has
@@ -171,13 +176,24 @@ export function useIssuesPage() {
   );
 
   const handleBulkUpdate = useCallback(
-    (patch: IssuePatchInput) => {
-      for (const id of checked) {
-        patchIssue.mutate({ id, patch });
+    async (patch: Partial<Issue>) => {
+      const ids = Array.from(checked);
+      if (ids.length === 0) return null;
+      const data: BatchPatchData = {};
+      if (patch.status !== undefined) data.status = patch.status;
+      if (patch.priority !== undefined) data.priority = patch.priority;
+      if (patch.category !== undefined) data.category = patch.category;
+      if (patch.manualHold !== undefined) data.manualHold = patch.manualHold;
+      if (Object.keys(data).length === 0) return null;
+      try {
+        const result = await batchPatch.mutateAsync({ ids, data });
+        setChecked(new Set());
+        return result;
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
       }
-      setChecked(new Set());
     },
-    [checked, patchIssue],
+    [checked, batchPatch],
   );
 
   function toggleCheck(id: string) {

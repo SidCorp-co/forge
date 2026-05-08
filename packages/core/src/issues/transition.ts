@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -44,7 +44,73 @@ const forbidden = (message: string, code = 'FORBIDDEN') =>
   new HTTPException(403, { message, cause: { code } });
 
 /** Issue statuses that satisfy a `kind='blocks'` dependency edge (Layer 2). */
-const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(['released', 'closed', 'pipeline_failed']);
+export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>([
+  'released',
+  'closed',
+  'pipeline_failed',
+]);
+
+/**
+ * Inline `issue.statusChanged` WS publish. Shared by the single-issue
+ * `/transition` route and the `/batch` route so both emit the same payload
+ * shape. The bus subscriber for `transition` intentionally does NOT broadcast
+ * `issue.statusChanged` (see `ws/broadcast-subscribers.ts:38`); writers must
+ * publish inline to avoid double-emit on the single-issue path.
+ */
+export function publishIssueStatusChange(
+  projectId: string,
+  payload: {
+    issueId: string;
+    from: IssueStatus;
+    to: IssueStatus;
+    reopenCount: number;
+    actorId: string;
+    reason: string | null;
+    at: Date;
+  },
+): void {
+  roomManager.publish(projectRoom(projectId), {
+    event: 'issue.statusChanged',
+    data: payload,
+  });
+}
+
+/**
+ * Layer-2 fan-out for terminal transitions: tick the parent project and any
+ * distinct child project reachable via `kind='blocks'` outgoing edges from
+ * the given issue ids. Best-effort — a 60s pg-boss backstop catches misses.
+ *
+ * Accepts a batch of (issueId, projectId) pairs so the batch route runs a
+ * single `inArray` query for child fan-out instead of N per-issue queries.
+ */
+export async function triggerTerminalDispatch(
+  terminal: Array<{ issueId: string; projectId: string }>,
+): Promise<void> {
+  if (terminal.length === 0) return;
+  const parentProjectIds = new Set(terminal.map((t) => t.projectId));
+  for (const projectId of parentProjectIds) {
+    void dispatchTickForProject(projectId);
+  }
+  try {
+    const issueIds = terminal.map((t) => t.issueId);
+    const children = await db
+      .selectDistinct({ projectId: issueDependencies.projectId })
+      .from(issueDependencies)
+      .where(
+        and(
+          inArray(issueDependencies.fromIssueId, issueIds),
+          eq(issueDependencies.kind, 'blocks'),
+        ),
+      );
+    for (const child of children) {
+      if (child.projectId && !parentProjectIds.has(child.projectId)) {
+        void dispatchTickForProject(child.projectId);
+      }
+    }
+  } catch {
+    // Tick fan-out is best-effort; the 60s backstop catches missed unblocks.
+  }
+}
 
 export const transitionRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -162,42 +228,23 @@ transitionRoutes.post(
       ...(reason ? { reason } : {}),
     });
 
-    roomManager.publish(projectRoom(issue.projectId), {
-      event: 'issue.statusChanged',
-      data: {
-        issueId: updated.id,
-        from: fromStatus,
-        to: toStatus,
-        reopenCount: updated.reopenCount,
-        actorId: userId,
-        reason: reason ?? null,
-        at: updated.updatedAt,
-      },
+    publishIssueStatusChange(issue.projectId, {
+      issueId: updated.id,
+      from: fromStatus,
+      to: toStatus,
+      reopenCount: updated.reopenCount,
+      actorId: userId,
+      reason: reason ?? null,
+      at: updated.updatedAt,
     });
 
     // ISS-40 PR-E — when an issue reaches a terminal status it may unblock
     // children via Layer 2. Tick this project, plus every distinct child
     // project for cross-project blocking edges.
     if (TERMINAL_FOR_DISPATCH.has(toStatus)) {
-      void dispatchTickForProject(issue.projectId);
-      try {
-        const children = await db
-          .selectDistinct({ projectId: issueDependencies.projectId })
-          .from(issueDependencies)
-          .where(
-            and(
-              eq(issueDependencies.fromIssueId, issue.id),
-              eq(issueDependencies.kind, 'blocks'),
-            ),
-          );
-        for (const child of children) {
-          if (child.projectId && child.projectId !== issue.projectId) {
-            void dispatchTickForProject(child.projectId);
-          }
-        }
-      } catch {
-        // Tick fan-out is best-effort; the 60s backstop catches missed unblocks.
-      }
+      await triggerTerminalDispatch([
+        { issueId: issue.id, projectId: issue.projectId },
+      ]);
     }
 
     return c.json({
