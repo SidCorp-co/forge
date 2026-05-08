@@ -28,4 +28,9 @@ export interface ChatMessageData {
   toolCalls?: ToolCallData[];
   contentBlocks?: ContentBlock[];
   isStreaming?: boolean;
+  /** Optional during dual-write rollout; required after the jsonb blob is deprecated. */
+  turnId?: string;
+  turnIndex?: number;
+  /** Sent back as `expectedEditedAt` on PATCH so the server can 409 on concurrent edits. */
+  turnEditedAt?: string | null;
 }

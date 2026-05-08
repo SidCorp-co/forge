@@ -44,7 +44,17 @@ export function useAgentStream({ projectSlug }: UseAgentStreamOptions) {
     finalizeAssistantMsg(streamingMsgId, streamingTextRef, setMessages);
   }, [streamingMsgId, streamingTextRef, setMessages]);
 
-  const { startAgent, sendMessage, abortAgent, loadSession, refreshSession } = useAgentSessionApi({
+  const {
+    startAgent,
+    sendMessage,
+    abortAgent,
+    loadSession,
+    refreshSession,
+    editTurn,
+    regenerateTurn,
+    forkSession,
+    rerunSession,
+  } = useAgentSessionApi({
     projectSlug, mountedRef, streamingMsgId, streamingTextRef, wsRef,
     sessionId, claudeSessionId,
     setMessages, setIsRunning, setSessionId, setClaudeSessionId, setUsage,
@@ -96,5 +106,9 @@ export function useAgentStream({ projectSlug }: UseAgentStreamOptions) {
     requestBuildPrompt,
     clearDraftPrompt,
     usage,
+    editTurn,
+    regenerateTurn,
+    forkSession,
+    rerunSession,
   };
 }

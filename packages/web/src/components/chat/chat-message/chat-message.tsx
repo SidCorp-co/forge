@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Copy, Check, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { Markdown } from '@/components/ui/markdown';
 import { strapiMediaUrl } from '@/lib/api/client';
 import type { ChatMessageData, ToolCallData } from './chat-message-types';
@@ -10,22 +10,27 @@ import { ToolCallGroup } from './tool-call-group';
 import { TodoProgress } from './chat-message-todos';
 import type { AgentTodo } from './chat-message-types';
 import { useTypewriter } from './use-typewriter';
+import { TurnActions } from './turn-actions';
 
 interface ChatMessageProps {
   message: ChatMessageData;
   variant?: 'agent' | 'chat';
+  sessionId?: string | null;
+  onAfterEdit?: () => void;
+  onAfterRegenerate?: () => void;
+  onAfterFork?: (newSessionDocumentId: string) => void;
 }
 
-export function ChatMessage({ message, variant = 'agent' }: ChatMessageProps) {
-  const [copied, setCopied] = useState(false);
+export function ChatMessage({
+  message,
+  variant = 'agent',
+  sessionId = null,
+  onAfterEdit,
+  onAfterRegenerate,
+  onAfterFork,
+}: ChatMessageProps) {
   const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
   const displayContent = useTypewriter(message.content || '', message.isStreaming ?? false);
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(message.content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   if (message.role === 'system') {
     return (
@@ -38,7 +43,10 @@ export function ChatMessage({ message, variant = 'agent' }: ChatMessageProps) {
   if (message.role === 'user') {
     return (
       <>
-        <div className={variant === 'agent' ? 'border-t border-outline-variant/30 pt-3' : ''}>
+        <div
+          className={`group ${variant === 'agent' ? 'border-t border-outline-variant/30 pt-3' : ''}`}
+          data-turn-id={message.turnId ?? undefined}
+        >
           <div className="flex items-start gap-2">
             <span className="font-mono text-sm text-on-surface select-none shrink-0">❯</span>
             <div className="min-w-0 flex-1">
@@ -56,6 +64,13 @@ export function ChatMessage({ message, variant = 'agent' }: ChatMessageProps) {
                   ))}
                 </div>
               )}
+              <TurnActions
+                message={message}
+                sessionId={sessionId}
+                onAfterEdit={onAfterEdit}
+                onAfterRegenerate={onAfterRegenerate}
+                onAfterFork={onAfterFork}
+              />
             </div>
           </div>
         </div>
@@ -132,7 +147,7 @@ export function ChatMessage({ message, variant = 'agent' }: ChatMessageProps) {
   }
 
   return (
-    <div className="group">
+    <div className="group" data-turn-id={message.turnId ?? undefined}>
       {hasBlocks ? (
         groupedBlocks.map((item) => {
           if (item.type === 'text') {
@@ -168,11 +183,13 @@ export function ChatMessage({ message, variant = 'agent' }: ChatMessageProps) {
         <span className="animate-pulse text-sm text-on-surface-variant" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>Thinking...</span>
       )}
       {message.content && !message.isStreaming && (
-        <div className="flex items-center gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={handleCopy} className="p-1.5 text-on-surface-variant hover:text-on-surface-variant">
-            {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
-          </button>
-        </div>
+        <TurnActions
+          message={message}
+          sessionId={sessionId}
+          onAfterEdit={onAfterEdit}
+          onAfterRegenerate={onAfterRegenerate}
+          onAfterFork={onAfterFork}
+        />
       )}
     </div>
   );

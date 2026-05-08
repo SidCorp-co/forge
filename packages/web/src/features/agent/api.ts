@@ -288,4 +288,54 @@ export const agentApi = {
       `/agent-sessions/sweep-zombies?projectId=${encodeURIComponent(projectId)}`,
       { method: 'POST' },
     ),
+
+  getTurns: (sessionId: string, opts?: { after?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (opts?.after) params.set('after', opts.after);
+    if (opts?.limit) params.set('limit', String(opts.limit));
+    const qs = params.toString();
+    return apiClient<{ turns: AgentSessionTurn[]; nextCursor: string | null }>(
+      `/agent-sessions/${sessionId}/turns${qs ? `?${qs}` : ''}`,
+    );
+  },
+
+  editTurn: (sessionId: string, turnId: string, body: { content: string; expectedEditedAt?: string }) =>
+    apiClient<AgentSessionTurn>(`/agent-sessions/${sessionId}/turns/${turnId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  regenerateTurn: (sessionId: string, turnId: string) =>
+    apiClient<{ status: string }>(`/agent-sessions/${sessionId}/turns/${turnId}/regenerate`, {
+      method: 'POST',
+    }),
+
+  forkSession: (sessionId: string, fromTurnId: string, title?: string) =>
+    apiClient<NewSessionResponse>(`/agent-sessions/${sessionId}/fork`, {
+      method: 'POST',
+      body: JSON.stringify({ fromTurnId, ...(title ? { title } : {}) }),
+    }).then((row) => ({ documentId: row.id })),
+
+  rerunSession: (sessionId: string) =>
+    apiClient<NewSessionResponse>(`/agent-sessions/${sessionId}/rerun`, {
+      method: 'POST',
+    }).then((row) => ({ documentId: row.id })),
 };
+
+/** Minimal shape returned by /fork and /rerun — flat row from core, not the
+ * AgentSession contract. Only the id is used by the web hook to navigate. */
+interface NewSessionResponse {
+  id: string;
+}
+
+/** Materialized turn row served by GET /:id/turns. Mirror of agent_session_turns. */
+export interface AgentSessionTurn {
+  id: string;
+  agentSessionId: string;
+  turnIndex: number;
+  role: 'user' | 'assistant' | 'tool';
+  content: { value: unknown };
+  parentTurnId: string | null;
+  createdAt: string;
+  editedAt: string | null;
+}

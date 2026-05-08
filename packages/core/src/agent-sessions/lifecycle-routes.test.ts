@@ -27,13 +27,18 @@ const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn(() => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
-vi.mock('../db/client.js', () => ({
-  db: {
+vi.mock('../db/client.js', () => {
+  const dbStub = {
     select: vi.fn(() => ({ from: selectFrom })),
     insert: dbInsert,
     update: dbUpdate,
-  },
-}));
+    delete: vi.fn(() => ({ where: vi.fn() })),
+    // Route handlers run dual-write inside db.transaction; pass the same stub
+    // through so mocked .insert/.update/.delete chains keep working.
+    transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(dbStub)),
+  };
+  return { db: dbStub };
+});
 
 const findAvailableDeviceForProject = vi.fn();
 vi.mock('../lib/device-pool.js', () => ({

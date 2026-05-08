@@ -18,9 +18,22 @@ interface ChatMessagesProps {
    * just thread the id through without any extra plumbing.
    */
   sessionId?: string | null;
+  onAfterEdit?: () => void;
+  onAfterRegenerate?: () => void;
+  onAfterFork?: (newSessionDocumentId: string) => void;
+  /** When set, scroll the matching turn into view and flash a highlight ring. */
+  highlightTurnId?: string | null;
 }
 
-export function ChatMessages({ messages, variant = 'agent', sessionId }: ChatMessagesProps) {
+export function ChatMessages({
+  messages,
+  variant = 'agent',
+  sessionId,
+  onAfterEdit,
+  onAfterRegenerate,
+  onAfterFork,
+  highlightTurnId,
+}: ChatMessagesProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
@@ -58,6 +71,25 @@ export function ChatMessages({ messages, variant = 'agent', sessionId }: ChatMes
       scrollToBottom();
     }
   }, [messages, scrollToBottom]);
+
+  // Permalink scroll — fires once per ?turn=<id> after the matching node
+  // mounts. Guarded by a ref so streaming token updates to other messages
+  // don't reset the 2-second highlight timer.
+  const flashedTurnIdRef = useRef<string | null>(null);
+  const messagesLen = messages.length;
+  useEffect(() => {
+    if (!highlightTurnId || flashedTurnIdRef.current === highlightTurnId) return;
+    const node = containerRef.current?.querySelector<HTMLElement>(
+      `[data-turn-id="${highlightTurnId}"]`,
+    );
+    if (!node) return;
+    flashedTurnIdRef.current = highlightTurnId;
+    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const cls = ['ring-2', 'ring-primary', 'ring-offset-2', 'rounded'];
+    node.classList.add(...cls);
+    const t = setTimeout(() => node.classList.remove(...cls), 2000);
+    return () => clearTimeout(t);
+  }, [highlightTurnId, messagesLen]);
 
   if (messages.length === 0) {
     if (sessionId) {
@@ -117,7 +149,14 @@ export function ChatMessages({ messages, variant = 'agent', sessionId }: ChatMes
           const dimmed = matchingIds !== null && !matchingIds.has(msg.id);
           return (
             <div key={msg.id} className={dimmed ? 'opacity-20' : undefined}>
-              <ChatMessage message={msg} variant={variant} />
+              <ChatMessage
+                message={msg}
+                variant={variant}
+                sessionId={sessionId ?? null}
+                onAfterEdit={onAfterEdit}
+                onAfterRegenerate={onAfterRegenerate}
+                onAfterFork={onAfterFork}
+              />
             </div>
           );
         })}

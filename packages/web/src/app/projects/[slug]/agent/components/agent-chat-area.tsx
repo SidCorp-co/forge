@@ -1,6 +1,7 @@
 'use client';
 
 import { List } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 import { ChatMessages } from '@/components/chat/chat-messages';
 import { ChatInput } from '@/components/chat/chat-input';
 import { DiffSummary } from '@/components/chat/diff-summary';
@@ -66,6 +67,8 @@ export function AgentChatArea({
   isSessionOwner = true,
 }: AgentChatAreaProps) {
   const showDraftEditor = (draftPrompt || isBuildingPrompt) && !sessionId;
+  const searchParams = useSearchParams();
+  const highlightTurnId = searchParams?.get('turn') ?? null;
 
   return (
     <div className={cn(
@@ -136,7 +139,11 @@ export function AgentChatArea({
           ) : (
             <>
               <ChatSendProvider send={onSend}>
-              <ChatMessages messages={messages} sessionId={sessionId} />
+              <ChatMessages
+                messages={messages}
+                sessionId={sessionId}
+                highlightTurnId={highlightTurnId}
+              />
               </ChatSendProvider>
               <ChatInput
                 onSend={(text, _files) => onSend(text)}

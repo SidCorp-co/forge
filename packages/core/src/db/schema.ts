@@ -1339,10 +1339,52 @@ export const agentSessions = pgTable(
   }),
 );
 
-export const agentSessionsRelations = relations(agentSessions, ({ one }) => ({
+export const agentSessionsRelations = relations(agentSessions, ({ many, one }) => ({
   project: one(projects, { fields: [agentSessions.projectId], references: [projects.id] }),
   user: one(users, { fields: [agentSessions.userId], references: [users.id] }),
   device: one(devices, { fields: [agentSessions.deviceId], references: [devices.id] }),
+  turns: many(agentSessionTurns),
+}));
+
+// Sibling table that materializes each entry of `agent_sessions.messages` into
+// its own row so turns can be addressed by id. The jsonb blob remains the
+// source of truth during the dual-write rollout.
+export const agentSessionTurnRoles = ['user', 'assistant', 'tool'] as const;
+export type AgentSessionTurnRole = (typeof agentSessionTurnRoles)[number];
+
+export const agentSessionTurns = pgTable(
+  'agent_session_turns',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agentSessionId: uuid('agent_session_id')
+      .notNull()
+      .references(() => agentSessions.id, { onDelete: 'cascade' }),
+    turnIndex: integer('turn_index').notNull(),
+    role: text('role', { enum: agentSessionTurnRoles }).notNull(),
+    content: jsonb('content').notNull(),
+    parentTurnId: uuid('parent_turn_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    editedAt: timestamp('edited_at', { withTimezone: true }),
+  },
+  (t) => ({
+    sessionIndexUnique: uniqueIndex('agent_session_turns_session_index_unique').on(
+      t.agentSessionId,
+      t.turnIndex,
+    ),
+    parentIdx: index('agent_session_turns_parent_idx').on(t.parentTurnId),
+  }),
+);
+
+export const agentSessionTurnsRelations = relations(agentSessionTurns, ({ one }) => ({
+  session: one(agentSessions, {
+    fields: [agentSessionTurns.agentSessionId],
+    references: [agentSessions.id],
+  }),
+  parent: one(agentSessionTurns, {
+    fields: [agentSessionTurns.parentTurnId],
+    references: [agentSessionTurns.id],
+    relationName: 'agent_session_turns_parent',
+  }),
 }));
 
 // v1 EPIC 5 (ISS-274) — per-project chat/runtime config. One row per project,

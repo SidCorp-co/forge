@@ -114,14 +114,20 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
   }, [sessionId, finalize, setIsRunning]);
 
   /** Convert stored session messages to ChatMessageData array. */
-  function parseStoredMessages(stored: any[], sessionStatus?: string): ChatMessageData[] {
+  function parseStoredMessages(
+    stored: any[],
+    sessionStatus?: string,
+    turnsByIndex?: Map<number, { id: string; editedAt: string | null }>,
+  ): ChatMessageData[] {
     const loaded: ChatMessageData[] = stored.map((m: any, i: number) => {
+      const turn = turnsByIndex?.get(i);
       const msg: ChatMessageData = {
         id: `stored-${i}`,
         role: m.role as 'user' | 'assistant',
         content: typeof m.content === 'string' ? m.content : '',
         timestamp: m.timestamp || Date.now(),
         toolCalls: m.toolCalls,
+        ...(turn ? { turnId: turn.id, turnIndex: i, turnEditedAt: turn.editedAt } : {}),
       };
       if (m.contentBlocks) {
         const converted = m.contentBlocks.map((b: ContentBlock) => {
@@ -174,7 +180,21 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
       setSessionId(session.documentId);
       setClaudeSessionId(session.claudeSessionId || null);
 
-      const loaded = parseStoredMessages(session.messages || [], session.status);
+      // Fetch turn rows so the UI can address messages by id. Tolerate failure
+      // from older deployments by falling back to id-less messages.
+      let turnsByIndex: Map<number, { id: string; editedAt: string | null }> | undefined;
+      try {
+        const turnsRes = await agentApi.getTurns(id, { limit: 500 });
+        if (turnsRes?.turns?.length) {
+          turnsByIndex = new Map(
+            turnsRes.turns.map((t) => [t.turnIndex, { id: t.id, editedAt: t.editedAt }]),
+          );
+        }
+      } catch {
+        /* older sessions have no turns yet during dual-write rollout */
+      }
+
+      const loaded = parseStoredMessages(session.messages || [], session.status, turnsByIndex);
 
       setMessages(loaded);
       streamingMsgId.current = null;
@@ -227,5 +247,55 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
     } catch { /* ignore */ }
   }, [mountedRef, setMessages, finalize, setIsRunning]);
 
-  return { startAgent, sendMessage, abortAgent, loadSession, refreshSession };
+  // After a successful per-turn mutation, re-load the session so React state
+  // matches the new truncated/edited transcript without subscribing to the
+  // turn-level WS topics.
+  const editTurn = useCallback(
+    async (turnId: string, content: string, expectedEditedAt?: string) => {
+      if (!sessionId) return;
+      await agentApi.editTurn(sessionId, turnId, {
+        content,
+        ...(expectedEditedAt ? { expectedEditedAt } : {}),
+      });
+      await loadSession(sessionId);
+    },
+    [sessionId, loadSession],
+  );
+
+  const regenerateTurn = useCallback(
+    async (turnId: string) => {
+      if (!sessionId) return;
+      await agentApi.regenerateTurn(sessionId, turnId);
+      setIsRunning(true);
+      await loadSession(sessionId);
+    },
+    [sessionId, loadSession, setIsRunning],
+  );
+
+  const forkSession = useCallback(
+    async (fromTurnId: string) => {
+      if (!sessionId) return null;
+      const res = await agentApi.forkSession(sessionId, fromTurnId);
+      return res.documentId;
+    },
+    [sessionId],
+  );
+
+  const rerunSession = useCallback(async () => {
+    if (!sessionId) return null;
+    const res = await agentApi.rerunSession(sessionId);
+    return res.documentId;
+  }, [sessionId]);
+
+  return {
+    startAgent,
+    sendMessage,
+    abortAgent,
+    loadSession,
+    refreshSession,
+    editTurn,
+    regenerateTurn,
+    forkSession,
+    rerunSession,
+  };
 }
