@@ -78,6 +78,7 @@ import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cro
 import { registerNotifyMentionsSubscriber } from './notifications/notify-mentions.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { pipelineAnalyticsRoutes } from './pipeline/analytics-routes.js';
+import { registerCiFixPatternLearner } from './pipeline/ci-fix-pattern-learn.js';
 import { hooks } from './pipeline/hooks.js';
 import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
 import { registerActivitySubscribers } from './pipeline/subscribers.js';
@@ -215,6 +216,7 @@ export async function runShutdown(
 registerActivitySubscribers(hooks);
 registerWsBroadcastSubscribers(hooks);
 registerMemoryIndexer(hooks);
+registerCiFixPatternLearner(hooks);
 registerNotifyMentionsSubscriber(hooks);
 registerPmSubscribers(hooks);
 

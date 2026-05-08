@@ -33,6 +33,14 @@ vi.mock('../jobs/enqueue.js', () => ({
   enqueueJob: (...a: unknown[]) => enqueueMock(...(a as [])),
 }));
 
+// ISS-32 — orchestrator now imports the preventive-pattern query module,
+// which transitively pulls config/env. Stub it so the unit test stays
+// pure-mock and never evaluates the env validator.
+const queryPreventiveMock = vi.fn(async () => []);
+vi.mock('./ci-fix-pattern-query.js', () => ({
+  queryPreventivePatterns: (...a: unknown[]) => queryPreventiveMock(...(a as [])),
+}));
+
 const { HooksBus } = await import('./hooks.js');
 const { registerPipelineOrchestrator } = await import('./orchestrator.js');
 
