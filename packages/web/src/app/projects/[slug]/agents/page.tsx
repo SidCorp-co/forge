@@ -1,41 +1,92 @@
 'use client';
 
-import { useState } from 'react';
-import { useParams } from 'next/navigation';
-import { Plus, Settings2, Trash2 } from 'lucide-react';
+import { useMemo, useRef, useState, useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { Monitor, MonitorOff, Plus, Search, Trash2 } from 'lucide-react';
 import { useProjectBySlug } from '@/features/project/hooks/use-projects';
 import {
   useAgents,
+  useAgentSessions,
   useCreateAgent,
   useUpdateAgent,
   useDeleteAgent,
 } from '@/features/agent/hooks/use-agents';
-import { AgentConfigPanel } from '@/features/agent/components/agent-card/agent-config-panel';
+import { useAgentRunLog } from '@/features/agent/hooks/use-agent-run-log';
+import { agentApi, type Agent, type AgentSessionSummary } from '@/features/agent/api';
+import { AgentCard } from '@/features/agent/components/agent-card/agent-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToastContainer } from '@/components/ui/toast-container';
 import { useSetPageTitle } from '@/hooks/use-page-title';
 import { useToast } from '@/hooks/use-toast';
 import { formatApiError } from '@/lib/api/error';
-import { cn } from '@/lib/utils/cn';
-import type { Agent } from '@/features/agent/api';
+
+const PO_ACTION_COOLDOWN_MS = 3000;
+const RECENT_SESSIONS_PER_AGENT = 5;
 
 export default function AgentsPage() {
   useSetPageTitle('Agents');
+  const router = useRouter();
   const { slug } = useParams<{ slug: string }>();
   const project = useProjectBySlug(slug);
   const projectId = project?.id;
 
   const { data: agents, isLoading, error } = useAgents(projectId);
+  const { data: sessions } = useAgentSessions(projectId);
   const createAgent = useCreateAgent(projectId);
   const updateAgent = useUpdateAgent(projectId);
   const deleteAgent = useDeleteAgent(projectId);
+  const runLog = useAgentRunLog(projectId);
+  const { toasts, addToast } = useToast();
 
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState('');
-  const [configOpenId, setConfigOpenId] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, Partial<Agent>>>({});
-  const { toasts, addToast } = useToast();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [desktopConnected, setDesktopConnected] = useState(false);
+  const [poLoading, setPoLoading] = useState<{
+    action: 'review' | 'reindex';
+    agentId: string;
+  } | null>(null);
+  const lastActionAtRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (!slug) return;
+    let cancelled = false;
+    agentApi
+      .desktopStatus({ projectSlug: slug })
+      .then((res) => {
+        if (!cancelled) setDesktopConnected(res?.data?.connected ?? false);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
+
+  const sessionsByAgent = useMemo(() => {
+    const map = new Map<string, AgentSessionSummary[]>();
+    if (!agents || !sessions) return map;
+    for (const agent of agents) {
+      const matches = sessions
+        .filter((s) => {
+          const metaType = (s.metadata as { type?: string } | null)?.type;
+          if (metaType) return metaType === agent.type || metaType === `${agent.type}-reindex`;
+          // Fallback for older rows without metadata.type — match by title prefix.
+          const prefix = agent.type.toUpperCase();
+          return s.title.startsWith(`${prefix} `) || s.title.startsWith(prefix);
+        })
+        .slice(0, RECENT_SESSIONS_PER_AGENT);
+      map.set(agent.documentId, matches);
+    }
+    return map;
+  }, [agents, sessions]);
+
+  const filteredAgents = useMemo(() => {
+    if (!agents) return [];
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return agents;
+    return agents.filter((a) => a.name.toLowerCase().includes(q));
+  }, [agents, searchQuery]);
 
   function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -47,34 +98,18 @@ export default function AgentsPage() {
           setNewName('');
           setNewType('');
           setCreating(false);
+          addToast('Agent created');
+        },
+        onError: (err) => {
+          addToast(`Create failed: ${formatApiError(err)}`);
         },
       },
     );
   }
 
-  function openConfig(agent: Agent) {
-    setConfigOpenId(agent.documentId);
-    setDrafts((prev) => ({
-      ...prev,
-      [agent.documentId]: {
-        enabled: agent.enabled,
-        focusAreas: [...agent.focusAreas],
-        customInstructions: agent.customInstructions ?? '',
-        schedule: agent.schedule,
-        approvalMode: agent.approvalMode,
-        maxProposals: agent.maxProposals,
-        promptTemplate: agent.promptTemplate ?? '',
-        reindexPromptTemplate: agent.reindexPromptTemplate ?? '',
-      },
-    }));
-  }
-
-  async function handleSave(agent: Agent) {
-    const draft = drafts[agent.documentId];
-    if (!draft) return;
+  async function handleSave(id: string, data: Partial<Agent>): Promise<void> {
     try {
-      await updateAgent.mutateAsync({ id: agent.documentId, data: draft });
-      setConfigOpenId(null);
+      await updateAgent.mutateAsync({ id, data });
       addToast('Configuration saved');
     } catch (err) {
       addToast(`Save failed: ${formatApiError(err)}`);
@@ -83,29 +118,92 @@ export default function AgentsPage() {
 
   function handleDelete(agent: Agent) {
     if (!confirm(`Delete agent "${agent.name}"?`)) return;
-    deleteAgent.mutate(agent.documentId);
+    deleteAgent.mutate(agent.documentId, {
+      onError: (err) => addToast(`Delete failed: ${formatApiError(err)}`),
+    });
+  }
+
+  async function handlePoAction(
+    action: 'review' | 'reindex',
+    agentType: string | undefined,
+    agentDocumentId: string | undefined,
+  ) {
+    if (!agentType || !agentDocumentId || !slug) return;
+    const now = Date.now();
+    if (now - lastActionAtRef.current < PO_ACTION_COOLDOWN_MS) {
+      addToast('Slow down — try again in a moment');
+      return;
+    }
+    lastActionAtRef.current = now;
+    setPoLoading({ action, agentId: agentDocumentId });
+    try {
+      const res =
+        action === 'review'
+          ? await agentApi.startAgentReview(slug, agentType)
+          : await agentApi.startAgentReindex(slug, agentType);
+      const sessionDocId = res?.data?.documentId;
+      if (sessionDocId) {
+        const label = action === 'review' ? 'Running review…' : 'Reindexing knowledge…';
+        runLog.startRun(sessionDocId, label, agentDocumentId);
+      } else {
+        addToast(`${action === 'review' ? 'Review' : 'Reindex'} dispatched`);
+      }
+    } catch (err) {
+      addToast(`${action === 'review' ? 'Review' : 'Reindex'} failed: ${formatApiError(err)}`);
+    } finally {
+      setPoLoading(null);
+    }
+  }
+
+  function handleSessionClick(sessionId: string) {
+    router.push(`/projects/${slug}/agent?session=${sessionId}`);
   }
 
   return (
     <div className="space-y-4 p-6">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold text-on-surface">Agents</h1>
           <p className="text-sm text-primary-fixed">
             Project agent definitions — review, reindex, and pipeline automation.
           </p>
         </div>
-        {!creating && (
-          <button
-            type="button"
-            onClick={() => setCreating(true)}
-            disabled={!projectId}
-            className="inline-flex items-center gap-1.5 rounded-sm border border-outline-variant/30 bg-primary px-3 py-1.5 text-[11px] font-bold uppercase tracking-widest text-on-primary hover:bg-primary/90 disabled:opacity-50"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            New agent
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-outline-variant/30 bg-surface-container-low px-2.5 py-1 text-xs">
+            {desktopConnected ? (
+              <>
+                <Monitor className="h-3.5 w-3.5 text-success" />
+                <span className="text-success">Desktop connected</span>
+              </>
+            ) : (
+              <>
+                <MonitorOff className="h-3.5 w-3.5 text-primary-fixed" />
+                <span className="text-primary-fixed">No desktop connected</span>
+              </>
+            )}
+          </span>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-outline" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search agents…"
+              className="w-48 rounded-sm border border-outline-variant/30 bg-surface py-1.5 pl-7 pr-2 text-xs text-on-surface placeholder:text-outline focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+          {!creating && (
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              disabled={!projectId}
+              className="inline-flex items-center gap-1.5 rounded-sm border border-outline-variant/30 bg-primary px-3 py-1.5 text-[11px] font-bold uppercase tracking-widest text-on-primary hover:bg-primary/90 disabled:opacity-50"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New agent
+            </button>
+          )}
+        </div>
       </div>
 
       {creating && projectId && (
@@ -156,14 +254,13 @@ export default function AgentsPage() {
       {!projectId ? (
         <p className="text-sm text-primary-fixed">Loading project…</p>
       ) : isLoading ? (
-        <div className="space-y-2">
-          <Skeleton className="h-24" />
-          <Skeleton className="h-24" />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <Skeleton className="h-48" />
+          <Skeleton className="h-48" />
+          <Skeleton className="h-48" />
         </div>
       ) : error ? (
-        <p className="text-[10px] uppercase tracking-widest text-error">
-          {formatApiError(error)}
-        </p>
+        <p className="text-[10px] uppercase tracking-widest text-error">{formatApiError(error)}</p>
       ) : !agents || agents.length === 0 ? (
         <div className="rounded-lg border border-dashed border-outline-variant/30 px-4 py-12 text-center">
           <p className="text-sm text-primary-fixed">No agents yet.</p>
@@ -171,83 +268,38 @@ export default function AgentsPage() {
             Create an agent to schedule reviews or run pipeline automation.
           </p>
         </div>
+      ) : filteredAgents.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-outline-variant/30 px-4 py-12 text-center">
+          <p className="text-sm text-primary-fixed">No agents match “{searchQuery}”.</p>
+        </div>
       ) : (
-        <div className="space-y-3">
-          {agents.map((agent) => {
-            const open = configOpenId === agent.documentId;
-            return (
-              <div
-                key={agent.documentId}
-                className="rounded-lg border border-outline-variant/30 bg-surface-container-low"
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {filteredAgents.map((agent) => (
+            <div key={agent.documentId} className="relative">
+              <button
+                type="button"
+                onClick={() => handleDelete(agent)}
+                aria-label={`Delete ${agent.name}`}
+                className="absolute right-3 top-3 z-10 rounded p-1.5 text-outline hover:bg-danger-surface hover:text-danger"
               >
-                <div className="flex items-start justify-between gap-3 p-4">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-base font-semibold text-on-surface">
-                        {agent.name}
-                      </h3>
-                      <span
-                        className={cn(
-                          'rounded-full px-2 py-0.5 text-[10px] font-medium',
-                          agent.enabled
-                            ? 'bg-success-surface text-success'
-                            : 'bg-surface-container-high text-primary-fixed',
-                        )}
-                      >
-                        {agent.enabled ? 'Enabled' : 'Disabled'}
-                      </span>
-                      <span className="rounded-full bg-surface-variant px-2 py-0.5 text-[10px] font-medium text-tertiary">
-                        {agent.type}
-                      </span>
-                      <span className="rounded-full bg-surface-container-high px-2 py-0.5 text-[10px] font-medium text-primary-fixed">
-                        Schedule: {agent.schedule}
-                      </span>
-                    </div>
-                    {agent.customInstructions && (
-                      <p className="mt-2 line-clamp-2 text-xs text-outline">
-                        {agent.customInstructions}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => (open ? setConfigOpenId(null) : openConfig(agent))}
-                      className="inline-flex items-center gap-1 rounded border border-outline-variant/30 bg-surface px-2.5 py-1 text-[11px] text-on-surface hover:bg-surface-container"
-                    >
-                      <Settings2 className="h-3.5 w-3.5" />
-                      Configure
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(agent)}
-                      className="rounded p-1.5 text-outline hover:bg-danger-surface hover:text-danger"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-
-                {open && drafts[agent.documentId] && (
-                  <AgentConfigPanel
-                    agent={agent}
-                    draft={drafts[agent.documentId]!}
-                    saving={updateAgent.isPending}
-                    onDraftChange={(patch) =>
-                      setDrafts((prev) => ({
-                        ...prev,
-                        [agent.documentId]: {
-                          ...prev[agent.documentId],
-                          ...patch,
-                        },
-                      }))
-                    }
-                    onSave={() => handleSave(agent)}
-                  />
-                )}
-              </div>
-            );
-          })}
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+              <AgentCard
+                agent={agent}
+                slug={slug}
+                desktopConnected={desktopConnected}
+                recentSessions={sessionsByAgent.get(agent.documentId) ?? []}
+                onSave={handleSave}
+                onPoAction={handlePoAction}
+                onSessionClick={handleSessionClick}
+                poLoading={
+                  poLoading?.agentId === agent.documentId ? poLoading.action : null
+                }
+                saving={updateAgent.isPending}
+                runLog={runLog}
+              />
+            </div>
+          ))}
         </div>
       )}
       <ToastContainer toasts={toasts} />

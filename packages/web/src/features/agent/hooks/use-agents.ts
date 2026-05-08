@@ -55,3 +55,18 @@ export function usePoSessions(projectSlug: string) {
         .slice(0, 10),
   });
 }
+
+/**
+ * Project-wide session feed for the agents dashboard. Returns all recent
+ * sessions; the page slices per-card by matching `metadata.type` (preferred)
+ * with a title-prefix fallback for older rows. Backend hook for `agentId`
+ * filtering does not exist yet, so we batch one query and fan out at render.
+ */
+export function useAgentSessions(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ['agent-sessions', projectId, 'all'],
+    queryFn: () => agentApi.getSessions(projectId as string),
+    enabled: !!projectId,
+    select: (res) => res.data || [],
+  });
+}
