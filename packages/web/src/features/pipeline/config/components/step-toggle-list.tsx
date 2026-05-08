@@ -1,6 +1,8 @@
 'use client';
 
+import { AlertTriangle } from 'lucide-react';
 import { Select, Switch } from '@/components/ui';
+import { RUNNER_CAPABILITIES, runnerSupports } from '@/features/pipeline/runner-capabilities';
 import { STEP_REGISTRY, type StepToggleKey } from '../step-registry';
 import type { StepFormValue } from '../hooks/use-pipeline-config';
 
@@ -52,6 +54,20 @@ export function StepToggleList({ steps, onChange, availableRunners, masterEnable
                   }
                 />
               </div>
+
+              {v.enabled && !rowDisabled && !runnerSupports(v.runner, def.jobType) && (
+                <div className="flex items-start gap-2 rounded-sm border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] text-amber-300">
+                  <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
+                  <p>
+                    The {v.runner} runner doesn't service '{def.jobType}' jobs (it supports{' '}
+                    {RUNNER_CAPABILITIES[v.runner as keyof typeof RUNNER_CAPABILITIES]?.join(', ') ?? 'a different set'}).
+                    Enabling this toggle on the {v.runner} runner will produce visible-but-harmless
+                    'unsupported job type' failures every time an issue passes through '
+                    {def.statusTransition.split(' ')[0]}'. Either switch this step's runner to one
+                    that supports it, or disable the toggle.
+                  </p>
+                </div>
+              )}
 
               {supportsRunnerOverride && v.enabled && !rowDisabled && (
                 <div className="flex flex-wrap items-center gap-3 pt-1.5 border-t border-outline-variant/15">

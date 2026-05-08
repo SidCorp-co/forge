@@ -12,6 +12,7 @@ import { StatusMultiSelect } from './status-multi-select';
 import type { IssueStatus } from '@/features/issue/types';
 import { IssueDetailModal } from '@/components/issue/issue-detail-modal/issue-detail-modal';
 import { AssigneePicker } from '@/components/issue/assignee-picker';
+import { AwaitingHumanBadge, isAwaitingHumanStatus } from '@/components/issue/awaiting-human-badge';
 import { BulkActionBar } from '@/components/issue/bulk-action-bar';
 import { usePatchIssue } from '@/features/issue/hooks/use-issues';
 import { useUnblockedIssueIds } from '@/features/issue/hooks/use-unblock-cascade';
@@ -344,9 +345,13 @@ export function IssuesView() {
                     {issue.category}
                   </span>
                 )}
-                <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                  {issue.status}
-                </span>
+                {isAwaitingHumanStatus(issue.status) ? (
+                  <AwaitingHumanBadge status={issue.status} />
+                ) : (
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                    {issue.status}
+                  </span>
+                )}
                 <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
                   {issue.priority}
                 </span>

@@ -44,6 +44,7 @@ const jobPatchSchema = z
 const jobListFiltersSchema = paginationSchema.extend({
   status: z.enum(jobStatuses).optional(),
   type: z.enum(jobTypes).optional(),
+  issueId: z.uuid().optional(),
 });
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
@@ -130,6 +131,7 @@ jobProjectRoutes.get(
     const conditions = [eq(jobs.projectId, projectId)];
     if (q.status) conditions.push(eq(jobs.status, q.status));
     if (q.type) conditions.push(eq(jobs.type, q.type));
+    if (q.issueId) conditions.push(eq(jobs.issueId, q.issueId));
     const where = conditions.length === 1 ? conditions[0] : and(...conditions);
 
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(jobs).where(where);

@@ -29,6 +29,7 @@ import { IssuePipelineActions } from '@/components/issue/issue-detail-modal/issu
 import { IssueAgentSessions } from '@/components/issue/issue-detail-modal/issue-agent-sessions';
 import { IssueAttachments } from '@/components/issue/issue-detail-modal/issue-attachments';
 import { useMeProfile } from '@/features/me/hooks/use-me';
+import { IssueJobs } from '@/components/issue/issue-detail-modal/issue-jobs';
 import { IssueTasks } from '@/components/issue/issue-detail-modal/issue-tasks';
 import { IssueCostSummary } from '@/components/issue/issue-detail-modal/issue-cost-summary';
 import { IssuePipelineTiming } from '@/components/issue/issue-pipeline-timing';
@@ -281,6 +282,7 @@ export default function IssueDetailPage() {
                 onSelect={(sid) => setSessionId(sid)}
                 selectedSessionId={sessionParam}
               />
+              <IssueJobs issueId={issueId} projectId={issue.projectId} />
             </main>
 
             <aside className="space-y-6">

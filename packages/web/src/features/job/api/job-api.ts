@@ -8,6 +8,7 @@ export interface JobListParams {
   offset?: number;
   status?: string;
   type?: JobType;
+  issueId?: string;
 }
 
 export interface JobCreateInput {
@@ -34,6 +35,7 @@ export const jobApi = {
     qs.set('offset', String(p.offset ?? 0));
     if (p.status) qs.set('status', p.status);
     if (p.type) qs.set('type', p.type);
+    if (p.issueId) qs.set('issueId', p.issueId);
     return apiClientList<Job>(`/projects/${p.projectId}/jobs?${qs}`);
   },
 
