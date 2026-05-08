@@ -41,4 +41,14 @@ describe('LocalFsStorage', () => {
       code: 'ENOENT',
     });
   });
+
+  it('delete removes a stored file', async () => {
+    const { path } = await storage.put('to-delete.txt', Buffer.from('bye'), 'text/plain');
+    await storage.delete(path);
+    await expect(storage.get(path)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('delete is idempotent for missing files', async () => {
+    await expect(storage.delete(join(root, 'never/existed.txt'))).resolves.toBeUndefined();
+  });
 });

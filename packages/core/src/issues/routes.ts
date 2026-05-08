@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { registerIssueCommentRoutes } from '../comments/routes.js';
+import { registerIssueAttachmentRoutes } from './attachment-routes.js';
 import { db } from '../db/client.js';
 import {
   issueComplexities,
@@ -296,6 +297,7 @@ export const issueRoutes = new Hono<{ Variables: AuthVars }>();
 issueRoutes.use('*', requireAuth(), assertEmailVerified());
 
 registerIssueCommentRoutes(issueRoutes);
+registerIssueAttachmentRoutes(issueRoutes);
 
 async function loadIssue(issueId: string): Promise<IssueRow> {
   const [row] = await db.select().from(issues).where(eq(issues.id, issueId)).limit(1);

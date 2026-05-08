@@ -27,6 +27,8 @@ import { InlinePrioritySelect } from '@/components/issue/inline-priority-select'
 import { InlineComplexitySelect } from '@/components/issue/inline-complexity-select';
 import { IssuePipelineActions } from '@/components/issue/issue-detail-modal/issue-pipeline-actions';
 import { IssueAgentSessions } from '@/components/issue/issue-detail-modal/issue-agent-sessions';
+import { IssueAttachments } from '@/components/issue/issue-detail-modal/issue-attachments';
+import { useMeProfile } from '@/features/me/hooks/use-me';
 import { IssueTasks } from '@/components/issue/issue-detail-modal/issue-tasks';
 import { IssueCostSummary } from '@/components/issue/issue-detail-modal/issue-cost-summary';
 import { IssuePipelineTiming } from '@/components/issue/issue-pipeline-timing';
@@ -97,6 +99,7 @@ export default function IssueDetailPage() {
   const setManualHold = useSetManualHold();
   const { toasts, addToast } = useToast();
   const { data: members = [] } = useProjectMembers(projectId);
+  const { data: meProfile } = useMeProfile();
 
   const handleStatusUpdate = useCallback(
     (issueIdValue: string, data: { status: IssueStatus }) => {
@@ -255,6 +258,12 @@ export default function IssueDetailPage() {
                 </div>
                 <IssueTasks issueId={issueId} projectId={issue.projectId} />
               </section>
+
+              <IssueAttachments
+                issueId={issueId}
+                currentUserId={meProfile?.id ?? null}
+                isProjectOwner={!!meProfile && project?.ownerId === meProfile.id}
+              />
 
               <CommentsSection issueId={issueId} />
               <section className="rounded-sm border border-outline-variant/20 bg-surface">

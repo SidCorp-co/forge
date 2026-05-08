@@ -63,6 +63,17 @@ export interface Issue extends BaseEntity {
   manualHold?: boolean;
 }
 
+export interface IssueAttachment {
+  id: string;
+  issueId: string;
+  uploaderId: string;
+  name: string;
+  mime: string;
+  size: number;
+  createdAt: string;
+  url: string;
+}
+
 export interface IssueCostStep {
   step: string;
   inputTokens: number;

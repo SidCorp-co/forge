@@ -73,6 +73,19 @@ export function strapiMediaUrl(url: string): string {
 }
 
 /**
+ * Resolve a server-relative path (e.g. `/api/attachments/abc/download`) to an
+ * absolute URL anchored at the core API origin. Pass-through for absolute URLs
+ * and empty input. Use for `<img src>`, `<video src>`, and `<a href>` where
+ * `fetch` wrappers aren't involved and the browser would otherwise resolve
+ * against the web origin.
+ */
+export function coreFileUrl(path: string): string {
+  if (!path) return path;
+  if (/^https?:\/\//i.test(path)) return path;
+  return `${CORE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
+/**
  * Transitional shim — legacy Strapi upload entry point. Always throws. Comment
  * attachments now use `apiMultipart('/comments/:id/attachments', formData)`
  * directly. Remove once no caller imports `apiUpload`.

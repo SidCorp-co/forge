@@ -18,4 +18,8 @@ export class S3Storage implements StorageAdapter {
   async get(_path: string): Promise<Buffer> {
     throw new Error('S3Storage.get is not implemented');
   }
+
+  async delete(_path: string): Promise<void> {
+    throw new Error('S3Storage.delete is not implemented');
+  }
 }

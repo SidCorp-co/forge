@@ -12,6 +12,10 @@ describe('S3Storage stub', () => {
     await expect(s.get('s3://bucket/k')).rejects.toThrow(/not implemented/i);
   });
 
+  it('throws on delete with a clear message', async () => {
+    await expect(s.delete('s3://bucket/k')).rejects.toThrow(/not implemented/i);
+  });
+
   it('preserves bucket and region for future implementation', () => {
     expect(s.bucket).toBe('bucket');
     expect(s.region).toBe('us-east-1');

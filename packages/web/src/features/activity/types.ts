@@ -18,6 +18,8 @@ export type ActivityType =
   | 'agent_session'
   | 'relation_added'
   | 'relation_removed'
+  | 'attachment_added'
+  | 'attachment_removed'
   | 'pikachu_decision';
 
 export interface Activity extends BaseEntity {

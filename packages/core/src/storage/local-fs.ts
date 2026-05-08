@@ -1,6 +1,6 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import type { StorageAdapter } from './types.js';
+import { isEnoent, type StorageAdapter } from './types.js';
 
 export class LocalFsStorage implements StorageAdapter {
   constructor(private readonly root: string) {}
@@ -14,5 +14,14 @@ export class LocalFsStorage implements StorageAdapter {
 
   async get(path: string): Promise<Buffer> {
     return readFile(path);
+  }
+
+  async delete(path: string): Promise<void> {
+    try {
+      await unlink(path);
+    } catch (err) {
+      if (isEnoent(err)) return;
+      throw err;
+    }
   }
 }

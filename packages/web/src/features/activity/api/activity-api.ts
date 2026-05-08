@@ -189,6 +189,21 @@ function mapAction(action: string, payload: Record<string, unknown>): MapResult 
     };
   }
 
+  if (action === 'issue.attachment.uploaded') {
+    return {
+      type: 'attachment_added',
+      toValue: asString(payload.name),
+      metadata: payload,
+    };
+  }
+  if (action === 'issue.attachment.deleted') {
+    return {
+      type: 'attachment_removed',
+      fromValue: asString(payload.name),
+      metadata: payload,
+    };
+  }
+
   if (head === 'pikachu') return { type: 'pikachu_decision' };
 
   if (head === 'transition') {

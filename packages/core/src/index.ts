@@ -29,6 +29,7 @@ import { chatRoutes } from './chat/routes.js';
 import { widgetChatRoutes } from './chat/widget-routes.js';
 import { commentRoutes } from './comments/routes.js';
 import { commentUploadRoutes } from './comments/upload.js';
+import { attachmentRoutes } from './issues/attachment-routes.js';
 import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
 import {
@@ -270,6 +271,7 @@ app.route('/api/issues', taskIssueRoutes);
 app.route('/api/tasks', taskRoutes);
 app.route('/api/comments', commentRoutes);
 app.route('/api/comments', commentUploadRoutes);
+app.route('/api/attachments', attachmentRoutes);
 app.route('/api/labels', labelRoutes);
 app.route('/api/jobs', jobRoutes);
 app.route('/api/jobs', jobEventsRoutes);

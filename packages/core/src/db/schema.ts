@@ -738,6 +738,7 @@ export const issuesRelations = relations(issues, ({ one, many }) => ({
   comments: many(comments),
   labels: many(issueLabels),
   activity: many(activityLog),
+  attachments: many(issueAttachments),
 }));
 
 export const commentsRelations = relations(comments, ({ one, many }) => ({
@@ -799,6 +800,32 @@ export const commentAttachments = pgTable(
 export const commentAttachmentsRelations = relations(commentAttachments, ({ one }) => ({
   comment: one(comments, { fields: [commentAttachments.commentId], references: [comments.id] }),
   uploader: one(users, { fields: [commentAttachments.uploaderId], references: [users.id] }),
+}));
+
+export const issueAttachments = pgTable(
+  'issue_attachments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references(() => issues.id, { onDelete: 'cascade' }),
+    uploaderId: uuid('uploader_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    name: text('name').notNull(),
+    path: text('path').notNull(),
+    mime: text('mime').notNull(),
+    size: integer('size').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    issueIdx: index('issue_attachments_issue_id_idx').on(t.issueId),
+  }),
+);
+
+export const issueAttachmentsRelations = relations(issueAttachments, ({ one }) => ({
+  issue: one(issues, { fields: [issueAttachments.issueId], references: [issues.id] }),
+  uploader: one(users, { fields: [issueAttachments.uploaderId], references: [users.id] }),
 }));
 
 export const labelsRelations = relations(labels, ({ one, many }) => ({

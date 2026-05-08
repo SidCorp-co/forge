@@ -11,6 +11,13 @@
 export interface StorageAdapter {
   put(key: string, data: Buffer | Uint8Array, mime: string): Promise<{ path: string }>;
   get(path: string): Promise<Buffer>;
+  /**
+   * Remove the bytes at `path`. Implementations MUST be idempotent — deleting
+   * a missing path resolves successfully. Callers may attempt deletion after a
+   * failed transaction or on retry, and a missing-file error from the backend
+   * must not surface to the caller.
+   */
+  delete(path: string): Promise<void>;
 }
 
 export function isEnoent(err: unknown): boolean {

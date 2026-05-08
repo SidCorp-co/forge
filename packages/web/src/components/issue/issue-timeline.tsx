@@ -44,6 +44,8 @@ const ICONS: Record<string, string> = {
   agent_session: '\u{1F916}',
   relation_added: '\u{1F517}',
   relation_removed: '\u{1F517}',
+  attachment_added: '\u{1F4CE}',
+  attachment_removed: '\u{1F4CE}',
   pikachu_decision: '\u26A1',
 };
 
@@ -63,6 +65,8 @@ const EVENT_DESCRIPTIONS: Record<string, string> = {
   agent_session: 'started an agent session',
   relation_added: 'added a relation',
   relation_removed: 'removed a relation',
+  attachment_added: 'attached',
+  attachment_removed: 'removed attachment',
 };
 
 const DELETABLE_TYPES = new Set([
