@@ -1009,6 +1009,7 @@ export const tasks = pgTable(
     agentStatus: text('agent_status', { enum: taskAgentStatuses }),
     agentLog: jsonb('agent_log'),
     acceptanceCriteria: jsonb('acceptance_criteria'),
+    sortOrder: integer('sort_order').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1016,6 +1017,7 @@ export const tasks = pgTable(
     issueIdx: index('tasks_issue_id_idx').on(t.issueId),
     projectStatusIdx: index('tasks_project_status_idx').on(t.projectId, t.status),
     assigneeIdx: index('tasks_assignee_idx').on(t.assigneeId),
+    issueSortIdx: index('tasks_issue_sort_idx').on(t.issueId, t.sortOrder),
   }),
 );
 

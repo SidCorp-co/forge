@@ -17,6 +17,12 @@ const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn(() => ({ where: updateWhere }));
 const deleteWhere = vi.fn();
+// tx.update().set().where() inside reorder transaction
+const txUpdateWhere = vi.fn(() => Promise.resolve(undefined));
+const txUpdateSet = vi.fn(() => ({ where: txUpdateWhere }));
+const transaction = vi.fn(async (cb: (tx: unknown) => unknown) =>
+  cb({ update: vi.fn(() => ({ set: txUpdateSet })) }),
+);
 
 vi.mock('../db/client.js', () => ({
   db: {
@@ -24,6 +30,7 @@ vi.mock('../db/client.js', () => ({
     insert: vi.fn(() => ({ values: insertValues })),
     update: vi.fn(() => ({ set: updateSet })),
     delete: vi.fn(() => ({ where: deleteWhere })),
+    transaction: (cb: (tx: unknown) => unknown) => transaction(cb),
   },
 }));
 
@@ -59,6 +66,10 @@ beforeEach(() => {
   insertReturning.mockReset();
   updateReturning.mockReset();
   deleteWhere.mockReset();
+  txUpdateWhere.mockReset();
+  txUpdateWhere.mockImplementation(() => Promise.resolve(undefined));
+  txUpdateSet.mockClear();
+  transaction.mockClear();
   projectAccess.mockReset();
   hooksModule.hooks.reset();
 });
@@ -118,8 +129,10 @@ describe('POST /api/issues/:id/tasks', () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'member' });
+    // sortOrder default lookup (no input.sortOrder) — empty issue
+    selectLimit.mockResolvedValueOnce([{ max: null }]);
     insertReturning.mockResolvedValueOnce([
-      { id: TASK_ID, issueId: ISSUE_ID, projectId: PROJECT_ID, title: 'do thing', status: 'backlog' },
+      { id: TASK_ID, issueId: ISSUE_ID, projectId: PROJECT_ID, title: 'do thing', status: 'backlog', sortOrder: 0 },
     ]);
 
     let emitted: unknown = null;
@@ -136,6 +149,26 @@ describe('POST /api/issues/:id/tasks', () => {
     const body = (await res.json()) as { id: string; title: string };
     expect(body.id).toBe(TASK_ID);
     expect(emitted).toMatchObject({ taskId: TASK_ID, issueId: ISSUE_ID, projectId: PROJECT_ID });
+    // insert was called with sortOrder=0 (max(-1)+1) since no rows existed
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ sortOrder: 0 }));
+  });
+
+  it('defaults sortOrder to max+1 when other tasks exist', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'member' });
+    selectLimit.mockResolvedValueOnce([{ max: 4 }]);
+    insertReturning.mockResolvedValueOnce([
+      { id: TASK_ID, issueId: ISSUE_ID, projectId: PROJECT_ID, title: 't', sortOrder: 5 },
+    ]);
+
+    const res = await buildApp().request(`/api/issues/${ISSUE_ID}/tasks`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ title: 't' }),
+    });
+    expect(res.status).toBe(201);
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ sortOrder: 5 }));
   });
 });
 
@@ -184,12 +217,12 @@ describe('PATCH /api/tasks/:taskId', () => {
 });
 
 describe('DELETE /api/tasks/:taskId', () => {
-  it('403 for non-owner', async () => {
+  it('403 for non-member', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([
       { id: TASK_ID, issueId: ISSUE_ID, projectId: PROJECT_ID },
     ]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: 'other', role: 'member' });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: 'other', role: null });
     const res = await buildApp().request(`/api/tasks/${TASK_ID}`, {
       method: 'DELETE',
       headers: { authorization: `Bearer ${await token()}` },
@@ -197,12 +230,12 @@ describe('DELETE /api/tasks/:taskId', () => {
     expect(res.status).toBe(403);
   });
 
-  it('204 for owner + emits taskDeleted', async () => {
+  it('204 for non-owner member + emits taskDeleted', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([
       { id: TASK_ID, issueId: ISSUE_ID, projectId: PROJECT_ID },
     ]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'owner' });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: 'other', role: 'member' });
     deleteWhere.mockResolvedValueOnce(undefined);
 
     let emitted: unknown = null;
@@ -216,5 +249,84 @@ describe('DELETE /api/tasks/:taskId', () => {
     });
     expect(res.status).toBe(204);
     expect(emitted).toMatchObject({ taskId: TASK_ID });
+  });
+});
+
+describe('POST /api/issues/:id/tasks/reorder', () => {
+  const T1 = '55555555-5555-4555-8555-555555555555';
+  const T2 = '66666666-6666-4666-8666-666666666666';
+  const T3 = '77777777-7777-4777-8777-777777777777';
+  const FOREIGN = '88888888-8888-4888-8888-888888888888';
+
+  it('403 when not a project member', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: 'x', role: null });
+
+    const res = await buildApp().request(`/api/issues/${ISSUE_ID}/tasks/reorder`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ taskIds: [T1] }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('400 when taskIds count differs from existing', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'member' });
+    selectOrderBy.mockResolvedValueOnce([
+      { id: T1, sortOrder: 0 },
+      { id: T2, sortOrder: 1 },
+    ]);
+
+    const res = await buildApp().request(`/api/issues/${ISSUE_ID}/tasks/reorder`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ taskIds: [T1] }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('400 when taskIds contains foreign id', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'member' });
+    selectOrderBy.mockResolvedValueOnce([
+      { id: T1, sortOrder: 0 },
+      { id: T2, sortOrder: 1 },
+    ]);
+
+    const res = await buildApp().request(`/api/issues/${ISSUE_ID}/tasks/reorder`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ taskIds: [T1, FOREIGN] }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('204 reorders and emits taskUpdated for changed rows only', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'member' });
+    selectOrderBy.mockResolvedValueOnce([
+      { id: T1, sortOrder: 0 },
+      { id: T2, sortOrder: 1 },
+      { id: T3, sortOrder: 2 },
+    ]);
+
+    const emitted: Array<{ taskId: string; fields: string[] }> = [];
+    hooksModule.hooks.on('taskUpdated', (p) => emitted.push(p));
+
+    const res = await buildApp().request(`/api/issues/${ISSUE_ID}/tasks/reorder`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      // Reverse order: [T3,T2,T1] → T3 idx0 (was 2, changed), T2 idx1 (unchanged), T1 idx2 (was 0, changed)
+      body: JSON.stringify({ taskIds: [T3, T2, T1] }),
+    });
+    expect(res.status).toBe(204);
+    expect(emitted.map((e) => e.taskId).sort()).toEqual([T1, T3].sort());
+    expect(emitted.every((e) => e.fields[0] === 'sortOrder')).toBe(true);
+    expect(transaction).toHaveBeenCalledTimes(1);
   });
 });

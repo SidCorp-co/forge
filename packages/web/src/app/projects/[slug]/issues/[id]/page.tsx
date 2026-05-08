@@ -27,6 +27,7 @@ import { InlinePrioritySelect } from '@/components/issue/inline-priority-select'
 import { InlineComplexitySelect } from '@/components/issue/inline-complexity-select';
 import { IssuePipelineActions } from '@/components/issue/issue-detail-modal/issue-pipeline-actions';
 import { IssueAgentSessions } from '@/components/issue/issue-detail-modal/issue-agent-sessions';
+import { IssueTasks } from '@/components/issue/issue-detail-modal/issue-tasks';
 import { IssueCostSummary } from '@/components/issue/issue-detail-modal/issue-cost-summary';
 import { IssuePipelineTiming } from '@/components/issue/issue-pipeline-timing';
 import { IssueRelations } from '@/components/issue/issue-relations';
@@ -236,6 +237,15 @@ export default function IssueDetailPage() {
                 placeholder="No plan. Click Edit to add."
                 onSave={(v) => handlePatch(issueId, { plan: v })}
               />
+
+              <section className="rounded-sm border border-outline-variant/20 bg-surface">
+                <div className="border-b border-outline-variant/20 bg-surface-container-low px-4 py-2">
+                  <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">
+                    Subtasks
+                  </h3>
+                </div>
+                <IssueTasks issueId={issueId} projectId={issue.projectId} />
+              </section>
 
               <CommentsSection issueId={issueId} />
               <section className="rounded-sm border border-outline-variant/20 bg-surface">

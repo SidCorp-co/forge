@@ -19,4 +19,10 @@ export const taskApi = {
     }),
 
   remove: (taskId: string) => apiClient<void>(`/tasks/${taskId}`, { method: 'DELETE' }),
+
+  reorder: (issueId: string, taskIds: string[]) =>
+    apiClient<void>(`/issues/${issueId}/tasks/reorder`, {
+      method: 'POST',
+      body: JSON.stringify({ taskIds }),
+    }),
 };

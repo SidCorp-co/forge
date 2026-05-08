@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -30,6 +30,7 @@ const taskCreateSchema = z
     agentStatus: z.enum(taskAgentStatuses).nullable().optional(),
     agentLog: z.unknown().optional(),
     acceptanceCriteria: z.unknown().optional(),
+    sortOrder: z.number().int().nonnegative().optional(),
   })
   .strict();
 
@@ -44,9 +45,14 @@ const taskPatchSchema = z
     agentStatus: z.enum(taskAgentStatuses).nullable().optional(),
     agentLog: z.unknown().optional(),
     acceptanceCriteria: z.unknown().optional(),
+    sortOrder: z.number().int().nonnegative().optional(),
   })
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
+
+const taskReorderSchema = z
+  .object({ taskIds: z.array(z.uuid()).min(1) })
+  .strict();
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -100,6 +106,16 @@ taskIssueRoutes.post(
 
     if (input.assigneeId) await assertAssigneeIsMember(issue.projectId, input.assigneeId);
 
+    let sortOrder = input.sortOrder;
+    if (sortOrder === undefined) {
+      const [maxRow] = await db
+        .select({ max: sql<number | null>`max(${tasks.sortOrder})` })
+        .from(tasks)
+        .where(eq(tasks.issueId, issue.id))
+        .limit(1);
+      sortOrder = (maxRow?.max ?? -1) + 1;
+    }
+
     const [inserted] = await db
       .insert(tasks)
       .values({
@@ -114,6 +130,7 @@ taskIssueRoutes.post(
         agentStatus: input.agentStatus ?? null,
         agentLog: (input.agentLog as never) ?? null,
         acceptanceCriteria: (input.acceptanceCriteria as never) ?? null,
+        sortOrder,
       })
       .returning();
     if (!inserted) throw new Error('tasks: insert returned no row');
@@ -152,9 +169,88 @@ taskIssueRoutes.get(
       .select()
       .from(tasks)
       .where(eq(tasks.issueId, issueId))
-      .orderBy(asc(tasks.createdAt));
+      .orderBy(asc(tasks.sortOrder), asc(tasks.createdAt));
 
     return c.json(rows);
+  },
+);
+
+// Reorder all subtasks of an issue. Body must list every task id of the issue
+// exactly once; partial reorders are rejected to keep sortOrder gap-free.
+taskIssueRoutes.post(
+  '/:id/tasks/reorder',
+  zValidator('param', issueIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('json', taskReorderSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id: issueId } = c.req.valid('param');
+    const { taskIds } = c.req.valid('json');
+    const userId = c.get('userId');
+
+    const [issue] = await db
+      .select({ id: issues.id, projectId: issues.projectId })
+      .from(issues)
+      .where(eq(issues.id, issueId))
+      .limit(1);
+    if (!issue) throw notFound('issue not found');
+
+    const access = await loadProjectAccess(issue.projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+
+    const existing = await db
+      .select({ id: tasks.id, sortOrder: tasks.sortOrder })
+      .from(tasks)
+      .where(eq(tasks.issueId, issueId))
+      .orderBy(asc(tasks.sortOrder));
+
+    if (existing.length !== taskIds.length) {
+      throw new HTTPException(400, {
+        message: 'taskIds must list every subtask of the issue exactly once',
+        cause: { code: 'TASKS_MISMATCH' },
+      });
+    }
+    const existingSet = new Set(existing.map((r) => r.id));
+    const seen = new Set<string>();
+    for (const id of taskIds) {
+      if (!existingSet.has(id) || seen.has(id)) {
+        throw new HTTPException(400, {
+          message: 'taskIds must list every subtask of the issue exactly once',
+          cause: { code: 'TASKS_MISMATCH' },
+        });
+      }
+      seen.add(id);
+    }
+
+    const previous = new Map(existing.map((r) => [r.id, r.sortOrder]));
+    const changed: string[] = [];
+    await db.transaction(async (tx) => {
+      for (let i = 0; i < taskIds.length; i++) {
+        const id = taskIds[i] as string;
+        if (previous.get(id) === i) continue;
+        await tx
+          .update(tasks)
+          .set({ sortOrder: i, updatedAt: new Date() })
+          .where(eq(tasks.id, id));
+        changed.push(id);
+      }
+    });
+
+    await Promise.all(
+      changed.map((id) =>
+        hooks.emit('taskUpdated', {
+          taskId: id,
+          issueId: issue.id,
+          projectId: issue.projectId,
+          actor: { type: 'user', id: userId },
+          fields: ['sortOrder'],
+        }),
+      ),
+    );
+
+    return c.body(null, 204);
   },
 );
 
@@ -247,6 +343,10 @@ taskRoutes.patch(
       // jsonb: object identity differs each load, so any explicit set counts as a change.
       fields.push('acceptanceCriteria');
     }
+    if (patch.sortOrder !== undefined) {
+      updates.sortOrder = patch.sortOrder;
+      track('sortOrder', task.sortOrder, patch.sortOrder);
+    }
 
     const [updated] = await db
       .update(tasks)
@@ -280,9 +380,7 @@ taskRoutes.delete(
 
     const task = await loadTask(taskId);
     const access = await loadProjectAccess(task.projectId, userId);
-    if (access.ownerId !== userId && access.role !== 'owner') {
-      throw forbidden('not a project owner');
-    }
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
 
     await db.delete(tasks).where(eq(tasks.id, taskId));
 

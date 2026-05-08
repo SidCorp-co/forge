@@ -21,6 +21,7 @@ export interface Task {
   agentStatus: TaskAgentStatus | null;
   agentLog: unknown;
   acceptanceCriteria: unknown;
+  sortOrder: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -35,6 +36,7 @@ export interface TaskCreateInput {
   agentStatus?: TaskAgentStatus | null;
   agentLog?: unknown;
   acceptanceCriteria?: unknown;
+  sortOrder?: number;
 }
 
 export type TaskPatchInput = Partial<TaskCreateInput>;
