@@ -742,6 +742,7 @@ describe('db/schema — issues', () => {
         'recovery_attempts',
         'recovery_window_started_at',
         'reopen_count',
+        'reported_by',
         'session_context',
         'source',
         'status',

@@ -564,6 +564,8 @@ export const issues = pgTable(
     status: text('status', { enum: issueStatuses }).notNull().default('open'),
     priority: text('priority', { enum: issuePriorities }).notNull().default('medium'),
     category: text('category'),
+    // Set by webhook/MCP imports; NULL when `createdById` covers the actor.
+    reportedBy: text('reported_by'),
     assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
     createdById: uuid('created_by_id')
       .notNull()

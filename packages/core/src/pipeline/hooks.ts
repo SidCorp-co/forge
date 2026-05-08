@@ -7,6 +7,7 @@ export interface IssueSnapshot {
   description: string | null;
   priority: string;
   category: string | null;
+  reportedBy: string | null;
   assigneeId: string | null;
   labels: string[];
 }

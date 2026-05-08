@@ -28,6 +28,7 @@ export const issueCreateSchema = z
     priority: z.enum(issuePriorities).optional(),
     category: z.string().trim().min(1).max(100).nullable().optional(),
     complexity: z.enum(issueComplexities).nullable().optional(),
+    reportedBy: z.string().trim().min(1).max(200).nullable().optional(),
     assigneeId: z.uuid().nullable().optional(),
     parentIssueId: z.uuid().nullable().optional(),
     labels: z.array(z.uuid()).max(100).optional(),
@@ -88,6 +89,7 @@ type IssueRow = {
   status: string;
   priority: string;
   category: string | null;
+  reportedBy: string | null;
   complexity: string | null;
   manualHold: boolean;
   plan: string | null;
@@ -172,6 +174,7 @@ issueProjectRoutes.post(
           priority: input.priority ?? 'medium',
           category: input.category ?? null,
           complexity: input.complexity ?? null,
+          reportedBy: input.reportedBy ?? null,
           assigneeId: input.assigneeId ?? null,
           parentIssueId: input.parentIssueId ?? null,
           createdById: userId,
@@ -197,6 +200,7 @@ issueProjectRoutes.post(
         description: created.description,
         priority: created.priority,
         category: created.category,
+        reportedBy: created.reportedBy,
         assigneeId: created.assigneeId,
         labels: input.labels ?? [],
       },
