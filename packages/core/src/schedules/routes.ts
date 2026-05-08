@@ -4,13 +4,12 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { jobs, projects, schedules, scheduleRunners } from '../db/schema.js';
-import { enqueueJob } from '../jobs/enqueue.js';
+import { projects, schedules, scheduleRunners } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { hooks } from '../pipeline/hooks.js';
 import { nextRunFor, validateCron } from './cron.js';
+import { dispatchScheduleRun } from './dispatch.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -55,6 +54,46 @@ const notFound = (message: string) =>
 
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
+
+// Cross-project routing via `targetProjectSlug` would otherwise let the source
+// project's owner plant jobs on any project they know the slug of. Require the
+// actor to be a member of the target project before accepting the slug, both
+// when persisting it (POST/PUT) and when manually triggering (`/:id/run`).
+// Reset `lastStatus` to 'failed' after a dispatcher throw so the row never
+// gets pinned to 'running' or a stale 'success'. Errors during the reset are
+// logged but never propagated — the original dispatch failure is what matters.
+async function markScheduleFailed(scheduleId: string, ctx: string): Promise<void> {
+  try {
+    await db
+      .update(schedules)
+      .set({ lastStatus: 'failed' })
+      .where(eq(schedules.id, scheduleId));
+  } catch (err) {
+    logger.error({ err, scheduleId }, `${ctx}: lastStatus reset threw`);
+  }
+}
+
+async function assertTargetProjectAccess(
+  slug: string,
+  userId: string,
+): Promise<{ id: string; ownerId: string }> {
+  const [target] = await db
+    .select({ id: projects.id, ownerId: projects.ownerId })
+    .from(projects)
+    .where(eq(projects.slug, slug))
+    .limit(1);
+  if (!target) {
+    throw new HTTPException(400, {
+      message: 'targetProjectSlug not found',
+      cause: { code: 'INVALID_TARGET_PROJECT' },
+    });
+  }
+  const access = await loadProjectAccess(target.id, userId);
+  if (!access.role && access.ownerId !== userId) {
+    throw forbidden('not a member of target project');
+  }
+  return target;
+}
 
 export const scheduleRoutes = new Hono<{ Variables: AuthVars }>();
 scheduleRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -123,6 +162,10 @@ scheduleRoutes.post(
       });
     }
 
+    if (input.targetProjectSlug) {
+      await assertTargetProjectAccess(input.targetProjectSlug, userId);
+    }
+
     const enabled = input.enabled ?? true;
     const nextRunAt = enabled ? nextRunFor(input.cron) : null;
 
@@ -164,6 +207,10 @@ scheduleRoutes.put(
 
     const access = await loadProjectAccess(row.projectId, userId);
     if (access.ownerId !== userId && access.role !== 'owner') throw forbidden('not a project owner');
+
+    if (patch.targetProjectSlug !== undefined && patch.targetProjectSlug !== null) {
+      await assertTargetProjectAccess(patch.targetProjectSlug, userId);
+    }
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (patch.name !== undefined) updates.name = patch.name;
@@ -241,38 +288,45 @@ scheduleRoutes.post(
     const access = await loadProjectAccess(schedule.projectId, userId);
     if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
 
-    const [job] = await db
-      .insert(jobs)
-      .values({
-        projectId: schedule.projectId,
-        createdBy: userId,
-        type: 'custom',
-        payload: {
-          kind: 'schedule.run',
-          scheduleId: schedule.id,
+    // Defensive re-check: rows persisted before the create/update gate landed
+    // could carry a `targetProjectSlug` the actor has no business triggering.
+    let resolvedTarget: { id: string; ownerId: string } | undefined;
+    if (schedule.targetProjectSlug) {
+      resolvedTarget = await assertTargetProjectAccess(schedule.targetProjectSlug, userId);
+    }
+
+    let result: Awaited<ReturnType<typeof dispatchScheduleRun>>;
+    try {
+      result = await dispatchScheduleRun({
+        schedule: {
+          id: schedule.id,
+          projectId: schedule.projectId,
           prompt: schedule.prompt,
           runner: schedule.runner,
           targetProjectSlug: schedule.targetProjectSlug ?? null,
         },
-        status: 'queued',
-      })
-      .returning({ id: jobs.id });
-    if (!job) throw new Error('jobs: insert returned no row');
-
-    try {
-      await enqueueJob(job.id);
+        actorUserId: userId,
+        ...(resolvedTarget ? { resolvedTarget } : {}),
+      });
     } catch (err) {
-      logger.error({ err, jobId: job.id }, 'schedule.run: enqueueJob failed');
+      logger.error({ err, scheduleId: schedule.id }, 'schedule.run: dispatch threw');
+      await markScheduleFailed(schedule.id, 'schedule.run');
+      throw err;
     }
 
-    await hooks.emit('scheduleRun', {
-      scheduleId: schedule.id,
-      projectId: schedule.projectId,
-      jobId: job.id,
-      actorUserId: userId,
-    });
+    await db
+      .update(schedules)
+      .set({ lastStatus: result.status })
+      .where(eq(schedules.id, schedule.id));
 
-    return c.json({ sessionId: job.id, jobId: job.id, message: 'Schedule triggered' }, 202);
+    if (!result.ok) {
+      throw new HTTPException(409, {
+        message: result.reason,
+        cause: { code: 'SCHEDULE_DISPATCH_FAILED', reason: result.reason },
+      });
+    }
+
+    return c.json({ sessionId: result.jobId, jobId: result.jobId, message: 'Schedule triggered' }, 202);
   },
 );
 
@@ -312,45 +366,37 @@ export async function runScheduleTickOnce(now: Date = new Date()): Promise<strin
         .returning({ id: schedules.id });
       if (claimed.length === 0) continue; // another ticker won the race
 
-      const [project] = await db
-        .select({ ownerId: projects.ownerId })
-        .from(projects)
-        .where(eq(projects.id, schedule.projectId))
-        .limit(1);
-      if (!project) continue;
-      const [job] = await db
-        .insert(jobs)
-        .values({
-          projectId: schedule.projectId,
-          // FIXME(iss-257): system-initiated jobs attribute to project.ownerId
-          // because jobs.createdBy is NOT NULL. Adding a sentinel system user
-          // requires a separate migration — tracked for follow-up. Consumers
-          // can detect schedule-driven jobs by payload.kind === 'schedule.run'
-          // && payload.tick === true.
-          createdBy: project.ownerId,
-          type: 'custom',
-          payload: {
-            kind: 'schedule.run',
-            scheduleId: schedule.id,
+      let result: Awaited<ReturnType<typeof dispatchScheduleRun>>;
+      try {
+        result = await dispatchScheduleRun({
+          schedule: {
+            id: schedule.id,
+            projectId: schedule.projectId,
             prompt: schedule.prompt,
             runner: schedule.runner,
             targetProjectSlug: schedule.targetProjectSlug ?? null,
-            tick: true,
           },
-          status: 'queued',
-        })
-        .returning({ id: jobs.id });
-      if (!job) continue;
+          // FIXME(iss-257): system-initiated jobs attribute to the project owner
+          // because jobs.created_by is NOT NULL. A sentinel system user
+          // requires a separate migration — tracked for follow-up. Consumers
+          // can detect tick-driven jobs by payload.kind === 'schedule.run'
+          // && payload.tick === true.
+          tick: true,
+        });
+      } catch (dispatchErr) {
+        // Don't leave `lastStatus='running'` if dispatch throws after the
+        // atomic claim — flip to 'failed' so the row reflects reality.
+        logger.error({ err: dispatchErr, scheduleId: schedule.id }, 'schedule.tick: dispatch threw');
+        await markScheduleFailed(schedule.id, 'schedule.tick');
+        continue;
+      }
+
       await db
         .update(schedules)
-        .set({ lastSessionId: job.id })
+        .set({ lastStatus: result.status })
         .where(eq(schedules.id, schedule.id));
-      try {
-        await enqueueJob(job.id);
-      } catch (err) {
-        logger.error({ err, jobId: job.id }, 'schedule.tick: enqueueJob failed');
-      }
-      dispatched.push(schedule.id);
+
+      if (result.ok) dispatched.push(schedule.id);
     } catch (err) {
       logger.error({ err, scheduleId: schedule.id }, 'schedule.tick: dispatch failed');
     }

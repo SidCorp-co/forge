@@ -186,6 +186,8 @@ describe('GET /api/schedules', () => {
 });
 
 describe('POST /api/schedules/:id/run', () => {
+  const TARGET_PROJECT_ID = '55555555-5555-4555-8555-555555555555';
+
   it('202 enqueues job + emits scheduleRun', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([
@@ -215,6 +217,150 @@ describe('POST /api/schedules/:id/run', () => {
     const body = (await res.json()) as { sessionId: string };
     expect(body.sessionId).toBe(JOB_ID);
     expect(emitted).toMatchObject({ scheduleId: SCHEDULE_ID, jobId: JOB_ID });
+  });
+
+  it('202 cross-project: resolves targetProjectSlug + dispatches against target', async () => {
+    authVerified();
+    // 1. select schedule
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SCHEDULE_ID,
+        projectId: PROJECT_ID,
+        prompt: 'p',
+        runner: 'antigravity',
+        targetProjectSlug: 'marketing',
+      },
+    ]);
+    // 2. source-project access
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'owner' });
+    // 3. assertTargetProjectAccess: project lookup by slug
+    selectLimit.mockResolvedValueOnce([{ id: TARGET_PROJECT_ID }]);
+    // 4. assertTargetProjectAccess: target-project access
+    projectAccess.mockResolvedValueOnce({
+      projectId: TARGET_PROJECT_ID,
+      ownerId: 'someone-else',
+      role: 'member',
+    });
+    // Dispatcher reuses the route's `resolvedTarget`, so no second slug lookup.
+    insertReturning.mockResolvedValueOnce([{ id: JOB_ID }]);
+
+    let emitted: { projectId?: string } | null = null;
+    hooksModule.hooks.on('scheduleRun', (p) => {
+      emitted = p as { projectId: string };
+    });
+
+    const res = await buildApp().request(`/api/schedules/${SCHEDULE_ID}/run`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(202);
+    expect(emitted).not.toBeNull();
+    expect(emitted!.projectId).toBe(TARGET_PROJECT_ID);
+    const insertCall = insertValues.mock.calls[0]?.[0] as { projectId?: string };
+    expect(insertCall?.projectId).toBe(TARGET_PROJECT_ID);
+  });
+
+  it('400 when targetProjectSlug points to a non-existent project', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SCHEDULE_ID,
+        projectId: PROJECT_ID,
+        prompt: 'p',
+        runner: 'antigravity',
+        targetProjectSlug: 'nope',
+      },
+    ]);
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'owner' });
+    // assertTargetProjectAccess: slug lookup → empty
+    selectLimit.mockResolvedValueOnce([]);
+
+    const res = await buildApp().request(`/api/schedules/${SCHEDULE_ID}/run`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(400);
+    expect(insertReturning).not.toHaveBeenCalled();
+  });
+
+  it('403 when actor is not a member of the target project', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SCHEDULE_ID,
+        projectId: PROJECT_ID,
+        prompt: 'p',
+        runner: 'antigravity',
+        targetProjectSlug: 'marketing',
+      },
+    ]);
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'owner' });
+    // assertTargetProjectAccess: slug lookup → found
+    selectLimit.mockResolvedValueOnce([{ id: TARGET_PROJECT_ID }]);
+    // target-project access: not a member, not the owner
+    projectAccess.mockResolvedValueOnce({
+      projectId: TARGET_PROJECT_ID,
+      ownerId: 'someone-else',
+      role: null,
+    });
+
+    const res = await buildApp().request(`/api/schedules/${SCHEDULE_ID}/run`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(403);
+    expect(insertReturning).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/schedules — targetProjectSlug auth gate', () => {
+  const TARGET_PROJECT_ID = '66666666-6666-4666-8666-666666666666';
+
+  it('403 when actor is not a member of the target project', async () => {
+    authVerified();
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'owner' });
+    // assertTargetProjectAccess: slug → found
+    selectLimit.mockResolvedValueOnce([{ id: TARGET_PROJECT_ID }]);
+    projectAccess.mockResolvedValueOnce({
+      projectId: TARGET_PROJECT_ID,
+      ownerId: 'someone-else',
+      role: null,
+    });
+
+    const res = await buildApp().request('/api/schedules', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        projectId: PROJECT_ID,
+        name: 'daily',
+        cron: '0 9 * * *',
+        prompt: 'p',
+        targetProjectSlug: 'marketing',
+      }),
+    });
+    expect(res.status).toBe(403);
+    expect(insertReturning).not.toHaveBeenCalled();
+  });
+
+  it('400 when targetProjectSlug points to a non-existent project', async () => {
+    authVerified();
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'owner' });
+    // assertTargetProjectAccess: slug → not found
+    selectLimit.mockResolvedValueOnce([]);
+
+    const res = await buildApp().request('/api/schedules', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        projectId: PROJECT_ID,
+        name: 'daily',
+        cron: '0 9 * * *',
+        prompt: 'p',
+        targetProjectSlug: 'nope',
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(insertReturning).not.toHaveBeenCalled();
   });
 });
 

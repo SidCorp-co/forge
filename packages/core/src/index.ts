@@ -74,6 +74,7 @@ import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
 import { requireDevice } from './middleware/require-device.js';
+import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cron.js';
 import { registerNotifyMentionsSubscriber } from './notifications/notify-mentions.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { pipelineAnalyticsRoutes } from './pipeline/analytics-routes.js';
@@ -191,6 +192,7 @@ export async function runShutdown(
     await unregisterPmDispatcher();
     await unregisterScheduleTicker();
     await unregisterPmCadenceTicker();
+    await unregisterAgentCronTicker();
     await unregisterPmEscalationSweeper();
     await stopBoss();
     await httpClosed;
@@ -354,6 +356,7 @@ if (isMain) {
   await registerOutboundDeliveryWorker();
   await registerScheduleTicker();
   await registerPmCadenceTicker();
+  await registerAgentCronTicker();
   await registerPmQueuePressureSweeper();
   await registerPmEscalationSweeper();
   registerWebhookSubscribers(hooks);
