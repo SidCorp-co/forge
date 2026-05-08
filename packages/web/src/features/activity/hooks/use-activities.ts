@@ -1,10 +1,18 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { activityApi } from '../api/activity-api';
 
+const PAGE_SIZE = 50;
+
 export function useActivities(issueDocumentId: string) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ['activities', issueDocumentId],
-    queryFn: () => activityApi.getByIssue(issueDocumentId),
+    queryFn: ({ pageParam }) =>
+      activityApi.getByIssue(issueDocumentId, {
+        before: pageParam ?? undefined,
+        limit: PAGE_SIZE,
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextBefore ?? undefined,
     enabled: !!issueDocumentId,
   });
 }

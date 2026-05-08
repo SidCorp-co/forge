@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issueDependencies, issueDependencyKinds, issues, projectMembers } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { safeRecordActivity } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
@@ -212,6 +213,28 @@ issueDependencyRoutes.post(
         toIssueId,
         kind,
       });
+      const dependencyPayload: Record<string, unknown> = {
+        edgeId,
+        fromIssueId,
+        toIssueId,
+        kind,
+        ...(reason ? { reason } : {}),
+      };
+      const actor = { type: 'user' as const, id: userId };
+      await Promise.all([
+        safeRecordActivity({
+          issueId: fromIssueId,
+          actor,
+          action: 'issue.dependency.added',
+          payload: dependencyPayload,
+        }),
+        safeRecordActivity({
+          issueId: toIssueId,
+          actor,
+          action: 'issue.dependency.added',
+          payload: dependencyPayload,
+        }),
+      ]);
       return c.json({ id: edgeId, created: true }, 201);
     }
 
@@ -278,6 +301,28 @@ issueDependencyRoutes.delete(
       toIssueId: edge.toIssueId,
       kind: edge.kind,
     });
+
+    const removedPayload = {
+      edgeId,
+      fromIssueId: edge.fromIssueId,
+      toIssueId: edge.toIssueId,
+      kind: edge.kind,
+    };
+    const actor = { type: 'user' as const, id: userId };
+    await Promise.all([
+      safeRecordActivity({
+        issueId: edge.fromIssueId,
+        actor,
+        action: 'issue.dependency.removed',
+        payload: removedPayload,
+      }),
+      safeRecordActivity({
+        issueId: edge.toIssueId,
+        actor,
+        action: 'issue.dependency.removed',
+        payload: removedPayload,
+      }),
+    ]);
 
     return c.json({ deleted: true });
   },

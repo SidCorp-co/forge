@@ -26,6 +26,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
       qc.invalidateQueries({ queryKey: ['issues', 'search'] });
       if (data?.issueId) {
         qc.invalidateQueries({ queryKey: ['issue', data.issueId] });
+        qc.invalidateQueries({ queryKey: ['activities', data.issueId] });
       }
       return;
     }
@@ -34,6 +35,23 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
       qc.invalidateQueries({ queryKey: ['issues', 'search'] });
       if (data?.issueId) {
         qc.invalidateQueries({ queryKey: ['issue', data.issueId] });
+        qc.invalidateQueries({ queryKey: ['activities', data.issueId] });
+      }
+      return;
+    }
+    case 'comment.created':
+    case 'comment.updated':
+    case 'comment.deleted': {
+      if (data?.issueId) {
+        qc.invalidateQueries({ queryKey: ['comments', data.issueId] });
+        qc.invalidateQueries({ queryKey: ['activities', data.issueId] });
+      }
+      return;
+    }
+    case 'agent-session.created':
+    case 'agent-session.updated': {
+      if (data?.issueId) {
+        qc.invalidateQueries({ queryKey: ['activities', data.issueId] });
       }
       return;
     }
@@ -74,10 +92,12 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
       if (data?.fromIssueId) {
         qc.invalidateQueries({ queryKey: ['issue', data.fromIssueId, 'dependencies'] });
         qc.invalidateQueries({ queryKey: ['issue', data.fromIssueId] });
+        qc.invalidateQueries({ queryKey: ['activities', data.fromIssueId] });
       }
       if (data?.toIssueId) {
         qc.invalidateQueries({ queryKey: ['issue', data.toIssueId, 'dependencies'] });
         qc.invalidateQueries({ queryKey: ['issue', data.toIssueId] });
+        qc.invalidateQueries({ queryKey: ['activities', data.toIssueId] });
       }
       return;
     }

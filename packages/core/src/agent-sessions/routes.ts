@@ -508,6 +508,18 @@ agentSessionRoutes.post(
       broadcastTurnAppended(inserted, t);
     }
 
+    {
+      const auditIssueId = extractIssueId(inserted.metadata);
+      if (auditIssueId) {
+        await safeRecordActivity({
+          issueId: auditIssueId,
+          actor: { type: 'user', id: userId },
+          action: 'agent-session.created',
+          payload: { sessionId: inserted.id, title: inserted.title ?? null },
+        });
+      }
+    }
+
     if (input.origin === 'desktop') {
       // Desktop-originated sessions echo the user message to web subscribers.
       roomManager.publish(projectRoom(project.id), {
@@ -1160,6 +1172,19 @@ agentSessionRoutes.post(
     if (!inserted) throw new Error('agent_sessions: insert returned no row');
 
     broadcastSession(inserted, 'agent-session.created');
+
+    {
+      const auditIssueId = extractIssueId(inserted.metadata);
+      if (auditIssueId) {
+        await safeRecordActivity({
+          issueId: auditIssueId,
+          actor: { type: 'user', id: userId },
+          action: 'agent-session.created',
+          payload: { sessionId: inserted.id, title: inserted.title ?? null },
+        });
+      }
+    }
+
     return c.json(inserted, 201);
   },
 );
@@ -1876,6 +1901,19 @@ agentSessionRoutes.post(
     }
 
     broadcastSession(inserted, 'agent-session.created');
+
+    {
+      const auditIssueId = extractIssueId(inserted.metadata);
+      if (auditIssueId) {
+        await safeRecordActivity({
+          issueId: auditIssueId,
+          actor: { type: 'user', id: userId },
+          action: 'agent-session.created',
+          payload: { sessionId: inserted.id, title: inserted.title ?? null },
+        });
+      }
+    }
+
     return c.json(inserted, 201);
   },
 );
@@ -1959,6 +1997,19 @@ agentSessionRoutes.post(
     }
 
     broadcastSession(inserted, 'agent-session.created');
+
+    {
+      const auditIssueId = extractIssueId(inserted.metadata);
+      if (auditIssueId) {
+        await safeRecordActivity({
+          issueId: auditIssueId,
+          actor: { type: 'user', id: userId },
+          action: 'agent-session.created',
+          payload: { sessionId: inserted.id, title: inserted.title ?? null },
+        });
+      }
+    }
+
     return c.json(inserted, 201);
   },
 );

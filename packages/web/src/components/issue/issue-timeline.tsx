@@ -31,10 +31,15 @@ const ICONS: Record<string, string> = {
   comment: '\u{1F4AC}',
   status_change: '\u{1F504}',
   priority_change: '\u2B06\uFE0F',
+  category_change: '\u{1F4C1}',
+  complexity_change: '\u{1F4D0}',
+  title_change: '\u270F\uFE0F',
+  edited: '\u270F\uFE0F',
+  assignee_change: '\u{1F464}',
+  manual_hold_set: '\u{1F512}',
+  manual_hold_cleared: '\u{1F513}',
   label_added: '\u{1F3F7}\uFE0F',
   label_removed: '\u{1F3F7}\uFE0F',
-  title_change: '\u270F\uFE0F',
-  category_change: '\u{1F4C1}',
   enriched: '\u2728',
   agent_session: '\u{1F916}',
   relation_added: '\u{1F517}',
@@ -45,10 +50,15 @@ const ICONS: Record<string, string> = {
 const EVENT_DESCRIPTIONS: Record<string, string> = {
   status_change: 'changed status',
   priority_change: 'changed priority',
+  category_change: 'changed category',
+  complexity_change: 'changed complexity',
+  title_change: 'changed the title',
+  edited: 'edited',
+  assignee_change: 'changed assignee',
+  manual_hold_set: 'put issue on manual hold',
+  manual_hold_cleared: 'released manual hold',
   label_added: 'added label',
   label_removed: 'removed label',
-  title_change: 'changed the title',
-  category_change: 'changed category',
   enriched: 'enriched this issue with AI',
   agent_session: 'started an agent session',
   relation_added: 'added a relation',
@@ -57,8 +67,10 @@ const EVENT_DESCRIPTIONS: Record<string, string> = {
 
 const DELETABLE_TYPES = new Set([
   'comment',
-  'status_change', 'priority_change', 'category_change',
-  'title_change', 'label_added', 'label_removed',
+  'status_change', 'priority_change', 'category_change', 'complexity_change',
+  'title_change', 'edited', 'assignee_change',
+  'manual_hold_set', 'manual_hold_cleared',
+  'label_added', 'label_removed',
   'enriched', 'agent_session', 'relation_added', 'relation_removed',
 ]);
 
@@ -330,22 +342,43 @@ function ActivityItem({ activity, issueDocumentId }: { activity: Activity; issue
 }
 
 export function IssueTimeline({ issueDocumentId }: Props) {
-  const { data, isLoading } = useActivities(issueDocumentId);
-  const activities = data?.data ?? [];
+  const { data, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } =
+    useActivities(issueDocumentId);
+  const activities = data?.pages.flatMap((p) => p.items) ?? [];
 
   if (isLoading) {
-    return <div className="py-8 text-center text-[10px] font-mono uppercase tracking-widest text-outline-variant">LOADING EVENT_LOG...</div>;
+    return (
+      <div className="py-8 text-center text-[10px] font-mono uppercase tracking-widest text-outline-variant">
+        Loading activity…
+      </div>
+    );
   }
 
   if (activities.length === 0) {
-    return <div className="py-8 text-center text-[10px] font-mono uppercase tracking-widest text-outline-variant">NO TELEMETRY RECORDED.</div>;
+    return (
+      <div className="py-8 text-center text-[10px] font-mono uppercase tracking-widest text-outline-variant">
+        No activity yet.
+      </div>
+    );
   }
 
   return (
     <div className="mt-8 overflow-x-hidden pt-2">
       {activities.map((activity) => (
-        <ActivityItem key={activity.id} activity={activity} issueDocumentId={issueDocumentId} />
+        <ActivityItem key={activity.documentId} activity={activity} issueDocumentId={issueDocumentId} />
       ))}
+      {hasNextPage && (
+        <div className="pl-8 pb-4">
+          <button
+            type="button"
+            disabled={isFetchingNextPage}
+            onClick={() => fetchNextPage()}
+            className="rounded-sm border border-outline-variant/40 bg-surface-container-low px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant hover:bg-surface-container-high disabled:opacity-50 transition-colors font-mono"
+          >
+            {isFetchingNextPage ? 'Loading…' : 'Load more'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { issueDependencies, issueDependencyKinds, issues } from '../../db/schema.js';
 import { detectCycle } from '../../issues/dependency-routes.js';
+import { safeRecordActivity } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
 import {
   type DeviceScopedMcpToolFactory,
@@ -100,6 +101,28 @@ export const forgePmSetDependencyTool: DeviceScopedMcpToolFactory = (device) => 
         toIssueId: input.toIssueId,
         kind: input.kind,
       });
+      const dependencyPayload: Record<string, unknown> = {
+        edgeId: id,
+        fromIssueId: input.fromIssueId,
+        toIssueId: input.toIssueId,
+        kind: input.kind,
+        ...(input.reason ? { reason: input.reason } : {}),
+      };
+      const actor = { type: 'device' as const, id: device.id };
+      await Promise.all([
+        safeRecordActivity({
+          issueId: input.fromIssueId,
+          actor,
+          action: 'issue.dependency.added',
+          payload: dependencyPayload,
+        }),
+        safeRecordActivity({
+          issueId: input.toIssueId,
+          actor,
+          action: 'issue.dependency.added',
+          payload: dependencyPayload,
+        }),
+      ]);
       return { id, created: true };
     }
 

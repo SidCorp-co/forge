@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Lock, LockOpen } from 'lucide-react';
 import { Markdown } from '@/components/ui/markdown';
-import { Button, Skeleton, ToastContainer } from '@/components/ui';
+import { Button, ToastContainer } from '@/components/ui';
 import {
   issueKeys,
   useIssue,
@@ -17,8 +17,7 @@ import {
 } from '@/features/issue/hooks/use-issues';
 import { useProjectBySlug, useProjects } from '@/features/project/hooks/use-projects';
 import { useProjectMembers } from '@/features/project/hooks/use-project-members';
-import { useActivities, useEvaluateActivity } from '@/features/activity/hooks/use-activities';
-import type { Activity } from '@/features/activity/types';
+import { IssueTimeline } from '@/components/issue/issue-timeline';
 import { apiClient } from '@/lib/api/client';
 import { formatApiError } from '@/lib/api/error';
 import { useToast } from '@/hooks/use-toast';
@@ -239,7 +238,16 @@ export default function IssueDetailPage() {
               />
 
               <CommentsSection issueId={issueId} />
-              <ActivityTimeline issueId={issueId} />
+              <section className="rounded-sm border border-outline-variant/20 bg-surface">
+                <div className="border-b border-outline-variant/20 bg-surface-container-low px-4 py-2">
+                  <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">
+                    Activity
+                  </h3>
+                </div>
+                <div className="p-5 text-sm">
+                  <IssueTimeline issueDocumentId={issueId} />
+                </div>
+              </section>
               <IssueAgentSessions
                 issueId={issueId}
                 onSelect={(sid) => setSessionId(sid)}
@@ -476,102 +484,6 @@ function CommentsSection({ issueId }: { issueId: string }) {
         </form>
       </div>
     </section>
-  );
-}
-
-function ActivityTimeline({ issueId }: { issueId: string }) {
-  const { data, isLoading, error } = useActivities(issueId);
-  const evaluate = useEvaluateActivity(issueId);
-  const items = data?.data ?? [];
-
-  return (
-    <section className="rounded-sm border border-outline-variant/20 bg-surface">
-      <div className="border-b border-outline-variant/20 bg-surface-container-low px-4 py-2">
-        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">
-          Activity
-        </h3>
-      </div>
-      <div className="p-5 text-sm">
-        {isLoading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-3 w-full" />
-            <Skeleton className="h-3 w-3/4" />
-            <Skeleton className="h-3 w-2/3" />
-          </div>
-        ) : error ? (
-          <p className="text-[10px] uppercase tracking-widest text-error">
-            {formatApiError(error)}
-          </p>
-        ) : items.length === 0 ? (
-          <span className="text-outline">No activity yet.</span>
-        ) : (
-          <ul className="space-y-3">
-            {items.map((a) => (
-              <ActivityRow
-                key={a.documentId}
-                activity={a}
-                onEvaluate={(verdict) =>
-                  evaluate.mutate({ activityId: a.documentId, verdict })
-                }
-                pending={evaluate.isPending}
-              />
-            ))}
-          </ul>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function ActivityRow({
-  activity,
-  onEvaluate,
-  pending,
-}: {
-  activity: Activity;
-  onEvaluate: (verdict: 'approve' | 'reject') => void;
-  pending: boolean;
-}) {
-  const actor = activity.actor ? activity.actor.slice(0, 8) : 'system';
-  const isPikachu = activity.type === 'pikachu_decision';
-  const summary = (() => {
-    if (activity.body) return activity.body;
-    if (activity.fromValue || activity.toValue) {
-      return `${activity.field ?? activity.type}: ${activity.fromValue ?? '∅'} → ${activity.toValue ?? '∅'}`;
-    }
-    return activity.type.replace('_', ' ');
-  })();
-
-  return (
-    <li className="rounded-sm border border-outline-variant/20 bg-surface-container-low p-3">
-      <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-widest text-outline">
-        <span className="flex items-center gap-2">
-          <span className="font-mono">{actor}</span>
-          <span className="rounded-sm bg-surface-container-high px-1.5 py-0.5 text-[9px] font-bold">
-            {activity.type.replace('_', ' ')}
-          </span>
-          {activity.isAI && (
-            <span className="rounded-sm bg-info-surface/30 px-1.5 py-0.5 text-[9px] font-bold text-info">
-              AI
-            </span>
-          )}
-        </span>
-        <time dateTime={activity.createdAt}>
-          {new Date(activity.createdAt).toLocaleString()}
-        </time>
-      </div>
-      <p className="whitespace-pre-wrap text-sm text-on-surface">{summary}</p>
-      {isPikachu && (
-        <div className="mt-2 flex gap-2">
-          <Button size="xs" variant="ghost" disabled={pending} onClick={() => onEvaluate('approve')}>
-            Approve
-          </Button>
-          <Button size="xs" variant="ghost" disabled={pending} onClick={() => onEvaluate('reject')}>
-            Reject
-          </Button>
-        </div>
-      )}
-    </li>
   );
 }
 
