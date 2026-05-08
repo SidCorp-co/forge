@@ -49,6 +49,18 @@ jobs:
         with:
           prebuild-observability: "false"
 
+  # English-only source policy (ISS-65). Runs scripts/check-source-language.mjs
+  # in --all mode. Always-on, ungated by paths-filter — language drift can land
+  # via any change set. Cheap (~15s); zero-dep script, no pnpm install needed.
+  lang-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node scripts/check-source-language.mjs --all
+
   changes:
     runs-on: ubuntu-latest
     outputs:

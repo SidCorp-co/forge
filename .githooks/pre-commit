@@ -1,0 +1,38 @@
+#!/bin/bash
+# pre-commit hook — English-only source policy (ISS-65).
+#
+# Runs scripts/check-source-language.mjs against staged .ts/.tsx/.md files
+# under packages/{web,dev,core}/src/. Aborts the commit on any non-allowlisted
+# diacritic match. See scripts/check-source-language.mjs for allowlist rules.
+#
+# Skip mechanism (use sparingly, e.g. emergency revert):
+#   SKIP_LANG_CHECK=1 git commit ...
+
+set -e
+
+if [ "$SKIP_LANG_CHECK" = "1" ]; then
+  echo "[pre-commit] SKIP_LANG_CHECK=1 — skipping source-language guard"
+  exit 0
+fi
+
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null)
+if [ -z "$repo_root" ]; then
+  exit 0
+fi
+
+if [ ! -f "$repo_root/scripts/check-source-language.mjs" ]; then
+  # Script not yet present (e.g. checking out an old commit). Don't block.
+  exit 0
+fi
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "[pre-commit] WARN: node not found — skipping source-language guard"
+  exit 0
+fi
+
+if ! node "$repo_root/scripts/check-source-language.mjs" --staged; then
+  echo ""
+  echo "[pre-commit] FAIL: non-English text in source (see above)."
+  echo "[pre-commit] To bypass (use sparingly): SKIP_LANG_CHECK=1 git commit ..."
+  exit 1
+fi

@@ -131,7 +131,7 @@ interface BlockingParent {
  * edges are honored. `valid_until` in the past is ignored.
  *
  * On failure, `metadata.waitingOn` carries the list of parents so the sidebar
- * can render `Đợi ISS-12, ISS-15 hoàn tất`.
+ * can render `Waiting for ISS-12, ISS-15 to finish`.
  */
 export async function checkLayer2Dependencies(issueId: string): Promise<GateResult> {
   if (!issueId) return PASS;
