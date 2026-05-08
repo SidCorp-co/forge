@@ -19,6 +19,7 @@ import { useProjectMembers } from '@/features/project/hooks/use-project-members'
 import { IssueTimeline } from '@/components/issue/issue-timeline';
 import { apiClient } from '@/lib/api/client';
 import { formatApiError } from '@/lib/api/error';
+import { formatStatusLabel } from '@/lib/utils/format-status';
 import { useToast } from '@/hooks/use-toast';
 import { AssigneePicker } from '@/components/issue/assignee-picker';
 import { InlineStatusSelect } from '@/components/issue/inline-status-select';
@@ -111,7 +112,8 @@ export default function IssueDetailPage() {
       transitionIssue.mutate(
         { id: issueIdValue, toStatus: data.status },
         {
-          onSuccess: () => addToast(`Status updated to ${data.status}`),
+          onSuccess: () =>
+            addToast(`Status updated to ${formatStatusLabel(data.status)}`),
           onError: (err) => addToast(`Update failed: ${formatApiError(err)}`),
         },
       );
@@ -127,10 +129,18 @@ export default function IssueDetailPage() {
           onSuccess: () => {
             if ('assigneeId' in patch) {
               addToast('Assignee updated');
-            } else if ('priority' in patch && patch.priority) {
-              addToast(`Priority set to ${patch.priority}`);
-            } else if ('complexity' in patch && patch.complexity) {
-              addToast(`Complexity set to ${patch.complexity}`);
+            } else if ('priority' in patch) {
+              addToast(
+                patch.priority
+                  ? `Priority set to ${formatStatusLabel(patch.priority)}`
+                  : 'Priority cleared',
+              );
+            } else if ('complexity' in patch) {
+              addToast(
+                patch.complexity
+                  ? `Complexity set to ${formatStatusLabel(patch.complexity)}`
+                  : 'Complexity cleared',
+              );
             } else if ('category' in patch) {
               addToast(patch.category ? `Category set to ${patch.category}` : 'Category cleared');
             } else if (
