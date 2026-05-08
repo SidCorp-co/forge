@@ -8,6 +8,8 @@ import { ALL_PRIORITIES, COMPLEXITY_COLORS } from '@/lib/constants';
 import type { Issue } from '@forge/contracts';
 import type { IssueComplexity } from '@/features/issue/types';
 import { useIssuesPage } from '../hooks';
+import { PAGE_SIZE } from '../constants';
+import { IssuesPagination } from './issues-pagination';
 import { StatusMultiSelect } from './status-multi-select';
 import type { IssueStatus } from '@/features/issue/types';
 import { IssueDetailModal } from '@/components/issue/issue-detail-modal/issue-detail-modal';
@@ -41,6 +43,10 @@ export function IssuesView() {
     issues,
     isLoading,
     total,
+    pageCount,
+    safePage,
+    activeFilterCount,
+    clearAllFilters,
     statusFilter,
     priorityFilter,
     categoryFilter,
@@ -234,10 +240,7 @@ export function IssuesView() {
         </Select>
       </div>
 
-      <div className="flex items-center justify-between">
-        <div className="text-[10px] uppercase tracking-widest text-outline">
-          {total} issue{total === 1 ? '' : 's'}
-        </div>
+      <div className="flex items-center justify-end">
         <Link href={`/projects/${slug}/issues/new`}>
           <Button>New issue</Button>
         </Link>
@@ -250,8 +253,24 @@ export function IssuesView() {
           ))}
         </div>
       ) : issues.length === 0 ? (
-        <div className="rounded-sm border border-outline-variant/20 bg-surface p-12 text-center">
-          <p className="text-sm text-outline">No issues yet.</p>
+        <div className="space-y-3 rounded-sm border border-outline-variant/20 bg-surface p-12 text-center">
+          {activeFilterCount > 0 ? (
+            <>
+              <p className="text-sm text-on-surface-variant">
+                No issues match these filters.
+              </p>
+              <Button variant="ghost" onClick={clearAllFilters}>
+                Clear all filters
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-on-surface-variant">No issues yet.</p>
+              <Link href={`/projects/${slug}/issues/new`}>
+                <Button>+ New issue</Button>
+              </Link>
+            </>
+          )}
         </div>
       ) : (
         <div className="overflow-hidden rounded-sm border border-outline-variant/20 bg-surface">
@@ -360,6 +379,13 @@ export function IssuesView() {
             );
           })}
           </ul>
+          <IssuesPagination
+            total={total}
+            pageCount={pageCount}
+            safePage={safePage}
+            pageSize={PAGE_SIZE}
+            setParam={setParam}
+          />
         </div>
       )}
       {checked.size > 0 && (

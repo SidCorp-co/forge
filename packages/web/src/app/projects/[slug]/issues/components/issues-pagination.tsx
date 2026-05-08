@@ -7,6 +7,7 @@ interface IssuesPaginationProps {
   total: number;
   pageCount: number;
   safePage: number;
+  pageSize: number;
   setParam: (key: string, value: string) => void;
 }
 
@@ -14,13 +15,17 @@ export function IssuesPagination({
   total,
   pageCount,
   safePage,
+  pageSize,
   setParam,
 }: IssuesPaginationProps) {
+  const rangeStart = total === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const rangeEnd = Math.min(safePage * pageSize, total);
   return (
     <div className="border-t border-surface-container-high px-4 py-2 flex items-center justify-between text-xs text-primary-fixed">
       <span>
-        {total} issue{total !== 1 ? 's' : ''}
-        {pageCount > 1 && ` — page ${safePage} of ${pageCount}`}
+        {total === 0
+          ? '0 issues'
+          : `Showing ${rangeStart}–${rangeEnd} of ${total}`}
       </span>
       {pageCount > 1 && (
         <div className="flex items-center gap-1">

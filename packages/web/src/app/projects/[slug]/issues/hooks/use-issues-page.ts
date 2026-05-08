@@ -101,7 +101,12 @@ export function useIssuesPage() {
     priorityFilter.length > 0,
     categoryFilter !== 'all',
     assigneeFilter !== 'all',
+    searchQuery.length > 0,
   ].filter(Boolean).length;
+
+  const clearAllFilters = useCallback(() => {
+    router.replace(`/projects/${slug}/issues`);
+  }, [router, slug]);
 
   const setParam = useCallback(
     (key: string, value: string) => {
@@ -232,6 +237,7 @@ export function useIssuesPage() {
     filtersOpen,
     setFiltersOpen,
     setParam,
+    clearAllFilters,
     checked,
     setChecked,
     toggleCheck,

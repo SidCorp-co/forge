@@ -2,9 +2,8 @@
 
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Lock, LockOpen } from 'lucide-react';
 import { Markdown } from '@/components/ui/markdown';
 import { Button, ToastContainer } from '@/components/ui';
 import {
@@ -25,6 +24,10 @@ import { AssigneePicker } from '@/components/issue/assignee-picker';
 import { InlineStatusSelect } from '@/components/issue/inline-status-select';
 import { InlinePrioritySelect } from '@/components/issue/inline-priority-select';
 import { InlineComplexitySelect } from '@/components/issue/inline-complexity-select';
+import {
+  IssueDetailStickyHeader,
+  ManualHoldToggle,
+} from '@/components/issue/issue-detail-sticky-header';
 import { IssuePipelineActions } from '@/components/issue/issue-detail-modal/issue-pipeline-actions';
 import { IssueAgentSessions } from '@/components/issue/issue-detail-modal/issue-agent-sessions';
 import { IssueAttachments } from '@/components/issue/issue-detail-modal/issue-attachments';
@@ -105,9 +108,15 @@ export default function IssueDetailPage() {
   const handleStatusUpdate = useCallback(
     (issueIdValue: string, data: { status: IssueStatus }) => {
       if (issue && data.status === issue.status) return;
-      transitionIssue.mutate({ id: issueIdValue, toStatus: data.status });
+      transitionIssue.mutate(
+        { id: issueIdValue, toStatus: data.status },
+        {
+          onSuccess: () => addToast(`Status updated to ${data.status}`),
+          onError: (err) => addToast(`Update failed: ${formatApiError(err)}`),
+        },
+      );
     },
-    [issue, transitionIssue],
+    [issue, transitionIssue, addToast],
   );
 
   const handlePatch = useCallback(
@@ -116,14 +125,44 @@ export default function IssueDetailPage() {
         { id: issueIdValue, patch },
         {
           onSuccess: () => {
-            if (Object.prototype.hasOwnProperty.call(patch, 'assigneeId')) {
+            if ('assigneeId' in patch) {
               addToast('Assignee updated');
+            } else if ('priority' in patch && patch.priority) {
+              addToast(`Priority set to ${patch.priority}`);
+            } else if ('complexity' in patch && patch.complexity) {
+              addToast(`Complexity set to ${patch.complexity}`);
+            } else if ('category' in patch) {
+              addToast(patch.category ? `Category set to ${patch.category}` : 'Category cleared');
+            } else if (
+              'description' in patch ||
+              'acceptanceCriteria' in patch ||
+              'suggestedSolution' in patch ||
+              'plan' in patch
+            ) {
+              addToast('Saved');
             }
           },
+          onError: (err) => addToast(`Update failed: ${formatApiError(err)}`),
         },
       );
     },
     [patchIssue, addToast],
+  );
+
+  const stickySentinelRef = useRef<HTMLDivElement | null>(null);
+
+  const handleManualHoldToggle = useCallback(
+    (id: string, next: boolean) => {
+      setManualHold.mutate(
+        { id, value: next },
+        {
+          onSuccess: () =>
+            addToast(next ? 'Manual hold ON' : 'Manual hold released'),
+          onError: (err) => addToast(`Update failed: ${formatApiError(err)}`),
+        },
+      );
+    },
+    [setManualHold, addToast],
   );
 
   const setSessionId = useCallback(
@@ -162,12 +201,19 @@ export default function IssueDetailPage() {
   }
 
   const issueId = issue.id;
-  const transitionError = transitionIssue.error;
-  const patchError = patchIssue.error;
   const splitOpen = !!sessionParam;
 
   return (
     <div className="relative">
+      <IssueDetailStickyHeader
+        issue={issue}
+        members={members}
+        sentinelRef={stickySentinelRef}
+        onStatusUpdate={handleStatusUpdate}
+        onPatch={handlePatch}
+        onManualHoldToggle={(v) => handleManualHoldToggle(issueId, v)}
+        manualHoldPending={setManualHold.isPending}
+      />
       <div
         className={
           splitOpen
@@ -179,6 +225,7 @@ export default function IssueDetailPage() {
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
             <main className="min-w-0 space-y-6">
               <Breadcrumb slug={slug} displayId={issue.displayId} />
+              <div ref={stickySentinelRef} aria-hidden className="h-px" />
 
               <header className="space-y-3">
                 <h1 className="text-2xl font-bold text-primary">{issue.title}</h1>
@@ -207,17 +254,11 @@ export default function IssueDetailPage() {
                     </span>
                   )}
                   <ManualHoldToggle
-                    issueId={issueId}
                     value={issue.manualHold ?? false}
                     pending={setManualHold.isPending}
-                    onToggle={(v) => setManualHold.mutate({ id: issueId, value: v })}
+                    onToggle={(v) => handleManualHoldToggle(issueId, v)}
                   />
                 </div>
-                {(transitionError || patchError) && (
-                  <p className="text-[10px] uppercase tracking-widest text-error">
-                    {formatApiError(transitionError ?? patchError)}
-                  </p>
-                )}
                 <IssuePipelineActions issueId={issueId} status={issue.status} />
               </header>
 
@@ -322,35 +363,6 @@ function Breadcrumb({ slug, displayId }: { slug: string; displayId: string }) {
       <span className="text-outline-variant">/</span>
       <span className="font-mono text-primary tracking-widest">{displayId}</span>
     </div>
-  );
-}
-
-function ManualHoldToggle({
-  value,
-  pending,
-  onToggle,
-}: {
-  issueId: string;
-  value: boolean;
-  pending: boolean;
-  onToggle: (next: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={pending}
-      onClick={() => onToggle(!value)}
-      className={
-        value
-          ? 'inline-flex items-center gap-1 rounded-sm border border-amber-500/40 bg-amber-500/15 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-amber-400 transition-colors hover:bg-amber-500/25 disabled:opacity-50'
-          : 'inline-flex items-center gap-1 rounded-sm border border-outline-variant/30 bg-surface-container-high px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant transition-colors hover:bg-surface-container-highest disabled:opacity-50'
-      }
-      title={value ? 'Manual hold ON — click to release' : 'Click to set manual hold'}
-      aria-pressed={value}
-    >
-      {value ? <Lock className="h-3 w-3" /> : <LockOpen className="h-3 w-3" />}
-      {value ? 'Held' : 'Hold'}
-    </button>
   );
 }
 
