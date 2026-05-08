@@ -30,6 +30,8 @@ import { IssueAgentSessions } from '@/components/issue/issue-detail-modal/issue-
 import { IssueCostSummary } from '@/components/issue/issue-detail-modal/issue-cost-summary';
 import { IssuePipelineTiming } from '@/components/issue/issue-pipeline-timing';
 import { IssueRelations } from '@/components/issue/issue-relations';
+import { IssueParentBreadcrumb } from '@/components/issue/issue-parent-breadcrumb';
+import { IssueBlockedBanner } from '@/components/issue/issue-blocked-banner';
 import { AgentSessionPanel } from '@/components/chat/agent-session-panel';
 import type { Issue } from '@forge/contracts';
 import type { IssuePatchInput } from '@forge/contracts';
@@ -175,6 +177,11 @@ export default function IssueDetailPage() {
 
               <header className="space-y-3">
                 <h1 className="text-2xl font-bold text-primary">{issue.title}</h1>
+                <IssueParentBreadcrumb
+                  issueId={issueId}
+                  projectSlug={slug}
+                  currentDisplayId={issue.displayId}
+                />
                 <div className="flex flex-wrap items-center gap-2">
                   <InlineStatusSelect issue={issue} onUpdate={handleStatusUpdate} />
                   <InlinePrioritySelect issue={issue} onUpdate={handlePatch} />
@@ -208,6 +215,8 @@ export default function IssueDetailPage() {
                 )}
                 <IssuePipelineActions issueId={issueId} status={issue.status} />
               </header>
+
+              <IssueBlockedBanner issueId={issueId} />
 
               <EditableMarkdownSection
                 title="Description"
