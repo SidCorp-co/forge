@@ -50,6 +50,8 @@ Detect tech stack from changed files, then load only what applies:
 **Strapi** (if applicable) — document service usage, lifecycle loops, missing populate
 **Consistency** — matches project patterns, web/dev parity if both changed
 
+**UI behavior (when applicable)** — for any change touching `web`/`dev`/`app`/`widget` UI, if the calling agent has the Playwright MCP available (`mcp__playwright__browser_*` tools), navigate to the affected page on the running deploy and walk through each `acceptanceCriteria` line with `browser_navigate` + `browser_click` + `browser_evaluate` asserting expected post-state. Screenshot the final state for evidence. A static code review alone is insufficient for UI work — controlled-input bugs, focus order, scroll behavior, sticky headers, paging UI, and toast timing are routinely missed by diff inspection. If Playwright MCP isn't available in the host agent, note `e2e-not-verified` in the review summary so downstream verify steps can decide.
+
 ### 4. Output
 
 ```markdown
