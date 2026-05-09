@@ -17,14 +17,16 @@ export function useWebSocket() {
   const debounceTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const invalidate = useCallback(
-    (keys: string[]) => {
-      keys.forEach((key) => pendingKeys.current.add(key));
+    (keys: Array<string | readonly string[]>) => {
+      keys.forEach((key) =>
+        pendingKeys.current.add(JSON.stringify(Array.isArray(key) ? key : [key])),
+      );
       clearTimeout(debounceTimer.current);
       debounceTimer.current = setTimeout(() => {
         const toInvalidate = [...pendingKeys.current];
         pendingKeys.current.clear();
-        toInvalidate.forEach((key) =>
-          queryClient.invalidateQueries({ queryKey: [key] })
+        toInvalidate.forEach((serialized) =>
+          queryClient.invalidateQueries({ queryKey: JSON.parse(serialized) }),
         );
       }, 300);
     },
@@ -86,10 +88,7 @@ export function useWebSocket() {
         ) {
           const sessionId = msg.data?.sessionId;
           if (typeof sessionId === 'string' && sessionId) {
-            queryClient.invalidateQueries({
-              queryKey: ['agent-session', sessionId],
-            });
-            invalidate(['agent-sessions']);
+            invalidate([['agent-session', sessionId], 'agent-sessions']);
           }
         }
       } catch {

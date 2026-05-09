@@ -25,6 +25,7 @@ export default defineConfig({
       '../tests/web/app/projects/board/board.test.tsx',
       '../tests/web/features/comment/hooks/use-comments.test.ts',
       '../tests/web/features/issue/hooks/use-issues.test.ts',
+      '../tests/web/features/agent/use-agents.test.ts',
       '../tests/web/app/projects/issues/issue-list.test.tsx',
     ],
   },
