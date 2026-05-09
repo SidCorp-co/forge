@@ -264,19 +264,6 @@ export interface IssueFormData {
   attachments?: number[]; // packages/core ignores; kept for back-compat with callers
 }
 
-export interface ChatSession {
-  documentId: string;
-  title: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ChatSessionDetail {
-  documentId: string;
-  title: string;
-  messages: { role: string; content: string | { type: string; text?: string; id?: string; name?: string; input?: any }[] }[];
-}
-
 export interface UsageDailyRecord {
   date: string;
   input: number;
@@ -318,25 +305,6 @@ export interface UsageRecordInput {
   requestCount: number;
   sessionId?: string;
   recordedAt: string;
-}
-
-export interface ChatMessageData {
-  id: string;
-  role: "user" | "assistant" | "system";
-  content: string;
-  timestamp: number;
-  isStreaming?: boolean;
-  attachments?: { url: string; name: string }[];
-  toolCalls?: ToolCallData[];
-}
-
-export interface ToolCallData {
-  id: string;
-  name: string;
-  input?: any;
-  isStreaming?: boolean;
-  durationMs?: number;
-  isError?: boolean;
 }
 
 export type NotificationType = "issue_status_changed" | "comment_added" | "agent_completed" | "mention" | "pm_escalation";

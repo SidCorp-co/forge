@@ -1,10 +1,9 @@
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams, Outlet } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, Outlet } from "react-router-dom";
 import { Sentry } from "@/lib/sentry";
 import { Sidebar } from "@/components/sidebar";
 import { Dashboard, PmInbox, Settings, LoginPage, UsagePage } from "@/pages/app";
 import { ProjectIssues, NewIssuePage, ProjectBoard, AgentChat, ProjectSettings, KnowledgePage, McpPage, ProjectOverview, ProjectPipeline } from "@/pages/project";
 import { ProjectAgents } from "@/pages/project/ProjectAgents";
-import { ChatSidebar } from "@/components/chat-sidebar";
 import { ChatPreview } from "@/pages/preview/ChatPreview";
 import { SkillConflictDialog } from "@/components/skill-conflict-dialog";
 import { useWebSocket } from "@/hooks/use-web-socket";
@@ -12,8 +11,6 @@ import { useLocalConfig } from "@/hooks/use-local-config";
 import { useAutoUpdater } from "@/hooks/use-auto-updater";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useAuth } from "@/hooks/useAuth";
-import { useState } from "react";
-import clsx from "clsx";
 
 function AuthSplash() {
   return (
@@ -36,31 +33,11 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 function ProjectLayout() {
-  const { slug } = useParams<{ slug: string }>();
-  const [chatOpen, setChatOpen] = useState(false);
-
   return (
     <div className="flex h-full">
-      <div className={clsx("flex-1 overflow-y-auto", chatOpen && "border-r border-gray-200")}>
+      <div className="flex-1 overflow-y-auto">
         <Outlet />
       </div>
-      {chatOpen && slug && (
-        <div className="w-80 shrink-0 lg:w-96">
-          <ChatSidebar projectSlug={slug} onClose={() => setChatOpen(false)} />
-        </div>
-      )}
-      {/* Chat toggle button - fixed to bottom right when chat is closed */}
-      {!chatOpen && (
-        <button
-          onClick={() => setChatOpen(true)}
-          className="fixed bottom-6 right-6 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-black text-white shadow-lg hover:bg-gray-800 transition-colors"
-          title="Open Chat"
-        >
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-          </svg>
-        </button>
-      )}
     </div>
   );
 }

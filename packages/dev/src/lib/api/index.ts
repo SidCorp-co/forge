@@ -4,7 +4,6 @@ export { getAllIssues, getIssues, getIssue, createIssue, updateIssue, enrichIssu
 export type { IssueCostSummary } from "./issues";
 export { getAllTasks, getTasks, getTasksByIssue, updateTask } from "./tasks";
 export { getComments, createComment, updateComment, deleteComment } from "./comments";
-export { getChatSessions, getChatSession, sendChatMessage } from "./chat";
 export { getUsageSummary, createUsageRecord, ingestCliUsage } from "./usage";
 export {
   startAgentSession, sendAgentSession,
