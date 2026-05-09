@@ -8,8 +8,6 @@ import { chatSessionSources, chatSessions } from '../db/schema.js';
 import { setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { userRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -49,13 +47,6 @@ const patchSchema = z
   })
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
-
-const messageBodySchema = z
-  .object({
-    role: messageRoleSchema.default('user'),
-    content: z.union([z.string().min(1), z.array(z.unknown())]),
-  })
-  .strict();
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -208,64 +199,5 @@ chatSessionRoutes.delete(
 
     await db.delete(chatSessions).where(eq(chatSessions.id, id));
     return c.body(null, 204);
-  },
-);
-
-/**
- * Append a message to the session and broadcast to the user's WS room.
- *
- * v0.1: this folds the legacy `POST /chat` shape into a session-scoped path.
- * It persists the user's message and updates `updatedAt`. **The actual LLM
- * round-trip (provider call + tool execution + streaming reply) is deferred**
- * — that needs the chat-prompt-builder + agent-runner services that have not
- * been ported to `packages/core`. Callers receive `{ session, message }` so the
- * UI can optimistically render; a follow-up patch will add the streaming
- * assistant reply via the existing `userRoom` channel.
- */
-chatSessionRoutes.post(
-  '/:id/message',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  zValidator('json', messageBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const { role, content } = c.req.valid('json');
-    const userId = c.get('userId');
-
-    const [existing] = await db
-      .select()
-      .from(chatSessions)
-      .where(eq(chatSessions.id, id))
-      .limit(1);
-    if (!existing) throw notFound('chat session not found');
-    if (existing.userId && existing.userId !== userId) throw forbidden('not your chat session');
-
-    const access = await loadProjectAccess(existing.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
-
-    const prior = Array.isArray(existing.messages) ? (existing.messages as unknown[]) : [];
-    const message = { role, content, ts: new Date().toISOString() };
-    const nextMessages = [...prior, message];
-
-    const [updated] = await db
-      .update(chatSessions)
-      .set({ messages: nextMessages as never, updatedAt: new Date() })
-      .where(eq(chatSessions.id, id))
-      .returning();
-    if (!updated) throw notFound('chat session not found');
-
-    roomManager.publish(userRoom(userId), {
-      event: 'chat.message',
-      data: {
-        sessionId: updated.id,
-        projectId: updated.projectId,
-        role,
-      },
-    });
-
-    return c.json({ session: updated, message });
   },
 );

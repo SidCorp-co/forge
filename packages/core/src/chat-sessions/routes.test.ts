@@ -37,11 +37,6 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const publishSpy = vi.fn();
-vi.mock('../ws/server.js', () => ({
-  roomManager: { publish: publishSpy },
-}));
-
 const { chatSessionRoutes } = await import('./routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
@@ -142,42 +137,6 @@ describe('GET /api/chat-sessions/:id', () => {
       headers: { authorization: `Bearer ${await token()}` },
     });
     expect(res.status).toBe(404);
-  });
-});
-
-describe('POST /api/chat-sessions/:id/message', () => {
-  it('appends message and broadcasts to user room', async () => {
-    authVerified();
-    selectLimit.mockResolvedValueOnce([
-      {
-        id: SESSION_ID,
-        projectId: PROJECT_ID,
-        userId: USER_ID,
-        messages: [{ role: 'user', content: 'hi' }],
-      },
-    ]);
-    projectAccessAsMember();
-    updateReturning.mockResolvedValueOnce([
-      { id: SESSION_ID, projectId: PROJECT_ID, userId: USER_ID, messages: [] },
-    ]);
-    const res = await buildApp().request(`/api/chat-sessions/${SESSION_ID}/message`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
-      body: JSON.stringify({ content: 'hello world' }),
-    });
-    expect(res.status).toBe(200);
-    expect(publishSpy).toHaveBeenCalledTimes(1);
-    expect(publishSpy.mock.calls[0]?.[0]).toBe(`user:${USER_ID}`);
-  });
-
-  it('400 on empty content', async () => {
-    authVerified();
-    const res = await buildApp().request(`/api/chat-sessions/${SESSION_ID}/message`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
-      body: JSON.stringify({ content: '' }),
-    });
-    expect(res.status).toBe(400);
   });
 });
 

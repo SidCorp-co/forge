@@ -1,11 +1,9 @@
 /**
  * v1 EPIC 1 (ISS-294 / PR-B) — Chat session persistence.
  *
- * Reuses the existing `chat_sessions` table (jsonb `messages` column). The
- * shape mirrors what `chat-sessions/routes.ts:225-271` writes via
- * `POST /chat-sessions/:id/message` so the existing Web UI keeps reading it
- * unchanged. Rolling summary fields (`summary`, `summarizedAt`) are left
- * untouched here — a separate housekeeping epic owns summarization.
+ * Reuses the existing `chat_sessions` table (jsonb `messages` column).
+ * Rolling summary fields (`summary`, `summarizedAt`) are left untouched here
+ * — a separate housekeeping epic owns summarization.
  */
 
 import { eq } from 'drizzle-orm';
