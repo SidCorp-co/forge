@@ -2,7 +2,7 @@
 
 import { useParams, usePathname } from 'next/navigation';
 import { Suspense, type ReactNode } from 'react';
-import { ProjectChatBubble } from '@/components/message-bubble/project-chat-bubble';
+import { ProjectChatBubble } from '@/components/chat/project-chat-bubble';
 import { Shell } from '@/components/layout/shell';
 import { UnblockToastSurface } from '@/features/issue/components/unblock-toast-surface';
 import { useProjectBySlug } from '@/features/project/hooks/use-projects';

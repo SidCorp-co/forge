@@ -6,7 +6,7 @@ import type {
   ContentBlock,
   ToolCallData,
   AgentTodo,
-} from '@/components/message-bubble/chat-message/chat-message-types';
+} from '@/components/chat/chat-message/chat-message-types';
 import type { AgentUsage } from '@/features/agent/api';
 
 export const EMPTY_USAGE: AgentUsage = {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback } from 'react';
-import type { ChatMessageData, ContentBlock } from '@/components/message-bubble/chat-message';
+import type { ChatMessageData, ContentBlock } from '@/components/chat/chat-message';
 import { convertTodoWriteToTodosBlock, deduplicateTodosBlocks } from '@/lib/utils/todo-blocks';
 import { agentApi, type AgentUsage, type PageContext } from '@/features/agent/api';
 import { EMPTY_USAGE, type AgentAction } from './use-agent-message-state';

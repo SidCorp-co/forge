@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { ChatMessages } from '@/components/message-bubble/chat-messages';
-import { ChatInput } from '@/components/message-bubble/chat-input';
-import type { ChatMessageData, ToolCallData } from '@/components/message-bubble/chat-message/chat-message-types';
+import { ChatMessages } from '@/components/chat/chat-messages';
+import { ChatInput } from '@/components/chat/chat-input';
+import type { ChatMessageData, ToolCallData } from '@/components/chat/chat-message/chat-message-types';
 import type { WidgetConfig } from './types';
 import { WidgetAPI, type WidgetSession } from './widget-api';
 

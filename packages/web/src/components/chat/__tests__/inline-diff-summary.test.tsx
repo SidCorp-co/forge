@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { DiffSummary } from '../chat-message/diff-summary';
+import { InlineDiffSummary } from '../chat-message/inline-diff-summary';
 import type { ChatMessageData } from '../chat-message/chat-message-types';
 
 function makeMsg(overrides: Partial<ChatMessageData> = {}): ChatMessageData {
@@ -13,13 +13,13 @@ function makeMsg(overrides: Partial<ChatMessageData> = {}): ChatMessageData {
   };
 }
 
-describe('DiffSummary', () => {
+describe('InlineDiffSummary', () => {
   it('returns null when there are no Edit/Write tool calls', () => {
     const messages: ChatMessageData[] = [
       makeMsg({ role: 'user', content: 'hello' }),
       makeMsg({ content: 'hi there' }),
     ];
-    const { container } = render(<DiffSummary messages={messages} />);
+    const { container } = render(<InlineDiffSummary messages={messages} />);
     expect(container.innerHTML).toBe('');
   });
 
@@ -39,7 +39,7 @@ describe('DiffSummary', () => {
         ],
       }),
     ];
-    render(<DiffSummary messages={messages} />);
+    render(<InlineDiffSummary messages={messages} />);
     expect(screen.getByText('1 file changed')).toBeInTheDocument();
     // +3 and -2 appear in both summary header and file card
     expect(screen.getAllByText('+3')).toHaveLength(2);
@@ -58,7 +58,7 @@ describe('DiffSummary', () => {
         ],
       }),
     ];
-    render(<DiffSummary messages={messages} />);
+    render(<InlineDiffSummary messages={messages} />);
     expect(screen.getByText('1 file changed')).toBeInTheDocument();
     expect(screen.getByText('NEW')).toBeInTheDocument();
     expect(screen.getByText('/src/new-file.ts')).toBeInTheDocument();
@@ -81,7 +81,7 @@ describe('DiffSummary', () => {
         ],
       }),
     ];
-    render(<DiffSummary messages={messages} />);
+    render(<InlineDiffSummary messages={messages} />);
     expect(screen.getByText('1 file changed')).toBeInTheDocument();
   });
 
@@ -102,7 +102,7 @@ describe('DiffSummary', () => {
         ],
       }),
     ];
-    render(<DiffSummary messages={messages} />);
+    render(<InlineDiffSummary messages={messages} />);
     expect(screen.getByText('2 files changed')).toBeInTheDocument();
   });
 
@@ -121,7 +121,7 @@ describe('DiffSummary', () => {
         ],
       }),
     ];
-    render(<DiffSummary messages={messages} />);
+    render(<InlineDiffSummary messages={messages} />);
     expect(screen.getByText('1 file changed')).toBeInTheDocument();
     expect(screen.getByText('/src/x.ts')).toBeInTheDocument();
   });
@@ -138,7 +138,7 @@ describe('DiffSummary', () => {
         ],
       }),
     ];
-    render(<DiffSummary messages={messages} />);
+    render(<InlineDiffSummary messages={messages} />);
 
     // File card is collapsed by default — diff lines not visible
     expect(screen.queryByText('removed line')).not.toBeInTheDocument();
@@ -163,7 +163,7 @@ describe('DiffSummary', () => {
         ],
       }),
     ];
-    const { container } = render(<DiffSummary messages={messages} />);
+    const { container } = render(<InlineDiffSummary messages={messages} />);
     expect(container.innerHTML).toBe('');
   });
 });

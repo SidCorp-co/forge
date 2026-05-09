@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { createElement } from 'react';
-import { ChatMessage } from '@/components/message-bubble/chat-message/chat-message';
-import type { ChatMessageData } from '@/components/message-bubble/chat-message/chat-message-types';
+import { ChatMessage } from '@/components/chat/chat-message/chat-message';
+import type { ChatMessageData } from '@/components/chat/chat-message/chat-message-types';
 
 const markdownRenderSpy = vi.fn();
 vi.mock('@/components/ui/markdown', () => ({

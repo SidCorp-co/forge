@@ -9,7 +9,6 @@ import { SingleToolCall } from './tool-call-group';
 import { ToolCallGroup } from './tool-call-group';
 import { TodoProgress } from './chat-message-todos';
 import type { AgentTodo } from './chat-message-types';
-import { useTypewriter } from './use-typewriter';
 import { TurnActions } from './turn-actions';
 
 interface ChatMessageProps {
@@ -35,7 +34,7 @@ function ChatMessageImpl({
   onAfterFork,
 }: ChatMessageProps) {
   const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
-  const displayContent = useTypewriter(message.content || '', message.isStreaming ?? false);
+  const displayContent = message.content || '';
 
   const { hasBlocks, groupedBlocks } = useMemo(() => {
     const blocks = message.contentBlocks;

@@ -97,7 +97,7 @@ function FileDiffView({ file }: { file: FileDiff }) {
   );
 }
 
-export function DiffSummary({ diff }: { diff: BranchDiff | null | undefined }) {
+export function BranchDiffSummary({ diff }: { diff: BranchDiff | null | undefined }) {
   if (!diff || diff.files.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center p-4">

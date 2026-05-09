@@ -1,7 +1,7 @@
 'use client';
 
 import type { AgentAction, BlockOp } from './use-agent-message-state';
-import type { ToolCallData } from '@/components/message-bubble/chat-message/chat-message-types';
+import type { ToolCallData } from '@/components/chat/chat-message/chat-message-types';
 import { convertTodoWriteToTodosBlock } from '@/lib/utils/todo-blocks';
 
 interface AgentHandlerOptions {

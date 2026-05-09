@@ -116,7 +116,7 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
   );
 }
 
-export function DiffSummary({ messages }: { messages: ChatMessageData[] }) {
+export function InlineDiffSummary({ messages }: { messages: ChatMessageData[] }) {
   const diffs = useMemo(() => extractFileDiffs(messages), [messages]);
   const [expanded, setExpanded] = useState(false);
 

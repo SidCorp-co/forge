@@ -3,16 +3,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { List } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
-import { ChatMessages } from '@/components/message-bubble/chat-messages';
-import { ChatInput } from '@/components/message-bubble/chat-input';
-import { DiffSummary } from '@/components/message-bubble/diff-summary';
+import { ChatMessages } from '@/components/chat/chat-messages';
+import { ChatInput } from '@/components/chat/chat-input';
+import { BranchDiffSummary } from '@/components/chat/branch-diff-summary';
 import { PromptEditor } from './prompt-editor';
 import { formatTokens, CONTEXT_LIMIT } from '@/lib/utils/format-tokens';
 import { cn } from '@/lib/utils/cn';
 import type { ViewTab } from '../hooks';
 import type { BranchDiff } from '@/features/agent/api';
-import type { ChatMessageData } from '@/components/message-bubble/chat-message';
-import { ChatSendProvider } from '@/components/message-bubble/chat-message/chat-send-context';
+import type { ChatMessageData } from '@/components/chat/chat-message';
+import { ChatSendProvider } from '@/components/chat/chat-message/chat-send-context';
 import type { ConnectionState } from '@/hooks/use-agent-websocket';
 
 interface ContextUsage {
@@ -166,7 +166,7 @@ export function AgentChatArea({
                 <div className="text-sm text-primary-fixed animate-pulse">Loading changes...</div>
               </div>
             ) : (
-              <DiffSummary diff={diff} />
+              <BranchDiffSummary diff={diff} />
             )
           ) : (
             <>

@@ -5,7 +5,7 @@ import { ArrowDown, MessageSquare, Search, X } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ChatMessage } from './chat-message';
 import type { ChatMessageData } from './chat-message';
-import { DiffSummary } from './chat-message/diff-summary';
+import { InlineDiffSummary } from './chat-message/inline-diff-summary';
 import { SessionPlaceholder } from './session-placeholder';
 
 interface ChatMessagesProps {
@@ -229,7 +229,7 @@ export function ChatMessages({
             );
           })}
         </div>
-        <DiffSummary messages={messages} />
+        <InlineDiffSummary messages={messages} />
       </div>
       {showScrollBtn && (
         <button
