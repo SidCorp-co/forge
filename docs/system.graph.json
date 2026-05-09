@@ -59,14 +59,6 @@
       "docs": "packages/dev/CLAUDE.md"
     },
     {
-      "id": "packages/app",
-      "kind": "service",
-      "purpose": "React Native mobile (paused)",
-      "status": "paused",
-      "decisions": ["ADR-0009"],
-      "docs": "packages/app/CLAUDE.md"
-    },
-    {
       "id": "packages/core",
       "kind": "service",
       "purpose": "Hono + Drizzle backend (REST + WS + MCP)",
@@ -217,7 +209,6 @@
 
     { "from": "client-plane", "to": "packages/web", "relation": "contains" },
     { "from": "client-plane", "to": "packages/dev", "relation": "contains" },
-    { "from": "client-plane", "to": "packages/app", "relation": "contains" },
 
     { "from": "control-plane", "to": "packages/core", "relation": "contains" },
     {
@@ -313,12 +304,6 @@
       "to": "packages/core",
       "relation": "depends_on",
       "note": "REST + WS for control; receives job dispatches"
-    },
-    {
-      "from": "packages/app",
-      "to": "packages/core",
-      "relation": "depends_on",
-      "note": "inactive — paused"
     },
 
     {

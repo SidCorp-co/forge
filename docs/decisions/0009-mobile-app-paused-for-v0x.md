@@ -1,7 +1,8 @@
 # ADR 0009 — Mobile app paused for v0.x
 
-- **Status:** Accepted
+- **Status:** Superseded (2026-05-09)
 - **Date:** 2026-04-19
+- **Superseded by:** Mobile dropped from roadmap; `packages/app/` deleted on 2026-05-09. The "keep dormant code for lessons learned" tradeoff (Alternative #2) was reversed — the dormant package was bit-rotting (paused dependencies, drifting types, stale chat-sessions wiring) and creating navigation noise for contributors who kept asking what `packages/app/` was for. The Expo/React Native learnings are recoverable from git history (`git log -- packages/app/`). When mobile re-enters the roadmap (no concrete plan as of 2026-05-09), it will likely be a fresh project with current Expo SDK rather than a thaw of frozen v0.1 code.
 
 ## Context
 

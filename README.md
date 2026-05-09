@@ -110,9 +110,6 @@ and [RFC 0001](docs/rfcs/0001-device-runner-architecture.md).
 | [`packages/widget/`](packages/widget/) | Embeddable chat widget | `pnpm dev` |
 | [`packages/contracts/`](packages/contracts/) | Shared TypeScript contracts | — |
 
-> Mobile app (`packages/app/`) paused for `v0.x` per
-> [ADR 0009](docs/decisions/0009-mobile-app-paused-for-v0x.md).
-
 ## How it works
 
 1. **Pair a device.** Account → Devices → "Add device" generates a pairing

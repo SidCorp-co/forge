@@ -80,7 +80,6 @@ jobs:
           # `predicate-quantifier: some`, a `!**/*.md` line would make a
           # filter match any non-MD file in the diff. Don't use negations
           # here — keep filters as plain positive include lists.
-          # packages/app/ is paused (ADR 0009); intentionally not gated.
           filters: |
             web:
               - 'packages/web/**'
@@ -185,10 +184,6 @@ jobs:
             echo "::error::Tauri bundler did not produce a .deb under target/release/bundle/deb/"
             exit 1
           fi
-
-  # packages/app/ job removed: mobile is paused per ADR 0009 with known
-  # type-error drift; no point gating CI on a package no one is meant to
-  # touch. Re-add when the app is unpaused.
 
   core:
     needs: changes

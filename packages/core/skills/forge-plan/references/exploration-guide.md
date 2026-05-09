@@ -90,10 +90,9 @@ This is already in CLAUDE.md but repeated here for convenience:
 
 | Package | Path | Stack |
 |---------|------|-------|
-| Backend | `forge/strapi/src/api/<type>/` | Strapi 5, REST, WebSocket |
+| Backend | `packages/core/src/` | Hono, Drizzle, REST, WebSocket |
 | Cloud UI | `packages/web/src/` | Next.js 16, App Router |
 | Desktop | `packages/dev/src/` | Tauri + React |
-| Mobile | `packages/app/src/` | React Native / Expo |
 
 **Frontend patterns:** `src/app/` (pages) → `src/features/` or `components/` (UI) → `hooks/` (logic) → API calls
 **Backend patterns:** `src/api/<type>/routes/` → `controllers/` → `services/` → `content-types/`
