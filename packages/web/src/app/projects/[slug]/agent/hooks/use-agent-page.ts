@@ -2,15 +2,15 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAgentStreamContext } from '@/hooks/agent-stream-context';
 import { useAuth } from '@/providers/auth-provider';
 import { useProjectBySlug } from '@/features/project/hooks/use-projects';
+import { type AgentSessionSummary } from '@/features/agent/api';
 import {
-  agentApi,
-  type AgentSessionSummary,
-  type BranchDiff,
-} from '@/features/agent/api';
-import { unwrap } from '@/lib/api/client';
+  useAgentSessions,
+  useAgentSession,
+} from '@/features/agent/hooks/use-agents';
 
 export type ViewTab = 'chat' | 'changes';
 
@@ -22,19 +22,17 @@ export function useAgentPage() {
   const router = useRouter();
   const sessionParam = searchParams.get('session');
 
-  const [sessions, setSessions] = useState<AgentSessionSummary[]>([]);
-  const [loadingSessions, setLoadingSessions] = useState(true);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [showSessions, setShowSessions] = useState(true);
   const suppressUrlSync = useRef(false);
 
   const [viewTab, setViewTab] = useState<ViewTab>('chat');
-  const [diff, setDiff] = useState<BranchDiff | null>(null);
-  const [diffLoading, setDiffLoading] = useState(false);
   const [editablePrompt, setEditablePrompt] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const searchTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
 
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const streamCtx = useAgentStreamContext();
   const {
     messages,
@@ -55,35 +53,51 @@ export function useAgentPage() {
     reconnectNow,
   } = streamCtx;
 
-  const fetchSessions = useCallback(async (search?: string) => {
-    if (!projectId) return;
-    try {
-      const res = await agentApi.getSessions(projectId, search);
-      setSessions(unwrap(res) || []);
-    } catch {
-      setSessions([]);
-    } finally {
-      setLoadingSessions(false);
-    }
-  }, [projectId]);
+  const sessionsQuery = useAgentSessions(projectId, {
+    search: searchQuery,
+    refetchInterval: isRunning ? 15_000 : false,
+  });
+  const sessions: AgentSessionSummary[] = sessionsQuery.data ?? [];
+  const loadingSessions = sessionsQuery.isLoading;
 
-  // Initial load
-  useEffect(() => {
-    if (!projectId) return;
-    fetchSessions();
-  }, [fetchSessions, projectId]);
-
-  // Refresh sessions list when a session completes
-  useEffect(() => {
-    if (!isRunning && sessionId) {
-      fetchSessions();
-    }
-  }, [isRunning, sessionId, fetchSessions]);
+  // Read the persisted diff straight from the per-session cache so the
+  // Changes tab does not re-fetch when the row was already loaded by the
+  // running poll or a WS-driven invalidation.
+  const sessionDetailQuery = useAgentSession(
+    viewTab === 'changes' ? sessionId : null,
+  );
+  const diff = sessionDetailQuery.data?.diff ?? null;
+  const diffLoading = sessionDetailQuery.isLoading;
 
   // Sync activeSessionId with hook's sessionId
   useEffect(() => {
     if (sessionId) setActiveSessionId(sessionId);
   }, [sessionId]);
+
+  // Optimistic insert: when a brand-new session id appears (start), prepend
+  // a stub row to the cached list so the sidebar reflects the action before
+  // the WS-driven invalidation lands. The next refetch reconciles the row
+  // with the server-side fields (metadata, user, lifecycle stamps).
+  useEffect(() => {
+    if (!sessionId || !projectId) return;
+    queryClient.setQueryData<{ data: AgentSessionSummary[] } | undefined>(
+      ['agent-sessions', projectId, 'all'],
+      (prev) => {
+        if (!prev) return prev;
+        const rows = prev.data || [];
+        if (rows.some((r) => r.documentId === sessionId)) return prev;
+        const now = new Date().toISOString();
+        const stub = {
+          documentId: sessionId,
+          title: '',
+          status: 'queued',
+          createdAt: now,
+          updatedAt: now,
+        } as AgentSessionSummary;
+        return { ...prev, data: [stub, ...rows] };
+      },
+    );
+  }, [sessionId, projectId, queryClient]);
 
   // Load session from URL ?session= param on initial mount
   useEffect(() => {
@@ -124,19 +138,9 @@ export function useAgentPage() {
     }
   }, [draftPrompt]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch diff data when switching to changes tab
+  // Reset to chat tab when the active session changes — react-query keys
+  // on `sessionId` so the diff cache resets implicitly.
   useEffect(() => {
-    if (viewTab !== 'changes' || !sessionId) return;
-    setDiffLoading(true);
-    agentApi.getSession(sessionId)
-      .then((res) => setDiff(unwrap(res)?.diff ?? null))
-      .catch(() => setDiff(null))
-      .finally(() => setDiffLoading(false));
-  }, [viewTab, sessionId]);
-
-  // Reset diff when session changes
-  useEffect(() => {
-    setDiff(null);
     setViewTab('chat');
   }, [sessionId]);
 
@@ -149,14 +153,13 @@ export function useAgentPage() {
     resetSession();
     setActiveSessionId(null);
     setShowSessions(false);
-    setDiff(null);
     setViewTab('chat');
   }, [resetSession]);
 
   const handleSearchSessions = useCallback((query: string) => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    searchTimerRef.current = setTimeout(() => fetchSessions(query), 300);
-  }, [fetchSessions]);
+    searchTimerRef.current = setTimeout(() => setSearchQuery(query), 300);
+  }, []);
 
   const handleSelectSession = useCallback((session: AgentSessionSummary) => {
     setActiveSessionId(session.documentId);

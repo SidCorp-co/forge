@@ -76,6 +76,22 @@ export function useWebSocket() {
         if (msg.event?.startsWith('issue:')) {
           invalidate(['comments']);
         }
+        // Per-session relays carry a sessionId in the wrapped payload —
+        // invalidate the matching ['agent-session', id] cache so the
+        // agent page picks up the persisted diff/status without a manual
+        // refetch on the running side.
+        if (
+          typeof msg.event === 'string' &&
+          msg.event.startsWith('agent-session.relay.')
+        ) {
+          const sessionId = msg.data?.sessionId;
+          if (typeof sessionId === 'string' && sessionId) {
+            queryClient.invalidateQueries({
+              queryKey: ['agent-session', sessionId],
+            });
+            invalidate(['agent-sessions']);
+          }
+        }
       } catch {
         // ignore non-JSON messages
       }

@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect, useReducer } from 'react';
 import { Plus, Monitor, MonitorOff } from 'lucide-react';
 import { SessionList } from '@/components/chat/session-list';
 import { Button, StatusDot } from '@/components/ui';
@@ -36,15 +35,8 @@ export function AgentSidebar({
   onSearch,
   width,
 }: AgentSidebarProps) {
-  // Re-render every 15s so heartbeat-derived `stalled` flips on schedule
-  // without waiting for the parent's react-query refetch. The session row
-  // doesn't change between these ticks; only the rendered display state does.
-  const [, forceTick] = useReducer((c: number) => c + 1, 0);
-  useEffect(() => {
-    const id = setInterval(forceTick, 15_000);
-    return () => clearInterval(id);
-  }, []);
-
+  // No local timer: heartbeat-derived `stalled` flips when the parent's
+  // `useAgentSessions` refetches (15s while a stream is running).
   const { ids: unblockedIssueIds, blockerSeqFor } = useUnblockedIssueIds();
   function sessionIssueId(s: AgentSessionSummary): string | null {
     const meta = (s.metadata ?? {}) as Record<string, unknown>;

@@ -65,23 +65,16 @@ export function useAgentStream({ projectSlug }: UseAgentStreamOptions) {
     dispatch,
   });
 
-  // Fallback: poll session and load messages while running
+  // Fallback: poll session and load messages while running. WS delivers the
+  // terminal frame and the per-session react-query invalidation in
+  // use-websocket.ts reconciles the persisted row, so no separate
+  // "final refresh" is needed when isRunning flips to false.
   useEffect(() => {
     if (!isRunning || !sessionId) return;
     const interval = setInterval(() => {
       refreshSession(sessionId);
     }, 15000);
     return () => clearInterval(interval);
-  }, [isRunning, sessionId, refreshSession]);
-
-  // When isRunning transitions to false, do one final refresh to catch missed messages
-  const prevIsRunningRef = useRef(isRunning);
-  useEffect(() => {
-    const wasRunning = prevIsRunningRef.current;
-    prevIsRunningRef.current = isRunning;
-    if (wasRunning && !isRunning && sessionId) {
-      refreshSession(sessionId);
-    }
   }, [isRunning, sessionId, refreshSession]);
 
   return {

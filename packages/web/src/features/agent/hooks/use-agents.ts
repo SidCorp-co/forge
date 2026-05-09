@@ -61,12 +61,46 @@ export function usePoSessions(projectSlug: string) {
  * sessions; the page slices per-card by matching `metadata.type` (preferred)
  * with a title-prefix fallback for older rows. Backend hook for `agentId`
  * filtering does not exist yet, so we batch one query and fan out at render.
+ *
+ * Search is applied client-side via `select` so the cache key stays stable
+ * across keystrokes (the backend ignores the `_search` arg today). Pass
+ * `refetchInterval` to drive the in-progress poll without a separate timer.
  */
-export function useAgentSessions(projectId: string | undefined) {
+export function useAgentSessions(
+  projectId: string | undefined,
+  opts?: { search?: string; refetchInterval?: number | false },
+) {
+  const search = opts?.search?.trim().toLowerCase() ?? '';
   return useQuery({
     queryKey: ['agent-sessions', projectId, 'all'],
     queryFn: () => agentApi.getSessions(projectId as string),
     enabled: !!projectId,
-    select: (res) => res.data || [],
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
+    refetchInterval: opts?.refetchInterval ?? false,
+    select: (res) => {
+      const rows = res.data || [];
+      if (!search) return rows;
+      return rows.filter((s) => s.title?.toLowerCase().includes(search));
+    },
+  });
+}
+
+/**
+ * Single-session query, keyed by sessionId. The agent page uses this to
+ * read `session.diff` when the user opens the Changes tab — React Query
+ * dedupes against the cached row so tab switches do not re-fetch when warm.
+ */
+export function useAgentSession(
+  sessionId: string | null | undefined,
+  opts?: { refetchInterval?: number | false },
+) {
+  return useQuery({
+    queryKey: ['agent-session', sessionId],
+    queryFn: () => agentApi.getSession(sessionId as string),
+    enabled: !!sessionId,
+    staleTime: 15_000,
+    refetchInterval: opts?.refetchInterval ?? false,
+    select: (res) => res.data,
   });
 }

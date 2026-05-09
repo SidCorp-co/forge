@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useReducer, useState, type ComponentType } from 'react';
+import { type ComponentType } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Clock, AlertTriangle, X, CheckCircle2, RefreshCw } from 'lucide-react';
 import { agentApi } from '@/features/agent/api';
 import {
@@ -8,6 +9,7 @@ import {
   type AgentSessionDisplayStatus,
   deriveSessionDisplayStatus,
 } from '@/features/agent/api';
+import { useAgentSession } from '@/features/agent/hooks/use-agents';
 import { AGENT_STATUS_COLORS } from '@/lib/constants';
 import { cn } from '@/lib/utils/cn';
 import { relativeTime } from '@/lib/utils/relative-time';
@@ -63,9 +65,21 @@ const PRESENTATION: Record<AgentSessionDisplayStatus, Presentation> = {
 // replaces the generic "Ask anything…" empty state which gave the user
 // no signal when a worker had abandoned the session.
 export function SessionPlaceholder({ sessionId, onRetry, onCancel }: SessionPlaceholderProps) {
-  const [session, setSession] = useState<AgentSession | null>(null);
-  // Force re-render every 10s so elapsed time + derived stalled status stay fresh.
-  const [, forceTick] = useReducer((c: number) => c + 1, 0);
+  // While the session has not reached a terminal status, refetch every 10s
+  // so elapsed time + derived `stalled` keep ticking. Once completed/failed
+  // the row stops mutating and the poll switches off — no separate timer.
+  // The terminal flag is read from the previously cached row so the next
+  // render switches off the poll without an extra subscription.
+  const queryClient = useQueryClient();
+  const cached = queryClient.getQueryData<{ data?: AgentSession }>([
+    'agent-session',
+    sessionId,
+  ]);
+  const cachedStatus = cached?.data?.status;
+  const isTerminal = cachedStatus === 'completed' || cachedStatus === 'failed';
+  const { data: session = null } = useAgentSession(sessionId, {
+    refetchInterval: isTerminal ? false : 10_000,
+  });
 
   // Fallbacks call the API directly. Errors surface via console — UI doesn't
   // need a toast for an explicit user action that the backend acknowledges.
@@ -83,28 +97,6 @@ export function SessionPlaceholder({ sessionId, onRetry, onCancel }: SessionPlac
         console.warn('[session-placeholder] cancel failed:', err);
       });
     });
-
-  useEffect(() => {
-    let alive = true;
-    agentApi
-      .getSession(sessionId)
-      .then((res) => {
-        if (!alive) return;
-        const wrapped = (res as unknown as { data?: AgentSession }).data;
-        setSession(wrapped ?? (res as unknown as AgentSession));
-      })
-      .catch(() => {
-        // Best-effort — fall back to minimal UI when the fetch fails.
-      });
-    return () => {
-      alive = false;
-    };
-  }, [sessionId]);
-
-  useEffect(() => {
-    const id = setInterval(forceTick, 10_000);
-    return () => clearInterval(id);
-  }, []);
 
   if (!session) {
     return (
