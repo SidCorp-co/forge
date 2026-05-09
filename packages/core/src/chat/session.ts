@@ -1,9 +1,10 @@
 /**
- * v1 EPIC 1 (ISS-294 / PR-B) — Chat session persistence.
+ * Chat session persistence over the `chat_sessions` table (jsonb `messages`
+ * column). Identity model:
  *
- * Reuses the existing `chat_sessions` table (jsonb `messages` column).
- * Rolling summary fields (`summary`, `summarizedAt`) are left untouched here
- * — a separate housekeeping epic owns summarization.
+ * - `userId` — authenticated owner; null for widget traffic.
+ * - The audit key for `chat_logs.userKey` is **not** stored on the session row;
+ *   it is passed through `runChatTurn` per turn (see `chat/run-turn.ts`).
  */
 
 import { eq } from 'drizzle-orm';

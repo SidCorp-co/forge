@@ -1277,6 +1277,16 @@ export const agentsRelations = relations(agents, ({ one }) => ({
 export const chatSessionSources = ['web', 'widget', 'rocketchat', 'telegram'] as const;
 export type ChatSessionSource = (typeof chatSessionSources)[number];
 
+/**
+ * Persisted chat sessions. Two separate identity columns are intentional:
+ *
+ * - `userId` is the authenticated owner — set when the request carries a Bearer
+ *   JWT (web/desktop). Null for unauthenticated widget traffic. Drives the
+ *   per-user scoping in GET/PATCH/DELETE.
+ * - `userKey` is the chat_logs audit key — propagated to `chat_logs.userKey`
+ *   inside `chat/run-turn.ts`. May be null for widget sessions where there is
+ *   no logged-in user (see `chat/widget-routes.ts`).
+ */
 export const chatSessions = pgTable(
   'chat_sessions',
   {
@@ -1285,14 +1295,10 @@ export const chatSessions = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
-    widgetUserId: text('widget_user_id'),
     userKey: text('user_key'),
     title: text('title'),
     source: text('source', { enum: chatSessionSources }).notNull().default('web'),
     messages: jsonb('messages').notNull().default(sql`'[]'::jsonb`),
-    metadata: jsonb('metadata'),
-    summary: text('summary'),
-    summarizedAt: timestamp('summarized_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

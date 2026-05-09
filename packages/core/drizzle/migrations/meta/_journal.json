@@ -365,6 +365,13 @@
       "when": 1778900000000,
       "tag": "0051_issue_attachments",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1779000000000,
+      "tag": "0052_drop_unused_chat_sessions_columns",
+      "breakpoints": true
     }
   ]
 }

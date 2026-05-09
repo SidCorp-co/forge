@@ -33,8 +33,6 @@ const createSchema = z
     title: z.string().max(500).nullable().optional(),
     source: z.enum(chatSessionSources).optional(),
     userKey: z.string().max(500).nullable().optional(),
-    widgetUserId: z.string().max(500).nullable().optional(),
-    metadata: z.unknown().optional(),
     messages: z.array(messageInputSchema).optional(),
   })
   .strict();
@@ -42,8 +40,6 @@ const createSchema = z
 const patchSchema = z
   .object({
     title: z.string().max(500).nullable().optional(),
-    summary: z.string().max(20_000).nullable().optional(),
-    metadata: z.unknown().optional(),
   })
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
@@ -109,8 +105,6 @@ chatSessionRoutes.post(
         title: input.title ?? null,
         source: input.source ?? 'web',
         userKey: input.userKey ?? null,
-        widgetUserId: input.widgetUserId ?? null,
-        metadata: (input.metadata as never) ?? null,
         messages: (input.messages as never) ?? [],
       })
       .returning();
@@ -163,11 +157,6 @@ chatSessionRoutes.patch(
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (patch.title !== undefined) updates.title = patch.title;
-    if (patch.summary !== undefined) {
-      updates.summary = patch.summary;
-      updates.summarizedAt = patch.summary === null ? null : new Date();
-    }
-    if (patch.metadata !== undefined) updates.metadata = patch.metadata;
 
     const [updated] = await db
       .update(chatSessions)
