@@ -1,5 +1,5 @@
-// Aligned with packages/core `tasks` table (Phase 3.3 ISS-257). Flat shape, no
-// Strapi envelope.
+// Aligned with packages/core `tasks` table (Phase 3.3 ISS-257). Flat shape;
+// standard {data: …} envelope.
 export type TaskStatus = 'backlog' | 'todo' | 'in_progress' | 'in_review' | 'done';
 export type TaskAgentStatus = 'idle' | 'running' | 'completed' | 'failed';
 

@@ -16,5 +16,5 @@ export interface CommentFormData {
   author?: string;
   issue: string; // documentId
   parent?: string; // parent comment documentId for replies
-  attachments?: number[]; // Strapi media IDs
+  attachments?: number[]; // media IDs
 }

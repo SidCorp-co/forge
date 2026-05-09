@@ -128,5 +128,5 @@ export interface IssueFormData {
   project: string; // documentId
   acceptanceCriteria?: string;
   suggestedSolution?: string;
-  attachments?: number[]; // Strapi media IDs
+  attachments?: number[]; // media IDs
 }

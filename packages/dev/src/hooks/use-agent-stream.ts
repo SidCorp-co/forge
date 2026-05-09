@@ -44,7 +44,7 @@ export function useAgentStream() {
     updateTask(taskIdRef.current, { agentLog: logEntries } as Partial<Task>).catch(() => {});
   }, []);
 
-  // Batch relay agent log to Strapi every 5s
+  // Batch relay agent log to core every 5s
   useEffect(() => {
     if (agentRunning && taskIdRef.current) {
       relayRef.current = setInterval(flushPendingLog, RELAY_INTERVAL_MS);
@@ -102,7 +102,7 @@ export function useAgentStream() {
               status: error ? undefined : "done",
             } as Partial<Task>).catch(() => {});
           }
-          // Post accumulated usage to Strapi (cost calculated server-side)
+          // Post accumulated usage to core (cost calculated server-side)
           const acc = usageAccRef.current;
           if (acc.count > 0) {
             createUsageRecord({

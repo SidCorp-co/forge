@@ -8,7 +8,7 @@ import { STATUS_COLORS, PRIORITY_COLORS } from '@/lib/constants';
 import { relativeTime } from '@/lib/utils/relative-time';
 import { formatStatusLabel } from '@/lib/utils/format-status';
 import { Markdown } from '@/components/ui/markdown';
-import { strapiMediaUrl } from '@/lib/api/client';
+import { coreFileUrl } from '@/lib/api/client';
 import { ImagePreview } from '@/components/ui/image-preview';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -249,7 +249,7 @@ function ActivityItem({ activity, issueDocumentId }: { activity: Activity; issue
   if (activity.type === 'comment') {
     const meta = (activity.metadata || {}) as Record<string, any>;
     const attachments = (meta.attachments || []) as { id: number; url: string; name: string; mime: string }[];
-    const imageGallery = attachments.filter((a) => /^image\//.test(a.mime)).map((a) => ({ url: strapiMediaUrl(a.url), name: a.name }));
+    const imageGallery = attachments.filter((a) => /^image\//.test(a.mime)).map((a) => ({ url: coreFileUrl(a.url), name: a.name }));
     return (
       <TimelineRow icon={icon} ringColor={activity.isAI ? "border-info-dim/50" : "border-outline-variant/50"}>
         <div className={`group min-w-0 overflow-hidden rounded-sm border p-4 shadow-sm ${activity.isAI ? 'border-info-dim/30 bg-info-surface/20' : 'border-outline-variant/30 bg-surface'}`}>
@@ -264,7 +264,7 @@ function ActivityItem({ activity, issueDocumentId }: { activity: Activity; issue
             <div className="mt-3 flex flex-wrap gap-2 pt-3 border-t border-outline-variant/30">
               {attachments.map((a) => {
                 const isImage = /^image\//.test(a.mime);
-                const fullUrl = strapiMediaUrl(a.url);
+                const fullUrl = coreFileUrl(a.url);
                 return isImage ? (
                   <button
                     key={a.id}

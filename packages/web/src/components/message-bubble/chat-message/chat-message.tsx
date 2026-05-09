@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { Markdown } from '@/components/ui/markdown';
-import { strapiMediaUrl } from '@/lib/api/client';
+import { coreFileUrl } from '@/lib/api/client';
 import type { ChatMessageData, ToolCallData } from './chat-message-types';
 import { SingleToolCall } from './tool-call-group';
 import { ToolCallGroup } from './tool-call-group';
@@ -56,10 +56,10 @@ export function ChatMessage({
                   {message.attachments.map((a, i) => (
                     <img
                       key={i}
-                      src={strapiMediaUrl(a.url)}
+                      src={coreFileUrl(a.url)}
                       alt={a.name}
                       className="h-20 w-20 rounded-lg object-cover border border-outline-variant/30 cursor-zoom-in hover:border-outline transition-colors"
-                      onClick={() => setPreviewImage({ url: strapiMediaUrl(a.url), name: a.name })}
+                      onClick={() => setPreviewImage({ url: coreFileUrl(a.url), name: a.name })}
                     />
                   ))}
                 </div>

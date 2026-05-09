@@ -199,7 +199,7 @@ export function McpServerList({
               </svg>
             }
             title="No MCP servers configured"
-            description='The built-in Forge server will appear when Strapi is configured. Click "Add Server" or "Paste Config" to add servers.'
+            description='The built-in Forge server will appear when Forge is configured. Click "Add Server" or "Paste Config" to add servers.'
           />
         )}
 

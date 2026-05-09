@@ -49,7 +49,7 @@ export async function markAllNotificationsRead(): Promise<void> {
 
 // --- Knowledge ---
 
-export async function syncKnowledgeToStrapi(
+export async function syncKnowledgeToCore(
   projectId: string,
   knowledge: Record<string, unknown>,
   projectDocumentId?: string,
@@ -85,7 +85,7 @@ export async function syncKnowledgeToStrapi(
   return res.json();
 }
 
-export async function syncConventionsToStrapi(
+export async function syncConventionsToCore(
   projectDocumentId: string,
   conventions: string,
 ): Promise<void> {

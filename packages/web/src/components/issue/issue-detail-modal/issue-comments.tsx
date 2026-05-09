@@ -7,7 +7,7 @@ import { MentionInput } from '@/components/ui/mention-input';
 import { relativeTime } from '@/lib/utils/relative-time';
 import { Pencil, Trash2, Reply, X, Check, FileText } from 'lucide-react';
 import { FileUpload, type UploadedFile } from '@/components/ui/file-upload';
-import { strapiMediaUrl } from '@/lib/api/client';
+import { coreFileUrl } from '@/lib/api/client';
 import { ImagePreview } from '@/components/ui/image-preview';
 import { commentApi } from '@/features/comment/api/comment-api';
 import type { Comment } from '@/features/comment/types';
@@ -23,14 +23,14 @@ interface IssueCommentsProps {
 function CommentAttachments({ attachments }: { attachments: Comment['attachments'] }) {
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   if (!attachments || attachments.length === 0) return null;
-  const imageGallery = attachments.filter((a) => /^image\//.test(a.mime)).map((a) => ({ url: strapiMediaUrl(a.url), name: a.name }));
+  const imageGallery = attachments.filter((a) => /^image\//.test(a.mime)).map((a) => ({ url: coreFileUrl(a.url), name: a.name }));
   return (
     <>
       <div className="mt-1.5 flex flex-wrap gap-1.5">
         {attachments.map((a) => {
           const isImage = /^image\//.test(a.mime);
           const isVideo = /^video\//.test(a.mime);
-          const fullUrl = strapiMediaUrl(a.url);
+          const fullUrl = coreFileUrl(a.url);
           return isImage ? (
             <button
               key={a.id}

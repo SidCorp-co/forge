@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "@/stores/app-store";
 import { useAuth } from "@/hooks/useAuth";
 import { invoke } from "./use-tauri-ipc";
-import { relayAgentEvent, patchAgentSession, getProject, getAgents, syncKnowledgeToStrapi, syncAgentFiles, postJobEvents, completeJob, type JobEventInput } from "@/lib/api";
+import { relayAgentEvent, patchAgentSession, getProject, getAgents, syncKnowledgeToCore, syncAgentFiles, postJobEvents, completeJob, type JobEventInput } from "@/lib/api";
 import { syncAllProjectSkills, syncProjectSkills } from "@/lib/skill-sync";
 import { SessionTracker } from "@/lib/session-tracker";
 import { useAgentCommandHandler } from "./use-agent-commands";
@@ -316,7 +316,7 @@ export function useWebSocket() {
           setWsConnected(true);
           queryClient.invalidateQueries();
           startHeartbeat();
-          // Auto-sync skills from Strapi for all configured projects
+          // Auto-sync skills from core for all configured projects
           try {
             const settings = useAppStore.getState().deviceSettings;
             const synced = await syncAllProjectSkills(settings.projects);
@@ -543,7 +543,7 @@ export function useWebSocket() {
               console.warn("[agent:complete] PATCH session failed:", err);
             }
 
-            // Sync local files to Strapi after agent sessions complete
+            // Sync local files to core after agent sessions complete
             if (trackedSession?.repoPath && trackedSession?.slug && !rest.error) {
               try {
                 const project = await getProject(trackedSession.slug);
@@ -555,7 +555,7 @@ export function useWebSocket() {
                   // Display expects Record<string, KnowledgeIndex>, local file is flat KnowledgeIndex
                   const isFlat = 'project' in knowledge || 'architecture' in knowledge || 'domains' in knowledge;
                   const wrapped = isFlat ? { [trackedSession.slug]: knowledge } : knowledge;
-                  await syncKnowledgeToStrapi(project.documentId, wrapped, project.documentId);
+                  await syncKnowledgeToCore(project.documentId, wrapped, project.documentId);
                 }
 
                 // Sync agent-specific files (e.g. .forge/po-agent/) → agent record

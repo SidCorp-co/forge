@@ -34,14 +34,14 @@ export function KnowledgePage() {
       .finally(() => setLoading(false));
   }, [repoPath]);
 
-  // Normalize: Strapi may store flat KnowledgeIndex instead of Record<string, KnowledgeIndex>
+  // Normalize: backend may store flat KnowledgeIndex instead of Record<string, KnowledgeIndex>
   const raw = project?.knowledgeIndex;
-  const strapiIndex = raw
+  const flatIndex = raw
     ? ('project' in raw || 'architecture' in raw || 'domains' in raw
         ? { [slug ?? "repo"]: raw }
         : raw)
     : null;
-  const knowledgeIndex = strapiIndex
+  const knowledgeIndex = flatIndex
     ?? (localKnowledge?.project ? { [slug ?? "repo"]: localKnowledge } : null);
 
   return (

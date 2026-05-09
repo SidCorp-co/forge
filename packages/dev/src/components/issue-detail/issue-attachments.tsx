@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Issue } from "@/lib/types";
-import { strapiMediaUrl } from "@/lib/api";
+import { coreMediaUrl } from "@/lib/api";
 import { FileUpload } from "../ui/file-upload";
 import { ImagePreview } from "../ui/image-preview";
 
@@ -20,7 +20,7 @@ export function IssueAttachments({ issue, onUpdate }: Props) {
           {issue.attachments.map((a) => {
             const isImage = /^image\//.test(a.mime);
             const isVideo = /^video\//.test(a.mime);
-            const fullUrl = strapiMediaUrl(a.url);
+            const fullUrl = coreMediaUrl(a.url);
             return isImage ? (
               <button
                 key={a.id}

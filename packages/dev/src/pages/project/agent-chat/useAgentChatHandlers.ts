@@ -1,5 +1,5 @@
 import { invoke } from "@/hooks/use-tauri-ipc";
-import { uploadFile, startAgentSession, sendAgentSession, strapiMediaUrl } from "@/lib/api";
+import { uploadFile, startAgentSession, sendAgentSession, coreMediaUrl } from "@/lib/api";
 import type { AgentMessage } from "@/lib/types";
 import type { AgentUsage } from "@/stores/app-store";
 import type { ProjectConfig } from "@/lib/types";
@@ -59,7 +59,7 @@ export function createHandlers(deps: HandlerDeps) {
         if (res) uploaded.push(res);
       }
       if (uploaded.length > 0) {
-        fileInfo = `\n\n[Attached files (uploaded to Strapi media): ${uploaded.map((f) => `[${f.name}](${strapiMediaUrl(f.url)}) (media ID: ${f.id})`).join(", ")}]`;
+        fileInfo = `\n\n[Attached files: ${uploaded.map((f) => `[${f.name}](${coreMediaUrl(f.url)}) (media ID: ${f.id})`).join(", ")}]`;
       }
     }
 

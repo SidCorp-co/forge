@@ -16,7 +16,7 @@ export function LoginPage() {
   const location = useLocation();
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/";
 
-  const [coreUrl, setStrapiUrl] = useState(auth.coreUrl || "http://localhost:8080");
+  const [coreUrl, setCoreUrl] = useState(auth.coreUrl || "http://localhost:8080");
   // The auth state machine hydrates async on mount, so on first render
   // `auth.coreUrl` is null and the useState initializer falls back to
   // localhost. Sync once when the real value arrives — guarded by `synced`
@@ -25,7 +25,7 @@ export function LoginPage() {
   useEffect(() => {
     if (!synced.current && auth.coreUrl) {
       synced.current = true;
-      setStrapiUrl(auth.coreUrl);
+      setCoreUrl(auth.coreUrl);
     }
   }, [auth.coreUrl]);
   const [identifier, setIdentifier] = useState("");
@@ -143,7 +143,7 @@ export function LoginPage() {
             <FormInput
               type="text"
               value={coreUrl}
-              onChange={(e) => setStrapiUrl(e.target.value)}
+              onChange={(e) => setCoreUrl(e.target.value)}
             />
             <p className="mt-1 text-[10px] text-gray-400">
               The same URL you use to open Forge in your browser.

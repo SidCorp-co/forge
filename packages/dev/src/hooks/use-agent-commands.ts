@@ -176,7 +176,7 @@ export function useAgentCommandHandler(tracker: SessionTracker) {
         repoPath,
         "local:",
         pc?.repoPath,
-        "strapi:",
+        "core:",
         data.repoPath,
         "resolved:",
         isNew ? "auto-created" : "existing",
@@ -255,7 +255,7 @@ export function useAgentCommandHandler(tracker: SessionTracker) {
       const { sessionId, projectSlug, agentConfig } = data;
       const { dir: repoPath } = await ensureRepoPath(data.repoPath || pc?.repoPath, projectSlug, configRef);
 
-      // Seed agent files from Strapi before running (in case local files are missing)
+      // Seed agent files from core before running (in case local files are missing)
       try {
         const agentType = (agentConfig as AgentConfig & { type?: string }).type
           ?.replace(/-review$/, '').replace(/-reindex$/, '');

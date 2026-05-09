@@ -51,7 +51,7 @@ pub fn read_agent_files(repo_path: &str, agent_type: &str) -> serde_json::Value 
     })
 }
 
-/// Seed agent files from Strapi data. Only writes if the local file doesn't exist.
+/// Seed agent files from core data. Only writes if the local file doesn't exist.
 pub fn seed_agent_files(repo_path: &str, agent_type: &str, knowledge: Option<&str>, memory: Option<&str>) -> Result<(), String> {
     let dir = format!(".forge/{}", agent_type);
     let dir_path = std::path::PathBuf::from(super::wsl::clean(repo_path)).join(&dir);

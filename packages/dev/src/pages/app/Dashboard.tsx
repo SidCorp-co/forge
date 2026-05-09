@@ -77,7 +77,7 @@ export function Dashboard() {
                 {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full rounded-lg" />)}
               </div>
             ) : !projects || projects.length === 0 ? (
-              <EmptyState title="No projects yet." description="Projects will appear here once created in Strapi." />
+              <EmptyState title="No projects yet." description="Projects will appear here once created." />
             ) : (
               <ul className="space-y-2">
                 {projects.map((p) => {
