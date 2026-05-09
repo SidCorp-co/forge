@@ -37,7 +37,7 @@ export function useAgentStream({ projectSlug }: UseAgentStreamOptions) {
     handlePreviewPrompt,
   } = promptBuild;
 
-  useAgentWebSocket({
+  const { connectionState, reconnectNow } = useAgentWebSocket({
     projectSlug,
     sessionIdRef,
     mountedRef,
@@ -104,5 +104,7 @@ export function useAgentStream({ projectSlug }: UseAgentStreamOptions) {
     regenerateTurn,
     forkSession,
     rerunSession,
+    connectionState,
+    reconnectNow,
   };
 }

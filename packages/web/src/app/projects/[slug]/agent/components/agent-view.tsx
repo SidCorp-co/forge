@@ -65,6 +65,8 @@ export function AgentView() {
     handleStartFromPrompt,
     handleCancelDraft,
     isSessionOwner,
+    connectionState,
+    reconnectNow,
   } = useAgentPage();
 
   const { width: sidebarWidth, onMouseDown: onDividerMouseDown } = useResizablePanel(256, 180, 400);
@@ -118,6 +120,8 @@ export function AgentView() {
         onSend={handleSend}
         onStop={abortAgent}
         isSessionOwner={isSessionOwner}
+        connectionState={connectionState}
+        onReconnect={reconnectNow}
       />
     </div>
   );

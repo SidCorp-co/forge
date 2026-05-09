@@ -50,6 +50,8 @@ export function useAgentPage() {
     resetSession,
     clearDraftPrompt,
     usage,
+    connectionState,
+    reconnectNow,
   } = streamCtx;
 
   const fetchSessions = useCallback(async (search?: string) => {
@@ -225,5 +227,7 @@ export function useAgentPage() {
     handleStartFromPrompt,
     handleCancelDraft,
     isSessionOwner,
+    connectionState,
+    reconnectNow,
   };
 }

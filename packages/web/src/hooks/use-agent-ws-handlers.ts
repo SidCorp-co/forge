@@ -68,9 +68,21 @@ export function createAgentMessageHandler(opts: AgentHandlerOptions) {
 
     if (msg.event === 'agent:message') {
       handleAgentMessage(msg.data);
-    } else if (msg.event === 'agent:complete') {
-      if (msg.data?.claudeSessionId) {
+    } else if (msg.event === 'agent:complete' || msg.event === 'agent:error') {
+      // agent:error is defensive forward-compat — core currently rides
+      // failures on agent:complete.data.error, but mirror behavior if a
+      // dedicated frame is ever emitted. claudeSessionId capture only
+      // makes sense on agent:complete.
+      if (msg.event === 'agent:complete' && msg.data?.claudeSessionId) {
         dispatch({ type: 'claudeSessionIdSet', value: msg.data.claudeSessionId });
+      }
+      const errorText: string | null = typeof msg.data?.error === 'string' ? msg.data.error : null;
+      if (errorText) {
+        dispatch({
+          type: 'streamFrame',
+          blocks: [{ kind: 'textDelta', text: `Error: ${errorText}` }],
+          newAssistantMessage: { id: crypto.randomUUID(), timestamp: Date.now() },
+        });
       }
       dispatch({ type: 'streamingDone', completeTodos: true });
       dispatch({ type: 'isRunningSet', value: false });

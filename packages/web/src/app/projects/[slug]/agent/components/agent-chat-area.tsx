@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import { List } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { ChatMessages } from '@/components/message-bubble/chat-messages';
@@ -12,6 +13,7 @@ import type { ViewTab } from '../hooks';
 import type { BranchDiff } from '@/features/agent/api';
 import type { ChatMessageData } from '@/components/message-bubble/chat-message';
 import { ChatSendProvider } from '@/components/message-bubble/chat-message/chat-send-context';
+import type { ConnectionState } from '@/hooks/use-agent-websocket';
 
 interface ContextUsage {
   turns: number;
@@ -41,6 +43,8 @@ interface AgentChatAreaProps {
   onSend: (text: string) => void;
   onStop: () => void;
   isSessionOwner?: boolean;
+  connectionState: ConnectionState;
+  onReconnect: () => void;
 }
 
 export function AgentChatArea({
@@ -65,10 +69,37 @@ export function AgentChatArea({
   onSend,
   onStop,
   isSessionOwner = true,
+  connectionState,
+  onReconnect,
 }: AgentChatAreaProps) {
   const showDraftEditor = (draftPrompt || isBuildingPrompt) && !sessionId;
   const searchParams = useSearchParams();
   const highlightTurnId = searchParams?.get('turn') ?? null;
+
+  // Arm once when state leaves 'open'; the connecting↔reconnecting flap during
+  // an outage must not restart the 5s debounce, so the timer survives state
+  // transitions and is only cleared on return-to-open or on unmount.
+  const [showReconnectBanner, setShowReconnectBanner] = useState(false);
+  const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (connectionState === 'open') {
+      if (bannerTimerRef.current) {
+        clearTimeout(bannerTimerRef.current);
+        bannerTimerRef.current = null;
+      }
+      setShowReconnectBanner(false);
+      return;
+    }
+    if (bannerTimerRef.current === null) {
+      bannerTimerRef.current = setTimeout(() => {
+        setShowReconnectBanner(true);
+        bannerTimerRef.current = null;
+      }, 5000);
+    }
+  }, [connectionState]);
+  useEffect(() => () => {
+    if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+  }, []);
 
   return (
     <div className={cn(
@@ -88,6 +119,7 @@ export function AgentChatArea({
           <h3 className="text-sm font-semibold text-on-surface-variant truncate" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
             {sessionTitle}
           </h3>
+          <ConnectionPill state={connectionState} />
           {usage.turns > 0 && <ContextUsageBar usage={usage} />}
         </div>
       </div>
@@ -145,6 +177,23 @@ export function AgentChatArea({
                 highlightTurnId={highlightTurnId}
               />
               </ChatSendProvider>
+              {showReconnectBanner && connectionState !== 'open' && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="flex items-center justify-between gap-3 border-t border-warning-dim/30 bg-surface-variant px-4 py-2 text-xs text-on-surface-variant shrink-0"
+                >
+                  <span>Connection lost — reconnecting…</span>
+                  <button
+                    type="button"
+                    onClick={onReconnect}
+                    aria-label="Retry connection now"
+                    className="font-medium text-primary hover:underline focus:underline focus:outline-none"
+                  >
+                    Retry now
+                  </button>
+                </div>
+              )}
               <ChatInput
                 onSend={(text, _files) => onSend(text)}
                 isRunning={isRunning}
@@ -156,6 +205,32 @@ export function AgentChatArea({
         </>
       )}
     </div>
+  );
+}
+
+const CONNECTION_PILL_META: Record<ConnectionState, { dot: string; label: string; pulse: boolean }> = {
+  open: { dot: 'bg-success', label: 'Online', pulse: false },
+  connecting: { dot: 'bg-warning-dim', label: 'Connecting…', pulse: false },
+  reconnecting: { dot: 'bg-warning-dim', label: 'Reconnecting…', pulse: true },
+};
+
+function ConnectionPill({ state }: { state: ConnectionState }) {
+  const meta = CONNECTION_PILL_META[state];
+
+  return (
+    <span
+      className="flex items-center gap-1 font-mono text-[10px] text-primary-fixed ml-2 shrink-0"
+      title={meta.label}
+    >
+      <span
+        className={cn(
+          'inline-block h-1.5 w-1.5 rounded-full',
+          meta.dot,
+          meta.pulse && 'animate-pulse',
+        )}
+      />
+      <span className="hidden sm:inline">{meta.label}</span>
+    </span>
   );
 }
 
