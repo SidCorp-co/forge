@@ -15,7 +15,7 @@ A mixed-language docs tree or Vietnamese-first docs would be a measurable adopti
 
 - **All public-facing artifacts are English:** README, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, CHANGELOG, `docs/`, commit messages, PR descriptions, issue templates, error messages, UI copy.
 - **Vietnamese is acceptable only in internal-alpha channels:** internal Slack, private planning docs, verbal discussion within SidCorp. Never in the public repo.
-- **Brand name stays "Jarvis Agents"** — two words, title case. See [BRAND.md](../BRAND.md).
+- **Brand name stays "Jarvis Agents"** — two words, title case. See `BRAND.md` (TBD).
 
 ## Rationale
 
@@ -49,5 +49,5 @@ A mixed-language docs tree or Vietnamese-first docs would be a measurable adopti
 
 ## Related
 
-- Detailed voice rules: [BRAND.md](../BRAND.md)
+- Detailed voice rules: `BRAND.md` (TBD)
 - Translation policy: defer to v0.3+ (community-driven, not maintainer work)

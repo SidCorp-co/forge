@@ -107,7 +107,7 @@ and [RFC 0001](docs/rfcs/0001-device-runner-architecture.md).
 | [`packages/web/`](packages/web/) | Next.js dashboard: kanban, replay, pipeline health, devices | `pnpm dev` |
 | [`packages/dev/`](packages/dev/) | Tauri desktop device agent (GUI form factor) | `pnpm tauri dev` |
 | `packages/forged/` | CLI daemon device agent (headless) — coming soon | — |
-| [`packages/widget/`](packages/widget/) | Embeddable chat widget | `pnpm dev` |
+| [`packages/web/src/widget/`](packages/web/src/widget/) | Embeddable chat widget (built as part of web) | `pnpm dev` |
 | [`packages/contracts/`](packages/contracts/) | Shared TypeScript contracts | — |
 
 ## How it works

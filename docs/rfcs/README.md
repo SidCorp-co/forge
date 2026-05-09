@@ -11,7 +11,7 @@ Request for Comments — long-form design proposals for significant changes. Eac
 
 ## When an RFC is required
 
-Per [../CONTRIBUTING.md](../../CONTRIBUTING.md) and [../ROADMAP.md § feature process](../ROADMAP.md), an RFC is required for:
+Per [../CONTRIBUTING.md](../../CONTRIBUTING.md) (and the future `ROADMAP.md § feature process`, TBD), an RFC is required for:
 
 - New public API surface (REST endpoint, MCP tool, WebSocket event)
 - Architecture changes (new service, schema migration, new client form factor)

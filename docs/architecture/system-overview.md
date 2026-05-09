@@ -189,4 +189,4 @@ Per-project config decides which transitions auto-trigger vs wait for human appr
 
 Significant changes (new service, schema migration, new client form factor, new principal class) go through the RFC process. See [RFC 0001](../rfcs/0001-device-runner-architecture.md) as the template.
 
-See [ROADMAP.md](../ROADMAP.md) for where we're headed.
+A `ROADMAP.md` is planned but not yet authored — for now, in-flight work lives in the issue tracker.

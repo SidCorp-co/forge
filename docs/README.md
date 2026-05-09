@@ -26,8 +26,8 @@ If a doc disagrees with the code, trust the code, then propose a doc fix in the 
 | Read planned but unshipped features | [proposals/](proposals/) |
 | Connect Forge to an external platform | [integrations/](integrations/) |
 | Follow a how-to for a specific task | [guides/](guides/) |
-| See what's shipping next | [ROADMAP.md](ROADMAP.md) |
-| Use the brand / voice correctly | [BRAND.md](BRAND.md) |
+| See what's shipping next | `ROADMAP.md` (TBD — not yet authored) |
+| Use the brand / voice correctly | `BRAND.md` (TBD — see [decisions/0008](decisions/0008-english-as-primary-language.md) and [decisions/0015](decisions/0015-rebrand-to-forge.md)) |
 
 ## Folder purpose
 

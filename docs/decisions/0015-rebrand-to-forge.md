@@ -39,5 +39,5 @@ Three coordinated moves, executed atomically:
 ## Notes
 
 - ADR 0008 said "brand name stays 'Jarvis Agents'" as part of the English-only language decision. That decision (English-only for public artifacts) still stands; only the brand-name claim is superseded here.
-- Branding details (visual identity, logo, palette) are still TBD — see [BRAND.md](../BRAND.md). The naming decision above does not depend on those.
+- Branding details (visual identity, logo, palette) are still TBD — `BRAND.md` is not yet authored. The naming decision above does not depend on those.
 - The desktop app version was bumped to `0.1.17` immediately after this rebrand so installed users get the new identifier + URL via the auto-updater chain rather than relying on indefinite redirects.
