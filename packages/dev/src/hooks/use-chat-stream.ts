@@ -1,12 +1,8 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
-import type { ChatMessageData, ToolCallData } from "@/lib/types";
 
-export function useChatStream(
-  sessionId: string | null,
-  setMessages: React.Dispatch<React.SetStateAction<ChatMessageData[]>>,
-) {
+export function useChatStream(sessionId: string | null) {
   const auth = useAuth();
   const queryClient = useQueryClient();
   const queryClientRef = useRef(queryClient);
@@ -45,30 +41,6 @@ export function useChatStream(
           const keys = msg.event.startsWith("task:") || msg.event.startsWith("agent:")
             ? ["tasks"] : ["issues", "issue", "comments"];
           keys.forEach((k) => qc.invalidateQueries({ queryKey: [k], refetchType: "all" }));
-        }
-
-        const mid = streamingMsgId.current;
-        if (!mid) return;
-
-        if (msg.event === "chat:text_delta") {
-          setMessages((prev) => prev.map((m) =>
-            m.id === mid ? { ...m, content: m.content + (msg.data?.text || "") } : m,
-          ));
-        } else if (msg.event === "chat:tool_use") {
-          const toolCall: ToolCallData = {
-            id: msg.data?.id || crypto.randomUUID(),
-            name: msg.data?.name || "tool",
-            isStreaming: true,
-          };
-          setMessages((prev) => prev.map((m) =>
-            m.id === mid ? { ...m, toolCalls: [...(m.toolCalls || []), toolCall] } : m,
-          ));
-        } else if (msg.event === "chat:done") {
-          setMessages((prev) => prev.map((m) => {
-            if (m.id !== mid) return m;
-            return { ...m, isStreaming: false, toolCalls: m.toolCalls?.map((tc) => ({ ...tc, isStreaming: false })) };
-          }));
-          streamingMsgId.current = null;
         }
       } catch { /* ignore */ }
     };

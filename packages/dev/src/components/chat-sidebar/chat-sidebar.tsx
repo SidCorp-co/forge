@@ -28,7 +28,7 @@ export function ChatSidebar({ projectSlug, onClose }: ChatSidebarProps) {
   const queryClient = useQueryClient();
   const mountedRef = useMountedRef();
 
-  const { streamingMsgId, subscribe } = useChatStream(sessionId, setMessages);
+  const { streamingMsgId, subscribe } = useChatStream(sessionId);
 
   const loadSessions = useCallback(async () => {
     setLoadingSessions(true);
