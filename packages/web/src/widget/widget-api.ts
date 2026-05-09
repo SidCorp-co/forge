@@ -28,7 +28,7 @@ export class WidgetAPI {
   }
 
   async listSessions(hubToken?: string): Promise<WidgetSession[]> {
-    let url = `${this.apiUrl}/api/chat-sessions?sort=updatedAt:desc&pagination[pageSize]=20&fields[0]=title&fields[1]=updatedAt`;
+    let url = `${this.apiUrl}/api/chat/sessions?sort=updatedAt:desc&pagination[pageSize]=20&fields[0]=title&fields[1]=updatedAt`;
     if (hubToken) url += `&hubToken=${encodeURIComponent(hubToken)}`;
     const res = await fetch(url, { headers: this.headers });
     if (!res.ok) return [];
@@ -42,7 +42,7 @@ export class WidgetAPI {
 
   async getSession(sessionId: string): Promise<{ messages: any[] } | null> {
     const res = await fetch(
-      `${this.apiUrl}/api/chat-sessions/${sessionId}`,
+      `${this.apiUrl}/api/chat/sessions/${sessionId}`,
       { headers: this.headers },
     );
     if (!res.ok) return null;

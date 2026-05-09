@@ -69,7 +69,7 @@ Users can open a chat session with an agent inside a project. The agent has acce
 ### Start a chat
 
 1. User navigates **Project → Chat**
-2. `POST /api/chat-sessions` → new `ChatSession` created
+2. `POST /api/chat/sessions` → new `ChatSession` created
 3. WebSocket subscription opens for streaming
 
 ### Send a message
@@ -91,10 +91,10 @@ Users can open a chat session with an agent inside a project. The agent has acce
 
 | Method | Endpoint | Principal | Description |
 |--------|----------|-----------|-------------|
-| `POST` | `/api/chat-sessions` | user | Start |
+| `POST` | `/api/chat/sessions` | user | Start |
 | `POST` | `/api/chat` | user / agent via MCP | Send message, get response |
-| `GET` | `/api/chat-sessions/:id/logs` | user | History |
-| `DELETE` | `/api/chat-sessions/:id` | user | End |
+| `GET` | `/api/chat/sessions/:id/logs` | user | History |
+| `DELETE` | `/api/chat/sessions/:id` | user | End |
 
 ## Cross-Module Touchpoints
 

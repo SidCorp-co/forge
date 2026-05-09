@@ -37,7 +37,7 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const { chatSessionRoutes } = await import('./routes.js');
+const { chatSessionRoutes } = await import('./sessions-routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
@@ -45,7 +45,7 @@ const { requestId } = await import('../middleware/request-id.js');
 function buildApp() {
   const app = new Hono<{ Variables: import('../middleware/request-id.js').RequestIdVars }>();
   app.use('*', requestId());
-  app.route('/api/chat-sessions', chatSessionRoutes);
+  app.route('/api/chat/sessions', chatSessionRoutes);
   app.onError(errorHandler);
   return app;
 }
@@ -80,9 +80,9 @@ async function token() {
   return signUserToken(USER_ID);
 }
 
-describe('GET /api/chat-sessions', () => {
+describe('GET /api/chat/sessions', () => {
   it('401 without token', async () => {
-    const res = await buildApp().request(`/api/chat-sessions?projectId=${PROJECT_ID}`);
+    const res = await buildApp().request(`/api/chat/sessions?projectId=${PROJECT_ID}`);
     expect(res.status).toBe(401);
   });
 
@@ -93,7 +93,7 @@ describe('GET /api/chat-sessions', () => {
     selectOrderByOffset.mockResolvedValueOnce([
       { id: SESSION_ID, projectId: PROJECT_ID, userId: USER_ID, title: 't', source: 'web' },
     ]);
-    const res = await buildApp().request(`/api/chat-sessions?projectId=${PROJECT_ID}`, {
+    const res = await buildApp().request(`/api/chat/sessions?projectId=${PROJECT_ID}`, {
       headers: { authorization: `Bearer ${await token()}` },
     });
     expect(res.status).toBe(200);
@@ -102,14 +102,14 @@ describe('GET /api/chat-sessions', () => {
   });
 });
 
-describe('POST /api/chat-sessions', () => {
+describe('POST /api/chat/sessions', () => {
   it('creates and stores under userId', async () => {
     authVerified();
     projectAccessAsMember();
     insertReturning.mockResolvedValueOnce([
       { id: SESSION_ID, projectId: PROJECT_ID, userId: USER_ID, source: 'web', messages: [] },
     ]);
-    const res = await buildApp().request('/api/chat-sessions', {
+    const res = await buildApp().request('/api/chat/sessions', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
       body: JSON.stringify({ projectId: PROJECT_ID, title: 'hello' }),
@@ -118,13 +118,13 @@ describe('POST /api/chat-sessions', () => {
   });
 });
 
-describe('GET /api/chat-sessions/:id', () => {
+describe('GET /api/chat/sessions/:id', () => {
   it('forbids accessing another user’s session', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([
       { id: SESSION_ID, projectId: PROJECT_ID, userId: 'other-user', messages: [] },
     ]);
-    const res = await buildApp().request(`/api/chat-sessions/${SESSION_ID}`, {
+    const res = await buildApp().request(`/api/chat/sessions/${SESSION_ID}`, {
       headers: { authorization: `Bearer ${await token()}` },
     });
     expect(res.status).toBe(403);
@@ -133,18 +133,18 @@ describe('GET /api/chat-sessions/:id', () => {
   it('404 when session missing', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([]);
-    const res = await buildApp().request(`/api/chat-sessions/${SESSION_ID}`, {
+    const res = await buildApp().request(`/api/chat/sessions/${SESSION_ID}`, {
       headers: { authorization: `Bearer ${await token()}` },
     });
     expect(res.status).toBe(404);
   });
 });
 
-describe('DELETE /api/chat-sessions/:id', () => {
+describe('DELETE /api/chat/sessions/:id', () => {
   it('204 when owner of session', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([{ id: SESSION_ID, userId: USER_ID }]);
-    const res = await buildApp().request(`/api/chat-sessions/${SESSION_ID}`, {
+    const res = await buildApp().request(`/api/chat/sessions/${SESSION_ID}`, {
       method: 'DELETE',
       headers: { authorization: `Bearer ${await token()}` },
     });

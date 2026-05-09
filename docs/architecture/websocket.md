@@ -59,7 +59,7 @@ and the rooms they publish to:
 | Category | Room | Source |
 |---|---|---|
 | `issue.*`, `task.*`, `schedule.*`, `skill.*` | `project:<id>` | `packages/core/src/ws/broadcast-subscribers.ts` |
-| `notification.*`, `user.preferencesChanged`, `chat.message` | `user:<id>` | `chat-sessions/routes.ts`, `chat/routes.ts`, broadcast-subscribers |
+| `notification.*`, `user.preferencesChanged`, `chat.message` | `user:<id>` | `chat/sessions-routes.ts`, `chat/routes.ts`, broadcast-subscribers |
 | `job.*` (incl. `job.event` with `seq`) | `project:<id>` (and `device:<id>` for assignment) | `jobs/lifecycle-routes.ts`, `jobs/events-routes.ts`, `jobs/dispatcher.ts` |
 | `runner.*`, `device.status`, `pipeline.*` | `project:<id>` / `device:<id>` / `runner:<id>` | `runners/`, `devices/` |
 | `agent:*` (legacy colon names — agent runner internal) | `device:<id>` | `runners/adapters/claude-code.ts` |
