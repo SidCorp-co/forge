@@ -27,6 +27,16 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
+// ISS-71 regression guard: chat turns must NOT broadcast over WS. The
+// chat.message publisher was deleted because no client listened to it
+// (widget streams via SSE response body, not WS). If anyone re-introduces
+// a roomManager.publish call from chat/routes.ts or run-turn.ts, this mock
+// catches it and the assertion in the success-path test will fail.
+const wsPublish = vi.fn();
+vi.mock('../ws/server.js', () => ({
+  roomManager: { publish: wsPublish },
+}));
+
 const { chatRoutes } = await import('./routes.js');
 const { clearProviders, register } = await import('./providers/registry.js');
 const { signUserToken } = await import('../auth/jwt.js');
@@ -129,6 +139,7 @@ beforeEach(() => {
   updateWhere.mockClear();
   dbInsert.mockClear();
   dbUpdate.mockClear();
+  wsPublish.mockClear();
   // values() is both a Promise (chat_logs path: `await db.insert(...).values(...)`)
   // AND has a `.returning()` method (chat_sessions path).
   insertValues.mockImplementation((() => {
@@ -193,7 +204,7 @@ describe('POST /api/chat (mounted)', () => {
     expect(res.status).toBe(400);
   });
 
-  it('streams chunk + done, persists session + chat_logs, broadcasts WS', async () => {
+  it('streams chunk + done, persists session + chat_logs (no WS broadcast)', async () => {
     register('mock', () => ({
       id: 'mock',
       defaultModel: 'mock-default',
@@ -253,6 +264,11 @@ describe('POST /api/chat (mounted)', () => {
     expect(logRow.toolCalls).toEqual([]);
     expect(logRow.ragContext).toBeNull();
     expect((logRow.usage as { promptTokens?: number })?.promptTokens).toBe(5);
+
+    // ISS-71 regression guard — chat turn must not broadcast over WS.
+    // Widget streams via SSE response body; web has no consumer for any
+    // chat WS event. If anyone re-introduces a publisher, this fails.
+    expect(wsPublish).not.toHaveBeenCalled();
   });
 
   it('second turn with same sessionId includes prior turn in provider call', async () => {

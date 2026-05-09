@@ -59,7 +59,7 @@ and the rooms they publish to:
 | Category | Room | Source |
 |---|---|---|
 | `issue.*`, `task.*`, `schedule.*`, `skill.*` | `project:<id>` | `packages/core/src/ws/broadcast-subscribers.ts` |
-| `notification.*`, `user.preferencesChanged`, `chat.message` | `user:<id>` | `chat/sessions-routes.ts`, `chat/routes.ts`, broadcast-subscribers |
+| `notification.*`, `user.preferencesChanged` | `user:<id>` | broadcast-subscribers |
 | `job.*` (incl. `job.event` with `seq`) | `project:<id>` (and `device:<id>` for assignment) | `jobs/lifecycle-routes.ts`, `jobs/events-routes.ts`, `jobs/dispatcher.ts` |
 | `runner.*`, `device.status`, `pipeline.*` | `project:<id>` / `device:<id>` / `runner:<id>` | `runners/`, `devices/` |
 | `agent:*` (legacy colon names — agent runner internal) | `device:<id>` | `runners/adapters/claude-code.ts` |
@@ -110,8 +110,11 @@ both removed. To target a single user, publish to `user:<userId>`.
   realtime updates.
 - **`seq-tracker.ts`** — tracks last-seen `seq` per job for replay.
 
-The widget (`packages/web/src/widget/widget-root.tsx`) consumes `chat.message`
-events directly for streaming AI chat UI.
+The widget (`packages/web/src/widget/widget-root.tsx`) consumes the SSE
+response of `POST /api/widget/chat` directly (events `chat:text_delta`,
+`chat:tool_use`, `chat:done`, `chat:complete`, `chat:error`,
+`chat:session_ready`) for streaming AI chat UI — it does NOT subscribe
+to any WS room for chat content.
 
 ## Design decisions
 
