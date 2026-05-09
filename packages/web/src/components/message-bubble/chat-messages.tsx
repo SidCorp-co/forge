@@ -2,6 +2,7 @@
 
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { ArrowDown, MessageSquare, Search, X } from 'lucide-react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { ChatMessage } from './chat-message';
 import type { ChatMessageData } from './chat-message';
 import { DiffSummary } from './chat-message/diff-summary';
@@ -35,7 +36,6 @@ export function ChatMessages({
   highlightTurnId,
 }: ChatMessagesProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -51,12 +51,32 @@ export function ChatMessages({
     );
   }, [messages, searchQuery]);
 
+  const rowVirtualizer = useVirtualizer({
+    count: messages.length,
+    getScrollElement: () => containerRef.current,
+    estimateSize: () => 240,
+    overscan: 8,
+    getItemKey: (index) => messages[index].id,
+  });
+
   const scrollToBottom = useCallback((smooth = true) => {
-    const el = containerRef.current;
-    if (el) {
-      el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'instant' });
+    if (messages.length === 0) {
+      const el = containerRef.current;
+      if (el) {
+        el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+      }
+      return;
     }
-  }, []);
+    // Defer one frame so initial-mount paint can run measureElement before
+    // we land on the last row — otherwise scrollToIndex(last) computes the
+    // offset off the estimate and lands short on long histories.
+    requestAnimationFrame(() => {
+      rowVirtualizer.scrollToIndex(messages.length - 1, {
+        align: 'end',
+        behavior: smooth ? 'smooth' : 'auto',
+      });
+    });
+  }, [messages.length, rowVirtualizer]);
 
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
@@ -72,24 +92,48 @@ export function ChatMessages({
     }
   }, [messages, scrollToBottom]);
 
-  // Permalink scroll — fires once per ?turn=<id> after the matching node
-  // mounts. Guarded by a ref so streaming token updates to other messages
-  // don't reset the 2-second highlight timer.
+  // Guarded by ref so streaming token updates don't re-trigger the highlight.
   const flashedTurnIdRef = useRef<string | null>(null);
-  const messagesLen = messages.length;
+  // Stable ref to messages so the permalink effect doesn't depend on the
+  // array reference (which changes per WS streaming delta) — the lookup
+  // only runs once per highlightTurnId, not per token.
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+
   useEffect(() => {
     if (!highlightTurnId || flashedTurnIdRef.current === highlightTurnId) return;
-    const node = containerRef.current?.querySelector<HTMLElement>(
-      `[data-turn-id="${highlightTurnId}"]`,
-    );
-    if (!node) return;
+    const idx = messagesRef.current.findIndex((m) => m.turnId === highlightTurnId);
+    if (idx === -1) return;
     flashedTurnIdRef.current = highlightTurnId;
-    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    rowVirtualizer.scrollToIndex(idx, { align: 'center', behavior: 'smooth' });
+
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const cls = ['ring-2', 'ring-primary', 'ring-offset-2', 'rounded'];
-    node.classList.add(...cls);
-    const t = setTimeout(() => node.classList.remove(...cls), 2000);
-    return () => clearTimeout(t);
-  }, [highlightTurnId, messagesLen]);
+
+    const tryFlash = (attemptsLeft: number) => {
+      if (cancelled) return;
+      const node = containerRef.current?.querySelector<HTMLElement>(
+        `[data-turn-id="${highlightTurnId}"]`,
+      );
+      if (node) {
+        node.classList.add(...cls);
+        timeoutId = setTimeout(() => node.classList.remove(...cls), 2000);
+        return;
+      }
+      if (attemptsLeft > 0) {
+        requestAnimationFrame(() => tryFlash(attemptsLeft - 1));
+      }
+    };
+    // ~10 frames (~166ms) is enough for the virtualizer to mount the target
+    // row after a smooth scroll on typical histories.
+    requestAnimationFrame(() => tryFlash(10));
+
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [highlightTurnId, rowVirtualizer]);
 
   if (messages.length === 0) {
     if (sessionId) {
@@ -104,6 +148,9 @@ export function ChatMessages({
       </div>
     );
   }
+
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const totalSize = rowVirtualizer.getTotalSize();
 
   return (
     <div className="relative flex-1 overflow-hidden">
@@ -143,25 +190,46 @@ export function ChatMessages({
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="h-full overflow-y-auto overflow-x-hidden overscroll-contain px-4 py-4 space-y-3 bg-surface"
+        className="h-full overflow-y-auto overflow-x-hidden overscroll-contain px-4 py-4 bg-surface"
       >
-        {messages.map((msg) => {
-          const dimmed = matchingIds !== null && !matchingIds.has(msg.id);
-          return (
-            <div key={msg.id} className={dimmed ? 'opacity-20' : undefined}>
-              <ChatMessage
-                message={msg}
-                variant={variant}
-                sessionId={sessionId ?? null}
-                onAfterEdit={onAfterEdit}
-                onAfterRegenerate={onAfterRegenerate}
-                onAfterFork={onAfterFork}
-              />
-            </div>
-          );
-        })}
+        <div
+          style={{
+            height: totalSize,
+            width: '100%',
+            position: 'relative',
+          }}
+        >
+          {virtualItems.map((virtualRow) => {
+            const msg = messages[virtualRow.index];
+            const dimmed = matchingIds !== null && !matchingIds.has(msg.id);
+            return (
+              <div
+                key={virtualRow.key}
+                ref={rowVirtualizer.measureElement}
+                data-index={virtualRow.index}
+                data-turn-id={msg.turnId ?? undefined}
+                className={`pb-3 ${dimmed ? 'opacity-20' : ''}`}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
+              >
+                <ChatMessage
+                  message={msg}
+                  variant={variant}
+                  sessionId={sessionId ?? null}
+                  onAfterEdit={onAfterEdit}
+                  onAfterRegenerate={onAfterRegenerate}
+                  onAfterFork={onAfterFork}
+                />
+              </div>
+            );
+          })}
+        </div>
         <DiffSummary messages={messages} />
-        <div ref={bottomRef} />
       </div>
       {showScrollBtn && (
         <button

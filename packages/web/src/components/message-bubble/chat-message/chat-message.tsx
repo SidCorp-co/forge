@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import { Markdown } from '@/components/ui/markdown';
 import { coreFileUrl } from '@/lib/api/client';
@@ -21,7 +21,12 @@ interface ChatMessageProps {
   onAfterFork?: (newSessionDocumentId: string) => void;
 }
 
-export function ChatMessage({
+type GroupedItem =
+  | { type: 'text'; text: string; key: number }
+  | { type: 'tools'; tools: ToolCallData[]; key: number }
+  | { type: 'todos'; todos: AgentTodo[]; key: number };
+
+function ChatMessageImpl({
   message,
   variant = 'agent',
   sessionId = null,
@@ -31,6 +36,48 @@ export function ChatMessage({
 }: ChatMessageProps) {
   const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
   const displayContent = useTypewriter(message.content || '', message.isStreaming ?? false);
+
+  const { hasBlocks, groupedBlocks } = useMemo(() => {
+    const blocks = message.contentBlocks;
+    const hasNonTodoBlocks = blocks && blocks.some((b) => b.type !== 'todos');
+    const hasBlocks = !!(blocks && blocks.length > 0 && hasNonTodoBlocks);
+
+    const groupedBlocks: GroupedItem[] = [];
+    if (hasBlocks && blocks) {
+      let pendingTools: ToolCallData[] = [];
+      let keyCounter = 0;
+      const flushTools = () => {
+        if (pendingTools.length === 0) return;
+        let i = 0;
+        while (i < pendingTools.length) {
+          const name = pendingTools[i].name;
+          const group: ToolCallData[] = [];
+          while (i < pendingTools.length && pendingTools[i].name === name) {
+            group.push(pendingTools[i++]);
+          }
+          groupedBlocks.push({ type: 'tools', tools: group, key: keyCounter++ });
+        }
+        pendingTools = [];
+      };
+      for (const block of blocks) {
+        if (block.type === 'tool_use' && block.tool) {
+          pendingTools.push(block.tool);
+        } else if (block.type === 'todos') {
+          flushTools();
+          const prevIdx = groupedBlocks.findIndex((g) => g.type === 'todos');
+          if (prevIdx >= 0) {
+            groupedBlocks.splice(prevIdx, 1);
+          }
+          groupedBlocks.push({ type: 'todos', todos: block.todos, key: keyCounter++ });
+        } else if (block.type === 'text' && block.text) {
+          flushTools();
+          groupedBlocks.push({ type: 'text', text: block.text, key: keyCounter++ });
+        }
+      }
+      flushTools();
+    }
+    return { hasBlocks, groupedBlocks };
+  }, [message.contentBlocks]);
 
   if (message.role === 'system') {
     return (
@@ -97,55 +144,7 @@ export function ChatMessage({
     );
   }
 
-  // Assistant — render blocks in order when available
-  // During streaming, todos arrive via contentBlocks while text/tools use legacy fields.
-  // Detect this mixed state so we can render both.
-  const blocks = message.contentBlocks;
-  const hasNonTodoBlocks = blocks && blocks.some((b) => b.type !== 'todos');
-  const hasBlocks = blocks && blocks.length > 0 && hasNonTodoBlocks;
-
-  // Group consecutive tool_use blocks by tool type (name)
-  type GroupedItem =
-    | { type: 'text'; text: string; key: number }
-    | { type: 'tools'; tools: ToolCallData[]; key: number }
-    | { type: 'todos'; todos: AgentTodo[]; key: number };
-  const groupedBlocks: GroupedItem[] = [];
-  if (hasBlocks) {
-    let pendingTools: ToolCallData[] = [];
-    let keyCounter = 0;
-    const flushTools = () => {
-      if (pendingTools.length === 0) return;
-      // Sub-group consecutive tools by name
-      let i = 0;
-      while (i < pendingTools.length) {
-        const name = pendingTools[i].name;
-        const group: ToolCallData[] = [];
-        while (i < pendingTools.length && pendingTools[i].name === name) {
-          group.push(pendingTools[i++]);
-        }
-        groupedBlocks.push({ type: 'tools', tools: group, key: keyCounter++ });
-      }
-      pendingTools = [];
-    };
-    for (const block of blocks) {
-      if (block.type === 'tool_use' && block.tool) {
-        pendingTools.push(block.tool);
-      } else if (block.type === 'todos') {
-        flushTools();
-        // Replace any previous todos block — only show the latest
-        const prevIdx = groupedBlocks.findIndex((g) => g.type === 'todos');
-        if (prevIdx >= 0) {
-          groupedBlocks.splice(prevIdx, 1);
-        }
-        groupedBlocks.push({ type: 'todos', todos: block.todos, key: keyCounter++ });
-      } else if (block.type === 'text' && block.text) {
-        flushTools();
-        groupedBlocks.push({ type: 'text', text: block.text, key: keyCounter++ });
-      }
-    }
-    flushTools();
-  }
-
+  // Assistant render
   return (
     <div className="group" data-turn-id={message.turnId ?? undefined}>
       {hasBlocks ? (
@@ -194,3 +193,5 @@ export function ChatMessage({
     </div>
   );
 }
+
+export const ChatMessage = memo(ChatMessageImpl);

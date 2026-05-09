@@ -83,9 +83,15 @@ export function AgentSessionPanel({ sessionId: targetSessionId, projectSlug, onC
     }
   }
 
-  async function reload() {
+  const reload = useCallback(async () => {
     if (sessionId) await loadSession(sessionId);
-  }
+  }, [sessionId, loadSession]);
+
+  const handleAfterFork = useCallback((newId: string) => {
+    if (typeof window !== 'undefined') {
+      window.location.href = `${window.location.pathname}?session=${newId}`;
+    }
+  }, []);
 
   return (
     <div className="flex h-full flex-col bg-surface chat-prose">
@@ -179,11 +185,7 @@ export function AgentSessionPanel({ sessionId: targetSessionId, projectSlug, onC
           sessionId={sessionId}
           onAfterEdit={reload}
           onAfterRegenerate={reload}
-          onAfterFork={(newId) => {
-            if (typeof window !== 'undefined') {
-              window.location.href = `${window.location.pathname}?session=${newId}`;
-            }
-          }}
+          onAfterFork={handleAfterFork}
         />
       )}
 
