@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { strapiMediaUrl } from '@/lib/api/client';
+import { coreFileUrl } from '@/lib/api/client';
 
 export interface UploadedFile {
   id: number;
@@ -99,7 +99,7 @@ export function FileUpload({ value, onChange, accept = 'image/*,video/*,.pdf,.tx
           {value.map((f) => (
             <li key={f.id} className="flex items-center gap-3 rounded-sm border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-xs font-mono">
               {f.url && /\.(png|jpe?g|gif|webp|svg)$/i.test(f.name) ? (
-                <img src={strapiMediaUrl(f.url)} alt={f.name} className="h-8 w-8 rounded-sm object-cover" />
+                <img src={coreFileUrl(f.url)} alt={f.name} className="h-8 w-8 rounded-sm object-cover" />
               ) : f.url && /\.(mp4|webm|mov|avi|mkv|ogg)$/i.test(f.name) ? (
                 <svg className="h-4 w-4 text-outline" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />

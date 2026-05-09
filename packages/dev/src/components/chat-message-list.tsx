@@ -3,7 +3,7 @@ import { useScrollToBottom } from "@/hooks/use-scroll-to-bottom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ChatMessageData, ToolCallData } from "@/lib/types";
-import { strapiMediaUrl } from "@/lib/api";
+import { coreMediaUrl } from "@/lib/api";
 import { ImagePreview } from "./ui/image-preview";
 
 function formatTime(ts: number): string {
@@ -69,10 +69,10 @@ function MessageBubble({ msg }: { msg: ChatMessageData }) {
               {msg.attachments.map((a, i) => (
                 <img
                   key={i}
-                  src={strapiMediaUrl(a.url)}
+                  src={coreMediaUrl(a.url)}
                   alt={a.name}
                   className="h-16 w-16 rounded-lg object-cover border border-gray-700 cursor-zoom-in"
-                  onClick={() => setPreviewImage({ url: strapiMediaUrl(a.url), name: a.name })}
+                  onClick={() => setPreviewImage({ url: coreMediaUrl(a.url), name: a.name })}
                 />
               ))}
             </div>

@@ -16,8 +16,8 @@ function snapshotAuth(): { coreUrl: string | null; token: string | null; phase: 
   return { coreUrl: null, token: null, phase: s.phase };
 }
 
-/** Resolve a Strapi media URL — returns absolute URL for both relative and absolute inputs. */
-export function strapiMediaUrl(url: string): string {
+/** Resolve a media URL — returns absolute URL for both relative and absolute inputs. */
+export function coreMediaUrl(url: string): string {
   if (!url) return url;
   if (url.startsWith("http://") || url.startsWith("https://")) return url;
   const { coreUrl } = snapshotAuth();

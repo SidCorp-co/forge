@@ -1,4 +1,4 @@
-import { apiUpload, strapiMediaUrl } from '@/lib/api/client';
+import { apiUpload, coreFileUrl } from '@/lib/api/client';
 
 interface UploadedFile {
   id: number;
@@ -22,5 +22,5 @@ export async function uploadAndFormatMessage(text: string, files?: File[]): Prom
 
   if (uploaded.length === 0) return text;
 
-  return `${text}\n\n[Attached files (uploaded to Strapi media): ${uploaded.map((f) => `[${f.name}](${strapiMediaUrl(f.url)}) (media ID: ${f.id})`).join(', ')}]`;
+  return `${text}\n\n[Attached files: ${uploaded.map((f) => `[${f.name}](${coreFileUrl(f.url)}) (media ID: ${f.id})`).join(', ')}]`;
 }

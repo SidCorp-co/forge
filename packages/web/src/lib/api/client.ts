@@ -62,17 +62,6 @@ export async function apiClient<T>(endpoint: string, options: RequestInit = {}):
 }
 
 /**
- * Transitional shim — Strapi media URL resolver. Phase 2.6 has no `/upload`
- * endpoint on `packages/core`; callers remain only so that the F1 typecheck
- * stays green. F2 deletes every caller and removes this shim.
- *
- * @deprecated removed in Phase 2.6-F2
- */
-export function strapiMediaUrl(url: string): string {
-  return url;
-}
-
-/**
  * Resolve a server-relative path (e.g. `/api/attachments/abc/download`) to an
  * absolute URL anchored at the core API origin. Pass-through for absolute URLs
  * and empty input. Use for `<img src>`, `<video src>`, and `<a href>` where

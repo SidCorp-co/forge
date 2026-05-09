@@ -14,7 +14,7 @@ use uuid::Uuid;
 /// - `FORGE_SYSTEM_PREAMBLE_CHAT`: used for manual chat sessions where no
 ///   project context has been pre-loaded. Tells the agent to call
 ///   forge_config get_knowledge for orientation.
-/// - `FORGE_SYSTEM_PREAMBLE_PIPELINE`: used for pipeline sessions where Strapi
+/// - `FORGE_SYSTEM_PREAMBLE_PIPELINE`: used for pipeline sessions where core
 ///   has already inlined knowledge + conventions + PIPELINE_RULES via the
 ///   `system_prompt` parameter. Does NOT nudge the agent to call get_knowledge,
 ///   because the data is already in the system prompt.
@@ -57,7 +57,7 @@ fn build_base_args(
 
     // Combine the static Forge preamble with any pipeline-specific system prompt
     // (knowledge + conventions + PIPELINE_RULES) into one --append-system-prompt.
-    // When Strapi provides a pipeline system_prompt, use the pipeline variant
+    // When core provides a pipeline system_prompt, use the pipeline variant
     // (no "call get_knowledge" nudge). Otherwise it's a manual chat — use the
     // chat variant which tells the agent to fetch project context itself.
     let combined_system = match system_prompt {

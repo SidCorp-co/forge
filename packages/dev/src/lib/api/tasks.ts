@@ -1,7 +1,7 @@
 import type { Task } from "../types";
 import { request } from "./client";
 
-// Phase 3.3 (ISS-257): tasks moved from top-level Strapi `/tasks` to core's
+// ISS-257: tasks moved from the legacy top-level `/tasks` endpoint to core's
 // nested `/api/issues/:id/tasks` + `/api/tasks/:taskId`. Aggregate list-by-
 // project is no longer a single endpoint — callers should fetch per-issue.
 // `getTasks` / `getAllTasks` short-circuit to [] until the dev UI is rewired.
