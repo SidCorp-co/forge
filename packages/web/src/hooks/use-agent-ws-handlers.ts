@@ -1,6 +1,6 @@
 'use client';
 
-import type { ChatMessageData, ToolCallData, ContentBlock } from '@/components/chat/chat-message';
+import type { ChatMessageData, ToolCallData, ContentBlock } from '@/components/message-bubble/chat-message';
 import { getOrCreateAssistantMsg, finalizeAssistantMsg } from '@/lib/agent-stream-utils';
 
 interface AgentHandlerOptions {

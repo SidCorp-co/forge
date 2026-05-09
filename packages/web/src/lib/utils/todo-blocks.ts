@@ -1,4 +1,4 @@
-import type { ContentBlock, AgentTodo } from '@/components/chat/chat-message';
+import type { ContentBlock, AgentTodo } from '@/components/message-bubble/chat-message';
 
 type TodoWriteInput = { todos?: { content: string; status: string; activeForm?: string }[] };
 

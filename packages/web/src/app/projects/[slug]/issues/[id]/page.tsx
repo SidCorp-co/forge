@@ -36,7 +36,7 @@ import { IssuePipelineTiming } from '@/components/issue/issue-pipeline-timing';
 import { IssueRelations } from '@/components/issue/issue-relations';
 import { IssueParentBreadcrumb } from '@/components/issue/issue-parent-breadcrumb';
 import { IssueBlockedBanner } from '@/components/issue/issue-blocked-banner';
-import { AgentSessionPanel } from '@/components/chat/agent-session-panel';
+import { AgentSessionPanel } from '@/components/message-bubble/agent-session-panel';
 import type { Issue } from '@forge/contracts';
 import type { IssuePatchInput } from '@forge/contracts';
 import type { IssueStatus } from '@/features/issue/types';

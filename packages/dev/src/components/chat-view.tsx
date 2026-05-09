@@ -1,6 +1,6 @@
 import type { AgentMessage } from "@/lib/types";
-import { ChatMessage } from "./chat-message";
-import { DiffSummary } from "./chat-message/diff-summary";
+import { ChatMessage } from "./message-bubble";
+import { DiffSummary } from "./message-bubble/diff-summary";
 import { useScrollToBottom } from "@/hooks/use-scroll-to-bottom";
 
 interface Props {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect } from 'react';
-import type { ChatMessageData } from '@/components/chat/chat-message';
+import type { ChatMessageData } from '@/components/message-bubble/chat-message';
 import { agentApi } from '@/features/agent/api';
 import { useProjectBySlug } from '@/features/project/hooks/use-projects';
 import { WS_URL } from '@/lib/api/client';

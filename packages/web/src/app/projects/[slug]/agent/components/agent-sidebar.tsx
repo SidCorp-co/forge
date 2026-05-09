@@ -2,7 +2,7 @@
 
 import { useEffect, useReducer } from 'react';
 import { Plus, Monitor, MonitorOff } from 'lucide-react';
-import { SessionList } from '@/components/chat/session-list';
+import { SessionList } from '@/components/message-bubble/session-list';
 import { Button, StatusDot } from '@/components/ui';
 import { cn } from '@/lib/utils/cn';
 import { deriveSessionDisplayStatus } from '@/features/agent/api';

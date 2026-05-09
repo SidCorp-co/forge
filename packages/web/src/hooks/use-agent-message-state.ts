@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import type { ChatMessageData } from '@/components/chat/chat-message';
+import type { ChatMessageData } from '@/components/message-bubble/chat-message';
 import type { AgentUsage } from '@/features/agent/api';
 
 const EMPTY_USAGE: AgentUsage = { contextUsed: 0, inputTotal: 0, outputTotal: 0, cacheRead: 0, cacheWrite: 0, turns: 0 };

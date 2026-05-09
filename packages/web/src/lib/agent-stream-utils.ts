@@ -1,4 +1,4 @@
-import type { ChatMessageData } from '@/components/chat/chat-message';
+import type { ChatMessageData } from '@/components/message-bubble/chat-message';
 
 /**
  * Create a new assistant message for streaming, or return the current one.

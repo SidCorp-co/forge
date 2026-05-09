@@ -2,16 +2,16 @@
 
 import { List } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
-import { ChatMessages } from '@/components/chat/chat-messages';
-import { ChatInput } from '@/components/chat/chat-input';
-import { DiffSummary } from '@/components/chat/diff-summary';
+import { ChatMessages } from '@/components/message-bubble/chat-messages';
+import { ChatInput } from '@/components/message-bubble/chat-input';
+import { DiffSummary } from '@/components/message-bubble/diff-summary';
 import { PromptEditor } from './prompt-editor';
 import { formatTokens, CONTEXT_LIMIT } from '@/lib/utils/format-tokens';
 import { cn } from '@/lib/utils/cn';
 import type { ViewTab } from '../hooks';
 import type { BranchDiff } from '@/features/agent/api';
-import type { ChatMessageData } from '@/components/chat/chat-message';
-import { ChatSendProvider } from '@/components/chat/chat-message/chat-send-context';
+import type { ChatMessageData } from '@/components/message-bubble/chat-message';
+import { ChatSendProvider } from '@/components/message-bubble/chat-message/chat-send-context';
 
 interface ContextUsage {
   turns: number;
