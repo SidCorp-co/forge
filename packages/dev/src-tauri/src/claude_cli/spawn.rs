@@ -554,19 +554,22 @@ pub(crate) async fn spawn_and_stream(
         let _ = emitter_handle.await;
         log(&format!("[complete] succeeded={succeeded} usage_limit={}", final_usage_limit.is_some()));
 
-        let mut s = sessions2.lock().await;
-        if let Some(session) = s.get_mut(&sid_complete) {
-            // Reap child process to avoid zombies
-            if let Some(mut child) = session.child.take() {
-                let _ = child.wait().await;
+        let captured_cid = {
+            let mut s = sessions2.lock().await;
+            let cid = s.get(&sid_complete).and_then(|x| x.claude_session_id.clone());
+            if let Some(session) = s.get_mut(&sid_complete) {
+                // Reap child process to avoid zombies
+                if let Some(mut child) = session.child.take() {
+                    let _ = child.wait().await;
+                }
+                session.status = if succeeded {
+                    AgentStatus::Completed
+                } else {
+                    AgentStatus::Failed
+                };
             }
-            session.status = if succeeded {
-                AgentStatus::Completed
-            } else {
-                AgentStatus::Failed
-            };
-        }
-        drop(s);
+            cid
+        };
 
         let error_msg = if let Some(ref ulm) = final_usage_limit {
             // Tag usage limit errors for downstream parsing
@@ -585,6 +588,7 @@ pub(crate) async fn spawn_and_stream(
 
         let _ = app.emit("agent:complete", serde_json::json!({
             "sessionId": sid_complete,
+            "claudeSessionId": captured_cid,
             "error": error_msg,
         }));
         log("[emit] agent:complete");

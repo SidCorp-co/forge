@@ -441,7 +441,7 @@ export function useWebSocket() {
           },
         );
 
-        const unlisten6 = await listen<{ sessionId: string; error?: string }>(
+        const unlisten6 = await listen<{ sessionId: string; claudeSessionId?: string | null; error?: string }>(
           "agent:complete",
           async (event) => {
             const { sessionId, ...rest } = event.payload;
