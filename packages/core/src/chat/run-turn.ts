@@ -30,8 +30,6 @@ export interface RunTurnArgs {
   userMessage: string;
   /** Caller key for `chat_logs.user_key` (userId for web, null for widget). */
   userKey: string | null;
-  /** Fired on successful completion (non-empty assistant text). */
-  onComplete?: (session: ChatSessionRow) => void;
 }
 
 export function runChatTurn({
@@ -42,7 +40,6 @@ export function runChatTurn({
   projectSlug,
   userMessage,
   userKey,
-  onComplete,
 }: RunTurnArgs) {
   return streamSSE(c, async (stream) => {
     // Disable buffering on Traefik / nginx so events flush immediately.
@@ -97,7 +94,6 @@ export function runChatTurn({
     if (terminal === 'done' && assistantText.length > 0) {
       appendAssistantMessage(session, assistantText);
       await persistMessages(session);
-      onComplete?.(session);
     } else {
       // Persist the user message even on error so the UI can surface the
       // partial turn and the user's prior context isn't lost.

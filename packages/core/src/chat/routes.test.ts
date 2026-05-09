@@ -27,11 +27,6 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const wsPublish = vi.fn();
-vi.mock('../ws/server.js', () => ({
-  roomManager: { publish: wsPublish },
-}));
-
 const { chatRoutes } = await import('./routes.js');
 const { clearProviders, register } = await import('./providers/registry.js');
 const { signUserToken } = await import('../auth/jwt.js');
@@ -134,7 +129,6 @@ beforeEach(() => {
   updateWhere.mockClear();
   dbInsert.mockClear();
   dbUpdate.mockClear();
-  wsPublish.mockClear();
   // values() is both a Promise (chat_logs path: `await db.insert(...).values(...)`)
   // AND has a `.returning()` method (chat_sessions path).
   insertValues.mockImplementation((() => {
@@ -259,19 +253,6 @@ describe('POST /api/chat (mounted)', () => {
     expect(logRow.toolCalls).toEqual([]);
     expect(logRow.ragContext).toBeNull();
     expect((logRow.usage as { promptTokens?: number })?.promptTokens).toBe(5);
-
-    // WS broadcast on assistant append
-    expect(wsPublish).toHaveBeenCalledWith(
-      `user:${USER_ID}`,
-      expect.objectContaining({
-        event: 'chat.message',
-        data: expect.objectContaining({
-          sessionId: SESSION_ID,
-          projectId: PROJECT_ID,
-          role: 'assistant',
-        }),
-      }),
-    );
   });
 
   it('second turn with same sessionId includes prior turn in provider call', async () => {
@@ -359,9 +340,6 @@ describe('POST /api/chat (mounted)', () => {
     expect(logsCalls).toHaveLength(1);
     const row = logsCalls[0]?.[0] as Record<string, unknown>;
     expect(row.error).toBe('upstream 500');
-
-    // No WS broadcast on error path
-    expect(wsPublish).not.toHaveBeenCalled();
   });
 
   it('503 when no provider can be resolved', async () => {

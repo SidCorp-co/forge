@@ -19,8 +19,6 @@ import { db } from '../db/client.js';
 import { appConfig, projects } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { userRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
 import { defaultChatProviderId } from './providers/bootstrap.js';
 import { resolveForProject } from './providers/registry.js';
 import { runChatTurn } from './run-turn.js';
@@ -109,16 +107,6 @@ chatRoutes.post(
       projectSlug: project.slug,
       userMessage: message,
       userKey: userId,
-      onComplete: (sess) => {
-        roomManager.publish(userRoom(userId), {
-          event: 'chat.message',
-          data: {
-            sessionId: sess.id,
-            projectId: sess.projectId,
-            role: 'assistant',
-          },
-        });
-      },
     });
   },
 );
