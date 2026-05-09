@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
-import { finalizeAssistantMsg } from '@/lib/agent-stream-utils';
 import { useAgentMessageState } from './use-agent-message-state';
 import { useAgentWebSocket } from './use-agent-websocket';
 import { useAgentSessionApi } from './use-agent-session-api';
@@ -12,37 +11,40 @@ interface UseAgentStreamOptions {
 }
 
 export function useAgentStream({ projectSlug }: UseAgentStreamOptions) {
-  const state = useAgentMessageState();
-  const {
-    messages, setMessages, isRunning, setIsRunning,
-    sessionId, setSessionId, claudeSessionId, setClaudeSessionId,
-    desktopConnected, setDesktopConnected,
-    usage, setUsage,
-    mountedRef, sessionIdRef, streamingMsgId, streamingTextRef,
-    clearStreamState, EMPTY_USAGE,
-  } = state;
+  const { state, dispatch, mountedRef, sessionIdRef } = useAgentMessageState();
+  const { messages, isRunning, sessionId, claudeSessionId, desktopConnected, usage } = state;
 
-  const promptBuild = useAgentPromptBuild(projectSlug, clearStreamState);
+  // Mirror messages into a ref so async callbacks (refreshSession poll) can
+  // read the current value without re-creating themselves on every render.
+  const messagesRef = useRef(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  const resetSession = useCallback(() => {
+    sessionIdRef.current = null;
+    dispatch({ type: 'reset' });
+  }, [dispatch, sessionIdRef]);
+
+  const promptBuild = useAgentPromptBuild(projectSlug, resetSession);
   const {
-    draftPrompt, setDraftPrompt,
+    draftPrompt,
     isBuildingPrompt,
-    pendingIssueIds, setPendingIssueIds,
-    requestBuildPrompt, clearDraftPrompt,
-    handlePromptBuilt, handlePreviewPrompt,
+    pendingIssueIds,
+    requestBuildPrompt,
+    clearDraftPrompt,
+    handlePromptBuilt,
+    handlePreviewPrompt,
   } = promptBuild;
 
-  const { wsRef } = useAgentWebSocket({
+  useAgentWebSocket({
     projectSlug,
-    sessionIdRef, mountedRef, streamingMsgId, streamingTextRef,
-    setMessages, setIsRunning, setSessionId, setClaudeSessionId,
-    setDesktopConnected, setUsage,
-    setDraftPrompt, setPendingIssueIds,
-    handlePromptBuilt, handlePreviewPrompt,
+    sessionIdRef,
+    mountedRef,
+    dispatch,
+    handlePromptBuilt,
+    handlePreviewPrompt,
   });
-
-  const finalize = useCallback(() => {
-    finalizeAssistantMsg(streamingMsgId, streamingTextRef, setMessages);
-  }, [streamingMsgId, streamingTextRef, setMessages]);
 
   const {
     startAgent,
@@ -55,17 +57,13 @@ export function useAgentStream({ projectSlug }: UseAgentStreamOptions) {
     forkSession,
     rerunSession,
   } = useAgentSessionApi({
-    projectSlug, mountedRef, streamingMsgId, streamingTextRef, wsRef,
-    sessionId, claudeSessionId,
-    setMessages, setIsRunning, setSessionId, setClaudeSessionId, setUsage,
-    finalize,
+    projectSlug,
+    mountedRef,
+    sessionId,
+    claudeSessionId,
+    messagesRef,
+    dispatch,
   });
-
-  // Per-session re-subscribe used to fire here on the legacy sessionId-keyed
-  // protocol. Core's WS now broadcasts agent-session.relay.* into the project
-  // room, which use-agent-websocket subscribes to once on connect — no need
-  // to re-subscribe per session. Filtering by sessionId happens in
-  // createAgentMessageHandler.
 
   // Fallback: poll session and load messages while running
   useEffect(() => {
@@ -85,10 +83,6 @@ export function useAgentStream({ projectSlug }: UseAgentStreamOptions) {
       refreshSession(sessionId);
     }
   }, [isRunning, sessionId, refreshSession]);
-
-  const resetSession = useCallback(() => {
-    clearStreamState();
-  }, [clearStreamState]);
 
   return {
     messages,

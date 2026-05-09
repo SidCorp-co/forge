@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { agentApi } from '@/features/agent/api';
 
-export function useAgentPromptBuild(projectSlug: string, clearStreamState: () => void) {
+export function useAgentPromptBuild(projectSlug: string, resetSession: () => void) {
   const [draftPrompt, setDraftPrompt] = useState<string | null>(null);
   const [isBuildingPrompt, setIsBuildingPrompt] = useState(false);
   const [pendingIssueIds, setPendingIssueIds] = useState<string[] | null>(null);
@@ -18,7 +18,7 @@ export function useAgentPromptBuild(projectSlug: string, clearStreamState: () =>
 
   const requestBuildPrompt = useCallback(async (issueIds: string[]) => {
     console.log('[build-prompt] requesting', { projectSlug, issueIds });
-    clearStreamState();
+    resetSession();
     setIsBuildingPrompt(true);
     setDraftPrompt(null);
     setPendingIssueIds(issueIds);
@@ -38,7 +38,7 @@ export function useAgentPromptBuild(projectSlug: string, clearStreamState: () =>
       console.error('[build-prompt] API error:', err);
       setIsBuildingPrompt(false);
     }
-  }, [projectSlug, clearStreamState]);
+  }, [projectSlug, resetSession]);
 
   const clearDraftPrompt = useCallback(() => {
     setDraftPrompt(null);

@@ -4,8 +4,7 @@ import { useCallback } from 'react';
 import type { ChatMessageData, ContentBlock } from '@/components/message-bubble/chat-message';
 import { convertTodoWriteToTodosBlock, deduplicateTodosBlocks } from '@/lib/utils/todo-blocks';
 import { agentApi, type AgentUsage, type PageContext } from '@/features/agent/api';
-
-const EMPTY_USAGE: AgentUsage = { contextUsed: 0, inputTotal: 0, outputTotal: 0, cacheRead: 0, cacheWrite: 0, turns: 0 };
+import { EMPTY_USAGE, type AgentAction } from './use-agent-message-state';
 
 function errorMessage(err: unknown, fallback: string): ChatMessageData {
   return {
@@ -19,40 +18,23 @@ function errorMessage(err: unknown, fallback: string): ChatMessageData {
 interface UseAgentSessionApiOptions {
   projectSlug: string;
   mountedRef: React.MutableRefObject<boolean>;
-  streamingMsgId: React.MutableRefObject<string | null>;
-  streamingTextRef: React.MutableRefObject<string>;
-  wsRef: React.MutableRefObject<WebSocket | null>;
   sessionId: string | null;
   claudeSessionId: string | null;
-  setMessages: React.Dispatch<React.SetStateAction<ChatMessageData[]>>;
-  setIsRunning: React.Dispatch<React.SetStateAction<boolean>>;
-  setSessionId: React.Dispatch<React.SetStateAction<string | null>>;
-  setClaudeSessionId: React.Dispatch<React.SetStateAction<string | null>>;
-  setUsage: React.Dispatch<React.SetStateAction<AgentUsage>>;
-  finalize: () => void;
+  messagesRef: React.MutableRefObject<ChatMessageData[]>;
+  dispatch: React.Dispatch<AgentAction>;
 }
 
 export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
-  const {
-    projectSlug, mountedRef, streamingMsgId, streamingTextRef, wsRef,
-    sessionId, claudeSessionId,
-    setMessages, setIsRunning, setSessionId, setClaudeSessionId, setUsage,
-    finalize,
-  } = opts;
+  const { projectSlug, mountedRef, sessionId, claudeSessionId, messagesRef, dispatch } = opts;
 
   const startAgent = useCallback(async (prompt: string, startOpts?: { preBuilt?: boolean; issueIds?: string[]; pageContext?: PageContext }) => {
-    const userMsg: ChatMessageData = {
+    dispatch({
+      type: 'userMessageAdded',
       id: crypto.randomUUID(),
-      role: 'user',
       content: prompt,
       timestamp: Date.now(),
-    };
-
-    streamingMsgId.current = null;
-    streamingTextRef.current = '';
-    setMessages((prev) => [...prev, userMsg]);
-    setIsRunning(true);
-    setUsage(EMPTY_USAGE);
+    });
+    dispatch({ type: 'usageSet', value: EMPTY_USAGE });
 
     try {
       const res = await agentApi.start({
@@ -63,32 +45,26 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
         pageContext: startOpts?.pageContext,
       });
       if (!mountedRef.current) return;
-      const sid = res.data.documentId;
-      setSessionId(sid);
-      // Per-session subscribe is handled at the project-room level in
-      // useAgentWebSocket; relays for this session land via the project
-      // broadcast and createAgentMessageHandler filters by sessionId.
+      dispatch({ type: 'sessionIdSet', value: res.data.documentId });
     } catch (err) {
       if (!mountedRef.current) return;
-      setMessages((prev) => [...prev, errorMessage(err, 'Failed to start agent')]);
-      setIsRunning(false);
+      dispatch({
+        type: 'messageAppended',
+        message: errorMessage(err, 'Failed to start agent'),
+        isRunning: false,
+      });
     }
-  }, [projectSlug, mountedRef, streamingMsgId, streamingTextRef, wsRef, setMessages, setIsRunning, setSessionId, setUsage]);
+  }, [projectSlug, mountedRef, dispatch]);
 
   const sendMessage = useCallback(async (message: string, sendOpts?: { pageContext?: PageContext }) => {
     if (!sessionId) return;
 
-    const userMsg: ChatMessageData = {
+    dispatch({
+      type: 'userMessageAdded',
       id: crypto.randomUUID(),
-      role: 'user',
       content: message,
       timestamp: Date.now(),
-    };
-
-    streamingMsgId.current = null;
-    streamingTextRef.current = '';
-    setMessages((prev) => [...prev, userMsg]);
-    setIsRunning(true);
+    });
 
     try {
       await agentApi.send({
@@ -99,26 +75,31 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
       });
     } catch (err) {
       if (!mountedRef.current) return;
-      setMessages((prev) => [...prev, errorMessage(err, 'Failed to send message')]);
-      setIsRunning(false);
+      dispatch({
+        type: 'messageAppended',
+        message: errorMessage(err, 'Failed to send message'),
+        isRunning: false,
+      });
     }
-  }, [sessionId, claudeSessionId, mountedRef, streamingMsgId, streamingTextRef, setMessages, setIsRunning]);
+  }, [sessionId, claudeSessionId, mountedRef, dispatch]);
 
   const abortAgent = useCallback(async () => {
     if (!sessionId) return;
     try {
       await agentApi.abort(sessionId);
     } catch { /* ignore */ }
-    finalize();
-    setIsRunning(false);
-  }, [sessionId, finalize, setIsRunning]);
+    dispatch({ type: 'streamingDone' });
+    dispatch({ type: 'isRunningSet', value: false });
+  }, [sessionId, dispatch]);
 
   /** Convert stored session messages to ChatMessageData array. */
   function parseStoredMessages(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     stored: any[],
     sessionStatus?: string,
     turnsByIndex?: Map<number, { id: string; editedAt: string | null }>,
   ): ChatMessageData[] {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const loaded: ChatMessageData[] = stored.map((m: any, i: number) => {
       const turn = turnsByIndex?.get(i);
       const msg: ChatMessageData = {
@@ -132,6 +113,7 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
       if (m.contentBlocks) {
         const converted = m.contentBlocks.map((b: ContentBlock) => {
           if (b.type === 'tool_use' && b.tool.name === 'TodoWrite') {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             return convertTodoWriteToTodosBlock(b.tool.input as any ?? {});
           }
           return b;
@@ -142,6 +124,7 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
         if (msg.toolCalls) {
           for (const tc of msg.toolCalls) {
             if (tc.name === 'TodoWrite') {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               blocks.push(convertTodoWriteToTodosBlock(tc.input as any ?? {}));
             } else {
               blocks.push({ type: 'tool_use', tool: tc });
@@ -156,7 +139,6 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
       return msg;
     }).filter((m: ChatMessageData) => m.content || m.toolCalls?.length || m.contentBlocks?.length);
 
-    // For completed sessions, mark all todos as completed
     if (sessionStatus === 'completed') {
       for (const msg of loaded) {
         if (msg.contentBlocks) {
@@ -177,11 +159,7 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
       const res = await agentApi.getSession(id);
       if (!mountedRef.current) return;
       const session = res.data;
-      setSessionId(session.documentId);
-      setClaudeSessionId(session.claudeSessionId || null);
 
-      // Fetch turn rows so the UI can address messages by id. Tolerate failure
-      // from older deployments by falling back to id-less messages.
       let turnsByIndex: Map<number, { id: string; editedAt: string | null }> | undefined;
       try {
         const turnsRes = await agentApi.getTurns(id, { limit: 500 });
@@ -195,23 +173,23 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
       }
 
       const loaded = parseStoredMessages(session.messages || [], session.status, turnsByIndex);
+      const u: AgentUsage | undefined = session.usage;
+      const usage = u && u.turns > 0 ? { ...EMPTY_USAGE, ...u } : EMPTY_USAGE;
 
-      setMessages(loaded);
-      streamingMsgId.current = null;
-      streamingTextRef.current = '';
-
-      // Backfill missing fields from older sessions that lack inputTotal/cacheWrite
-      const u = session.usage;
-      setUsage(u && u.turns > 0 ? { ...EMPTY_USAGE, ...u } : EMPTY_USAGE);
-
-      setIsRunning(session.status === 'running');
+      dispatch({
+        type: 'messagesReplaced',
+        messages: loaded,
+        usage,
+        isRunning: session.status === 'running',
+        sessionId: session.documentId,
+        claudeSessionId: session.claudeSessionId || null,
+      });
     } catch { /* ignore */ }
-  }, [mountedRef, streamingMsgId, streamingTextRef, setMessages, setSessionId, setClaudeSessionId, setIsRunning, setUsage]);
+  }, [mountedRef, dispatch]);
 
   /**
    * Refresh session data from the server without resetting streaming state.
-   * Used by the fallback poll to load messages that may have been missed via WebSocket.
-   * Only updates messages if the server has more than what's currently displayed,
+   * Only replaces messages if the server has more than what's currently displayed,
    * to avoid clobbering richer WS-streamed content.
    */
   const refreshSession = useCallback(async (id: string) => {
@@ -221,35 +199,30 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
       const session = res.data;
       const isTerminal = session.status !== 'running';
       const stored = session.messages || [];
+      const currentMessages = messagesRef.current;
 
-      // Only replace messages if server has more than what we currently display
-      // (avoids clobbering richer WS-streamed content with simpler stored format)
-      setMessages((prev) => {
-        if (stored.length > prev.length) {
-          return parseStoredMessages(stored, session.status);
+      let nextMessages: ChatMessageData[] | null = null;
+      if (stored.length > currentMessages.length) {
+        nextMessages = parseStoredMessages(stored, session.status);
+      } else if (isTerminal && currentMessages.length > 0) {
+        const lastMsg = currentMessages[currentMessages.length - 1];
+        const lastStored = stored[stored.length - 1];
+        if (lastStored && lastMsg.role === 'assistant' && !lastMsg.content && !lastMsg.contentBlocks?.length) {
+          nextMessages = parseStoredMessages(stored, session.status);
         }
-        // Even if same count, update if terminal and current messages look stale
-        // (e.g., last message content is empty or placeholder)
-        if (isTerminal && prev.length > 0) {
-          const lastMsg = prev[prev.length - 1];
-          const lastStored = stored[stored.length - 1];
-          if (lastStored && lastMsg.role === 'assistant' && !lastMsg.content && !lastMsg.contentBlocks?.length) {
-            return parseStoredMessages(stored, session.status);
-          }
-        }
-        return prev;
-      });
+      }
+
+      if (nextMessages) {
+        dispatch({ type: 'messagesReplaced', messages: nextMessages });
+      }
 
       if (isTerminal) {
-        finalize();
-        setIsRunning(false);
+        dispatch({ type: 'streamingDone' });
+        dispatch({ type: 'isRunningSet', value: false });
       }
     } catch { /* ignore */ }
-  }, [mountedRef, setMessages, finalize, setIsRunning]);
+  }, [mountedRef, messagesRef, dispatch]);
 
-  // After a successful per-turn mutation, re-load the session so React state
-  // matches the new truncated/edited transcript without subscribing to the
-  // turn-level WS topics.
   const editTurn = useCallback(
     async (turnId: string, content: string, expectedEditedAt?: string) => {
       if (!sessionId) return;
@@ -266,10 +239,10 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
     async (turnId: string) => {
       if (!sessionId) return;
       await agentApi.regenerateTurn(sessionId, turnId);
-      setIsRunning(true);
+      dispatch({ type: 'isRunningSet', value: true });
       await loadSession(sessionId);
     },
-    [sessionId, loadSession, setIsRunning],
+    [sessionId, loadSession, dispatch],
   );
 
   const forkSession = useCallback(

@@ -1,38 +1,23 @@
 'use client';
 
 import { useRef, useEffect } from 'react';
-import type { ChatMessageData } from '@/components/message-bubble/chat-message';
 import { agentApi } from '@/features/agent/api';
 import { useProjectBySlug } from '@/features/project/hooks/use-projects';
 import { WS_URL } from '@/lib/api/client';
+import type { AgentAction } from './use-agent-message-state';
 import { createAgentMessageHandler } from './use-agent-ws-handlers';
 
 interface UseAgentWebSocketOptions {
   projectSlug: string;
   sessionIdRef: React.MutableRefObject<string | null>;
   mountedRef: React.MutableRefObject<boolean>;
-  streamingMsgId: React.MutableRefObject<string | null>;
-  streamingTextRef: React.MutableRefObject<string>;
-  setMessages: React.Dispatch<React.SetStateAction<ChatMessageData[]>>;
-  setIsRunning: React.Dispatch<React.SetStateAction<boolean>>;
-  setSessionId: React.Dispatch<React.SetStateAction<string | null>>;
-  setClaudeSessionId: React.Dispatch<React.SetStateAction<string | null>>;
-  setDesktopConnected: React.Dispatch<React.SetStateAction<boolean>>;
-  setUsage: React.Dispatch<React.SetStateAction<import('@/features/agent/api').AgentUsage>>;
-  setDraftPrompt: React.Dispatch<React.SetStateAction<string | null>>;
-  setPendingIssueIds: React.Dispatch<React.SetStateAction<string[] | null>>;
+  dispatch: React.Dispatch<AgentAction>;
   handlePromptBuilt: (requestId: string, prompt: string | null, error: string | null) => void;
   handlePreviewPrompt: (prompt: string, issueIds: string[] | undefined) => void;
 }
 
 export function useAgentWebSocket(opts: UseAgentWebSocketOptions) {
-  const {
-    projectSlug,
-    sessionIdRef, mountedRef, streamingMsgId, streamingTextRef,
-    setMessages, setIsRunning, setSessionId, setClaudeSessionId,
-    setDesktopConnected, setUsage,
-    handlePromptBuilt, handlePreviewPrompt,
-  } = opts;
+  const { projectSlug, sessionIdRef, mountedRef, dispatch, handlePromptBuilt, handlePreviewPrompt } = opts;
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -45,30 +30,23 @@ export function useAgentWebSocket(opts: UseAgentWebSocketOptions) {
   const projectIdRef = useRef<string | null>(project?.id ?? null);
   projectIdRef.current = project?.id ?? null;
 
-  // Check desktop status on mount
   useEffect(() => {
     agentApi.desktopStatus({ projectSlug })
       .then((res) => {
-        if (mountedRef.current) setDesktopConnected(res?.data?.connected ?? false);
+        if (mountedRef.current) {
+          dispatch({ type: 'desktopConnectedSet', value: res?.data?.connected ?? false });
+        }
       })
       .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // WebSocket with auto-reconnect
   useEffect(() => {
     let disposed = false;
 
     const handleMessage = createAgentMessageHandler({
       projectSlug,
       sessionIdRef,
-      streamingMsgId,
-      streamingTextRef,
-      setMessages,
-      setIsRunning,
-      setSessionId,
-      setClaudeSessionId,
-      setDesktopConnected,
-      setUsage,
+      dispatch,
       handlePromptBuilt,
       handlePreviewPrompt,
     });
@@ -86,7 +64,9 @@ export function useAgentWebSocket(opts: UseAgentWebSocketOptions) {
         }
         agentApi.desktopStatus({ projectSlug })
           .then((res) => {
-            if (mountedRef.current) setDesktopConnected(res?.data?.connected ?? false);
+            if (mountedRef.current) {
+              dispatch({ type: 'desktopConnectedSet', value: res?.data?.connected ?? false });
+            }
           })
           .catch(() => {});
       };
@@ -116,6 +96,4 @@ export function useAgentWebSocket(opts: UseAgentWebSocketOptions) {
       wsRef.current?.close();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return { wsRef };
 }
