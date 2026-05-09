@@ -15,9 +15,15 @@ interface ChatInputProps {
   /** Show a stop button instead of send when true */
   isRunning?: boolean;
   onStop?: () => void;
+  /**
+   * Show the paperclip button and accept paste/drag image attachments.
+   * Default true. Pass false on surfaces that have no real upload endpoint
+   * — silently dropping files would mislead the user.
+   */
+  allowAttachments?: boolean;
 }
 
-export function ChatInput({ onSend, disabled, isRunning, onStop }: ChatInputProps) {
+export function ChatInput({ onSend, disabled, isRunning, onStop, allowAttachments = true }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState('');
@@ -84,6 +90,7 @@ export function ChatInput({ onSend, disabled, isRunning, onStop }: ChatInputProp
   }, [disabled, isRunning, handleSend]);
 
   const handlePaste = (e: React.ClipboardEvent) => {
+    if (!allowAttachments) return;
     const imageFiles = Array.from(e.clipboardData.items)
       .filter((item) => item.type.startsWith('image/'))
       .map((item) => item.getAsFile())
@@ -92,11 +99,13 @@ export function ChatInput({ onSend, disabled, isRunning, onStop }: ChatInputProp
   };
 
   const handleDrop = (e: React.DragEvent) => {
+    if (!allowAttachments) return;
     e.preventDefault();
     addFiles(Array.from(e.dataTransfer.files));
   };
 
   const handleDragOver = (e: React.DragEvent) => {
+    if (!allowAttachments) return;
     e.preventDefault();
   };
 
@@ -106,7 +115,7 @@ export function ChatInput({ onSend, disabled, isRunning, onStop }: ChatInputProp
   return (
     <div className="shrink-0 border-t border-outline-variant/30 bg-surface-container-low px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-4 sm:py-3">
       {/* File previews */}
-      {files.length > 0 && (
+      {allowAttachments && files.length > 0 && (
         <div className="flex gap-2 mb-2 flex-wrap">
           {files.map((f) => (
             <div key={f.id} className="relative group">
@@ -131,24 +140,28 @@ export function ChatInput({ onSend, disabled, isRunning, onStop }: ChatInputProp
         onDrop={handleDrop}
         onDragOver={handleDragOver}
       >
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="mb-0.5 p-2 text-on-surface-variant hover:text-on-surface-variant transition-colors shrink-0"
-          type="button"
-        >
-          <Paperclip className="h-5 w-5" />
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            if (e.target.files) addFiles(Array.from(e.target.files));
-            e.target.value = '';
-          }}
-        />
+        {allowAttachments && (
+          <>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="mb-0.5 p-2 text-on-surface-variant hover:text-on-surface-variant transition-colors shrink-0"
+              type="button"
+            >
+              <Paperclip className="h-5 w-5" />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files) addFiles(Array.from(e.target.files));
+                e.target.value = '';
+              }}
+            />
+          </>
+        )}
         <textarea
           ref={textareaRef}
           value={text}

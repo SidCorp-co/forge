@@ -116,3 +116,12 @@ export async function apiClientList<T>(
   const totalCount = header !== null ? Number(header) : items.length;
   return { items, totalCount };
 }
+
+/**
+ * Unwrap a Strapi-style `{ data: T }` envelope. Agent API responses wrap
+ * payloads in `{ data: ... }` for legacy compat; use this at call sites
+ * instead of `res.data` to make the unwrap intent explicit and centralized.
+ */
+export function unwrap<T>(res: { data: T }): T {
+  return res.data;
+}

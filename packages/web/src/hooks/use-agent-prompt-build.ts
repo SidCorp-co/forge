@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { agentApi } from '@/features/agent/api';
+import { unwrap } from '@/lib/api/client';
 
 export function useAgentPromptBuild(projectSlug: string, resetSession: () => void) {
   const [draftPrompt, setDraftPrompt] = useState<string | null>(null);
@@ -17,7 +18,6 @@ export function useAgentPromptBuild(projectSlug: string, resetSession: () => voi
   }, []);
 
   const requestBuildPrompt = useCallback(async (issueIds: string[]) => {
-    console.log('[build-prompt] requesting', { projectSlug, issueIds });
     resetSession();
     setIsBuildingPrompt(true);
     setDraftPrompt(null);
@@ -25,11 +25,10 @@ export function useAgentPromptBuild(projectSlug: string, resetSession: () => voi
     if (buildPromptTimerRef.current) clearTimeout(buildPromptTimerRef.current);
     try {
       const res = await agentApi.buildPrompt(projectSlug, issueIds);
-      console.log('[build-prompt] API response, requestId:', res.data.requestId);
-      pendingRequestIdRef.current = res.data.requestId;
+      const requestId = unwrap(res).requestId;
+      pendingRequestIdRef.current = requestId;
       buildPromptTimerRef.current = setTimeout(() => {
-        if (pendingRequestIdRef.current === res.data.requestId) {
-          console.log('[build-prompt] timeout — desktop did not respond in 15s');
+        if (pendingRequestIdRef.current === requestId) {
           pendingRequestIdRef.current = null;
           setIsBuildingPrompt(false);
         }
@@ -53,15 +52,12 @@ export function useAgentPromptBuild(projectSlug: string, resetSession: () => voi
 
   /** Handle the WS event for prompt-built */
   const handlePromptBuilt = useCallback((requestId: string, prompt: string | null, error: string | null) => {
-    console.log('[build-prompt] WS received agent:prompt-built', { requestId, pending: pendingRequestIdRef.current, hasPrompt: !!prompt, error });
     if (requestId && requestId === pendingRequestIdRef.current) {
       pendingRequestIdRef.current = null;
       if (buildPromptTimerRef.current) { clearTimeout(buildPromptTimerRef.current); buildPromptTimerRef.current = null; }
       if (error || !prompt) {
-        console.log('[build-prompt] error or no prompt, clearing');
         setDraftPrompt(null);
       } else {
-        console.log('[build-prompt] setting draftPrompt, length:', prompt.length);
         setDraftPrompt(prompt);
       }
       setIsBuildingPrompt(false);

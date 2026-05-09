@@ -4,6 +4,7 @@ import { useCallback } from 'react';
 import type { ChatMessageData, ContentBlock } from '@/components/chat/chat-message';
 import { convertTodoWriteToTodosBlock, deduplicateTodosBlocks } from '@/lib/utils/todo-blocks';
 import { agentApi, type AgentUsage, type PageContext } from '@/features/agent/api';
+import { unwrap } from '@/lib/api/client';
 import { EMPTY_USAGE, type AgentAction } from './use-agent-message-state';
 
 function errorMessage(err: unknown, fallback: string): ChatMessageData {
@@ -45,7 +46,7 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
         pageContext: startOpts?.pageContext,
       });
       if (!mountedRef.current) return;
-      dispatch({ type: 'sessionIdSet', value: res.data.documentId });
+      dispatch({ type: 'sessionIdSet', value: unwrap(res).documentId });
     } catch (err) {
       if (!mountedRef.current) return;
       dispatch({
@@ -158,7 +159,7 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
     try {
       const res = await agentApi.getSession(id);
       if (!mountedRef.current) return;
-      const session = res.data;
+      const session = unwrap(res);
 
       let turnsByIndex: Map<number, { id: string; editedAt: string | null }> | undefined;
       try {
@@ -196,7 +197,7 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
     try {
       const res = await agentApi.getSession(id);
       if (!mountedRef.current) return;
-      const session = res.data;
+      const session = unwrap(res);
       const isTerminal = session.status !== 'running';
       const stored = session.messages || [];
       const currentMessages = messagesRef.current;

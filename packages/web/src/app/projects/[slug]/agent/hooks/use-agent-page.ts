@@ -10,6 +10,7 @@ import {
   type AgentSessionSummary,
   type BranchDiff,
 } from '@/features/agent/api';
+import { unwrap } from '@/lib/api/client';
 
 export type ViewTab = 'chat' | 'changes';
 
@@ -58,7 +59,7 @@ export function useAgentPage() {
     if (!projectId) return;
     try {
       const res = await agentApi.getSessions(projectId, search);
-      setSessions(res.data || []);
+      setSessions(unwrap(res) || []);
     } catch {
       setSessions([]);
     } finally {
@@ -128,7 +129,7 @@ export function useAgentPage() {
     if (viewTab !== 'changes' || !sessionId) return;
     setDiffLoading(true);
     agentApi.getSession(sessionId)
-      .then((res) => setDiff(res.data?.diff ?? null))
+      .then((res) => setDiff(unwrap(res)?.diff ?? null))
       .catch(() => setDiff(null))
       .finally(() => setDiffLoading(false));
   }, [viewTab, sessionId]);

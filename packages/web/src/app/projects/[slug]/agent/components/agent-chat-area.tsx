@@ -195,10 +195,11 @@ export function AgentChatArea({
                 </div>
               )}
               <ChatInput
-                onSend={(text, _files) => onSend(text)}
+                onSend={(text) => onSend(text)}
                 isRunning={isRunning}
                 onStop={isSessionOwner ? onStop : undefined}
                 disabled={!isSessionOwner}
+                allowAttachments={false}
               />
             </>
           )}
