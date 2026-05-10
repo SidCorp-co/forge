@@ -446,12 +446,14 @@ export function useWebSocket() {
             const { sessionId, data: agentData } = event.payload;
             // Update local session tracking (same merge logic as useAgentChat)
             tracker.handleStreamData(sessionId, agentData);
-            // Job-originated session: route stream to job_events instead of the
-            // user-facing relay (which would broadcast to chat UIs).
+            // Job-originated sessions: fan out to BOTH job_events (pipeline
+            // monitoring board) AND the user-facing relay (chat UIs on web).
+            // Previously this path returned early after enqueueJobEvents,
+            // which left web's SessionPlaceholder stuck for the entire
+            // pipeline run — see ISS-88.
             if (jobSessionsRef.current.has(sessionId)) {
               const jobEvents = mapStreamChunkToJobEvents(agentData);
               enqueueJobEvents(sessionId, jobEvents);
-              return;
             }
             enqueueRelay(sessionId, "agent:message", agentData);
           },
@@ -511,6 +513,22 @@ export function useWebSocket() {
                   console.warn(`[agent:complete] PATCH session row failed for job ${sessionId}:`, err);
                 }
                 jobAgentSessionsRef.current.delete(sessionId);
+              }
+
+              // Mirror the relay that non-job sessions get below, so web chat
+              // UIs (which don't subscribe to job_events) see the session
+              // leave the running state. Diff is NOT computed for pipeline
+              // sessions — they run in the main repo, not a worktree, so
+              // there's nothing to diff against HEAD.
+              //
+              // Drain any buffered agent:message batch first so trailing
+              // chunks land BEFORE agent:complete — otherwise the web sees
+              // running=false then receives further messages.
+              await flushRelay();
+              try {
+                await relayAgentEvent(sessionId, "agent:complete", { ...rest });
+              } catch {
+                /* ignore — relay is best-effort, persistence already happened */
               }
 
               tracker.complete(sessionId);
