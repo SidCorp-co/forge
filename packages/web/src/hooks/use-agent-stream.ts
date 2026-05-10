@@ -37,6 +37,15 @@ export function useAgentStream({ projectSlug }: UseAgentStreamOptions) {
     handlePreviewPrompt,
   } = promptBuild;
 
+  // refreshSession comes from useAgentSessionApi below, so we route through a
+  // ref to break the forward reference and keep handleReconnect's identity stable.
+  const refreshSessionRef = useRef<((id: string) => Promise<void>) | null>(null);
+  const handleReconnect = useCallback(() => {
+    const id = sessionIdRef.current;
+    if (!id) return;
+    refreshSessionRef.current?.(id);
+  }, [sessionIdRef]);
+
   const { connectionState, reconnectNow } = useAgentWebSocket({
     projectSlug,
     sessionIdRef,
@@ -44,6 +53,7 @@ export function useAgentStream({ projectSlug }: UseAgentStreamOptions) {
     dispatch,
     handlePromptBuilt,
     handlePreviewPrompt,
+    onReconnect: handleReconnect,
   });
 
   const {
@@ -64,6 +74,10 @@ export function useAgentStream({ projectSlug }: UseAgentStreamOptions) {
     messagesRef,
     dispatch,
   });
+
+  useEffect(() => {
+    refreshSessionRef.current = refreshSession;
+  }, [refreshSession]);
 
   // Fallback: poll session and load messages while running. WS delivers the
   // terminal frame and the per-session react-query invalidation in

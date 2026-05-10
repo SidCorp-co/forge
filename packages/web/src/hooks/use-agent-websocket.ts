@@ -16,10 +16,16 @@ interface UseAgentWebSocketOptions {
   dispatch: React.Dispatch<AgentAction>;
   handlePromptBuilt: (requestId: string, prompt: string | null, error: string | null) => void;
   handlePreviewPrompt: (prompt: string, issueIds: string[] | undefined) => void;
+  onReconnect?: () => void;
 }
 
 export function useAgentWebSocket(opts: UseAgentWebSocketOptions) {
-  const { projectSlug, sessionIdRef, mountedRef, dispatch, handlePromptBuilt, handlePreviewPrompt } = opts;
+  const { projectSlug, sessionIdRef, mountedRef, dispatch, handlePromptBuilt, handlePreviewPrompt, onReconnect } = opts;
+
+  // Mirror onReconnect into a ref so the long-lived connect effect can read
+  // the latest callback identity without re-running on every render.
+  const onReconnectRef = useRef<typeof onReconnect>(onReconnect);
+  useEffect(() => { onReconnectRef.current = onReconnect; }, [onReconnect]);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -74,7 +80,13 @@ export function useAgentWebSocket(opts: UseAgentWebSocketOptions) {
 
       ws.onopen = () => {
         if (disposed) { ws.close(); return; }
+        // Fire reconnect catch-up only on the reconnecting→open edge — the
+        // initial connecting→open handshake has nothing to catch up on.
+        const wasReconnecting = connectionStateRef.current === 'reconnecting';
         setConnectionState('open');
+        if (wasReconnecting) {
+          onReconnectRef.current?.();
+        }
         const pid = projectIdRef.current;
         if (pid) {
           ws.send(JSON.stringify({ type: 'subscribe', room: `project:${pid}` }));
