@@ -97,9 +97,8 @@ export class SessionTracker {
 
   /** Get the full tracked-session state — messages + claudeSessionId — for
    *  the agent:complete PATCH that persists the run on the server (ISS-307).
-   *  Returns undefined if the tracker has already finalised + dropped the
-   *  session, in which case the caller should skip the PATCH (the cleanup
-   *  call is already in flight). */
+   *  Returns undefined only if the session was never started or has been
+   *  disposed; `complete()` keeps the accumulator alive across turns. */
   getSnapshot(sessionId: string): { messages: AgentMessage[]; claudeSessionId: string | null } | undefined {
     const s = this.sessions.get(sessionId);
     if (!s) return undefined;
@@ -127,13 +126,17 @@ export class SessionTracker {
     }
   }
 
-  /** Final save on session complete, then stop tracking. */
+  /** Flush the pending save and clear the debounce timer, but keep the
+   *  accumulator alive so follow-up turns append to the same history.
+   *  The entry is only removed on `dispose()` (ISS-83). */
   complete(sessionId: string): void {
     const s = this.sessions.get(sessionId);
     if (!s) return;
-    if (s.saveTimer) clearTimeout(s.saveTimer);
+    if (s.saveTimer) {
+      clearTimeout(s.saveTimer);
+      s.saveTimer = null;
+    }
     this.saveNow(sessionId, s);
-    this.sessions.delete(sessionId);
   }
 
   /** Clean up all tracked sessions and timers. */

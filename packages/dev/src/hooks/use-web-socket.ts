@@ -482,6 +482,11 @@ export function useWebSocket() {
               if (agentSessionId) {
                 try {
                   const snap = tracker.getSnapshot(sessionId);
+                  if (!snap) {
+                    console.warn(
+                      `[agent:complete] tracker snapshot missing for job=${sessionId} — PATCH will omit messages, expect persisted history to be incomplete`,
+                    );
+                  }
                   await patchAgentSession(agentSessionId, {
                     status: wasCancelled ? "completed" : rest.error ? "failed" : "completed",
                     ...(snap ? { messages: snap.messages, claudeSessionId: snap.claudeSessionId } : {}),
@@ -534,6 +539,11 @@ export function useWebSocket() {
             // failures must not block local cleanup or knowledge sync.
             try {
               const snap = tracker.getSnapshot(sessionId);
+              if (!snap) {
+                console.warn(
+                  `[agent:complete] tracker snapshot missing for session ${sessionId} — PATCH will omit messages, expect persisted history to be incomplete`,
+                );
+              }
               await patchAgentSession(sessionId, {
                 status: rest.error ? "failed" : "completed",
                 ...(snap ? { messages: snap.messages, claudeSessionId: snap.claudeSessionId } : {}),
