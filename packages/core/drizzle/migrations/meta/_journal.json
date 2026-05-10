@@ -379,6 +379,13 @@
       "when": 1778440006894,
       "tag": "0053_seed_e2e_test_user",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1778440774862,
+      "tag": "0054_invalidate_e2e_seed_hash",
+      "breakpoints": true
     }
   ]
 }

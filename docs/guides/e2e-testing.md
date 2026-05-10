@@ -1,147 +1,158 @@
-# End-to-end testing — bot account & Playwright MCP setup
+# End-to-end UI testing — bot user setup
 
-> Reference: ISS-89 (auth setup) and migration `0053_seed_e2e_test_user.sql`.
+Forge does not ship a fixed test user. Operators provision their own bot
+account in each deployment via two env vars; the core seeds (or refreshes)
+the matching `users` row on startup. The bot logs into the web app like a
+real human, which is what end-to-end tools (Playwright, Cypress, manual
+Claude-Code-driven smoke runs) need to drive the UI.
 
-The Forge codebase ships a **fixed bot user** so any future automated UI test
-(Playwright MCP, CI e2e suite, manual smoke from a fresh worker) can log into
-`forge-beta.sidcorp.co` without per-environment provisioning.
+## Provisioning
 
-## What lives where
+Set both env vars on the host that runs `@forge/core`:
 
-| Thing | Where | Notes |
+| Var | Required | Notes |
 |---|---|---|
-| User row (UUID + email + verified + argon2id password hash) | `packages/core/drizzle/migrations/0053_seed_e2e_test_user.sql` | Idempotent UPSERT. Re-applying refreshes the hash + verified-at. |
-| Plaintext password | **Not in git.** Local file at `~/.config/forge-e2e/credentials.env` (mode 0600) on the worker host | Future sessions: read it via `source ~/.config/forge-e2e/credentials.env` |
-| Project membership | **Not seeded by migration.** Add manually per project | Migration intentionally avoids hardcoding project IDs so it's safe on fresh local DBs |
-| Memory pointer for AI sessions | `~/.claude/projects/-home-kieutrung-tools-forge-jarvis-agents/memory/e2e_test_user.md` | Future Claude sessions auto-load this and know where to look |
+| `E2E_USER_EMAIL` | yes | Any RFC-5321 email. The local-auth flow does not send mail to this address, so a fictitious domain is fine — it just identifies the row. |
+| `E2E_USER_PASSWORD` | yes (≥ 8 chars) | Plaintext. The seed function hashes it with argon2id (`m=19456, t=2, p=1`) on boot. Pick a long random string and treat it as a secret. |
 
-## Bot user identity
+When **both** are set, on startup `seedE2eUserIfConfigured()`
+(`packages/core/src/auth/seed-e2e-user.ts`) does an upsert:
 
-- **Email:** `playwright-bot@sidcorp.co`
-- **User ID (fixed):** `48138337-8cde-4f78-ba9e-1eb27180fa71`
-- **Role:** standard user (NOT CEO, NOT admin)
-- **Email-verified:** yes (set in migration)
-- **OAuth:** none — local password only
+- Row missing → INSERT with `email_verified_at = NOW()`.
+- Row exists with NULL or stale hash → re-hash and UPDATE.
+- Row exists with a hash that already verifies the env password → no-op.
 
-The user has no special privileges. To test something that requires project
-membership (the agent UI at `/projects/<slug>/agent`, etc.), add the bot to
-that project once via the normal `project_members` flow:
+When either var is missing → no-op. Fresh local dev or a contributor who
+doesn't run e2e suites stays unaffected.
+
+The bot row is a normal user — no admin, no CEO, no automatic project
+membership. It is kept that way deliberately: e2e suites should test the
+unprivileged path most users hit.
+
+## Granting project access
+
+The seeder leaves `project_members` alone (a hardcoded project UUID would
+not be portable across installations). After the first boot has created
+the user, grant access per project:
 
 ```sql
--- one-time, per project you want the bot to access
 INSERT INTO project_members (user_id, project_id, role)
-VALUES ('48138337-8cde-4f78-ba9e-1eb27180fa71', '<project-uuid>', 'member')
+SELECT u.id, '<project-uuid>', 'member'
+FROM users u
+WHERE u.email = '<your E2E_USER_EMAIL>'
 ON CONFLICT DO NOTHING;
 ```
 
-For the Forge Dev project (production beta), this is project id
-`da368b0a-8e21-4763-9d90-8f7b9d0c7115`.
+Do this once per environment per project the bot needs to drive.
 
-## Login flow (manual smoke)
+## Logging in (manual smoke)
 
 ```bash
-source ~/.config/forge-e2e/credentials.env
+export E2E_USER_EMAIL='bot@example.invalid'
+export E2E_USER_PASSWORD='your-strong-password'
 
-curl -i -X POST "$FORGE_E2E_API_URL/api/auth/local" \
-  -H "Content-Type: application/json" \
-  -d "{\"email\":\"$FORGE_E2E_EMAIL\",\"password\":\"$FORGE_E2E_PASSWORD\"}"
+curl -sX POST "$API_BASE_URL/api/auth/local" \
+  -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$E2E_USER_EMAIL\",\"password\":\"$E2E_USER_PASSWORD\"}" -i
 ```
 
-Expected 200 with `Set-Cookie: forge_auth=…; Domain=.sidcorp.co; HttpOnly; SameSite=Lax`
-plus a JSON body containing `{token, user, emailVerificationRequired: false}`.
+Expected 200 with a `Set-Cookie: forge_auth=…; HttpOnly; SameSite=Lax`
+header and a JSON body containing `token`, `user`, and
+`emailVerificationRequired: false`.
 
-If you see `EMAIL_NOT_VERIFIED`: the migration hasn't applied to that
-environment yet, or the row was manually wiped. Re-run migrations.
+If the response is `401 / EMAIL_NOT_VERIFIED`: the seed function never
+ran (env vars unset on the deploy host) or the row was provisioned by an
+older path that left `email_verified_at` null. Check the core logs for
+`seeded e2e test user` / `verified existing e2e test user` /
+`refreshed e2e test user password` messages.
 
-## Playwright MCP usage (the original purpose)
+## Driving the UI from a Playwright session
 
-The forge-review skill's e2e gate (`.claude/skills/forge-review/SKILL.md`)
-should pre-authenticate Playwright MCP before navigating to the UI. Two
-viable injection paths:
+Forge auth is cookie-based on the `forge_auth` cookie (HS256 JWT, 7-day
+TTL, `HttpOnly`, `Secure`, `SameSite=Lax`, optional `Domain` set via
+`AUTH_COOKIE_DOMAIN`). Two sane ways to authenticate a Playwright (or
+Playwright MCP) session:
 
-### Path A — Bearer header (simplest)
+### Option A — Cookie injection (recommended)
 
-Login via `/api/auth/local`, grab `token` from the JSON body, set it as
-`Authorization: Bearer <token>` on every fetch the page issues. Works for
-single-page apps that send all requests through the same client.
-
-### Path B — Cookie injection (mirrors real browser)
-
-After login, extract the `Set-Cookie: forge_auth=…` header and inject into
-the Playwright browser context BEFORE the first navigate:
+After the login HTTP call returns the cookie, set it on the browser
+context **before** the first `page.goto`:
 
 ```ts
-// pseudo, real Playwright MCP equivalent uses browser_evaluate
-await page.context().addCookies([{
+await context.addCookies([{
   name: 'forge_auth',
   value: token,
-  domain: '.sidcorp.co',
+  domain: process.env.AUTH_COOKIE_DOMAIN ?? new URL(WEB_BASE_URL).hostname,
   path: '/',
   httpOnly: true,
-  secure: true,
+  secure: WEB_BASE_URL.startsWith('https://'),
   sameSite: 'Lax',
 }]);
-await page.goto('https://forge-beta.sidcorp.co/projects/forge-dev/agent');
+await page.goto(`${WEB_BASE_URL}/projects/<slug>/agent`);
 ```
 
-Recommended path: **B**, because it mirrors the production cookie-based auth
-exactly and the auth-required middleware sees the same shape it would for a
-human user. The httpOnly flag is irrelevant for cookie injection — only
-matters for JavaScript visibility, which Playwright bypasses.
+`HttpOnly` is irrelevant when injecting via the Playwright API — that flag
+only blocks JavaScript reads of the cookie at runtime.
 
-### Health check after navigate
+### Option B — `Authorization: Bearer` header
 
-Always assert no-redirect-to-login before running ACs:
+Add a `Route.fulfill` interceptor that appends `Authorization: Bearer
+<token>` to every request. Workable but more invasive — most Forge
+endpoints prefer the cookie. Use this when you cannot set cookies (cross-
+origin Playwright runner, embedded iframe testing, etc.).
+
+### Reliability check after navigate
 
 ```ts
 const path = await page.evaluate(() => window.location.pathname);
 if (path === '/login') throw new Error('e2e auth failed — token rejected');
 ```
 
-Per the forge-review SKILL.md auth-wall handling: if the page is unreachable
-or auth wall hit, **do NOT pass-by-default**. Set the issue to `on_hold`
-with a comment naming the failure.
+## Token lifetime + rotation
 
-## Token lifetime
+- `forge_auth` JWT lives 7 days (signed with backend `JWT_SECRET`). A
+  Playwright run is seconds-to-minutes, so re-login per run rather than
+  caching the token.
+- `forge_refresh` cookie rotates on use (30-day window). Not needed for
+  short-lived test runs.
+- Rotating the bot password = update `E2E_USER_PASSWORD` env on the
+  deploy host and restart core. The seed function re-hashes and stores
+  the new hash on the next boot.
 
-- Access token (`forge_auth` cookie / `token` body): **7 days** (HS256 JWT,
-  signed with backend `JWT_SECRET`).
-- Refresh token (`forge_refresh` cookie): **30 days**, rotates on use.
+## Local development
 
-Worker runs are typically minutes long. Re-login each worker run for safety
-(it's a single fast HTTP call) rather than persisting tokens.
+If you run `npm run dev` in `packages/core/` against a local Postgres,
+export the env vars in your shell (or `.env`) before starting the
+process:
 
-## Rotating the password
+```bash
+export E2E_USER_EMAIL='bot@example.invalid'
+export E2E_USER_PASSWORD='dev-only-password'
+npm run dev
+```
 
-If you suspect the plaintext leaked:
+The seed function logs one of `seeded`, `verified existing`, or
+`refreshed` on every boot when env is set, so you can confirm
+provisioning succeeded.
 
-1. Generate a new strong password and the matching argon2id hash:
-   ```bash
-   PASS=$(openssl rand -base64 32 | tr -d '=+/' | cut -c1-28)Pb1!
-   echo "PASS=$PASS"
-   node -e "
-   const argon2 = require('argon2');
-   argon2.hash('$PASS', { type: argon2.argon2id, memoryCost: 19456, timeCost: 2, parallelism: 1 })
-     .then(h => console.log(h));
-   "
-   ```
-2. Add a NEW migration `00XX_rotate_e2e_test_user_password.sql` that
-   `UPDATE users SET password_hash = '<new-hash>' WHERE id = '48138337-…'`.
-   Do NOT mutate `0053_seed_e2e_test_user.sql` — migrations are append-only.
-3. Update `~/.config/forge-e2e/credentials.env` with the new plaintext.
-4. Document the rotation date in this file's CHANGELOG section below.
+## What this guide is NOT
 
-## Out of scope
+- A persisted Playwright/Cypress test suite. Forge does not ship one
+  today; the seed mechanism is a prerequisite for whichever harness an
+  operator picks.
+- A service-account / machine-token concept (long-lived API key, bearer
+  rotation policy, scope claims). The bot is a regular user. A proper
+  service-account model would be a separate, larger workstream.
+- A way to grant the bot admin or CEO privileges. If your e2e suites need
+  to exercise admin paths, set up a separate admin bot or upgrade the
+  same row out-of-band.
 
-- Service-account / long-lived API token concept (separate, larger work —
-  see ISS-89 § "Out of scope").
-- Persisted Playwright e2e test files (one-off live verification only,
-  driven by forge-review).
-- Wiring the bot into multiple projects automatically. Project membership
-  is a per-environment manual step.
+## Source
 
-## Changelog
-
-- **2026-05-11** — Initial seed via migration `0053_seed_e2e_test_user.sql`
-  (ISS-89). User pre-existed on prod from a manual register call earlier in
-  the same session; migration's UPSERT reconciles that row.
+- Seed function: `packages/core/src/auth/seed-e2e-user.ts`
+- Env schema: `packages/core/src/config/env.ts` (`E2E_USER_EMAIL`,
+  `E2E_USER_PASSWORD`)
+- Bootstrap call: `packages/core/src/index.ts` (after
+  `seedDomainTemplates`)
+- Migration that supersedes the original hardcoded seed:
+  `packages/core/drizzle/migrations/0054_invalidate_e2e_seed_hash.sql`

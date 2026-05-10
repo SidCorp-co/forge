@@ -46,6 +46,15 @@ const EnvSchema = z.object({
   // requests 403. Intentionally NOT a role column on users — deferred until
   // the admin surface stabilises.
   ADMIN_EMAILS: z.string().optional(),
+  // Optional automated seed for an end-to-end test bot user. When BOTH vars
+  // are set, the server upserts a row in `users` on startup (email-verified,
+  // password hashed via the same argon2id params as the local-auth flow).
+  // When either var is missing, the seed is a no-op — fresh installations
+  // and contributors who don't run e2e suites stay unaffected.
+  // See `docs/guides/e2e-testing.md` for the full pattern (Playwright cookie
+  // injection, token lifetime, rotation).
+  E2E_USER_EMAIL: z.email().optional(),
+  E2E_USER_PASSWORD: z.string().min(8).optional(),
   // Storage root for the local-fs StorageAdapter. New comment attachment
   // uploads land at <UPLOADS_DIR>/comments/<commentId>/<filename>. Existing
   // pre-ISS-277 rows keep their old <UPLOADS_DIR>/<projectId>/<commentId>
