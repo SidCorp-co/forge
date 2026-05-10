@@ -103,15 +103,18 @@ export function useAgentPage() {
     );
   }, [sessionId, projectId, queryClient]);
 
-  // Load session from URL ?session= param on initial mount
+  // Load session from URL ?session= param. Gate on activeSessionId (sync
+  // state) instead of the stream-context sessionId (async dispatch), so a
+  // click → URL-replace → effect-rerun loop sees activeSessionId already
+  // committed and skips the second loadSession.
   useEffect(() => {
-    if (sessionParam && !sessionId) {
+    if (sessionParam && sessionParam !== activeSessionId) {
       suppressUrlSync.current = true;
       setActiveSessionId(sessionParam);
       loadSession(sessionParam);
       setShowSessions(false);
     }
-  }, [sessionParam]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessionParam, activeSessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync activeSessionId → URL ?session= param
   useEffect(() => {
