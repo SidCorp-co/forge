@@ -93,7 +93,10 @@ export async function handleJobAssigned(
     // moves the linked row through syncAgentSessionLifecycle.
     ctx.jobAgentSessions.set(jobId, data.agentSessionId);
   }
-  ctx.tracker.start(jobId, slug, prompt, { repoPath: pc.repoPath });
+  // For job-originated sessions the local sessionId is the jobId, but the
+  // canonical agent_sessions row id arrives in `data.agentSessionId` (PR-B).
+  // Older server builds may omit it — tracker silently skips remote PATCH.
+  ctx.tracker.start(jobId, slug, prompt, { repoPath: pc.repoPath, agentSessionId: data.agentSessionId ?? undefined });
 
   try {
     await invoke("send_chat", {

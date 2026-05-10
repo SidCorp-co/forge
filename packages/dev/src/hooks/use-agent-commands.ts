@@ -195,8 +195,10 @@ export function useAgentCommandHandler(tracker: SessionTracker) {
         /* ignore */
       }
 
-      // Track session locally — same save logic as desktop-originated sessions
-      tracker.start(sessionId, projectSlug ?? "", prompt, { repoPath });
+      // Track session locally — same save logic as desktop-originated sessions.
+      // For desktop-originated sessions the local sessionId IS the canonical
+      // agent_sessions row id, so it doubles as the incremental-PATCH target.
+      tracker.start(sessionId, projectSlug ?? "", prompt, { repoPath, agentSessionId: sessionId });
 
       await emitInitLog(projectSlug ?? "", "Start Claude CLI", "ok", `session=${sessionId.slice(0, 8)} path=${repoPath}`);
       try {
@@ -286,7 +288,7 @@ export function useAgentCommandHandler(tracker: SessionTracker) {
         /* ignore */
       }
 
-      tracker.start(sessionId, projectSlug ?? "", prompt, { repoPath });
+      tracker.start(sessionId, projectSlug ?? "", prompt, { repoPath, agentSessionId: sessionId });
 
       try {
         await invoke("send_chat", {

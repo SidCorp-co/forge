@@ -10,8 +10,18 @@ import { useAgentCommandHandler } from "./use-agent-commands";
 import { useJobAssignedHandler } from "./use-job-handler";
 import { mapStreamChunkToJobEvents } from "@/lib/job-event-mapper";
 
-// Single tracker instance shared across the hook lifecycle
-const tracker = new SessionTracker();
+// Single tracker instance shared across the hook lifecycle. The
+// `remotePersist` callback writes the in-flight session snapshot to the
+// canonical agent_sessions row every ~30s or every 5 messages so a desktop
+// crash mid-stream still leaves the running turn visible on web (ISS-84).
+const tracker = new SessionTracker({
+  remotePersist: (agentSessionId, snap) =>
+    patchAgentSession(agentSessionId, {
+      status: "running",
+      messages: snap.messages,
+      claudeSessionId: snap.claudeSessionId,
+    }),
+});
 
 export function useWebSocket() {
   const setWsConnected = useAppStore((s) => s.setWsConnected);
@@ -347,6 +357,12 @@ export function useWebSocket() {
           /* no-op */
         });
 
+        // ISS-84 — drain pending incremental PATCHes before the renderer
+        // tears down on a cooperative window close. Best-effort: fire-and-
+        // forget since `beforeunload` does not await async work.
+        const onBeforeUnload = () => { void tracker.flushAll(); };
+        window.addEventListener("beforeunload", onBeforeUnload);
+
         // Batch relay: accumulate agent:message events and flush periodically
         const relayQueue: { sessionId: string; event: string; data: any }[] = [];
         let flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -606,12 +622,14 @@ export function useWebSocket() {
           deviceId: deviceId || undefined,
         });
 
-        return () => {
+        return async () => {
           if (flushTimer) clearTimeout(flushTimer);
           if (jobFlushTimer) clearTimeout(jobFlushTimer);
           // Stop the heartbeat interval — without this it survives unmount /
           // coreUrl change and keeps pinging the previous core every 25 s.
           stopHeartbeat();
+          window.removeEventListener("beforeunload", onBeforeUnload);
+          await tracker.flushAll();
           tracker.dispose();
           unlisten1();
           unlisten2();

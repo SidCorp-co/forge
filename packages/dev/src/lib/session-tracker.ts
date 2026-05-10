@@ -8,6 +8,21 @@ import { invoke } from "@/hooks/use-tauri-ipc";
 import { parseStreamMessages } from "./stream-parser";
 import type { AgentMessage } from "./types";
 
+const INCREMENTAL_FLUSH_INTERVAL_MS = 30_000;
+const INCREMENTAL_FLUSH_MESSAGE_THRESHOLD = 5;
+
+export interface SessionSnapshot {
+  messages: AgentMessage[];
+  claudeSessionId: string | null;
+}
+
+export interface SessionTrackerOptions {
+  /** Called periodically with a snapshot of in-flight session state so the
+   *  server-side `agent_sessions` row reflects pre-crash progress (ISS-84).
+   *  Best-effort: failures are logged and swallowed. */
+  remotePersist?: (agentSessionId: string, snapshot: SessionSnapshot) => Promise<void>;
+}
+
 /**
  * Merge parsed agent messages into an existing message list (mutates array).
  * Handles assistant continuation, tool_result attachment, and appending new messages.
@@ -65,6 +80,14 @@ interface TrackedSession {
   saveTimer: ReturnType<typeof setTimeout> | null;
   repoPath?: string;
   worktreeBranch?: string;
+  /** Canonical `agent_sessions` row id used for the incremental remote PATCH.
+   *  Equals sessionId for desktop-originated sessions; for job-originated
+   *  sessions it is `data.agentSessionId` from `job.assigned`. When absent,
+   *  `flushRemote` is a no-op and behavior matches pre-ISS-84. */
+  agentSessionId?: string;
+  messagesSinceRemoteFlush: number;
+  incrementalTimer: ReturnType<typeof setTimeout> | null;
+  remoteFlushInFlight: Promise<void> | null;
 }
 
 /**
@@ -73,9 +96,19 @@ interface TrackedSession {
  */
 export class SessionTracker {
   private sessions = new Map<string, TrackedSession>();
+  private remotePersist?: SessionTrackerOptions["remotePersist"];
+
+  constructor(opts?: SessionTrackerOptions) {
+    this.remotePersist = opts?.remotePersist;
+  }
 
   /** Start tracking a new session with the initial user message. */
-  start(sessionId: string, slug: string, prompt: string, opts?: { repoPath?: string; worktreeBranch?: string }): void {
+  start(
+    sessionId: string,
+    slug: string,
+    prompt: string,
+    opts?: { repoPath?: string; worktreeBranch?: string; agentSessionId?: string },
+  ): void {
     this.sessions.set(sessionId, {
       messages: [{ id: `user-1`, type: "user", timestamp: Date.now(), content: prompt }],
       slug,
@@ -83,6 +116,10 @@ export class SessionTracker {
       saveTimer: null,
       repoPath: opts?.repoPath,
       worktreeBranch: opts?.worktreeBranch,
+      agentSessionId: opts?.agentSessionId,
+      messagesSinceRemoteFlush: 0,
+      incrementalTimer: null,
+      remoteFlushInFlight: null,
     });
     this.scheduleSave(sessionId);
   }
@@ -112,6 +149,7 @@ export class SessionTracker {
     s.messages.push({ id: `user-${Date.now()}`, type: "user", timestamp: Date.now(), content });
     if (claudeSessionId) s.claudeSessionId = claudeSessionId;
     this.scheduleSave(sessionId);
+    this.noteRemoteActivity(sessionId, 1);
   }
 
   /** Process a raw agent:message event — parse, merge, and schedule save. */
@@ -123,6 +161,7 @@ export class SessionTracker {
     if (parsed.length > 0) {
       mergeMessages(s.messages, parsed);
       this.scheduleSave(sessionId);
+      this.noteRemoteActivity(sessionId, parsed.length);
     }
   }
 
@@ -136,13 +175,37 @@ export class SessionTracker {
       clearTimeout(s.saveTimer);
       s.saveTimer = null;
     }
+    if (s.incrementalTimer) {
+      clearTimeout(s.incrementalTimer);
+      s.incrementalTimer = null;
+    }
+    s.messagesSinceRemoteFlush = 0;
     this.saveNow(sessionId, s);
+  }
+
+  /** Drain pending incremental remote PATCHes for every session. Used on
+   *  window unload (ISS-84) so a cooperative close still snapshots the
+   *  in-flight turn before the renderer dies. */
+  async flushAll(): Promise<void> {
+    const inFlight: Promise<void>[] = [];
+    for (const [sessionId, s] of this.sessions.entries()) {
+      if (s.incrementalTimer) {
+        clearTimeout(s.incrementalTimer);
+        s.incrementalTimer = null;
+      }
+      if (s.messagesSinceRemoteFlush > 0) {
+        this.flushRemote(sessionId, s);
+      }
+      if (s.remoteFlushInFlight) inFlight.push(s.remoteFlushInFlight);
+    }
+    await Promise.allSettled(inFlight);
   }
 
   /** Clean up all tracked sessions and timers. */
   dispose(): void {
     for (const s of this.sessions.values()) {
       if (s.saveTimer) clearTimeout(s.saveTimer);
+      if (s.incrementalTimer) clearTimeout(s.incrementalTimer);
     }
     this.sessions.clear();
   }
@@ -155,6 +218,41 @@ export class SessionTracker {
       s.saveTimer = null;
       this.saveNow(sessionId, s);
     }, 1000);
+  }
+
+  private noteRemoteActivity(sessionId: string, count: number): void {
+    if (!this.remotePersist) return;
+    const s = this.sessions.get(sessionId);
+    if (!s || !s.agentSessionId) return;
+    s.messagesSinceRemoteFlush += count;
+    if (s.messagesSinceRemoteFlush >= INCREMENTAL_FLUSH_MESSAGE_THRESHOLD) {
+      if (s.incrementalTimer) {
+        clearTimeout(s.incrementalTimer);
+        s.incrementalTimer = null;
+      }
+      this.flushRemote(sessionId, s);
+      return;
+    }
+    if (s.incrementalTimer == null) {
+      s.incrementalTimer = setTimeout(() => {
+        const cur = this.sessions.get(sessionId);
+        if (!cur) return;
+        cur.incrementalTimer = null;
+        this.flushRemote(sessionId, cur);
+      }, INCREMENTAL_FLUSH_INTERVAL_MS);
+    }
+  }
+
+  private flushRemote(sessionId: string, s: TrackedSession): void {
+    if (!this.remotePersist || !s.agentSessionId) return;
+    const snapshot: SessionSnapshot = {
+      messages: [...s.messages],
+      claudeSessionId: s.claudeSessionId ?? null,
+    };
+    s.messagesSinceRemoteFlush = 0;
+    s.remoteFlushInFlight = this.remotePersist(s.agentSessionId, snapshot).catch((err) => {
+      console.warn("[session-tracker] incremental PATCH failed:", err);
+    });
   }
 
   private saveNow(sessionId: string, s: TrackedSession): void {
