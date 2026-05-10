@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { List } from 'lucide-react';
+import { List, RotateCcw } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { ChatMessages } from '@/components/chat/chat-messages';
 import { ChatInput } from '@/components/chat/chat-input';
@@ -48,6 +48,9 @@ interface AgentChatAreaProps {
   desktopConnected: boolean;
   relayTimedOut: boolean;
   onRetrySend: () => void;
+  onRerun: () => void;
+  onAfterFork: (newSessionDocumentId: string) => void;
+  isTerminal: boolean;
 }
 
 export function AgentChatArea({
@@ -77,6 +80,9 @@ export function AgentChatArea({
   desktopConnected,
   relayTimedOut,
   onRetrySend,
+  onRerun,
+  onAfterFork,
+  isTerminal,
 }: AgentChatAreaProps) {
   const showDraftEditor = (draftPrompt || isBuildingPrompt) && !sessionId;
   const searchParams = useSearchParams();
@@ -128,6 +134,16 @@ export function AgentChatArea({
           <ConnectionPill state={connectionState} />
           {usage.turns > 0 && <ContextUsageBar usage={usage} />}
         </div>
+        {sessionId && isTerminal && isSessionOwner && !isRunning && (
+          <button
+            onClick={onRerun}
+            title="Rerun session"
+            aria-label="Rerun session"
+            className="rounded p-2 text-primary-fixed hover:text-outline shrink-0"
+          >
+            <RotateCcw className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {/* Body */}
@@ -181,6 +197,7 @@ export function AgentChatArea({
                 messages={messages}
                 sessionId={sessionId}
                 highlightTurnId={highlightTurnId}
+                onAfterFork={isSessionOwner ? onAfterFork : undefined}
               />
               </ChatSendProvider>
               {showReconnectBanner && connectionState !== 'open' && (

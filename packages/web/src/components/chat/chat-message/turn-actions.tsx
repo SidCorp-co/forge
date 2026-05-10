@@ -187,7 +187,7 @@ export function TurnActions({
           {linkCopied ? <Check className="h-3 w-3 text-success" /> : <Link2 className="h-3 w-3" />}
         </button>
       )}
-      {turnId && (
+      {turnId && onAfterFork && (
         <button
           onClick={forkHere}
           title="Fork from here"

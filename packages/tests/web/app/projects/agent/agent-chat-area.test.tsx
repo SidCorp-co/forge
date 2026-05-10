@@ -50,6 +50,9 @@ function makeProps(overrides: Partial<Props> = {}): Props {
     desktopConnected: true,
     relayTimedOut: false,
     onRetrySend: vi.fn(),
+    onRerun: vi.fn(),
+    onAfterFork: vi.fn(),
+    isTerminal: false,
     ...overrides,
   };
 }
@@ -90,5 +93,59 @@ describe('AgentChatArea — runner offline UX', () => {
     expect(screen.getByTestId('relay-timeout-bubble')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /retry/i }));
     expect(onRetrySend).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('AgentChatArea — rerun control', () => {
+  const terminalOwnerProps = {
+    sessionId: 'sess-1',
+    isTerminal: true,
+    isSessionOwner: true,
+    isRunning: false,
+  };
+
+  it('does not render the Rerun button while the session is running', () => {
+    render(
+      <AgentChatArea
+        {...makeProps({ ...terminalOwnerProps, isRunning: true })}
+      />,
+    );
+    expect(
+      screen.queryByRole('button', { name: /rerun session/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not render the Rerun button when the session is not terminal', () => {
+    render(
+      <AgentChatArea
+        {...makeProps({ ...terminalOwnerProps, isTerminal: false })}
+      />,
+    );
+    expect(
+      screen.queryByRole('button', { name: /rerun session/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not render the Rerun button for non-owners', () => {
+    render(
+      <AgentChatArea
+        {...makeProps({ ...terminalOwnerProps, isSessionOwner: false })}
+      />,
+    );
+    expect(
+      screen.queryByRole('button', { name: /rerun session/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders the Rerun button and fires onRerun when clicked', () => {
+    const onRerun = vi.fn();
+    render(
+      <AgentChatArea
+        {...makeProps({ ...terminalOwnerProps, onRerun })}
+      />,
+    );
+    const btn = screen.getByRole('button', { name: /rerun session/i });
+    fireEvent.click(btn);
+    expect(onRerun).toHaveBeenCalledTimes(1);
   });
 });

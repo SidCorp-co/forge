@@ -53,6 +53,8 @@ export function useAgentPage() {
     usage,
     connectionState,
     reconnectNow,
+    forkSession,
+    rerunSession,
   } = streamCtx;
 
   const sessionsQuery = useAgentSessions(projectId, {
@@ -169,6 +171,22 @@ export function useAgentPage() {
     setShowSessions(false);
   }, [loadSession]);
 
+  const handleAfterFork = useCallback((newId: string) => {
+    setActiveSessionId(newId);
+    loadSession(newId);
+    setShowSessions(false);
+  }, [loadSession]);
+
+  const handleRerun = useCallback(async () => {
+    if (!sessionId) return;
+    if (!window.confirm('Rerun this session from scratch? This will start a new session with the same prompt.')) return;
+    const newId = await rerunSession();
+    if (newId) {
+      setActiveSessionId(newId);
+      loadSession(newId);
+    }
+  }, [sessionId, rerunSession, loadSession]);
+
   // Layer 2 — runner pickup timeout. The client-side optimistic user echo from
   // startAgent / sendMessage inflates user-role messages immediately, so we
   // gate on assistant-role count instead — only a real runner produces those.
@@ -280,5 +298,8 @@ export function useAgentPage() {
     isSessionOwner,
     connectionState,
     reconnectNow,
+    handleAfterFork,
+    handleRerun,
+    isTerminal: isCompleted,
   };
 }

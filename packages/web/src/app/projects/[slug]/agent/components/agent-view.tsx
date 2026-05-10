@@ -69,6 +69,9 @@ export function AgentView() {
     isSessionOwner,
     connectionState,
     reconnectNow,
+    handleAfterFork,
+    handleRerun,
+    isTerminal,
   } = useAgentPage();
 
   const { width: sidebarWidth, onMouseDown: onDividerMouseDown } = useResizablePanel(256, 180, 400);
@@ -127,6 +130,9 @@ export function AgentView() {
         desktopConnected={desktopConnected}
         relayTimedOut={relayTimedOut}
         onRetrySend={handleRetrySend}
+        onRerun={handleRerun}
+        onAfterFork={handleAfterFork}
+        isTerminal={isTerminal}
       />
     </div>
   );
