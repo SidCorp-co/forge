@@ -23,7 +23,6 @@ import { refreshRoutes } from './auth/refresh.js';
 import { authRoutes } from './auth/register.js';
 import { verifyRoutes } from './auth/verify.js';
 import { chatLogRoutes } from './chat-logs/routes.js';
-import { seedE2eUserIfConfigured } from './auth/seed-e2e-user.js';
 import { bootstrapChatProviders } from './chat/providers/bootstrap.js';
 import { chatRoutes } from './chat/routes.js';
 import { chatSessionRoutes } from './chat/sessions-routes.js';
@@ -340,7 +339,6 @@ if (isMain) {
     });
   }
   await seedDomainTemplates(db);
-  await seedE2eUserIfConfigured();
   if (isEnabled('chatProvider')) {
     bootstrapChatProviders();
   }

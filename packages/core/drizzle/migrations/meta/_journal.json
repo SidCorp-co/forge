@@ -372,20 +372,6 @@
       "when": 1779000000000,
       "tag": "0052_drop_unused_chat_sessions_columns",
       "breakpoints": true
-    },
-    {
-      "idx": 53,
-      "version": "7",
-      "when": 1778440006894,
-      "tag": "0053_seed_e2e_test_user",
-      "breakpoints": true
-    },
-    {
-      "idx": 54,
-      "version": "7",
-      "when": 1778440774862,
-      "tag": "0054_invalidate_e2e_seed_hash",
-      "breakpoints": true
     }
   ]
 }
