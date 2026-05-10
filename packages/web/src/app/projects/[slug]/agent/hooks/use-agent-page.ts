@@ -14,6 +14,8 @@ import {
 
 export type ViewTab = 'chat' | 'changes';
 
+const RELAY_TIMEOUT_MS = 15_000;
+
 export function useAgentPage() {
   const { slug } = useParams<{ slug: string }>();
   const project = useProjectBySlug(slug);
@@ -167,14 +169,57 @@ export function useAgentPage() {
     setShowSessions(false);
   }, [loadSession]);
 
+  // Layer 2 — runner pickup timeout. The client-side optimistic user echo from
+  // startAgent / sendMessage inflates user-role messages immediately, so we
+  // gate on assistant-role count instead — only a real runner produces those.
+  const [sendAt, setSendAt] = useState<number | null>(null);
+  const [relayTimedOut, setRelayTimedOut] = useState(false);
+  const lastSendTextRef = useRef<string | null>(null);
+  const assistantBaselineRef = useRef(0);
+  const messagesRef = useRef(messages);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+
   const handleSend = useCallback((text: string) => {
-    if (!text.trim()) return;
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    assistantBaselineRef.current = messagesRef.current.filter((m) => m.role === 'assistant').length;
+    lastSendTextRef.current = trimmed;
+    setRelayTimedOut(false);
+    setSendAt(Date.now());
     if (sessionId) {
-      sendMessage(text);
+      sendMessage(trimmed);
     } else {
-      startAgent(text);
+      startAgent(trimmed);
     }
   }, [sessionId, sendMessage, startAgent]);
+
+  useEffect(() => {
+    if (sendAt === null) return;
+    const count = messages.filter((m) => m.role === 'assistant').length;
+    if (count > assistantBaselineRef.current) {
+      setSendAt(null);
+      setRelayTimedOut(false);
+    }
+  }, [messages, sendAt]);
+
+  useEffect(() => {
+    if (sendAt === null) return;
+    const t = setTimeout(() => setRelayTimedOut(true), RELAY_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [sendAt]);
+
+  useEffect(() => {
+    setSendAt(null);
+    setRelayTimedOut(false);
+    lastSendTextRef.current = null;
+  }, [sessionId]);
+
+  const handleRetrySend = useCallback(() => {
+    const text = lastSendTextRef.current;
+    if (!text) return;
+    setRelayTimedOut(false);
+    handleSend(text);
+  }, [handleSend]);
 
   const handleStartFromPrompt = useCallback(() => {
     if (editablePrompt.trim()) {
@@ -230,6 +275,8 @@ export function useAgentPage() {
     handleSend,
     handleStartFromPrompt,
     handleCancelDraft,
+    handleRetrySend,
+    relayTimedOut,
     isSessionOwner,
     connectionState,
     reconnectNow,

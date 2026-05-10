@@ -12,6 +12,8 @@ interface FilePreview {
 interface ChatInputProps {
   onSend: (text: string, files: File[]) => void;
   disabled?: boolean;
+  /** Tooltip + placeholder shown when `disabled` is true. Use to explain why send is blocked. */
+  disabledReason?: string;
   /** Show a stop button instead of send when true */
   isRunning?: boolean;
   onStop?: () => void;
@@ -23,7 +25,7 @@ interface ChatInputProps {
   allowAttachments?: boolean;
 }
 
-export function ChatInput({ onSend, disabled, isRunning, onStop, allowAttachments = true }: ChatInputProps) {
+export function ChatInput({ onSend, disabled, disabledReason, isRunning, onStop, allowAttachments = true }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState('');
@@ -110,7 +112,8 @@ export function ChatInput({ onSend, disabled, isRunning, onStop, allowAttachment
   };
 
   const hasContent = text.trim() || files.length > 0;
-  const inputDisabled = disabled;
+  const disabledTitle = disabled ? disabledReason : undefined;
+  const placeholder = isRunning ? 'Agent is running...' : disabledTitle ?? 'Message...';
 
   return (
     <div className="shrink-0 border-t border-outline-variant/30 bg-surface-container-low px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-4 sm:py-3">
@@ -168,9 +171,10 @@ export function ChatInput({ onSend, disabled, isRunning, onStop, allowAttachment
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          placeholder={isRunning ? 'Agent is running...' : 'Message...'}
+          placeholder={placeholder}
           rows={1}
-          disabled={inputDisabled}
+          disabled={disabled}
+          title={disabledTitle}
           className="flex-1 resize-none bg-transparent text-sm text-on-surface outline-none placeholder:text-on-surface-variant disabled:opacity-50"
           style={{ maxHeight: '144px', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}
         />
@@ -186,7 +190,9 @@ export function ChatInput({ onSend, disabled, isRunning, onStop, allowAttachment
         ) : (
           <button
             onClick={handleSend}
-            disabled={!hasContent || inputDisabled}
+            disabled={!hasContent || disabled}
+            title={disabledTitle}
+            aria-label="Send message"
             className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-on-primary text-on-surface transition-colors hover:bg-surface-container disabled:bg-surface-variant disabled:cursor-not-allowed"
             type="button"
           >

@@ -64,6 +64,8 @@ export function AgentView() {
     handleSend,
     handleStartFromPrompt,
     handleCancelDraft,
+    handleRetrySend,
+    relayTimedOut,
     isSessionOwner,
     connectionState,
     reconnectNow,
@@ -122,6 +124,9 @@ export function AgentView() {
         isSessionOwner={isSessionOwner}
         connectionState={connectionState}
         onReconnect={reconnectNow}
+        desktopConnected={desktopConnected}
+        relayTimedOut={relayTimedOut}
+        onRetrySend={handleRetrySend}
       />
     </div>
   );

@@ -45,6 +45,9 @@ interface AgentChatAreaProps {
   isSessionOwner?: boolean;
   connectionState: ConnectionState;
   onReconnect: () => void;
+  desktopConnected: boolean;
+  relayTimedOut: boolean;
+  onRetrySend: () => void;
 }
 
 export function AgentChatArea({
@@ -71,6 +74,9 @@ export function AgentChatArea({
   isSessionOwner = true,
   connectionState,
   onReconnect,
+  desktopConnected,
+  relayTimedOut,
+  onRetrySend,
 }: AgentChatAreaProps) {
   const showDraftEditor = (draftPrompt || isBuildingPrompt) && !sessionId;
   const searchParams = useSearchParams();
@@ -194,11 +200,39 @@ export function AgentChatArea({
                   </button>
                 </div>
               )}
+              {!desktopConnected && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  data-testid="no-runner-banner"
+                  className="flex items-center gap-3 border-t border-warning-dim/30 bg-surface-variant px-4 py-2 text-xs text-on-surface-variant shrink-0"
+                >
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-warning-dim" aria-hidden />
+                  <span>{NO_RUNNER_BANNER}</span>
+                </div>
+              )}
+              {relayTimedOut && desktopConnected && (
+                <div
+                  role="alert"
+                  data-testid="relay-timeout-bubble"
+                  className="flex items-center justify-between gap-3 border-t border-danger/30 bg-surface-variant px-4 py-2 text-xs text-on-surface-variant shrink-0"
+                >
+                  <span>{RELAY_TIMEOUT_BUBBLE}</span>
+                  <button
+                    type="button"
+                    onClick={onRetrySend}
+                    className="font-medium text-primary hover:underline focus:underline focus:outline-none"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
               <ChatInput
                 onSend={(text) => onSend(text)}
                 isRunning={isRunning}
                 onStop={isSessionOwner ? onStop : undefined}
-                disabled={!isSessionOwner}
+                disabled={!isSessionOwner || !desktopConnected}
+                disabledReason={isSessionOwner && !desktopConnected ? NO_RUNNER_TOOLTIP : undefined}
                 allowAttachments={false}
               />
             </>
@@ -208,6 +242,10 @@ export function AgentChatArea({
     </div>
   );
 }
+
+const NO_RUNNER_TOOLTIP = 'No runner online — install Forge desktop or check device status';
+const NO_RUNNER_BANNER = 'No runner online. Sessions cannot start until a desktop runner connects.';
+const RELAY_TIMEOUT_BUBBLE = 'Session not picked up by any runner.';
 
 const CONNECTION_PILL_META: Record<ConnectionState, { dot: string; label: string; pulse: boolean }> = {
   open: { dot: 'bg-success', label: 'Online', pulse: false },
