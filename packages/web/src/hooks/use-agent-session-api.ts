@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { ChatMessageData, ContentBlock } from '@/components/chat/chat-message';
 import { convertTodoWriteToTodosBlock, deduplicateTodosBlocks } from '@/lib/utils/todo-blocks';
 import { agentApi, type AgentUsage, type PageContext } from '@/features/agent/api';
@@ -27,6 +28,7 @@ interface UseAgentSessionApiOptions {
 
 export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
   const { projectSlug, mountedRef, sessionId, claudeSessionId, messagesRef, dispatch } = opts;
+  const queryClient = useQueryClient();
 
   const startAgent = useCallback(async (prompt: string, startOpts?: { preBuilt?: boolean; issueIds?: string[]; pageContext?: PageContext }) => {
     dispatch({
@@ -161,6 +163,10 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
       if (!mountedRef.current) return;
       const session = unwrap(res);
 
+      // Prime the per-session React Query cache so the Changes tab reads
+      // from cache instead of refetching `/agent-sessions/:id`.
+      queryClient.setQueryData(['agent-session', id], { data: session });
+
       let turnsByIndex: Map<number, { id: string; editedAt: string | null }> | undefined;
       try {
         const turnsRes = await agentApi.getTurns(id, { limit: 500 });
@@ -186,7 +192,7 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
         claudeSessionId: session.claudeSessionId || null,
       });
     } catch { /* ignore */ }
-  }, [mountedRef, dispatch]);
+  }, [mountedRef, dispatch, queryClient]);
 
   /**
    * Refresh session data from the server without resetting streaming state.
@@ -198,6 +204,10 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
       const res = await agentApi.getSession(id);
       if (!mountedRef.current) return;
       const session = unwrap(res);
+
+      // Keep the Changes-tab cache fresh when WS/poll reconciles a row.
+      queryClient.setQueryData(['agent-session', id], { data: session });
+
       const isTerminal = session.status !== 'running';
       const stored = session.messages || [];
       const currentMessages = messagesRef.current;
@@ -222,7 +232,7 @@ export function useAgentSessionApi(opts: UseAgentSessionApiOptions) {
         dispatch({ type: 'isRunningSet', value: false });
       }
     } catch { /* ignore */ }
-  }, [mountedRef, messagesRef, dispatch]);
+  }, [mountedRef, messagesRef, dispatch, queryClient]);
 
   const editTurn = useCallback(
     async (turnId: string, content: string, expectedEditedAt?: string) => {
