@@ -190,6 +190,11 @@ export function ChatMessages({
       <div
         ref={containerRef}
         onScroll={handleScroll}
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions text"
+        aria-atomic="false"
+        aria-label="Conversation"
         className="h-full overflow-y-auto overflow-x-hidden overscroll-contain px-4 py-4 bg-surface"
       >
         <div
