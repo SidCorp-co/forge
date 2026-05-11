@@ -84,8 +84,8 @@ export function useAgentPage() {
   // with the server-side fields (metadata, user, lifecycle stamps).
   useEffect(() => {
     if (!sessionId || !projectId) return;
-    queryClient.setQueryData<{ data: AgentSessionSummary[] } | undefined>(
-      ['agent-sessions', projectId, 'all'],
+    queryClient.setQueriesData<{ data: AgentSessionSummary[] } | undefined>(
+      { queryKey: ['agent-sessions', projectId, 'all'] },
       (prev) => {
         if (!prev) return prev;
         const rows = prev.data || [];
