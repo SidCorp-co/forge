@@ -24,9 +24,7 @@ export function useAgentPage() {
   const router = useRouter();
   const sessionParam = searchParams.get('session');
 
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [showSessions, setShowSessions] = useState(true);
-  const suppressUrlSync = useRef(false);
 
   const [viewTab, setViewTab] = useState<ViewTab>('chat');
   const [editablePrompt, setEditablePrompt] = useState('');
@@ -73,11 +71,6 @@ export function useAgentPage() {
   const diff = sessionDetailQuery.data?.diff ?? null;
   const diffLoading = sessionDetailQuery.isLoading;
 
-  // Sync activeSessionId with hook's sessionId
-  useEffect(() => {
-    if (sessionId) setActiveSessionId(sessionId);
-  }, [sessionId]);
-
   // Optimistic insert: when a brand-new session id appears (start), prepend
   // a stub row to the cached list so the sidebar reflects the action before
   // the WS-driven invalidation lands. The next refetch reconciles the row
@@ -103,31 +96,26 @@ export function useAgentPage() {
     );
   }, [sessionId, projectId, queryClient]);
 
-  // Load session from URL ?session= param. Gate on activeSessionId (sync
-  // state) instead of the stream-context sessionId (async dispatch), so a
-  // click → URL-replace → effect-rerun loop sees activeSessionId already
-  // committed and skips the second loadSession.
+  // Effect A — URL → stream. Deps are intentionally limited to `sessionParam`:
+  // including `sessionId` would re-fire after `loadSession` settles and reload
+  // the same id — that feedback loop is exactly what this refactor removes.
   useEffect(() => {
-    if (sessionParam && sessionParam !== activeSessionId) {
-      suppressUrlSync.current = true;
-      setActiveSessionId(sessionParam);
+    if (sessionParam && sessionParam !== sessionId) {
       loadSession(sessionParam);
       setShowSessions(false);
+    } else if (!sessionParam && sessionId) {
+      resetSession();
     }
-  }, [sessionParam, activeSessionId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessionParam]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync activeSessionId → URL ?session= param
+  // Effect B — stream → URL, one direction only: catch the URL up after
+  // `startAgent` mints a fresh id while the URL is still empty. When the URL
+  // already has a value the click handler / Effect A own it.
   useEffect(() => {
-    if (suppressUrlSync.current) {
-      suppressUrlSync.current = false;
-      return;
+    if (sessionId && !sessionParam) {
+      router.replace(`/projects/${slug}/agent?session=${sessionId}`, { scroll: false });
     }
-    if (activeSessionId && activeSessionId !== sessionParam) {
-      router.replace(`/projects/${slug}/agent?session=${activeSessionId}`, { scroll: false });
-    } else if (!activeSessionId && sessionParam) {
-      router.replace(`/projects/${slug}/agent`, { scroll: false });
-    }
-  }, [activeSessionId, sessionParam, slug, router]);
+  }, [sessionId, sessionParam, slug, router]);
 
   // When draft prompt arrives from an issue trigger, auto-send it.
   // If pendingIssueIds exist it came from a trigger button — send immediately.
@@ -158,10 +146,10 @@ export function useAgentPage() {
 
   const handleNewChat = useCallback(() => {
     resetSession();
-    setActiveSessionId(null);
+    router.replace(`/projects/${slug}/agent`, { scroll: false });
     setShowSessions(false);
     setViewTab('chat');
-  }, [resetSession]);
+  }, [resetSession, router, slug]);
 
   const handleSearchSessions = useCallback((query: string) => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
@@ -169,26 +157,23 @@ export function useAgentPage() {
   }, []);
 
   const handleSelectSession = useCallback((session: AgentSessionSummary) => {
-    setActiveSessionId(session.documentId);
-    loadSession(session.documentId);
+    router.replace(`/projects/${slug}/agent?session=${session.documentId}`, { scroll: false });
     setShowSessions(false);
-  }, [loadSession]);
+  }, [router, slug]);
 
   const handleAfterFork = useCallback((newId: string) => {
-    setActiveSessionId(newId);
-    loadSession(newId);
+    router.replace(`/projects/${slug}/agent?session=${newId}`, { scroll: false });
     setShowSessions(false);
-  }, [loadSession]);
+  }, [router, slug]);
 
   const handleRerun = useCallback(async () => {
     if (!sessionId) return;
     if (!window.confirm('Rerun this session from scratch? This will start a new session with the same prompt.')) return;
     const newId = await rerunSession();
     if (newId) {
-      setActiveSessionId(newId);
-      loadSession(newId);
+      router.replace(`/projects/${slug}/agent?session=${newId}`, { scroll: false });
     }
-  }, [sessionId, rerunSession, loadSession]);
+  }, [sessionId, rerunSession, router, slug]);
 
   // Layer 2 — runner pickup timeout. The client-side optimistic user echo from
   // startAgent / sendMessage inflates user-role messages immediately, so we
@@ -272,7 +257,7 @@ export function useAgentPage() {
     slug,
     sessions,
     loadingSessions,
-    activeSessionId,
+    activeSessionId: sessionParam,
     showSessions,
     setShowSessions,
     viewTab,
