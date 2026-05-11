@@ -1,5 +1,10 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { agentApi, type Agent } from '../api';
+import {
+  useQuery,
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query';
+import { agentApi, AGENT_SESSIONS_PAGE_SIZE, type Agent } from '../api';
 
 const agentsKey = (projectId: string | undefined) => ['agents', projectId] as const;
 
@@ -71,18 +76,24 @@ export function useAgentSessions(
   opts?: { search?: string; refetchInterval?: number | false },
 ) {
   const search = opts?.search?.trim().toLowerCase() ?? '';
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ['agent-sessions', projectId, 'all'],
-    queryFn: () => agentApi.getSessions(projectId as string),
+    queryFn: ({ pageParam }) =>
+      agentApi.getSessionsPage(projectId as string, {
+        page: pageParam as number,
+        pageSize: AGENT_SESSIONS_PAGE_SIZE,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (last) => last.nextPage ?? undefined,
     enabled: !!projectId,
     staleTime: 15_000,
     refetchOnWindowFocus: true,
     refetchInterval: opts?.refetchInterval ?? false,
-    select: (res) => {
-      const rows = res.data || [];
-      if (!search) return rows;
+    select: (raw) => {
+      const flat = raw.pages.flatMap((p) => p.items);
+      if (!search) return flat;
       // Keep title-less optimistic stubs visible; they reconcile on refetch.
-      return rows.filter((s) => !s.title || s.title.toLowerCase().includes(search));
+      return flat.filter((s) => !s.title || s.title.toLowerCase().includes(search));
     },
   });
 }

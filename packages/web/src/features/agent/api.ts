@@ -1,5 +1,7 @@
-import { apiClient } from '@/lib/api/client';
+import { apiClient, apiClientList } from '@/lib/api/client';
 import type { BaseEntity } from '@/lib/types';
+
+export const AGENT_SESSIONS_PAGE_SIZE = 50;
 
 export type AgentSchedule = 'off' | 'weekly' | 'biweekly' | 'monthly';
 export type AgentApprovalMode = 'preview' | 'auto-create';
@@ -189,6 +191,37 @@ export const agentApi = {
           documentId: r['id'] as string,
         })) as unknown as AgentSessionSummary[],
       }),
+    );
+  },
+
+  // Offset-paginated variant used by the sidebar's infinite-scroll. Reads
+  // `X-Total-Count` via apiClientList so the hook can stop requesting pages.
+  getSessionsPage: (
+    projectId: string,
+    { page, pageSize }: { page: number; pageSize: number },
+  ): Promise<{
+    items: AgentSessionSummary[];
+    total: number;
+    nextPage: number | null;
+  }> => {
+    const params = new URLSearchParams({
+      projectId,
+      page: String(page),
+      pageSize: String(pageSize),
+    });
+    return apiClientList<Record<string, unknown>>(`/agent-sessions?${params}`).then(
+      ({ items, totalCount }) => {
+        const mapped = items.map((r) => ({
+          ...(r as object),
+          documentId: r['id'] as string,
+        })) as unknown as AgentSessionSummary[];
+        const hasMore = mapped.length === pageSize && page * pageSize < totalCount;
+        return {
+          items: mapped,
+          total: totalCount,
+          nextPage: hasMore ? page + 1 : null,
+        };
+      },
     );
   },
 

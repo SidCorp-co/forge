@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { useAgentStreamContext } from '@/hooks/agent-stream-context';
 import { useAuth } from '@/providers/auth-provider';
 import { useProjectBySlug } from '@/features/project/hooks/use-projects';
@@ -61,6 +61,12 @@ export function useAgentPage() {
   });
   const sessions: AgentSessionSummary[] = sessionsQuery.data ?? [];
   const loadingSessions = sessionsQuery.isLoading;
+  const hasMoreSessions = sessionsQuery.hasNextPage ?? false;
+  const loadingMoreSessions = sessionsQuery.isFetchingNextPage ?? false;
+  const fetchNextSessionsPage = sessionsQuery.fetchNextPage;
+  const loadMoreSessions = useCallback(() => {
+    void fetchNextSessionsPage();
+  }, [fetchNextSessionsPage]);
 
   // Read the persisted diff straight from the per-session cache so the
   // Changes tab does not re-fetch when the row was already loaded by the
@@ -77,21 +83,32 @@ export function useAgentPage() {
   // with the server-side fields (metadata, user, lifecycle stamps).
   useEffect(() => {
     if (!sessionId || !projectId) return;
-    queryClient.setQueriesData<{ data: AgentSessionSummary[] } | undefined>(
+    type SessionsPage = {
+      items: AgentSessionSummary[];
+      total: number;
+      nextPage: number | null;
+    };
+    queryClient.setQueriesData<InfiniteData<SessionsPage> | undefined>(
       { queryKey: ['agent-sessions', projectId, 'all'] },
       (prev) => {
-        if (!prev) return prev;
-        const rows = prev.data || [];
-        if (rows.some((r) => r.documentId === sessionId)) return prev;
+        if (!prev || prev.pages.length === 0) return prev;
+        const [first, ...rest] = prev.pages;
+        if (first.items.some((r) => r.documentId === sessionId)) return prev;
         const now = new Date().toISOString();
-        const stub = {
+        const stub: AgentSessionSummary = {
           documentId: sessionId,
           title: '',
           status: 'queued',
           createdAt: now,
           updatedAt: now,
         } as AgentSessionSummary;
-        return { ...prev, data: [stub, ...rows] };
+        return {
+          ...prev,
+          pages: [
+            { ...first, items: [stub, ...first.items], total: first.total + 1 },
+            ...rest,
+          ],
+        };
       },
     );
   }, [sessionId, projectId, queryClient]);
@@ -257,6 +274,9 @@ export function useAgentPage() {
     slug,
     sessions,
     loadingSessions,
+    hasMoreSessions,
+    loadingMoreSessions,
+    loadMoreSessions,
     activeSessionId: sessionParam,
     showSessions,
     setShowSessions,
