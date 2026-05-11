@@ -21,6 +21,9 @@ interface AgentSidebarProps {
   onSelectSession: (session: AgentSessionSummary) => void;
   onSearch: (query: string) => void;
   width?: number;
+  onLoadMore?: () => void;
+  hasMore?: boolean;
+  loadingMore?: boolean;
 }
 
 export function AgentSidebar({
@@ -34,6 +37,9 @@ export function AgentSidebar({
   onSelectSession,
   onSearch,
   width,
+  onLoadMore,
+  hasMore,
+  loadingMore,
 }: AgentSidebarProps) {
   // No local timer: heartbeat-derived `stalled` flips when the parent's
   // `useAgentSessions` refetches (15s while a stream is running).
@@ -125,6 +131,9 @@ export function AgentSidebar({
             const seq = blockerSeqFor(issueId);
             return seq != null ? `Unblocked by ISS-${seq}` : 'Unblocked';
           }}
+          onLoadMore={onLoadMore}
+          hasMore={hasMore}
+          loadingMore={loadingMore}
         />
       </div>
     </aside>

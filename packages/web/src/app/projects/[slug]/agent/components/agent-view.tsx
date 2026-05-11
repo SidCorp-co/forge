@@ -72,6 +72,9 @@ export function AgentView() {
     slug,
     sessions,
     loadingSessions,
+    hasMoreSessions,
+    loadingMoreSessions,
+    loadMoreSessions,
     activeSessionId,
     desktopConnected,
     showSessions,
@@ -129,6 +132,9 @@ export function AgentView() {
         onSelectSession={handleSelectSession}
         onSearch={handleSearchSessions}
         width={isDesktop ? sidebarWidth : undefined}
+        hasMore={hasMoreSessions}
+        loadingMore={loadingMoreSessions}
+        onLoadMore={loadMoreSessions}
       />
 
       {/* Resizable divider — desktop only */}

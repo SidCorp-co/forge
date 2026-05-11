@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { MessageSquare, Search } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
 import { relativeTime } from '@/lib/utils/relative-time';
@@ -29,11 +29,35 @@ interface Props<T extends SessionBase = SessionBase> {
   rowClassName?: (session: T) => string | undefined;
   /** Optional native `title` attribute applied to a row's anchor/button. */
   rowTitle?: (session: T) => string | undefined;
+  /** Called when the load-more sentinel scrolls into view. */
+  onLoadMore?: () => void;
+  /** True when more pages are available from the server. */
+  hasMore?: boolean;
+  /** True while the next page is being fetched. */
+  loadingMore?: boolean;
 }
 
-export function SessionList<T extends SessionBase>({ sessions, loading, activeSessionId, onSelect, onNew, statusDot, theme = 'light', getHref, getSearchableText, onSearch, rowClassName, rowTitle }: Props<T>) {
+export function SessionList<T extends SessionBase>({ sessions, loading, activeSessionId, onSelect, onNew, statusDot, theme = 'light', getHref, getSearchableText, onSearch, rowClassName, rowTitle, onLoadMore, hasMore, loadingMore }: Props<T>) {
   const isDark = theme === 'dark';
   const [search, setSearch] = useState('');
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!onLoadMore || !hasMore) return;
+    const node = sentinelRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting && hasMore && !loadingMore) onLoadMore();
+      },
+      { root: null, rootMargin: '200px' },
+    );
+    observer.observe(node);
+    return () => {
+      observer.unobserve(node);
+      observer.disconnect();
+    };
+  }, [onLoadMore, hasMore, loadingMore]);
 
   const filtered = useMemo(() => {
     // When onSearch is provided, parent handles filtering — use sessions as-is
@@ -147,6 +171,16 @@ export function SessionList<T extends SessionBase>({ sessions, loading, activeSe
           </button>
         );
       })}
+      {hasMore && onLoadMore && (
+        <>
+          <div ref={sentinelRef} aria-hidden="true" className="h-px" />
+          {loadingMore && (
+            <div className="flex items-center justify-center py-3">
+              <Spinner />
+            </div>
+          )}
+        </>
+      )}
       </div>
     </div>
   );
