@@ -7,6 +7,7 @@ import { ChatMessage } from './chat-message';
 import type { ChatMessageData } from './chat-message';
 import { InlineDiffSummary } from './chat-message/inline-diff-summary';
 import { SessionPlaceholder } from './session-placeholder';
+import { StreamingAnnouncer } from './streaming-announcer';
 
 interface ChatMessagesProps {
   messages: ChatMessageData[];
@@ -153,6 +154,7 @@ export function ChatMessages({
   const totalSize = rowVirtualizer.getTotalSize();
 
   return (
+    <>
     <div className="relative flex-1 overflow-hidden">
       {/* Search bar */}
       {searchOpen ? (
@@ -191,9 +193,6 @@ export function ChatMessages({
         ref={containerRef}
         onScroll={handleScroll}
         role="log"
-        aria-live="polite"
-        aria-relevant="additions text"
-        aria-atomic="false"
         aria-label="Conversation"
         className="h-full overflow-y-auto overflow-x-hidden overscroll-contain px-4 py-4 bg-surface"
       >
@@ -246,5 +245,7 @@ export function ChatMessages({
         </button>
       )}
     </div>
+    <StreamingAnnouncer messages={messages} />
+    </>
   );
 }
