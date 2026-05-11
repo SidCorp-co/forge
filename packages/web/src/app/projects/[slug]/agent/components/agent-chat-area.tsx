@@ -10,7 +10,8 @@ import { PromptEditor } from './prompt-editor';
 import { formatTokens, CONTEXT_LIMIT } from '@/lib/utils/format-tokens';
 import { cn } from '@/lib/utils/cn';
 import type { ViewTab } from '../hooks';
-import type { BranchDiff } from '@/features/agent/api';
+import { deriveSessionDisplayStatus, type AgentSessionSummary, type BranchDiff } from '@/features/agent/api';
+import { StatusDot } from '@/components/ui';
 import type { ChatMessageData } from '@/components/chat/chat-message';
 import { ChatSendProvider } from '@/components/chat/chat-message/chat-send-context';
 import type { ConnectionState } from '@/hooks/use-agent-websocket';
@@ -24,6 +25,7 @@ interface ContextUsage {
 interface AgentChatAreaProps {
   sessionId: string | null;
   sessionTitle: string;
+  activeSession: AgentSessionSummary | null;
   showSessions: boolean;
   onShowSessions: () => void;
   messages: ChatMessageData[];
@@ -56,6 +58,7 @@ interface AgentChatAreaProps {
 export function AgentChatArea({
   sessionId,
   sessionTitle,
+  activeSession,
   showSessions,
   onShowSessions,
   messages,
@@ -131,6 +134,7 @@ export function AgentChatArea({
           <h3 className="text-sm font-semibold text-on-surface-variant truncate" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
             {sessionTitle}
           </h3>
+          {activeSession && <SessionStatusDot session={activeSession} />}
           <ConnectionPill state={connectionState} />
           {usage.turns > 0 && <ContextUsageBar usage={usage} />}
         </div>
@@ -265,10 +269,33 @@ const NO_RUNNER_BANNER = 'No runner online. Sessions cannot start until a deskto
 const RELAY_TIMEOUT_BUBBLE = 'Session not picked up by any runner.';
 
 const CONNECTION_PILL_META: Record<ConnectionState, { dot: string; label: string; pulse: boolean }> = {
-  open: { dot: 'bg-success', label: 'Online', pulse: false },
+  open: { dot: 'bg-success', label: 'Connected', pulse: false },
   connecting: { dot: 'bg-warning-dim', label: 'Connecting…', pulse: false },
   reconnecting: { dot: 'bg-warning-dim', label: 'Reconnecting…', pulse: true },
 };
+
+const SESSION_STATUS_LABELS: Record<string, string> = {
+  queued: 'Queued',
+  running: 'Running',
+  stalled: 'Stalled',
+  completed: 'Completed',
+  failed: 'Failed',
+};
+
+function SessionStatusDot({ session }: { session: AgentSessionSummary }) {
+  const display = deriveSessionDisplayStatus(session);
+  const label = SESSION_STATUS_LABELS[display] ?? display;
+  return (
+    <span
+      className="flex items-center gap-1 font-mono text-[10px] text-primary-fixed ml-2 shrink-0"
+      title={`Session ${label}`}
+      data-testid="session-status-dot"
+    >
+      <StatusDot status={display} title={`Session ${label}`} />
+      <span className="hidden sm:inline">{label}</span>
+    </span>
+  );
+}
 
 function ConnectionPill({ state }: { state: ConnectionState }) {
   const meta = CONNECTION_PILL_META[state];

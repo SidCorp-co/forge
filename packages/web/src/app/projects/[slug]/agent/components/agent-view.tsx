@@ -76,8 +76,11 @@ export function AgentView() {
 
   const { width: sidebarWidth, onMouseDown: onDividerMouseDown } = useResizablePanel(256, 180, 400);
 
+  const activeSession = sessionId
+    ? sessions.find((s) => s.documentId === sessionId) ?? null
+    : null;
   const sessionTitle = sessionId
-    ? (sessions.find((s) => s.documentId === sessionId)?.title || 'Agent Chat')
+    ? (activeSession?.title || 'Agent Chat')
     : 'New Agent Chat';
 
   return (
@@ -106,6 +109,7 @@ export function AgentView() {
       <AgentChatArea
         sessionId={sessionId}
         sessionTitle={sessionTitle}
+        activeSession={activeSession}
         showSessions={showSessions}
         onShowSessions={() => setShowSessions(true)}
         messages={messages}
