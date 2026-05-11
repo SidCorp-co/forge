@@ -5,7 +5,21 @@ vi.mock('../../config/env.js', () => ({
     JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',
     NODE_ENV: 'test',
     DATABASE_URL: 'postgres://localhost/stub',
+    UPLOADS_MAX_BYTES: 10 * 1024 * 1024,
   },
+}));
+
+const storagePut = vi.fn(async (key: string, _bytes: Buffer, _mime: string) => ({
+  path: `local:${key}`,
+  size: _bytes.byteLength,
+}));
+vi.mock('../../storage/index.js', () => ({
+  getStorage: () => ({
+    put: storagePut,
+    get: vi.fn(),
+    delete: vi.fn(),
+  }),
+  isEnoent: () => false,
 }));
 
 const selectLimit = vi.fn();
@@ -167,5 +181,201 @@ describe('forge_comments tool', () => {
     await expect(
       tool.handler({ action: 'delete', documentId: COMMENT_ID }),
     ).rejects.toThrow(/FORBIDDEN/);
+  });
+
+  describe('create with attachments', () => {
+    // Each persistCommentAttachment() does 1 insert (attachment row). The
+    // create handler does 1 insert for the comment first.
+    // We pre-load insertReturning per call.
+
+    function makeAttachmentRow(index: number) {
+      return {
+        id: `aaaa${index}aaa-bbbb-4ccc-8ddd-eeeeeeeeeeee`,
+        commentId: COMMENT_ID,
+        name: `screenshot-${index}.png`,
+        mime: 'image/png',
+        size: 4,
+        createdAt: new Date(),
+      };
+    }
+
+    // 1x1 transparent PNG-ish bytes (not real PNG, but bytes are fine)
+    const TINY_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    const TINY_B64 = TINY_BYTES.toString('base64');
+
+    it('persists a single attachment and returns its url', async () => {
+      const tool = forgeCommentsTool({ device: fakeDevice, projectSlug: null });
+      selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]); // loadIssueProjectId
+      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]); // membership
+      insertReturning.mockResolvedValueOnce([baseCommentRow]); // comment insert
+      insertReturning.mockResolvedValueOnce([makeAttachmentRow(0)]); // attachment insert
+
+      const result = (await tool.handler({
+        action: 'create',
+        data: {
+          issue: ISSUE_ID,
+          body: 'with screenshot',
+          attachments: [{ name: 'screenshot-0.png', mime: 'image/png', dataBase64: TINY_B64 }],
+        },
+      })) as {
+        documentId: string;
+        attachments: Array<{ id: string; url: string; mime: string; size: number }>;
+        attachmentErrors?: unknown;
+      };
+
+      expect(result.documentId).toBe(COMMENT_ID);
+      expect(result.attachments).toHaveLength(1);
+      expect(result.attachments[0]?.url).toMatch(/^\/api\/comments\/attachments\//);
+      expect(result.attachmentErrors).toBeUndefined();
+      // Storage key uses `comments/<commentId>/<ts>-<safeName>` (AC #5).
+      expect(storagePut).toHaveBeenCalledTimes(1);
+      const putKey = storagePut.mock.calls[0]?.[0] ?? '';
+      expect(putKey).toMatch(new RegExp(`^comments/${COMMENT_ID}/\\d+-screenshot-0\\.png$`));
+    });
+
+    it('persists 5 attachments in one call', async () => {
+      const tool = forgeCommentsTool({ device: fakeDevice, projectSlug: null });
+      selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
+      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      insertReturning.mockResolvedValueOnce([baseCommentRow]);
+      for (let i = 0; i < 5; i++) insertReturning.mockResolvedValueOnce([makeAttachmentRow(i)]);
+
+      const result = (await tool.handler({
+        action: 'create',
+        data: {
+          issue: ISSUE_ID,
+          body: 'five screenshots',
+          attachments: Array.from({ length: 5 }, (_, i) => ({
+            name: `screenshot-${i}.png`,
+            mime: 'image/png',
+            dataBase64: TINY_B64,
+          })),
+        },
+      })) as { attachments: unknown[] };
+
+      expect(result.attachments).toHaveLength(5);
+      expect(storagePut).toHaveBeenCalledTimes(5);
+    });
+
+    it('records uploaderDeviceId on the attachment insert', async () => {
+      const tool = forgeCommentsTool({ device: fakeDevice, projectSlug: null });
+      selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
+      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      insertReturning.mockResolvedValueOnce([baseCommentRow]);
+      insertReturning.mockResolvedValueOnce([makeAttachmentRow(0)]);
+
+      await tool.handler({
+        action: 'create',
+        data: {
+          issue: ISSUE_ID,
+          body: 'audit',
+          attachments: [{ name: 'a.png', mime: 'image/png', dataBase64: TINY_B64 }],
+        },
+      });
+
+      // First insertValues call is for the comment row, second is the attachment.
+      expect(insertValues).toHaveBeenCalledTimes(2);
+      expect(insertValues).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          commentId: COMMENT_ID,
+          uploaderId: OWNER_ID,
+          uploaderDeviceId: DEVICE_ID,
+          mime: 'image/png',
+        }),
+      );
+    });
+
+    it('rejects PAYLOAD_TOO_LARGE when total exceeds UPLOADS_MAX_BYTES', async () => {
+      const tool = forgeCommentsTool({ device: fakeDevice, projectSlug: null });
+      selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
+      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+
+      // 4MB each x 3 = 12MB > 10MB limit, no single entry over limit.
+      const fourMb = Buffer.alloc(4 * 1024 * 1024, 7);
+      const b64 = fourMb.toString('base64');
+
+      await expect(
+        tool.handler({
+          action: 'create',
+          data: {
+            issue: ISSUE_ID,
+            body: 'too big',
+            attachments: [
+              { name: 'a.png', mime: 'image/png', dataBase64: b64 },
+              { name: 'b.png', mime: 'image/png', dataBase64: b64 },
+              { name: 'c.png', mime: 'image/png', dataBase64: b64 },
+            ],
+          },
+        }),
+      ).rejects.toThrow(/PAYLOAD_TOO_LARGE: total=\d+ per=\[0:\d+,1:\d+,2:\d+\] limit=\d+/);
+      // Comment was NOT inserted.
+      expect(insertReturning).not.toHaveBeenCalled();
+    });
+
+    it('rejects PAYLOAD_TOO_LARGE when a single entry exceeds the cap', async () => {
+      const tool = forgeCommentsTool({ device: fakeDevice, projectSlug: null });
+      selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
+      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+
+      const elevenMb = Buffer.alloc(11 * 1024 * 1024, 7);
+      const b64 = elevenMb.toString('base64');
+
+      await expect(
+        tool.handler({
+          action: 'create',
+          data: {
+            issue: ISSUE_ID,
+            body: 'too big',
+            attachments: [{ name: 'a.png', mime: 'image/png', dataBase64: b64 }],
+          },
+        }),
+      ).rejects.toThrow(/PAYLOAD_TOO_LARGE/);
+    });
+
+    it('returns MIME_NOT_ALLOWED in attachmentErrors and keeps the comment', async () => {
+      const tool = forgeCommentsTool({ device: fakeDevice, projectSlug: null });
+      selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
+      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      insertReturning.mockResolvedValueOnce([baseCommentRow]);
+
+      const result = (await tool.handler({
+        action: 'create',
+        data: {
+          issue: ISSUE_ID,
+          body: 'bad mime',
+          attachments: [
+            { name: 'bad.exe', mime: 'application/x-msdownload', dataBase64: TINY_B64 },
+          ],
+        },
+      })) as {
+        documentId: string;
+        attachments: unknown[];
+        attachmentErrors: Array<{ code: string; index: number }>;
+      };
+
+      expect(result.documentId).toBe(COMMENT_ID);
+      expect(result.attachments).toEqual([]);
+      expect(result.attachmentErrors).toHaveLength(1);
+      expect(result.attachmentErrors[0]?.code).toBe('MIME_NOT_ALLOWED');
+    });
+
+    it('rejects invalid base64 with BAD_REQUEST before inserting the comment', async () => {
+      const tool = forgeCommentsTool({ device: fakeDevice, projectSlug: null });
+      selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
+      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+
+      await expect(
+        tool.handler({
+          action: 'create',
+          data: {
+            issue: ISSUE_ID,
+            body: 'bad b64',
+            attachments: [{ name: 'a.png', mime: 'image/png', dataBase64: 'not!base64!!' }],
+          },
+        }),
+      ).rejects.toThrow(/BAD_REQUEST: data\.attachments\[0\]\.dataBase64 is not valid base64/);
+      expect(insertReturning).not.toHaveBeenCalled();
+    });
   });
 });

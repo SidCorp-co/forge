@@ -786,6 +786,12 @@ export const commentAttachments = pgTable(
     uploaderId: uuid('uploader_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    // Populated when the uploader was a device principal (MCP path).
+    // Null for user-principal uploads (REST multipart). Matches the
+    // (user notNull, device nullable) audit shape used by `jobs`.
+    uploaderDeviceId: uuid('uploader_device_id').references(() => devices.id, {
+      onDelete: 'set null',
+    }),
     name: text('name').notNull(),
     path: text('path').notNull(),
     mime: text('mime').notNull(),
@@ -794,12 +800,17 @@ export const commentAttachments = pgTable(
   },
   (t) => ({
     commentIdx: index('comment_attachments_comment_id_idx').on(t.commentId),
+    uploaderDeviceIdx: index('comment_attachments_uploader_device_id_idx').on(t.uploaderDeviceId),
   }),
 );
 
 export const commentAttachmentsRelations = relations(commentAttachments, ({ one }) => ({
   comment: one(comments, { fields: [commentAttachments.commentId], references: [comments.id] }),
   uploader: one(users, { fields: [commentAttachments.uploaderId], references: [users.id] }),
+  uploaderDevice: one(devices, {
+    fields: [commentAttachments.uploaderDeviceId],
+    references: [devices.id],
+  }),
 }));
 
 export const issueAttachments = pgTable(

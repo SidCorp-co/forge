@@ -1,5 +1,11 @@
 import { and, asc, eq } from 'drizzle-orm';
 import { z } from 'zod';
+import {
+  AttachmentError,
+  type PersistedCommentAttachment,
+  persistCommentAttachment,
+} from '../../comments/attachment-service.js';
+import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { comments, issues, projectMembers, projects } from '../../db/schema.js';
 import { hooks } from '../../pipeline/hooks.js';
@@ -19,11 +25,20 @@ import {
 
 const filtersSchema = z.object({ issue: z.uuid() }).strict().optional();
 
+const attachmentInputSchema = z
+  .object({
+    name: z.string().min(1).max(200),
+    mime: z.string().min(1).max(255),
+    dataBase64: z.string().min(1),
+  })
+  .strict();
+
 const dataSchema = z
   .object({
     body: z.string().trim().min(1).max(10_000).optional(),
     issue: z.uuid().optional(),
     parentId: z.uuid().optional(),
+    attachments: z.array(attachmentInputSchema).max(10).optional(),
   })
   .strict()
   .optional();
@@ -88,12 +103,26 @@ async function loadCommentForAccess(
   return row;
 }
 
+// Strict base64 charset check. Buffer.from('xx', 'base64') silently drops
+// invalid characters, so we validate the input string first to surface a
+// useful BAD_REQUEST instead of writing a truncated blob to disk.
+const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
+function decodeBase64Strict(input: string): Buffer | null {
+  const trimmed = input.trim().replace(/\s+/g, '');
+  if (trimmed.length === 0 || trimmed.length % 4 !== 0) return null;
+  if (!BASE64_RE.test(trimmed)) return null;
+  return Buffer.from(trimmed, 'base64');
+}
+
 export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_comments',
   description:
     'List, create, or delete issue comments. List requires filters.issue (issue UUID). ' +
     'Create requires data.issue + data.body. Delete requires documentId. All actions ' +
-    'enforce project membership via the device principal.',
+    'enforce project membership via the device principal. ' +
+    'Create also accepts data.attachments[] (base64-inline files; up to 10 entries, ' +
+    'total size ≤ UPLOADS_MAX_BYTES). On partial-failure the response includes both ' +
+    '`attachments` (succeeded) and `attachmentErrors` (failed entries with code/message).',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -133,6 +162,34 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
         const projectId = await loadIssueProjectId(issueId);
         await assertDeviceOwnerIsMember(device, projectId);
 
+        // Pre-decode + size-validate attachments BEFORE writing the comment row.
+        // A size-cap rejection here returns PAYLOAD_TOO_LARGE without leaving an
+        // empty comment behind.
+        const rawAttachments = input.data?.attachments ?? [];
+        const decoded: Array<{ name: string; mime: string; bytes: Buffer }> = [];
+        if (rawAttachments.length > 0) {
+          for (let i = 0; i < rawAttachments.length; i++) {
+            const a = rawAttachments[i]!;
+            const buf = decodeBase64Strict(a.dataBase64);
+            if (!buf) {
+              throw new Error(
+                `BAD_REQUEST: data.attachments[${i}].dataBase64 is not valid base64`,
+              );
+            }
+            decoded.push({ name: a.name, mime: a.mime, bytes: buf });
+          }
+          const limit = env.UPLOADS_MAX_BYTES;
+          const sizes = decoded.map((d) => d.bytes.byteLength);
+          const total = sizes.reduce((s, n) => s + n, 0);
+          const perFileBreakdown = sizes.map((n, i) => `${i}:${n}`).join(',');
+          const oversizePer = sizes.some((n) => n > limit);
+          if (total > limit || oversizePer) {
+            throw new Error(
+              `PAYLOAD_TOO_LARGE: total=${total} per=[${perFileBreakdown}] limit=${limit}`,
+            );
+          }
+        }
+
         // The device principal posts comments on behalf of its owner — there
         // is no separate device authorId column, so we attribute to ownerId
         // the same way the REST flow attributes to the authenticated user.
@@ -164,7 +221,50 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
           parentId: inserted.parentId,
         });
 
-        return serialize(inserted as CommentRow);
+        const persistedAttachments: PersistedCommentAttachment[] = [];
+        const attachmentErrors: Array<{
+          index: number;
+          name: string;
+          code: string;
+          message: string;
+        }> = [];
+        for (let i = 0; i < decoded.length; i++) {
+          const d = decoded[i]!;
+          try {
+            const row = await persistCommentAttachment({
+              commentId: inserted.id,
+              name: d.name,
+              mime: d.mime,
+              bytes: d.bytes,
+              uploaderId: device.ownerId,
+              uploaderDeviceId: device.id,
+            });
+            persistedAttachments.push(row);
+          } catch (err) {
+            if (err instanceof AttachmentError) {
+              attachmentErrors.push({
+                index: i,
+                name: d.name,
+                code: err.code,
+                message: err.message,
+              });
+            } else {
+              attachmentErrors.push({
+                index: i,
+                name: d.name,
+                code: 'INTERNAL',
+                message: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+        }
+
+        const result: Record<string, unknown> = serialize(inserted as CommentRow);
+        result.attachments = persistedAttachments;
+        if (attachmentErrors.length > 0) {
+          result.attachmentErrors = attachmentErrors;
+        }
+        return result;
       }
 
       case 'delete': {

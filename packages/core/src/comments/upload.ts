@@ -10,16 +10,26 @@ import { commentAttachments, comments, issues } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { getStorage, isEnoent } from '../storage/index.js';
+import { AttachmentError, persistCommentAttachment } from './attachment-service.js';
 
-const ALLOWED_MIMES = new Set([
-  'image/png',
-  'image/jpeg',
-  'image/gif',
-  'image/webp',
-  'application/pdf',
-  'text/plain',
-  'text/markdown',
-]);
+function attachmentErrorToHttp(err: AttachmentError): HTTPException {
+  switch (err.code) {
+    case 'FILE_TOO_LARGE':
+      return new HTTPException(400, {
+        message: 'file too large',
+        cause: { code: 'FILE_TOO_LARGE' },
+      });
+    case 'MIME_NOT_ALLOWED':
+      return new HTTPException(400, {
+        message: err.message,
+        cause: { code: 'MIME_NOT_ALLOWED' },
+      });
+    case 'EMPTY_FILE':
+      return new HTTPException(400, { message: 'empty file', cause: { code: 'BAD_REQUEST' } });
+    case 'INVALID_NAME':
+      return new HTTPException(400, { message: err.message, cause: { code: 'BAD_REQUEST' } });
+  }
+}
 
 const badRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
   new HTTPException(400, { message, cause: { code, details } });
@@ -27,12 +37,6 @@ const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
-function safeName(name: string): string {
-  // Strip path separators; keep extension. Length-cap.
-  const cleaned = name.replace(/[\\/]+/g, '_').replace(/[^A-Za-z0-9._-]/g, '_');
-  return cleaned.slice(0, 200) || 'file';
-}
 
 const commentIdParamSchema = z.object({ commentId: z.uuid() });
 const idParamSchema = z.object({ id: z.uuid() });
@@ -71,43 +75,25 @@ commentUploadRoutes.post(
     const body = await c.req.parseBody();
     const file = body['file'];
     if (!(file instanceof File)) throw badRequest('missing "file" field');
-    if (file.size <= 0) throw badRequest('empty file');
-    if (file.size > env.UPLOADS_MAX_BYTES) throw badRequest('file too large', 'FILE_TOO_LARGE');
     const mime = file.type || 'application/octet-stream';
-    if (!ALLOWED_MIMES.has(mime)) throw badRequest(`mime not allowed: ${mime}`, 'MIME_NOT_ALLOWED');
-
-    const name = safeName(file.name || 'file');
     const buffer = Buffer.from(await file.arrayBuffer());
-    const key = `comments/${comment.id}/${Date.now()}-${name}`;
-    const { path: storedPath } = await getStorage().put(key, buffer, mime);
 
-    const [inserted] = await db
-      .insert(commentAttachments)
-      .values({
+    let persisted;
+    try {
+      persisted = await persistCommentAttachment({
         commentId: comment.id,
-        uploaderId: userId,
-        name,
-        path: storedPath,
+        name: file.name || 'file',
         mime,
-        size: file.size,
-      })
-      .returning({
-        id: commentAttachments.id,
-        commentId: commentAttachments.commentId,
-        name: commentAttachments.name,
-        mime: commentAttachments.mime,
-        size: commentAttachments.size,
-        createdAt: commentAttachments.createdAt,
+        bytes: buffer,
+        uploaderId: userId,
+        uploaderDeviceId: null,
       });
-    if (!inserted) throw new Error('comment_attachments: insert returned no row');
+    } catch (err) {
+      if (err instanceof AttachmentError) throw attachmentErrorToHttp(err);
+      throw err;
+    }
 
-    return c.json(
-      {
-        ...inserted,
-        url: `/api/comments/attachments/${inserted.id}`,
-      },
-      201,
-    );
+    return c.json(persisted, 201);
   },
 );
 
