@@ -81,7 +81,8 @@ export function useAgentSessions(
     select: (res) => {
       const rows = res.data || [];
       if (!search) return rows;
-      return rows.filter((s) => s.title?.toLowerCase().includes(search));
+      // Keep title-less optimistic stubs visible; they reconcile on refetch.
+      return rows.filter((s) => !s.title || s.title.toLowerCase().includes(search));
     },
   });
 }
