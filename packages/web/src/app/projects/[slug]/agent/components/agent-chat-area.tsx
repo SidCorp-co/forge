@@ -131,9 +131,9 @@ export function AgentChatArea({
           >
             <List className="h-4 w-4" />
           </button>
-          <h3 className="text-sm font-semibold text-on-surface-variant truncate" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
+          <h2 className="text-sm font-semibold text-on-surface-variant truncate" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
             {sessionTitle}
-          </h3>
+          </h2>
           {activeSession && <SessionStatusDot session={activeSession} />}
           <ConnectionPill state={connectionState} />
           {usage.turns > 0 && <ContextUsageBar usage={usage} />}

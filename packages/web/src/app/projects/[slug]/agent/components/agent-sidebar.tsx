@@ -45,7 +45,8 @@ export function AgentSidebar({
   }
 
   return (
-    <div
+    <aside
+      aria-label="Agent sessions"
       className={cn(
         'w-full shrink-0 border-r border-surface-variant flex flex-col bg-surface',
         !showSessions && 'hidden md:flex',
@@ -126,6 +127,6 @@ export function AgentSidebar({
           }}
         />
       </div>
-    </div>
+    </aside>
   );
 }
