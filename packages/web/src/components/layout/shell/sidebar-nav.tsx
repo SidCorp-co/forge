@@ -35,7 +35,7 @@ const PROJECT_SUB_LINKS = [
   { path: '', label: 'Overview' },
   { path: '/issues', label: 'Issues' },
   { path: '/board', label: 'Board' },
-  { path: '/agent', label: 'Agent' },
+  { path: '/agent', label: 'Chat' },
   { path: '/agents', label: 'Agents' },
   { path: '/skills', label: 'Skills' },
   { path: '/knowledge', label: 'Knowledge' },
