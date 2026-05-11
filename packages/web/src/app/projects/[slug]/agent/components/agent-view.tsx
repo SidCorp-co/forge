@@ -5,11 +5,30 @@ import { AgentSidebar } from './agent-sidebar';
 import { AgentChatArea } from './agent-chat-area';
 import { useAgentPage } from '../hooks';
 
-function useResizablePanel(defaultWidth: number, minWidth: number, maxWidth: number) {
+function useResizablePanel(
+  defaultWidth: number,
+  minWidth: number,
+  maxWidth: number,
+  storageKey?: string,
+) {
   const [width, setWidth] = useState(defaultWidth);
   const dragging = useRef(false);
   const startX = useRef(0);
   const startWidth = useRef(0);
+
+  useEffect(() => {
+    if (!storageKey || typeof window === 'undefined') return;
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return;
+    setWidth(Math.min(maxWidth, Math.max(minWidth, parsed)));
+  }, [storageKey, minWidth, maxWidth]);
+
+  useEffect(() => {
+    if (!storageKey || typeof window === 'undefined') return;
+    window.localStorage.setItem(storageKey, String(width));
+  }, [storageKey, width]);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     dragging.current = true;
@@ -33,6 +52,19 @@ function useResizablePanel(defaultWidth: number, minWidth: number, maxWidth: num
   }, [minWidth, maxWidth]);
 
   return { width, onMouseDown };
+}
+
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(min-width: 768px)');
+    const update = () => setIsDesktop(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+  return isDesktop;
 }
 
 export function AgentView() {
@@ -74,7 +106,8 @@ export function AgentView() {
     isTerminal,
   } = useAgentPage();
 
-  const { width: sidebarWidth, onMouseDown: onDividerMouseDown } = useResizablePanel(256, 180, 400);
+  const { width: sidebarWidth, onMouseDown: onDividerMouseDown } = useResizablePanel(256, 180, 400, 'agent-sidebar-width');
+  const isDesktop = useIsDesktop();
 
   const activeSession = sessionId
     ? sessions.find((s) => s.documentId === sessionId) ?? null
@@ -95,7 +128,7 @@ export function AgentView() {
         onNewChat={handleNewChat}
         onSelectSession={handleSelectSession}
         onSearch={handleSearchSessions}
-        width={sidebarWidth}
+        width={isDesktop ? sidebarWidth : undefined}
       />
 
       {/* Resizable divider — desktop only */}
