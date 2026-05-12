@@ -35,6 +35,7 @@ import { setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess, type ProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
+import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import {
@@ -482,6 +483,10 @@ agentSessionRoutes.post(
     // Interactive sessions start `running` (worker streams within seconds);
     // stamp startedAt + heartbeat for parity with the pipeline path.
     const nowDate = new Date();
+    // ISS-101 — every agent_session belongs to a pipeline_run. Interactive
+    // (user-driven) sessions get a one-shot 'interactive' run that's closed
+    // when the session terminates.
+    const interactiveRun = await openOneShotRun({ projectId: project.id, kind: 'interactive' });
     const { inserted, startSync } = await db.transaction(async (tx) => {
       const [row] = await tx
         .insert(agentSessions)
@@ -489,6 +494,7 @@ agentSessionRoutes.post(
           projectId: project.id,
           userId,
           deviceId,
+          pipelineRunId: interactiveRun.id,
           title,
           status: 'running',
           startedAt: nowDate,
@@ -785,6 +791,10 @@ agentSessionRoutes.post(
       return c.json(current);
     }
 
+    // ISS-101 — close the one-shot run for cancelled interactive sessions.
+    // No-op for kind='issue' (the issue state-machine owns those runs).
+    await closeRunIfOneShot(updated.pipelineRunId, 'cancelled');
+
     const meta = (updated.metadata ?? {}) as { deviceId?: string };
     const targetDeviceId = meta.deviceId ?? updated.deviceId ?? null;
     if (targetDeviceId) {
@@ -1020,6 +1030,15 @@ agentSessionRoutes.post(
       .returning();
     if (!updated) throw notFound('agent session not found');
 
+    // ISS-101 — close one-shot runs on terminal status writes. No-op on
+    // kind='issue' (closed by issue state-machine); fires for pm/interactive.
+    if (status === 'completed' || status === 'failed') {
+      await closeRunIfOneShot(
+        updated.pipelineRunId,
+        status === 'failed' ? 'failed' : 'completed',
+      );
+    }
+
     broadcastSession(updated, 'agent-session.status', { note: note ?? null });
     return c.json(updated);
   },
@@ -1157,12 +1176,15 @@ agentSessionRoutes.post(
     const access = await loadProjectAccess(input.projectId, userId);
     if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
 
+    // ISS-101 — interactive REST-create path: one-shot pipeline_run per session.
+    const run = await openOneShotRun({ projectId: input.projectId, kind: 'interactive' });
     const [inserted] = await db
       .insert(agentSessions)
       .values({
         projectId: input.projectId,
         userId,
         deviceId: input.deviceId ?? null,
+        pipelineRunId: run.id,
         title: input.title ?? null,
         repoPath: input.repoPath ?? null,
         claudeSessionId: input.claudeSessionId ?? null,
@@ -1876,6 +1898,11 @@ agentSessionRoutes.post(
       forkedFromTurnId: fromTurnId,
     };
 
+    // ISS-101 — forks are independent interactive sessions; give each its own run.
+    const forkRun = await openOneShotRun({
+      projectId: session.projectId,
+      kind: 'interactive',
+    });
     const { inserted, seedSync } = await db.transaction(async (tx) => {
       const [row] = await tx
         .insert(agentSessions)
@@ -1883,6 +1910,7 @@ agentSessionRoutes.post(
           projectId: session.projectId,
           userId: session.userId,
           deviceId: session.deviceId,
+          pipelineRunId: forkRun.id,
           title: title ?? (session.title ? `${session.title} (fork)` : null),
           status: 'idle',
           repoPath: session.repoPath,
@@ -1953,6 +1981,11 @@ agentSessionRoutes.post(
     // `queued` until a device claims it — otherwise the row is `running` with
     // no worker attached and stays stuck forever.
     const hasDevice = !!session.deviceId;
+    // ISS-101 — rerun spawns a fresh interactive session with its own run.
+    const rerunRun = await openOneShotRun({
+      projectId: session.projectId,
+      kind: 'interactive',
+    });
     const { inserted, seedSync } = await db.transaction(async (tx) => {
       const [row] = await tx
         .insert(agentSessions)
@@ -1960,6 +1993,7 @@ agentSessionRoutes.post(
           projectId: session.projectId,
           userId: session.userId ?? userId,
           deviceId: session.deviceId,
+          pipelineRunId: rerunRun.id,
           title: session.title ? `${session.title} (rerun)` : null,
           status: hasDevice ? 'running' : 'queued',
           startedAt: hasDevice ? nowDate : null,

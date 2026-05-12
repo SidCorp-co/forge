@@ -39,6 +39,19 @@ vi.mock('../observability/sentry.js', () => ({
   Sentry: { captureException: vi.fn() },
 }));
 
+// ISS-101 — sweeper opens an issue pipeline_run before inserting the fallback
+// job. Short-circuit the helper so the existing single-insert mock keeps
+// matching the jobs row.
+vi.mock('../pipeline/runs.js', () => ({
+  openIssueRun: vi.fn().mockResolvedValue({ id: 'run-1', startedAt: new Date() }),
+  openOneShotRun: vi.fn().mockResolvedValue({ id: 'run-1' }),
+  closeRun: vi.fn().mockResolvedValue(undefined),
+  closeRunIfOneShot: vi.fn().mockResolvedValue(undefined),
+  closeOpenRunForIssue: vi.fn().mockResolvedValue(undefined),
+  setCurrentStep: vi.fn().mockResolvedValue(undefined),
+  setCurrentStepForOpenIssueRun: vi.fn().mockResolvedValue(undefined),
+}));
+
 const { runPmEscalationSweep } = await import('./escalation-sweeper.js');
 
 const PROJECT_ID = '00000000-0000-4000-8000-000000000001';

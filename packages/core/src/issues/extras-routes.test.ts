@@ -59,6 +59,18 @@ vi.mock('../jobs/dispatch-tick.js', () => ({
   dispatchTickForProject: vi.fn(),
 }));
 
+// ISS-101 — stub run lifecycle helpers so enrich/pipeline-step routes don't
+// need to model the extra pipeline_runs SELECT/INSERT in the db mock.
+vi.mock('../pipeline/runs.js', () => ({
+  openIssueRun: vi.fn(async () => ({ id: 'run-1', startedAt: new Date() })),
+  openOneShotRun: vi.fn(async () => ({ id: 'run-1' })),
+  closeRun: vi.fn(async () => undefined),
+  closeRunIfOneShot: vi.fn(async () => undefined),
+  closeOpenRunForIssue: vi.fn(async () => undefined),
+  setCurrentStep: vi.fn(async () => undefined),
+  setCurrentStepForOpenIssueRun: vi.fn(async () => undefined),
+}));
+
 const { issueExtrasRoutes } = await import('./extras-routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');

@@ -335,6 +335,58 @@ export type JobType = (typeof jobTypes)[number];
 export const modelTiers = ['haiku', 'sonnet', 'opus'] as const;
 export type ModelTier = (typeof modelTiers)[number];
 
+// ISS-101 — pipeline_runs groups every job/agent_session of a single
+// pipeline walk. Picker orders by `(priority, run.started_at, queued_at)`
+// so all jobs of the oldest run drain before a newer same-priority run.
+// `kind` discriminates issue-driven pipelines from one-shot PM jobs and
+// interactive chat sessions (both keep `issueId` NULL so the NOT NULL FK
+// on `jobs`/`agent_sessions` always has a row to point at).
+// 'system' covers one-shot project-scoped jobs without an issueId — schedule
+// runs, skill pushes, MCP/CLI custom jobs. Kept distinct from 'pm' (PM
+// coordinator) so reviews of pipeline_runs.kind aren't ambiguous.
+export const pipelineRunKinds = ['issue', 'pm', 'interactive', 'system'] as const;
+export type PipelineRunKind = (typeof pipelineRunKinds)[number];
+
+export const pipelineRunStatuses = [
+  'running',
+  'paused',
+  'completed',
+  'failed',
+  'cancelled',
+] as const;
+export type PipelineRunStatus = (typeof pipelineRunStatuses)[number];
+
+export const pipelineRuns = pgTable(
+  'pipeline_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    issueId: uuid('issue_id').references((): AnyPgColumn => issues.id, {
+      onDelete: 'cascade',
+    }),
+    kind: text('kind', { enum: pipelineRunKinds }).notNull().default('issue'),
+    status: text('status', { enum: pipelineRunStatuses }).notNull().default('running'),
+    currentStep: text('current_step'),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+    metadata: jsonb('metadata').notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectStatusIdx: index('pipeline_runs_project_status_idx').on(t.projectId, t.status),
+    issueIdx: index('pipeline_runs_issue_idx').on(t.issueId),
+    projectStartedAtIdx: index('pipeline_runs_started_at_idx').on(t.projectId, t.startedAt),
+    // Mirror of the partial unique index in 0054 — at most one open issue-run
+    // per issue. Lets `openIssueRun` use INSERT ... ON CONFLICT DO NOTHING.
+    issueOpenUq: uniqueIndex('pipeline_runs_issue_open_uq')
+      .on(t.issueId)
+      .where(sql`kind = 'issue' AND status IN ('running','paused')`),
+  }),
+);
+
 export const jobs = pgTable(
   'jobs',
   {
@@ -343,6 +395,12 @@ export const jobs = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     issueId: uuid('issue_id').references((): AnyPgColumn => issues.id, { onDelete: 'set null' }),
+    // ISS-101 — every job belongs to a pipeline_run. Issue-driven jobs share
+    // the issue's run; PM jobs get a one-shot 'pm' run each. NOT NULL is
+    // enforced at the DB level by migration 0054.
+    pipelineRunId: uuid('pipeline_run_id')
+      .notNull()
+      .references(() => pipelineRuns.id, { onDelete: 'restrict' }),
     deviceId: uuid('device_id').references(() => devices.id, { onDelete: 'set null' }),
     // EPIC 2 (ISS-271): nullable runner FK. Dispatcher writes both deviceId
     // and runnerId for runnerFramework=on; only deviceId for legacy path.
@@ -396,6 +454,7 @@ export const jobs = pgTable(
     pmActiveUniqueIdx: uniqueIndex('jobs_pm_per_project_unique_idx')
       .on(t.projectId)
       .where(sql`type = 'pm' AND status IN ('queued','dispatched','running')`),
+    pipelineRunIdx: index('jobs_pipeline_run_idx').on(t.pipelineRunId),
   }),
 );
 
@@ -441,7 +500,18 @@ export const jobsRelations = relations(jobs, ({ one, many }) => ({
   device: one(devices, { fields: [jobs.deviceId], references: [devices.id] }),
   runner: one(runners, { fields: [jobs.runnerId], references: [runners.id] }),
   createdByUser: one(users, { fields: [jobs.createdBy], references: [users.id] }),
+  pipelineRun: one(pipelineRuns, {
+    fields: [jobs.pipelineRunId],
+    references: [pipelineRuns.id],
+  }),
   events: many(jobEvents),
+}));
+
+export const pipelineRunsRelations = relations(pipelineRuns, ({ one, many }) => ({
+  project: one(projects, { fields: [pipelineRuns.projectId], references: [projects.id] }),
+  issue: one(issues, { fields: [pipelineRuns.issueId], references: [issues.id] }),
+  jobs: many(jobs),
+  agentSessions: many(agentSessions),
 }));
 
 export const jobEventsRelations = relations(jobEvents, ({ one }) => ({
@@ -1361,6 +1431,12 @@ export const agentSessions = pgTable(
       .references(() => projects.id, { onDelete: 'cascade' }),
     userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
     deviceId: uuid('device_id').references(() => devices.id, { onDelete: 'set null' }),
+    // ISS-101 — every agent_session belongs to a pipeline_run. Pipeline jobs
+    // inherit the parent job's run; user-driven chat sessions get a one-shot
+    // 'interactive' run each. NOT NULL is enforced at the DB level by 0054.
+    pipelineRunId: uuid('pipeline_run_id')
+      .notNull()
+      .references(() => pipelineRuns.id, { onDelete: 'restrict' }),
     title: text('title'),
     status: text('status', { enum: agentSessionStatuses }).notNull().default('idle'),
     messages: jsonb('messages').notNull().default(sql`'[]'::jsonb`),
@@ -1392,6 +1468,7 @@ export const agentSessions = pgTable(
     userIdx: index('agent_sessions_user_idx').on(t.userId),
     statusHeartbeatIdx: index('agent_sessions_status_heartbeat_idx').on(t.status, t.lastHeartbeatAt),
     statusDispatchedIdx: index('agent_sessions_status_dispatched_idx').on(t.status, t.dispatchedAt),
+    pipelineRunIdx: index('agent_sessions_pipeline_run_idx').on(t.pipelineRunId),
   }),
 );
 
@@ -1399,6 +1476,10 @@ export const agentSessionsRelations = relations(agentSessions, ({ many, one }) =
   project: one(projects, { fields: [agentSessions.projectId], references: [projects.id] }),
   user: one(users, { fields: [agentSessions.userId], references: [users.id] }),
   device: one(devices, { fields: [agentSessions.deviceId], references: [devices.id] }),
+  pipelineRun: one(pipelineRuns, {
+    fields: [agentSessions.pipelineRunId],
+    references: [pipelineRuns.id],
+  }),
   turns: many(agentSessionTurns),
 }));
 

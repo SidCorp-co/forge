@@ -52,6 +52,14 @@ vi.mock('drizzle-orm', () => ({
   eq: () => ({ _sql: 'eq' }),
 }));
 
+// ISS-101 — agent-session-link now closes one-shot pipeline_runs on terminal
+// job lifecycles. Mock the runs helper so we can assert call shape without
+// dragging the real db.update chain through this test.
+const closeRunIfOneShotMock = vi.fn(async () => undefined);
+vi.mock('../pipeline/runs.js', () => ({
+  closeRunIfOneShot: (...args: unknown[]) => closeRunIfOneShotMock(...args),
+}));
+
 const publishMock = vi.fn();
 vi.mock('../ws/server.js', () => ({
   roomManager: { publish: (...args: unknown[]) => publishMock(...args) },
@@ -81,6 +89,8 @@ const baseJob = {
   status: 'dispatched',
   retryOf: null,
   agentSessionId: null,
+  // ISS-101 — every job now belongs to a pipeline_run (NOT NULL in the DB).
+  pipelineRunId: 'run-1',
 } as never;
 
 describe('jobs/agent-session-link', () => {
@@ -89,6 +99,7 @@ describe('jobs/agent-session-link', () => {
     updateCalls.length = 0;
     insertCalls.length = 0;
     publishMock.mockReset();
+    closeRunIfOneShotMock.mockClear();
   });
 
   describe('ensureAgentSessionForJob', () => {
@@ -132,6 +143,8 @@ describe('jobs/agent-session-link', () => {
       expect(inserted?.table).toBe('agent_sessions');
       expect(inserted?.values.projectId).toBe('proj-1');
       expect(inserted?.values.userId).toBe('user-1');
+      // ISS-101 — new session inherits parent job's pipeline_run so they share lifecycle.
+      expect(inserted?.values.pipelineRunId).toBe('run-1');
       // ISS-34: pipeline sessions enter `queued`; worker flips to running on claim.
       expect(inserted?.values.status).toBe('queued');
       expect(inserted?.values.dispatchedAt).toBeInstanceOf(Date);
@@ -174,28 +187,51 @@ describe('jobs/agent-session-link', () => {
   });
 
   describe('syncAgentSessionLifecycle', () => {
-    it('no-ops when the job has no linked session', async () => {
+    it('no-ops the session update when the job has no linked session', async () => {
       await syncAgentSessionLifecycle({ ...baseJob, agentSessionId: null } as never, 'done');
+      // No agent_sessions UPDATE — but the run still gets closed defensively
+      // so PM jobs that never spawn a session don't leak open one-shot runs.
       expect(updateCalls).toHaveLength(0);
       expect(publishMock).not.toHaveBeenCalled();
+      expect(closeRunIfOneShotMock).toHaveBeenCalledWith('run-1', 'completed');
     });
 
-    it('maps done → completed', async () => {
+    it('maps done → completed and closes one-shot pipeline_run', async () => {
       await syncAgentSessionLifecycle({ ...baseJob, agentSessionId: 'sess-1' } as never, 'done');
       expect(updateCalls[0]?.set.status).toBe('completed');
+      expect(closeRunIfOneShotMock).toHaveBeenCalledWith('run-1', 'completed');
     });
 
-    it('maps cancelled → completed (enum has no cancelled)', async () => {
+    it('maps cancelled → completed (enum has no cancelled); closes run as cancelled', async () => {
       await syncAgentSessionLifecycle(
         { ...baseJob, agentSessionId: 'sess-1' } as never,
         'cancelled',
       );
       expect(updateCalls[0]?.set.status).toBe('completed');
+      expect(closeRunIfOneShotMock).toHaveBeenCalledWith('run-1', 'cancelled');
     });
 
-    it('maps failed → failed', async () => {
+    it('maps failed → failed and closes one-shot run as failed', async () => {
       await syncAgentSessionLifecycle({ ...baseJob, agentSessionId: 'sess-1' } as never, 'failed');
       expect(updateCalls[0]?.set.status).toBe('failed');
+      expect(closeRunIfOneShotMock).toHaveBeenCalledWith('run-1', 'failed');
+    });
+
+    it('ISS-101: skips closeRun when retryPending so the retry can pick up the same run', async () => {
+      await syncAgentSessionLifecycle(
+        { ...baseJob, agentSessionId: 'sess-1' } as never,
+        'failed',
+        { retryPending: true },
+      );
+      expect(updateCalls[0]?.set.status).toBe('failed');
+      expect(closeRunIfOneShotMock).not.toHaveBeenCalled();
+    });
+
+    it('ISS-101: also skips closeRun when retryPending and job has no session', async () => {
+      await syncAgentSessionLifecycle({ ...baseJob, agentSessionId: null } as never, 'failed', {
+        retryPending: true,
+      });
+      expect(closeRunIfOneShotMock).not.toHaveBeenCalled();
     });
   });
 });

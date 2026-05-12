@@ -39,6 +39,18 @@ vi.mock('../../jobs/enqueue.js', () => ({
   enqueueJob: enqueueJobSpy,
 }));
 
+// ISS-101 — pipeline_run lookups are stubbed so the chainable db mock above
+// doesn't need to know about the SELECT/INSERT pair on `pipeline_runs`.
+vi.mock('../../pipeline/runs.js', () => ({
+  openIssueRun: vi.fn().mockResolvedValue({ id: 'run-1', startedAt: new Date() }),
+  openOneShotRun: vi.fn().mockResolvedValue({ id: 'run-1' }),
+  closeRun: vi.fn().mockResolvedValue(undefined),
+  closeRunIfOneShot: vi.fn().mockResolvedValue(undefined),
+  closeOpenRunForIssue: vi.fn().mockResolvedValue(undefined),
+  setCurrentStep: vi.fn().mockResolvedValue(undefined),
+  setCurrentStepForOpenIssueRun: vi.fn().mockResolvedValue(undefined),
+}));
+
 const { forgePmDispatchTool } = await import('./forge-pm-dispatch.js');
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';

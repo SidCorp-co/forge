@@ -16,6 +16,7 @@ import {
 import { enqueueJob } from '../jobs/enqueue.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { logger } from '../logger.js';
+import { openOneShotRun } from '../pipeline/runs.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -383,10 +384,18 @@ skillCrudRoutes.post(
     const results: Array<{ target: string; status: string; jobId: string | null; error?: string }> = [];
     for (const target of targets) {
       try {
+        // ISS-101 — skill push is a project-scoped one-shot job with no
+        // issueId; satisfy the NOT NULL FK via a 'system' run.
+        const run = await openOneShotRun({
+          projectId,
+          kind: 'system',
+          metadata: { source: 'skill.push', target },
+        });
         const [job] = await db
           .insert(jobs)
           .values({
             projectId,
+            pipelineRunId: run.id,
             createdBy: userId,
             type: 'custom',
             payload: {

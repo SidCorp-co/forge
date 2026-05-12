@@ -86,6 +86,9 @@ export async function scheduleRetry(job: JobRow, reason: string): Promise<RetryO
     .values({
       projectId: job.projectId,
       issueId: job.issueId,
+      // ISS-101 — retry belongs to the same pipeline_run as the original
+      // attempt. The run stays open across the retry chain.
+      pipelineRunId: job.pipelineRunId,
       createdBy: job.createdBy,
       type: job.type,
       payload: job.payload,

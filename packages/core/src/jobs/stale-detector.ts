@@ -22,6 +22,7 @@ type StaleJobRow = {
   device_id: string | null;
   model_tier: string | null;
   retry_of: string | null;
+  pipeline_run_id: string;
   cancellation_requested: boolean;
   queued_at: Date;
   dispatched_at: Date | null;
@@ -100,6 +101,7 @@ export async function runStaleSweep(): Promise<{
         maxAttempts: updatedRow.max_attempts,
         cancellationRequested: updatedRow.cancellation_requested,
         retryOf: updatedRow.retry_of,
+        pipelineRunId: updatedRow.pipeline_run_id,
         agentSessionId: null,
         // ISS-306: stale-detector flagged failures are transient by definition
         // (the runner went silent — almost always network / device crash, not

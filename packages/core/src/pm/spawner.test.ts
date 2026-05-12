@@ -15,6 +15,18 @@ vi.mock('../jobs/enqueue.js', () => ({
   enqueuePmJob: (...args: unknown[]) => enqueueMock(...(args as [string])),
 }));
 
+// ISS-101 — pipeline_runs lookups stubbed so the test's db mock doesn't have
+// to model the extra SELECT/INSERT against `pipeline_runs`.
+vi.mock('../pipeline/runs.js', () => ({
+  openIssueRun: vi.fn().mockResolvedValue({ id: 'run-1', startedAt: new Date() }),
+  openOneShotRun: vi.fn().mockResolvedValue({ id: 'run-1' }),
+  closeRun: vi.fn().mockResolvedValue(undefined),
+  closeRunIfOneShot: vi.fn().mockResolvedValue(undefined),
+  closeOpenRunForIssue: vi.fn().mockResolvedValue(undefined),
+  setCurrentStep: vi.fn().mockResolvedValue(undefined),
+  setCurrentStepForOpenIssueRun: vi.fn().mockResolvedValue(undefined),
+}));
+
 const { spawnPmSession } = await import('./spawner.js');
 
 type Row = Record<string, unknown>;

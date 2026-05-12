@@ -2,6 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
 import { hooks } from '../pipeline/hooks.js';
+import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
 import {
   REOPEN_CAP,
   canTransition,
@@ -10,6 +11,9 @@ import {
 } from '../pipeline/state-machine.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+
+/** Issue statuses that close out the pipeline_run (mirror of transition.ts). */
+const TERMINAL_RUN_STATUSES = new Set<IssueStatus>(['released', 'closed', 'pipeline_failed']);
 
 export type DeviceLite = { id: string; ownerId: string };
 
@@ -66,6 +70,15 @@ export async function applyStatusTransition(
     });
   if (!updated) {
     throw new Error('STALE_TRANSITION: issue status changed concurrently');
+  }
+
+  // ISS-101 — keep run timeline in sync with issue status, then close it on
+  // terminal entries. No-ops when no open run exists (e.g. an issue that
+  // transitions before any job is queued).
+  await setCurrentStepForOpenIssueRun(issue.id, toStatus);
+  if (TERMINAL_RUN_STATUSES.has(toStatus)) {
+    const outcome = toStatus === 'pipeline_failed' ? 'failed' : 'completed';
+    await closeOpenRunForIssue(issue.id, outcome);
   }
 
   await hooks.emit('transition', {

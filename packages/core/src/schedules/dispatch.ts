@@ -4,6 +4,7 @@ import { jobs, projects, runners, schedules } from '../db/schema.js';
 import { enqueueJob } from '../jobs/enqueue.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
+import { openOneShotRun } from '../pipeline/runs.js';
 
 export interface ScheduleRowForDispatch {
   id: string;
@@ -89,11 +90,19 @@ export async function dispatchScheduleRun(
     }
   }
 
+  // ISS-101 — schedule runs are project-scoped one-shots with no issueId;
+  // open a 'system' run to satisfy jobs.pipeline_run_id NOT NULL.
+  const run = await openOneShotRun({
+    projectId: resolvedProjectId,
+    kind: 'system',
+    metadata: { source: 'schedule.run', scheduleId: schedule.id },
+  });
   const [job] = await db
     .insert(jobs)
     .values({
       projectId: resolvedProjectId,
       createdBy,
+      pipelineRunId: run.id,
       type: 'custom',
       payload: {
         kind: 'schedule.run',
