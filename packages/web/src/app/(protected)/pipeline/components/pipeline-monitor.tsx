@@ -220,6 +220,13 @@ export function PipelineMonitor() {
               )}
               {paused ? 'Resume' : 'Pause'}
             </button>
+            <a
+              href="/pipeline/runs"
+              className="inline-flex items-center rounded-sm border border-outline-variant/40 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant transition-colors hover:bg-surface-container-high"
+              title="See runs grouped by pipeline_run"
+            >
+              View runs
+            </a>
           </div>
         </div>
         <div className="flex items-center gap-3 sm:gap-4 md:grid md:grid-cols-3 md:gap-8 text-right">
@@ -261,6 +268,12 @@ export function PipelineMonitor() {
               Pipeline Runs
             </h2>
             <div className="flex items-center gap-3">
+              <a
+                href="/pipeline/runs"
+                className="text-[10px] uppercase tracking-widest text-on-surface-variant hover:text-primary hover:underline"
+              >
+                View runs →
+              </a>
               <label className="flex items-center gap-1.5 text-[10px] text-on-surface-variant uppercase tracking-widest cursor-pointer">
                 <input
                   type="checkbox"

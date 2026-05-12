@@ -80,6 +80,10 @@ import { registerNotifyMentionsSubscriber } from './notifications/notify-mention
 import { notificationRoutes } from './notifications/routes.js';
 import { pipelineAnalyticsRoutes } from './pipeline/analytics-routes.js';
 import { pipelineRunRoutes } from './pipeline/runs-routes.js';
+import {
+  pipelineRunProjectRoutes,
+  pipelineRunReadRoutes,
+} from './pipeline/runs-read-routes.js';
 import { registerCiFixPatternLearner } from './pipeline/ci-fix-pattern-learn.js';
 import { hooks } from './pipeline/hooks.js';
 import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
@@ -287,7 +291,9 @@ app.route('/api/me', meAttentionRoutes);
 app.route('/api/agents', agentRoutes);
 app.route('/api/chat/sessions', chatSessionRoutes);
 app.route('/api/agent-sessions', agentSessionRoutes);
+app.route('/api/pipeline-runs', pipelineRunReadRoutes);
 app.route('/api/pipeline-runs', pipelineRunRoutes);
+app.route('/api/projects', pipelineRunProjectRoutes);
 app.route('/api/admin', adminRoutes);
 app.route('/api/admin/pipeline', pipelineHealthAdminRoutes);
 app.route('/api/devices', devicePublicRoutes);

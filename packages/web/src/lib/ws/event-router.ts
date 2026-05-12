@@ -74,6 +74,18 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
       }
       return;
     }
+    case 'pipeline_run.status_changed': {
+      qc.invalidateQueries({ queryKey: ['pipeline-runs', 'list'] });
+      if (data?.runId) {
+        qc.invalidateQueries({ queryKey: ['pipeline-run', data.runId] });
+      }
+      // Cancel cascade flips jobs + agent_sessions too — invalidate defensively.
+      if (data?.status === 'cancelled') {
+        qc.invalidateQueries({ queryKey: ['jobs'] });
+        qc.invalidateQueries({ queryKey: ['agent-sessions'] });
+      }
+      return;
+    }
     case 'device.statusChanged': {
       qc.invalidateQueries({ queryKey: ['admin', 'devices'] });
       return;
