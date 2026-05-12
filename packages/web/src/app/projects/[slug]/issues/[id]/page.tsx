@@ -26,6 +26,7 @@ import { InlineStatusSelect } from '@/components/issue/inline-status-select';
 import { InlinePrioritySelect } from '@/components/issue/inline-priority-select';
 import { InlineComplexitySelect } from '@/components/issue/inline-complexity-select';
 import { IssuePipelineActions } from '@/components/issue/issue-detail-modal/issue-pipeline-actions';
+import { IssuePipelineRunPanel } from '@/components/issue/issue-detail-modal/issue-pipeline-run-panel';
 import { IssueAgentSessions } from '@/components/issue/issue-detail-modal/issue-agent-sessions';
 import { IssueAttachments } from '@/components/issue/issue-detail-modal/issue-attachments';
 import { useMeProfile } from '@/features/me/hooks/use-me';
@@ -220,6 +221,12 @@ export default function IssueDetailPage() {
                 )}
                 <IssuePipelineActions issueId={issueId} status={issue.status} />
               </header>
+
+              <IssuePipelineRunPanel
+                issueId={issueId}
+                projectId={issue.projectId}
+                onSelectSession={(sid) => setSessionId(sid)}
+              />
 
               <IssueBlockedBanner issueId={issueId} />
 

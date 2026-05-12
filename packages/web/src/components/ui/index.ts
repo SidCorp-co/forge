@@ -22,4 +22,10 @@ export { StatusBadge } from './status-badge';
 export { StatusDot } from './status-dot';
 export { Switch } from './switch';
 export { Textarea } from './textarea';
+export { Timeline } from './timeline';
+export type {
+  TimelineProps,
+  TimelineStep,
+  TimelineStepStatus,
+} from './timeline';
 export { ToastContainer } from './toast-container';
