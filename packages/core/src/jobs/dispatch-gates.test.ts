@@ -271,4 +271,37 @@ describe('pickNextDispatchableJobForProject', () => {
     expect(runStartedIdx).toBeGreaterThan(priorityIdx);
     expect(queuedAtIdx).toBeGreaterThan(runStartedIdx);
   });
+
+  // ISS-102 defence-in-depth: pause/resume/cancel ride on the picker's
+  // `r.status = 'running'` filter. If a future refactor relaxes that to
+  // `r.status <> 'cancelled'` (or similar), paused runs would silently
+  // resume picking — exactly the bug ISS-102 must never let through.
+  it('only running pipeline_runs feed the picker — never paused/cancelled/failed/completed (ISS-102)', async () => {
+    dbExecute.mockResolvedValueOnce([]);
+    await pickNextDispatchableJobForProject('p1');
+    const sqlArg = dbExecute.mock.calls.at(-1)?.[0];
+    const fragments: string[] = [];
+    const visit = (node: unknown): void => {
+      if (typeof node === 'string') {
+        fragments.push(node);
+        return;
+      }
+      if (Array.isArray(node)) {
+        for (const child of node) visit(child);
+        return;
+      }
+      if (node && typeof node === 'object') {
+        const value = (node as { value?: unknown }).value;
+        if (typeof value === 'string') fragments.push(value);
+        else if (Array.isArray(value)) visit(value);
+        const chunks = (node as { queryChunks?: unknown }).queryChunks;
+        if (chunks) visit(chunks);
+      }
+    };
+    visit(sqlArg);
+    const joined = fragments.join(' ');
+    expect(joined).toMatch(/r\.status\s*=\s*'running'/);
+    expect(joined).not.toMatch(/r\.status\s*<>/);
+    expect(joined).not.toMatch(/r\.status\s+IN/i);
+  });
 });

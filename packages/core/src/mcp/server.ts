@@ -5,6 +5,13 @@ import {
   forgeAgentSessionsGetTool,
   forgeAgentSessionsListTool,
 } from './tools/forge-agent-sessions.js';
+import {
+  forgePipelineRunsCancelTool,
+  forgePipelineRunsGetTool,
+  forgePipelineRunsListTool,
+  forgePipelineRunsPauseTool,
+  forgePipelineRunsResumeTool,
+} from './tools/forge-pipeline-runs.js';
 import { forgeCommentsTool } from './tools/forge-comments.js';
 import { forgeConfigTool } from './tools/forge-config.js';
 import { forgeHealthTool } from './tools/forge-health.js';
@@ -49,6 +56,8 @@ import type { McpContext } from './tools/lib.js';
  *    over jobs + job_events (ISS-7).
  *  - `forge_agent_sessions.list` / `.get` — read-only access to
  *    `agent_sessions` rows (ISS-7).
+ *  - `forge_pipeline_runs.list` / `.get` / `.pause` / `.resume` / `.cancel` —
+ *    REST-paritied lifecycle controls for `pipeline_runs` (ISS-102).
  *  - `forge_projects.list` — enumerate projects visible to the device owner
  *    (ISS-7, pre-req for ISS-9).
  *  - `forge_health` — server snapshot: db/queue/ws + last seed + active jobs
@@ -71,6 +80,11 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeJobsEventsTool(device),
     forgeAgentSessionsListTool(device),
     forgeAgentSessionsGetTool(device),
+    forgePipelineRunsListTool(device),
+    forgePipelineRunsGetTool(device),
+    forgePipelineRunsPauseTool(device),
+    forgePipelineRunsResumeTool(device),
+    forgePipelineRunsCancelTool(device),
     forgeProjectsListTool(device),
     forgePmSnapshotTool(device),
     forgePmGraphTool(device),

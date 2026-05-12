@@ -147,18 +147,43 @@ describe('forge_pm.dispatch', () => {
     pushPmActorOk();
     queue.push([{ projectId: PROJECT_ID }]); // issue
     queue.push([{ id: JOB_ID }]); // jobs insert returning
+    queue.push([{ id: 'run-1', status: 'running' }]); // ISS-102 pipeline_run lookup
 
     const result = (await tool.handler({
       projectId: PROJECT_ID,
       issueId: ISSUE_ID,
       jobType: 'code',
       reason: 'rerun after fix',
-    })) as { ok: boolean; jobId: string; jobType: string };
+    })) as {
+      ok: boolean;
+      jobId: string;
+      jobType: string;
+      pipelineRun: { id: string; status: string } | null;
+    };
 
     expect(result.ok).toBe(true);
     expect(result.jobId).toBe(JOB_ID);
     expect(result.jobType).toBe('code');
     expect(enqueueJobSpy).toHaveBeenCalledWith(JOB_ID);
+    expect(result.pipelineRun).toEqual({ id: 'run-1', status: 'running' });
+  });
+
+  it('returns pipelineRun=null when the parent run vanished after dispatch', async () => {
+    const tool = forgePmDispatchTool(fakeDevice);
+    pushPmActorOk();
+    queue.push([{ projectId: PROJECT_ID }]);
+    queue.push([{ id: JOB_ID }]);
+    queue.push([]); // pipeline_runs lookup returns nothing — defensive path
+
+    const result = (await tool.handler({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      jobType: 'code',
+      reason: 'go',
+    })) as { ok: boolean; pipelineRun: unknown };
+
+    expect(result.ok).toBe(true);
+    expect(result.pipelineRun).toBeNull();
   });
 
   it('returns already_active on unique-violation', async () => {
