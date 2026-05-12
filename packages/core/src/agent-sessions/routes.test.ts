@@ -51,6 +51,19 @@ vi.mock('../pipeline/activity.js', () => ({
   safeRecordActivity: safeRecordActivitySpy,
 }));
 
+// ISS-101 — every interactive session insert now opens a pipeline_run first.
+// Stub the helper so we don't have to teach the chained db stub above to
+// model pipeline_runs SELECT/INSERT alongside agent_sessions.
+vi.mock('../pipeline/runs.js', () => ({
+  openIssueRun: vi.fn(async () => ({ id: 'run-1', startedAt: new Date() })),
+  openOneShotRun: vi.fn(async () => ({ id: 'run-1' })),
+  closeRun: vi.fn(async () => undefined),
+  closeRunIfOneShot: vi.fn(async () => undefined),
+  closeOpenRunForIssue: vi.fn(async () => undefined),
+  setCurrentStep: vi.fn(async () => undefined),
+  setCurrentStepForOpenIssueRun: vi.fn(async () => undefined),
+}));
+
 const { agentSessionRoutes } = await import('./routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');

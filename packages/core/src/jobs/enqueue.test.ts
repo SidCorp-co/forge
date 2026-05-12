@@ -13,6 +13,16 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
+vi.mock('../pipeline/runs.js', () => ({
+  openIssueRun: vi.fn().mockResolvedValue({ id: 'run-1', startedAt: new Date() }),
+  openOneShotRun: vi.fn().mockResolvedValue({ id: 'run-1' }),
+  closeRun: vi.fn().mockResolvedValue(undefined),
+  closeRunIfOneShot: vi.fn().mockResolvedValue(undefined),
+  closeOpenRunForIssue: vi.fn().mockResolvedValue(undefined),
+  setCurrentStep: vi.fn().mockResolvedValue(undefined),
+  setCurrentStepForOpenIssueRun: vi.fn().mockResolvedValue(undefined),
+}));
+
 const { enqueueJob, enqueuePmJob, createPmJob } = await import('./enqueue.js');
 const { JOB_QUEUE_NAME, PM_QUEUE_NAME } = await import('./queue-name.js');
 

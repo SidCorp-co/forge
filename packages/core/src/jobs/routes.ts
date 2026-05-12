@@ -9,6 +9,7 @@ import { paginationSchema, setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { openIssueRun, openOneShotRun } from '../pipeline/runs.js';
 import { enqueueJob } from './enqueue.js';
 
 const badRequest = (details: unknown) =>
@@ -87,11 +88,22 @@ jobProjectRoutes.post(
 
     if (input.issueId) await assertIssueInProject(projectId, input.issueId);
 
+    // ISS-101 — every job needs a pipeline_run. Issue-bound jobs attach to
+    // the issue's open run; project-only jobs get a one-shot 'system' run.
+    const run = input.issueId
+      ? await openIssueRun({ projectId, issueId: input.issueId })
+      : await openOneShotRun({
+          projectId,
+          kind: 'system',
+          metadata: { source: 'jobs.create', type: input.type },
+        });
+
     const [inserted] = await db
       .insert(jobs)
       .values({
         projectId,
         issueId: input.issueId ?? null,
+        pipelineRunId: run.id,
         createdBy: userId,
         type: input.type,
         payload: input.payload ?? {},

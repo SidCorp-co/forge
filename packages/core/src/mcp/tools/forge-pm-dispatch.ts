@@ -5,6 +5,7 @@ import { issues, jobTypes, jobs, modelTiers } from '../../db/schema.js';
 import { enqueueJob } from '../../jobs/enqueue.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
 import { logger } from '../../logger.js';
+import { openIssueRun } from '../../pipeline/runs.js';
 import { STATUS_TO_SKILL } from '../../pipeline/skill-mapping.js';
 import {
   type DeviceScopedMcpToolFactory,
@@ -73,6 +74,9 @@ export const forgePmDispatchTool: DeviceScopedMcpToolFactory = (device) => ({
       reason: input.reason,
     };
 
+    // ISS-101 — PM dispatch always targets an issue; attach to its open run.
+    const run = await openIssueRun({ projectId: input.projectId, issueId: input.issueId });
+
     let insertedId: string | null = null;
     try {
       const [inserted] = await db
@@ -80,6 +84,7 @@ export const forgePmDispatchTool: DeviceScopedMcpToolFactory = (device) => ({
         .values({
           projectId: input.projectId,
           issueId: input.issueId,
+          pipelineRunId: run.id,
           createdBy: device.ownerId,
           type: input.jobType,
           payload,

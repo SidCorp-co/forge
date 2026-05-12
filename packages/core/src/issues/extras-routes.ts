@@ -22,6 +22,7 @@ import { logger } from '../logger.js';
 import { recordActivityTx } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { ActiveJobConflictError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
+import { openIssueRun } from '../pipeline/runs.js';
 import {
   REOPEN_CAP,
   canTransition,
@@ -390,6 +391,9 @@ issueExtrasRoutes.post(
     const access = await loadProjectAccess(issue.projectId, userId);
     if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
 
+    // ISS-101 — enrich jobs run alongside the issue pipeline; attach to its open run.
+    const run = await openIssueRun({ projectId: issue.projectId, issueId: issue.id });
+
     let job: { id: string; status: string } | undefined;
     try {
       const [row] = await db
@@ -397,6 +401,7 @@ issueExtrasRoutes.post(
         .values({
           projectId: issue.projectId,
           issueId: issue.id,
+          pipelineRunId: run.id,
           createdBy: userId,
           type: 'custom',
           payload: { kind: 'enrich', issueId: issue.id },

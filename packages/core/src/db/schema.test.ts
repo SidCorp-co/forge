@@ -527,6 +527,7 @@ describe('db/schema — jobs', () => {
         'max_attempts',
         'model_tier',
         'payload',
+        'pipeline_run_id',
         'project_id',
         'queued_at',
         'retry_of',
@@ -545,9 +546,9 @@ describe('db/schema — jobs', () => {
     expect(id.columnType).toBe('PgUUID');
   });
 
-  it('project_id cascades, device_id/issue_id/retry_of/runner_id set null, created_by restricts', () => {
+  it('project_id cascades, device_id/issue_id/retry_of/runner_id set null, created_by restricts, pipeline_run_id restricts', () => {
     const cfg = getTableConfig(jobs);
-    expect(cfg.foreignKeys).toHaveLength(6);
+    expect(cfg.foreignKeys).toHaveLength(7);
     const byCol = new Map(
       cfg.foreignKeys.map((fk) => [fk.reference().columns[0]?.name ?? '', fk] as const),
     );
@@ -557,6 +558,7 @@ describe('db/schema — jobs', () => {
     expect(byCol.get('issue_id')?.onDelete).toBe('set null');
     expect(byCol.get('retry_of')?.onDelete).toBe('set null');
     expect(byCol.get('runner_id')?.onDelete).toBe('set null');
+    expect(byCol.get('pipeline_run_id')?.onDelete).toBe('restrict');
   });
 
   it('issue_id is nullable uuid referencing issues.id', () => {

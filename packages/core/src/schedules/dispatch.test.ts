@@ -33,6 +33,19 @@ vi.mock('../jobs/enqueue.js', () => ({
   enqueueJob: (...args: unknown[]) => enqueueMock(...args),
 }));
 
+// ISS-101 — schedule dispatch now opens a one-shot pipeline_run before
+// inserting the job. The test's insert mock only handles the jobs row, so
+// short-circuit the helper to avoid consuming the insertReturning queue.
+vi.mock('../pipeline/runs.js', () => ({
+  openIssueRun: vi.fn(async () => ({ id: 'mock-run-id', startedAt: new Date() })),
+  openOneShotRun: vi.fn(async () => ({ id: 'mock-run-id' })),
+  closeRun: vi.fn(async () => undefined),
+  closeRunIfOneShot: vi.fn(async () => undefined),
+  closeOpenRunForIssue: vi.fn(async () => undefined),
+  setCurrentStep: vi.fn(async () => undefined),
+  setCurrentStepForOpenIssueRun: vi.fn(async () => undefined),
+}));
+
 const { dispatchScheduleRun } = await import('./dispatch.js');
 const hooksModule = await import('../pipeline/hooks.js');
 

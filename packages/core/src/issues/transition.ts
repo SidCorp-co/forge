@@ -15,6 +15,7 @@ import {
 import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
+import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
 import {
   REOPEN_CAP,
   canTransition,
@@ -288,10 +289,19 @@ transitionRoutes.post(
       at: updated.updatedAt,
     });
 
+    // ISS-101 — stamp current_step on the issue's open run so the run timeline
+    // reflects status, then close the run on terminal transitions. The picker
+    // already filters `r.status = 'running'`, but closing here is defence in
+    // depth + needed for the analytics/UI views in follow-up issues.
+    await setCurrentStepForOpenIssueRun(issue.id, toStatus);
+
     // ISS-40 PR-E — when an issue reaches a terminal status it may unblock
     // children via Layer 2. Tick this project, plus every distinct child
     // project for cross-project blocking edges.
     if (TERMINAL_FOR_DISPATCH.has(toStatus)) {
+      const outcome =
+        toStatus === 'pipeline_failed' ? ('failed' as const) : ('completed' as const);
+      await closeOpenRunForIssue(issue.id, outcome);
       await triggerTerminalDispatch([
         {
           issueId: issue.id,

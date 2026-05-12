@@ -28,6 +28,7 @@ import { enqueueJob } from '../jobs/enqueue.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { indexMemory } from '../memory/indexer.js';
+import { openIssueRun } from '../pipeline/runs.js';
 import { Sentry } from '../observability/sentry.js';
 import { boss } from '../queue/boss.js';
 
@@ -182,6 +183,9 @@ async function executeDispatchFallback(
     reason: 'PM escalation expired; running PM-authored fallback action',
   };
 
+  // ISS-101 — escalation fallback is an issue-pipeline job; attach it to the
+  // issue's open run (creates one if missing).
+  const run = await openIssueRun({ projectId, issueId });
   let insertedId: string | null = null;
   try {
     const [inserted] = await db
@@ -189,6 +193,7 @@ async function executeDispatchFallback(
       .values({
         projectId,
         issueId,
+        pipelineRunId: run.id,
         createdBy: ownerId,
         type: jobType as never,
         payload,

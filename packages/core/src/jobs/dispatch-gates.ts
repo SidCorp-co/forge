@@ -271,8 +271,15 @@ type JobRow = typeof jobs.$inferSelect;
  * and not already covered by another active job for the same (issue,type).
  *
  * Ordering: priority DESC (critical>high>medium>low>none>null), then
- * `queued_at ASC`. Honoring priority is what lets the project-level tick
- * dispatch the highest-priority queued job first when a slot frees up.
+ * the parent `pipeline_run.started_at ASC` (run cohesion — ISS-101), then
+ * `queued_at ASC` as a final tiebreaker. Same-priority tier: every job of
+ * the oldest run drains before a newer run's first job gets dispatched.
+ * Higher priority on a newer run still preempts because the priority key
+ * is applied before the run-age key.
+ *
+ * Closed/cancelled runs are filtered via `r.status = 'running'` — defence
+ * in depth on top of the terminal-issue cascade that already moves jobs
+ * out of `queued`.
  */
 export async function pickNextDispatchableJobForProject(
   projectId: string,
@@ -281,9 +288,11 @@ export async function pickNextDispatchableJobForProject(
     SELECT j.*
     FROM jobs j
     LEFT JOIN issues i ON i.id = j.issue_id
+    JOIN pipeline_runs r ON r.id = j.pipeline_run_id
     WHERE j.project_id = ${projectId}
       AND j.status = 'queued'
       AND j.type <> 'pm'
+      AND r.status = 'running'
       AND NOT EXISTS (
         SELECT 1 FROM issue_dependencies d
         JOIN issues p ON p.id = d.from_issue_id
@@ -301,6 +310,7 @@ export async function pickNextDispatchableJobForProject(
         WHEN 'none'     THEN 4
         ELSE 5
       END,
+      r.started_at ASC,
       j.queued_at ASC
     LIMIT 1
   `);

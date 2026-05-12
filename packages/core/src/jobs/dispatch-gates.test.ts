@@ -224,4 +224,51 @@ describe('pickNextDispatchableJobForProject', () => {
     const r = await pickNextDispatchableJobForProject('p1');
     expect(r).toMatchObject({ id: 'j1' });
   });
+
+  // ISS-101 — cohesion. We can't easily run the SQL in a mocked unit test,
+  // but the picker's SQL must JOIN pipeline_runs, filter `r.status='running'`,
+  // and order by `r.started_at` before `j.queued_at`. Inspect the SQL chunk
+  // assembled by drizzle's sql tag so a regression on any of those three
+  // properties trips this test.
+  it('JOINs pipeline_runs, filters running, and orders by run.started_at then queued_at (cohesion)', async () => {
+    dbExecute.mockResolvedValueOnce([]);
+    await pickNextDispatchableJobForProject('p1');
+    // Drizzle's sql tag stores its raw source fragments on queryChunks. Walk
+    // the structure and collect every string literal we find so the assertion
+    // doesn't depend on the exact internal shape (which has shifted across
+    // drizzle versions).
+    const sqlArg = dbExecute.mock.calls.at(-1)?.[0];
+    const fragments: string[] = [];
+    const visit = (node: unknown): void => {
+      if (typeof node === 'string') {
+        fragments.push(node);
+        return;
+      }
+      if (Array.isArray(node)) {
+        for (const child of node) visit(child);
+        return;
+      }
+      if (node && typeof node === 'object') {
+        // StringChunk / Name / etc. expose their literal under `.value`.
+        const value = (node as { value?: unknown }).value;
+        if (typeof value === 'string') fragments.push(value);
+        else if (Array.isArray(value)) visit(value);
+        const chunks = (node as { queryChunks?: unknown }).queryChunks;
+        if (chunks) visit(chunks);
+      }
+    };
+    visit(sqlArg);
+    const joined = fragments.join(' ');
+    expect(joined).toMatch(/JOIN\s+pipeline_runs\s+r\s+ON\s+r\.id\s*=\s*j\.pipeline_run_id/);
+    expect(joined).toMatch(/r\.status\s*=\s*'running'/);
+    // run.started_at must come before queued_at in ORDER BY so cohesion wins
+    // same-priority ties (older run drains first), and priority CASE must
+    // come before run.started_at so higher-priority newer runs preempt.
+    const priorityIdx = joined.search(/CASE\s+COALESCE\(i\.priority/);
+    const runStartedIdx = joined.search(/r\.started_at\s+ASC/);
+    const queuedAtIdx = joined.search(/j\.queued_at\s+ASC/);
+    expect(priorityIdx).toBeGreaterThanOrEqual(0);
+    expect(runStartedIdx).toBeGreaterThan(priorityIdx);
+    expect(queuedAtIdx).toBeGreaterThan(runStartedIdx);
+  });
 });

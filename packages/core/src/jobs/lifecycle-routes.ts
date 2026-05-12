@@ -96,7 +96,11 @@ jobLifecycleDeviceRoutes.post(
 
     // Mirror lifecycle to the linked agent_session row so /pipeline + issue
     // detail tab reflect completion. Best-effort.
-    await syncAgentSessionLifecycle(updated, status);
+    // ISS-101 — pass retryPending so we leave the parent pipeline_run open
+    // when a retry has just been scheduled; the retry shares the same run.
+    await syncAgentSessionLifecycle(updated, status, {
+      retryPending: retry?.scheduled === true,
+    });
 
     roomManager.publish(projectRoom(updated.projectId), {
       event:
@@ -175,7 +179,9 @@ jobLifecycleDeviceRoutes.post(
 
     const retry = await scheduleRetry(updated, input.error);
 
-    await syncAgentSessionLifecycle(updated, 'failed');
+    await syncAgentSessionLifecycle(updated, 'failed', {
+      retryPending: retry?.scheduled === true,
+    });
 
     roomManager.publish(projectRoom(updated.projectId), {
       event: 'job.failed',

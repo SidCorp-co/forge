@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, issues, jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 
@@ -113,12 +114,15 @@ export async function ensureAgentSessionForJob(
     // Pipeline sessions enter `queued`; worker CAS flips to `running` on
     // first write (routes.ts PATCH/send). Separates "waiting for worker"
     // from "actually streaming" so the sweeper can distinguish zombies.
+    // ISS-101 — inherit the parent job's pipeline_run so issue-driven and
+    // PM sessions share the same run lifecycle as their job.
     const [inserted] = await db
       .insert(agentSessions)
       .values({
         projectId: job.projectId,
         userId: issueOwnerId,
         deviceId: job.deviceId,
+        pipelineRunId: job.pipelineRunId,
         title,
         status: 'queued',
         dispatchedAt: new Date(),
@@ -154,8 +158,22 @@ export async function ensureAgentSessionForJob(
 export async function syncAgentSessionLifecycle(
   job: JobRow,
   outcome: 'done' | 'failed' | 'cancelled',
+  options?: { retryPending?: boolean },
 ): Promise<void> {
-  if (!job.agentSessionId) return;
+  if (!job.agentSessionId) {
+    // ISS-101 — even without a linked session, close one-shot runs whose
+    // backing job terminated (e.g. PM jobs that never spawned a session).
+    if (!options?.retryPending) {
+      try {
+        const runOutcome =
+          outcome === 'cancelled' ? 'cancelled' : outcome === 'failed' ? 'failed' : 'completed';
+        await closeRunIfOneShot(job.pipelineRunId, runOutcome);
+      } catch (err) {
+        logger.warn({ err, jobId: job.id }, 'agent-session-link: close-run (no-session) failed');
+      }
+    }
+    return;
+  }
   try {
     // agent_sessions enum has no 'cancelled' — map to 'completed' so the row
     // leaves the running state. The job row keeps the precise terminal status.
@@ -168,6 +186,18 @@ export async function syncAgentSessionLifecycle(
       .set(updates)
       .where(eq(agentSessions.id, job.agentSessionId));
     broadcastSessionStatus(job.agentSessionId, job.projectId, job.deviceId, status);
+
+    // ISS-101 — close one-shot (pm/interactive) runs when their backing
+    // job terminates. Issue-kind runs are not touched here; the issue
+    // state-machine owns issue-run lifecycle. When a retry is scheduled
+    // (failed outcome + retry row created) we leave the run open so the
+    // retry job can be dispatched — the run-status filter in the picker
+    // would otherwise skip it. The caller signals this via `retryPending`.
+    if (!options?.retryPending) {
+      const runOutcome =
+        outcome === 'cancelled' ? 'cancelled' : outcome === 'failed' ? 'failed' : 'completed';
+      await closeRunIfOneShot(job.pipelineRunId, runOutcome);
+    }
   } catch (err) {
     logger.warn(
       { err, jobId: job.id, agentSessionId: job.agentSessionId },

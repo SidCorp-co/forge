@@ -2,6 +2,7 @@ import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
+import { closeRun, openOneShotRun } from '../pipeline/runs.js';
 import { boss } from '../queue/boss.js';
 import { JOB_QUEUE_NAME, PM_QUEUE_NAME } from './queue-name.js';
 
@@ -51,6 +52,10 @@ export type CreatePmJobResult = { jobId: string; deduped: false } | { deduped: t
  * cap that this enforces.
  */
 export async function createPmJob(input: CreatePmJobInput): Promise<CreatePmJobResult> {
+  // Open the one-shot run first so the job insert below can satisfy
+  // jobs.pipeline_run_id NOT NULL. On dedup or insert failure we close the
+  // run with 'cancelled' so we never leak open `kind='pm'` rows.
+  const run = await openOneShotRun({ projectId: input.projectId, kind: 'pm' });
   try {
     const [row] = await db
       .insert(jobs)
@@ -58,6 +63,7 @@ export async function createPmJob(input: CreatePmJobInput): Promise<CreatePmJobR
         projectId: input.projectId,
         createdBy: input.createdBy,
         issueId: input.issueId ?? null,
+        pipelineRunId: run.id,
         type: 'pm',
         payload: input.payload ?? {},
         status: 'queued',
@@ -75,8 +81,10 @@ export async function createPmJob(input: CreatePmJobInput): Promise<CreatePmJobR
         { projectId: input.projectId },
         'createPmJob: pm job already in-flight for project, dedup',
       );
+      await closeRun(run.id, 'cancelled');
       return { deduped: true };
     }
+    await closeRun(run.id, 'cancelled');
     throw err;
   }
 }

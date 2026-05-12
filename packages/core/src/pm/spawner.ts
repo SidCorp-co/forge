@@ -4,6 +4,7 @@ import { jobs, pmConfig, pmDecisions, projects } from '../db/schema.js';
 import { enqueuePmJob } from '../jobs/enqueue.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
+import { closeRun, openOneShotRun } from '../pipeline/runs.js';
 
 export type SpawnCause =
   | 'job-failed'
@@ -117,6 +118,9 @@ export async function spawnPmSession(
     customInstructions: config.customInstructions ?? null,
   };
 
+  // ISS-101 — one-shot pipeline_run per PM coordinator job. On dedup or insert
+  // failure we close the run so we never leak open `kind='pm'` rows.
+  const pmRun = await openOneShotRun({ projectId: input.projectId, kind: 'pm' });
   let jobId: string;
   try {
     const [row] = await db
@@ -124,6 +128,7 @@ export async function spawnPmSession(
       .values({
         projectId: input.projectId,
         issueId: null,
+        pipelineRunId: pmRun.id,
         createdBy,
         type: 'pm',
         payload,
@@ -134,8 +139,10 @@ export async function spawnPmSession(
     jobId = row.id;
   } catch (err) {
     if (isUniqueViolation(err)) {
+      await closeRun(pmRun.id, 'cancelled');
       return { ok: false, reason: 'already-active' };
     }
+    await closeRun(pmRun.id, 'cancelled');
     throw err;
   }
 

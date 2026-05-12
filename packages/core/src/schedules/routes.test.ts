@@ -36,6 +36,18 @@ vi.mock('../jobs/enqueue.js', () => ({
   enqueueJob: vi.fn(async () => undefined),
 }));
 
+// ISS-101 — stub run lifecycle helpers so schedule.run insert tests keep
+// using their existing single-insert mock plumbing.
+vi.mock('../pipeline/runs.js', () => ({
+  openIssueRun: vi.fn(async () => ({ id: 'run-1', startedAt: new Date() })),
+  openOneShotRun: vi.fn(async () => ({ id: 'run-1' })),
+  closeRun: vi.fn(async () => undefined),
+  closeRunIfOneShot: vi.fn(async () => undefined),
+  closeOpenRunForIssue: vi.fn(async () => undefined),
+  setCurrentStep: vi.fn(async () => undefined),
+  setCurrentStepForOpenIssueRun: vi.fn(async () => undefined),
+}));
+
 const { scheduleRoutes } = await import('./routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');

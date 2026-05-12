@@ -9,6 +9,7 @@ import {
   queryPreventivePatterns,
 } from './ci-fix-pattern-query.js';
 import type { HooksBus } from './hooks.js';
+import { openIssueRun, setCurrentStep } from './runs.js';
 import { resolveSkillForStatus } from './skill-mapping.js';
 
 const ACTIVE_JOB_STATUSES = ['queued', 'dispatched', 'running'] as const;
@@ -188,6 +189,8 @@ export async function triggerPipelineStepManual(args: {
     args.issueId,
   );
 
+  const run = await openIssueRun({ projectId: args.projectId, issueId: args.issueId });
+
   let insertedId: string | null = null;
   try {
     const [inserted] = await db
@@ -195,6 +198,7 @@ export async function triggerPipelineStepManual(args: {
       .values({
         projectId: args.projectId,
         issueId: args.issueId,
+        pipelineRunId: run.id,
         createdBy,
         type: skill.type,
         payload: { skillName: `forge-${skill.type}`, ...args.reason, preventiveContext },
@@ -212,6 +216,8 @@ export async function triggerPipelineStepManual(args: {
     throw err;
   }
   if (!insertedId) throw new Error('jobs: insert returned no row');
+
+  await setCurrentStep(run.id, skill.type);
 
   try {
     await enqueueJob(insertedId);
@@ -260,6 +266,8 @@ async function considerEnqueue(args: {
     args.issueId,
   );
 
+  const run = await openIssueRun({ projectId: args.projectId, issueId: args.issueId });
+
   let insertedId: string | null = null;
   try {
     const [inserted] = await db
@@ -267,6 +275,7 @@ async function considerEnqueue(args: {
       .values({
         projectId: args.projectId,
         issueId: args.issueId,
+        pipelineRunId: run.id,
         createdBy,
         type: skill.type,
         payload: {
@@ -289,6 +298,8 @@ async function considerEnqueue(args: {
     throw err;
   }
   if (!insertedId) return;
+
+  await setCurrentStep(run.id, skill.type);
 
   try {
     await enqueueJob(insertedId);
