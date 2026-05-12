@@ -19,6 +19,7 @@ out
 coverage
 playwright-report
 playwright/.cache
+.playwright-mcp/
 
 # OS
 .DS_Store
@@ -26,9 +27,7 @@ Thumbs.db
 *Zone.Identifier
 __pycache__
 *.pyc
-.claude/*
-!.claude/skills/
-.claude/worktrees/
+.claude/
 skills/*
 # IDE
 .idea
