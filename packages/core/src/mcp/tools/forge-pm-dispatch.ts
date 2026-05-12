@@ -1,7 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
-import { issues, jobTypes, jobs, modelTiers } from '../../db/schema.js';
+import { issues, jobTypes, jobs, modelTiers, pipelineRuns } from '../../db/schema.js';
 import { enqueueJob } from '../../jobs/enqueue.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
 import { logger } from '../../logger.js';
@@ -42,7 +42,7 @@ const inputSchema = z
 export const forgePmDispatchTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_pm.dispatch',
   description:
-    'PM agent enqueues a coder-skill job (triage/plan/code/review/test/fix/release) for an issue. Routes to the coder queue; idempotent against active duplicates via the jobs_active_unique index. Requires PM-actor capability.',
+    'PM agent enqueues a coder-skill job (triage/plan/code/review/test/fix/release) for an issue. Routes to the coder queue; idempotent against active duplicates via the jobs_active_unique index. Returns `pipelineRun: { id, status }` for the parent run so the caller can drive forge_pipeline_runs.* lifecycle controls. Requires PM-actor capability.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -121,6 +121,36 @@ export const forgePmDispatchTool: DeviceScopedMcpToolFactory = (device) => ({
       );
     }
 
-    return { ok: true, jobId: insertedId, jobType: input.jobType };
+    // ISS-102 — surface the parent pipeline_run so the caller (PM agent /
+    // automation) can pause/cancel through `forge_pipeline_runs.*` without a
+    // separate lookup. Best-effort: a missing run row is logged and reported
+    // as `null` rather than thrown — dispatch itself succeeded.
+    let pipelineRun: { id: string; status: string } | null = null;
+    try {
+      const [runRow] = await db
+        .select({ id: pipelineRuns.id, status: pipelineRuns.status })
+        .from(pipelineRuns)
+        .where(eq(pipelineRuns.id, run.id))
+        .limit(1);
+      pipelineRun = runRow ?? null;
+      if (!pipelineRun) {
+        logger.warn(
+          { runId: run.id, jobId: insertedId },
+          'forge_pm.dispatch: parent pipeline_run vanished between openIssueRun and SELECT',
+        );
+      }
+    } catch (err) {
+      logger.warn(
+        { err, runId: run.id, jobId: insertedId },
+        'forge_pm.dispatch: pipeline_run lookup failed; returning pipelineRun=null',
+      );
+    }
+
+    return {
+      ok: true,
+      jobId: insertedId,
+      jobType: input.jobType,
+      pipelineRun,
+    };
   },
 });
