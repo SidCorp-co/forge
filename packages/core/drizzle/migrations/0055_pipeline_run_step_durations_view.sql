@@ -18,7 +18,7 @@ SELECT
     (
       SELECT SUM(ur.estimated_cost)::float
       FROM usage_records ur
-      WHERE ur.session_id = j.agent_session_id
+      WHERE ur.session_id = j.agent_session_id::text
     ),
     0
   )                                                                          AS cost_usd
