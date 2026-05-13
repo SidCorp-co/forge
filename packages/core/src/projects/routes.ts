@@ -1,12 +1,14 @@
 import { randomBytes } from 'node:crypto';
 import { zValidator } from '@hono/zod-validator';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import {
   devices,
+  type IssueStatus,
+  issues,
   labels,
   projectDevices,
   projectMembers,
@@ -511,6 +513,75 @@ projectRoutes.patch(
           ...currentPipeline,
           ...(mergeDoc.pipelineConfig as object),
         };
+        // ISS-109 — validate `states` patch against three project-config
+        // invariants before persisting. Order matters: locked-on first so an
+        // operator who toggles `open` gets the clearest error.
+        const patchStates = (pipelinePatch as { states?: StagesConfig }).states;
+        if (patchStates) {
+          // Rule 1: `open` is locked-on; it bounds the issue lifecycle.
+          if (patchStates.open && patchStates.open.enabled === false) {
+            throw new HTTPException(400, {
+              message: 'open stage cannot be disabled',
+              cause: { code: 'OPEN_LOCKED_ON' },
+            });
+          }
+
+          // Rule 2: cannot disable a stage that has live issues sitting at
+          // it. Operator must drain (or transition) them first.
+          const stagesBeingDisabled = (
+            Object.entries(patchStates) as Array<[string, { enabled?: boolean } | undefined]>
+          )
+            .filter(([, v]) => v?.enabled === false)
+            .map(([stage]) => stage as IssueStatus);
+          if (stagesBeingDisabled.length > 0) {
+            const blocking = await db
+              .select({ id: issues.id, status: issues.status })
+              .from(issues)
+              .where(
+                and(eq(issues.projectId, id), inArray(issues.status, stagesBeingDisabled)),
+              );
+            if (blocking.length > 0) {
+              throw new HTTPException(409, {
+                message: 'cannot disable stages while issues are at those stages',
+                cause: {
+                  code: 'STAGE_HAS_ISSUES',
+                  blockingIssueIds: blocking.map((b) => b.id),
+                  stagesBlocked: Array.from(new Set(blocking.map((b) => b.status))),
+                },
+              });
+            }
+          }
+
+          // Rule 3: enabled + auto requires a registered skill — otherwise
+          // the orchestrator would silently skip dispatch for that stage.
+          const mergedStatesForRule3 = (nextPipeline as { states?: StagesConfig }).states ?? {};
+          const needRegistration = (
+            Object.entries(mergedStatesForRule3) as Array<
+              [string, { enabled?: boolean; mode?: 'auto' | 'manual' } | undefined]
+            >
+          )
+            .filter(([, v]) => v && v.enabled !== false && v.mode === 'auto')
+            .map(([stage]) => stage as IssueStatus);
+          if (needRegistration.length > 0) {
+            const regs = await db
+              .select({ stage: skillRegistrations.stage })
+              .from(skillRegistrations)
+              .where(
+                and(
+                  eq(skillRegistrations.projectId, id),
+                  inArray(skillRegistrations.stage, needRegistration),
+                ),
+              );
+            const have = new Set(regs.map((r) => r.stage));
+            const missing = needRegistration.filter((s) => !have.has(s));
+            if (missing.length > 0) {
+              throw new HTTPException(409, {
+                message: 'auto-mode stages require a registered skill',
+                cause: { code: 'AUTO_STAGE_NEEDS_SKILL', stagesMissingSkill: missing },
+              });
+            }
+          }
+        }
         // ISS-110 — reject configs whose disabled `states` would strand
         // issues. Run against the *merged* doc so a patch that only touches
         // one stage is still validated in the context of the existing config.

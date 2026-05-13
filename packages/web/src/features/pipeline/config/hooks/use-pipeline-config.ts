@@ -9,9 +9,18 @@ import type {
   PipelineConfigPatch,
   PipelineConfigResponse,
   RecoveryByKind,
+  StageConfig,
+  StageName,
+  StatesConfig,
   StepToggleValue,
 } from '../types';
-import { isStepEnabled, getStepRunner, getStepModel, buildStepToggle } from '../types';
+import {
+  isStepEnabled,
+  getStepRunner,
+  getStepModel,
+  buildStepToggle,
+  STAGE_NAMES,
+} from '../types';
 import { STEP_REGISTRY, type StepToggleKey } from '../step-registry';
 
 const pipelineConfigKey = (projectId: string | undefined) =>
@@ -26,10 +35,21 @@ interface StepFormValue {
 export interface PipelineConfigFormState {
   enabled: boolean;
   steps: Record<StepToggleKey, StepFormValue>;
+  states: Record<StageName, StageConfig>;
   recoveryMaxAttempts: number;
   recoveryWindowHours: number;
   recoveryByKind: { transient: number; permanent: number; unknown: number };
   runnerFallback: string[];
+}
+
+function defaultStatesForForm(): Record<StageName, StageConfig> {
+  return STAGE_NAMES.reduce(
+    (acc, s) => {
+      acc[s] = { enabled: true, mode: 'auto' };
+      return acc;
+    },
+    {} as Record<StageName, StageConfig>,
+  );
 }
 
 const FALLBACK_DEFAULTS: PipelineConfigFormState = {
@@ -41,6 +61,7 @@ const FALLBACK_DEFAULTS: PipelineConfigFormState = {
     },
     {} as Record<StepToggleKey, StepFormValue>,
   ),
+  states: defaultStatesForForm(),
   recoveryMaxAttempts: 3,
   recoveryWindowHours: 24,
   recoveryByKind: { transient: 5, permanent: 0, unknown: 2 },
@@ -62,9 +83,22 @@ function fromServer(data: PipelineConfigResponse): PipelineConfigFormState {
     {} as Record<StepToggleKey, StepFormValue>,
   );
   const byKind = (cfg.recoveryByFailureKind ?? {}) as RecoveryByKind;
+  const serverStates = (cfg.states ?? {}) as StatesConfig;
+  const states = STAGE_NAMES.reduce(
+    (acc, s) => {
+      const sc = serverStates[s];
+      acc[s] = {
+        enabled: sc?.enabled ?? true,
+        mode: sc?.mode ?? 'auto',
+      };
+      return acc;
+    },
+    {} as Record<StageName, StageConfig>,
+  );
   return {
     enabled: cfg.enabled ?? false,
     steps,
+    states,
     recoveryMaxAttempts: cfg.recoveryMaxAttempts ?? FALLBACK_DEFAULTS.recoveryMaxAttempts,
     recoveryWindowHours: cfg.recoveryWindowHours ?? FALLBACK_DEFAULTS.recoveryWindowHours,
     recoveryByKind: {
@@ -113,6 +147,21 @@ function buildPipelinePatch(
       unknown: k.unknown,
     };
   }
+
+  // ISS-109 — diff per-stage states; only emit the stages the user touched
+  // so the backend deep-merge preserves untouched stages on the on-disk doc.
+  const statesPatch: StatesConfig = {};
+  for (const stage of STAGE_NAMES) {
+    const cur = state.states[stage];
+    const orig = initial.states[stage];
+    if (cur.enabled !== orig.enabled || cur.mode !== orig.mode) {
+      statesPatch[stage] = { enabled: cur.enabled, mode: cur.mode };
+    }
+  }
+  if (Object.keys(statesPatch).length > 0) {
+    patch.states = statesPatch;
+  }
+
   return patch;
 }
 
@@ -127,6 +176,8 @@ export interface UsePipelineConfigResult {
   setStep: (key: StepToggleKey, value: StepFormValue) => void;
   /** Update a single recovery-by-kind cap. */
   setRecoveryByKind: (kind: keyof RecoveryByKind, value: number) => void;
+  /** Update a single stage's enabled/mode (ISS-109). */
+  setStage: (name: StageName, value: Partial<StageConfig>) => void;
   isLoading: boolean;
   isSaving: boolean;
   isDirty: boolean;
@@ -198,6 +249,13 @@ export function usePipelineConfig(
     }));
   };
 
+  const setStage = (name: StageName, value: Partial<StageConfig>) => {
+    setState((s) => ({
+      ...s,
+      states: { ...s.states, [name]: { ...s.states[name], ...value } },
+    }));
+  };
+
   const reset = () => setState(initial);
 
   const isDirty = useMemo(() => {
@@ -237,6 +295,7 @@ export function usePipelineConfig(
     setField,
     setStep,
     setRecoveryByKind,
+    setStage,
     isLoading: query.isLoading,
     isSaving: patchPipeline.isPending,
     isDirty,

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { skillApi } from '../api';
+import { skillApi, skillRegistrationApi } from '../api';
 import type { Skill } from '../types';
 
 export function useSkills(projectDocumentId?: string) {
@@ -115,6 +115,41 @@ export function useDeleteSkillOverride() {
       skillApi.deleteOverride(projectId, skillId),
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['skills-effective', vars.projectId] });
+    },
+  });
+}
+
+// ISS-109 — per-project skill ↔ stage bindings. Read on settings panel,
+// mutated by the row controls (dropdown change / clear button).
+const REGISTRATIONS_KEY = (projectId: string | undefined) =>
+  ['project', projectId, 'skill-registrations'] as const;
+
+export function useProjectSkillRegistrations(projectId: string | undefined) {
+  return useQuery({
+    queryKey: REGISTRATIONS_KEY(projectId),
+    queryFn: () => skillRegistrationApi.list(projectId as string),
+    enabled: !!projectId,
+  });
+}
+
+export function useRegisterSkill(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ skillId, stage }: { skillId: string; stage: string | null }) =>
+      skillRegistrationApi.register(projectId, skillId, stage),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: REGISTRATIONS_KEY(projectId) });
+      queryClient.invalidateQueries({ queryKey: ['skill-sync-status'] });
+    },
+  });
+}
+
+export function useUnregisterSkillByStage(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (stage: string) => skillRegistrationApi.unregister(projectId, stage),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: REGISTRATIONS_KEY(projectId) });
     },
   });
 }

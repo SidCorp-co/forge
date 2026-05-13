@@ -69,3 +69,33 @@ export const skillApi = {
       { method: 'DELETE' },
     ),
 };
+
+// ISS-109 — per-project skill-registration CRUD (bind a skill to a stage,
+// list current bindings, clear a stage binding).
+export interface SkillRegistration {
+  stage: string;
+  skillId: string;
+  skillName: string;
+  skillScope: 'global' | 'project';
+  registeredBy: string;
+  createdAt: string;
+}
+
+export const skillRegistrationApi = {
+  list: (projectId: string) =>
+    apiClient<{ registrations: SkillRegistration[] }>(
+      `/projects/${encodeURIComponent(projectId)}/skill-registrations`,
+    ),
+
+  register: (projectId: string, skillId: string, stage: string | null) =>
+    apiClient<{ projectId: string; skillId: string; stage: string | null }>(
+      `/projects/${encodeURIComponent(projectId)}/skills/${encodeURIComponent(skillId)}/register`,
+      { method: 'POST', body: JSON.stringify({ stage }) },
+    ),
+
+  unregister: (projectId: string, stage: string) =>
+    apiClient<{ deleted: boolean; stage: string }>(
+      `/projects/${encodeURIComponent(projectId)}/skills/registrations/${encodeURIComponent(stage)}`,
+      { method: 'DELETE' },
+    ),
+};

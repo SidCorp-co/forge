@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { issueStatuses, projectMembers, projects, skills } from '../db/schema.js';
+import { issueStatuses, projectMembers, projects, skillRegistrations, skills } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -13,6 +13,7 @@ import { computeSkillDiff } from './sync.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
 const skillParamSchema = z.object({ projectId: z.uuid(), skillId: z.uuid() });
+const stageParamSchema = z.object({ projectId: z.uuid(), stage: z.enum(issueStatuses) });
 
 const syncManifestSchema = z.object({
   name: z.string().trim().min(1).max(128),
@@ -227,5 +228,87 @@ skillRegisterRoutes.post(
       actorUserId: userId,
     });
     return c.json(result);
+  },
+);
+
+// ISS-109 — list current per-stage skill bindings for a project. Read access
+// is project membership (mirrors the GET /pipeline-config rule); the skill
+// registrations themselves contain no privileged data.
+skillRegisterRoutes.use(
+  '/:projectId/skill-registrations',
+  requireAuth(),
+  assertEmailVerified(),
+);
+skillRegisterRoutes.get(
+  '/:projectId/skill-registrations',
+  zValidator('param', projectParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { projectId } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const ctx = await loadCallerRole(projectId, userId);
+    if (!ctx) throw notFound('NOT_FOUND', 'project not found');
+    if (ctx.ownerId !== userId && ctx.role === null) {
+      throw forbidden('not a project member');
+    }
+
+    const rows = await db
+      .select({
+        stage: skillRegistrations.stage,
+        skillId: skillRegistrations.skillId,
+        skillName: skills.name,
+        skillScope: skills.scope,
+        registeredBy: skillRegistrations.registeredBy,
+        createdAt: skillRegistrations.createdAt,
+      })
+      .from(skillRegistrations)
+      .innerJoin(skills, eq(skills.id, skillRegistrations.skillId))
+      .where(eq(skillRegistrations.projectId, projectId));
+    return c.json({ registrations: rows });
+  },
+);
+
+// ISS-109 — clear the skill binding for a single stage by stage key, without
+// the caller having to remember which skill is currently registered. Reuses
+// `registerSkillForProject({ stage: null })` so the hook side-effect fires
+// once with the correct skillId.
+skillRegisterRoutes.use(
+  '/:projectId/skills/registrations/:stage',
+  requireAuth(),
+  assertEmailVerified(),
+);
+skillRegisterRoutes.delete(
+  '/:projectId/skills/registrations/:stage',
+  zValidator('param', stageParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { projectId, stage } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const ctx = await loadCallerRole(projectId, userId);
+    if (!ctx) throw notFound('NOT_FOUND', 'project not found');
+    const isOwner = ctx.role === 'owner' || ctx.ownerId === userId;
+    const isAdmin = ctx.role === 'admin';
+    if (!isOwner && !isAdmin) throw forbidden('requires owner or admin');
+
+    const [row] = await db
+      .select({ skillId: skillRegistrations.skillId })
+      .from(skillRegistrations)
+      .where(
+        and(eq(skillRegistrations.projectId, projectId), eq(skillRegistrations.stage, stage)),
+      )
+      .limit(1);
+    if (!row) return c.json({ deleted: false, stage });
+
+    await registerSkillForProject({
+      projectId,
+      skillId: row.skillId,
+      stage: null,
+      actorUserId: userId,
+    });
+    return c.json({ deleted: true, stage });
   },
 );
