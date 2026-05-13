@@ -25,22 +25,82 @@ export async function runPmQueuePressureSweepOnce(): Promise<string[]> {
     GROUP BY project_id
     HAVING count(*) > ${QUEUE_PRESSURE_THRESHOLD}
   `);
-  const fired: string[] = [];
   // drizzle-orm's `db.execute` shape varies across drivers — handle both
   // `{ rows }` (pg) and direct array results so tests and prod align.
   const rows: Array<{ project_id: string; queued: number }> = Array.isArray(result)
     ? (result as Array<{ project_id: string; queued: number }>)
     : ((result as { rows?: Array<{ project_id: string; queued: number }> }).rows ?? []);
+
+  // ISS-104 — enrich the PM session eventRef with in-flight run pressure so
+  // the PM agent can reason about pipeline depth, not just queue backlog. A
+  // separate query keeps the existing pressure SQL untouched.
+  const pressureByProject = await loadInFlightRunPressure();
+
+  const fired: string[] = [];
   for (const r of rows) {
+    const pressure = pressureByProject.get(r.project_id) ?? {
+      inFlightRuns: 0,
+      oldestRunAgeSeconds: 0,
+    };
     const out = await spawnPmSession({
       projectId: r.project_id,
       cause: 'queue-pressure',
-      eventRef: { queued: r.queued, threshold: QUEUE_PRESSURE_THRESHOLD },
+      eventRef: {
+        queued: r.queued,
+        threshold: QUEUE_PRESSURE_THRESHOLD,
+        inFlightRuns: pressure.inFlightRuns,
+        oldestRunAgeSeconds: pressure.oldestRunAgeSeconds,
+      },
     });
     if (out.ok) fired.push(r.project_id);
   }
   if (fired.length > 0) logger.info({ projectIds: fired }, 'pm.queue-pressure: fired');
   return fired;
+}
+
+async function loadInFlightRunPressure(): Promise<
+  Map<string, { inFlightRuns: number; oldestRunAgeSeconds: number }>
+> {
+  const result = await db.execute<{
+    project_id: string;
+    in_flight_runs: number;
+    oldest_run_age_seconds: number;
+  }>(sql`
+    SELECT
+      project_id,
+      count(*)::int AS in_flight_runs,
+      COALESCE(EXTRACT(EPOCH FROM (now() - min(started_at)))::int, 0)
+        AS oldest_run_age_seconds
+    FROM pipeline_runs
+    WHERE status IN ('running','paused')
+      AND finished_at IS NULL
+    GROUP BY project_id
+  `);
+  const rows: Array<{
+    project_id: string;
+    in_flight_runs: number;
+    oldest_run_age_seconds: number;
+  }> = Array.isArray(result)
+    ? (result as Array<{
+        project_id: string;
+        in_flight_runs: number;
+        oldest_run_age_seconds: number;
+      }>)
+    : ((result as {
+        rows?: Array<{
+          project_id: string;
+          in_flight_runs: number;
+          oldest_run_age_seconds: number;
+        }>;
+      }).rows ?? []);
+  const map = new Map<string, { inFlightRuns: number; oldestRunAgeSeconds: number }>();
+  for (const r of rows) {
+    map.set(r.project_id, {
+      inFlightRuns: Number(r.in_flight_runs),
+      oldestRunAgeSeconds: Number(r.oldest_run_age_seconds),
+    });
+  }
+  return map;
 }
 
 export async function registerPmQueuePressureSweeper(): Promise<void> {

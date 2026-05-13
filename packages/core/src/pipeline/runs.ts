@@ -9,7 +9,12 @@
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type PipelineRunKind, pipelineRuns } from '../db/schema.js';
+import {
+  type PipelineRunKind,
+  type PipelineRunStatus,
+  pipelineRuns,
+} from '../db/schema.js';
+import { hooks } from './hooks.js';
 
 export type OpenIssueRun = { id: string; startedAt: Date };
 
@@ -44,7 +49,18 @@ export async function openIssueRun(args: {
     })
     .returning({ id: pipelineRuns.id, startedAt: pipelineRuns.startedAt });
 
-  if (inserted[0]) return inserted[0];
+  if (inserted[0]) {
+    await hooks.emit('pipelineRunStatusChanged', {
+      runId: inserted[0].id,
+      projectId: args.projectId,
+      issueId: args.issueId,
+      kind: 'issue',
+      fromStatus: null,
+      toStatus: 'running',
+      currentStep: null,
+    });
+    return inserted[0];
+  }
 
   const winner = await selectOpenIssueRun(args.issueId);
   if (!winner) throw new Error('openIssueRun: no row after ON CONFLICT DO NOTHING');
@@ -92,6 +108,15 @@ export async function openOneShotRun(args: {
     })
     .returning({ id: pipelineRuns.id });
   if (!row) throw new Error('openOneShotRun: insert returned no row');
+  await hooks.emit('pipelineRunStatusChanged', {
+    runId: row.id,
+    projectId: args.projectId,
+    issueId: null,
+    kind: args.kind,
+    fromStatus: null,
+    toStatus: 'running',
+    currentStep: null,
+  });
   return row;
 }
 
@@ -118,12 +143,20 @@ export async function closeRun(
   runId: string,
   outcome: 'completed' | 'failed' | 'cancelled',
 ): Promise<void> {
-  await db
+  const rows = await db
     .update(pipelineRuns)
     .set({ status: outcome, finishedAt: new Date(), updatedAt: new Date() })
     .where(
       and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])),
-    );
+    )
+    .returning({
+      id: pipelineRuns.id,
+      projectId: pipelineRuns.projectId,
+      issueId: pipelineRuns.issueId,
+      kind: pipelineRuns.kind,
+      currentStep: pipelineRuns.currentStep,
+    });
+  await emitCloseHook(rows, outcome);
 }
 
 /**
@@ -162,7 +195,7 @@ export async function closeRunIfOneShot(
   runId: string,
   outcome: 'completed' | 'failed' | 'cancelled',
 ): Promise<void> {
-  await db
+  const rows = await db
     .update(pipelineRuns)
     .set({ status: outcome, finishedAt: new Date(), updatedAt: new Date() })
     .where(
@@ -171,7 +204,15 @@ export async function closeRunIfOneShot(
         inArray(pipelineRuns.kind, ['pm', 'interactive', 'system']),
         inArray(pipelineRuns.status, ['running', 'paused']),
       ),
-    );
+    )
+    .returning({
+      id: pipelineRuns.id,
+      projectId: pipelineRuns.projectId,
+      issueId: pipelineRuns.issueId,
+      kind: pipelineRuns.kind,
+      currentStep: pipelineRuns.currentStep,
+    });
+  await emitCloseHook(rows, outcome);
 }
 
 /**
@@ -184,7 +225,7 @@ export async function closeOpenRunForIssue(
   issueId: string,
   outcome: 'completed' | 'failed' | 'cancelled',
 ): Promise<void> {
-  await db
+  const rows = await db
     .update(pipelineRuns)
     .set({ status: outcome, finishedAt: new Date(), updatedAt: new Date() })
     .where(
@@ -193,5 +234,44 @@ export async function closeOpenRunForIssue(
         eq(pipelineRuns.issueId, issueId),
         inArray(pipelineRuns.status, ['running', 'paused']),
       ),
-    );
+    )
+    .returning({
+      id: pipelineRuns.id,
+      projectId: pipelineRuns.projectId,
+      issueId: pipelineRuns.issueId,
+      kind: pipelineRuns.kind,
+      currentStep: pipelineRuns.currentStep,
+    });
+  await emitCloseHook(rows, outcome);
+}
+
+type CloseReturning = {
+  id: string;
+  projectId: string;
+  issueId: string | null;
+  kind: PipelineRunKind;
+  currentStep: string | null;
+};
+
+// Emit `pipelineRunStatusChanged` per row the close actually updated.
+// `fromStatus` is recorded as 'running' — the close UPDATE is gated on
+// status IN ('running','paused') and the paused→terminal case is rare
+// enough that recording the precise prior status would require an extra
+// round-trip; the breadcrumb data carries `currentStep` for context.
+async function emitCloseHook(
+  rows: CloseReturning[] | undefined,
+  toStatus: PipelineRunStatus,
+): Promise<void> {
+  if (!rows || rows.length === 0) return;
+  for (const r of rows) {
+    await hooks.emit('pipelineRunStatusChanged', {
+      runId: r.id,
+      projectId: r.projectId,
+      issueId: r.issueId,
+      kind: r.kind,
+      fromStatus: 'running',
+      toStatus,
+      currentStep: r.currentStep,
+    });
+  }
 }

@@ -4,7 +4,14 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { activityLog, issues, projectMembers, projects, users } from '../db/schema.js';
+import {
+  activityLog,
+  issues,
+  jobTypes,
+  projectMembers,
+  projects,
+  users,
+} from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
 const badRequest = (details: unknown) =>
@@ -17,6 +24,12 @@ const querySchema = z.object({
 
 const cycleTimeQuerySchema = z.object({
   projectId: z.uuid().optional(),
+});
+
+const stepDurationsQuerySchema = z.object({
+  days: z.coerce.number().int().min(1).max(90).optional().default(30),
+  projectId: z.uuid().optional(),
+  step: z.enum(jobTypes).optional(),
 });
 
 async function loadVisibleProjectIds(userId: string, scopedTo?: string): Promise<string[]> {
@@ -146,6 +159,62 @@ pipelineAnalyticsRoutes.get(
         n: Number(r.n),
       }),
     );
+    return c.json(out);
+  },
+);
+
+/**
+ * ISS-104 — per-step pipeline durations. Sourced from the
+ * `pipeline_run_step_durations` view (migration 0055), one row per
+ * completed job under a pipeline_run. `issueId` is null for runs of kind
+ * `pm`/`interactive`/`system`. Capped at 1000 rows so a careless caller
+ * can't dump the whole window into a single response.
+ */
+pipelineAnalyticsRoutes.get(
+  '/step-durations',
+  zValidator('query', stepDurationsQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { days, projectId, step } = c.req.valid('query');
+    const userId = c.get('userId');
+
+    const projectIds = await loadVisibleProjectIds(userId, projectId);
+    if (projectIds.length === 0) return c.json([]);
+
+    const stepFilter = step ? sql`AND step = ${step}` : sql``;
+    const rows = await db.execute(sql`
+      SELECT run_id, issue_id, project_id, step, started_at, finished_at,
+             duration_seconds, cost_usd
+      FROM pipeline_run_step_durations
+      WHERE project_id IN ${projectIds}
+        AND started_at >= now() - (${days}::int * interval '1 day')
+        ${stepFilter}
+      ORDER BY started_at DESC
+      LIMIT 1000
+    `);
+
+    const out = (
+      rows as unknown as Array<{
+        run_id: string;
+        issue_id: string | null;
+        project_id: string;
+        step: string;
+        started_at: string;
+        finished_at: string;
+        duration_seconds: number;
+        cost_usd: number;
+      }>
+    ).map((r) => ({
+      runId: r.run_id,
+      issueId: r.issue_id,
+      projectId: r.project_id,
+      step: r.step,
+      startedAt: r.started_at,
+      finishedAt: r.finished_at,
+      durationSeconds: Number(r.duration_seconds),
+      costUsd: Number(r.cost_usd),
+    }));
     return c.json(out);
   },
 );

@@ -4,6 +4,10 @@
  * "what shape of write does each helper issue, under which preconditions?".
  * Heavy integration coverage (migration backfill, picker ordering against a
  * real DB) lives in dispatch-tick.test.ts and the migration smoke tests.
+ *
+ * ISS-104 — extended to assert that lifecycle helpers emit
+ * `pipelineRunStatusChanged` exactly when the underlying write produced a
+ * row.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,20 +17,34 @@ type InsertCall = {
   conflict?: { target?: unknown; where?: unknown };
   returningRows: Record<string, unknown>[];
 };
-type UpdateCall = { set: Record<string, unknown> };
+type UpdateCall = { set: Record<string, unknown>; returnedRows: Record<string, unknown>[] };
 
 const insertCalls: InsertCall[] = [];
 const updateCalls: UpdateCall[] = [];
-// Each `selectOpenIssueRun` is shaped as a chain ending in `.limit(...)`.
-// The queue holds one [row]-or-[] response per call.
 const selectResponses: Array<Record<string, unknown>[]> = [];
-// Toggle: should the next `.returning()` after onConflictDoNothing return
-// an empty array (i.e. the loser of an onConflict race)? Mirrors what
-// Postgres does on a real duplicate.
 let nextInsertReturnsEmpty = false;
+// Per-call queue of rows returned by `.returning()` on an UPDATE chain.
+// Defaults to a single canonical row so tests that don't care still pass.
+const nextUpdateReturning: Array<Record<string, unknown>[]> = [];
+
+const emitMock = vi.fn(async (..._args: unknown[]) => {});
+
+vi.mock('./hooks.js', () => ({
+  hooks: {
+    emit: (topic: unknown, payload: unknown) => emitMock(topic, payload),
+  },
+}));
 
 vi.mock('../db/schema.js', () => ({
-  pipelineRuns: { name: 'pipeline_runs' },
+  pipelineRuns: {
+    name: 'pipeline_runs',
+    id: 'id',
+    projectId: 'project_id',
+    issueId: 'issue_id',
+    kind: 'kind',
+    currentStep: 'current_step',
+    startedAt: 'started_at',
+  },
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -43,7 +61,7 @@ vi.mock('../db/client.js', () => ({
   db: {
     insert: () => {
       const call: InsertCall = { values: {}, returningRows: [] };
-      let captured: InsertCall = call;
+      const captured: InsertCall = call;
       const chain = {
         values(v: Record<string, unknown>) {
           captured.values = v;
@@ -54,7 +72,6 @@ vi.mock('../db/client.js', () => ({
           return chain;
         },
         returning(_cols?: unknown) {
-          // Resolve based on the global toggle.
           const rows = nextInsertReturnsEmpty
             ? []
             : [{ id: 'run-new', startedAt: new Date('2026-05-12T08:00:00Z') }];
@@ -66,11 +83,35 @@ vi.mock('../db/client.js', () => ({
       return chain;
     },
     update: () => {
+      let setCapture: Record<string, unknown> = {};
       const chain = {
         set(s: Record<string, unknown>) {
-          updateCalls.push({ set: s });
+          setCapture = s;
           return {
-            where: () => Promise.resolve(undefined),
+            where: () => {
+              // Record the UPDATE immediately so the no-`.returning()`
+              // callers (setCurrentStep) still produce an updateCalls entry.
+              const idx = updateCalls.length;
+              updateCalls.push({ set: setCapture, returnedRows: [] });
+              const p = Promise.resolve(undefined) as Promise<unknown> & {
+                returning: (cols?: unknown) => Promise<Record<string, unknown>[]>;
+              };
+              p.returning = (_cols?: unknown) => {
+                const rows = nextUpdateReturning.shift() ?? [
+                  {
+                    id: 'run-1',
+                    projectId: 'p-1',
+                    issueId: 'i-1',
+                    kind: 'issue',
+                    currentStep: 'plan',
+                  },
+                ];
+                const entry = updateCalls[idx];
+                if (entry) entry.returnedRows = rows;
+                return Promise.resolve(rows);
+              };
+              return p;
+            },
           };
         },
       };
@@ -100,7 +141,9 @@ beforeEach(() => {
   insertCalls.length = 0;
   updateCalls.length = 0;
   selectResponses.length = 0;
+  nextUpdateReturning.length = 0;
   nextInsertReturnsEmpty = false;
+  emitMock.mockClear();
 });
 
 describe('openIssueRun', () => {
@@ -109,10 +152,11 @@ describe('openIssueRun', () => {
     const r = await openIssueRun({ projectId: 'p-1', issueId: 'i-1' });
     expect(r.id).toBe('run-existing');
     expect(insertCalls).toHaveLength(0);
+    expect(emitMock).not.toHaveBeenCalled();
   });
 
   it('INSERTs with ON CONFLICT DO NOTHING + returning when no open run exists', async () => {
-    selectResponses.push([]); // first select — no existing run
+    selectResponses.push([]);
     const r = await openIssueRun({ projectId: 'p-1', issueId: 'i-1' });
     expect(r.id).toBe('run-new');
     expect(insertCalls).toHaveLength(1);
@@ -122,33 +166,43 @@ describe('openIssueRun', () => {
       kind: 'issue',
       status: 'running',
     });
-    // Must use the partial unique index as the conflict target so concurrent
-    // callers race safely.
     expect(insertCalls[0]?.conflict).toBeDefined();
+    expect(emitMock).toHaveBeenCalledTimes(1);
+    expect(emitMock).toHaveBeenCalledWith('pipelineRunStatusChanged', {
+      runId: 'run-new',
+      projectId: 'p-1',
+      issueId: 'i-1',
+      kind: 'issue',
+      fromStatus: null,
+      toStatus: 'running',
+      currentStep: null,
+    });
   });
 
-  it('re-selects on ON CONFLICT loss and returns the winner (race-safe)', async () => {
-    selectResponses.push([]); // initial select — no row
+  it('re-selects on ON CONFLICT loss and returns the winner (race-safe, no emit)', async () => {
+    selectResponses.push([]);
     selectResponses.push([
       { id: 'run-winner', startedAt: new Date('2026-05-12T07:00:00Z') },
-    ]); // post-conflict select returns winner
+    ]);
     nextInsertReturnsEmpty = true;
     const r = await openIssueRun({ projectId: 'p-1', issueId: 'i-1' });
     expect(r.id).toBe('run-winner');
+    expect(emitMock).not.toHaveBeenCalled();
   });
 
   it('throws when ON CONFLICT loses AND the winner cannot be re-selected (defensive)', async () => {
-    selectResponses.push([]); // initial select — no row
-    selectResponses.push([]); // post-conflict select — also empty (shouldn't happen)
+    selectResponses.push([]);
+    selectResponses.push([]);
     nextInsertReturnsEmpty = true;
     await expect(openIssueRun({ projectId: 'p-1', issueId: 'i-1' })).rejects.toThrow(
       /no row after ON CONFLICT DO NOTHING/,
     );
+    expect(emitMock).not.toHaveBeenCalled();
   });
 });
 
 describe('openOneShotRun', () => {
-  it('inserts a kind=pm run with issueId NULL and metadata', async () => {
+  it('inserts a kind=pm run with issueId NULL and metadata, emits hook', async () => {
     const r = await openOneShotRun({ projectId: 'p-1', kind: 'pm', metadata: { src: 'unit' } });
     expect(r.id).toBe('run-new');
     expect(insertCalls).toHaveLength(1);
@@ -158,6 +212,16 @@ describe('openOneShotRun', () => {
       kind: 'pm',
       status: 'running',
       metadata: { src: 'unit' },
+    });
+    expect(emitMock).toHaveBeenCalledTimes(1);
+    expect(emitMock).toHaveBeenCalledWith('pipelineRunStatusChanged', {
+      runId: 'run-new',
+      projectId: 'p-1',
+      issueId: null,
+      kind: 'pm',
+      fromStatus: null,
+      toStatus: 'running',
+      currentStep: null,
     });
   });
 
@@ -178,33 +242,82 @@ describe('setCurrentStep / setCurrentStepForOpenIssueRun', () => {
     expect(updateCalls).toHaveLength(1);
     expect(updateCalls[0]?.set.currentStep).toBe('plan');
     expect(updateCalls[0]?.set.updatedAt).toBeInstanceOf(Date);
+    expect(emitMock).not.toHaveBeenCalled();
   });
 
   it('setCurrentStepForOpenIssueRun issues an UPDATE filtered to running/paused issue runs', async () => {
     await setCurrentStepForOpenIssueRun('i-1', 'developed');
     expect(updateCalls).toHaveLength(1);
     expect(updateCalls[0]?.set.currentStep).toBe('developed');
+    expect(emitMock).not.toHaveBeenCalled();
   });
 });
 
 describe('closeRun / closeRunIfOneShot / closeOpenRunForIssue', () => {
-  it('closeRun stamps status, finishedAt, updatedAt', async () => {
+  it('closeRun stamps status, finishedAt, updatedAt and emits one hook per returned row', async () => {
+    nextUpdateReturning.push([
+      {
+        id: 'run-1',
+        projectId: 'p-1',
+        issueId: 'i-1',
+        kind: 'issue',
+        currentStep: 'code',
+      },
+    ]);
     await closeRun('run-1', 'completed');
-    expect(updateCalls[0]?.set).toMatchObject({ status: 'completed' });
-    expect(updateCalls[0]?.set.finishedAt).toBeInstanceOf(Date);
-    expect(updateCalls[0]?.set.updatedAt).toBeInstanceOf(Date);
+    const closeCall = updateCalls.find((c) => c.returnedRows.length > 0);
+    expect(closeCall?.set).toMatchObject({ status: 'completed' });
+    expect(closeCall?.set.finishedAt).toBeInstanceOf(Date);
+    expect(closeCall?.set.updatedAt).toBeInstanceOf(Date);
+    expect(emitMock).toHaveBeenCalledTimes(1);
+    expect(emitMock).toHaveBeenCalledWith('pipelineRunStatusChanged', {
+      runId: 'run-1',
+      projectId: 'p-1',
+      issueId: 'i-1',
+      kind: 'issue',
+      fromStatus: 'running',
+      toStatus: 'completed',
+      currentStep: 'code',
+    });
+  });
+
+  it('closeRun emits zero hooks when the UPDATE was a no-op (already-terminal row)', async () => {
+    nextUpdateReturning.push([]);
+    await closeRun('run-1', 'completed');
+    expect(emitMock).not.toHaveBeenCalled();
   });
 
   it('closeRunIfOneShot supports all three terminal outcomes', async () => {
-    await closeRunIfOneShot('run-1', 'completed');
-    await closeRunIfOneShot('run-1', 'failed');
-    await closeRunIfOneShot('run-1', 'cancelled');
-    expect(updateCalls.map((c) => c.set.status)).toEqual(['completed', 'failed', 'cancelled']);
+    nextUpdateReturning.push([
+      { id: 'r1', projectId: 'p-1', issueId: null, kind: 'pm', currentStep: null },
+    ]);
+    nextUpdateReturning.push([
+      { id: 'r1', projectId: 'p-1', issueId: null, kind: 'pm', currentStep: null },
+    ]);
+    nextUpdateReturning.push([
+      { id: 'r1', projectId: 'p-1', issueId: null, kind: 'pm', currentStep: null },
+    ]);
+    await closeRunIfOneShot('r1', 'completed');
+    await closeRunIfOneShot('r1', 'failed');
+    await closeRunIfOneShot('r1', 'cancelled');
+    const closes = updateCalls.filter((c) => c.returnedRows.length > 0);
+    expect(closes.map((c) => c.set.status)).toEqual(['completed', 'failed', 'cancelled']);
+    expect(emitMock).toHaveBeenCalledTimes(3);
   });
 
-  it('closeOpenRunForIssue closes by issueId for kind=issue runs', async () => {
+  it('closeOpenRunForIssue closes by issueId for kind=issue runs and emits', async () => {
+    nextUpdateReturning.push([
+      {
+        id: 'run-1',
+        projectId: 'p-1',
+        issueId: 'i-1',
+        kind: 'issue',
+        currentStep: null,
+      },
+    ]);
     await closeOpenRunForIssue('i-1', 'completed');
-    expect(updateCalls).toHaveLength(1);
-    expect(updateCalls[0]?.set.status).toBe('completed');
+    const closeCall = updateCalls.find((c) => c.returnedRows.length > 0);
+    expect(closeCall?.set.status).toBe('completed');
+    expect(emitMock).toHaveBeenCalledTimes(1);
   });
 });
