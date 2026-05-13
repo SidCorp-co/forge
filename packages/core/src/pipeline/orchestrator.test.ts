@@ -35,13 +35,21 @@ vi.mock('../jobs/enqueue.js', () => ({
 
 // ISS-110 — auto-skip helper invokes applyStatusTransition once per hop. Stub
 // it so unit tests can assert hop count + targets without modeling the full
-// status update path (DB UPDATE + WS broadcast + run timeline sync).
-const applyTransitionMock = vi.fn<(issue: unknown, toStatus: string, device: unknown) => Promise<void>>(
-  async () => undefined,
-);
+// status update path (DB UPDATE + WS broadcast + run timeline sync). The 4th
+// arg captures the options bag so we can assert `{ skip: true }` flows
+// through (without it, `canTransition` rejects `developed → testing` and the
+// chain hangs — see review blocker #1).
+const applyTransitionMock = vi.fn<
+  (issue: unknown, toStatus: string, device: unknown, options?: { skip?: boolean }) => Promise<void>
+>(async () => undefined);
 vi.mock('../issues/apply-transition.js', () => ({
   applyStatusTransition: (...a: unknown[]) =>
-    applyTransitionMock(a[0], a[1] as string, a[2]),
+    applyTransitionMock(
+      a[0],
+      a[1] as string,
+      a[2],
+      a[3] as { skip?: boolean } | undefined,
+    ),
 }));
 
 // ISS-110 — verify Sentry breadcrumb emission per skip hop.
@@ -341,6 +349,11 @@ describe('pipeline/orchestrator soft-skip (ISS-110)', () => {
 
     expect(applyTransitionMock).toHaveBeenCalledTimes(1);
     expect(applyTransitionMock.mock.calls[0]?.[1]).toBe('testing');
+    // Review blocker #1: the soft-skip path must pass `{ skip: true }` so the
+    // state-machine bypass kicks in. Without this, applyStatusTransition
+    // throws ILLEGAL_TRANSITION for developed → testing and the issue is
+    // stranded forever at `developed`.
+    expect(applyTransitionMock.mock.calls[0]?.[3]).toEqual({ skip: true });
     expect(sentryAddBreadcrumb).toHaveBeenCalledTimes(1);
     expect(sentryAddBreadcrumb.mock.calls[0]?.[0]).toMatchObject({
       category: 'pipeline_run.status_changed',

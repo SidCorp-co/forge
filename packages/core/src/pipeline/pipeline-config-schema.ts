@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { issueStatuses } from '../db/schema.js';
 import { DEFAULT_RECOVERY_CONFIG } from './recovery-policy.js';
 
 /**
@@ -144,7 +145,12 @@ export const stateConfigSchema = z
 
 export type StateConfig = z.infer<typeof stateConfigSchema>;
 
-export const statesConfigSchema = z.record(z.string(), stateConfigSchema);
+// Keys are constrained to the IssueStatus union so typos in PATCH payloads
+// (e.g. `{ states: { not_a_status: ... } }`) are rejected at the schema
+// boundary instead of silently persisting junk keys into the project config.
+// `partialRecord` keeps each status optional (Zod v4 makes plain `record`
+// over a finite enum require every key — not what we want).
+export const statesConfigSchema = z.partialRecord(z.enum(issueStatuses), stateConfigSchema);
 
 export type StatesConfigInput = z.infer<typeof statesConfigSchema>;
 

@@ -425,7 +425,12 @@ async function autoSkipDisabledStages(
     if (!nextStatus) break;
 
     try {
-      await applyStatusTransition(current, nextStatus, device);
+      // skip: true — the orchestrator's STAGE_FORWARD chain collapses stages
+      // the state-machine matrix doesn't allow as direct one-hop transitions
+      // (notably `developed → testing` skips both review and deploy). The
+      // chain is validated at config-save time, so bypassing canTransition
+      // here is safe.
+      await applyStatusTransition(current, nextStatus, device, { skip: true });
     } catch (err) {
       logger.warn(
         { err, issueId: current.id, from: current.status, to: nextStatus },

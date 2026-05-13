@@ -24,6 +24,18 @@ export type TransitionIssueRow = {
   reopenCount: number;
 };
 
+export interface ApplyStatusTransitionOptions {
+  /**
+   * Bypass the `canTransition` state-machine check. The orchestrator's
+   * soft-skip resolver (ISS-110) walks a curated forward chain
+   * (`STAGE_FORWARD`) that intentionally collapses stages the state-machine
+   * matrix wouldn't allow directly — e.g. `developed → testing` (skip
+   * review+deploy). All other safety checks (NO_OP, reopen cap, stale
+   * transition) still apply. Only the orchestrator should pass this.
+   */
+  skip?: boolean;
+}
+
 /**
  * Programmatic state-machine transition shared by MCP tools (forge_issues,
  * forge_pm.flag_blocker). Mirrors the REST `/transition` semantics — same
@@ -36,13 +48,14 @@ export async function applyStatusTransition(
   issue: TransitionIssueRow,
   toStatus: IssueStatus,
   device: DeviceLite,
+  options: ApplyStatusTransitionOptions = {},
 ): Promise<void> {
   const fromStatus = issue.status;
   if (fromStatus === toStatus) {
     throw new Error(`NO_OP: issue already in status ${toStatus}`);
   }
 
-  if (!canTransition(fromStatus, toStatus)) {
+  if (!options.skip && !canTransition(fromStatus, toStatus)) {
     throw new Error(
       `ILLEGAL_TRANSITION: cannot transition ${fromStatus} → ${toStatus}; allowed: ${getAllowedTransitions(
         fromStatus,

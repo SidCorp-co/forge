@@ -132,6 +132,29 @@ describe('pipelineConfigPatchSchema', () => {
   });
 });
 
+describe('statesConfigSchema (ISS-110)', () => {
+  it('accepts valid IssueStatus keys', () => {
+    const patch = {
+      states: {
+        developed: { enabled: false, mode: 'auto' as const },
+        testing: { enabled: true },
+      },
+    };
+    expect(pipelineConfigSchema.parse(patch)).toEqual(patch);
+  });
+
+  it('rejects unknown status keys at the schema boundary', () => {
+    // Review minor #3: prior `z.record(z.string(), ...)` accepted junk keys
+    // silently. Tighten to z.enum(issueStatuses) so typos surface as 400.
+    const patch = {
+      states: {
+        not_a_status: { enabled: false },
+      },
+    };
+    expect(() => pipelineConfigSchema.parse(patch)).toThrow();
+  });
+});
+
 describe('mergePipelineConfig', () => {
   it('merges patch onto current, preserving unknown keys for round-trip', () => {
     const current = { enabled: false, autoClarify: true, autoTriage: false };
