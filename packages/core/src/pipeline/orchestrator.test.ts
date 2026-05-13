@@ -17,15 +17,40 @@ function makeWhereChain() {
 }
 
 const insertReturning = vi.fn();
-const dbInsert = vi.fn(() => ({
-  values: () => ({ returning: insertReturning }),
-}));
+const insertValues = vi.fn(() => {
+  // Dual-shape: legacy jobs-insert chains via `.returning()`, ISS-105
+  // skill-not-found path awaits the values() result directly.
+  const obj: Record<string, unknown> = { returning: insertReturning };
+  // biome-ignore lint/suspicious/noThenProperty: vitest thenable shim
+  obj.then = (cb: (v: unknown) => unknown) => Promise.resolve().then(cb);
+  return obj;
+});
+const dbInsert = vi.fn(() => ({ values: insertValues }));
+
+const updateWhere = vi.fn(async () => undefined);
+const updateSet = vi.fn(() => ({ where: updateWhere }));
+const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
 vi.mock('../db/client.js', () => ({
   db: {
     select: () => ({ from: () => ({ where: () => makeWhereChain() }) }),
     insert: dbInsert,
+    update: dbUpdate,
   },
+}));
+
+const publishSpy = vi.fn();
+vi.mock('../ws/server.js', () => ({
+  roomManager: { publish: publishSpy },
+}));
+
+vi.mock('../observability/sentry.js', () => ({
+  Sentry: { addBreadcrumb: vi.fn(), captureMessage: vi.fn() },
+  isSentryEnabled: () => false,
+}));
+
+vi.mock('../logger.js', () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
 const enqueueMock = vi.fn(async () => {});
@@ -112,9 +137,20 @@ beforeEach(() => {
 });
 
 describe('pipeline/orchestrator', () => {
+  // Helper: queue the skill-loader's two selects (global skill + project
+  // override) with a loadable result so considerEnqueue proceeds past
+  // pre-flight.
+  function skillLoaderOk() {
+    nextSelect.mockResolvedValueOnce([
+      { id: 'skill-id', skillMd: '# body', prompt: '', contentHash: 'h' },
+    ]);
+    nextSelect.mockResolvedValueOnce([]); // no project override → uses global
+  }
+
   it('enqueues a plan job on open→confirmed when autoPlan is true', async () => {
     cfgResolved({ enabled: true, autoPlan: true }); // loadPipelineConfig
     nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+    skillLoaderOk();
     insertReturning.mockResolvedValueOnce([{ id: 'new-job' }]);
 
     const bus = makeBus();
@@ -174,6 +210,7 @@ describe('pipeline/orchestrator', () => {
   it('treats a unique-index violation on insert as a dedupe skip', async () => {
     cfgResolved({ enabled: true, autoPlan: true });
     nextSelect.mockResolvedValueOnce([]); // no existing in read path
+    skillLoaderOk();
     insertReturning.mockRejectedValueOnce(Object.assign(new Error('dup'), { code: '23505' }));
 
     const bus = makeBus();
@@ -185,6 +222,7 @@ describe('pipeline/orchestrator', () => {
   it('falls back to project owner for createdBy on device-triggered transitions', async () => {
     cfgResolved({ enabled: true, autoReview: true });
     nextSelect.mockResolvedValueOnce([]); // no existing
+    skillLoaderOk();
     insertReturning.mockResolvedValueOnce([{ id: 'job-x' }]);
 
     const bus = makeBus();
@@ -204,6 +242,7 @@ describe('pipeline/orchestrator', () => {
   it('enqueues a triage job on issueCreated when autoTriage is true', async () => {
     cfgResolved({ enabled: true, autoTriage: true });
     nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+    skillLoaderOk();
     insertReturning.mockResolvedValueOnce([{ id: 'triage-job' }]);
 
     const bus = makeBus();
@@ -211,6 +250,70 @@ describe('pipeline/orchestrator', () => {
 
     expect(dbInsert).toHaveBeenCalledTimes(1);
     expect(enqueueMock).toHaveBeenCalledWith('triage-job');
+  });
+
+  // ISS-105 — pre-flight rejection when `forge-<type>` is not loadable.
+  it('escalates to pipeline_failed when the skill is not loadable (skill_not_found)', async () => {
+    cfgResolved({ enabled: true, autoPlan: true });
+    nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+    nextSelect.mockResolvedValueOnce([]); // resolveSkill: no global row → skill_not_found
+
+    const bus = makeBus();
+    await bus.emit('transition', transition() as never);
+
+    // No jobs row inserted; no enqueue.
+    expect(insertReturning).not.toHaveBeenCalled();
+    expect(enqueueMock).not.toHaveBeenCalled();
+
+    // Issue flipped to pipeline_failed.
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'pipeline_failed' }),
+    );
+
+    // Operator surface: skill_not_found WS broadcast + comment.
+    expect(publishSpy).toHaveBeenCalledWith(
+      'project:proj-1',
+      expect.objectContaining({
+        event: 'pipeline.skill_not_found',
+        data: expect.objectContaining({
+          skillName: 'forge-plan',
+          jobType: 'plan',
+          reason: 'skill_not_found',
+        }),
+      }),
+    );
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.stringContaining('forge-plan'),
+        isAi: true,
+      }),
+    );
+  });
+
+  it('escalates when override is present but blanked (skill_empty_body)', async () => {
+    cfgResolved({ enabled: true, autoPlan: true });
+    nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+    nextSelect.mockResolvedValueOnce([
+      { id: 'sid', skillMd: '# global ok', prompt: '', contentHash: 'h' },
+    ]);
+    nextSelect.mockResolvedValueOnce([
+      { skillMdOverride: '   ', contentHash: 'h-ov' },
+    ]);
+
+    const bus = makeBus();
+    await bus.emit('transition', transition() as never);
+
+    expect(enqueueMock).not.toHaveBeenCalled();
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'pipeline_failed' }),
+    );
+    expect(publishSpy).toHaveBeenCalledWith(
+      'project:proj-1',
+      expect.objectContaining({
+        event: 'pipeline.skill_not_found',
+        data: expect.objectContaining({ reason: 'skill_empty_body' }),
+      }),
+    );
   });
 
   it('does not enqueue on issueCreated when autoTriage is false', async () => {

@@ -31,6 +31,7 @@ import {
 } from '../db/schema.js';
 import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
 import { logger } from '../logger.js';
+import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { boss } from '../queue/boss.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -88,7 +89,36 @@ export interface SweepResult {
 export interface ZombieSweepResult {
   queueTimedOut: number;
   heartbeatTimedOut: number;
+  zeroWork: number;
 }
+
+// ISS-105 — silent skill-not-found surfacing.
+//
+// A pipeline session that finishes `status=completed` but produced ZERO
+// assistant tool calls in under 10s is almost always Claude CLI treating an
+// unknown `/forge-X` slash command as plain prompt text (the SKILL.md was
+// missing or empty). Catch that signature and flip the session to
+// `failed`/`skill_zero_work` so the stuck-issue scan + recovery-policy can
+// escalate it instead of leaving the issue silently parked at the gate.
+const ZERO_WORK_DURATION_MS = 10_000;
+const ZERO_WORK_MAX_MESSAGES = 4;
+const ZERO_WORK_LOOKBACK_MS = 5 * 60_000;
+
+const KNOWN_PIPELINE_SKILLS: ReadonlySet<string> = new Set([
+  'forge-triage',
+  'forge-clarify',
+  'forge-plan',
+  'forge-code',
+  'forge-review',
+  'forge-fix',
+  'forge-test',
+  'forge-release',
+]);
+
+// Allowlist: skills whose legitimate runs may complete sub-10s with zero
+// tool calls. `forge-staging` is the canonical no-op for jarvis-agents
+// (see CLAUDE.md / forge-staging skill description, deprecated 2026-05-12).
+const ZERO_WORK_ALLOWLIST: ReadonlySet<string> = new Set(['forge-staging']);
 
 export interface StuckIssueRow {
   id: string;
@@ -103,6 +133,12 @@ export interface StuckIssueRow {
   latestJobStatus: string | null;
   latestJobFailureKind: string | null;
   latestJobFailureReason: string | null;
+  // ISS-105 — the latest agent_session for this issue may carry a
+  // skill-loader failure (`skill_zero_work` / `skill_not_found`) even when
+  // the job row itself finished `done`. Surfacing it here lets
+  // processStuckIssues coerce the recovery decision to escalate rather
+  // than silently SKIP a job-`done` row whose session was zero-work.
+  latestSessionFailureReason: string | null;
 }
 
 export async function runPipelineSweep(now: Date = new Date()): Promise<SweepResult> {
@@ -213,24 +249,108 @@ export async function sweepZombieSessions(
     broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'heartbeat_timeout');
   }
 
+  // Pass 3 (ISS-105): zero-work — pipeline session finished `completed` but
+  // produced no assistant tool calls in <10s. Signature of Claude CLI
+  // treating a missing slash command as plain prompt text.
+  const zeroWorkCutoff = new Date(now.getTime() - ZERO_WORK_LOOKBACK_MS);
+  const skillNameList = sql.join(
+    [...KNOWN_PIPELINE_SKILLS]
+      .filter((n) => !ZERO_WORK_ALLOWLIST.has(n))
+      .map((n) => sql`${n}`),
+    sql`, `,
+  );
+  const dispatchedAtOrFallback = sql`COALESCE(${agentSessions.dispatchedAt}, ${agentSessions.startedAt}, ${agentSessions.createdAt})`;
+  const zeroWorkFailed = await db
+    .update(agentSessions)
+    .set({ status: 'failed', failureReason: 'skill_zero_work', updatedAt: now })
+    .where(
+      and(
+        eq(agentSessions.status, 'completed'),
+        sql`${agentSessions.metadata}->>'type' = 'pipeline'`,
+        sql`${agentSessions.metadata}->>'skillName' IN (${skillNameList})`,
+        lt(dispatchedAtOrFallback, now),
+        sql`${agentSessions.updatedAt} > ${zeroWorkCutoff}`,
+        sql`EXTRACT(EPOCH FROM (${agentSessions.updatedAt} - ${dispatchedAtOrFallback})) * 1000 < ${ZERO_WORK_DURATION_MS}`,
+        sql`COALESCE(jsonb_array_length(${agentSessions.messages}), 0) <= ${ZERO_WORK_MAX_MESSAGES}`,
+        // Zero tool calls: no message has a non-empty `toolCalls` array AND
+        // no message of type='assistant' carries any nested tool_use blocks.
+        // The strict check on `toolCalls` mirrors `session-tracker.ts` which
+        // is where the runner-side message shape comes from.
+        sql`NOT EXISTS (
+          SELECT 1 FROM jsonb_array_elements(${agentSessions.messages}) AS m
+          WHERE jsonb_typeof(m->'toolCalls') = 'array'
+            AND jsonb_array_length(m->'toolCalls') > 0
+        )`,
+        ...(projectFilter ? [projectFilter] : []),
+      ),
+    )
+    .returning({
+      id: agentSessions.id,
+      projectId: agentSessions.projectId,
+      deviceId: agentSessions.deviceId,
+      metadata: agentSessions.metadata,
+    });
+
+  for (const z of zeroWorkFailed) {
+    broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'skill_zero_work');
+    const meta = (z.metadata ?? {}) as { skillName?: string; jobType?: string; issueId?: string };
+    if (isSentryEnabled()) {
+      Sentry.addBreadcrumb({
+        category: 'pipeline',
+        level: 'error',
+        message: 'skill_zero_work',
+        data: {
+          sessionId: z.id,
+          projectId: z.projectId,
+          issueId: meta.issueId,
+          skillName: meta.skillName,
+          jobType: meta.jobType,
+          detection: 'post_flight',
+        },
+      });
+      Sentry.captureMessage('pipeline.skill_zero_work', {
+        level: 'error',
+        tags: {
+          skillName: meta.skillName ?? 'unknown',
+          jobType: meta.jobType ?? 'unknown',
+          detection: 'post_flight',
+        },
+      });
+    }
+    try {
+      roomManager.publish(projectRoom(z.projectId), {
+        event: 'pipeline.skill_zero_work',
+        data: {
+          sessionId: z.id,
+          issueId: meta.issueId ?? null,
+          skillName: meta.skillName ?? null,
+          jobType: meta.jobType ?? null,
+        },
+      });
+    } catch (err) {
+      logger.warn({ err, sessionId: z.id }, 'pipeline-sweeper: zero-work WS broadcast failed');
+    }
+  }
+
   const queueTimedOut = queuedFailed.length;
   const heartbeatTimedOut = heartbeatFailed.length;
+  const zeroWork = zeroWorkFailed.length;
 
-  if (queueTimedOut > 0 || heartbeatTimedOut > 0) {
+  if (queueTimedOut > 0 || heartbeatTimedOut > 0 || zeroWork > 0) {
     logger.info(
-      { queueTimedOut, heartbeatTimedOut, queueMs, heartbeatMs },
+      { queueTimedOut, heartbeatTimedOut, zeroWork, queueMs, heartbeatMs },
       'pipeline-sweeper: zombie sessions failed',
     );
   }
 
-  return { queueTimedOut, heartbeatTimedOut };
+  return { queueTimedOut, heartbeatTimedOut, zeroWork };
 }
 
 function broadcastZombieTransition(
   sessionId: string,
   projectId: string,
   deviceId: string | null,
-  reason: 'queue_timeout' | 'heartbeat_timeout',
+  reason: 'queue_timeout' | 'heartbeat_timeout' | 'skill_zero_work',
 ): void {
   broadcastSessionEvent(sessionId, projectId, deviceId, 'agent-session.status', {
     status: 'failed',
@@ -254,18 +374,30 @@ export async function processStuckIssues(
 
   for (const row of stuck) {
     try {
+      // ISS-105 — a skill-loader signal at the session level wins over the
+      // job's null failureKind. Without this coercion the sweeper SKIPs
+      // (job ended `done`, kind=null) and the issue stays stuck silently.
+      const skillFailureKind =
+        row.latestSessionFailureReason === 'skill_zero_work' ||
+        row.latestSessionFailureReason === 'skill_not_found'
+          ? ('permanent' as const)
+          : null;
+
+      const failureKindForDecision: 'transient' | 'permanent' | 'unknown' | null =
+        skillFailureKind ??
+        (row.latestJobFailureKind === 'transient' ||
+        row.latestJobFailureKind === 'permanent' ||
+        row.latestJobFailureKind === 'unknown'
+          ? row.latestJobFailureKind
+          : null);
+
       const decision = decideRecovery({
         issue: {
           recoveryAttempts: row.recoveryAttempts,
           lastRecoveryAt: row.lastRecoveryAt,
           recoveryWindowStartedAt: row.recoveryWindowStartedAt,
         },
-        failureKind:
-          row.latestJobFailureKind === 'transient' ||
-          row.latestJobFailureKind === 'permanent' ||
-          row.latestJobFailureKind === 'unknown'
-            ? row.latestJobFailureKind
-            : null,
+        failureKind: failureKindForDecision,
         config: extractRecoveryConfig(row.agentConfig),
         now,
       });
@@ -355,12 +487,24 @@ async function selectStuckIssues(): Promise<StuckIssueRow[]> {
       : baseQuery.where(eq(jobs.issueId, c.id)).orderBy(desc(jobs.createdAt)).limit(1);
 
     const [latest] = await latestQuery;
+
+    // ISS-105 — also surface the latest agent_session's failureReason so
+    // processStuckIssues can spot `skill_zero_work` / `skill_not_found`
+    // even when the job row finished `done`.
+    const [latestSession] = await db
+      .select({ failureReason: agentSessions.failureReason })
+      .from(agentSessions)
+      .where(sql`${agentSessions.metadata}->>'issueId' = ${c.id}::text`)
+      .orderBy(desc(agentSessions.updatedAt))
+      .limit(1);
+
     enriched.push({
       ...c,
       latestJobId: latest?.id ?? null,
       latestJobStatus: latest?.status ?? null,
       latestJobFailureKind: latest?.failureKind ?? null,
       latestJobFailureReason: latest?.failureReason ?? null,
+      latestSessionFailureReason: latestSession?.failureReason ?? null,
     });
   }
   return enriched;

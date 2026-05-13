@@ -1419,6 +1419,9 @@ export const agentSessionFailureReasons = [
   'waiting_on_dep',
   'project_full',
   'runner_full',
+  // ISS-105 — silent skill-not-found surface signals.
+  'skill_not_found',
+  'skill_zero_work',
 ] as const;
 export type AgentSessionFailureReason = (typeof agentSessionFailureReasons)[number];
 

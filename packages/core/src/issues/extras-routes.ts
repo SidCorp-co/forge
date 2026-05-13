@@ -22,6 +22,7 @@ import { logger } from '../logger.js';
 import { recordActivityTx } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { ActiveJobConflictError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
+import { SkillNotLoadableError } from '../pipeline/skill-loader.js';
 import { openIssueRun } from '../pipeline/runs.js';
 import {
   REOPEN_CAP,
@@ -547,6 +548,17 @@ issueExtrasRoutes.post(
       if (err instanceof Error && err.message === 'no skill mapped for this status') {
         throw badRequest({
           message: `cannot run pipeline for status ${issue.status} without explicit stage`,
+        });
+      }
+      if (err instanceof SkillNotLoadableError) {
+        throw new HTTPException(409, {
+          message: `skill ${err.skillName} is not loadable: ${err.reason}`,
+          cause: {
+            code: 'SKILL_NOT_LOADABLE',
+            skillName: err.skillName,
+            reason: err.reason,
+            expectedPath: err.expectedPath,
+          },
         });
       }
       throw err;

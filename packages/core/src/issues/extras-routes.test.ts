@@ -167,6 +167,9 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
   //   2. issue { id, projectId, status }
   //   3. loadPipelineConfig — projects { agentConfig, ownerId }
   //   4. findActiveJob — jobs { id } or empty for no-conflict
+  //   5. resolveSkill (ISS-105) — skills global lookup
+  //   6. resolveSkill (ISS-105) — project_skill_overrides lookup (skipped
+  //      if no global row, so only present on the happy path)
   function setupHappyPath(opts: { status?: string } = {}) {
     authVerified();
     selectLimit.mockResolvedValueOnce([
@@ -179,6 +182,10 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
     });
     selectLimit.mockResolvedValueOnce([{ agentConfig: null, ownerId: USER_ID }]);
     selectLimit.mockResolvedValueOnce([]); // findActiveJob → no conflict
+    selectLimit.mockResolvedValueOnce([
+      { id: 'skill-id', skillMd: '# ok', prompt: '', contentHash: 'h' },
+    ]); // resolveSkill: global skill found
+    selectLimit.mockResolvedValueOnce([]); // resolveSkill: no project override
     insertReturning.mockResolvedValueOnce([{ id: JOB_ID }]);
     enqueueJobMock.mockResolvedValueOnce(undefined);
   }

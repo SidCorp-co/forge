@@ -41,6 +41,11 @@ vi.mock('../queue/boss.js', () => ({
   },
 }));
 
+vi.mock('../observability/sentry.js', () => ({
+  Sentry: { addBreadcrumb: vi.fn(), captureMessage: vi.fn() },
+  isSentryEnabled: () => false,
+}));
+
 const { processStuckIssues, type: _t } = await import('./sweeper.js');
 type StuckIssueRow = import('./sweeper.js').StuckIssueRow;
 
@@ -64,6 +69,7 @@ const baseRow = (overrides: Partial<StuckIssueRow> = {}): StuckIssueRow => ({
   latestJobStatus: 'failed',
   latestJobFailureKind: 'transient',
   latestJobFailureReason: 'ETIMEDOUT',
+  latestSessionFailureReason: null,
   ...overrides,
 });
 
@@ -204,6 +210,42 @@ describe('processStuckIssues', () => {
     expect(result.scanned).toBe(3);
     expect(result.recovered).toBe(2);
     expect(result.skipped).toBe(1);
+  });
+
+  // ISS-105 — session-level skill failures coerce the decision to escalate
+  // even when the job row itself ended `done`.
+  it('escalates when the latest session has skill_zero_work even if job is done', async () => {
+    const result = await processStuckIssues(
+      [
+        baseRow({
+          latestJobStatus: 'done',
+          latestJobFailureKind: null,
+          latestJobFailureReason: null,
+          latestSessionFailureReason: 'skill_zero_work',
+        }),
+      ],
+      NOW,
+    );
+    expect(result).toMatchObject({ recovered: 0, escalated: 1, skipped: 0 });
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'pipeline_failed' }),
+    );
+    expect(reEnqueueForIssue).not.toHaveBeenCalled();
+  });
+
+  it('escalates when the latest session has skill_not_found (pre-flight surface)', async () => {
+    const result = await processStuckIssues(
+      [
+        baseRow({
+          latestJobStatus: 'done',
+          latestJobFailureKind: null,
+          latestJobFailureReason: null,
+          latestSessionFailureReason: 'skill_not_found',
+        }),
+      ],
+      NOW,
+    );
+    expect(result).toMatchObject({ recovered: 0, escalated: 1 });
   });
 
   it('respects per-project pipelineConfig override (tighter unknown cap)', async () => {

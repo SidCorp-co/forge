@@ -1,8 +1,19 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, type JobType, issues, jobs, projects } from '../db/schema.js';
+import {
+  type IssueStatus,
+  type JobType,
+  agentSessions,
+  comments,
+  issues,
+  jobs,
+  projects,
+} from '../db/schema.js';
 import { enqueueJob } from '../jobs/enqueue.js';
 import { logger } from '../logger.js';
+import { Sentry, isSentryEnabled } from '../observability/sentry.js';
+import { projectRoom } from '../ws/rooms.js';
+import { roomManager } from '../ws/server.js';
 import type { Actor } from './activity.js';
 import {
   type PreventivePattern,
@@ -10,6 +21,7 @@ import {
 } from './ci-fix-pattern-query.js';
 import type { HooksBus } from './hooks.js';
 import { openIssueRun, setCurrentStep } from './runs.js';
+import { SkillNotLoadableError, resolveSkill } from './skill-loader.js';
 import { resolveSkillForStatus } from './skill-mapping.js';
 
 const ACTIVE_JOB_STATUSES = ['queued', 'dispatched', 'running'] as const;
@@ -181,6 +193,15 @@ export async function triggerPipelineStepManual(args: {
   const existing = await findActiveJob(args.issueId, skill.type);
   if (existing) throw new ActiveJobConflictError(existing, skill.type);
 
+  // Pre-flight: refuse to enqueue when `forge-<type>` is missing/empty. The
+  // manual path throws so the HTTP route can map to 4xx; the auto path
+  // (considerEnqueue) handles the same error by escalating to pipeline_failed.
+  const skillName = `forge-${skill.type}`;
+  const resolution = await resolveSkill(skillName, args.projectId);
+  if (!resolution.loadable) {
+    throw new SkillNotLoadableError(resolution.skillName, resolution.reason, resolution.expectedPath);
+  }
+
   const createdBy = resolveCreatedBy(args.actor, ownerId);
 
   const preventiveContext = await buildPreventiveContext(
@@ -258,6 +279,27 @@ async function considerEnqueue(args: {
     return;
   }
 
+  // Pre-flight: skill must be loadable BEFORE we open a run / insert a job.
+  // A miss here is treated as a permanent failure for this issue — surface
+  // it as `pipeline_failed` with a comment naming the missing skill so an
+  // operator can fix the registration without spelunking through agent
+  // sessions (ISS-105).
+  const skillName = `forge-${skill.type}`;
+  const resolution = await resolveSkill(skillName, args.projectId);
+  if (!resolution.loadable) {
+    await handleSkillNotLoadable({
+      projectId: args.projectId,
+      issueId: args.issueId,
+      status: args.status,
+      jobType: skill.type,
+      skillName: resolution.skillName,
+      expectedPath: resolution.expectedPath,
+      reason: resolution.reason,
+      ownerId,
+    });
+    return;
+  }
+
   const createdBy = resolveCreatedBy(args.actor, ownerId);
 
   const preventiveContext = await buildPreventiveContext(
@@ -314,6 +356,113 @@ async function considerEnqueue(args: {
     { jobId: insertedId, type: skill.type, issueId: args.issueId },
     'orchestrator: enqueued',
   );
+}
+
+async function handleSkillNotLoadable(args: {
+  projectId: string;
+  issueId: string;
+  status: IssueStatus;
+  jobType: JobType;
+  skillName: string;
+  expectedPath: string;
+  reason: 'skill_not_found' | 'skill_empty_body';
+  ownerId: string | null;
+}): Promise<void> {
+  const { projectId, issueId, status, jobType, skillName, expectedPath, reason, ownerId } = args;
+
+  // Parent run for the failure surface so the issue's run timeline shows
+  // an attempt rather than appearing to skip the stage entirely.
+  let runId: string | null = null;
+  try {
+    const run = await openIssueRun({ projectId, issueId });
+    runId = run.id;
+  } catch (err) {
+    logger.warn({ err, issueId }, 'orchestrator: openIssueRun failed during skill-not-found escalate');
+  }
+
+  // Placeholder agent_session row so the issue detail's sessions tab carries
+  // an explicit failure with `failureReason='skill_not_found'`. Best-effort
+  // — the issue-status transition + comment below are the operator-visible
+  // surface and must not be blocked by a session insert error.
+  if (runId) {
+    try {
+      await db.insert(agentSessions).values({
+        projectId,
+        pipelineRunId: runId,
+        title: `${skillName}: skill not loadable`,
+        status: 'failed',
+        failureReason: reason,
+        metadata: { type: 'pipeline', issueId, jobType, skillName, expectedPath },
+      } as never);
+    } catch (err) {
+      logger.warn({ err, issueId, skillName }, 'orchestrator: skill-not-found session insert failed');
+    }
+  }
+
+  // Direct UPDATE mirrors the sweeper's escalate path (sweeper.ts:423) —
+  // pipeline_failed is reachable from any active pipeline status and the
+  // state-machine validator would reject most of them.
+  await db
+    .update(issues)
+    .set({ status: 'pipeline_failed', updatedAt: new Date() })
+    .where(eq(issues.id, issueId));
+
+  if (ownerId) {
+    try {
+      await db.insert(comments).values({
+        issueId,
+        authorId: ownerId,
+        body: buildSkillNotFoundComment(skillName, expectedPath, reason, status),
+        isAi: true,
+      } as never);
+    } catch (err) {
+      logger.warn({ err, issueId, skillName }, 'orchestrator: skill-not-found comment insert failed');
+    }
+  }
+
+  try {
+    roomManager.publish(projectRoom(projectId), {
+      event: 'pipeline.skill_not_found',
+      data: { issueId, jobType, skillName, expectedPath, reason },
+    });
+  } catch (err) {
+    logger.warn({ err, issueId, skillName }, 'orchestrator: skill-not-found WS broadcast failed');
+  }
+
+  if (isSentryEnabled()) {
+    Sentry.addBreadcrumb({
+      category: 'pipeline',
+      level: 'error',
+      message: 'skill_not_found',
+      data: { issueId, projectId, skillName, jobType, expectedPath, reason, detection: 'pre_flight' },
+    });
+    Sentry.captureMessage('pipeline.skill_not_found', {
+      level: 'error',
+      tags: { skillName, jobType, detection: 'pre_flight' },
+    });
+  }
+
+  logger.error(
+    { skillName, issueId, projectId, jobType, reason, expectedPath },
+    'orchestrator: skill not loadable, escalating issue to pipeline_failed',
+  );
+}
+
+function buildSkillNotFoundComment(
+  skillName: string,
+  expectedPath: string,
+  reason: 'skill_not_found' | 'skill_empty_body',
+  attemptedStatus: IssueStatus,
+): string {
+  return [
+    `🛑 **Pipeline gave up** — \`${skillName}\` is not loadable.`,
+    ``,
+    `**Reason:** ${reason}`,
+    `**Expected at:** \`${expectedPath}\` (or via a project skill override).`,
+    `**Attempted status:** \`${attemptedStatus}\``,
+    ``,
+    `Install or restore the skill, then re-trigger by moving this issue back to \`${attemptedStatus}\` (or \`confirmed\` to restart from triage).`,
+  ].join('\n');
 }
 
 /**
