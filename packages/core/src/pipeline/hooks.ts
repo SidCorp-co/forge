@@ -1,4 +1,10 @@
-import type { IssueDependencyKind, IssueStatus, JobType } from '../db/schema.js';
+import type {
+  IssueDependencyKind,
+  IssueStatus,
+  JobType,
+  PipelineRunKind,
+  PipelineRunStatus,
+} from '../db/schema.js';
 import { logger } from '../logger.js';
 import type { Actor } from './activity.js';
 
@@ -178,6 +184,20 @@ export interface HookPayloads {
     userId: string;
     theme: string;
     language: string;
+  };
+  // ISS-104 — pipeline_run lifecycle. Emitted from the lifecycle helpers in
+  // pipeline/runs.ts on every effective status transition (no-op updates on
+  // already-terminal rows do not emit). A Sentry-breadcrumb subscriber
+  // attaches these to traces so slow-pipeline outliers are inspectable in
+  // production.
+  pipelineRunStatusChanged: {
+    runId: string;
+    projectId: string;
+    issueId: string | null;
+    kind: PipelineRunKind;
+    fromStatus: PipelineRunStatus | null;
+    toStatus: PipelineRunStatus;
+    currentStep: string | null;
   };
 }
 

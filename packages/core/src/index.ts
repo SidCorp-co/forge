@@ -87,6 +87,7 @@ import {
 import { registerCiFixPatternLearner } from './pipeline/ci-fix-pattern-learn.js';
 import { hooks } from './pipeline/hooks.js';
 import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
+import { registerPipelineSentryBreadcrumbs } from './pipeline/sentry-breadcrumbs.js';
 import { registerActivitySubscribers } from './pipeline/subscribers.js';
 import { registerPipelineSweeper } from './pipeline/sweeper.js';
 import { registerPmCadenceTicker, unregisterPmCadenceTicker } from './pm/cadence.js';
@@ -220,6 +221,7 @@ export async function runShutdown(
 }
 
 registerActivitySubscribers(hooks);
+registerPipelineSentryBreadcrumbs(hooks);
 registerWsBroadcastSubscribers(hooks);
 registerMemoryIndexer(hooks);
 registerCiFixPatternLearner(hooks);

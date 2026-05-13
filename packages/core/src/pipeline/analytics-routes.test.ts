@@ -193,3 +193,129 @@ describe('GET /api/pipeline/cycle-time', () => {
     expect(body[1]?.n).toBe(8);
   });
 });
+
+describe('GET /api/pipeline/step-durations', () => {
+  it('401 without token', async () => {
+    const app = buildApp();
+    const res = await app.fetch(req('/api/pipeline/step-durations'));
+    expect(res.status).toBe(401);
+  });
+
+  it('returns [] when user has no visible projects', async () => {
+    const token = await signUserToken('u-1');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: 'u-1', isCeo: false }]);
+    leftJoinWhere.mockResolvedValueOnce([]);
+
+    const app = buildApp();
+    const res = await app.fetch(req('/api/pipeline/step-durations', { token }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([]);
+    expect(dbExecute).not.toHaveBeenCalled();
+  });
+
+  it('400 when days is below 1', async () => {
+    const token = await signUserToken('u-1');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    const app = buildApp();
+    const res = await app.fetch(req('/api/pipeline/step-durations?days=0', { token }));
+    expect(res.status).toBe(400);
+  });
+
+  it('400 when days exceeds cap', async () => {
+    const token = await signUserToken('u-1');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    const app = buildApp();
+    const res = await app.fetch(req('/api/pipeline/step-durations?days=91', { token }));
+    expect(res.status).toBe(400);
+  });
+
+  it('400 when step is not a known job type', async () => {
+    const token = await signUserToken('u-1');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    const app = buildApp();
+    const res = await app.fetch(
+      req('/api/pipeline/step-durations?step=not-a-real-type', { token }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('maps snake_case view rows to camelCase and coerces numbers', async () => {
+    const token = await signUserToken('u-1');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: 'u-1', isCeo: false }]);
+    leftJoinWhere.mockResolvedValueOnce([{ id: 'p-1' }]);
+    dbExecute.mockResolvedValueOnce([
+      {
+        run_id: 'r-1',
+        issue_id: 'i-1',
+        project_id: 'p-1',
+        step: 'plan',
+        started_at: '2026-05-13T01:00:00Z',
+        finished_at: '2026-05-13T01:00:12Z',
+        duration_seconds: '12.5',
+        cost_usd: '0.04',
+      },
+      {
+        run_id: 'r-2',
+        issue_id: null,
+        project_id: 'p-1',
+        step: 'pm',
+        started_at: '2026-05-13T00:00:00Z',
+        finished_at: '2026-05-13T00:00:05Z',
+        duration_seconds: 5,
+        cost_usd: 0,
+      },
+    ]);
+
+    const app = buildApp();
+    const res = await app.fetch(req('/api/pipeline/step-durations', { token }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{
+      runId: string;
+      issueId: string | null;
+      projectId: string;
+      step: string;
+      startedAt: string;
+      finishedAt: string;
+      durationSeconds: number;
+      costUsd: number;
+    }>;
+    expect(body).toHaveLength(2);
+    expect(body[0]).toEqual({
+      runId: 'r-1',
+      issueId: 'i-1',
+      projectId: 'p-1',
+      step: 'plan',
+      startedAt: '2026-05-13T01:00:00Z',
+      finishedAt: '2026-05-13T01:00:12Z',
+      durationSeconds: 12.5,
+      costUsd: 0.04,
+    });
+    expect(body[1]?.issueId).toBeNull();
+    expect(body[1]?.step).toBe('pm');
+  });
+
+  it('passes step filter into the SQL parameters', async () => {
+    const token = await signUserToken('u-1');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: 'u-1', isCeo: false }]);
+    leftJoinWhere.mockResolvedValueOnce([{ id: 'p-1' }]);
+    dbExecute.mockResolvedValueOnce([]);
+
+    const app = buildApp();
+    const res = await app.fetch(req('/api/pipeline/step-durations?step=code', { token }));
+    expect(res.status).toBe(200);
+    expect(dbExecute).toHaveBeenCalledTimes(1);
+    // The drizzle SQL object exposes a `.queryChunks` array; inspect it for
+    // the literal 'code' that the step filter binds.
+    const queryArg = dbExecute.mock.calls[0]?.[0] as {
+      queryChunks?: Array<{ value?: unknown }>;
+    };
+    const params = JSON.stringify(queryArg?.queryChunks ?? queryArg);
+    expect(params).toContain('code');
+  });
+});
