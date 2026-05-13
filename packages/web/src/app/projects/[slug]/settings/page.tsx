@@ -44,6 +44,7 @@ export default function ProjectSettingsPage() {
       <SettingsView
         {...form}
         projectSlug={project.slug}
+        isOwner={isOwner}
         generalExtra={
           <>
             <MembersSection projectId={project.id} isOwner={isOwner} />

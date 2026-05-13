@@ -9,18 +9,21 @@ import { ChatAgentSection } from './chat-agent-section';
 import { GeneralSection } from './general-section';
 import { PipelineConfigSection } from './pipeline-config-section';
 import { ProvidersToolsSection } from './providers-tools-section';
+import { SkillRegistrationsSection } from './skill-registrations-section';
 
 type SettingsFormReturn = ReturnType<typeof useSettingsForm>;
 
 type SettingsViewProps = SettingsFormReturn & {
   projectSlug?: string;
   generalExtra?: ReactNode;
+  isOwner?: boolean;
 };
 
 const TABS = [
   { key: 'general', label: 'General', code: 'GEN' },
   { key: 'chat-agent', label: 'Chat Agent', code: 'AGT' },
   { key: 'pipeline', label: 'Pipeline', code: 'PLC' },
+  { key: 'skills', label: 'Skills', code: 'SKL' },
   { key: 'providers', label: 'Providers', code: 'PRV' },
   { key: 'integrations', label: 'Integrations', code: 'EXT' },
 ] as const;
@@ -39,6 +42,7 @@ export function SettingsView({
   project,
   projectSlug,
   generalExtra,
+  isOwner = false,
 }: SettingsViewProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('general');
 
@@ -56,7 +60,7 @@ export function SettingsView({
       )}
 
       <div className="mb-10">
-        <nav className="grid w-full grid-cols-5 border-b border-outline-variant/10">
+        <nav className="grid w-full grid-cols-6 border-b border-outline-variant/10">
           {TABS.map((tab) => (
             <button
               key={tab.key}
@@ -106,6 +110,16 @@ export function SettingsView({
           ) : (
             <UnimplementedBanner
               feature="Pipeline configuration"
+              hint="Project not loaded yet."
+            />
+          ))}
+
+        {activeTab === 'skills' &&
+          (project?.id ? (
+            <SkillRegistrationsSection projectId={project.id} isOwner={isOwner} />
+          ) : (
+            <UnimplementedBanner
+              feature="Skill registrations"
               hint="Project not loaded yet."
             />
           ))}

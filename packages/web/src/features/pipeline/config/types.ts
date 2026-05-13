@@ -21,6 +21,25 @@ export interface RecoveryByKind {
   unknown?: number;
 }
 
+export const STAGE_NAMES = [
+  'open',
+  'confirmed',
+  'approved',
+  'developed',
+  'testing',
+  'reopen',
+  'released',
+] as const;
+
+export type StageName = (typeof STAGE_NAMES)[number];
+
+export interface StageConfig {
+  enabled?: boolean;
+  mode?: 'auto' | 'manual';
+}
+
+export type StatesConfig = Partial<Record<StageName, StageConfig>>;
+
 export interface PipelineConfig {
   enabled?: boolean;
   autoTriage?: StepToggleValue;
@@ -33,6 +52,7 @@ export interface PipelineConfig {
   recoveryMaxAttempts?: number;
   recoveryWindowHours?: number;
   recoveryByFailureKind?: RecoveryByKind;
+  states?: StatesConfig;
 }
 
 export type PipelineConfigPatch = Partial<PipelineConfig> & {
@@ -43,6 +63,10 @@ export type PipelineConfigPatch = Partial<PipelineConfig> & {
    */
   runnerFallback?: string[];
 };
+
+export function defaultStageConfig(): StageConfig {
+  return { enabled: true, mode: 'auto' };
+}
 
 export interface PipelineConfigResponse {
   pipelineConfig: PipelineConfig;
