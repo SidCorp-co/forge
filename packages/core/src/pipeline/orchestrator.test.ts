@@ -33,6 +33,27 @@ vi.mock('../jobs/enqueue.js', () => ({
   enqueueJob: (...a: unknown[]) => enqueueMock(...(a as [])),
 }));
 
+// ISS-110 — auto-skip helper invokes applyStatusTransition once per hop. Stub
+// it so unit tests can assert hop count + targets without modeling the full
+// status update path (DB UPDATE + WS broadcast + run timeline sync).
+const applyTransitionMock = vi.fn<(issue: unknown, toStatus: string, device: unknown) => Promise<void>>(
+  async () => undefined,
+);
+vi.mock('../issues/apply-transition.js', () => ({
+  applyStatusTransition: (...a: unknown[]) =>
+    applyTransitionMock(a[0], a[1] as string, a[2]),
+}));
+
+// ISS-110 — verify Sentry breadcrumb emission per skip hop.
+const sentryAddBreadcrumb = vi.fn<(crumb: { category: string; data: Record<string, unknown> }) => void>();
+vi.mock('../observability/sentry.js', () => ({
+  Sentry: { addBreadcrumb: (...a: unknown[]) => sentryAddBreadcrumb(a[0] as { category: string; data: Record<string, unknown> }) },
+  isSentryEnabled: () => true,
+}));
+
+// ISS-101 — orchestrator now opens a pipeline_run before inserting jobs.
+// Short-circuit the helper so the test's single-insert mock plumbing
+// (which only models the `jobs` insert) still matches.
 vi.mock('./runs.js', () => ({
   openIssueRun: vi.fn(async () => ({ id: 'mock-run-id', startedAt: new Date() })),
   openOneShotRun: vi.fn(async () => ({ id: 'mock-run-id' })),
@@ -296,6 +317,131 @@ describe('pipeline/orchestrator', () => {
     const bus = makeBus();
     await bus.emit('issueCreated', issueCreated() as never);
 
+    expect(dbInsert).not.toHaveBeenCalled();
+  });
+});
+
+describe('pipeline/orchestrator soft-skip (ISS-110)', () => {
+  it('auto-transitions past a single disabled stage and skips the would-be job', async () => {
+    cfgResolved({
+      enabled: true,
+      autoReview: true,
+      states: { developed: { enabled: false } },
+    });
+    // autoSkipDisabledStages loads the current issue row.
+    nextSelect.mockResolvedValueOnce([
+      { id: 'iss-1', projectId: 'proj-1', status: 'developed', reopenCount: 0 },
+    ]);
+
+    const bus = makeBus();
+    await bus.emit(
+      'transition',
+      transition({ from: 'in_progress', to: 'developed' }) as never,
+    );
+
+    expect(applyTransitionMock).toHaveBeenCalledTimes(1);
+    expect(applyTransitionMock.mock.calls[0]?.[1]).toBe('testing');
+    expect(sentryAddBreadcrumb).toHaveBeenCalledTimes(1);
+    expect(sentryAddBreadcrumb.mock.calls[0]?.[0]).toMatchObject({
+      category: 'pipeline_run.status_changed',
+      data: { reason: 'skipped-disabled', fromStatus: 'developed', toStatus: 'testing' },
+    });
+    // considerEnqueue runs second; the disabled-stage guard short-circuits it.
+    expect(dbInsert).not.toHaveBeenCalled();
+  });
+
+  it('walks a two-stage disabled chain one hop at a time (developed → testing → pass)', async () => {
+    cfgResolved({
+      enabled: true,
+      states: {
+        developed: { enabled: false },
+        testing: { enabled: false },
+      },
+    });
+    nextSelect.mockResolvedValueOnce([
+      { id: 'iss-1', projectId: 'proj-1', status: 'developed', reopenCount: 0 },
+    ]);
+
+    const bus = makeBus();
+    await bus.emit(
+      'transition',
+      transition({ from: 'in_progress', to: 'developed' }) as never,
+    );
+
+    // Per-hop emission gives downstream subscribers (and Sentry) the full
+    // status history — AC #4 requires a breadcrumb per skip transition.
+    expect(applyTransitionMock).toHaveBeenCalledTimes(2);
+    expect(applyTransitionMock.mock.calls[0]?.[1]).toBe('testing');
+    expect(applyTransitionMock.mock.calls[1]?.[1]).toBe('pass');
+    expect(sentryAddBreadcrumb).toHaveBeenCalledTimes(2);
+    expect(sentryAddBreadcrumb.mock.calls[0]?.[0]).toMatchObject({
+      data: { reason: 'skipped-disabled', fromStatus: 'developed', toStatus: 'testing' },
+    });
+    expect(sentryAddBreadcrumb.mock.calls[1]?.[0]).toMatchObject({
+      data: { reason: 'skipped-disabled', fromStatus: 'testing', toStatus: 'pass' },
+    });
+    expect(dbInsert).not.toHaveBeenCalled();
+  });
+
+  it('does not skip when the target stage is enabled', async () => {
+    cfgResolved({
+      enabled: true,
+      autoReview: true,
+      states: { developed: { enabled: true } },
+    });
+    // No issue lookup because autoSkip bails before that. considerEnqueue then
+    // proceeds normally — needs a no-active-job select and the insert.
+    nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+    insertReturning.mockResolvedValueOnce([{ id: 'review-job' }]);
+
+    const bus = makeBus();
+    await bus.emit(
+      'transition',
+      transition({ from: 'in_progress', to: 'developed' }) as never,
+    );
+
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+    expect(dbInsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('bails when the issue row has already moved (race with another writer)', async () => {
+    cfgResolved({
+      enabled: true,
+      states: { developed: { enabled: false } },
+    });
+    // Status mismatch — another writer advanced past `developed` already.
+    nextSelect.mockResolvedValueOnce([
+      { id: 'iss-1', projectId: 'proj-1', status: 'testing', reopenCount: 0 },
+    ]);
+
+    const bus = makeBus();
+    await bus.emit(
+      'transition',
+      transition({ from: 'in_progress', to: 'developed' }) as never,
+    );
+
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+    expect(dbInsert).not.toHaveBeenCalled();
+  });
+
+  it('considerEnqueue guard: refuses to insert a job for a disabled stage even when autoSkip is a no-op', async () => {
+    // States says `confirmed` is disabled. autoSkip would try to skip — but
+    // we simulate a failure by returning a stale issue row (status mismatch)
+    // so autoSkip bails. The guard inside considerEnqueue must still prevent
+    // the plan-job insert that would otherwise happen.
+    cfgResolved({
+      enabled: true,
+      autoPlan: true,
+      states: { confirmed: { enabled: false } },
+    });
+    nextSelect.mockResolvedValueOnce([
+      { id: 'iss-1', projectId: 'proj-1', status: 'approved', reopenCount: 0 },
+    ]);
+
+    const bus = makeBus();
+    await bus.emit('transition', transition({ from: 'open', to: 'confirmed' }) as never);
+
+    expect(applyTransitionMock).not.toHaveBeenCalled();
     expect(dbInsert).not.toHaveBeenCalled();
   });
 });

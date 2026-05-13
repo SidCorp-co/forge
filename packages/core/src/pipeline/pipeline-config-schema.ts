@@ -129,6 +129,25 @@ export function defaultStatesConfig(): Record<StageName, StageConfig> {
  * adding one row here — kept in lockstep by the test that asserts every
  * `STEP_TOGGLE_KEYS` entry has a schema field.
  */
+/**
+ * Per-stage config under `states` (ISS-110). Currently surfaces `enabled` and
+ * `mode`; Phase 1 (ISS-108) will extend the same record with runner/model
+ * overrides — `.passthrough()` keeps any forward-compat keys round-tripping
+ * through this schema until that lands.
+ */
+export const stateConfigSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    mode: z.enum(['auto', 'manual']).optional(),
+  })
+  .passthrough();
+
+export type StateConfig = z.infer<typeof stateConfigSchema>;
+
+export const statesConfigSchema = z.record(z.string(), stateConfigSchema);
+
+export type StatesConfigInput = z.infer<typeof statesConfigSchema>;
+
 export const pipelineConfigSchema = z
   .object({
     enabled: z.boolean().optional(),
@@ -144,6 +163,10 @@ export const pipelineConfigSchema = z
     // with running agent_sessions; sessions beyond the cap stay queued with
     // failure_reason='project_full'. Backfilled to 3 by migration 0044.
     maxConcurrentIssues: z.number().int().positive().max(50).optional(),
+    // ISS-110 — per-stage enable/mode toggle. When `states[X].enabled === false`,
+    // the orchestrator auto-transitions past `X` (soft-skip) rather than
+    // dispatching a job. Cycle/dead-end detection runs at PATCH time.
+    states: statesConfigSchema.optional(),
   })
   .merge(recoveryPolicySchema);
 

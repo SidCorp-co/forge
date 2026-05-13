@@ -1,14 +1,22 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, type JobType, issues, jobs, projects } from '../db/schema.js';
+import {
+  type IssueStatus,
+  type JobType,
+  issues,
+  jobs,
+  projects,
+} from '../db/schema.js';
+import { applyStatusTransition, type DeviceLite } from '../issues/apply-transition.js';
 import { enqueueJob } from '../jobs/enqueue.js';
 import { logger } from '../logger.js';
+import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import type { Actor } from './activity.js';
 import {
   type PreventivePattern,
   queryPreventivePatterns,
 } from './ci-fix-pattern-query.js';
-import type { HooksBus } from './hooks.js';
+import type { HookPayloads, HooksBus } from './hooks.js';
 import { openIssueRun, setCurrentStep } from './runs.js';
 import {
   type ResolvedSkill,
@@ -16,17 +24,18 @@ import {
   inverseJobTypeToStatus,
   resolveJobTypeForStatus,
 } from './skill-mapping.js';
+import {
+  MAX_SKIP_CHAIN,
+  SKIPPABLE_STAGES,
+  STAGE_FORWARD,
+  type StagesConfig,
+} from './state-machine.js';
 
 const ACTIVE_JOB_STATUSES = ['queued', 'dispatched', 'running'] as const;
 
-interface StageConfigShape {
-  enabled?: boolean;
-  mode?: 'auto' | 'manual';
-}
-
 interface PipelineConfig {
   enabled?: boolean;
-  states?: Record<string, StageConfigShape>;
+  states?: StagesConfig;
   [toggle: string]: unknown;
 }
 
@@ -265,12 +274,17 @@ async function considerEnqueue(args: {
   status: IssueStatus;
   actor: Actor;
   reason: Record<string, unknown>;
+  preloaded?: { cfg: PipelineConfig | null; ownerId: string | null };
 }): Promise<void> {
   const jobMap = resolveJobTypeForStatus(args.status);
   if (!jobMap) return; // human-gated status
 
-  const { cfg, ownerId } = await loadPipelineConfig(args.projectId);
+  const { cfg, ownerId } = args.preloaded ?? (await loadPipelineConfig(args.projectId));
   if (!cfg?.enabled) return;
+  // Belt-and-suspenders: if the landing stage is disabled in `states`, never
+  // enqueue a job. autoSkipDisabledStages should have moved the issue past
+  // this stage already; this fallback ensures a failed skip path never
+  // produces a job for a stage the operator explicitly turned off.
   const stageCfg = cfg.states?.[args.status];
   if (stageCfg && stageCfg.enabled === false) return;
   if (stageCfg && stageCfg.mode === 'manual') return;
@@ -354,6 +368,117 @@ async function considerEnqueue(args: {
 }
 
 /**
+ * ISS-110 — When a project's `pipelineConfig.states[stage].enabled === false`,
+ * the orchestrator must auto-transition issues past `stage` instead of
+ * dispatching a job. Chains of disabled stages collapse transitively (capped
+ * at `MAX_SKIP_CHAIN`). Each hop emits a Sentry breadcrumb tagged
+ * `reason='skipped-disabled'` so traces show why a stage was skipped.
+ *
+ * Re-entry: each `applyStatusTransition` call re-emits the `transition` hook,
+ * which re-enters this function. The internal loop is defense in depth — it
+ * lets a single emit walk the chain even if the hook dispatcher is awaited
+ * sequentially.
+ */
+async function autoSkipDisabledStages(
+  payload: HookPayloads['transition'],
+  preloaded: { cfg: PipelineConfig | null; ownerId: string | null },
+): Promise<void> {
+  if (!SKIPPABLE_STAGES.has(payload.to)) return;
+
+  const { cfg, ownerId } = preloaded;
+  if (!cfg?.enabled) return;
+  const states = cfg.states;
+  if (!states) return;
+  if (states[payload.to]?.enabled !== false) return;
+
+  const [issue] = await db
+    .select({
+      id: issues.id,
+      projectId: issues.projectId,
+      status: issues.status,
+      reopenCount: issues.reopenCount,
+    })
+    .from(issues)
+    .where(eq(issues.id, payload.issueId))
+    .limit(1);
+  if (!issue) return;
+  if (issue.status !== payload.to) return; // raced with another writer
+
+  const device = resolveSkipDevice(payload.actor, ownerId);
+  if (!device) {
+    logger.warn(
+      { issueId: issue.id, projectId: issue.projectId },
+      'orchestrator: skip-disabled requires a device principal; none available',
+    );
+    return;
+  }
+
+  let current = { ...issue };
+  for (let hop = 0; hop < MAX_SKIP_CHAIN; hop++) {
+    // Walk forward one stage at a time so each hop emits its own transition
+    // event + Sentry breadcrumb. resolveSkipTarget collapses the chain in a
+    // single pure call — useful for validation, but per-hop emission gives
+    // post-hoc traces the full status history.
+    if (!SKIPPABLE_STAGES.has(current.status)) break;
+    if (states[current.status]?.enabled !== false) break;
+    const nextStatus = STAGE_FORWARD[current.status];
+    if (!nextStatus) break;
+
+    try {
+      await applyStatusTransition(current, nextStatus, device);
+    } catch (err) {
+      logger.warn(
+        { err, issueId: current.id, from: current.status, to: nextStatus },
+        'orchestrator: skip-disabled chain failed to advance',
+      );
+      return;
+    }
+
+    if (isSentryEnabled()) {
+      Sentry.addBreadcrumb({
+        category: 'pipeline_run.status_changed',
+        level: 'info',
+        message: `${current.status} -> ${nextStatus} (skipped-disabled)`,
+        data: {
+          issueId: current.id,
+          projectId: current.projectId,
+          fromStatus: current.status,
+          toStatus: nextStatus,
+          reason: 'skipped-disabled',
+          hop,
+        },
+      });
+    }
+
+    current = { ...current, status: nextStatus };
+  }
+
+  if (states[current.status]?.enabled === false) {
+    // Validator should have rejected this config at save time; reaching this
+    // branch means a backdoor write (manual DB edit, pre-validator data, etc.).
+    logger.error(
+      { issueId: current.id, status: current.status },
+      'orchestrator: skip-disabled chain exhausted MAX_SKIP_CHAIN without landing on an enabled stage',
+    );
+  }
+}
+
+function resolveSkipDevice(actor: Actor, ownerId: string | null): DeviceLite | null {
+  // applyStatusTransition needs a DeviceLite for its WS broadcast / hook
+  // payload. The skip is system-initiated; route it through the original
+  // actor when it's already device-typed, otherwise synthesize from the
+  // project owner. activity_log.actorId has no FK so attributing the skip
+  // to the owner is harmless and matches the WS event's actorId field.
+  if (actor.type === 'device') {
+    return { id: actor.id, ownerId: ownerId ?? actor.id };
+  }
+  if (ownerId) {
+    return { id: ownerId, ownerId };
+  }
+  return null;
+}
+
+/**
  * Subscribe the pipeline orchestrator to `transition` and `issueCreated`
  * hooks. Issue creation lands the issue in `open` without emitting a
  * `transition`, so the `open → triage` mapping needs both subscriptions
@@ -366,12 +491,18 @@ export function registerPipelineOrchestrator(bus: HooksBus): void {
     try {
       // Guard: `needs_info → open` never re-triages (user answered a question).
       if (payload.to === 'open' && payload.from === 'needs_info') return;
+      // Short-circuit BEFORE loading cfg if the target isn't even mapped to a
+      // skill — saves a DB hit on human-gated transitions.
+      if (!resolveSkillForStatus(payload.to) && !SKIPPABLE_STAGES.has(payload.to)) return;
+      const preloaded = await loadPipelineConfig(payload.projectId);
+      await autoSkipDisabledStages(payload, preloaded);
       await considerEnqueue({
         projectId: payload.projectId,
         issueId: payload.issueId,
         status: payload.to,
         actor: payload.actor,
         reason: { transition: { from: payload.from, to: payload.to } },
+        preloaded,
       });
     } catch (err) {
       logger.error(

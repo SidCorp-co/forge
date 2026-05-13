@@ -25,6 +25,7 @@ import {
   pipelineConfigSchema,
 } from '../pipeline/pipeline-config-schema.js';
 import { STATUS_TO_JOB_TYPE } from '../pipeline/skill-mapping.js';
+import { type StagesConfig, validateStatesConfig } from '../pipeline/state-machine.js';
 
 function generateApiKey(): string {
   return `fk_${randomBytes(24).toString('hex')}`;
@@ -506,7 +507,23 @@ projectRoutes.patch(
       const currentPipeline = (currentAc.pipelineConfig ?? {}) as Record<string, unknown>;
       const nextDoc: Record<string, unknown> = {};
       if (mergeDoc.pipelineConfig) {
-        nextDoc.pipelineConfig = { ...currentPipeline, ...(mergeDoc.pipelineConfig as object) };
+        const nextPipeline = {
+          ...currentPipeline,
+          ...(mergeDoc.pipelineConfig as object),
+        };
+        // ISS-110 — reject configs whose disabled `states` would strand
+        // issues. Run against the *merged* doc so a patch that only touches
+        // one stage is still validated in the context of the existing config.
+        const mergedStates = (nextPipeline as { states?: StagesConfig }).states;
+        const dead = validateStatesConfig(mergedStates);
+        if (dead) {
+          throw badRequest({
+            code: dead.code,
+            message: `Cannot disable stages with no forward path: ${dead.unreachable.join(', ')}`,
+            unreachable: dead.unreachable,
+          });
+        }
+        nextDoc.pipelineConfig = nextPipeline;
       }
       if (runnerFallback !== undefined) {
         nextDoc.runnerFallback = runnerFallback;
