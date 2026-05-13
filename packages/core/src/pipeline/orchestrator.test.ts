@@ -402,6 +402,10 @@ describe('pipeline/orchestrator soft-skip (ISS-110)', () => {
       autoReview: true,
       states: { developed: { enabled: true } },
     });
+    // ISS-108 — considerEnqueue resolves the skillName via the resolver mock
+    // before inserting. Without a registration, it logs+skips, so we have to
+    // queue a skill here for the assertion to count an insert.
+    skillRegistered('forge-review', 'review', 'autoReview');
     // No issue lookup because autoSkip bails before that. considerEnqueue then
     // proceeds normally — needs a no-active-job select and the insert.
     nextSelect.mockResolvedValueOnce([]); // findActiveJob → none

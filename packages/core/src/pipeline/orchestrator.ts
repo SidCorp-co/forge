@@ -498,7 +498,7 @@ export function registerPipelineOrchestrator(bus: HooksBus): void {
       if (payload.to === 'open' && payload.from === 'needs_info') return;
       // Short-circuit BEFORE loading cfg if the target isn't even mapped to a
       // skill — saves a DB hit on human-gated transitions.
-      if (!resolveSkillForStatus(payload.to) && !SKIPPABLE_STAGES.has(payload.to)) return;
+      if (!resolveJobTypeForStatus(payload.to) && !SKIPPABLE_STAGES.has(payload.to)) return;
       const preloaded = await loadPipelineConfig(payload.projectId);
       await autoSkipDisabledStages(payload, preloaded);
       await considerEnqueue({
