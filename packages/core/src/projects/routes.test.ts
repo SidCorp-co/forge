@@ -705,7 +705,7 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
       .mockReturnValueOnce({ limit: selectLimit })
       .mockReturnValueOnce({ limit: selectLimit })
       .mockReturnValueOnce({ limit: selectLimit })
-      .mockResolvedValueOnce([{ count: 7 }]);
+      .mockResolvedValueOnce([{ count: 7 }] as never);
 
     const res = await bootstrap(token);
     expect(res.status).toBe(200);
@@ -725,9 +725,10 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     // projects that pre-date the field. The existing pipelineConfig here has no
     // `states`, so one update fires to add the default config.
     expect(updateSet).toHaveBeenCalledTimes(1);
-    const patched = updateSet.mock.calls[0]?.[0] as {
-      agentConfig: { pipelineConfig: { states: Record<string, unknown> } };
-    };
+    const updateCalls = updateSet.mock.calls as unknown as Array<
+      [{ agentConfig: { pipelineConfig: { states: Record<string, unknown> } } }]
+    >;
+    const patched = updateCalls[0]![0];
     expect(Object.keys(patched.agentConfig.pipelineConfig.states).sort()).toEqual(
       ['approved', 'confirmed', 'developed', 'open', 'released', 'reopen', 'testing'].sort(),
     );
@@ -760,9 +761,9 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
         { id: SKILL_IDS.test, name: 'forge-test' },
         { id: SKILL_IDS.fix, name: 'forge-fix' },
         { id: SKILL_IDS.release, name: 'forge-release' },
-      ]);
+      ] as never);
 
-    insertValues.mockReturnValueOnce(Promise.resolve());
+    insertValues.mockReturnValueOnce(Promise.resolve() as never);
 
     const res = await bootstrap(token);
     expect(res.status).toBe(201);
@@ -771,9 +772,10 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     // ISS-108 — preset write is skipped (enabled=false is the user's choice),
     // but states still gets backfilled.
     expect(updateSet).toHaveBeenCalledTimes(1);
-    const patched = updateSet.mock.calls[0]?.[0] as {
-      agentConfig: { pipelineConfig: { enabled: boolean; states: Record<string, unknown> } };
-    };
+    const updateCalls = updateSet.mock.calls as unknown as Array<
+      [{ agentConfig: { pipelineConfig: { enabled: boolean; states: Record<string, unknown> } } }]
+    >;
+    const patched = updateCalls[0]![0];
     expect(patched.agentConfig.pipelineConfig.enabled).toBe(false);
     expect(Object.keys(patched.agentConfig.pipelineConfig.states)).toContain('approved');
   });
@@ -793,7 +795,7 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
       .mockReturnValueOnce({ limit: selectLimit })
       .mockReturnValueOnce({ limit: selectLimit })
       .mockReturnValueOnce({ limit: selectLimit })
-      .mockResolvedValueOnce([]); // no global skills
+      .mockResolvedValueOnce([] as never); // no global skills
 
     const res = await bootstrap(token);
     expect(res.status).toBe(503);

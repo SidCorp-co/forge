@@ -53,13 +53,12 @@ vi.mock('./ci-fix-pattern-query.js', () => ({
 // test pure (no skill_registrations rows needed) and lets each case control
 // whether a registration exists for the target stage.
 const resolverResolve = vi.fn();
-const createProjectSkillResolverMock = vi.fn(() => ({ resolve: resolverResolve }));
+const createProjectSkillResolverMock = vi.fn((_projectId: string) => ({ resolve: resolverResolve }));
 vi.mock('./skill-mapping.js', async () => {
   const actual = await vi.importActual<typeof import('./skill-mapping.js')>('./skill-mapping.js');
   return {
     ...actual,
-    createProjectSkillResolver: (...a: unknown[]) =>
-      createProjectSkillResolverMock(...(a as [string])),
+    createProjectSkillResolver: (projectId: string) => createProjectSkillResolverMock(projectId),
   };
 });
 
@@ -155,8 +154,8 @@ describe('pipeline/orchestrator', () => {
     await bus.emit('transition', transition() as never);
 
     expect(valuesSpy).toHaveBeenCalledTimes(1);
-    const inserted = valuesSpy.mock.calls[0]?.[0] as { payload: { skillName: string } };
-    expect(inserted.payload.skillName).toBe('custom-planner');
+    const calls = valuesSpy.mock.calls as unknown as Array<[{ payload: { skillName: string } }]>;
+    expect(calls[0]?.[0].payload.skillName).toBe('custom-planner');
   });
 
   it('skips when pipelineConfig.enabled is false', async () => {
