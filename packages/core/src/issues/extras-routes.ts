@@ -496,7 +496,10 @@ issueExtrasRoutes.patch(
 // ISS-5: manual trigger for a pipeline stage. Bypasses the per-stage `auto*`
 // toggles so the user can re-fire forge-plan / forge-code / etc. without
 // bouncing the issue status. Body `{ stage? }` overrides the default stage
-// resolved from the issue's current status (STATUS_TO_SKILL).
+// resolved from the issue's current status (STATUS_TO_JOB_TYPE).
+// ISS-108 — `mode: 'manual'` is honored for the auto/PM paths only; this
+// endpoint is always human-triggered (auth-gated) so manual mode does NOT
+// block it. The whole point of manual mode is "only a human can fire this".
 issueExtrasRoutes.post(
   '/:id/run-pipeline-step',
   zValidator('param', idParamSchema, (r) => {
@@ -544,7 +547,7 @@ issueExtrasRoutes.post(
           },
         });
       }
-      if (err instanceof Error && err.message === 'no skill mapped for this status') {
+      if (err instanceof Error && err.message.startsWith('NO_SKILL_REGISTERED')) {
         throw badRequest({
           message: `cannot run pipeline for status ${issue.status} without explicit stage`,
         });

@@ -1,9 +1,9 @@
 /**
  * Single source of truth for pipeline steps surfaced in the settings UI.
- * Mirrors `STATUS_TO_SKILL` in `packages/core/src/pipeline/skill-mapping.ts`.
+ * Mirrors `STATUS_TO_JOB_TYPE` in `packages/core/src/pipeline/skill-mapping.ts`.
  *
  * Adding a new step:
- *   1. Add the entry to STATUS_TO_SKILL in core.
+ *   1. Add the entry to STATUS_TO_JOB_TYPE in core.
  *   2. Add the toggle key to STEP_TOGGLE_KEYS in pipeline-config-schema.ts.
  *   3. Add a corresponding optional field in pipelineConfigSchema.
  *   4. Add the entry below.

@@ -20,10 +20,11 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import {
   PIPELINE_CONFIG_DEFAULTS,
   type PipelineConfig,
+  defaultStatesConfig,
   pipelineConfigPatchSchema,
   pipelineConfigSchema,
 } from '../pipeline/pipeline-config-schema.js';
-import { STATUS_TO_SKILL } from '../pipeline/skill-mapping.js';
+import { STATUS_TO_JOB_TYPE } from '../pipeline/skill-mapping.js';
 
 function generateApiKey(): string {
   return `fk_${randomBytes(24).toString('hex')}`;
@@ -588,6 +589,18 @@ projectRoutes.post(
         .select({ count: sql<number>`count(*)::int` })
         .from(skillRegistrations)
         .where(eq(skillRegistrations.projectId, id));
+
+      // ISS-108 — backfill `states` for already-bootstrapped projects that
+      // pre-date this field. Skipped when operator already wrote a `states`
+      // entry (their value wins). Avoids a separate reseed flow.
+      if (currentPipeline.states === undefined) {
+        const patched = {
+          ...currentAc,
+          pipelineConfig: { ...currentPipeline, states: defaultStatesConfig() },
+        };
+        await db.update(projects).set({ agentConfig: patched }).where(eq(projects.id, id));
+      }
+
       return c.json({
         alreadyBootstrapped: true,
         skillsBound: Number(countRows[0]?.count ?? 0),
@@ -595,10 +608,14 @@ projectRoutes.post(
       });
     }
 
-    // Look up global skills referenced by STATUS_TO_SKILL. Each entry in the
-    // map points to a `forge-<type>` skill name + the auto* toggle key.
+    // Look up global skills referenced by STATUS_TO_JOB_TYPE. Each entry in
+    // the map points to a `forge-<type>` skill name + the auto* toggle key.
     const desiredSkillNames = Array.from(
-      new Set(Object.values(STATUS_TO_SKILL).map((s) => `forge-${s.type}`)),
+      new Set(
+        Object.values(STATUS_TO_JOB_TYPE)
+          .filter((s): s is NonNullable<typeof s> => s != null)
+          .map((s) => `forge-${s.type}`),
+      ),
     );
     const globalSkills = await db
       .select({ id: skills.id, name: skills.name })
@@ -611,7 +628,8 @@ projectRoutes.post(
     // builtin seed doesn't crash bootstrap.
     const toInsert: Array<{ projectId: string; skillId: string; stage: string; registeredBy: string }> =
       [];
-    for (const [status, mapping] of Object.entries(STATUS_TO_SKILL)) {
+    for (const [status, mapping] of Object.entries(STATUS_TO_JOB_TYPE)) {
+      if (!mapping) continue;
       const skillName = `forge-${mapping.type}`;
       const skillId = skillByName.get(skillName);
       if (!skillId) continue;
@@ -631,11 +649,26 @@ projectRoutes.post(
     // been set yet — never clobber a user's deliberate config.
     const shouldSetPreset = currentPipeline.enabled === undefined;
     if (shouldSetPreset) {
-      const merged = { ...currentAc, pipelineConfig: { ...currentPipeline, ...BALANCED_PRESET } };
+      const merged = {
+        ...currentAc,
+        pipelineConfig: {
+          ...currentPipeline,
+          ...BALANCED_PRESET,
+          states: defaultStatesConfig(),
+        },
+      };
       await db
         .update(projects)
         .set({ agentConfig: merged })
         .where(eq(projects.id, id));
+    } else if (currentPipeline.states === undefined) {
+      // Preset stays untouched but ensure `states` is populated so the
+      // orchestrator can rely on the field.
+      const patched = {
+        ...currentAc,
+        pipelineConfig: { ...currentPipeline, states: defaultStatesConfig() },
+      };
+      await db.update(projects).set({ agentConfig: patched }).where(eq(projects.id, id));
     }
 
     const skillsBound = toInsert.length;

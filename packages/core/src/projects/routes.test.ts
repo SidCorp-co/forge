@@ -676,6 +676,15 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
       autoFix: true,
       autoRelease: false,
     });
+
+    // ISS-108 — bootstrap seeds the per-stage states config alongside the preset.
+    const states = (setArg.agentConfig.pipelineConfig as { states: Record<string, unknown> }).states;
+    expect(Object.keys(states).sort()).toEqual(
+      ['approved', 'confirmed', 'developed', 'open', 'released', 'reopen', 'testing'].sort(),
+    );
+    for (const key of Object.keys(states)) {
+      expect(states[key]).toEqual({ enabled: true, mode: 'auto' });
+    }
   });
 
   it('200 returns alreadyBootstrapped on second call without writing registrations or agentConfig', async () => {
@@ -712,7 +721,16 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     });
 
     expect(insertValues).not.toHaveBeenCalled();
-    expect(updateSet).not.toHaveBeenCalled();
+    // ISS-108 — bootstrap backfills pipelineConfig.states on already-bootstrapped
+    // projects that pre-date the field. The existing pipelineConfig here has no
+    // `states`, so one update fires to add the default config.
+    expect(updateSet).toHaveBeenCalledTimes(1);
+    const patched = updateSet.mock.calls[0]?.[0] as {
+      agentConfig: { pipelineConfig: { states: Record<string, unknown> } };
+    };
+    expect(Object.keys(patched.agentConfig.pipelineConfig.states).sort()).toEqual(
+      ['approved', 'confirmed', 'developed', 'open', 'released', 'reopen', 'testing'].sort(),
+    );
   });
 
   it('preserves an existing pipelineConfig.enabled flag (does not clobber user choice)', async () => {
@@ -750,7 +768,14 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     expect(res.status).toBe(201);
     const body = (await res.json()) as { pipelineEnabled: boolean };
     expect(body.pipelineEnabled).toBe(false);
-    expect(updateSet).not.toHaveBeenCalled();
+    // ISS-108 — preset write is skipped (enabled=false is the user's choice),
+    // but states still gets backfilled.
+    expect(updateSet).toHaveBeenCalledTimes(1);
+    const patched = updateSet.mock.calls[0]?.[0] as {
+      agentConfig: { pipelineConfig: { enabled: boolean; states: Record<string, unknown> } };
+    };
+    expect(patched.agentConfig.pipelineConfig.enabled).toBe(false);
+    expect(Object.keys(patched.agentConfig.pipelineConfig.states)).toContain('approved');
   });
 
   it('503 NO_GLOBAL_SKILLS when the seeder has not run', async () => {

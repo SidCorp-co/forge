@@ -58,7 +58,7 @@ export type RecoveryPolicy = z.infer<typeof recoveryPolicySchema>;
 
 /**
  * Authoritative list of step toggle keys exposed to projects. Mirrors
- * `STATUS_TO_SKILL` in `skill-mapping.ts`. `clarified` is human-gated and
+ * `STATUS_TO_JOB_TYPE` in `skill-mapping.ts`. `clarified` is human-gated and
  * intentionally absent — there is no orchestrator code path for it.
  *
  * The const tuple drives both the schema and the type so a new step is
@@ -75,6 +75,43 @@ export const STEP_TOGGLE_KEYS = [
 ] as const;
 
 export type StepToggleKey = (typeof STEP_TOGGLE_KEYS)[number];
+
+/**
+ * Per-stage `{ enabled, mode }` config under `pipelineConfig.states`. Each
+ * key is an `IssueStatus` that maps to a job type. `enabled:false` skips
+ * dispatch for both auto + PM paths; `mode:'manual'` skips the auto path and
+ * rejects PM dispatch with `FORBIDDEN: STAGE_MANUAL_ONLY`. Human-triggered
+ * `/run-pipeline-step` still works regardless — manual mode means "only a
+ * human can fire this stage".
+ */
+export const STAGE_NAMES = [
+  'open',
+  'confirmed',
+  'approved',
+  'developed',
+  'testing',
+  'reopen',
+  'released',
+] as const;
+
+export type StageName = (typeof STAGE_NAMES)[number];
+
+export const stageConfigSchema = z.object({
+  enabled: z.boolean(),
+  mode: z.enum(['auto', 'manual']),
+});
+
+export type StageConfig = z.infer<typeof stageConfigSchema>;
+
+export const statesConfigSchema = z.record(z.enum(STAGE_NAMES), stageConfigSchema).optional();
+
+export type StatesConfig = z.infer<typeof statesConfigSchema>;
+
+export function defaultStatesConfig(): Record<StageName, StageConfig> {
+  return Object.fromEntries(
+    STAGE_NAMES.map((s) => [s, { enabled: true, mode: 'auto' as const }]),
+  ) as Record<StageName, StageConfig>;
+}
 
 /**
  * Full pipeline config document as stored under
@@ -102,6 +139,7 @@ export const pipelineConfigSchema = z
     autoTest: stepToggleSchema.optional(),
     autoFix: stepToggleSchema.optional(),
     autoRelease: stepToggleSchema.optional(),
+    states: statesConfigSchema,
     // ISS-40 PR-E — Layer 3 (per-project) dispatcher cap. DISTINCT issue_ids
     // with running agent_sessions; sessions beyond the cap stay queued with
     // failure_reason='project_full'. Backfilled to 3 by migration 0044.
@@ -134,6 +172,7 @@ export const PIPELINE_CONFIG_DEFAULTS: PipelineConfig = {
   recoveryMaxAttempts: DEFAULT_RECOVERY_CONFIG.maxAttempts,
   recoveryWindowHours: DEFAULT_RECOVERY_CONFIG.windowHours,
   recoveryByFailureKind: { ...DEFAULT_RECOVERY_CONFIG.byKind },
+  states: defaultStatesConfig(),
 };
 
 /**

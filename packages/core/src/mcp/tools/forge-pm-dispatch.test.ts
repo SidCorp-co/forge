@@ -17,6 +17,7 @@ chain.where = () => chain;
 chain.orderBy = () => chain;
 chain.limit = () => chain;
 chain.groupBy = () => chain;
+chain.innerJoin = () => chain;
 chain.values = () => chain;
 chain.returning = () => chain;
 chain.onConflictDoNothing = () => chain;
@@ -146,6 +147,8 @@ describe('forge_pm.dispatch', () => {
     const tool = forgePmDispatchTool(fakeDevice);
     pushPmActorOk();
     queue.push([{ projectId: PROJECT_ID }]); // issue
+    queue.push([{ agentConfig: { pipelineConfig: { states: {} } } }]); // states lookup
+    queue.push([{ stage: 'approved', name: 'forge-code' }]); // skill resolver rows
     queue.push([{ id: JOB_ID }]); // jobs insert returning
     queue.push([{ id: 'run-1', status: 'running' }]); // ISS-102 pipeline_run lookup
 
@@ -168,10 +171,51 @@ describe('forge_pm.dispatch', () => {
     expect(result.pipelineRun).toEqual({ id: 'run-1', status: 'running' });
   });
 
+  it('rejects when the stage is configured as manual-only (ISS-108)', async () => {
+    const tool = forgePmDispatchTool(fakeDevice);
+    pushPmActorOk();
+    queue.push([{ projectId: PROJECT_ID }]); // issue
+    queue.push([
+      {
+        agentConfig: {
+          pipelineConfig: { states: { confirmed: { enabled: true, mode: 'manual' } } },
+        },
+      },
+    ]);
+
+    await expect(
+      tool.handler({
+        projectId: PROJECT_ID,
+        issueId: ISSUE_ID,
+        jobType: 'plan',
+        reason: 'go',
+      }),
+    ).rejects.toThrow(/FORBIDDEN.*STAGE_MANUAL_ONLY/);
+  });
+
+  it('rejects when no skill_registration exists for the project (ISS-108)', async () => {
+    const tool = forgePmDispatchTool(fakeDevice);
+    pushPmActorOk();
+    queue.push([{ projectId: PROJECT_ID }]); // issue
+    queue.push([{ agentConfig: { pipelineConfig: { states: {} } } }]);
+    queue.push([]); // no registrations
+
+    await expect(
+      tool.handler({
+        projectId: PROJECT_ID,
+        issueId: ISSUE_ID,
+        jobType: 'code',
+        reason: 'go',
+      }),
+    ).rejects.toThrow(/NOT_FOUND.*skill_registration/);
+  });
+
   it('returns pipelineRun=null when the parent run vanished after dispatch', async () => {
     const tool = forgePmDispatchTool(fakeDevice);
     pushPmActorOk();
     queue.push([{ projectId: PROJECT_ID }]);
+    queue.push([{ agentConfig: { pipelineConfig: { states: {} } } }]);
+    queue.push([{ stage: 'approved', name: 'forge-code' }]);
     queue.push([{ id: JOB_ID }]);
     queue.push([]); // pipeline_runs lookup returns nothing — defensive path
 
@@ -190,6 +234,8 @@ describe('forge_pm.dispatch', () => {
     const tool = forgePmDispatchTool(fakeDevice);
     pushPmActorOk();
     queue.push([{ projectId: PROJECT_ID }]); // issue
+    queue.push([{ agentConfig: { pipelineConfig: { states: {} } } }]);
+    queue.push([{ stage: 'approved', name: 'forge-code' }]);
     // jobs insert throws 23505
     insertSpy.mockReturnValueOnce({
       values: () => ({

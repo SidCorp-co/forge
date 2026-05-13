@@ -21,7 +21,7 @@ vi.mock('./orchestrator.js', () => ({
 }));
 
 vi.mock('./skill-mapping.js', () => ({
-  resolveSkillForStatus: () => null,
+  resolveJobTypeForStatus: () => null,
 }));
 
 const publishSpy = vi.fn();
