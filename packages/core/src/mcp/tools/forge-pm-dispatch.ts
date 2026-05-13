@@ -1,12 +1,16 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
-import { issues, jobTypes, jobs, modelTiers, pipelineRuns } from '../../db/schema.js';
+import { issues, jobTypes, jobs, modelTiers, pipelineRuns, projects } from '../../db/schema.js';
 import { enqueueJob } from '../../jobs/enqueue.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
 import { logger } from '../../logger.js';
 import { openIssueRun } from '../../pipeline/runs.js';
-import { STATUS_TO_SKILL } from '../../pipeline/skill-mapping.js';
+import {
+  STATUS_TO_JOB_TYPE,
+  createProjectSkillResolver,
+  inverseJobTypeToStatus,
+} from '../../pipeline/skill-mapping.js';
 import {
   type DeviceScopedMcpToolFactory,
   assertPmActor,
@@ -22,11 +26,15 @@ import {
  * `/pipeline` click. PM-internal jobs (`type: 'pm'`) live in their own
  * queue (Epic 2) and are spawned by triggers, not by this tool.
  *
- * Dispatchable types come from `STATUS_TO_SKILL`. `pm` and `custom` are
+ * Dispatchable types come from `STATUS_TO_JOB_TYPE`. `pm` and `custom` are
  * rejected even though they appear in the `jobTypes` enum.
  */
 
-const DISPATCHABLE_TYPES = new Set(Object.values(STATUS_TO_SKILL).map((m) => m.type));
+const DISPATCHABLE_TYPES = new Set(
+  Object.values(STATUS_TO_JOB_TYPE)
+    .filter((m): m is NonNullable<typeof m> => m != null)
+    .map((m) => m.type),
+);
 
 const inputSchema = z
   .object({
@@ -64,12 +72,40 @@ export const forgePmDispatchTool: DeviceScopedMcpToolFactory = (device) => ({
       throw new Error('BAD_REQUEST: issue belongs to a different project');
     }
 
+    // ISS-108 — reject manual-mode stages for PM. Human-clicked /run-pipeline-step
+    // still works because manual mode means "only a human can fire this stage".
+    const stageStatus = inverseJobTypeToStatus(input.jobType);
+    if (stageStatus) {
+      const [projectRow] = await db
+        .select({ agentConfig: projects.agentConfig })
+        .from(projects)
+        .where(eq(projects.id, input.projectId))
+        .limit(1);
+      const ac = (projectRow?.agentConfig ?? {}) as {
+        pipelineConfig?: {
+          states?: Record<string, { enabled?: boolean; mode?: 'auto' | 'manual' }>;
+        };
+      };
+      const stageCfg = ac.pipelineConfig?.states?.[stageStatus];
+      if (stageCfg?.mode === 'manual') {
+        throw new Error('FORBIDDEN: STAGE_MANUAL_ONLY: stage is configured as manual-only');
+      }
+    }
+
+    // ISS-108 — resolve skill name from skill_registrations rather than the
+    // hardcoded `forge-${jobType}` convention.
+    const resolver = createProjectSkillResolver(input.projectId);
+    const resolved = stageStatus ? await resolver.resolve(stageStatus) : null;
+    if (!resolved) {
+      throw new Error('NOT_FOUND: no skill_registration for this jobType in this project');
+    }
+
     // Caller payload spreads first so the canonical system fields below cannot
     // be impersonated — PM should never be able to forge a non-PM
     // `dispatchedBy` or override the skill mapping for the chosen jobType.
     const payload: Record<string, unknown> = {
       ...(input.payload ?? {}),
-      skillName: `forge-${input.jobType}`,
+      skillName: resolved.skillName,
       dispatchedBy: 'pm',
       reason: input.reason,
     };

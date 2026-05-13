@@ -676,6 +676,15 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
       autoFix: true,
       autoRelease: false,
     });
+
+    // ISS-108 — bootstrap seeds the per-stage states config alongside the preset.
+    const states = (setArg.agentConfig.pipelineConfig as { states: Record<string, unknown> }).states;
+    expect(Object.keys(states).sort()).toEqual(
+      ['approved', 'confirmed', 'developed', 'open', 'released', 'reopen', 'testing'].sort(),
+    );
+    for (const key of Object.keys(states)) {
+      expect(states[key]).toEqual({ enabled: true, mode: 'auto' });
+    }
   });
 
   it('200 returns alreadyBootstrapped on second call without writing registrations or agentConfig', async () => {
@@ -696,7 +705,7 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
       .mockReturnValueOnce({ limit: selectLimit })
       .mockReturnValueOnce({ limit: selectLimit })
       .mockReturnValueOnce({ limit: selectLimit })
-      .mockResolvedValueOnce([{ count: 7 }]);
+      .mockResolvedValueOnce([{ count: 7 }] as never);
 
     const res = await bootstrap(token);
     expect(res.status).toBe(200);
@@ -712,7 +721,17 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     });
 
     expect(insertValues).not.toHaveBeenCalled();
-    expect(updateSet).not.toHaveBeenCalled();
+    // ISS-108 — bootstrap backfills pipelineConfig.states on already-bootstrapped
+    // projects that pre-date the field. The existing pipelineConfig here has no
+    // `states`, so one update fires to add the default config.
+    expect(updateSet).toHaveBeenCalledTimes(1);
+    const updateCalls = updateSet.mock.calls as unknown as Array<
+      [{ agentConfig: { pipelineConfig: { states: Record<string, unknown> } } }]
+    >;
+    const patched = updateCalls[0]![0];
+    expect(Object.keys(patched.agentConfig.pipelineConfig.states).sort()).toEqual(
+      ['approved', 'confirmed', 'developed', 'open', 'released', 'reopen', 'testing'].sort(),
+    );
   });
 
   it('preserves an existing pipelineConfig.enabled flag (does not clobber user choice)', async () => {
@@ -742,15 +761,23 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
         { id: SKILL_IDS.test, name: 'forge-test' },
         { id: SKILL_IDS.fix, name: 'forge-fix' },
         { id: SKILL_IDS.release, name: 'forge-release' },
-      ]);
+      ] as never);
 
-    insertValues.mockReturnValueOnce(Promise.resolve());
+    insertValues.mockReturnValueOnce(Promise.resolve() as never);
 
     const res = await bootstrap(token);
     expect(res.status).toBe(201);
     const body = (await res.json()) as { pipelineEnabled: boolean };
     expect(body.pipelineEnabled).toBe(false);
-    expect(updateSet).not.toHaveBeenCalled();
+    // ISS-108 — preset write is skipped (enabled=false is the user's choice),
+    // but states still gets backfilled.
+    expect(updateSet).toHaveBeenCalledTimes(1);
+    const updateCalls = updateSet.mock.calls as unknown as Array<
+      [{ agentConfig: { pipelineConfig: { enabled: boolean; states: Record<string, unknown> } } }]
+    >;
+    const patched = updateCalls[0]![0];
+    expect(patched.agentConfig.pipelineConfig.enabled).toBe(false);
+    expect(Object.keys(patched.agentConfig.pipelineConfig.states)).toContain('approved');
   });
 
   it('503 NO_GLOBAL_SKILLS when the seeder has not run', async () => {
@@ -768,7 +795,7 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
       .mockReturnValueOnce({ limit: selectLimit })
       .mockReturnValueOnce({ limit: selectLimit })
       .mockReturnValueOnce({ limit: selectLimit })
-      .mockResolvedValueOnce([]); // no global skills
+      .mockResolvedValueOnce([] as never); // no global skills
 
     const res = await bootstrap(token);
     expect(res.status).toBe(503);

@@ -36,7 +36,7 @@ import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { reEnqueueForIssue } from './orchestrator.js';
 import { type RecoveryConfig, decideRecovery } from './recovery-policy.js';
-import { resolveSkillForStatus } from './skill-mapping.js';
+import { resolveJobTypeForStatus } from './skill-mapping.js';
 
 export const PIPELINE_SWEEPER_QUEUE = 'pipeline-sweeper';
 
@@ -338,7 +338,7 @@ async function selectStuckIssues(): Promise<StuckIssueRow[]> {
 
   const enriched: StuckIssueRow[] = [];
   for (const c of candidates) {
-    const skill = resolveSkillForStatus(c.status);
+    const skill = resolveJobTypeForStatus(c.status);
     const baseQuery = db
       .select({
         id: jobs.id,

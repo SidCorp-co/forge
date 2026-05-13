@@ -33,9 +33,6 @@ vi.mock('../jobs/enqueue.js', () => ({
   enqueueJob: (...a: unknown[]) => enqueueMock(...(a as [])),
 }));
 
-// ISS-101 — orchestrator now opens a pipeline_run before inserting jobs.
-// Short-circuit the helper so the test's single-insert mock plumbing
-// (which only models the `jobs` insert) still matches.
 vi.mock('./runs.js', () => ({
   openIssueRun: vi.fn(async () => ({ id: 'mock-run-id', startedAt: new Date() })),
   openOneShotRun: vi.fn(async () => ({ id: 'mock-run-id' })),
@@ -46,13 +43,24 @@ vi.mock('./runs.js', () => ({
   setCurrentStepForOpenIssueRun: vi.fn(async () => undefined),
 }));
 
-// ISS-32 — orchestrator now imports the preventive-pattern query module,
-// which transitively pulls config/env. Stub it so the unit test stays
-// pure-mock and never evaluates the env validator.
 const queryPreventiveMock = vi.fn(async () => []);
 vi.mock('./ci-fix-pattern-query.js', () => ({
   queryPreventivePatterns: (...a: unknown[]) => queryPreventiveMock(...(a as [])),
 }));
+
+// ISS-108 — orchestrator resolves skillName from the DB via
+// createProjectSkillResolver. Stubbing the module keeps the orchestrator unit
+// test pure (no skill_registrations rows needed) and lets each case control
+// whether a registration exists for the target stage.
+const resolverResolve = vi.fn();
+const createProjectSkillResolverMock = vi.fn((_projectId: string) => ({ resolve: resolverResolve }));
+vi.mock('./skill-mapping.js', async () => {
+  const actual = await vi.importActual<typeof import('./skill-mapping.js')>('./skill-mapping.js');
+  return {
+    ...actual,
+    createProjectSkillResolver: (projectId: string) => createProjectSkillResolverMock(projectId),
+  };
+});
 
 const { HooksBus } = await import('./hooks.js');
 const { registerPipelineOrchestrator } = await import('./orchestrator.js');
@@ -102,18 +110,27 @@ function issueCreated(overrides: Partial<CreatedPayload> = {}): CreatedPayload {
 }
 
 function cfgResolved(cfg: unknown) {
-  // Mock project row: { agentConfig: { pipelineConfig: cfg }, ownerId }
   nextSelect.mockResolvedValueOnce([{ agentConfig: { pipelineConfig: cfg }, ownerId: 'u-owner' }]);
+}
+
+function skillRegistered(skillName: string, type: string, toggle: string) {
+  resolverResolve.mockResolvedValueOnce({ skillName, type, toggle });
+}
+
+function noSkillRegistered() {
+  resolverResolve.mockResolvedValueOnce(null);
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   nextSelect.mockReset();
+  resolverResolve.mockReset();
 });
 
 describe('pipeline/orchestrator', () => {
   it('enqueues a plan job on open→confirmed when autoPlan is true', async () => {
-    cfgResolved({ enabled: true, autoPlan: true }); // loadPipelineConfig
+    cfgResolved({ enabled: true, autoPlan: true });
+    skillRegistered('forge-plan', 'plan', 'autoPlan');
     nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
     insertReturning.mockResolvedValueOnce([{ id: 'new-job' }]);
 
@@ -122,6 +139,23 @@ describe('pipeline/orchestrator', () => {
 
     expect(dbInsert).toHaveBeenCalledTimes(1);
     expect(enqueueMock).toHaveBeenCalledWith('new-job');
+  });
+
+  it('uses the registered skill name in the inserted job payload', async () => {
+    cfgResolved({ enabled: true, autoPlan: true });
+    skillRegistered('custom-planner', 'plan', 'autoPlan');
+    nextSelect.mockResolvedValueOnce([]);
+    insertReturning.mockResolvedValueOnce([{ id: 'job-x' }]);
+
+    const valuesSpy = vi.fn(() => ({ returning: insertReturning }));
+    dbInsert.mockImplementationOnce(() => ({ values: valuesSpy }));
+
+    const bus = makeBus();
+    await bus.emit('transition', transition() as never);
+
+    expect(valuesSpy).toHaveBeenCalledTimes(1);
+    const calls = valuesSpy.mock.calls as unknown as Array<[{ payload: { skillName: string } }]>;
+    expect(calls[0]?.[0].payload.skillName).toBe('custom-planner');
   });
 
   it('skips when pipelineConfig.enabled is false', async () => {
@@ -143,13 +177,52 @@ describe('pipeline/orchestrator', () => {
     expect(dbInsert).not.toHaveBeenCalled();
   });
 
+  it('skips when states[status].enabled is false', async () => {
+    cfgResolved({
+      enabled: true,
+      autoPlan: true,
+      states: { confirmed: { enabled: false, mode: 'auto' } },
+    });
+
+    const bus = makeBus();
+    await bus.emit('transition', transition() as never);
+
+    expect(dbInsert).not.toHaveBeenCalled();
+    expect(resolverResolve).not.toHaveBeenCalled();
+  });
+
+  it('skips when states[status].mode is manual', async () => {
+    cfgResolved({
+      enabled: true,
+      autoPlan: true,
+      states: { confirmed: { enabled: true, mode: 'manual' } },
+    });
+
+    const bus = makeBus();
+    await bus.emit('transition', transition() as never);
+
+    expect(dbInsert).not.toHaveBeenCalled();
+    expect(resolverResolve).not.toHaveBeenCalled();
+  });
+
+  it('skips when no skill is registered for the auto stage', async () => {
+    cfgResolved({ enabled: true, autoPlan: true });
+    noSkillRegistered();
+
+    const bus = makeBus();
+    await bus.emit('transition', transition() as never);
+
+    expect(dbInsert).not.toHaveBeenCalled();
+    expect(enqueueMock).not.toHaveBeenCalled();
+  });
+
   it('skips human-gated target statuses (waiting)', async () => {
-    // No config fetch needed — resolveSkillForStatus returns null first.
     const bus = makeBus();
     // biome-ignore lint/suspicious/noExplicitAny: test-only cast
     await bus.emit('transition', transition({ to: 'waiting' }) as any);
     expect(dbInsert).not.toHaveBeenCalled();
     expect(nextSelect).not.toHaveBeenCalled();
+    expect(resolverResolve).not.toHaveBeenCalled();
   });
 
   it('skips needs_info→open (guard against answer-loop)', async () => {
@@ -162,6 +235,7 @@ describe('pipeline/orchestrator', () => {
 
   it('dedupes when an active job of the same type already exists', async () => {
     cfgResolved({ enabled: true, autoPlan: true });
+    skillRegistered('forge-plan', 'plan', 'autoPlan');
     nextSelect.mockResolvedValueOnce([{ id: 'existing-job' }]); // findActiveJob
 
     const bus = makeBus();
@@ -173,7 +247,8 @@ describe('pipeline/orchestrator', () => {
 
   it('treats a unique-index violation on insert as a dedupe skip', async () => {
     cfgResolved({ enabled: true, autoPlan: true });
-    nextSelect.mockResolvedValueOnce([]); // no existing in read path
+    skillRegistered('forge-plan', 'plan', 'autoPlan');
+    nextSelect.mockResolvedValueOnce([]);
     insertReturning.mockRejectedValueOnce(Object.assign(new Error('dup'), { code: '23505' }));
 
     const bus = makeBus();
@@ -184,7 +259,8 @@ describe('pipeline/orchestrator', () => {
 
   it('falls back to project owner for createdBy on device-triggered transitions', async () => {
     cfgResolved({ enabled: true, autoReview: true });
-    nextSelect.mockResolvedValueOnce([]); // no existing
+    skillRegistered('forge-review', 'review', 'autoReview');
+    nextSelect.mockResolvedValueOnce([]);
     insertReturning.mockResolvedValueOnce([{ id: 'job-x' }]);
 
     const bus = makeBus();
@@ -203,7 +279,8 @@ describe('pipeline/orchestrator', () => {
 
   it('enqueues a triage job on issueCreated when autoTriage is true', async () => {
     cfgResolved({ enabled: true, autoTriage: true });
-    nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+    skillRegistered('forge-triage', 'triage', 'autoTriage');
+    nextSelect.mockResolvedValueOnce([]);
     insertReturning.mockResolvedValueOnce([{ id: 'triage-job' }]);
 
     const bus = makeBus();

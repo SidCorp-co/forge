@@ -59,6 +59,26 @@ vi.mock('../jobs/dispatch-tick.js', () => ({
   dispatchTickForProject: vi.fn(),
 }));
 
+// ISS-108 — stub the skill resolver so the manual-trigger test doesn't need
+// to model the skill_registrations JOIN skills SELECT. Each call returns a
+// canonical `forge-<type>` registration for the resolved status, matching the
+// pre-ISS-108 behavior of the test.
+vi.mock('../pipeline/skill-mapping.js', async () => {
+  const actual = await vi.importActual<typeof import('../pipeline/skill-mapping.js')>(
+    '../pipeline/skill-mapping.js',
+  );
+  return {
+    ...actual,
+    createProjectSkillResolver: () => ({
+      resolve: async (status: string) => {
+        const m = actual.STATUS_TO_JOB_TYPE[status as keyof typeof actual.STATUS_TO_JOB_TYPE];
+        if (!m) return null;
+        return { type: m.type, toggle: m.toggle, skillName: `forge-${m.type}` };
+      },
+    }),
+  };
+});
+
 // ISS-101 — stub run lifecycle helpers so enrich/pipeline-step routes don't
 // need to model the extra pipeline_runs SELECT/INSERT in the db mock.
 vi.mock('../pipeline/runs.js', () => ({

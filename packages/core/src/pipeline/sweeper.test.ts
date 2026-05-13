@@ -21,7 +21,7 @@ vi.mock('./orchestrator.js', () => ({
 }));
 
 vi.mock('./skill-mapping.js', () => ({
-  resolveSkillForStatus: () => null,
+  resolveJobTypeForStatus: () => null,
 }));
 
 const publishSpy = vi.fn();
@@ -41,7 +41,7 @@ vi.mock('../queue/boss.js', () => ({
   },
 }));
 
-const { processStuckIssues, type: _t } = await import('./sweeper.js');
+const { processStuckIssues } = await import('./sweeper.js');
 type StuckIssueRow = import('./sweeper.js').StuckIssueRow;
 
 const NOW = new Date('2026-04-27T12:00:00Z');

@@ -1,5 +1,5 @@
 import type { JobType, RunnerType } from '../db/schema.js';
-import { STATUS_TO_SKILL } from './skill-mapping.js';
+import { STATUS_TO_JOB_TYPE } from './skill-mapping.js';
 
 /**
  * Resolve the runner fallback chain for a specific job at dispatch time.
@@ -43,7 +43,7 @@ export function resolveRunnerChainForJob(
 }
 
 function findToggleKeyForJobType(jobType: JobType): string | null {
-  for (const skill of Object.values(STATUS_TO_SKILL)) {
+  for (const skill of Object.values(STATUS_TO_JOB_TYPE)) {
     if (skill?.type === jobType) return skill.toggle;
   }
   return null;

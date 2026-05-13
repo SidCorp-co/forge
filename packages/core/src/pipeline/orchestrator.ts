@@ -10,12 +10,23 @@ import {
 } from './ci-fix-pattern-query.js';
 import type { HooksBus } from './hooks.js';
 import { openIssueRun, setCurrentStep } from './runs.js';
-import { resolveSkillForStatus } from './skill-mapping.js';
+import {
+  type ResolvedSkill,
+  createProjectSkillResolver,
+  inverseJobTypeToStatus,
+  resolveJobTypeForStatus,
+} from './skill-mapping.js';
 
 const ACTIVE_JOB_STATUSES = ['queued', 'dispatched', 'running'] as const;
 
+interface StageConfigShape {
+  enabled?: boolean;
+  mode?: 'auto' | 'manual';
+}
+
 interface PipelineConfig {
   enabled?: boolean;
+  states?: Record<string, StageConfigShape>;
   [toggle: string]: unknown;
 }
 
@@ -171,10 +182,23 @@ export async function triggerPipelineStepManual(args: {
   actor: Actor;
   reason: Record<string, unknown>;
 }): Promise<{ jobId: string; type: JobType }> {
-  const skill = args.stage
-    ? { type: args.stage, toggle: '' }
-    : resolveSkillForStatus(args.status);
-  if (!skill) throw new Error('no skill mapped for this status');
+  const resolver = createProjectSkillResolver(args.projectId);
+
+  let skill: ResolvedSkill | null;
+  if (args.stage) {
+    // Caller picked the jobType explicitly. Resolve the registered skill for
+    // the matching status; if there's no row, fall back to the conventional
+    // `forge-<type>` name so the manual escape hatch still works.
+    const stageType = args.stage;
+    const status = inverseJobTypeToStatus(stageType);
+    skill = status ? await resolver.resolve(status) : null;
+    if (!skill) {
+      skill = { type: stageType, toggle: 'autoTriage', skillName: `forge-${stageType}` };
+    }
+  } else {
+    skill = await resolver.resolve(args.status);
+  }
+  if (!skill) throw new Error('NO_SKILL_REGISTERED: no skill registration for this status');
 
   const { ownerId } = await loadPipelineConfig(args.projectId);
 
@@ -201,7 +225,7 @@ export async function triggerPipelineStepManual(args: {
         pipelineRunId: run.id,
         createdBy,
         type: skill.type,
-        payload: { skillName: `forge-${skill.type}`, ...args.reason, preventiveContext },
+        payload: { skillName: skill.skillName, ...args.reason, preventiveContext },
         status: 'queued',
       })
       .returning({ id: jobs.id });
@@ -242,12 +266,25 @@ async function considerEnqueue(args: {
   actor: Actor;
   reason: Record<string, unknown>;
 }): Promise<void> {
-  const skill = resolveSkillForStatus(args.status);
-  if (!skill) return; // human-gated status
+  const jobMap = resolveJobTypeForStatus(args.status);
+  if (!jobMap) return; // human-gated status
 
   const { cfg, ownerId } = await loadPipelineConfig(args.projectId);
   if (!cfg?.enabled) return;
-  if (!isToggleEnabled(cfg, skill.toggle)) return;
+  const stageCfg = cfg.states?.[args.status];
+  if (stageCfg && stageCfg.enabled === false) return;
+  if (stageCfg && stageCfg.mode === 'manual') return;
+  if (!isToggleEnabled(cfg, jobMap.toggle)) return;
+
+  const resolver = createProjectSkillResolver(args.projectId);
+  const skill = await resolver.resolve(args.status);
+  if (!skill) {
+    logger.warn(
+      { projectId: args.projectId, status: args.status },
+      'orchestrator: no skill_registration for auto stage — skipping enqueue',
+    );
+    return;
+  }
 
   const existing = await findActiveJob(args.issueId, skill.type);
   if (existing) {
@@ -279,7 +316,7 @@ async function considerEnqueue(args: {
         createdBy,
         type: skill.type,
         payload: {
-          skillName: `forge-${skill.type}`,
+          skillName: skill.skillName,
           ...args.reason,
           preventiveContext,
         },
