@@ -6,8 +6,8 @@
 -- Hard cutover: `pipeline_run_id` is NOT NULL on `jobs` and `agent_sessions`.
 -- No NULL fallback in app code; existing rows are backfilled below.
 --
--- Every statement is split with `--> statement-breakpoint` per the README;
--- every DDL and INSERT is idempotent so a re-run against a partially-applied
+-- Statements are separated by the drizzle breakpoint marker (see README).
+-- Every DDL and INSERT is idempotent so a re-run against a partially-applied
 -- state converges cleanly.
 
 CREATE TABLE IF NOT EXISTS "pipeline_runs" (
