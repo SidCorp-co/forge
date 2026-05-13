@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { issueStatuses } from '../db/schema.js';
 import { DEFAULT_RECOVERY_CONFIG } from './recovery-policy.js';
 
 /**
@@ -96,14 +97,22 @@ export const STAGE_NAMES = [
 
 export type StageName = (typeof STAGE_NAMES)[number];
 
-export const stageConfigSchema = z.object({
-  enabled: z.boolean(),
-  mode: z.enum(['auto', 'manual']),
-});
+// Both fields optional so PATCH `{ states: { developed: { enabled: false } } }`
+// works without the caller having to re-send `mode`. The orchestrator reads
+// each field defensively (=== false / === 'manual'), so undefined values fall
+// through to the defaults documented in `defaultStatesConfig()`.
+export const stageConfigSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    mode: z.enum(['auto', 'manual']).optional(),
+  })
+  .passthrough();
 
 export type StageConfig = z.infer<typeof stageConfigSchema>;
 
-export const statesConfigSchema = z.record(z.enum(STAGE_NAMES), stageConfigSchema).optional();
+export const statesConfigSchema = z
+  .partialRecord(z.enum(STAGE_NAMES), stageConfigSchema)
+  .optional();
 
 export type StatesConfig = z.infer<typeof statesConfigSchema>;
 
@@ -139,11 +148,15 @@ export const pipelineConfigSchema = z
     autoTest: stepToggleSchema.optional(),
     autoFix: stepToggleSchema.optional(),
     autoRelease: stepToggleSchema.optional(),
-    states: statesConfigSchema,
     // ISS-40 PR-E — Layer 3 (per-project) dispatcher cap. DISTINCT issue_ids
     // with running agent_sessions; sessions beyond the cap stay queued with
     // failure_reason='project_full'. Backfilled to 3 by migration 0044.
     maxConcurrentIssues: z.number().int().positive().max(50).optional(),
+    // ISS-108 Phase 1 / ISS-110 Phase 3 — per-stage enable/mode toggle. When
+    // `states[X].enabled === false`, the orchestrator auto-transitions past
+    // `X` (soft-skip) rather than dispatching a job. Cycle/dead-end detection
+    // runs at PATCH time.
+    states: statesConfigSchema,
   })
   .merge(recoveryPolicySchema);
 
