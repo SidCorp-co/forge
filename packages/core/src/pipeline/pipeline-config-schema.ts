@@ -78,14 +78,17 @@ export const STEP_TOGGLE_KEYS = [
 export type StepToggleKey = (typeof STEP_TOGGLE_KEYS)[number];
 
 /**
- * Per-stage `{ enabled, mode }` config under `pipelineConfig.states`. Most
- * keys map to a job type via STATUS_TO_JOB_TYPE; `tested`, `pass`, `staging`,
- * `deploying` have no skill and can only be marked `enabled:false` to opt-in
- * to soft-skip auto-transition via STAGE_FORWARD. `enabled:false` skips
- * dispatch for both auto + PM paths; `mode:'manual'` skips the auto path and
- * rejects PM dispatch with `FORBIDDEN: STAGE_MANUAL_ONLY`. Human-triggered
- * `/run-pipeline-step` still works regardless — manual mode means "only a
- * human can fire this stage".
+ * Per-stage `{ enabled, mode }` config under `pipelineConfig.states`.
+ * `enabled:false` skips dispatch for both auto + PM paths; `mode:'manual'`
+ * skips the auto path and rejects PM dispatch with
+ * `FORBIDDEN: STAGE_MANUAL_ONLY`. Human-triggered `/run-pipeline-step` still
+ * works regardless — manual mode means "only a human can fire this stage".
+ *
+ * `tested`, `pass`, `staging`, `deploying` are listed here despite having no
+ * skill in STATUS_TO_JOB_TYPE: the FE needs a toggle to opt-in to soft-skip
+ * auto-transition via STAGE_FORWARD for projects whose flow doesn't use those
+ * stages. With `enabled:true` (the default) an issue parks at them; flipping
+ * `enabled:false` engages the chain.
  */
 export const STAGE_NAMES = [
   'open',
