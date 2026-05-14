@@ -26,6 +26,13 @@ import { STEP_REGISTRY, type StepToggleKey } from '../step-registry';
 const pipelineConfigKey = (projectId: string | undefined) =>
   ['project', projectId, 'pipeline-config'] as const;
 
+// Module-level so the default-arg path on `usePipelineConfig` keeps the same
+// array reference across renders. A fresh `['claude-code']` literal would
+// otherwise invalidate the `initial` useMemo every render, refire the
+// hydrate useEffect, and silently reset user edits (e.g. Skills tab
+// stage-enabled checkbox clicks didn't persist).
+const DEFAULT_KNOWN_RUNNERS: string[] = ['claude-code'];
+
 interface StepFormValue {
   enabled: boolean;
   runner?: string;
@@ -194,7 +201,7 @@ export interface UsePipelineConfigResult {
 export function usePipelineConfig(
   projectId: string | undefined,
   /** Pre-known runner types (from project.runners) — passed in to avoid a 2nd fetch. */
-  knownRunners: string[] = ['claude-code'],
+  knownRunners: string[] = DEFAULT_KNOWN_RUNNERS,
 ): UsePipelineConfigResult {
   const qc = useQueryClient();
 
