@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { AlertBanner, Spinner } from '@/components/ui';
 import { ApiError } from '@/lib/api/client';
 import { STAGE_NAMES, type StageName } from '@/features/pipeline/config/types';
@@ -91,6 +91,15 @@ export function SkillRegistrationsSection({ projectId, isOwner }: Props) {
   const saveError = readErrorCause(cfg.error);
   const bindError = readErrorCause(registerSkill.error ?? unregisterSkill.error);
 
+  const bannerRef = useRef<HTMLDivElement | null>(null);
+  // Scroll the banner into view when the save failure surfaces, so the user
+  // sees it without scrolling back up from the Save button at the bottom.
+  useEffect(() => {
+    if (saveError?.code && bannerRef.current) {
+      bannerRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [saveError?.code]);
+
   if (!isOwner) return null;
 
   if (skills.isLoading || registrations.isLoading || cfg.isLoading) {
@@ -117,26 +126,37 @@ export function SkillRegistrationsSection({ projectId, isOwner }: Props) {
       </p>
 
       {saveError && (saveError.code === 'OPEN_LOCKED_ON' || saveError.code === 'STAGE_HAS_ISSUES' || saveError.code === 'AUTO_STAGE_NEEDS_SKILL' || saveError.code === 'DEAD_END_CONFIG') && (
-        <AlertBanner variant="error">
-          {saveError.code === 'OPEN_LOCKED_ON' && 'Open stage cannot be disabled.'}
-          {saveError.code === 'STAGE_HAS_ISSUES' && (
-            <>
-              Cannot disable {saveError.stagesBlocked?.join(', ') ?? 'these stages'} — there are{' '}
-              {saveError.blockingIssueIds?.length ?? 0} issues currently at them. Move or close
-              them first.
-            </>
-          )}
-          {saveError.code === 'AUTO_STAGE_NEEDS_SKILL' && (
-            <>
-              Auto-mode stages need a registered skill: {saveError.stagesMissingSkill?.join(', ')}.
-            </>
-          )}
-          {saveError.code === 'DEAD_END_CONFIG' && (
-            <>
-              Cannot disable {saveError.unreachable?.join(', ')} — no forward path remains.
-            </>
-          )}
-        </AlertBanner>
+        <div ref={bannerRef}>
+          <AlertBanner variant="error">
+            {saveError.code === 'OPEN_LOCKED_ON' && 'Open stage cannot be disabled.'}
+            {saveError.code === 'STAGE_HAS_ISSUES' && (
+              saveError.blockingIssueIds && saveError.blockingIssueIds.length > 0 ? (
+                <>
+                  Cannot disable {saveError.stagesBlocked?.join(', ') ?? 'these stages'} —{' '}
+                  {saveError.blockingIssueIds.length} issue
+                  {saveError.blockingIssueIds.length === 1 ? '' : 's'} currently at them. Move or
+                  close them first.
+                </>
+              ) : (
+                <>
+                  Server rejected save: stages have live issues. Open the Issues tab to find and
+                  resolve them.
+                </>
+              )
+            )}
+            {saveError.code === 'AUTO_STAGE_NEEDS_SKILL' && (
+              <>
+                Auto-mode stages need a registered skill:{' '}
+                {saveError.stagesMissingSkill?.join(', ')}.
+              </>
+            )}
+            {saveError.code === 'DEAD_END_CONFIG' && (
+              <>
+                Cannot disable {saveError.unreachable?.join(', ')} — no forward path remains.
+              </>
+            )}
+          </AlertBanner>
+        </div>
       )}
 
       {bindError && (

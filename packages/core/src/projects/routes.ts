@@ -545,8 +545,10 @@ projectRoutes.patch(
                 message: 'cannot disable stages while issues are at those stages',
                 cause: {
                   code: 'STAGE_HAS_ISSUES',
-                  blockingIssueIds: blocking.map((b) => b.id),
-                  stagesBlocked: Array.from(new Set(blocking.map((b) => b.status))),
+                  details: {
+                    blockingIssueIds: blocking.map((b) => b.id),
+                    stagesBlocked: Array.from(new Set(blocking.map((b) => b.status))),
+                  },
                 },
               });
             }
@@ -577,7 +579,10 @@ projectRoutes.patch(
             if (missing.length > 0) {
               throw new HTTPException(409, {
                 message: 'auto-mode stages require a registered skill',
-                cause: { code: 'AUTO_STAGE_NEEDS_SKILL', stagesMissingSkill: missing },
+                cause: {
+                  code: 'AUTO_STAGE_NEEDS_SKILL',
+                  details: { stagesMissingSkill: missing },
+                },
               });
             }
           }
@@ -588,10 +593,9 @@ projectRoutes.patch(
         const mergedStates = (nextPipeline as { states?: StagesConfig }).states;
         const dead = validateStatesConfig(mergedStates);
         if (dead) {
-          throw badRequest({
-            code: dead.code,
+          throw new HTTPException(400, {
             message: `Cannot disable stages with no forward path: ${dead.unreachable.join(', ')}`,
-            unreachable: dead.unreachable,
+            cause: { code: dead.code, details: { unreachable: dead.unreachable } },
           });
         }
         nextDoc.pipelineConfig = nextPipeline;

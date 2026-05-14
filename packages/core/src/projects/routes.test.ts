@@ -834,3 +834,48 @@ describe('DELETE /api/projects/:id', () => {
     expect(deleteWhere).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('PATCH /api/projects/:id/pipeline-config — rule rejection body shape (ISS-112)', () => {
+  const PID = '11111111-1111-4111-8111-111111111111';
+
+  // ISS-112 — Hono error middleware only forwards `cause.code` + `cause.details`
+  // into the response body. This test pins the shape so the rule-rejection
+  // payload (blockingIssueIds, stagesBlocked) survives serialization to the FE
+  // banner. Prior to the fix the payload sat top-level on `cause` and was
+  // silently dropped by `extractCause`.
+  it('409 STAGE_HAS_ISSUES nests blockingIssueIds + stagesBlocked under body.details', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-owner' }])
+      .mockResolvedValueOnce([{ role: 'owner' }])
+      .mockResolvedValueOnce([
+        { agentConfig: { pipelineConfig: { states: { deploying: { enabled: true, mode: 'auto' } } } } },
+      ]);
+
+    // 5th .where() call is the `select(issues).where(and(...))` for blocking
+    // rows — it has no `.limit(1)` and is awaited directly, so we resolve the
+    // selectWhere call to the blocking rows.
+    selectWhere
+      .mockReturnValueOnce({ limit: selectLimit }) // assertEmailVerified
+      .mockReturnValueOnce({ limit: selectLimit }) // loadMembership project
+      .mockReturnValueOnce({ limit: selectLimit }) // loadMembership member
+      .mockReturnValueOnce({ limit: selectLimit }) // agentConfig load
+      .mockResolvedValueOnce([{ id: 'iss-stale', status: 'deploying' }]);
+
+    const res = await req(`/${PID}/pipeline-config`, {
+      method: 'PATCH',
+      body: JSON.stringify({ states: { deploying: { enabled: false } } }),
+      token,
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as {
+      code: string;
+      message: string;
+      details?: { blockingIssueIds?: string[]; stagesBlocked?: string[] };
+    };
+    expect(body.code).toBe('STAGE_HAS_ISSUES');
+    expect(body.details?.blockingIssueIds).toEqual(['iss-stale']);
+    expect(body.details?.stagesBlocked).toEqual(['deploying']);
+  });
+});
