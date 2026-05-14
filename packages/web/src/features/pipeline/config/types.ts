@@ -27,6 +27,10 @@ export const STAGE_NAMES = [
   'approved',
   'developed',
   'testing',
+  'tested',
+  'pass',
+  'staging',
+  'deploying',
   'reopen',
   'released',
 ] as const;

@@ -23,11 +23,15 @@ const STAGE_LABELS: Record<StageName, string> = {
   approved: 'Approved',
   developed: 'Developed',
   testing: 'Testing',
+  tested: 'Tested',
+  pass: 'Pass',
+  staging: 'Staging',
+  deploying: 'Deploying',
   reopen: 'Reopen',
   released: 'Released',
 };
 
-const STAGE_DEFAULT_SKILL_NAMES: Record<StageName, string> = {
+const STAGE_DEFAULT_SKILL_NAMES: Partial<Record<StageName, string>> = {
   open: 'forge-triage',
   confirmed: 'forge-plan',
   approved: 'forge-code',
@@ -35,6 +39,7 @@ const STAGE_DEFAULT_SKILL_NAMES: Record<StageName, string> = {
   testing: 'forge-test',
   reopen: 'forge-fix',
   released: 'forge-release',
+  // tested/pass/staging/deploying have no skill — soft-skip only.
 };
 
 // Map backend error `cause.code` to a human-friendly inline message + the
