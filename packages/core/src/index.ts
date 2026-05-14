@@ -79,6 +79,7 @@ import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cro
 import { registerNotifyMentionsSubscriber } from './notifications/notify-mentions.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { pipelineAnalyticsRoutes } from './pipeline/analytics-routes.js';
+import { pipelineRegistryRoutes } from './pipeline/registry-routes.js';
 import { pipelineRunRoutes } from './pipeline/runs-routes.js';
 import {
   pipelineRunProjectRoutes,
@@ -302,6 +303,7 @@ app.route('/api/devices', devicePublicRoutes);
 app.route('/api/devices', deviceAuthRoutes);
 app.route('/api', deviceOwnerRoutes);
 app.route('/api/projects', deviceUserRoutes);
+app.route('/api/pipeline/registry', pipelineRegistryRoutes);
 app.route('/api/pipeline', pipelineAnalyticsRoutes);
 app.route('/api/schedules', scheduleRoutes);
 app.route('/api/knowledge', knowledgeIngestRoutes);

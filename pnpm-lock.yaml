@@ -99,6 +99,9 @@ importers:
       '@biomejs/biome':
         specifier: ^1.9.4
         version: 1.9.4
+      '@forge/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@testcontainers/postgresql':
         specifier: ^11.14.0
         version: 11.14.0

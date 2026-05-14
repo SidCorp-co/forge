@@ -1,37 +1,13 @@
 import { eq } from 'drizzle-orm';
 import type { IssueStatus, JobType } from '../db/schema.js';
-import type { StepToggleKey } from './pipeline-config-schema.js';
+import { STATUS_TO_JOB_TYPE, type JobTypeMapping } from './registry.js';
 
-export interface JobTypeMapping {
-  type: JobType;
-  toggle: StepToggleKey;
-}
+export type { JobTypeMapping } from './registry.js';
+export { STATUS_TO_JOB_TYPE } from './registry.js';
 
 export interface ResolvedSkill extends JobTypeMapping {
   skillName: string;
 }
-
-/**
- * Status → jobType + legacy toggle key. JobType is a fixed enum, NOT config.
- * Source: docs/modules/issues-pipeline/status-pipeline.md.
- *
- * Used by:
- *  - PM dispatch (jobType whitelist)
- *  - bootstrap (seed skill_registrations rows)
- *  - resolve-step-runner (jobType → toggle key)
- *
- * NOT consulted at dispatch time to resolve `skillName` — that always goes
- * through `createProjectSkillResolver` / `resolveSkillForStatus`.
- */
-export const STATUS_TO_JOB_TYPE: Partial<Record<IssueStatus, JobTypeMapping>> = {
-  open: { type: 'triage', toggle: 'autoTriage' },
-  confirmed: { type: 'plan', toggle: 'autoPlan' },
-  approved: { type: 'code', toggle: 'autoCode' },
-  developed: { type: 'review', toggle: 'autoReview' },
-  testing: { type: 'test', toggle: 'autoTest' },
-  reopen: { type: 'fix', toggle: 'autoFix' },
-  released: { type: 'release', toggle: 'autoRelease' },
-};
 
 export function resolveJobTypeForStatus(status: IssueStatus): JobTypeMapping | null {
   return STATUS_TO_JOB_TYPE[status] ?? null;
