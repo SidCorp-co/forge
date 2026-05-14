@@ -5,7 +5,7 @@ import { failJob, resolveProjectSlug } from "@/lib/api";
 import type { SessionTracker } from "@/lib/session-tracker";
 import type { JobAssignedPayload, ProjectConfig } from "@/lib/types";
 
-const SUPPORTED_TYPES = ["plan", "code", "review", "fix", "triage"] as const;
+const SUPPORTED_TYPES = ["plan", "code", "review", "fix", "triage", "test"] as const;
 
 export function buildJobPrompt(type: string, issueId: string | undefined | null): string | null {
   if (!issueId) return null;

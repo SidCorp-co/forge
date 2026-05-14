@@ -78,8 +78,10 @@ export const STEP_TOGGLE_KEYS = [
 export type StepToggleKey = (typeof STEP_TOGGLE_KEYS)[number];
 
 /**
- * Per-stage `{ enabled, mode }` config under `pipelineConfig.states`. Each
- * key is an `IssueStatus` that maps to a job type. `enabled:false` skips
+ * Per-stage `{ enabled, mode }` config under `pipelineConfig.states`. Most
+ * keys map to a job type via STATUS_TO_JOB_TYPE; `tested`, `pass`, `staging`,
+ * `deploying` have no skill and can only be marked `enabled:false` to opt-in
+ * to soft-skip auto-transition via STAGE_FORWARD. `enabled:false` skips
  * dispatch for both auto + PM paths; `mode:'manual'` skips the auto path and
  * rejects PM dispatch with `FORBIDDEN: STAGE_MANUAL_ONLY`. Human-triggered
  * `/run-pipeline-step` still works regardless — manual mode means "only a
@@ -91,6 +93,10 @@ export const STAGE_NAMES = [
   'approved',
   'developed',
   'testing',
+  'tested',
+  'pass',
+  'staging',
+  'deploying',
   'reopen',
   'released',
 ] as const;

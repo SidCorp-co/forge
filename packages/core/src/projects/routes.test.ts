@@ -680,7 +680,10 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     // ISS-108 — bootstrap seeds the per-stage states config alongside the preset.
     const states = (setArg.agentConfig.pipelineConfig as { states: Record<string, unknown> }).states;
     expect(Object.keys(states).sort()).toEqual(
-      ['approved', 'confirmed', 'developed', 'open', 'released', 'reopen', 'testing'].sort(),
+      [
+        'approved', 'confirmed', 'deploying', 'developed', 'open', 'pass',
+        'released', 'reopen', 'staging', 'tested', 'testing',
+      ].sort(),
     );
     for (const key of Object.keys(states)) {
       expect(states[key]).toEqual({ enabled: true, mode: 'auto' });
@@ -730,7 +733,10 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     >;
     const patched = updateCalls[0]![0];
     expect(Object.keys(patched.agentConfig.pipelineConfig.states).sort()).toEqual(
-      ['approved', 'confirmed', 'developed', 'open', 'released', 'reopen', 'testing'].sort(),
+      [
+        'approved', 'confirmed', 'deploying', 'developed', 'open', 'pass',
+        'released', 'reopen', 'staging', 'tested', 'testing',
+      ].sort(),
     );
   });
 

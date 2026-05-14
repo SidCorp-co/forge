@@ -57,6 +57,10 @@ export const STAGE_FORWARD: Partial<Record<IssueStatus, IssueStatus>> = {
   confirmed: 'approved',
   developed: 'testing',
   testing: 'pass',
+  tested: 'pass',
+  pass: 'staging',
+  staging: 'released',
+  deploying: 'testing',
   reopen: 'developed',
   released: 'closed',
 };
