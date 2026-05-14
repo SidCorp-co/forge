@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { issues, jobTypes, jobs, modelTiers, pipelineRuns, projects } from '../../db/schema.js';
 import { enqueueJob } from '../../jobs/enqueue.js';
+import { buildJobPromptString } from '../../jobs/prompt-string.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
 import { logger } from '../../logger.js';
 import { openIssueRun } from '../../pipeline/runs.js';
@@ -106,6 +107,11 @@ export const forgePmDispatchTool: DeviceScopedMcpToolFactory = (device) => ({
     const payload: Record<string, unknown> = {
       ...(input.payload ?? {}),
       skillName: resolved.skillName,
+      promptString: buildJobPromptString({
+        skillName: resolved.skillName,
+        jobType: input.jobType,
+        issueId: input.issueId,
+      }),
       dispatchedBy: 'pm',
       reason: input.reason,
     };

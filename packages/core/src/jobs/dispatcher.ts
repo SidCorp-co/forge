@@ -1,7 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, jobs, projects, runners } from '../db/schema.js';
-import type { RunnerType } from '../db/schema.js';
+import type { JobType, RunnerType } from '../db/schema.js';
 import { dispatchLivenessMs, isLastSeenFresh } from '../lib/dispatch-liveness.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import { logger } from '../logger.js';
@@ -21,6 +21,7 @@ import {
   checkLayer4RunnerFull,
   type GateResult,
   markSessionGated,
+  runnerSupportsJobType,
 } from './dispatch-gates.js';
 import { JOB_QUEUE_NAME, PM_QUEUE_NAME } from './queue-name.js';
 
@@ -131,6 +132,9 @@ async function dispatchViaDevice(job: typeof jobs.$inferSelect): Promise<'dispat
     { repoPath },
   );
 
+  const legacyPayload = (job.payload ?? {}) as { promptString?: unknown } & Record<string, unknown>;
+  const legacyPromptString =
+    typeof legacyPayload.promptString === 'string' ? legacyPayload.promptString : null;
   roomManager.publish(deviceRoom(deviceId), {
     event: 'job.assigned',
     data: {
@@ -139,6 +143,7 @@ async function dispatchViaDevice(job: typeof jobs.$inferSelect): Promise<'dispat
       issueId: job.issueId,
       type: job.type,
       payload: job.payload,
+      promptString: legacyPromptString,
       dispatchedAt: dispatchedAt.toISOString(),
       agentSessionId,
     },
@@ -264,6 +269,30 @@ async function dispatchViaRunner(
     return 'skipped';
   }
 
+  // ISS-115 — runner/job-type capability gate. PM jobs run through their own
+  // path (handlePmDispatch is the entrypoint but still funnels here); they
+  // are not in RUNNER_CAPABILITIES so we skip the check for them.
+  if (
+    job.type !== 'pm' &&
+    !runnerSupportsJobType(runner.type as RunnerType, job.type as JobType)
+  ) {
+    const errorMsg = `runner_unsupported_type:${runner.type}`;
+    await db
+      .update(jobs)
+      .set({
+        status: 'failed',
+        error: errorMsg,
+        failureKind: 'permanent',
+        failureReason: errorMsg,
+      })
+      .where(eq(jobs.id, job.id));
+    logger.warn(
+      { jobId: job.id, runnerType: runner.type, jobType: job.type },
+      'dispatcher: runner does not support job type, failing permanently',
+    );
+    return 'skipped';
+  }
+
   // L4 — runner-cap check after we've picked a runner. We don't pre-filter
   // full runners in selectRunnerForJob to keep its signature simple; if a
   // runner is full we just skip and the next tick will retry.
@@ -302,6 +331,9 @@ async function dispatchViaRunner(
     { repoPath },
   );
 
+  const runnerPayload = (job.payload ?? {}) as { promptString?: unknown } & Record<string, unknown>;
+  const runnerPromptString =
+    typeof runnerPayload.promptString === 'string' ? runnerPayload.promptString : null;
   const result = await adapter.dispatch({
     job: {
       id: job.id,
@@ -309,6 +341,7 @@ async function dispatchViaRunner(
       issueId: job.issueId,
       type: job.type,
       payload: job.payload,
+      promptString: runnerPromptString,
       dispatchedAt,
       agentSessionId,
     },

@@ -3,7 +3,6 @@ import { useAppStore } from "@/stores/app-store";
 import { useAuthStore, type AuthState } from "@/stores/auth-store";
 import { invoke } from "./use-tauri-ipc";
 import { relayAgentEvent, relayPromptBuilt, getIssue, getProject, getAgents } from "@/lib/api";
-import { buildIssuePrompt, buildMultiIssuePrompt } from "@/lib/prompt-builders";
 import { buildAgentPrompt, buildAgentReindexPrompt, type AgentConfig } from "@/lib/agent-prompt";
 import { SessionTracker } from "@/lib/session-tracker";
 
@@ -322,10 +321,10 @@ export function useAgentCommandHandler(tracker: SessionTracker) {
         );
         console.log("[build-prompt] fetched issues:", issues.length);
 
-        const prompt =
-          issues.length === 1
-            ? buildIssuePrompt(issues[0])
-            : buildMultiIssuePrompt(issues);
+        // ISS-115: dev no longer composes pipeline prompts. Agent-chat
+        // "run on these issues" defaults to /forge-code <id...>; pipeline
+        // jobs use the server-stamped promptString via use-job-handler.
+        const prompt = `/forge-code ${issues.map((i) => i.documentId).join(" ")}`;
 
         console.log(
           "[build-prompt] built prompt, length:",

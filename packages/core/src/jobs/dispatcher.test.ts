@@ -63,10 +63,15 @@ vi.mock('./dispatch-gates.js', () => ({
   checkLayer3ProjectFull: vi.fn(async () => ({ pass: true })),
   checkLayer4RunnerFull: vi.fn(async () => ({ pass: true })),
   markSessionGated: vi.fn(async () => {}),
+  // ISS-115 — dispatcher checks runner/job-type cap match after picking a
+  // runner. Default to true so unrelated tests stay focused on their own
+  // envelope; the unsupported-type test overrides with mockReturnValueOnce.
+  runnerSupportsJobType: vi.fn(() => true),
 }));
 
 const { db } = await import('../db/client.js');
 const { getActiveDeviceId } = await import('./active-device.js');
+const { runnerSupportsJobType } = await import('./dispatch-gates.js');
 const {
   handleDispatch,
   handlePmDispatch,
@@ -198,6 +203,7 @@ describe('jobs/dispatcher', () => {
           issueId: 'i1',
           type: 'plan',
           payload: { foo: 'bar' },
+          promptString: null,
           dispatchedAt: '2026-04-27T00:00:00.000Z',
           agentSessionId: 'sess-test',
         },
@@ -354,6 +360,66 @@ describe('jobs/dispatcher PM path', () => {
 
     mockSelectOnce([{ id: 'pm-x', status: 'dispatched', projectId: 'p1', type: 'pm' }]);
     expect(await handlePmDispatch({ jobId: 'pm-x' })).toBe('skipped');
+  });
+
+  it('ISS-115: fails the job permanently when the runner does not support its job type', async () => {
+    mockSelectOnce([
+      { id: 'rel-1', status: 'queued', projectId: 'p1', type: 'release', payload: {}, issueId: 'iss-1' },
+    ]);
+    (selectRunnerForJob as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: 'r1',
+      type: 'claude-code',
+      deviceId: 'd1',
+    });
+    (getRunnerAdapter as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+      dispatch: vi.fn(),
+    });
+    // Mock fallback chain lookup (the project agentConfig select).
+    mockSelectOnce([{ agentConfig: null }]);
+    (runnerSupportsJobType as ReturnType<typeof vi.fn>).mockReturnValueOnce(false);
+    // Permanent-failure UPDATE returning value isn't read; just give it
+    // something to consume so the mock chain doesn't crash.
+    mockUpdateReturn([]);
+
+    const result = await handleDispatch({ jobId: 'rel-1' });
+    expect(result).toBe('skipped');
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock
+    expect((db as any).update).toHaveBeenCalledTimes(1);
+    // Adapter must NOT be invoked when the cap fails.
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock
+    expect((roomManager as any).publish).not.toHaveBeenCalled();
+  });
+
+  it('ISS-115: forwards payload.promptString as a top-level field on job.assigned (legacy device path)', async () => {
+    process.env.FEATURE_RUNNER_FRAMEWORK = 'false';
+    mockSelectOnce([
+      {
+        id: 'j-prompt',
+        status: 'queued',
+        projectId: 'p1',
+        issueId: 'iss-1',
+        type: 'plan',
+        payload: { promptString: '/forge-plan iss-1', skillName: 'forge-plan' },
+      },
+    ]);
+    (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
+    mockSelectOnce([{ id: 'd1', status: 'online', lastSeenAt: new Date() }]);
+    mockUpdateReturn([{ id: 'j-prompt' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
+
+    const result = await handleDispatch({ jobId: 'j-prompt' });
+    expect(result).toBe('dispatched');
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock
+    expect((roomManager as any).publish).toHaveBeenCalledWith(
+      'device:d1',
+      expect.objectContaining({
+        event: 'job.assigned',
+        data: expect.objectContaining({
+          jobId: 'j-prompt',
+          promptString: '/forge-plan iss-1',
+        }),
+      }),
+    );
   });
 
   it('register/unregister is idempotent and creates the PM_QUEUE_NAME queue', async () => {

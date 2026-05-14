@@ -340,4 +340,12 @@ export interface JobAssignedPayload {
    * claudeSessionId, diff). Absent for older server builds and legacy paths.
    */
   agentSessionId?: string | null;
+  /**
+   * Pre-composed runner prompt (`/<skill> <issueId>`) stamped by the server
+   * at job-insert time (ISS-115). The dev runner spawns Claude CLI with this
+   * verbatim — no client-side skill→prompt mapping. Absent only on legacy
+   * pre-0.1.34 server builds; in that case the handler also checks
+   * `payload.promptString` as a fallback.
+   */
+  promptString?: string | null;
 }

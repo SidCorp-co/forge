@@ -5,16 +5,6 @@ import { failJob, resolveProjectSlug } from "@/lib/api";
 import type { SessionTracker } from "@/lib/session-tracker";
 import type { JobAssignedPayload, ProjectConfig } from "@/lib/types";
 
-const SUPPORTED_TYPES = ["plan", "code", "review", "fix", "triage", "test"] as const;
-
-export function buildJobPrompt(type: string, issueId: string | undefined | null): string | null {
-  if (!issueId) return null;
-  if ((SUPPORTED_TYPES as readonly string[]).includes(type)) {
-    return `/forge-${type} ${issueId}`;
-  }
-  return null;
-}
-
 export interface JobHandlerCtx {
   projects: Record<string, ProjectConfig>;
   tracker: Pick<SessionTracker, "start">;
@@ -32,23 +22,16 @@ export interface JobHandlerCtx {
 /**
  * Pure handler — no React. Tests call this directly. The hook below wires refs.
  *
- * On entry the handler:
- *  1) resolves projectId → slug (config lookup)
- *  2) confirms a local repoPath is configured for the slug
- *  3) builds the `/forge-<type> <issueId>` prompt
- *  4) marks the session as job-owned and spawns send_chat with sessionId=jobId
- * Any failure path posts /api/jobs/:id/fail and removes the session marker so
- * dispatcher state and local state stay in sync.
+ * ISS-115: the runner is a dumb subprocess executor. It consumes
+ * `data.promptString` (server-built `/<skill> <issueId>`), spawns Claude
+ * CLI, and streams events back. Zero pipeline knowledge here.
  */
 export async function handleJobAssigned(
   data: JobAssignedPayload | undefined,
   ctx: JobHandlerCtx,
 ): Promise<void> {
   if (!data?.jobId) return;
-  const { jobId, projectId, type, payload } = data;
-  // Dispatcher emits issueId at top level; legacy/test fixtures may put it
-  // inside payload — accept both so handler works in either shape.
-  const issueId = data.issueId ?? (payload?.issueId as string | undefined);
+  const { jobId, projectId, payload } = data;
 
   // Outside Tauri (browser/dev mode) `send_chat` is a logged no-op and no
   // agent:* events ever fire, so the job would sit dispatched forever. Fail
@@ -73,9 +56,15 @@ export async function handleJobAssigned(
     return;
   }
 
-  const prompt = buildJobPrompt(type, issueId);
+  // Prefer the top-level field (post-ISS-115); fall back to payload.promptString
+  // so a pre-0.1.34 server emitting the field only inside payload still works
+  // across the rolling-update window.
+  const payloadPrompt = typeof payload?.promptString === "string" ? payload.promptString : null;
+  const prompt = data.promptString ?? payloadPrompt;
   if (!prompt) {
-    try { await failJob(jobId, `unsupported job type or missing issueId (type=${type})`); } catch { /* ignore */ }
+    // Permanent failure — server failure classifier maps `missing_prompt_string`
+    // to `permanent` so retry/sweeper does not burn the retry cap.
+    try { await failJob(jobId, "missing_prompt_string"); } catch { /* ignore */ }
     return;
   }
 
@@ -87,15 +76,8 @@ export async function handleJobAssigned(
   // jobId is a UUID so growth is bounded and won't collide with real sessions.
   ctx.jobSessions.add(jobId);
   if (data.agentSessionId) {
-    // Stored so agent:complete can PATCH the canonical session row. Absent
-    // when running against an older server build (legacy path or pre-PR-B);
-    // in that case the completion still reaches /api/jobs/:id/complete which
-    // moves the linked row through syncAgentSessionLifecycle.
     ctx.jobAgentSessions.set(jobId, data.agentSessionId);
   }
-  // For job-originated sessions the local sessionId is the jobId, but the
-  // canonical agent_sessions row id arrives in `data.agentSessionId` (PR-B).
-  // Older server builds may omit it — tracker silently skips remote PATCH.
   ctx.tracker.start(jobId, slug, prompt, { repoPath: pc.repoPath, agentSessionId: data.agentSessionId ?? undefined });
 
   try {
