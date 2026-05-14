@@ -57,6 +57,12 @@ export const STAGE_FORWARD: Partial<Record<IssueStatus, IssueStatus>> = {
   confirmed: 'approved',
   developed: 'testing',
   testing: 'pass',
+  tested: 'pass',
+  pass: 'staging',
+  staging: 'released',
+  // deploying sits between developed and testing in the lifecycle
+  // (developed → deploying → testing), so skipping it lands on testing.
+  deploying: 'testing',
   reopen: 'developed',
   released: 'closed',
 };

@@ -586,6 +586,10 @@ describe('POST /api/projects/:id/api-key/rotate', () => {
 
 describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
   const PID = '11111111-1111-4111-8111-111111111111';
+  const EXPECTED_DEFAULT_STAGES = [
+    'approved', 'confirmed', 'deploying', 'developed', 'open', 'pass',
+    'released', 'reopen', 'staging', 'tested', 'testing',
+  ].sort();
   const SKILL_IDS = {
     triage: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     plan: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
@@ -679,9 +683,7 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
 
     // ISS-108 — bootstrap seeds the per-stage states config alongside the preset.
     const states = (setArg.agentConfig.pipelineConfig as { states: Record<string, unknown> }).states;
-    expect(Object.keys(states).sort()).toEqual(
-      ['approved', 'confirmed', 'developed', 'open', 'released', 'reopen', 'testing'].sort(),
-    );
+    expect(Object.keys(states).sort()).toEqual(EXPECTED_DEFAULT_STAGES);
     for (const key of Object.keys(states)) {
       expect(states[key]).toEqual({ enabled: true, mode: 'auto' });
     }
@@ -729,9 +731,7 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
       [{ agentConfig: { pipelineConfig: { states: Record<string, unknown> } } }]
     >;
     const patched = updateCalls[0]![0];
-    expect(Object.keys(patched.agentConfig.pipelineConfig.states).sort()).toEqual(
-      ['approved', 'confirmed', 'developed', 'open', 'released', 'reopen', 'testing'].sort(),
-    );
+    expect(Object.keys(patched.agentConfig.pipelineConfig.states).sort()).toEqual(EXPECTED_DEFAULT_STAGES);
   });
 
   it('preserves an existing pipelineConfig.enabled flag (does not clobber user choice)', async () => {
