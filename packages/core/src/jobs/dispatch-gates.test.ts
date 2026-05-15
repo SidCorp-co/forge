@@ -49,6 +49,16 @@ function selectChainOnce(rows: unknown[]): void {
   }));
 }
 
+function selectJoinChainOnce(rows: unknown[]): void {
+  dbSelect.mockImplementationOnce(() => ({
+    from: () => ({
+      innerJoin: () => ({
+        where: () => ({ limit: async () => rows }),
+      }),
+    }),
+  }));
+}
+
 describe('checkLayer1IssueBusy', () => {
   // ISS-42 C1 added a manual_hold short-circuit before the existing busy
   // check. Each test now queues a `manualHold: false` lookup first so the
@@ -118,6 +128,53 @@ describe('checkLayer2Dependencies', () => {
       expect(waitingOn).toHaveLength(1);
       expect(waitingOn[0]?.issSeq).toBe(13);
     }
+  });
+
+  describe('decomposition release gate (ISS-119)', () => {
+    it('passes a release job when decomposition parent is released', async () => {
+      dbExecute.mockResolvedValueOnce([]); // no blocks edges
+      selectJoinChainOnce([
+        { id: 'parent-1', status: 'released', projectId: 'proj-1', issSeq: 42 },
+      ]);
+      const r = await checkLayer2Dependencies('iss-child', 'release');
+      expect(r.pass).toBe(true);
+    });
+
+    it('passes a release job when there is no decomposition parent', async () => {
+      dbExecute.mockResolvedValueOnce([]); // no blocks edges
+      selectJoinChainOnce([]); // no decomposition parent
+      const r = await checkLayer2Dependencies('iss-child', 'release');
+      expect(r.pass).toBe(true);
+    });
+
+    it('fails a release job when decomposition parent is not released', async () => {
+      dbExecute.mockResolvedValueOnce([]); // no blocks edges
+      selectJoinChainOnce([
+        { id: 'parent-1', status: 'approved', projectId: 'proj-1', issSeq: 42 },
+      ]);
+      const r = await checkLayer2Dependencies('iss-child', 'release');
+      expect(r.pass).toBe(false);
+      if (!r.pass) {
+        expect(r.reason).toBe('waiting_on_decomp_parent');
+        expect(r.metadata?.parentIssSeq).toBe(42);
+        expect(r.metadata?.parentStatus).toBe('approved');
+      }
+    });
+
+    it('passes a non-release job even when decomposition parent is not released', async () => {
+      dbExecute.mockResolvedValueOnce([]); // no blocks edges
+      const r = await checkLayer2Dependencies('iss-child', 'code');
+      expect(r.pass).toBe(true);
+    });
+
+    it('still flags blocks-dependencies before evaluating decomposition gate', async () => {
+      dbExecute.mockResolvedValueOnce([
+        { from_issue_id: 'p1', iss_seq: 12, status: 'in_progress' },
+      ]);
+      const r = await checkLayer2Dependencies('iss-child', 'release');
+      expect(r.pass).toBe(false);
+      if (!r.pass) expect(r.reason).toBe('waiting_on_dep');
+    });
   });
 });
 

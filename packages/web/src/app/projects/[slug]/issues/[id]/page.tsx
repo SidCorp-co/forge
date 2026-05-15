@@ -34,6 +34,7 @@ import { IssueJobs } from '@/components/issue/issue-detail-modal/issue-jobs';
 import { IssueTasks } from '@/components/issue/issue-detail-modal/issue-tasks';
 import { IssueCostSummary } from '@/components/issue/issue-detail-modal/issue-cost-summary';
 import { IssuePipelineTiming } from '@/components/issue/issue-pipeline-timing';
+import { IssueDecompositionPanel } from '@/components/issue/issue-decomposition-panel';
 import { IssueRelations } from '@/components/issue/issue-relations';
 import { IssueParentBreadcrumb } from '@/components/issue/issue-parent-breadcrumb';
 import { IssueBlockedBanner } from '@/components/issue/issue-blocked-banner';
@@ -295,6 +296,7 @@ export default function IssueDetailPage() {
             <aside className="space-y-6">
               <IssueCostSummary issueId={issueId} />
               <IssuePipelineTiming projectId={issue.projectId} />
+              <IssueDecompositionPanel issueId={issueId} projectSlug={slug} />
               <IssueRelations
                 issueId={issueId}
                 projectId={issue.projectId}

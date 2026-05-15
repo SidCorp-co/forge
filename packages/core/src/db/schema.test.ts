@@ -1036,7 +1036,13 @@ describe('db/schema — pm agent enum extensions', () => {
 
 describe('db/schema — issue_dependencies', () => {
   it('exports the kind enum values', () => {
-    expect(issueDependencyKinds).toEqual(['blocks', 'relates', 'duplicates', 'parent']);
+    expect(issueDependencyKinds).toEqual([
+      'blocks',
+      'relates',
+      'duplicates',
+      'parent',
+      'decomposes',
+    ]);
   });
 
   it('has the documented columns', () => {

@@ -208,7 +208,13 @@ export interface EnrichResponse {
   status: string;
 }
 
-export const DEPENDENCY_KINDS = ['blocks', 'relates', 'duplicates', 'parent'] as const;
+export const DEPENDENCY_KINDS = [
+  'blocks',
+  'relates',
+  'duplicates',
+  'parent',
+  'decomposes',
+] as const;
 export type DependencyKind = (typeof DEPENDENCY_KINDS)[number];
 
 export interface DependencyEdge {

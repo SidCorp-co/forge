@@ -215,7 +215,7 @@ async function dispatchViaRunner(
     const l1 = await checkLayer1IssueBusy(job.issueId, l1Opts);
     if (!l1.pass) return reportGateSkip(job.id, l1, 'L1');
 
-    const l2 = await checkLayer2Dependencies(job.issueId);
+    const l2 = await checkLayer2Dependencies(job.issueId, job.type);
     if (!l2.pass) return reportGateSkip(job.id, l2, 'L2');
   }
   if (!isPm && job.issueId) {

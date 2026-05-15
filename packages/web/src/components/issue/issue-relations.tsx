@@ -25,6 +25,7 @@ const KIND_TITLES: Record<DependencyKind, string> = {
   relates: 'Relates',
   duplicates: 'Duplicates',
   parent: 'Parent / child',
+  decomposes: 'Decomposition',
 };
 
 const KIND_DIRECTION_LABELS: Record<DependencyKind, { outgoing: string; incoming: string }> = {
@@ -32,6 +33,10 @@ const KIND_DIRECTION_LABELS: Record<DependencyKind, { outgoing: string; incoming
   relates: { outgoing: 'Relates to', incoming: 'Related from' },
   duplicates: { outgoing: 'Duplicates', incoming: 'Duplicated by' },
   parent: { outgoing: 'Parent of', incoming: 'Child of' },
+  // `decomposes` edges are also rendered by `<DecompositionPanel/>` with
+  // richer affordances (status dots). The relations panel still lists them
+  // for completeness so users can remove a child link from one place.
+  decomposes: { outgoing: 'Decomposes into', incoming: 'Part of epic' },
 };
 
 export function IssueRelations({ issueId, projectId, projectSlug }: IssueRelationsProps) {
@@ -74,7 +79,7 @@ export function IssueRelations({ issueId, projectId, projectSlug }: IssueRelatio
           <p className="text-[11px] text-outline">No relations yet.</p>
         ) : (
           <ul className="space-y-3">
-            {(['blocks', 'relates', 'duplicates', 'parent'] as DependencyKind[]).map((kind) => {
+            {(['blocks', 'relates', 'duplicates', 'parent', 'decomposes'] as DependencyKind[]).map((kind) => {
               const group = relations.groups[kind];
               if (group.outgoing.length === 0 && group.incoming.length === 0) return null;
               return (
