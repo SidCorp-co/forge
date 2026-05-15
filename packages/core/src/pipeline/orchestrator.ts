@@ -9,6 +9,7 @@ import {
 } from '../db/schema.js';
 import { applyStatusTransition, type DeviceLite } from '../issues/apply-transition.js';
 import { enqueueJob } from '../jobs/enqueue.js';
+import { buildJobPromptString } from '../jobs/prompt-string.js';
 import { logger } from '../logger.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import type { Actor } from './activity.js';
@@ -234,7 +235,16 @@ export async function triggerPipelineStepManual(args: {
         pipelineRunId: run.id,
         createdBy,
         type: skill.type,
-        payload: { skillName: skill.skillName, ...args.reason, preventiveContext },
+        payload: {
+          skillName: skill.skillName,
+          promptString: buildJobPromptString({
+            skillName: skill.skillName,
+            jobType: skill.type,
+            issueId: args.issueId,
+          }),
+          ...args.reason,
+          preventiveContext,
+        },
         status: 'queued',
       })
       .returning({ id: jobs.id });
@@ -331,6 +341,11 @@ async function considerEnqueue(args: {
         type: skill.type,
         payload: {
           skillName: skill.skillName,
+          promptString: buildJobPromptString({
+            skillName: skill.skillName,
+            jobType: skill.type,
+            issueId: args.issueId,
+          }),
           ...args.reason,
           preventiveContext,
         },

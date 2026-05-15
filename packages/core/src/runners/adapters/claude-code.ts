@@ -40,6 +40,7 @@ export const claudeCodeAdapter: RunnerAdapter = {
         issueId: job.issueId,
         type: job.type,
         payload: job.payload,
+        promptString: job.promptString ?? null,
         runnerId: runner.id,
         runnerType: runner.type,
         dispatchedAt: job.dispatchedAt.toISOString(),

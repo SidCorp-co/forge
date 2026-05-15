@@ -1,11 +1,12 @@
-// Mirrors `SUPPORTED_TYPES` in `packages/dev/src/hooks/use-job-handler.ts`.
-// Replace with a core-served capability list when one exists.
+// Mirror of `RUNNER_CAPABILITIES` in `packages/core/src/jobs/dispatch-gates.ts`.
+// The server is SSOT and enforces the gate permanently at dispatch time;
+// this client copy only powers per-stage UI affordances.
 import type { JobType } from '@/features/job/types';
 
 type RunnerType = 'claude-code' | 'antigravity';
 
 export const RUNNER_CAPABILITIES: Record<RunnerType, readonly JobType[]> = {
-  'claude-code': ['plan', 'code', 'review', 'fix', 'triage'],
+  'claude-code': ['plan', 'code', 'review', 'fix', 'triage', 'test'],
   antigravity: ['plan', 'code', 'review', 'fix', 'triage', 'test', 'release'],
 };
 

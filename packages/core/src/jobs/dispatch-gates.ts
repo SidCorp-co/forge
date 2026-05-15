@@ -21,7 +21,9 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, issues, jobs, projects, runners } from '../db/schema.js';
+import type { JobType, RunnerType } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { RUNNER_CAPABILITIES } from '../pipeline/registry.js';
 
 export type GateSkipReason =
   | 'issue_busy'
@@ -48,6 +50,22 @@ const RUNNER_DEFAULT_CONCURRENCY: Record<string, number> = {
   antigravity: 5,
 };
 const RUNNER_DEFAULT_FALLBACK = 2;
+
+/**
+ * Runner ↔ job-type capability gate. Sourced from the pipeline registry
+ * (single SSOT — see `pipeline/registry.ts`). The dispatcher consults this
+ * immediately after `selectRunnerForJob`; a mismatched (runner.type,
+ * job.type) pair fails the job permanently with
+ * `runner_unsupported_type:<runner-type>`.
+ *
+ * `pm` and `custom` are intentionally excluded from RUNNER_CAPABILITIES —
+ * PM flows through a dedicated queue and bypasses the gate; `custom` is
+ * operator-defined and has no canonical runner mapping.
+ */
+export function runnerSupportsJobType(runnerType: RunnerType, jobType: JobType): boolean {
+  const caps = RUNNER_CAPABILITIES[runnerType];
+  return caps ? caps.includes(jobType) : false;
+}
 
 /**
  * L1 — at most one active session/job per issue. Returns `pass=false` when

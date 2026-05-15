@@ -38,6 +38,8 @@ const PERMANENT_PATTERNS: ReadonlyArray<RegExp> = [
   /\bquota[ _-]?exceeded\b/i,
   /\bbilling[ _-]?(error|required)\b/i,
   /\bpermission[ _-]?denied\b/i,
+  /\bmissing_prompt_string\b/i,
+  /\brunner_unsupported_type\b/i,
 ];
 
 const TRANSIENT_PATTERNS: ReadonlyArray<RegExp> = [

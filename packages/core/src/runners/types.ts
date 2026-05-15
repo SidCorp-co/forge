@@ -54,6 +54,14 @@ export interface DispatchInput {
      * direct dispatches may not have a linked session yet.
      */
     agentSessionId?: string | null;
+    /**
+     * Pre-composed runner prompt (`/<skill> <issueId>`). Stamped on the job
+     * payload at insert time by `buildJobPromptString`; the dispatcher
+     * surfaces it here so adapters can forward it as a top-level field on
+     * `job.assigned` for typed consumers. May be null on legacy rows that
+     * pre-date ISS-115.
+     */
+    promptString?: string | null;
   };
   runner: Runner;
 }

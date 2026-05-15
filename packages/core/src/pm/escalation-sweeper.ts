@@ -23,8 +23,9 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { jobs, pmDecisions, projects } from '../db/schema.js';
+import { type JobType, jobs, pmDecisions, projects } from '../db/schema.js';
 import { enqueueJob } from '../jobs/enqueue.js';
+import { buildJobPromptString } from '../jobs/prompt-string.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { indexMemory } from '../memory/indexer.js';
@@ -179,6 +180,11 @@ async function executeDispatchFallback(
   const payload: Record<string, unknown> = {
     ...(userPayload as Record<string, unknown>),
     skillName: `forge-${jobType}`,
+    promptString: buildJobPromptString({
+      skillName: `forge-${jobType}`,
+      jobType: jobType as JobType,
+      issueId,
+    }),
     dispatchedBy: 'pm-escalation-timeout',
     reason: 'PM escalation expired; running PM-authored fallback action',
   };
