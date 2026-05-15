@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Lock, LockOpen } from 'lucide-react';
 import { Markdown } from '@/components/ui/markdown';
 import { Button, ToastContainer } from '@/components/ui';
 import {
@@ -21,11 +20,6 @@ import { IssueTimeline } from '@/components/issue/issue-timeline';
 import { apiClient } from '@/lib/api/client';
 import { formatApiError } from '@/lib/api/error';
 import { useToast } from '@/hooks/use-toast';
-import { AssigneePicker } from '@/components/issue/assignee-picker';
-import { InlineStatusSelect } from '@/components/issue/inline-status-select';
-import { InlinePrioritySelect } from '@/components/issue/inline-priority-select';
-import { InlineComplexitySelect } from '@/components/issue/inline-complexity-select';
-import { IssuePipelineActions } from '@/components/issue/issue-detail-modal/issue-pipeline-actions';
 import { IssuePipelineRunPanel } from '@/components/issue/issue-detail-modal/issue-pipeline-run-panel';
 import { IssueAgentSessions } from '@/components/issue/issue-detail-modal/issue-agent-sessions';
 import { IssueAttachments } from '@/components/issue/issue-detail-modal/issue-attachments';
@@ -35,10 +29,10 @@ import { IssueTasks } from '@/components/issue/issue-detail-modal/issue-tasks';
 import { IssueCostSummary } from '@/components/issue/issue-detail-modal/issue-cost-summary';
 import { IssuePipelineTiming } from '@/components/issue/issue-pipeline-timing';
 import { IssueDecompositionPanel } from '@/components/issue/issue-decomposition-panel';
-import { IssueRelations } from '@/components/issue/issue-relations';
-import { IssueParentBreadcrumb } from '@/components/issue/issue-parent-breadcrumb';
-import { IssueBlockedBanner } from '@/components/issue/issue-blocked-banner';
 import { IssueDetailTabs, type IssueDetailTabKey } from '@/components/issue/issue-detail-tabs';
+import { MetadataCard } from '@/components/issue/aside/metadata-card';
+import { PipelineCard } from '@/components/issue/aside/pipeline-card';
+import { LinkedCard } from '@/components/issue/aside/linked-card';
 import { AgentSessionPanel } from '@/components/chat/agent-session-panel';
 import type { Issue } from '@forge/contracts';
 import type { IssuePatchInput } from '@forge/contracts';
@@ -233,87 +227,70 @@ export default function IssueDetailPage() {
         }
       >
         <div className={splitOpen ? 'min-w-0' : ''}>
-          <main className="min-w-0 space-y-6">
-            <Breadcrumb slug={slug} displayId={issue.displayId} />
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <main className="min-w-0 space-y-6">
+              <Breadcrumb slug={slug} displayId={issue.displayId} />
 
-            <header className="space-y-3">
-              <h1 className="text-2xl font-bold text-primary">{issue.title}</h1>
-              <IssueParentBreadcrumb
-                issueId={issueId}
-                projectSlug={slug}
-                currentDisplayId={issue.displayId}
-              />
-              <div className="flex flex-wrap items-center gap-2">
-                <InlineStatusSelect issue={issue} onUpdate={handleStatusUpdate} />
-                <InlinePrioritySelect issue={issue} onUpdate={handlePatch} />
-                <InlineComplexitySelect issue={issue} onUpdate={handlePatch} />
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                    Assignee
-                  </span>
-                  <AssigneePicker
-                    value={issue.assigneeId ?? null}
-                    members={members}
-                    onChange={(assigneeId) => handlePatch(issueId, { assigneeId })}
-                  />
-                </span>
-                {issue.category && (
-                  <span className="inline-flex items-center rounded-sm border border-outline-variant/30 bg-surface-container-high px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest">
-                    {issue.category}
-                  </span>
+              <header className="space-y-3">
+                <h1 className="text-2xl font-bold text-primary">{issue.title}</h1>
+                {(transitionError || patchError) && (
+                  <p className="text-[10px] uppercase tracking-widest text-error">
+                    {formatApiError(transitionError ?? patchError)}
+                  </p>
                 )}
-                <ManualHoldToggle
-                  issueId={issueId}
-                  value={issue.manualHold ?? false}
-                  pending={setManualHold.isPending}
-                  onToggle={(v) => setManualHold.mutate({ id: issueId, value: v })}
-                />
-              </div>
-              {(transitionError || patchError) && (
-                <p className="text-[10px] uppercase tracking-widest text-error">
-                  {formatApiError(transitionError ?? patchError)}
-                </p>
-              )}
-              <IssuePipelineActions issueId={issueId} status={issue.status} />
-            </header>
+              </header>
 
-            <IssueDetailTabs
-              active={activeTab}
-              onChange={setActiveTab}
-              overview={
-                <OverviewPanel
-                  issue={issue}
-                  issueId={issueId}
-                  projectSlug={slug}
-                  onPatch={handlePatch}
-                />
-              }
-              plan={
-                <PlanPanel
-                  issue={issue}
-                  issueId={issueId}
-                  projectSlug={slug}
-                  onPatch={handlePatch}
-                />
-              }
-              activity={
-                <ActivityPanel
-                  issueId={issueId}
-                  projectId={issue.projectId}
-                  selectedSessionId={sessionParam}
-                  onSelectSession={setSessionId}
-                />
-              }
-              files={
-                <FilesPanel
-                  issueId={issueId}
-                  projectId={issue.projectId}
-                  currentUserId={meProfile?.id ?? null}
-                  isProjectOwner={!!meProfile && project?.ownerId === meProfile.id}
-                />
-              }
-            />
-          </main>
+              <IssueDetailTabs
+                active={activeTab}
+                onChange={setActiveTab}
+                overview={
+                  <OverviewPanel
+                    issue={issue}
+                    issueId={issueId}
+                    onPatch={handlePatch}
+                  />
+                }
+                plan={
+                  <PlanPanel
+                    issue={issue}
+                    issueId={issueId}
+                    projectSlug={slug}
+                    onPatch={handlePatch}
+                  />
+                }
+                activity={
+                  <ActivityPanel
+                    issueId={issueId}
+                    projectId={issue.projectId}
+                    selectedSessionId={sessionParam}
+                    onSelectSession={setSessionId}
+                  />
+                }
+                files={
+                  <FilesPanel
+                    issueId={issueId}
+                    projectId={issue.projectId}
+                    currentUserId={meProfile?.id ?? null}
+                    isProjectOwner={!!meProfile && project?.ownerId === meProfile.id}
+                  />
+                }
+              />
+            </main>
+            <aside className="space-y-4">
+              <MetadataCard
+                issue={issue}
+                members={members}
+                onStatusUpdate={handleStatusUpdate}
+                onPatch={handlePatch}
+              />
+              <PipelineCard
+                issue={issue}
+                manualHoldPending={setManualHold.isPending}
+                onSetManualHold={(v) => setManualHold.mutate({ id: issueId, value: v })}
+              />
+              <LinkedCard issue={issue} projectSlug={slug} />
+            </aside>
+          </div>
         </div>
 
         {splitOpen && sessionParam && (
@@ -341,35 +318,6 @@ function Breadcrumb({ slug, displayId }: { slug: string; displayId: string }) {
       <span className="text-outline-variant">/</span>
       <span className="font-mono text-primary tracking-widest">{displayId}</span>
     </div>
-  );
-}
-
-function ManualHoldToggle({
-  value,
-  pending,
-  onToggle,
-}: {
-  issueId: string;
-  value: boolean;
-  pending: boolean;
-  onToggle: (next: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={pending}
-      onClick={() => onToggle(!value)}
-      className={
-        value
-          ? 'inline-flex items-center gap-1 rounded-sm border border-amber-500/40 bg-amber-500/15 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-amber-400 transition-colors hover:bg-amber-500/25 disabled:opacity-50'
-          : 'inline-flex items-center gap-1 rounded-sm border border-outline-variant/30 bg-surface-container-high px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant transition-colors hover:bg-surface-container-highest disabled:opacity-50'
-      }
-      title={value ? 'Manual hold ON — click to release' : 'Click to set manual hold'}
-      aria-pressed={value}
-    >
-      {value ? <Lock className="h-3 w-3" /> : <LockOpen className="h-3 w-3" />}
-      {value ? 'Held' : 'Hold'}
-    </button>
   );
 }
 
@@ -539,17 +487,14 @@ function CommentsSection({ issueId }: { issueId: string }) {
 function OverviewPanel({
   issue,
   issueId,
-  projectSlug,
   onPatch,
 }: {
   issue: Issue;
   issueId: string;
-  projectSlug: string;
   onPatch: (issueIdValue: string, patch: IssuePatchInput) => void;
 }) {
   return (
     <div className="space-y-6">
-      <IssueBlockedBanner issueId={issueId} />
       <EditableMarkdownSection
         title="Description"
         value={issue.description}
@@ -562,7 +507,6 @@ function OverviewPanel({
         placeholder="No acceptance criteria. Click Edit to add."
         onSave={(v) => onPatch(issueId, { acceptanceCriteria: v })}
       />
-      <IssueRelations issueId={issueId} projectId={issue.projectId} projectSlug={projectSlug} />
     </div>
   );
 }
