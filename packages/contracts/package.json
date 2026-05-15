@@ -9,6 +9,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./pipeline-registry": {
+      "types": "./src/pipeline-registry.ts",
+      "default": "./src/pipeline-registry.ts"
     }
   },
   "types": "./src/index.ts",

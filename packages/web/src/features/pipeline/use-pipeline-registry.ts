@@ -1,8 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
+// Subpath import: `@forge/contracts` barrel re-exports from `rows.ts` which
+// pulls in `@forge/core/public` (node-only Drizzle schema). Next.js bundler
+// follows value imports through the entry point, so importing this hook's
+// schema via the barrel breaks the client build. The subpath stops at the
+// pure Zod definitions and never tracts core.
 import {
   pipelineRegistryResponseSchema,
   type PipelineRegistryResponse,
-} from '@forge/contracts';
+} from '@forge/contracts/pipeline-registry';
 import { apiClient } from '@/lib/api/client';
 
 /**
