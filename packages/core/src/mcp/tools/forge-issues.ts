@@ -247,6 +247,17 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         const projectId = await resolveProjectId(input, projectSlug);
         await assertDeviceOwnerIsMember(device, projectId);
 
+        // ISS-130 — narrow allow-list for entry status. Only `open` (the
+        // normal triage entry) and `on_hold` (the decomposition parking
+        // state) may be set at create. Anything else must go through the
+        // transition action so the state machine + activity log run.
+        const createStatus: IssueStatus = input.data.status ?? 'open';
+        if (createStatus !== 'open' && createStatus !== 'on_hold') {
+          throw new Error(
+            `BAD_REQUEST: status at create must be 'open' or 'on_hold' (got '${createStatus}'); use the transition action for other statuses`,
+          );
+        }
+
         // Decode + size-cap attachments BEFORE insert so a bad payload doesn't
         // leave a half-created issue with no files.
         let decodedAttachments: DecodedAttachment[] = [];
@@ -267,6 +278,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             projectId,
             title: input.data.title,
             description: input.data.description ?? null,
+            status: createStatus,
             priority: input.data.priority ?? 'medium',
             category: input.data.category ?? null,
             complexity: input.data.complexity ?? null,
@@ -289,6 +301,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           issueId: created.id,
           projectId: created.projectId,
           actor: { type: 'device' as const, id: device.id },
+          status: created.status,
           snapshot: {
             title: created.title,
             description: created.description,

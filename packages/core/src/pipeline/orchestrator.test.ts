@@ -107,6 +107,7 @@ type CreatedPayload = {
   issueId: string;
   projectId: string;
   actor: { type: 'user' | 'device'; id: string };
+  status: string;
   snapshot: Record<string, unknown>;
 };
 
@@ -133,6 +134,7 @@ function issueCreated(overrides: Partial<CreatedPayload> = {}): CreatedPayload {
     issueId: 'iss-1',
     projectId: 'proj-1',
     actor: { type: 'user', id: 'u-1' },
+    status: 'open',
     snapshot: {},
     ...overrides,
   };
@@ -326,6 +328,20 @@ describe('pipeline/orchestrator', () => {
     await bus.emit('issueCreated', issueCreated() as never);
 
     expect(dbInsert).not.toHaveBeenCalled();
+  });
+
+  // ISS-130 — when forge-plan creates a decomposition child at `status:
+  // 'on_hold'`, the orchestrator's issueCreated subscriber must NOT enqueue
+  // any job. `on_hold` has no STATUS_TO_JOB_TYPE entry so considerEnqueue
+  // short-circuits before loading cfg or hitting findActiveJob.
+  it('does not enqueue when issueCreated payload.status is on_hold', async () => {
+    const bus = makeBus();
+    await bus.emit('issueCreated', issueCreated({ status: 'on_hold' }) as never);
+
+    expect(dbInsert).not.toHaveBeenCalled();
+    expect(nextSelect).not.toHaveBeenCalled();
+    expect(resolverResolve).not.toHaveBeenCalled();
+    expect(enqueueMock).not.toHaveBeenCalled();
   });
 });
 

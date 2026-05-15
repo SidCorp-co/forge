@@ -208,6 +208,65 @@ describe('forge_issues tool', () => {
     );
   });
 
+  it('create accepts status: on_hold and emits issueCreated with that status (ISS-130)', async () => {
+    const tool = forgeIssuesTool({ device: fakeDevice, projectSlug: PROJECT_SLUG });
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    insertReturning.mockResolvedValueOnce([{ ...baseIssueRow, status: 'on_hold' }]);
+
+    const { hooks } = await import('../../pipeline/hooks.js');
+
+    const result = (await tool.handler({
+      action: 'create',
+      data: { title: 'parked child', status: 'on_hold' },
+    })) as { status: string };
+
+    expect(result.status).toBe('on_hold');
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'on_hold' }),
+    );
+    expect(hooks.emit).toHaveBeenCalledWith(
+      'issueCreated',
+      expect.objectContaining({ status: 'on_hold' }),
+    );
+  });
+
+  it('create rejects status outside the {open, on_hold} allow-list (ISS-130)', async () => {
+    const tool = forgeIssuesTool({ device: fakeDevice, projectSlug: PROJECT_SLUG });
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+
+    await expect(
+      tool.handler({
+        action: 'create',
+        data: { title: 'should fail', status: 'in_progress' },
+      }),
+    ).rejects.toThrow(/BAD_REQUEST/);
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('create defaults status to open when omitted and emits issueCreated accordingly', async () => {
+    const tool = forgeIssuesTool({ device: fakeDevice, projectSlug: PROJECT_SLUG });
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    insertReturning.mockResolvedValueOnce([baseIssueRow]);
+
+    const { hooks } = await import('../../pipeline/hooks.js');
+
+    await tool.handler({
+      action: 'create',
+      data: { title: 'normal create' },
+    });
+
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'open' }),
+    );
+    expect(hooks.emit).toHaveBeenCalledWith(
+      'issueCreated',
+      expect.objectContaining({ status: 'open' }),
+    );
+  });
+
   describe('create with attachments', () => {
     const TINY_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
     const TINY_B64 = TINY_BYTES.toString('base64');

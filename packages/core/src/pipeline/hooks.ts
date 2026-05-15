@@ -23,6 +23,10 @@ export interface HookPayloads {
     issueId: string;
     projectId: string;
     actor: Actor;
+    // ISS-130 — the inserted row's status. The orchestrator's issueCreated
+    // subscriber forwards this to considerEnqueue so decomposition children
+    // created at `on_hold` do not auto-dispatch forge-triage.
+    status: IssueStatus;
     snapshot: IssueSnapshot;
   };
   issueUpdated: {

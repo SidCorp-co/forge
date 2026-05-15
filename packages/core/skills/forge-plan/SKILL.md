@@ -152,9 +152,9 @@ For Complex issues with **>3 parallel workstreams** that each ship independently
 
 1. For each child workstream, create a child issue:
    ```
-   forge_issues → create → { data: { title: "<child slice title>", description: "<scoped description>", priority: <inherit>, category: <inherit>, manualHold: false } }
+   forge_issues → create → { data: { title: "<child slice title>", description: "<scoped description>", status: "on_hold", priority: <inherit>, category: <inherit>, manualHold: false } }
    ```
-   Children land at `open` (the default) and stay parked there until the parent is approved.
+   Children land at `on_hold` so the orchestrator does NOT auto-dispatch forge-triage. The cascade-approve hook on parent `waiting → approved` flips them to `approved` and the normal pipeline resumes. Do NOT use `manualHold: true` for parking — see [[feedback_manualhold_trap]].
 
 2. For each created child, add a `decomposes` dependency edge with the parent as the `from` side:
    ```
@@ -169,7 +169,7 @@ For Complex issues with **>3 parallel workstreams** that each ship independently
 5. Post a plan comment summarizing the decomposition decision and rationale: which children, why this split, what the parent's integration test will verify.
 
 **What happens after human approval (automatic):**
-- Parent waiting → approved fires the cascade: every `open` child flips to `approved` (manualHold cleared if set).
+- Parent waiting → approved fires the cascade: every `on_hold` child flips to `approved` (manualHold cleared if set).
 - Children run their pipelines in parallel through code → review → test → staging.
 - When the LAST child reaches `staging`, the watcher posts a comment on the parent and re-fires the parent's pipeline so forge-test runs the integration step on merged children code.
 - Parent reaches `released`. The L2 release gate (`waiting_on_decomp_parent`) clears for every child's queued `release` job — children release atomically with the epic.

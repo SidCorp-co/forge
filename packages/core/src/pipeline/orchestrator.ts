@@ -470,7 +470,7 @@ export function registerPipelineOrchestrator(bus: HooksBus): void {
       await considerEnqueue({
         projectId: payload.projectId,
         issueId: payload.issueId,
-        status: 'open',
+        status: payload.status,
         actor: payload.actor,
         reason: { created: true },
       });
