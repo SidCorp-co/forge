@@ -379,8 +379,8 @@ async function autoSkipDisabledStages(
   }
 
   let current = { ...issue };
-  for (let hop = 0; hop < skipResult.chain.length; hop++) {
-    const nextStatus = skipResult.chain[hop];
+  let hop = 0;
+  for (const nextStatus of skipResult.chain) {
     try {
       // skip: true — the chain may collapse stages the state-machine matrix
       // doesn't allow as direct one-hop transitions (e.g. `developed →
@@ -412,6 +412,7 @@ async function autoSkipDisabledStages(
     }
 
     current = { ...current, status: nextStatus };
+    hop++;
   }
 }
 
