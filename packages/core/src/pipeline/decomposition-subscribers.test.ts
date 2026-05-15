@@ -88,11 +88,11 @@ beforeEach(() => {
 });
 
 describe('cascade approve', () => {
-  it('flips open children to approved when parent transitions waiting → approved', async () => {
+  it('flips on_hold children to approved when parent transitions waiting → approved', async () => {
     findDecompositionChildren.mockResolvedValueOnce([
-      { id: CHILD_A, status: 'open', manualHold: false, projectId: PROJECT_ID },
-      { id: CHILD_B, status: 'open', manualHold: false, projectId: PROJECT_ID },
-      { id: CHILD_C, status: 'open', manualHold: false, projectId: PROJECT_ID },
+      { id: CHILD_A, status: 'on_hold', manualHold: false, projectId: PROJECT_ID },
+      { id: CHILD_B, status: 'on_hold', manualHold: false, projectId: PROJECT_ID },
+      { id: CHILD_C, status: 'on_hold', manualHold: false, projectId: PROJECT_ID },
     ]);
     // Subsequent handlers also call findDecompositionParent/Children — return null/[].
     findDecompositionParent.mockResolvedValue(null);
@@ -117,7 +117,7 @@ describe('cascade approve', () => {
 
   it('clears manualHold on children that have it set, then transitions them', async () => {
     findDecompositionChildren.mockResolvedValueOnce([
-      { id: CHILD_A, status: 'open', manualHold: true, projectId: PROJECT_ID },
+      { id: CHILD_A, status: 'on_hold', manualHold: true, projectId: PROJECT_ID },
     ]);
     findDecompositionParent.mockResolvedValue(null);
     findDecompositionChildren.mockResolvedValue([]);
@@ -153,10 +153,10 @@ describe('cascade approve', () => {
     expect(applyStatusTransition).not.toHaveBeenCalled();
   });
 
-  it('skips children that are not in open (e.g. already in_progress)', async () => {
+  it('skips children that are not in on_hold (e.g. already in_progress)', async () => {
     findDecompositionChildren.mockResolvedValueOnce([
       { id: CHILD_A, status: 'in_progress', manualHold: false, projectId: PROJECT_ID },
-      { id: CHILD_B, status: 'open', manualHold: false, projectId: PROJECT_ID },
+      { id: CHILD_B, status: 'on_hold', manualHold: false, projectId: PROJECT_ID },
     ]);
     findDecompositionParent.mockResolvedValue(null);
     findDecompositionChildren.mockResolvedValue([]);
@@ -173,6 +173,32 @@ describe('cascade approve', () => {
 
     expect(applyStatusTransition).toHaveBeenCalledTimes(1);
     expect(applyStatusTransition.mock.calls[0]?.[0]?.id).toBe(CHILD_B);
+  });
+
+  // ISS-130 regression guard: a child at `open` must NOT be cascaded — only
+  // `on_hold` is the parking status. If decomposition ever lands a child at
+  // `open` again (the original bug), forge-triage would have already grabbed
+  // it before the cascade could fire; even if the cascade fires first, the
+  // filter must reject `open` so we never silently double-approve an issue
+  // that the orchestrator was about to triage.
+  it('does NOT cascade children stuck at open (filter is on_hold-only)', async () => {
+    findDecompositionChildren.mockResolvedValueOnce([
+      { id: CHILD_A, status: 'open', manualHold: false, projectId: PROJECT_ID },
+    ]);
+    findDecompositionParent.mockResolvedValue(null);
+    findDecompositionChildren.mockResolvedValue([]);
+
+    const bus = makeBus();
+    await bus.emit('transition', {
+      issueId: PARENT_ID,
+      projectId: PROJECT_ID,
+      actor: { type: 'device', id: DEVICE_ID },
+      from: 'waiting',
+      to: 'approved',
+      reopenCount: 0,
+    });
+
+    expect(applyStatusTransition).not.toHaveBeenCalled();
   });
 });
 

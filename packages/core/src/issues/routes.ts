@@ -15,6 +15,7 @@ import {
 } from './attachment-service.js';
 import { db } from '../db/client.js';
 import {
+  type IssueStatus,
   issueComplexities,
   issueLabels,
   issuePriorities,
@@ -50,12 +51,19 @@ export const issueCreateSchema = z
     parentIssueId: z.uuid().nullable().optional(),
     labels: z.array(z.uuid()).max(100).optional(),
     attachments: z.array(attachmentInputSchema).max(10).optional(),
+    // ISS-130 — narrow allow-list for entry status. The F4 transition
+    // endpoint still owns post-creation status changes; this only exists so
+    // decomposition children can land at `on_hold` (parked, no auto-triage)
+    // atomically with the insert.
+    status: z.enum(['open', 'on_hold']).optional(),
   })
   .strict();
 
 export type IssueCreateInput = z.infer<typeof issueCreateSchema>;
 
-// status is NOT accepted here — F4 transition endpoint owns status changes.
+// ISS-130 — `status` is accepted at create only for the narrow allow-list
+// {open, on_hold}; all post-creation status changes still go through the F4
+// transition endpoint (state-machine guard + activity entry).
 // manualHold is NOT accepted here either — see PATCH /:id/manual-hold so the
 // toggle has its own activity entry + WS event.
 export const issuePatchSchema = z
@@ -206,6 +214,7 @@ issueProjectRoutes.post(
           projectId,
           title: input.title,
           description: input.description ?? null,
+          status: input.status ?? 'open',
           priority: input.priority ?? 'medium',
           category: input.category ?? null,
           complexity: input.complexity ?? null,
@@ -242,6 +251,7 @@ issueProjectRoutes.post(
       issueId: created.id,
       projectId: created.projectId,
       actor: { type: 'user', id: userId },
+      status: created.status as IssueStatus,
       snapshot: {
         title: created.title,
         description: created.description,

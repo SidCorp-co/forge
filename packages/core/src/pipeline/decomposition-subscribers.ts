@@ -3,7 +3,7 @@
  *
  * Three handlers ride the `transition` topic:
  *
- *  1. cascade approve   — parent `waiting → approved` flips all `draft|open`
+ *  1. cascade approve   — parent `waiting → approved` flips all `on_hold`
  *                         children → `approved` and clears `manualHold`.
  *  2. watcher           — when the LAST sibling reaches
  *                         {staging, released, closed}, post a system comment
@@ -55,12 +55,15 @@ async function resolveDeviceForProject(projectId: string): Promise<DeviceLite | 
 
 /**
  * Statuses a child can be in when we cascade-approve. The state-machine has
- * no `draft` — child issues created by forge-plan land at `open` and the
- * cascade collapses `open → approved` via `applyStatusTransition({ skip:
- * true })`. Children that have moved past `open` (e.g. someone already
- * advanced them manually) are skipped.
+ * no `draft`; child issues created by forge-plan land at `on_hold` (an inert
+ * entry status — `on_hold` has no STATUS_TO_JOB_TYPE entry so the
+ * orchestrator does not auto-dispatch forge-triage). The cascade collapses
+ * `on_hold → approved` via `applyStatusTransition({ skip: true })`. Children
+ * that have moved past `on_hold` (e.g. someone already advanced them
+ * manually) are skipped. See ISS-130 — `open` used to be the parking status
+ * but was racing forge-triage.
  */
-const CASCADE_APPROVE_FROM_STATUSES: ReadonlySet<IssueStatus> = new Set(['open']);
+const CASCADE_APPROVE_FROM_STATUSES: ReadonlySet<IssueStatus> = new Set(['on_hold']);
 
 async function handleCascadeApprove(payload: HookPayloads['transition']): Promise<void> {
   if (!(payload.to === 'approved' && payload.from === 'waiting')) return;
