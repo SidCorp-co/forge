@@ -7,14 +7,15 @@ import { Check, Copy, RefreshCw, Plus, Trash2 } from 'lucide-react';
 const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api').replace(/\/api\/?$/, '');
 
 interface GitlabWebhookSectionProps {
-  gitRepoUrl: string;
-  setGitRepoUrl: (v: string) => void;
-  webhookSecret: string;
-  setWebhookSecret: (v: string) => void;
-  useRegistry: boolean;
-  setUseRegistry: (v: boolean) => void;
-  previewEnvVars: { key: string; value: string }[];
-  setPreviewEnvVars: (v: { key: string; value: string }[]) => void;
+  gitRepoUrl?: string;
+  setGitRepoUrl?: (v: string) => void;
+  webhookSecret?: string;
+  setWebhookSecret?: (v: string) => void;
+  useRegistry?: boolean;
+  setUseRegistry?: (v: boolean) => void;
+  previewEnvVars?: { key: string; value: string }[];
+  setPreviewEnvVars?: (v: { key: string; value: string }[]) => void;
+  previewMode?: boolean;
 }
 
 function generateToken(): string {
@@ -23,17 +24,29 @@ function generateToken(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export function GitlabWebhookSection({ gitRepoUrl, setGitRepoUrl, webhookSecret, setWebhookSecret, useRegistry, setUseRegistry, previewEnvVars, setPreviewEnvVars }: GitlabWebhookSectionProps) {
+export function GitlabWebhookSection({
+  gitRepoUrl = '',
+  setGitRepoUrl,
+  webhookSecret = '',
+  setWebhookSecret,
+  useRegistry = false,
+  setUseRegistry,
+  previewEnvVars = [],
+  setPreviewEnvVars,
+  previewMode = false,
+}: GitlabWebhookSectionProps) {
   const webhookUrl = `${API_ORIGIN}/api/preview-deploy/webhook`;
   const [copied, setCopied] = useState<'url' | 'secret' | null>(null);
 
   const copy = (text: string, key: 'url' | 'secret') => {
+    if (previewMode) return;
     navigator.clipboard.writeText(text);
     setCopied(key);
     setTimeout(() => setCopied(null), 2000);
   };
 
   const handleGenerate = () => {
+    if (previewMode || !setWebhookSecret) return;
     const token = generateToken();
     setWebhookSecret(token);
     copy(token, 'secret');
@@ -42,9 +55,14 @@ export function GitlabWebhookSection({ gitRepoUrl, setGitRepoUrl, webhookSecret,
   return (
     <section className="space-y-6">
       <div className="flex justify-between items-end border-b border-outline-variant/10 pb-2">
-        <h2 className="text-[10px] uppercase tracking-[0.2em] text-on-surface-variant font-bold">09. GitLab Webhook</h2>
-        <span className="text-[9px] font-mono text-outline">GLB_EXT_09</span>
+        <h2 className="text-[10px] uppercase tracking-[0.2em] text-on-surface-variant font-bold">GitLab Webhook</h2>
+        <span className="text-[9px] font-mono text-outline">INT_GLB</span>
       </div>
+      {previewMode && (
+        <div className="rounded-sm border border-warning/30 bg-warning-dim/10 p-3 text-[10px] font-bold uppercase tracking-widest text-warning">
+          Coming v0.1.x — preview only
+        </div>
+      )}
       <div className="bg-surface-container-low border border-outline-variant/30 p-8 space-y-8">
       <p className="text-[10px] text-outline">
         Add this URL as a webhook in your GitLab repo (Settings → Webhooks) to auto-deploy
@@ -55,8 +73,9 @@ export function GitlabWebhookSection({ gitRepoUrl, setGitRepoUrl, webhookSecret,
           <Label>Git Repository URL</Label>
           <Input
             value={gitRepoUrl}
-            onChange={(e) => setGitRepoUrl(e.target.value)}
+            onChange={(e) => setGitRepoUrl?.(e.target.value)}
             placeholder="git@gitlab.com:org/repo.git"
+            disabled={previewMode}
           />
           <p className="mt-1 text-[10px] text-outline">
             SSH or HTTPS URL. Must match the repo URL in GitLab push events.
@@ -88,9 +107,10 @@ export function GitlabWebhookSection({ gitRepoUrl, setGitRepoUrl, webhookSecret,
           <div className="flex items-center gap-2">
             <Input
               value={webhookSecret}
-              onChange={(e) => setWebhookSecret(e.target.value)}
+              onChange={(e) => setWebhookSecret?.(e.target.value)}
               className="flex-1 font-mono text-xs"
               placeholder="Click Generate to create a token"
+              disabled={previewMode}
             />
             <button
               type="button"
@@ -122,8 +142,9 @@ export function GitlabWebhookSection({ gitRepoUrl, setGitRepoUrl, webhookSecret,
               <input
                 type="checkbox"
                 checked={useRegistry}
-                onChange={(e) => setUseRegistry(e.target.checked)}
+                onChange={(e) => setUseRegistry?.(e.target.checked)}
                 className="peer sr-only"
+                disabled={previewMode}
               />
               <span className="block h-5 w-9 rounded-none bg-surface-container-highest border border-outline-variant/30 peer-checked:bg-primary-fixed transition-colors" />
               <span className="absolute left-[3px] top-[3px] h-3.5 w-3.5 bg-outline peer-checked:bg-primary peer-checked:translate-x-[14px] transition-all" />
@@ -144,39 +165,45 @@ export function GitlabWebhookSection({ gitRepoUrl, setGitRepoUrl, webhookSecret,
                   onChange={(e) => {
                     const next = [...previewEnvVars];
                     next[i] = { ...next[i], key: e.target.value };
-                    setPreviewEnvVars(next);
+                    setPreviewEnvVars?.(next);
                   }}
                   placeholder="KEY"
                   className="w-1/3 font-mono text-xs"
+                  disabled={previewMode}
                 />
                 <Input
                   value={env.value}
                   onChange={(e) => {
                     const next = [...previewEnvVars];
                     next[i] = { ...next[i], value: e.target.value };
-                    setPreviewEnvVars(next);
+                    setPreviewEnvVars?.(next);
                   }}
                   placeholder="value"
                   className="flex-1 font-mono text-xs"
+                  disabled={previewMode}
                 />
-                <button
-                  type="button"
-                  onClick={() => setPreviewEnvVars(previewEnvVars.filter((_, j) => j !== i))}
-                  className="rounded p-1.5 text-outline hover:bg-danger-surface hover:text-danger"
-                  title="Remove"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                {!previewMode && (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewEnvVars?.(previewEnvVars.filter((_, j) => j !== i))}
+                    className="rounded p-1.5 text-outline hover:bg-danger-surface hover:text-danger"
+                    title="Remove"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
             ))}
-            <button
-              type="button"
-              onClick={() => setPreviewEnvVars([...previewEnvVars, { key: '', value: '' }])}
-              className="flex items-center gap-1 text-xs text-primary-fixed hover:text-on-surface-variant"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add variable
-            </button>
+            {!previewMode && (
+              <button
+                type="button"
+                onClick={() => setPreviewEnvVars?.([...previewEnvVars, { key: '', value: '' }])}
+                className="flex items-center gap-1 text-xs text-primary-fixed hover:text-on-surface-variant"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add variable
+              </button>
+            )}
           </div>
           <p className="mt-1 text-[10px] text-outline">
             e.g. DATABASE_URL, NEXT_PUBLIC_API_URL. Forge auto-creates a per-issue database if DATABASE_URL is set.

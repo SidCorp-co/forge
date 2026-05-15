@@ -4,28 +4,35 @@ import { Switch, Input, Label } from '@/components/ui';
 import { ALL_STATUSES } from '@/lib/constants';
 
 interface WebhookSectionProps {
-  webhookUrl: string;
-  setWebhookUrl: (v: string) => void;
-  webhookSecret: string;
-  setWebhookSecret: (v: string) => void;
-  webhookStatuses: string[];
-  setWebhookStatuses: (v: string[] | ((prev: string[]) => string[])) => void;
+  webhookUrl?: string;
+  setWebhookUrl?: (v: string) => void;
+  webhookSecret?: string;
+  setWebhookSecret?: (v: string) => void;
+  webhookStatuses?: string[];
+  setWebhookStatuses?: (v: string[] | ((prev: string[]) => string[])) => void;
+  previewMode?: boolean;
 }
 
 export function WebhookSection({
-  webhookUrl,
+  webhookUrl = '',
   setWebhookUrl,
-  webhookSecret,
+  webhookSecret = '',
   setWebhookSecret,
-  webhookStatuses,
+  webhookStatuses = [],
   setWebhookStatuses,
+  previewMode = false,
 }: WebhookSectionProps) {
   return (
     <section className="space-y-6">
       <div className="flex justify-between items-end border-b border-outline-variant/10 pb-2">
-        <h2 className="text-[10px] uppercase tracking-[0.2em] text-on-surface-variant font-bold">10. Webhook</h2>
-        <span className="text-[9px] font-mono text-outline">WHK_EXT_10</span>
+        <h2 className="text-[10px] uppercase tracking-[0.2em] text-on-surface-variant font-bold">Generic Webhooks</h2>
+        <span className="text-[9px] font-mono text-outline">INT_WHK</span>
       </div>
+      {previewMode && (
+        <div className="rounded-sm border border-warning/30 bg-warning-dim/10 p-3 text-[10px] font-bold uppercase tracking-widest text-warning">
+          Coming v0.1.x — preview only
+        </div>
+      )}
       <div className="bg-surface-container-low border border-outline-variant/30 p-8 space-y-8">
       <p className="text-[10px] text-outline">
         Send an HTTP POST to a URL when issue status changes.
@@ -36,8 +43,9 @@ export function WebhookSection({
           <Input
             type="url"
             value={webhookUrl}
-            onChange={(e) => setWebhookUrl(e.target.value)}
+            onChange={(e) => setWebhookUrl?.(e.target.value)}
             placeholder="https://hooks.example.com/notify"
+            disabled={previewMode}
           />
         </div>
         <div>
@@ -45,8 +53,9 @@ export function WebhookSection({
           <Input
             type="password"
             value={webhookSecret}
-            onChange={(e) => setWebhookSecret(e.target.value)}
+            onChange={(e) => setWebhookSecret?.(e.target.value)}
             placeholder="e.g. Bearer mytoken or ApiKey xyz"
+            disabled={previewMode}
           />
         </div>
         <div>
@@ -59,13 +68,14 @@ export function WebhookSection({
                 id={`webhook-status-${s.value}`}
                 checked={webhookStatuses.includes(s.value)}
                 onChange={(e) => {
-                  setWebhookStatuses((prev) =>
+                  setWebhookStatuses?.((prev) =>
                     e.target.checked
                       ? [...prev, s.value]
-                      : prev.filter((v) => v !== s.value)
+                      : prev.filter((v) => v !== s.value),
                   );
                 }}
                 label={s.label}
+                disabled={previewMode}
               />
             ))}
           </div>
