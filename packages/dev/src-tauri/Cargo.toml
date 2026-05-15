@@ -33,7 +33,7 @@ hex = "0.4"
 # `FORGE_SENTRY_DSN_RUST` env var (read by `option_env!` in main.rs).
 # Source builds without that env stay silent — no maintainer telemetry
 # from contributor builds.
-sentry = { version = "0.42", default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "rustls"] }
+sentry = { version = "0.48", default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "rustls"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
