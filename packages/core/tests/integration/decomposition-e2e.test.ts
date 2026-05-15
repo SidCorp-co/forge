@@ -277,13 +277,13 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
   // ---------- Hook subscribers ------------------------------------------
 
   describe('cascade approve', () => {
-    it('flips draft children to approved when parent transitions waiting → approved', async () => {
+    it('flips open children to approved when parent transitions waiting → approved', async () => {
       const owner = await createTestUser(harness.db);
       const project = await createTestProject(harness.db, owner.id);
       const parent = await insertIssue(project.id, owner.id, { status: 'waiting', issSeq: 81 });
-      const childA = await insertIssue(project.id, owner.id, { status: 'draft', issSeq: 82 });
-      const childB = await insertIssue(project.id, owner.id, { status: 'draft', issSeq: 83 });
-      const childC = await insertIssue(project.id, owner.id, { status: 'draft', issSeq: 84, manualHold: true });
+      const childA = await insertIssue(project.id, owner.id, { status: 'open', issSeq: 82 });
+      const childB = await insertIssue(project.id, owner.id, { status: 'open', issSeq: 83 });
+      const childC = await insertIssue(project.id, owner.id, { status: 'open', issSeq: 84, manualHold: true });
       await insertDecomposesEdge(project.id, parent, childA);
       await insertDecomposesEdge(project.id, parent, childB);
       await insertDecomposesEdge(project.id, parent, childC);
