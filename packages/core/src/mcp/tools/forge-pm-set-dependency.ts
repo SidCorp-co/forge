@@ -7,7 +7,7 @@ import { safeRecordActivity } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
 import {
   type DeviceScopedMcpToolFactory,
-  assertPmActor,
+  assertDeviceOwnerIsMember,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -35,11 +35,16 @@ const inputSchema = z
 export const forgePmSetDependencyTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_pm.set_dependency',
   description:
-    "Record a dependency edge (blocks/relates/duplicates/parent) between two issues in the same project. Idempotent. Requires PM-actor capability. Dispatcher convention (ISS-40 PR-E): only `kind='blocks'` rows gate dispatch — `(from=A, to=B, kind='blocks')` means A must reach a terminal status (released/closed/pipeline_failed) before B can dispatch. For `blocks` edges, cycles are rejected with a CYCLE_DETECTED error.",
+    "Record a dependency edge (blocks/relates/duplicates/parent/decomposes) between two issues in the same project. Idempotent on (projectId, fromIssueId, toIssueId, kind) — duplicate calls return the existing row with created:false. Caller must be a member of the project. Dispatcher convention (ISS-40 PR-E): only `kind='blocks'` rows gate dispatch — `(from=A, to=B, kind='blocks')` means A must reach a terminal status (released/closed/pipeline_failed) before B can dispatch. For `blocks` edges, cycles are rejected with a CYCLE_DETECTED error.",
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    await assertPmActor(device, input.projectId);
+    // ISS-131 — was `assertPmActor`. Plan-pipeline agents legitimately need to
+    // declare `blocks`/`decomposes` edges as part of writing a plan, but they
+    // run on `claude-code` runners that do not carry the PM capability flag.
+    // The cycle guard below + the unique-index idempotency already cover the
+    // abuse surface; gate on plain project membership instead.
+    await assertDeviceOwnerIsMember(device, input.projectId);
 
     if (input.fromIssueId === input.toIssueId) {
       throw new Error('BAD_REQUEST: self-edge not allowed');

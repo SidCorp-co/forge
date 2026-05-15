@@ -131,6 +131,43 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
     return id;
   }
 
+  // ISS-131 — generic queued-job factory so sibling-chain tests can enqueue
+  // a non-release job (e.g. `triage`) and assert the picker parks it.
+  async function insertQueuedJob(
+    projectId: string,
+    issueId: string,
+    ownerId: string,
+    type: string,
+  ): Promise<string> {
+    const runId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status)
+      VALUES (${runId}, ${projectId}, ${issueId}, 'issue', 'running')
+    `);
+    const id = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, payload, queued_at, created_by)
+      VALUES (
+        ${id}, ${projectId}, ${issueId}, ${runId}, ${type}, 'queued',
+        '{}'::jsonb, now(), ${ownerId}
+      )
+    `);
+    return id;
+  }
+
+  async function insertBlocksEdge(
+    projectId: string,
+    fromIssueId: string,
+    toIssueId: string,
+  ): Promise<string> {
+    const id = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO issue_dependencies (id, project_id, from_issue_id, to_issue_id, kind)
+      VALUES (${id}, ${projectId}, ${fromIssueId}, ${toIssueId}, 'blocks')
+    `);
+    return id;
+  }
+
   async function readIssueStatus(id: string): Promise<string> {
     const rows = await harness.db.execute<{ status: string }>(sql`
       SELECT status FROM issues WHERE id = ${id}
@@ -278,6 +315,62 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
       // Raw `db.execute<JobRow>` keeps snake_case keys — the `<JobRow>` cast
       // is a TS-only hint, not a runtime mapping. Read the snake_case field.
       expect((pick as unknown as { issue_id: string } | null)?.issue_id).toBe(child);
+    });
+
+    // ISS-131 AC#5 — sibling-blocks ordering inside a decomposition must gate
+    // downstream children at dispatch time. Reproduces the ISS-121 dogfood
+    // failure: parent + 3 children all `approved` (post cascade), the
+    // forge-plan skill declared sub1→sub2→sub3 `blocks` edges, and three
+    // `triage` jobs are queued. Only sub1 should be pickable; sub2 and sub3
+    // must stay queued until their blocker hits a terminal status.
+    it('sibling blocks edges within a decomposition gate downstream triage dispatch', async () => {
+      const owner = await createTestUser(harness.db);
+      const project = await createTestProject(harness.db, owner.id);
+      const parent = await insertIssue(project.id, owner.id, { status: 'approved', issSeq: 200 });
+      const sub1 = await insertIssue(project.id, owner.id, { status: 'approved', issSeq: 201 });
+      const sub2 = await insertIssue(project.id, owner.id, { status: 'approved', issSeq: 202 });
+      const sub3 = await insertIssue(project.id, owner.id, { status: 'approved', issSeq: 203 });
+
+      // Decomposition edges + sibling-blocks chain (sub1 → sub2 → sub3).
+      await insertDecomposesEdge(project.id, parent, sub1);
+      await insertDecomposesEdge(project.id, parent, sub2);
+      await insertDecomposesEdge(project.id, parent, sub3);
+      await insertBlocksEdge(project.id, sub1, sub2);
+      await insertBlocksEdge(project.id, sub2, sub3);
+
+      const j1 = await insertQueuedJob(project.id, sub1, owner.id, 'triage');
+      await insertQueuedJob(project.id, sub2, owner.id, 'triage');
+      await insertQueuedJob(project.id, sub3, owner.id, 'triage');
+
+      // First sweep: only sub1's triage is pickable; sub2/sub3 are parked
+      // because the picker's `NOT EXISTS (... blocks ...)` filter excludes
+      // them at the SQL level.
+      const first = await mods.pickNextDispatchableJobForProject(project.id);
+      expect(first).not.toBeNull();
+      expect((first as unknown as { id: string; issue_id: string })?.id).toBe(j1);
+      expect((first as unknown as { id: string; issue_id: string })?.issue_id).toBe(sub1);
+
+      // Verify the gate helpers agree (defence-in-depth: the picker SQL and
+      // `checkLayer2Dependencies` evaluate `blocks` independently).
+      const sub2Gate = await mods.checkLayer2Dependencies(sub2, 'triage');
+      expect(sub2Gate.pass).toBe(false);
+      if (!sub2Gate.pass) expect(sub2Gate.reason).toBe('waiting_on_dep');
+      const sub3Gate = await mods.checkLayer2Dependencies(sub3, 'triage');
+      expect(sub3Gate.pass).toBe(false);
+
+      // Simulate sub1 reaching terminal — sub2 unblocks, sub3 still waits.
+      await harness.db.execute(sql`
+        UPDATE jobs SET status = 'completed', finished_at = now() WHERE id = ${j1}
+      `);
+      await harness.db.execute(sql`UPDATE issues SET status = 'released' WHERE id = ${sub1}`);
+
+      const second = await mods.pickNextDispatchableJobForProject(project.id);
+      expect(second).not.toBeNull();
+      expect((second as unknown as { issue_id: string })?.issue_id).toBe(sub2);
+
+      const sub3StillGated = await mods.checkLayer2Dependencies(sub3, 'triage');
+      expect(sub3StillGated.pass).toBe(false);
+      if (!sub3StillGated.pass) expect(sub3StillGated.reason).toBe('waiting_on_dep');
     });
   });
 

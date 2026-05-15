@@ -176,6 +176,35 @@ describe('checkLayer2Dependencies', () => {
       if (!r.pass) expect(r.reason).toBe('waiting_on_dep');
     });
   });
+
+  // ISS-131 — regression guard. The L2 `blocks` early-return MUST fire for
+  // every job type, not only `release`. Before this fix, a sibling chain
+  // declared in a decomposition plan dispatched in parallel because the
+  // skill could not actually write `issue_dependencies` rows; if a later
+  // refactor narrows the `blocks` branch to `jobType === 'release'` (the
+  // hypothesised B3 in the issue), this parametric block trips before the
+  // bug reaches production again.
+  describe('blocks gate applies to every job type (ISS-131)', () => {
+    const JOB_TYPES = [
+      'triage',
+      'plan',
+      'code',
+      'review',
+      'test',
+      'fix',
+      'release',
+    ] as const;
+    for (const jobType of JOB_TYPES) {
+      it(`fails ${jobType} when a blocking parent is non-terminal`, async () => {
+        dbExecute.mockResolvedValueOnce([
+          { from_issue_id: 'p1', iss_seq: 12, status: 'in_progress' },
+        ]);
+        const r = await checkLayer2Dependencies('iss-child', jobType);
+        expect(r.pass).toBe(false);
+        if (!r.pass) expect(r.reason).toBe('waiting_on_dep');
+      });
+    }
+  });
 });
 
 describe('checkLayer3ProjectFull', () => {
