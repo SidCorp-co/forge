@@ -335,6 +335,52 @@ describe('ISS-40 dispatch-gates E2E', () => {
       const result = await mods.checkLayer2Dependencies(child);
       expect(result.pass).toBe(true);
     });
+
+    // ISS-131 — sibling-blocks chain. Reproduces the ISS-121 dogfood
+    // failure mode at the gate level: A blocks B blocks C, all `approved`.
+    // Until A reaches a terminal status, B and C must both park with
+    // `waiting_on_dep`. After A flips to `released`, B unblocks but C
+    // still waits on B.
+    it('parks every downstream link of a sibling-blocks chain until the head terminates', async () => {
+      const { project } = await seedProject();
+      const a = await insertIssue(project.id, { status: 'approved', issSeq: 121 });
+      const b = await insertIssue(project.id, { status: 'approved', issSeq: 122 });
+      const c = await insertIssue(project.id, { status: 'approved', issSeq: 123 });
+      await insertBlocksEdge(project.id, a, b);
+      await insertBlocksEdge(project.id, b, c);
+
+      // Head dispatches freely; both descendants are parked across the
+      // 7 pipeline job types so a future single-jobType regression cannot
+      // silently let a chain leak through.
+      const headResult = await mods.checkLayer2Dependencies(a, 'triage');
+      expect(headResult.pass).toBe(true);
+
+      for (const jobType of [
+        'triage',
+        'plan',
+        'code',
+        'review',
+        'test',
+        'fix',
+        'release',
+      ] as const) {
+        const middle = await mods.checkLayer2Dependencies(b, jobType);
+        expect(middle.pass, `B/${jobType} should be parked`).toBe(false);
+        if (!middle.pass) expect(middle.reason).toBe('waiting_on_dep');
+
+        const tail = await mods.checkLayer2Dependencies(c, jobType);
+        expect(tail.pass, `C/${jobType} should be parked`).toBe(false);
+        if (!tail.pass) expect(tail.reason).toBe('waiting_on_dep');
+      }
+
+      // Flip A to released — B unblocks, C still waits on B.
+      await harness.db.execute(sql`UPDATE issues SET status = 'released' WHERE id = ${a}`);
+      const bAfter = await mods.checkLayer2Dependencies(b, 'triage');
+      expect(bAfter.pass).toBe(true);
+      const cAfter = await mods.checkLayer2Dependencies(c, 'triage');
+      expect(cAfter.pass).toBe(false);
+      if (!cAfter.pass) expect(cAfter.reason).toBe('waiting_on_dep');
+    });
   });
 
   // ---------- Layer 3 — project_full ------------------------------------
