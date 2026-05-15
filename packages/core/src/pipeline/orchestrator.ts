@@ -8,7 +8,6 @@ import {
   projects,
 } from '../db/schema.js';
 import { applyStatusTransition, type DeviceLite } from '../issues/apply-transition.js';
-import { enqueueJob } from '../jobs/enqueue.js';
 import { buildJobPromptString } from '../jobs/prompt-string.js';
 import { logger } from '../logger.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
@@ -17,8 +16,10 @@ import {
   type PreventivePattern,
   queryPreventivePatterns,
 } from './ci-fix-pattern-query.js';
+import { ActiveJobConflictError, insertAndEnqueueJob } from './enqueue-helper.js';
 import type { HookPayloads, HooksBus } from './hooks.js';
-import { openIssueRun, setCurrentStep } from './runs.js';
+import { PIPELINE_STEPS } from './registry.js';
+import { openIssueRun } from './runs.js';
 import {
   type ResolvedSkill,
   createProjectSkillResolver,
@@ -26,11 +27,12 @@ import {
   resolveJobTypeForStatus,
 } from './skill-mapping.js';
 import {
-  MAX_SKIP_CHAIN,
   SKIPPABLE_STAGES,
-  STAGE_FORWARD,
   type StagesConfig,
+  resolveSkipTarget,
 } from './state-machine.js';
+
+export { ActiveJobConflictError } from './enqueue-helper.js';
 
 const ACTIVE_JOB_STATUSES = ['queued', 'dispatched', 'running'] as const;
 
@@ -83,10 +85,6 @@ function resolveCreatedBy(actor: Actor, ownerId: string | null): string {
   if (actor.type === 'user') return actor.id;
   if (ownerId) return ownerId;
   throw new Error('orchestrator: no valid createdBy available');
-}
-
-function isUniqueViolation(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && (err as { code?: string }).code === '23505';
 }
 
 /**
@@ -163,21 +161,6 @@ export async function reEnqueueForIssue(args: {
 }
 
 /**
- * Thrown by `triggerPipelineStepManual` when the same (issueId, type) already
- * has a queued/dispatched/running job. The route handler maps this to HTTP
- * 409 so the UI can surface "Job already running, cancel first".
- */
-export class ActiveJobConflictError extends Error {
-  constructor(
-    public readonly existingJobId: string,
-    public readonly type: JobType,
-  ) {
-    super(`active ${type} job already exists for this issue`);
-    this.name = 'ActiveJobConflictError';
-  }
-}
-
-/**
  * Manual fire of a pipeline stage from the issue UI (ISS-5). Bypasses
  * `pipelineConfig.enabled` and the per-stage `auto*` toggles — the user
  * explicitly clicked "Run" so we honor it regardless of project automation
@@ -197,13 +180,20 @@ export async function triggerPipelineStepManual(args: {
   let skill: ResolvedSkill | null;
   if (args.stage) {
     // Caller picked the jobType explicitly. Resolve the registered skill for
-    // the matching status; if there's no row, fall back to the conventional
-    // `forge-<type>` name so the manual escape hatch still works.
+    // the matching status; if there's no row, fall back to the canonical
+    // PIPELINE_STEPS entry for the conventional skill name and toggle.
+    // Manual-only types (clarify) and operator-defined `custom` aren't in
+    // PIPELINE_STEPS — they fall through to the `forge-<type>` convention.
     const stageType = args.stage;
     const status = inverseJobTypeToStatus(stageType);
     skill = status ? await resolver.resolve(status) : null;
     if (!skill) {
-      skill = { type: stageType, toggle: 'autoTriage', skillName: `forge-${stageType}` };
+      const step = PIPELINE_STEPS.find((s) => s.jobType === stageType);
+      if (step) {
+        skill = { type: stageType, toggle: step.toggle, skillName: step.skillName };
+      } else {
+        skill = { type: stageType, toggle: 'autoTriage', skillName: `forge-${stageType}` };
+      }
     }
   } else {
     skill = await resolver.resolve(args.status);
@@ -225,57 +215,31 @@ export async function triggerPipelineStepManual(args: {
 
   const run = await openIssueRun({ projectId: args.projectId, issueId: args.issueId });
 
-  let insertedId: string | null = null;
-  try {
-    const [inserted] = await db
-      .insert(jobs)
-      .values({
-        projectId: args.projectId,
-        issueId: args.issueId,
-        pipelineRunId: run.id,
-        createdBy,
-        type: skill.type,
-        payload: {
-          skillName: skill.skillName,
-          promptString: buildJobPromptString({
-            skillName: skill.skillName,
-            jobType: skill.type,
-            issueId: args.issueId,
-          }),
-          ...args.reason,
-          preventiveContext,
-        },
-        status: 'queued',
-      })
-      .returning({ id: jobs.id });
-    insertedId = inserted?.id ?? null;
-  } catch (err) {
-    // Concurrent click → unique-index dedupe. Surface as conflict so the UI
-    // sees the same 409 it would for the in-app race check.
-    if (isUniqueViolation(err)) {
-      const racing = await findActiveJob(args.issueId, skill.type);
-      if (racing) throw new ActiveJobConflictError(racing, skill.type);
-    }
-    throw err;
-  }
-  if (!insertedId) throw new Error('jobs: insert returned no row');
-
-  await setCurrentStep(run.id, skill.type);
-
-  try {
-    await enqueueJob(insertedId);
-  } catch (err) {
-    logger.error(
-      { err, jobId: insertedId },
-      'manual trigger: pg-boss enqueue failed; row persisted',
-    );
-  }
+  const skillRef = skill;
+  const { jobId } = await insertAndEnqueueJob({
+    projectId: args.projectId,
+    issueId: args.issueId,
+    pipelineRunId: run.id,
+    createdBy,
+    type: skillRef.type,
+    skillName: skillRef.skillName,
+    promptString: buildJobPromptString({
+      skillName: skillRef.skillName,
+      jobType: skillRef.type,
+      issueId: args.issueId,
+    }),
+    payloadExtras: {
+      ...args.reason,
+      preventiveContext,
+    },
+    resolveRacingJobId: () => findActiveJob(args.issueId, skillRef.type),
+  });
 
   logger.info(
-    { jobId: insertedId, type: skill.type, issueId: args.issueId },
+    { jobId, type: skill.type, issueId: args.issueId },
     'manual trigger: enqueued',
   );
-  return { jobId: insertedId, type: skill.type };
+  return { jobId, type: skill.type };
 }
 
 async function considerEnqueue(args: {
@@ -329,32 +293,31 @@ async function considerEnqueue(args: {
 
   const run = await openIssueRun({ projectId: args.projectId, issueId: args.issueId });
 
-  let insertedId: string | null = null;
   try {
-    const [inserted] = await db
-      .insert(jobs)
-      .values({
-        projectId: args.projectId,
+    const skillRef = skill;
+    const { jobId } = await insertAndEnqueueJob({
+      projectId: args.projectId,
+      issueId: args.issueId,
+      pipelineRunId: run.id,
+      createdBy,
+      type: skillRef.type,
+      skillName: skillRef.skillName,
+      promptString: buildJobPromptString({
+        skillName: skillRef.skillName,
+        jobType: skillRef.type,
         issueId: args.issueId,
-        pipelineRunId: run.id,
-        createdBy,
-        type: skill.type,
-        payload: {
-          skillName: skill.skillName,
-          promptString: buildJobPromptString({
-            skillName: skill.skillName,
-            jobType: skill.type,
-            issueId: args.issueId,
-          }),
-          ...args.reason,
-          preventiveContext,
-        },
-        status: 'queued',
-      })
-      .returning({ id: jobs.id });
-    insertedId = inserted?.id ?? null;
+      }),
+      payloadExtras: {
+        ...args.reason,
+        preventiveContext,
+      },
+    });
+    logger.info(
+      { jobId, type: skill.type, issueId: args.issueId },
+      'orchestrator: enqueued',
+    );
   } catch (err) {
-    if (isUniqueViolation(err)) {
+    if (err instanceof ActiveJobConflictError) {
       logger.debug(
         { issueId: args.issueId, type: skill.type },
         'orchestrator: unique-index dedupe — active job already exists',
@@ -363,23 +326,6 @@ async function considerEnqueue(args: {
     }
     throw err;
   }
-  if (!insertedId) return;
-
-  await setCurrentStep(run.id, skill.type);
-
-  try {
-    await enqueueJob(insertedId);
-  } catch (err) {
-    logger.error(
-      { err, jobId: insertedId },
-      'orchestrator: pg-boss enqueue failed; job row persisted',
-    );
-  }
-
-  logger.info(
-    { jobId: insertedId, type: skill.type, issueId: args.issueId },
-    'orchestrator: enqueued',
-  );
 }
 
 /**
@@ -398,13 +344,17 @@ async function autoSkipDisabledStages(
   payload: HookPayloads['transition'],
   preloaded: { cfg: PipelineConfig | null; ownerId: string | null },
 ): Promise<void> {
-  if (!SKIPPABLE_STAGES.has(payload.to)) return;
-
   const { cfg, ownerId } = preloaded;
   if (!cfg?.enabled) return;
   const states = cfg.states;
   if (!states) return;
-  if (states[payload.to]?.enabled !== false) return;
+
+  // resolveSkipTarget is the SSOT for skip-chain validation: it returns
+  // null when the source isn't skippable, isn't disabled, or has no valid
+  // forward chain. Per-hop iteration below only handles side-effects
+  // (transition + Sentry breadcrumb + WS broadcast).
+  const skipResult = resolveSkipTarget(payload.to, states);
+  if (!skipResult) return;
 
   const [issue] = await db
     .select({
@@ -429,22 +379,13 @@ async function autoSkipDisabledStages(
   }
 
   let current = { ...issue };
-  for (let hop = 0; hop < MAX_SKIP_CHAIN; hop++) {
-    // Walk forward one stage at a time so each hop emits its own transition
-    // event + Sentry breadcrumb. resolveSkipTarget collapses the chain in a
-    // single pure call — useful for validation, but per-hop emission gives
-    // post-hoc traces the full status history.
-    if (!SKIPPABLE_STAGES.has(current.status)) break;
-    if (states[current.status]?.enabled !== false) break;
-    const nextStatus = STAGE_FORWARD[current.status];
-    if (!nextStatus) break;
-
+  for (let hop = 0; hop < skipResult.chain.length; hop++) {
+    const nextStatus = skipResult.chain[hop];
     try {
-      // skip: true — the orchestrator's STAGE_FORWARD chain collapses stages
-      // the state-machine matrix doesn't allow as direct one-hop transitions
-      // (notably `developed → testing` skips both review and deploy). The
-      // chain is validated at config-save time, so bypassing canTransition
-      // here is safe.
+      // skip: true — the chain may collapse stages the state-machine matrix
+      // doesn't allow as direct one-hop transitions (e.g. `developed →
+      // testing` skips review + deploy). resolveSkipTarget validates the
+      // chain end-to-end, so bypassing canTransition per hop is safe.
       await applyStatusTransition(current, nextStatus, device, { skip: true });
     } catch (err) {
       logger.warn(
@@ -471,15 +412,6 @@ async function autoSkipDisabledStages(
     }
 
     current = { ...current, status: nextStatus };
-  }
-
-  if (states[current.status]?.enabled === false) {
-    // Validator should have rejected this config at save time; reaching this
-    // branch means a backdoor write (manual DB edit, pre-validator data, etc.).
-    logger.error(
-      { issueId: current.id, status: current.status },
-      'orchestrator: skip-disabled chain exhausted MAX_SKIP_CHAIN without landing on an enabled stage',
-    );
   }
 }
 
