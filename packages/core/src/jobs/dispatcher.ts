@@ -257,6 +257,13 @@ async function dispatchViaRunner(
       { jobId: job.id, projectId: job.projectId, fallbackChain },
       'dispatcher: no runner online, leaving queued',
     );
+    // ISS-118 — surface the no-runner state on the agent_sessions row so
+    // the UI and Sentry breadcrumb can explain why the job is sitting in
+    // queued. Uses `runner_full` as the canonical skip reason; the hint
+    // narrates the real cause for operator log greps.
+    await markSessionGated(job.id, 'runner_full', 'no online runner', {
+      fallbackChain,
+    });
     return 'skipped';
   }
 

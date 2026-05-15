@@ -23,6 +23,7 @@ import { db } from '../db/client.js';
 import { agentSessions, issues, jobs, projects, runners } from '../db/schema.js';
 import type { JobType, RunnerType } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { RUNNER_CAPABILITIES } from '../pipeline/registry.js';
 
 export type GateSkipReason =
@@ -374,6 +375,18 @@ export async function markSessionGated(
     // canonical signal, hint is for operator log greps).
     if (hint) {
       logger.debug({ jobId, reason, hint, sessionId: job.agentSessionId }, 'dispatch-gates: skip');
+    }
+    // ISS-118 — operator trace: a gated dispatch is invisible by default
+    // (no Sentry event, no UI banner). Breadcrumb makes the skip show up
+    // on every issue captured later, so 5xx and pipeline-stall reports
+    // include the upstream reason without joining the DB.
+    if (isSentryEnabled()) {
+      Sentry.addBreadcrumb({
+        category: 'dispatch.gated',
+        level: 'info',
+        message: `gated: ${reason}`,
+        data: { jobId, reason, hint, sessionId: job.agentSessionId },
+      });
     }
   } catch (err) {
     logger.warn({ err, jobId, reason }, 'dispatch-gates: markSessionGated failed');

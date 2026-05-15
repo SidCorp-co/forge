@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { AlertBanner, Spinner } from '@/components/ui';
 import { ApiError } from '@/lib/api/client';
 import { STAGE_NAMES, type StageName } from '@/features/pipeline/config/types';
@@ -97,6 +97,16 @@ export function SkillRegistrationsSection({ projectId, isOwner }: Props) {
 
   const saveError = readErrorCause(cfg.error);
   const bindError = readErrorCause(registerSkill.error ?? unregisterSkill.error);
+  const bannerRef = useRef<HTMLDivElement>(null);
+
+  // ISS-118 — scroll the banner into view whenever a new save/bind error
+  // surfaces. Settings page is long; without this the user clicks Save and
+  // sees nothing happen because the error is rendered off-screen.
+  useEffect(() => {
+    if (saveError || bindError) {
+      bannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [saveError, bindError]);
 
   if (!isOwner) return null;
 
@@ -123,34 +133,43 @@ export function SkillRegistrationsSection({ projectId, isOwner }: Props) {
         auto-transition past it (soft-skip). The Open stage is locked on.
       </p>
 
-      {saveError && (saveError.code === 'OPEN_LOCKED_ON' || saveError.code === 'STAGE_HAS_ISSUES' || saveError.code === 'AUTO_STAGE_NEEDS_SKILL' || saveError.code === 'DEAD_END_CONFIG') && (
-        <AlertBanner variant="error">
-          {saveError.code === 'OPEN_LOCKED_ON' && 'Open stage cannot be disabled.'}
-          {saveError.code === 'STAGE_HAS_ISSUES' && (
-            <>
-              Cannot disable {saveError.stagesBlocked?.join(', ') ?? 'these stages'} — there are{' '}
-              {saveError.blockingIssueIds?.length ?? 0} issues currently at them. Move or close
-              them first.
-            </>
-          )}
-          {saveError.code === 'AUTO_STAGE_NEEDS_SKILL' && (
-            <>
-              Auto-mode stages need a registered skill: {saveError.stagesMissingSkill?.join(', ')}.
-            </>
-          )}
-          {saveError.code === 'DEAD_END_CONFIG' && (
-            <>
-              Cannot disable {saveError.unreachable?.join(', ')} — no forward path remains.
-            </>
-          )}
-        </AlertBanner>
-      )}
+      <div ref={bannerRef}>
+        {saveError && (saveError.code === 'OPEN_LOCKED_ON' || saveError.code === 'STAGE_HAS_ISSUES' || saveError.code === 'AUTO_STAGE_NEEDS_SKILL' || saveError.code === 'DEAD_END_CONFIG') && (
+          <AlertBanner variant="error">
+            {saveError.code === 'OPEN_LOCKED_ON' && 'Open stage cannot be disabled.'}
+            {saveError.code === 'STAGE_HAS_ISSUES' && (
+              (saveError.blockingIssueIds && saveError.blockingIssueIds.length > 0) ? (
+                <>
+                  Cannot disable {saveError.stagesBlocked?.join(', ') ?? 'these stages'} — there are{' '}
+                  {saveError.blockingIssueIds.length} issues currently at them. Move or close them
+                  first.
+                </>
+              ) : (
+                <>
+                  Server rejected save: stages have live issues. Check the Issues tab to find and
+                  resolve them.
+                </>
+              )
+            )}
+            {saveError.code === 'AUTO_STAGE_NEEDS_SKILL' && (
+              <>
+                Auto-mode stages need a registered skill: {saveError.stagesMissingSkill?.join(', ')}.
+              </>
+            )}
+            {saveError.code === 'DEAD_END_CONFIG' && (
+              <>
+                Cannot disable {saveError.unreachable?.join(', ')} — no forward path remains.
+              </>
+            )}
+          </AlertBanner>
+        )}
 
-      {bindError && (
-        <AlertBanner variant="error">
-          Failed to update skill binding. {bindError.code ?? ''}
-        </AlertBanner>
-      )}
+        {bindError && (
+          <AlertBanner variant="error">
+            Failed to update skill binding. {bindError.code ?? ''}
+          </AlertBanner>
+        )}
+      </div>
 
       <div className="rounded-sm border border-outline-variant/20 divide-y divide-outline-variant/10">
         {STAGE_NAMES.map((stage) => {
@@ -159,6 +178,10 @@ export function SkillRegistrationsSection({ projectId, isOwner }: Props) {
           const isOpen = stage === 'open';
           const defaultSkillName = stageDefaultSkillNames[stage];
           const defaultSkill = skillOptions.find((s) => s.name === defaultSkillName);
+          // Soft-skip stages (tested/pass/staging/deploying) have no skill in
+          // PIPELINE_STEPS — the orchestrator only soft-transitions through
+          // them. Auto mode here would trip AUTO_STAGE_NEEDS_SKILL at save.
+          const isSoftSkip = defaultSkillName === undefined;
 
           return (
             <div
@@ -199,6 +222,7 @@ export function SkillRegistrationsSection({ projectId, isOwner }: Props) {
               <select
                 value={binding?.skillId ?? ''}
                 disabled={
+                  isSoftSkip ||
                   stageCfg.enabled === false ||
                   registerSkill.isPending ||
                   unregisterSkill.isPending
@@ -213,12 +237,15 @@ export function SkillRegistrationsSection({ projectId, isOwner }: Props) {
                 }}
                 className="rounded-sm border border-outline-variant/20 bg-surface-container px-2 py-1 text-xs text-on-surface disabled:opacity-50"
               >
-                <option value="">— Unbound —</option>
-                {skillOptions.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} {s.scope === 'project' ? '(project)' : ''}
-                  </option>
-                ))}
+                <option value="">
+                  {isSoftSkip ? 'Soft-skip only — no skill' : '— Unbound —'}
+                </option>
+                {!isSoftSkip &&
+                  skillOptions.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} {s.scope === 'project' ? '(project)' : ''}
+                    </option>
+                  ))}
               </select>
 
               <button
@@ -227,7 +254,10 @@ export function SkillRegistrationsSection({ projectId, isOwner }: Props) {
                   cfg.isSaving || registerSkill.isPending || unregisterSkill.isPending
                 }
                 onClick={() => {
-                  cfg.setStage(stage, { enabled: true, mode: 'auto' });
+                  cfg.setStage(stage, {
+                    enabled: true,
+                    mode: isSoftSkip ? 'manual' : 'auto',
+                  });
                   if (defaultSkill && binding?.skillId !== defaultSkill.id) {
                     void registerSkill.mutateAsync({ skillId: defaultSkill.id, stage });
                   }
