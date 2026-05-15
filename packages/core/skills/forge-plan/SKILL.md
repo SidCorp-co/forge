@@ -133,6 +133,48 @@ forge_issues → update → { documentId: "<id>", data: { plan: "<markdown plan>
 
 **For deep plans:** Be concrete about both **what** and **how** — file paths, function names, pattern references. The coding agent should be able to follow the plan step-by-step without re-exploring.
 
+### Step 5.5: Decide whether to decompose (Complex epics only)
+
+For Complex issues with **>3 parallel workstreams** that each ship independently, split the epic into a parent + children using `kind='decomposes'` dependency edges. The lifecycle hooks in `pipeline/decomposition-subscribers.ts` then automate cascade approve, the all-children-ready watcher, atomic release gating, and close cascade.
+
+**When to decompose:**
+- Each child must be reviewable + testable independently.
+- Cap at 6-8 children per epic — worker reliability degrades beyond that.
+- The parent must have a meaningful integration-test step after all children land (otherwise just use `blocks` dependencies — the watcher exists specifically to re-fire integration tests on the parent).
+- Workstreams should not share critical code paths that will collide at PR-merge time.
+
+**When NOT to decompose:**
+- Single-file changes, refactors localized to one module, bug fixes.
+- Items where one child's failure should not block siblings' release — the gate is atomic by design.
+- Nested decomposition (epic → epic → story). Single-level only for v1.
+
+**How to decompose:**
+
+1. For each child workstream, create a child issue:
+   ```
+   forge_issues → create → { data: { title: "<child slice title>", description: "<scoped description>", priority: <inherit>, category: <inherit>, manualHold: false } }
+   ```
+   Children land at `open` (the default) and stay parked there until the parent is approved.
+
+2. For each created child, add a `decomposes` dependency edge with the parent as the `from` side:
+   ```
+   POST /api/issues/:parentId/dependencies → { toIssueId: <childId>, kind: 'decomposes' }
+   ```
+   (or call the MCP tool equivalent if your runtime exposes one).
+
+3. Write the parent's `plan` field with one section per child — title, scope, files, acceptance criteria. The parent plan is the index; each child's own `description` carries the child-specific implementation detail.
+
+4. Set the parent to `status: 'waiting'`. **Do NOT auto-approve** — a human reviews the decomposition before the cascade fires.
+
+5. Post a plan comment summarizing the decomposition decision and rationale: which children, why this split, what the parent's integration test will verify.
+
+**What happens after human approval (automatic):**
+- Parent waiting → approved fires the cascade: every `open` child flips to `approved` (manualHold cleared if set).
+- Children run their pipelines in parallel through code → review → test → staging.
+- When the LAST child reaches `staging`, the watcher posts a comment on the parent and re-fires the parent's pipeline so forge-test runs the integration step on merged children code.
+- Parent reaches `released`. The L2 release gate (`waiting_on_decomp_parent`) clears for every child's queued `release` job — children release atomically with the epic.
+- Parent → `closed` forces any non-closed children to `closed` (clean-up when the epic is abandoned).
+
 ### Step 6: Validate the Plan
 
 Before posting, sanity-check:

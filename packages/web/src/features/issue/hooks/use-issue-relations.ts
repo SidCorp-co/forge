@@ -16,6 +16,7 @@ const emptyGroups = (): RelationsByKind => ({
   relates: { outgoing: [], incoming: [] },
   duplicates: { outgoing: [], incoming: [] },
   parent: { outgoing: [], incoming: [] },
+  decomposes: { outgoing: [], incoming: [] },
 });
 
 export function useIssueRelations(issueId: string | undefined) {

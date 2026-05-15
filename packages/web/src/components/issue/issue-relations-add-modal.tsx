@@ -22,6 +22,7 @@ const KIND_LABELS: Record<DependencyKind, string> = {
   relates: 'Relates to',
   duplicates: 'Duplicates',
   parent: 'Parent of',
+  decomposes: 'Decomposes into',
 };
 
 export function IssueRelationsAddModal({ open, onClose, issueId, projectId }: Props) {

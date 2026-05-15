@@ -1611,8 +1611,19 @@ export const retrievalAnalyticsRelations = relations(retrievalAnalytics, ({ one 
 // reach a terminal status (`released`/`closed`/`pipeline_failed`) before B
 // can dispatch**. Other kinds (`relates`, `duplicates`, `parent`) are PM/UX
 // metadata only and do not affect dispatch. Cross-project edges are allowed.
+// The `decomposes` kind (epic→child) engages a separate decomposition
+// lifecycle (cascade approve on parent waiting→approved, watcher when all
+// children reach staging, atomic release gate on child release jobs, close
+// cascade on parent→closed). See `pipeline/decomposition.ts` and
+// `pipeline/decomposition-subscribers.ts`.
 
-export const issueDependencyKinds = ['blocks', 'relates', 'duplicates', 'parent'] as const;
+export const issueDependencyKinds = [
+  'blocks',
+  'relates',
+  'duplicates',
+  'parent',
+  'decomposes',
+] as const;
 export type IssueDependencyKind = (typeof issueDependencyKinds)[number];
 
 export const issueDependencies = pgTable(

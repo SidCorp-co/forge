@@ -87,6 +87,7 @@ import {
 } from './pipeline/runs-read-routes.js';
 import { registerCiFixPatternLearner } from './pipeline/ci-fix-pattern-learn.js';
 import { hooks } from './pipeline/hooks.js';
+import { registerDecompositionSubscribers } from './pipeline/decomposition-subscribers.js';
 import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
 import { registerPipelineSentryBreadcrumbs } from './pipeline/sentry-breadcrumbs.js';
 import { registerActivitySubscribers } from './pipeline/subscribers.js';
@@ -377,6 +378,7 @@ if (isMain) {
   await registerPmEscalationSweeper();
   registerWebhookSubscribers(hooks);
   registerPipelineOrchestrator(hooks);
+  registerDecompositionSubscribers(hooks);
 
   const server = serve({ fetch: app.fetch, port }, (info) => {
     logger.info({ port: info.port }, '@forge/core listening');

@@ -24,12 +24,17 @@ import { agentSessions, issues, jobs, projects, runners } from '../db/schema.js'
 import type { JobType, RunnerType } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
+import {
+  DECOMP_PARENT_RELEASED_STATUSES,
+  findDecompositionParent,
+} from '../pipeline/decomposition.js';
 import { RUNNER_CAPABILITIES } from '../pipeline/registry.js';
 
 export type GateSkipReason =
   | 'issue_busy'
   | 'manual_hold'
   | 'waiting_on_dep'
+  | 'waiting_on_decomp_parent'
   | 'project_full'
   | 'runner_full';
 
@@ -149,10 +154,18 @@ interface BlockingParent {
  * L2 — every `kind='blocks'` parent must be in a terminal status. Cross-project
  * edges are honored. `valid_until` in the past is ignored.
  *
+ * For `release`-type candidate jobs, also enforces the decomposition
+ * release gate (ISS-119): a child of a `kind='decomposes'` parent stays
+ * gated with `waiting_on_decomp_parent` until the parent reaches
+ * `released` or `closed`, so children release atomically with the epic.
+ *
  * On failure, `metadata.waitingOn` carries the list of parents so the sidebar
  * can render `Waiting for ISS-12, ISS-15 to finish`.
  */
-export async function checkLayer2Dependencies(issueId: string): Promise<GateResult> {
+export async function checkLayer2Dependencies(
+  issueId: string,
+  jobType?: JobType,
+): Promise<GateResult> {
   if (!issueId) return PASS;
   const rows = await db.execute<{
     from_issue_id: string;
@@ -166,20 +179,42 @@ export async function checkLayer2Dependencies(issueId: string): Promise<GateResu
       AND d.kind = 'blocks'
       AND (d.valid_until IS NULL OR d.valid_until > now())
   `);
-  if (rows.length === 0) return PASS;
   const blocking: BlockingParent[] = [];
   for (const r of rows) {
     if (!(TERMINAL_ISSUE_STATUSES as readonly string[]).includes(r.status)) {
       blocking.push({ issueId: r.from_issue_id, issSeq: r.iss_seq, status: r.status });
     }
   }
-  if (blocking.length === 0) return PASS;
-  return {
-    pass: false,
-    reason: 'waiting_on_dep',
-    hint: `waiting on ${blocking.length} blocking issue(s)`,
-    metadata: { waitingOn: blocking },
-  };
+  if (blocking.length > 0) {
+    return {
+      pass: false,
+      reason: 'waiting_on_dep',
+      hint: `waiting on ${blocking.length} blocking issue(s)`,
+      metadata: { waitingOn: blocking },
+    };
+  }
+
+  // ISS-119 — decomposition release gate. Only the `release` jobType is
+  // gated; everything else for the child (code/review/test/staging) runs
+  // independently of the epic's progress. `closed` parents count as
+  // released so an abandoned epic never strands a finished child.
+  if (jobType === 'release') {
+    const parent = await findDecompositionParent(issueId);
+    if (parent && !DECOMP_PARENT_RELEASED_STATUSES.has(parent.status)) {
+      return {
+        pass: false,
+        reason: 'waiting_on_decomp_parent',
+        hint: `decomposition parent ISS-${parent.issSeq} not released yet`,
+        metadata: {
+          parentId: parent.id,
+          parentIssSeq: parent.issSeq,
+          parentStatus: parent.status,
+        },
+      };
+    }
+  }
+
+  return PASS;
 }
 
 /**
@@ -319,6 +354,17 @@ export async function pickNextDispatchableJobForProject(
           AND d.kind = 'blocks'
           AND (d.valid_until IS NULL OR d.valid_until > now())
           AND p.status NOT IN ('released','closed','pipeline_failed')
+      )
+      AND NOT (
+        j.type = 'release'
+        AND EXISTS (
+          SELECT 1 FROM issue_dependencies d2
+          JOIN issues p2 ON p2.id = d2.from_issue_id
+          WHERE d2.to_issue_id = j.issue_id
+            AND d2.kind = 'decomposes'
+            AND (d2.valid_until IS NULL OR d2.valid_until > now())
+            AND p2.status NOT IN ('released','closed')
+        )
       )
     ORDER BY
       CASE COALESCE(i.priority, 'none')
