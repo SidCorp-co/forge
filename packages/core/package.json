@@ -59,6 +59,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
+    "@forge/contracts": "workspace:*",
     "@testcontainers/postgresql": "^11.14.0",
     "@types/node": "^20.17.10",
     "@types/nodemailer": "^8.0.0",

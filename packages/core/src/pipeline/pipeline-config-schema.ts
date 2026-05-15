@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { issueStatuses } from '../db/schema.js';
+import { PIPELINE_STEPS, type StepToggleKey } from './registry.js';
 import { DEFAULT_RECOVERY_CONFIG } from './recovery-policy.js';
+
+export type { StepToggleKey };
 
 /**
  * Step toggle — accepts the v0 boolean form AND the new object form that
@@ -58,14 +61,16 @@ export const recoveryPolicySchema = z.object({
 export type RecoveryPolicy = z.infer<typeof recoveryPolicySchema>;
 
 /**
- * Authoritative list of step toggle keys exposed to projects. Mirrors
- * `STATUS_TO_JOB_TYPE` in `skill-mapping.ts`. `clarified` is human-gated and
- * intentionally absent — there is no orchestrator code path for it.
+ * Authoritative list of step toggle keys exposed to projects. Derived from
+ * `PIPELINE_STEPS` in `./registry.ts` so a new step is added in exactly one
+ * place. `clarified` is human-gated and intentionally absent from the
+ * registry — there is no orchestrator code path for it.
  *
- * The const tuple drives both the schema and the type so a new step is
- * added in exactly one place.
+ * Cast to the explicit tuple literal because Zod's `z.enum` requires a
+ * `readonly [string, ...string[]]` shape that the wider `string[]` type of
+ * `Array.map` doesn't satisfy.
  */
-export const STEP_TOGGLE_KEYS = [
+export const STEP_TOGGLE_KEYS = PIPELINE_STEPS.map((s) => s.toggle) as unknown as readonly [
   'autoTriage',
   'autoPlan',
   'autoCode',
@@ -73,9 +78,7 @@ export const STEP_TOGGLE_KEYS = [
   'autoTest',
   'autoFix',
   'autoRelease',
-] as const;
-
-export type StepToggleKey = (typeof STEP_TOGGLE_KEYS)[number];
+];
 
 /**
  * Per-stage `{ enabled, mode }` config under `pipelineConfig.states`.
