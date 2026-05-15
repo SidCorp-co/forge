@@ -1,0 +1,45 @@
+name: Dependabot auto-merge
+
+on: pull_request_target
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Auto-merge patch + non-cargo minor
+        if: |
+          steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+          (steps.meta.outputs.update-type == 'version-update:semver-minor'
+            && steps.meta.outputs.package-ecosystem != 'cargo')
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge --auto --squash "$PR_URL"
+
+      - name: Flag majors and cargo-minor for manual review
+        if: |
+          steps.meta.outputs.update-type == 'version-update:semver-major' ||
+          (steps.meta.outputs.update-type == 'version-update:semver-minor'
+            && steps.meta.outputs.package-ecosystem == 'cargo')
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr edit "$PR_URL" --add-label "deps:needs-review" 2>/dev/null || {
+            gh label create "deps:needs-review" \
+              --color FBCA04 \
+              --description "Major or risky dep bump — manual review required"
+            gh pr edit "$PR_URL" --add-label "deps:needs-review"
+          }
+          gh pr comment "$PR_URL" --body "Major or Rust-minor bump — needs manual review before merge."
