@@ -5,6 +5,7 @@ import { AlertBanner, Spinner } from '@/components/ui';
 import { ApiError } from '@/lib/api/client';
 import { STAGE_NAMES, type StageName } from '@/features/pipeline/config/types';
 import { usePipelineConfig } from '@/features/pipeline/config/hooks/use-pipeline-config';
+import { usePipelineRegistry } from '@/features/pipeline/use-pipeline-registry';
 import {
   useProjectSkillRegistrations,
   useRegisterSkill,
@@ -31,16 +32,21 @@ const STAGE_LABELS: Record<StageName, string> = {
   released: 'Released',
 };
 
-const STAGE_DEFAULT_SKILL_NAMES: Partial<Record<StageName, string>> = {
-  open: 'forge-triage',
-  confirmed: 'forge-plan',
-  approved: 'forge-code',
-  developed: 'forge-review',
-  testing: 'forge-test',
-  reopen: 'forge-fix',
-  released: 'forge-release',
-  // tested/pass/staging/deploying have no skill — soft-skip only.
-};
+// Default skill names per stage are derived from the pipeline registry
+// (single SSOT — see `core/pipeline/registry.ts`). Soft-skip stages
+// (tested/pass/staging/deploying) are NOT in PIPELINE_STEPS, so they
+// remain `undefined` in this map and the UI renders them as "no skill".
+function useStageDefaultSkillNames(): Partial<Record<StageName, string>> {
+  const { data: registry } = usePipelineRegistry();
+  return useMemo(() => {
+    if (!registry) return {};
+    const out: Partial<Record<StageName, string>> = {};
+    for (const step of registry.steps) {
+      out[step.status as StageName] = step.skillName;
+    }
+    return out;
+  }, [registry]);
+}
 
 // Map backend error `cause.code` to a human-friendly inline message + the
 // affected stage list, when the backend returned one in `cause`.
@@ -70,6 +76,7 @@ export function SkillRegistrationsSection({ projectId, isOwner }: Props) {
   const cfg = usePipelineConfig(projectId);
   const registerSkill = useRegisterSkill(projectId);
   const unregisterSkill = useUnregisterSkillByStage(projectId);
+  const stageDefaultSkillNames = useStageDefaultSkillNames();
 
   const bindingByStage = useMemo(() => {
     const map = new Map<string, { skillId: string; skillName: string }>();
@@ -150,7 +157,7 @@ export function SkillRegistrationsSection({ projectId, isOwner }: Props) {
           const binding = bindingByStage.get(stage);
           const stageCfg = cfg.state.states[stage];
           const isOpen = stage === 'open';
-          const defaultSkillName = STAGE_DEFAULT_SKILL_NAMES[stage];
+          const defaultSkillName = stageDefaultSkillNames[stage];
           const defaultSkill = skillOptions.find((s) => s.name === defaultSkillName);
 
           return (

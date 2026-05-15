@@ -2,7 +2,7 @@
 
 import { AlertTriangle } from 'lucide-react';
 import { Select, Switch } from '@/components/ui';
-import { RUNNER_CAPABILITIES, runnerSupports } from '@/features/pipeline/runner-capabilities';
+import { usePipelineRegistry } from '@/features/pipeline/use-pipeline-registry';
 import { STEP_REGISTRY, type StepToggleKey } from '../step-registry';
 import type { StepFormValue } from '../hooks/use-pipeline-config';
 
@@ -15,6 +15,20 @@ interface Props {
 
 export function StepToggleList({ steps, onChange, availableRunners, masterEnabled }: Props) {
   const supportsRunnerOverride = availableRunners.length > 1;
+  const { data: registry } = usePipelineRegistry();
+  // Zod's z.record over a typed enum narrows the index to the enum values;
+  // we cast to string-indexed here because step-toggle-list works with
+  // arbitrary runner names (the form state hasn't been validated yet).
+  const runnerCaps = (registry?.runnerCapabilities ?? {}) as Record<
+    string,
+    readonly string[] | undefined
+  >;
+  const runnerSupports = (runner: string | undefined, jobType: string): boolean => {
+    if (!runner || !registry) return true;
+    const caps = runnerCaps[runner];
+    if (!caps) return true;
+    return caps.includes(jobType);
+  };
 
   return (
     <div className="bg-surface-container-low border border-outline-variant/30 p-6 space-y-4">
@@ -60,7 +74,7 @@ export function StepToggleList({ steps, onChange, availableRunners, masterEnable
                   <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
                   <p>
                     The {v.runner} runner doesn't service '{def.jobType}' jobs (it supports{' '}
-                    {RUNNER_CAPABILITIES[v.runner as keyof typeof RUNNER_CAPABILITIES]?.join(', ') ?? 'a different set'}).
+                    {(v.runner ? runnerCaps[v.runner] : undefined)?.join(', ') ?? 'a different set'}).
                     Enabling this toggle on the {v.runner} runner will produce visible-but-harmless
                     'unsupported job type' failures every time an issue passes through '
                     {def.statusTransition.split(' ')[0]}'. Either switch this step's runner to one

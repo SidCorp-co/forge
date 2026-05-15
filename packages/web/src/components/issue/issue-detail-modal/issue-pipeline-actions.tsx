@@ -1,9 +1,10 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { PIPELINE_STAGES, type PipelineStage } from '@/features/issue/api/issue-api';
 import { useRunPipelineStep } from '@/features/issue/hooks/use-issues';
 import { useEnrichIssue } from '@/features/issue/hooks/use-enrich';
+import { usePipelineRegistry } from '@/features/pipeline/use-pipeline-registry';
 import { ApiError } from '@/lib/api/client';
 
 interface Props {
@@ -12,17 +13,6 @@ interface Props {
 }
 
 const DESTRUCTIVE_STAGES = new Set<PipelineStage>(['release']);
-
-const STAGE_LABEL: Record<PipelineStage, string> = {
-  triage: 'forge-triage',
-  plan: 'forge-plan',
-  code: 'forge-code',
-  review: 'forge-review',
-  test: 'forge-test',
-  fix: 'forge-fix',
-  release: 'forge-release',
-  clarify: 'forge-clarify',
-};
 
 const STATUS_TO_LABEL: Record<string, string> = {
   open: 'Triage',
@@ -48,6 +38,20 @@ export function IssuePipelineActions({ issueId, status }: Props) {
   const lastFireRef = useRef<number>(0);
   const runMutation = useRunPipelineStep();
   const enrichMutation = useEnrichIssue();
+  const { data: registry } = usePipelineRegistry();
+
+  // Stage → skill name labels are derived from the pipeline registry
+  // (single SSOT). Manual-only types (clarify) and any future stage not
+  // in PIPELINE_STEPS fall back to the `forge-<stage>` convention so the
+  // UI never shows a blank label.
+  const stageLabel = useMemo<Record<PipelineStage, string>>(() => {
+    const out = {} as Record<PipelineStage, string>;
+    for (const s of PIPELINE_STAGES) {
+      const step = registry?.steps.find((entry) => entry.jobType === s);
+      out[s as PipelineStage] = step?.skillName ?? `forge-${s}`;
+    }
+    return out;
+  }, [registry]);
 
   function flash(tone: 'ok' | 'err', text: string) {
     setFeedback({ tone, text });
@@ -69,7 +73,7 @@ export function IssuePipelineActions({ issueId, status }: Props) {
     if (rateLimited()) return;
     if (stage && DESTRUCTIVE_STAGES.has(stage)) {
       const ok = window.confirm(
-        `Fire ${STAGE_LABEL[stage]} for this issue? This is a destructive stage (release / production deploy).`,
+        `Fire ${stageLabel[stage]} for this issue? This is a destructive stage (release / production deploy).`,
       );
       if (!ok) return;
     }
@@ -153,7 +157,7 @@ export function IssuePipelineActions({ issueId, status }: Props) {
                     onClick={() => fire(s)}
                     className="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs font-mono text-on-surface hover:bg-surface-container-high"
                   >
-                    <span>{STAGE_LABEL[s]}</span>
+                    <span>{stageLabel[s]}</span>
                     {DESTRUCTIVE_STAGES.has(s) && (
                       <span className="text-[10px] uppercase tracking-widest text-error">!</span>
                     )}

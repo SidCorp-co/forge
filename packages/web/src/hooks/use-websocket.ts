@@ -71,6 +71,9 @@ export function useWebSocket() {
           case 'notification:created':
             invalidate(['notifications', 'notifications-unread']);
             break;
+          case 'pipeline.registry_changed':
+            invalidate([['pipeline', 'registry']]);
+            break;
           case 'ws:error':
             break;
         }
