@@ -115,11 +115,16 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
   }
 
   async function insertReleaseJob(projectId: string, issueId: string, ownerId: string): Promise<string> {
+    const runId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status)
+      VALUES (${runId}, ${projectId}, ${issueId}, 'issue', 'running')
+    `);
     const id = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO jobs (id, project_id, issue_id, type, status, payload, queued_at, created_by)
+      INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, payload, queued_at, created_by)
       VALUES (
-        ${id}, ${projectId}, ${issueId}, 'release', 'queued',
+        ${id}, ${projectId}, ${issueId}, ${runId}, 'release', 'queued',
         '{}'::jsonb, now(), ${ownerId}
       )
     `);
@@ -270,7 +275,9 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
 
       const pick = await mods.pickNextDispatchableJobForProject(project.id);
       expect(pick).not.toBeNull();
-      expect(pick?.issueId).toBe(child);
+      // Raw `db.execute<JobRow>` keeps snake_case keys — the `<JobRow>` cast
+      // is a TS-only hint, not a runtime mapping. Read the snake_case field.
+      expect((pick as unknown as { issue_id: string } | null)?.issue_id).toBe(child);
     });
   });
 
