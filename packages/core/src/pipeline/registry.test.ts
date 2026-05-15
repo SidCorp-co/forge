@@ -155,6 +155,7 @@ describe('GET /api/pipeline/registry', () => {
       'fix',
       'triage',
       'test',
+      'release',
     ]);
   });
 });

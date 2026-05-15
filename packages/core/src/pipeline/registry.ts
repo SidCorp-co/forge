@@ -43,7 +43,7 @@ export const MANUAL_ONLY_JOB_TYPES: readonly JobType[] = ['clarify'];
 // stays in place until a follow-up issue switches the FE to fetch the
 // registry; the test suite asserts the values match.
 export const RUNNER_CAPABILITIES: Record<RunnerType, readonly JobType[]> = {
-  'claude-code': ['plan', 'code', 'review', 'fix', 'triage', 'test'],
+  'claude-code': ['plan', 'code', 'review', 'fix', 'triage', 'test', 'release'],
   antigravity: ['plan', 'code', 'review', 'fix', 'triage', 'test', 'release'],
 };
 
