@@ -62,7 +62,7 @@ pub async fn connect_ws(
                         "room": format!("device:{did}")
                     })
                     .to_string();
-                    let _ = write.send(Message::Text(subscribe)).await;
+                    let _ = write.send(Message::Text(subscribe.into())).await;
                 }
 
                 let mut ping_interval = tokio::time::interval(PING_INTERVAL);
@@ -101,7 +101,7 @@ pub async fn connect_ws(
                             }
                         }
                         _ = ping_interval.tick() => {
-                            if write.send(Message::Ping(vec![])).await.is_err() {
+                            if write.send(Message::Ping(vec![].into())).await.is_err() {
                                 break;
                             }
                             awaiting_pong = true;
