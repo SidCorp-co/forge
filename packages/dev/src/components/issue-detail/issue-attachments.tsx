@@ -1,16 +1,38 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Issue } from "@/lib/types";
-import { coreMediaUrl } from "@/lib/api";
-import { FileUpload } from "../ui/file-upload";
+import { coreMediaUrl, uploadIssueAttachment } from "@/lib/api";
 import { ImagePreview } from "../ui/image-preview";
 
 interface Props {
   issue: Issue;
-  onUpdate: (id: string, data: Partial<Issue>) => void;
+  onUpdated: () => void;
 }
 
-export function IssueAttachments({ issue, onUpdate }: Props) {
+export function IssueAttachments({ issue, onUpdated }: Props) {
   const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFiles(picked: FileList | File[]) {
+    setError(null);
+    setUploading(true);
+    const failures: string[] = [];
+    try {
+      for (const file of Array.from(picked)) {
+        try {
+          await uploadIssueAttachment(issue.documentId, file);
+        } catch (err) {
+          failures.push(`${file.name}: ${err instanceof Error ? err.message : "upload failed"}`);
+        }
+      }
+      if (failures.length > 0) setError(failures.join(" • "));
+      onUpdated();
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
 
   return (
     <div className="px-6 py-3">
@@ -59,14 +81,21 @@ export function IssueAttachments({ issue, onUpdate }: Props) {
       {previewImage && (
         <ImagePreview src={previewImage.url} alt={previewImage.name} onClose={() => setPreviewImage(null)} />
       )}
-      <FileUpload
-        value={[]}
-        onChange={(newFiles) => {
-          const existingIds = issue.attachments?.map((a) => a.id) ?? [];
-          const allIds = [...existingIds, ...newFiles.map((f) => f.id)];
-          onUpdate(issue.documentId, { attachments: allIds } as any);
-        }}
-      />
+      <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-500 transition hover:border-gray-400 hover:bg-gray-100">
+        <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V4m0 0l-4 4m4-4l4 4M4 20h16" />
+        </svg>
+        {uploading ? "Uploading..." : error ? <span className="text-red-500">{error}</span> : "Click to attach files"}
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          accept="image/*,video/*,.pdf,.txt,.md"
+          onChange={(e) => e.target.files && handleFiles(e.target.files)}
+          disabled={uploading}
+          className="sr-only"
+        />
+      </label>
     </div>
   );
 }

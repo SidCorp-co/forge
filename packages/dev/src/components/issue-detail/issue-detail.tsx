@@ -47,7 +47,7 @@ export function IssueDetail({ issue, onClose, onUpdated }: Props) {
         <IssueFields issue={issue} onUpdate={handleUpdate} />
         <IssueAgentSessions issue={issue} slug={slug!} onClose={onClose} navigate={navigate} />
         <IssueCostSummary documentId={issue.documentId} />
-        <IssueAttachments issue={issue} onUpdate={handleUpdate} />
+        <IssueAttachments issue={issue} onUpdated={onUpdated} />
         <IssueEnrichment issue={issue} />
         <IssueTasks issue={issue} />
         <IssueRelations issue={issue} />

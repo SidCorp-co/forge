@@ -62,6 +62,23 @@ export interface IssueHistoryEntry {
   by: string;
 }
 
+export interface IssueAttachment {
+  id: string;
+  issueId: string;
+  uploaderId: string;
+  name: string;
+  mime: string;
+  size: number;
+  url: string;
+  createdAt: string;
+}
+
+export interface AttachmentBase64Input {
+  name: string;
+  mime: string;
+  dataBase64: string;
+}
+
 export interface Issue {
   id: number;
   documentId: string;
@@ -82,7 +99,7 @@ export interface Issue {
   agentStatus: "idle" | "running" | "completed" | "failed" | null;
   agentLog: unknown[] | null;
   changeHistory: IssueHistoryEntry[];
-  attachments: { id: number; url: string; mime: string; name: string }[] | null;
+  attachments: IssueAttachment[] | null;
   project?: Project;
   tasks?: Task[];
   comments?: Comment[];
@@ -261,7 +278,7 @@ export interface IssueFormData {
   title: string;
   description: string;
   priority: IssuePriority;
-  attachments?: number[]; // packages/core ignores; kept for back-compat with callers
+  attachments?: AttachmentBase64Input[];
 }
 
 export interface UsageDailyRecord {

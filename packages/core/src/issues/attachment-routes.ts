@@ -12,19 +12,7 @@ import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { getStorage, isEnoent } from '../storage/index.js';
-
-const ALLOWED_MIMES = new Set([
-  'image/png',
-  'image/jpeg',
-  'image/gif',
-  'image/webp',
-  'application/pdf',
-  'video/mp4',
-  'video/webm',
-  'video/quicktime',
-  'text/plain',
-  'text/markdown',
-]);
+import { AttachmentError, persistIssueAttachment } from './attachment-service.js';
 
 const badRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
   new HTTPException(400, { message, cause: { code, details } });
@@ -32,11 +20,6 @@ const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
-function safeName(name: string): string {
-  const cleaned = name.replace(/[\\/]+/g, '_').replace(/[^A-Za-z0-9._-]/g, '_');
-  return cleaned.slice(0, 200) || 'file';
-}
 
 const issueIdParamSchema = z.object({ id: z.uuid() });
 const attachmentIdParamSchema = z.object({ id: z.uuid() });
@@ -72,57 +55,22 @@ export function registerIssueAttachmentRoutes(router: IssueRouter): void {
       const body = await c.req.parseBody();
       const file = body['file'];
       if (!(file instanceof File)) throw badRequest('missing "file" field');
-      if (file.size <= 0) throw badRequest('empty file');
-      if (file.size > env.UPLOADS_MAX_BYTES) throw badRequest('file too large', 'FILE_TOO_LARGE');
-      const mime = file.type || 'application/octet-stream';
-      if (!ALLOWED_MIMES.has(mime))
-        throw badRequest(`mime not allowed: ${mime}`, 'MIME_NOT_ALLOWED');
-
-      const name = safeName(file.name || 'file');
       const buffer = Buffer.from(await file.arrayBuffer());
-      const key = `issues/${issue.id}/${Date.now()}-${name}`;
-      const { path: storedPath } = await getStorage().put(key, buffer, mime);
-
-      const [inserted] = await db
-        .insert(issueAttachments)
-        .values({
+      try {
+        const row = await persistIssueAttachment({
           issueId: issue.id,
+          name: file.name || 'file',
+          mime: file.type || 'application/octet-stream',
+          bytes: buffer,
           uploaderId: userId,
-          name,
-          path: storedPath,
-          mime,
-          size: file.size,
-        })
-        .returning({
-          id: issueAttachments.id,
-          issueId: issueAttachments.issueId,
-          uploaderId: issueAttachments.uploaderId,
-          name: issueAttachments.name,
-          mime: issueAttachments.mime,
-          size: issueAttachments.size,
-          createdAt: issueAttachments.createdAt,
         });
-      if (!inserted) throw new Error('issue_attachments: insert returned no row');
-
-      void safeRecordActivity({
-        issueId: issue.id,
-        actor: { type: 'user', id: userId },
-        action: 'issue.attachment.uploaded',
-        payload: {
-          attachmentId: inserted.id,
-          name: inserted.name,
-          mime: inserted.mime,
-          size: inserted.size,
-        },
-      });
-
-      return c.json(
-        {
-          ...inserted,
-          url: `/api/attachments/${inserted.id}/download`,
-        },
-        201,
-      );
+        return c.json(row, 201);
+      } catch (err) {
+        if (err instanceof AttachmentError) {
+          throw badRequest(err.message, err.code);
+        }
+        throw err;
+      }
     },
   );
 

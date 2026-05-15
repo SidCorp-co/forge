@@ -6,7 +6,18 @@ import type { IssuePriority } from "@/lib/types";
 import { AlertBanner } from "@/components/ui/alert-banner";
 import { PageShell } from "@/components/ui/page-shell";
 import { FormInput, FormTextarea } from "@/components/ui/form-input";
-import { FileUpload, type UploadedFile } from "@/components/ui/file-upload";
+import { FileUpload } from "@/components/ui/file-upload";
+
+async function fileToBase64(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.byteLength; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
 
 export function NewIssuePage() {
   const { slug } = useParams<{ slug: string }>();
@@ -20,7 +31,7 @@ export function NewIssuePage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<IssuePriority>("medium");
-  const [attachments, setAttachments] = useState<UploadedFile[]>([]);
+  const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,11 +42,18 @@ export function NewIssuePage() {
     setSubmitting(true);
     setError(null);
     try {
+      const attachments = await Promise.all(
+        files.map(async (f) => ({
+          name: f.name,
+          mime: f.type || "application/octet-stream",
+          dataBase64: await fileToBase64(f),
+        })),
+      );
       await createIssue(project.documentId, {
         title,
         description,
         priority,
-        ...(attachments.length > 0 ? { attachments: attachments.map((a) => a.id) } : {}),
+        ...(attachments.length > 0 ? { attachments } : {}),
       });
       navigate(`/project/${slug}/issues`);
     } catch (err) {
@@ -51,7 +69,7 @@ export function NewIssuePage() {
           <AlertBanner variant="error">{error}</AlertBanner>
         </div>
       )}
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form data-paste-zone onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label htmlFor="title" className="mb-1 block text-sm font-medium text-gray-700">Title</label>
           <FormInput
@@ -93,7 +111,7 @@ export function NewIssuePage() {
 
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">Attachments</label>
-          <FileUpload value={attachments} onChange={setAttachments} />
+          <FileUpload value={files} onChange={setFiles} />
         </div>
 
         <div className="flex gap-3">

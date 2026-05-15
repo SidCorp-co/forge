@@ -47,16 +47,13 @@ export async function createIssue(
   const projectId = UUID_RE.test(projectSlugOrId)
     ? projectSlugOrId
     : await resolveProjectId(projectSlugOrId);
-  // packages/core's createSchema is .strict() — only forward fields it accepts.
-  if (data.attachments && data.attachments.length > 0) {
-    console.warn(
-      `[issues] createIssue: dropping ${data.attachments.length} attachment(s) — packages/core has no media surface yet (TODO(iss-275)).`,
-    );
-  }
   const body: Record<string, unknown> = {
     title: data.title,
     description: data.description,
     priority: data.priority,
+    ...(data.attachments && data.attachments.length > 0
+      ? { attachments: data.attachments }
+      : {}),
   };
   const row = await request<Record<string, unknown> & { id: string }>(
     `/projects/${projectId}/issues`,

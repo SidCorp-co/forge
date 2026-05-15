@@ -9,6 +9,12 @@ import {
   issues,
 } from '../../db/schema.js';
 import { applyStatusTransition } from '../../issues/apply-transition.js';
+import {
+  AttachmentError,
+  type DecodedAttachment,
+  decodeAndValidateAttachments,
+  persistDecodedIssueAttachments,
+} from '../../issues/attachment-service.js';
 import { recordActivityTx } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
 import {
@@ -40,6 +46,14 @@ const filtersSchema = z
   .strict()
   .optional();
 
+const attachmentInputSchema = z
+  .object({
+    name: z.string().min(1).max(200),
+    mime: z.string().min(1).max(255),
+    dataBase64: z.string().min(1),
+  })
+  .strict();
+
 const dataSchema = z
   .object({
     title: z.string().trim().min(1).max(500).optional(),
@@ -48,6 +62,7 @@ const dataSchema = z
     priority: z.enum(issuePriorities).optional(),
     category: z.string().trim().min(1).max(100).nullable().optional(),
     complexity: z.enum(issueComplexities).nullable().optional(),
+    attachments: z.array(attachmentInputSchema).max(10).optional(),
     manualHold: z.boolean().optional(),
     acceptanceCriteria: z.string().max(100_000).nullable().optional(),
     suggestedSolution: z.string().max(100_000).nullable().optional(),
@@ -173,7 +188,10 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'explicit projectId). Status changes route through the issue state machine. ' +
     'Avoid setting manualHold:true at create time — combine with confirmed ' +
     'status transitions and the issue stalls. Toggle manualHold after the ' +
-    'issue settles, or use status:on_hold for a deliberate pause.',
+    'issue settles, or use status:on_hold for a deliberate pause. ' +
+    'Create also accepts data.attachments[] (base64-inline files; up to 10 entries, ' +
+    'total size ≤ UPLOADS_MAX_BYTES). On partial-failure the response includes both ' +
+    '`attachments` (succeeded) and `attachmentErrors` (failed entries with code/message).',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -229,6 +247,20 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         const projectId = await resolveProjectId(input, projectSlug);
         await assertDeviceOwnerIsMember(device, projectId);
 
+        // Decode + size-cap attachments BEFORE insert so a bad payload doesn't
+        // leave a half-created issue with no files.
+        let decodedAttachments: DecodedAttachment[] = [];
+        if (input.data.attachments && input.data.attachments.length > 0) {
+          try {
+            decodedAttachments = decodeAndValidateAttachments(input.data.attachments);
+          } catch (err) {
+            if (err instanceof AttachmentError) {
+              throw new Error(`${err.code}: ${err.message}`);
+            }
+            throw err;
+          }
+        }
+
         const [inserted] = await db
           .insert(issues)
           .values({
@@ -268,7 +300,17 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           },
         });
 
-        return serialize(created);
+        const result: Record<string, unknown> = serialize(created);
+        if (decodedAttachments.length > 0) {
+          const { persisted, errors } = await persistDecodedIssueAttachments(
+            created.id,
+            decodedAttachments,
+            device.ownerId,
+          );
+          result.attachments = persisted;
+          if (errors.length > 0) result.attachmentErrors = errors;
+        }
+        return result;
       }
 
       case 'update': {

@@ -5,6 +5,14 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { registerIssueCommentRoutes } from '../comments/routes.js';
 import { registerIssueAttachmentRoutes } from './attachment-routes.js';
+import {
+  AttachmentError,
+  type AttachmentErrorEntry,
+  type DecodedAttachment,
+  type PersistedIssueAttachment,
+  decodeAndValidateAttachments,
+  persistDecodedIssueAttachments,
+} from './attachment-service.js';
 import { db } from '../db/client.js';
 import {
   issueComplexities,
@@ -22,6 +30,14 @@ import { recordActivityTx } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 
+const attachmentInputSchema = z
+  .object({
+    name: z.string().min(1).max(200),
+    mime: z.string().min(1).max(255),
+    dataBase64: z.string().min(1),
+  })
+  .strict();
+
 export const issueCreateSchema = z
   .object({
     title: z.string().trim().min(1).max(500),
@@ -33,6 +49,7 @@ export const issueCreateSchema = z
     assigneeId: z.uuid().nullable().optional(),
     parentIssueId: z.uuid().nullable().optional(),
     labels: z.array(z.uuid()).max(100).optional(),
+    attachments: z.array(attachmentInputSchema).max(10).optional(),
   })
   .strict();
 
@@ -165,6 +182,23 @@ issueProjectRoutes.post(
     if (input.labels && input.labels.length > 0)
       await assertLabelsInProject(projectId, input.labels);
 
+    // Decode + size-cap attachments BEFORE opening the transaction so a bad
+    // payload doesn't leave a half-created issue with no files.
+    let decodedAttachments: DecodedAttachment[] = [];
+    if (input.attachments && input.attachments.length > 0) {
+      try {
+        decodedAttachments = decodeAndValidateAttachments(input.attachments);
+      } catch (err) {
+        if (err instanceof AttachmentError) {
+          throw new HTTPException(400, {
+            message: err.message,
+            cause: { code: err.code },
+          });
+        }
+        throw err;
+      }
+    }
+
     const created = await db.transaction(async (tx) => {
       const [inserted] = await tx
         .insert(issues)
@@ -192,6 +226,18 @@ issueProjectRoutes.post(
       return inserted as IssueRow;
     });
 
+    let attachmentsResult: {
+      persisted: PersistedIssueAttachment[];
+      errors: AttachmentErrorEntry[];
+    } = { persisted: [], errors: [] };
+    if (decodedAttachments.length > 0) {
+      attachmentsResult = await persistDecodedIssueAttachments(
+        created.id,
+        decodedAttachments,
+        userId,
+      );
+    }
+
     await hooks.emit('issueCreated', {
       issueId: created.id,
       projectId: created.projectId,
@@ -207,7 +253,12 @@ issueProjectRoutes.post(
       },
     });
 
-    return c.json(serializeIssue(created), 201);
+    const response: Record<string, unknown> = serializeIssue(created);
+    response.attachments = attachmentsResult.persisted;
+    if (attachmentsResult.errors.length > 0) {
+      response.attachmentErrors = attachmentsResult.errors;
+    }
+    return c.json(response, 201);
   },
 );
 

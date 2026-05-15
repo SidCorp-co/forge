@@ -5,7 +5,21 @@ vi.mock('../../config/env.js', () => ({
     JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',
     NODE_ENV: 'test',
     DATABASE_URL: 'postgres://localhost/stub',
+    UPLOADS_MAX_BYTES: 10 * 1024 * 1024,
   },
+}));
+
+const storagePut = vi.fn(async (key: string, _bytes: Buffer, _mime: string) => ({
+  path: `local:${key}`,
+  size: _bytes.byteLength,
+}));
+vi.mock('../../storage/index.js', () => ({
+  getStorage: () => ({
+    put: storagePut,
+    get: vi.fn(),
+    delete: vi.fn(),
+  }),
+  isEnoent: () => false,
 }));
 
 // Drizzle query-builder mock — each chain step returns the next mock so we
@@ -192,6 +206,118 @@ describe('forge_issues tool', () => {
     expect(insertValues).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'New', plan: 'p1', acceptanceCriteria: 'ac1' }),
     );
+  });
+
+  describe('create with attachments', () => {
+    const TINY_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    const TINY_B64 = TINY_BYTES.toString('base64');
+
+    function makeAttachmentRow(index: number) {
+      return {
+        id: `aaaa${index}aaa-bbbb-4ccc-8ddd-eeeeeeeeeeee`,
+        issueId: ISSUE_ID,
+        uploaderId: OWNER_ID,
+        name: `screenshot-${index}.png`,
+        mime: 'image/png',
+        size: 4,
+        createdAt: new Date(),
+      };
+    }
+
+    it('persists a single attachment and returns its url', async () => {
+      const tool = forgeIssuesTool({ device: fakeDevice, projectSlug: PROJECT_SLUG });
+      selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]); // resolveProjectIdFromSlug
+      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]); // membership
+      insertReturning.mockResolvedValueOnce([baseIssueRow]); // issue insert
+      insertReturning.mockResolvedValueOnce([makeAttachmentRow(0)]); // attachment insert
+
+      const result = (await tool.handler({
+        action: 'create',
+        data: {
+          title: 'with screenshot',
+          attachments: [{ name: 'screenshot-0.png', mime: 'image/png', dataBase64: TINY_B64 }],
+        },
+      })) as {
+        documentId: string;
+        attachments: Array<{ id: string; url: string; mime: string; size: number }>;
+        attachmentErrors?: unknown;
+      };
+
+      expect(result.documentId).toBe(ISSUE_ID);
+      expect(result.attachments).toHaveLength(1);
+      expect(result.attachments[0]?.url).toMatch(/^\/api\/attachments\/.+\/download$/);
+      expect(result.attachmentErrors).toBeUndefined();
+      expect(storagePut).toHaveBeenCalledTimes(1);
+      const putKey = storagePut.mock.calls[0]?.[0] ?? '';
+      expect(putKey).toMatch(new RegExp(`^issues/${ISSUE_ID}/\\d+-screenshot-0\\.png$`));
+    });
+
+    it('rejects PAYLOAD_TOO_LARGE before inserting the issue', async () => {
+      const tool = forgeIssuesTool({ device: fakeDevice, projectSlug: PROJECT_SLUG });
+      selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+
+      const fourMb = Buffer.alloc(4 * 1024 * 1024, 7);
+      const b64 = fourMb.toString('base64');
+
+      await expect(
+        tool.handler({
+          action: 'create',
+          data: {
+            title: 'too big',
+            attachments: [
+              { name: 'a.png', mime: 'image/png', dataBase64: b64 },
+              { name: 'b.png', mime: 'image/png', dataBase64: b64 },
+              { name: 'c.png', mime: 'image/png', dataBase64: b64 },
+            ],
+          },
+        }),
+      ).rejects.toThrow(/PAYLOAD_TOO_LARGE/);
+      expect(insertReturning).not.toHaveBeenCalled();
+    });
+
+    it('rejects INVALID_BASE64 before inserting the issue', async () => {
+      const tool = forgeIssuesTool({ device: fakeDevice, projectSlug: PROJECT_SLUG });
+      selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+
+      await expect(
+        tool.handler({
+          action: 'create',
+          data: {
+            title: 'bad b64',
+            attachments: [{ name: 'a.png', mime: 'image/png', dataBase64: '!!!not-base64!!!' }],
+          },
+        }),
+      ).rejects.toThrow(/INVALID_BASE64/);
+      expect(insertReturning).not.toHaveBeenCalled();
+    });
+
+    it('returns MIME_NOT_ALLOWED in attachmentErrors and keeps the issue', async () => {
+      const tool = forgeIssuesTool({ device: fakeDevice, projectSlug: PROJECT_SLUG });
+      selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      insertReturning.mockResolvedValueOnce([baseIssueRow]); // issue insert succeeds
+
+      const result = (await tool.handler({
+        action: 'create',
+        data: {
+          title: 'bad mime',
+          attachments: [
+            { name: 'bad.exe', mime: 'application/x-msdownload', dataBase64: TINY_B64 },
+          ],
+        },
+      })) as {
+        documentId: string;
+        attachments: unknown[];
+        attachmentErrors: Array<{ code: string; index: number }>;
+      };
+
+      expect(result.documentId).toBe(ISSUE_ID);
+      expect(result.attachments).toEqual([]);
+      expect(result.attachmentErrors).toHaveLength(1);
+      expect(result.attachmentErrors[0]?.code).toBe('MIME_NOT_ALLOWED');
+    });
   });
 
   it('update writes plan and bumps updatedAt', async () => {

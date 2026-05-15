@@ -1,24 +1,53 @@
-import type { Notification, Agent } from "../types";
+import type { IssueAttachment, Notification, Agent } from "../types";
 import { request, getBaseUrl, getAuthToken } from "./client";
 import { updateProject } from "./projects";
 import { updateAgent } from "./agents";
 
 // --- Upload ---
 
-export async function uploadFile(file: File): Promise<{ id: number; url: string; name: string } | null> {
+/**
+ * Upload a file to an existing issue via the core multipart endpoint. Used by
+ * the issue-detail panel for drag/drop after the issue is created. For
+ * create-with-attachments in one round-trip, send `attachments[]` (base64) on
+ * POST /projects/:id/issues instead — see createIssue() in ./issues.
+ */
+export async function uploadIssueAttachment(
+  issueId: string,
+  file: File,
+): Promise<IssueAttachment> {
   const formData = new FormData();
-  formData.append("files", file);
+  formData.append("file", file);
   const baseUrl = getBaseUrl();
   const authToken = getAuthToken();
-  const res = await fetch(`${baseUrl}/api/upload`, {
+  const res = await fetch(`${baseUrl}/api/issues/${issueId}/attachments`, {
     method: "POST",
     headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
     body: formData,
   });
-  if (!res.ok) return null;
-  const data = await res.json();
-  if (data[0]?.id) return { id: data[0].id, url: data[0].url, name: file.name };
-  return null;
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const body = (await res.json()) as { message?: string };
+      detail = body?.message ?? "";
+    } catch {
+      detail = await res.text().catch(() => "");
+    }
+    throw new Error(
+      `upload failed (${res.status})${detail ? `: ${detail}` : ""}`,
+    );
+  }
+  return (await res.json()) as IssueAttachment;
+}
+
+/**
+ * Legacy fail-loud stub kept so the agent-chat callsite still compiles.
+ * The old `/api/upload` Strapi endpoint was removed when core took over; chat
+ * attachments need their own core endpoint before this can be re-enabled.
+ */
+export async function uploadFile(_file: File): Promise<never> {
+  throw new Error(
+    "uploadFile is removed — legacy /api/upload no longer exists. Wire chat attachments to a new core endpoint, or use uploadIssueAttachment for issue-scoped uploads.",
+  );
 }
 
 // --- Notifications ---

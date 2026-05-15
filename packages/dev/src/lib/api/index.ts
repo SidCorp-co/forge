@@ -12,7 +12,7 @@ export {
 } from "./agent-sessions";
 export type { PipelineTelemetry } from "./agent-sessions";
 export { getAgents, updateAgent } from "./agents";
-export { uploadFile, getNotifications, getUnreadCount, markNotificationRead, markAllNotificationsRead, syncKnowledgeToCore, syncConventionsToCore, syncAgentFiles } from "./misc";
+export { uploadFile, uploadIssueAttachment, getNotifications, getUnreadCount, markNotificationRead, markAllNotificationsRead, syncKnowledgeToCore, syncConventionsToCore, syncAgentFiles } from "./misc";
 export { resolveProjectSlug } from "./client";
 export { postJobEvents, completeJob, failJob, clearDeviceTokenCache } from "./jobs";
 export type { JobEventInput } from "./jobs";

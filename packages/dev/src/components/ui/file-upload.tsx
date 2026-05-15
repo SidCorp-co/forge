@@ -1,50 +1,76 @@
-import { useState, useRef, useEffect } from "react";
-import { uploadFile, coreMediaUrl } from "@/lib/api";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-export interface UploadedFile {
-  id: number;
-  url: string;
-  name: string;
-}
+const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_FILES = 10;
+
+const ALLOWED_MIMES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "application/pdf",
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "text/plain",
+  "text/markdown",
+]);
 
 interface Props {
-  value: UploadedFile[];
-  onChange: (files: UploadedFile[]) => void;
+  value: File[];
+  onChange: (files: File[]) => void;
   accept?: string;
+  maxFiles?: number;
 }
 
-export function FileUpload({ value, onChange, accept = "image/*,video/*,.pdf,.txt,.md,.log,.zip" }: Props) {
-  const [uploading, setUploading] = useState(false);
+export function FileUpload({
+  value,
+  onChange,
+  accept = "image/*,video/*,.pdf,.txt,.md",
+  maxFiles = MAX_FILES,
+}: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
-
   const [error, setError] = useState<string | null>(null);
 
-  async function handleFiles(fileList: FileList | null) {
-    if (!fileList || fileList.length === 0) return;
-    setUploading(true);
+  function acceptFiles(picked: FileList | File[]) {
     setError(null);
-    try {
-      const results: UploadedFile[] = [];
-      for (const file of Array.from(fileList)) {
-        try {
-          const res = await uploadFile(file);
-          if (res) results.push(res);
-        } catch {
-          setError(`Failed to upload ${file.name}`);
-        }
+    const accepted: File[] = [];
+    const errs: string[] = [];
+    for (const f of Array.from(picked)) {
+      if (f.size <= 0) {
+        errs.push(`Empty file skipped: ${f.name}`);
+        continue;
       }
-      if (results.length > 0) onChange([...value, ...results]);
-    } finally {
-      setUploading(false);
-      if (inputRef.current) inputRef.current.value = "";
+      if (f.size > MAX_BYTES) {
+        errs.push(`Too large (max 10 MB): ${f.name}`);
+        continue;
+      }
+      const mime = f.type || "application/octet-stream";
+      if (!ALLOWED_MIMES.has(mime)) {
+        errs.push(`File type not allowed: ${f.name}`);
+        continue;
+      }
+      accepted.push(f);
     }
+    const room = maxFiles - value.length;
+    const next = accepted.slice(0, Math.max(0, room));
+    if (accepted.length > room) {
+      errs.push(`Max ${maxFiles} attachments. Extras skipped.`);
+    }
+    if (next.length > 0) onChange([...value, ...next]);
+    if (errs.length > 0) setError(errs.join(" • "));
   }
 
-  function handleRemove(id: number) {
-    onChange(value.filter((f) => f.id !== id));
+  function handleFiles(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
+    acceptFiles(fileList);
+    if (inputRef.current) inputRef.current.value = "";
   }
 
-  // Listen for paste events on the parent container
+  function handleRemove(index: number) {
+    onChange(value.filter((_, i) => i !== index));
+  }
+
   const containerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = containerRef.current?.closest("[data-paste-zone]") ?? containerRef.current?.parentElement;
@@ -62,14 +88,29 @@ export function FileUpload({ value, onChange, accept = "image/*,video/*,.pdf,.tx
       }
       if (files.length > 0) {
         e.preventDefault();
-        const dt = new DataTransfer();
-        files.forEach((f) => dt.items.add(f));
-        handleFiles(dt.files);
+        acceptFiles(files);
       }
     }
     el.addEventListener("paste", onPaste);
     return () => el.removeEventListener("paste", onPaste);
   });
+
+  const previews = useMemo(
+    () =>
+      value.map((file) => ({
+        file,
+        objectUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+      })),
+    [value],
+  );
+
+  useEffect(() => {
+    return () => {
+      for (const p of previews) {
+        if (p.objectUrl) URL.revokeObjectURL(p.objectUrl);
+      }
+    };
+  }, [previews]);
 
   return (
     <div ref={containerRef} className="space-y-2">
@@ -77,24 +118,23 @@ export function FileUpload({ value, onChange, accept = "image/*,video/*,.pdf,.tx
         <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V4m0 0l-4 4m4-4l4 4M4 20h16" />
         </svg>
-        {uploading ? "Uploading..." : error ? <span className="text-red-500">{error}</span> : "Click or paste to attach files"}
+        {error ? <span className="text-red-500">{error}</span> : "Click or paste to attach files"}
         <input
           ref={inputRef}
           type="file"
           accept={accept}
           multiple
           onChange={(e) => handleFiles(e.target.files)}
-          disabled={uploading}
           className="sr-only"
         />
       </label>
-      {value.length > 0 && (
+      {previews.length > 0 && (
         <ul className="space-y-1">
-          {value.map((f) => (
-            <li key={f.id} className="flex items-center gap-2 rounded border border-gray-200 bg-white px-3 py-1.5 text-sm">
-              {f.url && /\.(png|jpe?g|gif|webp|svg)$/i.test(f.name) ? (
-                <img src={coreMediaUrl(f.url)} alt={f.name} className="h-8 w-8 rounded object-cover" />
-              ) : f.url && /\.(mp4|webm|mov|avi|mkv|ogg)$/i.test(f.name) ? (
+          {previews.map((p, i) => (
+            <li key={`${p.file.name}-${i}`} className="flex items-center gap-2 rounded border border-gray-200 bg-white px-3 py-1.5 text-sm">
+              {p.objectUrl ? (
+                <img src={p.objectUrl} alt={p.file.name} className="h-8 w-8 rounded object-cover" />
+              ) : p.file.type.startsWith("video/") ? (
                 <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15.91 11.672a.375.375 0 010 .656l-5.603 3.113a.375.375 0 01-.557-.328V8.887c0-.286.307-.466.557-.327l5.603 3.112z" />
@@ -104,11 +144,12 @@ export function FileUpload({ value, onChange, accept = "image/*,video/*,.pdf,.tx
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                 </svg>
               )}
-              <span className="flex-1 truncate text-gray-700">{f.name}</span>
+              <span className="flex-1 truncate text-gray-700">{p.file.name}</span>
               <button
                 type="button"
-                onClick={() => handleRemove(f.id)}
+                onClick={() => handleRemove(i)}
                 className="text-gray-400 hover:text-red-500"
+                aria-label={`Remove ${p.file.name}`}
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
