@@ -7,6 +7,7 @@ import { RecoveryPolicyCard } from '@/features/pipeline/config/components/recove
 import { RunnerDefaultsCard } from '@/features/pipeline/config/components/runner-defaults-card';
 import { StepToggleList } from '@/features/pipeline/config/components/step-toggle-list';
 import { usePipelineConfig } from '@/features/pipeline/config/hooks/use-pipeline-config';
+import { useFocusOnMount } from '../hooks/use-focus-on-mount';
 
 interface Props {
   projectId: string;
@@ -21,6 +22,7 @@ const KNOWN_RUNNER_TYPES = ['claude-code', 'antigravity'];
 
 export function PipelineConfigSection({ projectId }: Props) {
   const cfg = usePipelineConfig(projectId, KNOWN_RUNNER_TYPES);
+  useFocusOnMount();
 
   if (cfg.flagDisabled) {
     return (
@@ -48,11 +50,13 @@ export function PipelineConfigSection({ projectId }: Props) {
         <span className="text-[9px] font-mono text-on-surface-variant">PLC_SYS_03</span>
       </div>
 
-      <PipelineMasterToggle
-        enabled={cfg.state.enabled}
-        onChange={(v) => cfg.setField('enabled', v)}
-        disabled={cfg.isSaving}
-      />
+      <div data-config-health-target="pipeline.enabled">
+        <PipelineMasterToggle
+          enabled={cfg.state.enabled}
+          onChange={(v) => cfg.setField('enabled', v)}
+          disabled={cfg.isSaving}
+        />
+      </div>
 
       <StepToggleList
         steps={cfg.state.steps}

@@ -20,17 +20,17 @@ export function DevicesSection({ projectId, isOwner }: DevicesSectionProps) {
   const addToPool = useAddDeviceToPool();
   const removeFromPool = useRemoveDeviceFromPool();
 
-  if (!isOwner) return null;
-
   const activeDevices = (myDevices ?? []).filter((d) => d.status !== 'revoked');
   const pool = project?.devicePool ?? [];
   const inPoolIds = new Set(pool.map((p) => p.id));
 
   const onSetDefault = (deviceId: string | null) => {
+    if (!isOwner) return;
     void updateProject.mutateAsync({ id: projectId, patch: { defaultDeviceId: deviceId } });
   };
 
   const onTogglePool = async (deviceId: string, alreadyIn: boolean) => {
+    if (!isOwner) return;
     if (alreadyIn) {
       await removeFromPool.mutateAsync({ projectId, deviceId });
     } else {
@@ -41,10 +41,17 @@ export function DevicesSection({ projectId, isOwner }: DevicesSectionProps) {
   return (
     <section className="space-y-6">
       <div className="flex justify-between items-end border-b border-outline-variant/10 pb-2">
-        <h2 className="text-[10px] uppercase tracking-[0.2em] text-on-surface-variant font-bold">
-          Devices
-        </h2>
-        <span className="text-[9px] font-mono text-outline">DEV_CFG</span>
+        <div className="flex items-center gap-3">
+          <h2 className="text-[10px] uppercase tracking-[0.2em] text-on-surface-variant font-bold">
+            Devices
+          </h2>
+          {!isOwner && (
+            <span className="rounded-sm border border-outline-variant/30 px-2 py-0.5 text-[9px] font-mono uppercase tracking-widest text-outline">
+              Owner only
+            </span>
+          )}
+        </div>
+        <span className="text-[9px] font-mono text-outline">IDN_DEV</span>
       </div>
 
       <div className="bg-surface-container-low border border-outline-variant/30 p-8 space-y-8">
@@ -59,8 +66,8 @@ export function DevicesSection({ projectId, isOwner }: DevicesSectionProps) {
             id="default-device"
             value={project?.defaultDeviceId ?? ''}
             onChange={(e) => onSetDefault(e.target.value || null)}
-            disabled={updateProject.isPending}
-            className="w-full bg-transparent border-0 border-b border-outline/30 rounded-none py-3 text-sm text-on-surface focus:outline-none focus:border-b-primary"
+            disabled={!isOwner || updateProject.isPending}
+            className="w-full bg-transparent border-0 border-b border-outline/30 rounded-none py-3 text-sm text-on-surface focus:outline-none focus:border-b-primary disabled:opacity-50"
           >
             <option value="">None</option>
             {activeDevices.map((d) => (
@@ -102,7 +109,7 @@ export function DevicesSection({ projectId, isOwner }: DevicesSectionProps) {
                     <button
                       type="button"
                       onClick={() => void onTogglePool(d.id, inPool)}
-                      disabled={addToPool.isPending || removeFromPool.isPending}
+                      disabled={!isOwner || addToPool.isPending || removeFromPool.isPending}
                       className={`px-2 py-0.5 text-xs font-medium rounded-sm disabled:opacity-50 ${
                         inPool
                           ? 'bg-info-surface/30 text-info hover:bg-info-surface/50'

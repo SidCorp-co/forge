@@ -4,10 +4,11 @@ import { useState } from 'react';
 import { Label, Select } from '@/components/ui';
 
 interface WidgetSnippetSectionProps {
-  apiKey: string | null;
-  apiUrl: string;
-  projectName: string;
-  projectSlug: string;
+  apiKey?: string | null;
+  apiUrl?: string;
+  projectName?: string;
+  projectSlug?: string;
+  previewMode?: boolean;
 }
 
 const POSITIONS = [
@@ -23,7 +24,13 @@ const THEMES = [
   { value: 'var(--color-warning-dim)', label: 'Orange' },
 ];
 
-export function WidgetSnippetSection({ apiKey, apiUrl, projectName, projectSlug }: WidgetSnippetSectionProps) {
+export function WidgetSnippetSection({
+  apiKey = null,
+  apiUrl = '',
+  projectName = '',
+  projectSlug = '',
+  previewMode = false,
+}: WidgetSnippetSectionProps) {
   const [position, setPosition] = useState('bottom-right');
   const [themeColor, setThemeColor] = useState('var(--color-info)');
   const [copied, setCopied] = useState(false);
@@ -31,6 +38,7 @@ export function WidgetSnippetSection({ apiKey, apiUrl, projectName, projectSlug 
   const snippet = generateSnippet({ apiKey: apiKey || 'YOUR_API_KEY', apiUrl, position, themeColor, projectName, projectSlug });
 
   const handleCopy = () => {
+    if (previewMode) return;
     navigator.clipboard.writeText(snippet);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -39,9 +47,14 @@ export function WidgetSnippetSection({ apiKey, apiUrl, projectName, projectSlug 
   return (
     <section className="space-y-6">
       <div className="flex justify-between items-end border-b border-outline-variant/10 pb-2">
-        <h2 className="text-[10px] uppercase tracking-[0.2em] text-on-surface-variant font-bold">11. Widget Embed</h2>
-        <span className="text-[9px] font-mono text-outline">WGT_EXT_11</span>
+        <h2 className="text-[10px] uppercase tracking-[0.2em] text-on-surface-variant font-bold">Widget Snippet</h2>
+        <span className="text-[9px] font-mono text-outline">INT_WGT</span>
       </div>
+      {previewMode && (
+        <div className="rounded-sm border border-warning/30 bg-warning-dim/10 p-3 text-[10px] font-bold uppercase tracking-widest text-warning">
+          Coming v0.1.x — preview only
+        </div>
+      )}
       <div className="bg-surface-container-low border border-outline-variant/30 p-8 space-y-8">
 
       {!apiKey && (
@@ -53,7 +66,7 @@ export function WidgetSnippetSection({ apiKey, apiUrl, projectName, projectSlug 
       <div className="mb-4 grid grid-cols-2 gap-4">
         <div>
           <Label>Position</Label>
-          <Select value={position} onChange={(e) => setPosition(e.target.value)} className="w-full">
+          <Select value={position} onChange={(e) => setPosition(e.target.value)} className="w-full" disabled={previewMode}>
             {POSITIONS.map((p) => (
               <option key={p.value} value={p.value}>{p.label}</option>
             ))}
@@ -62,7 +75,7 @@ export function WidgetSnippetSection({ apiKey, apiUrl, projectName, projectSlug 
         <div>
           <Label>Theme Color</Label>
           <div className="flex items-center gap-2">
-            <Select value={themeColor} onChange={(e) => setThemeColor(e.target.value)} className="flex-1">
+            <Select value={themeColor} onChange={(e) => setThemeColor(e.target.value)} className="flex-1" disabled={previewMode}>
               {THEMES.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
