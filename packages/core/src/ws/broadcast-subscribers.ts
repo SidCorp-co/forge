@@ -155,6 +155,24 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
     });
   });
 
+  // ISS-118 — skill_registrations changes affect the per-project skill
+  // bindings that downstream clients (web Skills tab, dev runner) derive
+  // from the pipeline registry. Broadcast `pipeline.registry_changed` so
+  // subscribers refetch /api/pipeline/registry and pick up the new bindings
+  // without a manual refresh.
+  bus.on('skillRegistered', (p) => {
+    roomManager.publish(projectRoom(p.projectId), {
+      event: 'pipeline.registry_changed',
+      data: {
+        projectId: p.projectId,
+        reason: 'skill_registration_changed',
+        skillId: p.skillId,
+        stage: p.stage,
+        actorId: p.actorUserId,
+      },
+    });
+  });
+
   bus.on('globalSkillUpdated', (p) => {
     roomManager.publish(globalRoom(), {
       event: 'skill.updated',
