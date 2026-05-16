@@ -62,7 +62,7 @@ vi.mock('./dispatch-gates.js', () => ({
   checkLayer2Dependencies: vi.fn(async () => ({ pass: true })),
   checkLayer3ProjectFull: vi.fn(async () => ({ pass: true })),
   checkLayer4RunnerFull: vi.fn(async () => ({ pass: true })),
-  markSessionGated: vi.fn(async () => {}),
+  markJobGated: vi.fn(async () => {}),
   // ISS-115 — dispatcher checks runner/job-type cap match after picking a
   // runner. Default to true so unrelated tests stay focused on their own
   // envelope; the unsupported-type test overrides with mockReturnValueOnce.

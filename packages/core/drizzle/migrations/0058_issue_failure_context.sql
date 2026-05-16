@@ -1,0 +1,21 @@
+-- Add issues.failure_context jsonb for the manualHold-block pattern.
+--
+-- When a job/watchdog/dispatcher hits an unrecoverable failure point, the
+-- new failure model sets `issues.manual_hold = true` (dispatcher L1 then
+-- skips the issue) and writes the failure context here for operator
+-- review. Issue.status stays at its current step — failure does not
+-- mutate the workflow stage.
+--
+-- Shape (typed in TS but stored generic for forward-compat):
+-- {
+--   classification: { kind, reason, evidence },
+--   step: 'forge-plan' | 'forge-code' | ...,
+--   attempts: int,
+--   lastFailureAt: ISO timestamp,
+--   trigger: 'job_failed' | 'watchdog_kill' | 'adapter_error',
+--   suggestedActions: ['resume', 'skip-step', 'close']
+-- }
+--
+-- NULL on issues without an active block. Cleared when operator resumes.
+
+ALTER TABLE "issues" ADD COLUMN IF NOT EXISTS "failure_context" jsonb;

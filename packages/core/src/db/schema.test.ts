@@ -522,6 +522,9 @@ describe('db/schema — jobs', () => {
         'failure_meta',
         'failure_reason',
         'finished_at',
+        'gate_at',
+        'gate_metadata',
+        'gate_reason',
         'id',
         'issue_id',
         'max_attempts',
@@ -532,7 +535,6 @@ describe('db/schema — jobs', () => {
         'queued_at',
         'retry_of',
         'runner_id',
-        'started_at',
         'status',
         'type',
       ].sort(),
@@ -605,7 +607,7 @@ describe('db/schema — jobs', () => {
     expect(q.notNull).toBe(true);
     expect(q.hasDefault).toBe(true);
     expect(withTimezone(q)).toBe(true);
-    for (const name of ['dispatched_at', 'started_at', 'finished_at']) {
+    for (const name of ['dispatched_at', 'finished_at', 'gate_at']) {
       const c = columnByName(jobs, name);
       expect(c.notNull).toBe(false);
       expect(withTimezone(c)).toBe(true);
@@ -733,6 +735,7 @@ describe('db/schema — issues', () => {
         'created_by_id',
         'description',
         'external_id',
+        'failure_context',
         'id',
         'iss_seq',
         'last_recovery_at',

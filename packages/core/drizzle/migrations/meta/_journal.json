@@ -400,6 +400,20 @@
       "when": 1779400000000,
       "tag": "0056_pipeline_config_states_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1779400060000,
+      "tag": "0057_job_gate_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1779400120000,
+      "tag": "0058_issue_failure_context",
+      "breakpoints": true
     }
   ]
 }

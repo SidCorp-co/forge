@@ -7,20 +7,21 @@
  *
  *   L1 issue_busy     — at most one active session per issue
  *                       (also short-circuits on `issues.manual_hold = true`,
- *                        skip-reason 'manual_hold' — ISS-42 C1)
+ *                        skip-reason 'manual_hold')
  *   L2 waiting_on_dep — every `kind='blocks'` parent must be terminal
  *   L3 project_full   — DISTINCT running issue_ids per project < cap
  *   L4 runner_full    — in-flight jobs on the chosen runner < runner cap
  *
- * Sessions skipped by a gate stay `agent_sessions.status='queued'` and the
- * underlying `jobs.status='queued'` row is NOT moved to `failed`. We only
- * mirror the cause onto `agent_sessions.failure_reason` so the UI can
- * explain *why* the session has not started yet (markSessionGated).
+ * Jobs skipped by a gate stay `jobs.status='queued'` and `agent_sessions.
+ * status='queued'`. The gate reason is recorded on `jobs.gate_reason` +
+ * `jobs.gate_at` (via markJobGated) so the queued-watchdog can distinguish
+ * "queued because dispatcher is actively gating" from "queued because
+ * pg-boss desync".
  */
 
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions, issues, jobs, projects, runners } from '../db/schema.js';
+import { issues, jobs, projects, runners } from '../db/schema.js';
 import type { JobType, RunnerType } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
@@ -52,10 +53,13 @@ export const DEFAULT_MAX_CONCURRENT_ISSUES = 3;
 
 /** Default per-runner cap when `runners.capabilities.maxConcurrent` is unset. */
 const RUNNER_DEFAULT_CONCURRENCY: Record<string, number> = {
-  'claude-code': 2,
+  // Desktop Tauri runner spawns Claude CLI processes serially in practice;
+  // cap=1 reflects measured throughput. Operators can override via
+  // runners.capabilities.maxConcurrent if their environment supports parallel.
+  'claude-code': 1,
   antigravity: 5,
 };
-const RUNNER_DEFAULT_FALLBACK = 2;
+const RUNNER_DEFAULT_FALLBACK = 1;
 
 /**
  * Runner ↔ job-type capability gate. Sourced from the pipeline registry
@@ -383,58 +387,39 @@ export async function pickNextDispatchableJobForProject(
 }
 
 /**
- * Mirror a gate skip onto the linked `agent_sessions.failure_reason` for UI
- * surfacing. Best-effort: if the job has no linked session yet (direct
- * dispatch path), this is a no-op. Never throws — observability writes
- * must not break dispatch.
+ * Record a gate skip on the job row. Always runs (the job always exists at
+ * gate-decision time, unlike the lazily-created agent_session). The
+ * queued-watchdog reads `gate_at` to distinguish active gating from a dead
+ * queue (pg-boss desync). Never throws — observability writes must not
+ * break dispatch.
  */
-export async function markSessionGated(
+export async function markJobGated(
   jobId: string,
   reason: GateSkipReason,
   hint?: string,
   metadata?: Record<string, unknown>,
 ): Promise<void> {
   try {
-    const [job] = await db
-      .select({ agentSessionId: jobs.agentSessionId })
-      .from(jobs)
-      .where(eq(jobs.id, jobId))
-      .limit(1);
-    if (!job?.agentSessionId) return;
-
-    if (metadata) {
-      // Merge into existing metadata jsonb so we don't clobber issueId/jobId/etc.
-      await db.execute(sql`
-        UPDATE agent_sessions
-        SET failure_reason = ${reason},
-            metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify(metadata)}::jsonb,
-            updated_at = now()
-        WHERE id = ${job.agentSessionId}
-      `);
-    } else {
-      await db
-        .update(agentSessions)
-        .set({ failureReason: reason, updatedAt: new Date() })
-        .where(eq(agentSessions.id, job.agentSessionId));
-    }
-    // Surface the hint as a debug log; we don't persist it (the reason is the
-    // canonical signal, hint is for operator log greps).
+    await db
+      .update(jobs)
+      .set({
+        gateReason: reason,
+        gateAt: new Date(),
+        gateMetadata: (metadata ?? null) as never,
+      })
+      .where(eq(jobs.id, jobId));
     if (hint) {
-      logger.debug({ jobId, reason, hint, sessionId: job.agentSessionId }, 'dispatch-gates: skip');
+      logger.debug({ jobId, reason, hint }, 'dispatch-gates: skip');
     }
-    // ISS-118 — operator trace: a gated dispatch is invisible by default
-    // (no Sentry event, no UI banner). Breadcrumb makes the skip show up
-    // on every issue captured later, so 5xx and pipeline-stall reports
-    // include the upstream reason without joining the DB.
     if (isSentryEnabled()) {
       Sentry.addBreadcrumb({
         category: 'dispatch.gated',
         level: 'info',
         message: `gated: ${reason}`,
-        data: { jobId, reason, hint, sessionId: job.agentSessionId },
+        data: { jobId, reason, hint },
       });
     }
   } catch (err) {
-    logger.warn({ err, jobId, reason }, 'dispatch-gates: markSessionGated failed');
+    logger.warn({ err, jobId, reason }, 'dispatch-gates: markJobGated failed');
   }
 }

@@ -413,7 +413,6 @@ export const jobs = pgTable(
     status: text('status', { enum: jobStatuses }).notNull().default('queued'),
     queuedAt: timestamp('queued_at', { withTimezone: true }).notNull().defaultNow(),
     dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
-    startedAt: timestamp('started_at', { withTimezone: true }),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
     exitCode: integer('exit_code'),
     error: text('error'),
@@ -422,6 +421,13 @@ export const jobs = pgTable(
     maxAttempts: integer('max_attempts').notNull().default(3),
     cancellationRequested: boolean('cancellation_requested').notNull().default(false),
     retryOf: uuid('retry_of').references((): AnyPgColumn => jobs.id, { onDelete: 'set null' }),
+    // Dispatcher gate state. Set when dispatcher attempts to dispatch the job
+    // but a gate (L1-L4) returns skip. Cleared on successful dispatch. The
+    // queued-watchdog reads `gate_at` to distinguish "queued because dispatcher
+    // is actively gating" from "queued because pg-boss lost the message".
+    gateReason: text('gate_reason'),
+    gateAt: timestamp('gate_at', { withTimezone: true }),
+    gateMetadata: jsonb('gate_metadata'),
     // ISS-4: link to the observability `agent_sessions` row created by the
     // dispatcher so /pipeline + issue detail surfaces can render pipeline
     // jobs alongside interactive sessions. Bare uuid (no FK) to match the
@@ -446,6 +452,9 @@ export const jobs = pgTable(
     runnerIdIdx: index('jobs_runner_id_idx').on(t.runnerId),
     retryOfIdx: index('jobs_retry_of_idx').on(t.retryOf),
     agentSessionIdIdx: index('jobs_agent_session_id_idx').on(t.agentSessionId),
+    gateAtIdx: index('jobs_gate_at_idx')
+      .on(t.gateAt)
+      .where(sql`gate_reason IS NOT NULL`),
     activeUniqueIdx: uniqueIndex('jobs_active_unique')
       .on(t.issueId, t.type)
       .where(sql`status IN ('queued','dispatched','running') AND issue_id IS NOT NULL`),
@@ -673,6 +682,12 @@ export const issues = pgTable(
     recoveryAttempts: integer('recovery_attempts').notNull().default(0),
     lastRecoveryAt: timestamp('last_recovery_at', { withTimezone: true }),
     recoveryWindowStartedAt: timestamp('recovery_window_started_at', { withTimezone: true }),
+    // manualHold-block model. Populated by setManualHoldBlock() when a job /
+    // watchdog / dispatcher hits an unrecoverable failure point. Operator UI
+    // reads this to render the failure card + suggested actions. Cleared
+    // when operator resumes (clears manualHold). Shape typed in TS via
+    // IssueFailureContext but stored generic for forward-compat.
+    failureContext: jsonb('failure_context'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1397,28 +1412,19 @@ export const chatSessionsRelations = relations(chatSessions, ({ one }) => ({
 export const agentSessionStatuses = ['idle', 'queued', 'running', 'completed', 'failed'] as const;
 export type AgentSessionStatus = (typeof agentSessionStatuses)[number];
 
-// Terminal/skip cause written to `agent_sessions.failure_reason`. The column
-// itself stays plain `text` (no DB CHECK constraint) — this tuple is the
-// canonical TS-side enum referenced by the dispatcher, the queued-watchdog,
-// and web sidebar tooltips. Adding a new reason here without writing it from
-// somewhere is harmless; the sidebar falls back to a generic label for
-// unknown values (forward-compat).
+// Terminal cause written to `agent_sessions.failure_reason`. Reserved for
+// actual session execution failures (zombie sweeper, worker errors, user
+// cancellation). Dispatcher gate skips (issue_busy/waiting_on_dep/
+// project_full/runner_full/manual_hold) live on `jobs.gate_reason` — the
+// session row is not the right place for gate state because new jobs may
+// not have a session yet at gate-decision time.
 export const agentSessionFailureReasons = [
-  // ISS-34 zombie sweeper + lifecycle terminal causes.
   'queue_timeout',
   'heartbeat_timeout',
   'no_worker_online',
   'user_cancelled',
   'job_failed',
   'migration_zombie_cleanup',
-  // ISS-40 PR-E dispatcher gating skip-reasons. Sessions stay queued — the
-  // job row is NOT moved to failed, only the surface signal is updated so
-  // the UI can explain why the session hasn't started yet.
-  'issue_busy',
-  'manual_hold',
-  'waiting_on_dep',
-  'project_full',
-  'runner_full',
 ] as const;
 export type AgentSessionFailureReason = (typeof agentSessionFailureReasons)[number];
 

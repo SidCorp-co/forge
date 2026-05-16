@@ -91,17 +91,20 @@ describe('runQueuedSweep', () => {
     expect(r.retriesScheduled).toBe(1);
   });
 
-  it('UPDATE filter excludes manual_hold-gated jobs (ISS-66)', async () => {
+  it('UPDATE filter skips jobs with a fresh gate_at signal', async () => {
     dbExecute.mockResolvedValueOnce([]);
     await runQueuedSweep();
     const text = lastSqlText();
-    expect(text).toContain('manual_hold');
+    expect(text).toContain('gate_at');
     expect(text).toContain('NOT EXISTS');
+    // Project-activity subquery joins agent_sessions on heartbeat freshness.
     expect(text).toContain('agent_sessions');
+    expect(text).toContain('last_heartbeat_at');
   });
 
-  it('does not sweep manual_hold-gated jobs (ISS-66 regression)', async () => {
-    // The SQL filter excludes them, so db.execute returns nothing.
+  it('does not sweep jobs that the dispatcher recently gated', async () => {
+    // The SQL filter excludes them via `gate_at > now - 5min`, so db.execute
+    // returns nothing.
     dbExecute.mockResolvedValueOnce([]);
     const r = await runQueuedSweep();
     expect(r.markedFailed).toBe(0);
@@ -109,11 +112,11 @@ describe('runQueuedSweep', () => {
     expect(scheduleRetry).not.toHaveBeenCalled();
   });
 
-  it('still sweeps non-manual-hold gated jobs (project_full, runner_full)', async () => {
-    // Jobs gated by project_full / runner_full / waiting_on_dep self-clear,
-    // so the existing watchdog behavior must continue for them.
+  it('sweeps jobs with stale gate_at AND no project activity', async () => {
+    // Jobs with NULL gate_reason OR gate_at older than freshness window AND
+    // no other project session heartbeating → pg-boss desync, kill + retry.
     dbExecute.mockResolvedValueOnce([
-      { id: 'j1', attempts: 1, maxAttempts: 3, agentSessionId: 's1' },
+      { id: 'j1', attempts: 1, maxAttempts: 3, agentSessionId: null },
     ]);
     const r = await runQueuedSweep();
     expect(r.markedFailed).toBe(1);

@@ -1,15 +1,17 @@
 /**
- * Watchdog for jobs stuck at `status='queued'` (Phase H, ISS-306).
+ * Watchdog for jobs stuck at `status='queued'`.
  *
- * The dispatcher consumes pg-boss messages, but pg-boss queue state can
- * desync from the `jobs` table — most commonly when core restarts and
- * pg-boss in-flight jobs land in archive while the `jobs` row stays
- * `queued`. Without a watchdog those rows would sit forever, the issue
- * stays in pipeline status, and (until the new sweeper) nobody recovers.
+ * Distinguishes a dead queue from a slow-but-alive one:
+ *   - Skip if dispatcher recently recorded a gate skip on the job
+ *     (`gate_at` fresh) — dispatcher is actively tracking this job.
+ *   - Skip if any other job in the same project has a fresh session
+ *     heartbeat — queue is draining normally, this job is waiting its turn.
+ *   - Otherwise (no gate signal, no project activity, queued past grace) →
+ *     mark failed (transient) and let scheduleRetry decide.
  *
- * This sweep finds jobs that have been `queued` longer than the grace
- * window without ever leaving — same shape as stuck-watcher, just on a
- * different state.
+ * Catches: pg-boss losing the dispatch message (e.g. core restart with
+ * in-flight messages archived) AND runners stuck in a state where they
+ * never claim work despite being online.
  */
 
 import { sql } from 'drizzle-orm';
@@ -22,11 +24,24 @@ import { scheduleRetry } from './retry.js';
 export const QUEUED_WATCHDOG_QUEUE = 'job-queued-watchdog';
 
 /**
- * 10 minutes. Anthropic plan jobs typically dispatch within seconds; if a
- * job has been queued for 10+ minutes the dispatcher (or pg-boss) lost
- * the message and a fresh enqueue is the only escape.
+ * 10 minutes. Anthropic plan jobs typically dispatch within seconds; a job
+ * that has been queued past this without ANY dispatcher attention OR project
+ * activity is almost certainly a queue/dispatcher hiccup.
  */
 const QUEUED_GRACE_SECONDS = 600;
+
+/**
+ * Window during which a gate skip counts as "dispatcher is actively tracking
+ * this job". The dispatcher tick runs at least every 60s (pg-boss backstop)
+ * so 5 minutes is generous.
+ */
+const GATE_FRESH_SECONDS = 300;
+
+/**
+ * Window during which another running session in the same project counts as
+ * "queue is draining". Matches the stuck-watcher heartbeat freshness.
+ */
+const PROJECT_ACTIVITY_FRESH_SECONDS = 60;
 
 export interface QueuedSweepResult {
   markedFailed: number;
@@ -36,30 +51,29 @@ export interface QueuedSweepResult {
 
 export async function runQueuedSweep(): Promise<QueuedSweepResult> {
   const t0 = Date.now();
-  const errorMessage = `queued > ${QUEUED_GRACE_SECONDS}s without dispatch (queued-watchdog)`;
+  const errorMessage = `queued > ${QUEUED_GRACE_SECONDS}s with no dispatcher attention (queued-watchdog)`;
 
-  // Classify as transient — a queued-but-not-dispatched job is almost always
-  // a queue/dispatcher hiccup, not a deterministic upstream rejection.
-  //
-  // ISS-66: skip jobs gated by L1 manual_hold. That reason is sticky — only
-  // human action clears it — so sweeping the row would burn the recovery
-  // budget and eventually push the issue to pipeline_failed. Other gate
-  // reasons (waiting_on_dep, project_full, runner_full) self-clear and stay
-  // safe under the existing sweep.
   const stuck = (await db.execute<typeof jobs.$inferSelect>(sql`
     UPDATE jobs
     SET status = 'failed',
         finished_at = now(),
         error = ${errorMessage},
         failure_kind = 'transient',
-        failure_reason = 'queued without dispatch (likely pg-boss desync after core restart)',
+        failure_reason = 'queued without dispatcher attention (pg-boss desync or dispatcher hung)',
         classifier_version = 1
     WHERE status = 'queued'
       AND queued_at < now() - interval '${sql.raw(String(QUEUED_GRACE_SECONDS))} seconds'
+      AND (
+        gate_at IS NULL
+        OR gate_at < now() - interval '${sql.raw(String(GATE_FRESH_SECONDS))} seconds'
+      )
       AND NOT EXISTS (
-        SELECT 1 FROM agent_sessions s
-        WHERE s.id = jobs.agent_session_id
-          AND s.failure_reason = 'manual_hold'
+        SELECT 1 FROM jobs other_j
+        JOIN agent_sessions other_s ON other_s.id = other_j.agent_session_id
+        WHERE other_j.project_id = jobs.project_id
+          AND other_j.id <> jobs.id
+          AND other_j.status IN ('dispatched','running')
+          AND other_s.last_heartbeat_at > now() - interval '${sql.raw(String(PROJECT_ACTIVITY_FRESH_SECONDS))} seconds'
       )
     RETURNING *
   `)) as unknown as Array<typeof jobs.$inferSelect>;
@@ -67,7 +81,7 @@ export async function runQueuedSweep(): Promise<QueuedSweepResult> {
   let retriesScheduled = 0;
   for (const row of stuck) {
     try {
-      const outcome = await scheduleRetry(row, 'queued-watchdog: never dispatched');
+      const outcome = await scheduleRetry(row, 'queued-watchdog: no dispatcher attention');
       if (outcome.scheduled) retriesScheduled += 1;
     } catch (err) {
       logger.error(

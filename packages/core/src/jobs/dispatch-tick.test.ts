@@ -10,18 +10,6 @@ const pickFn = vi.fn();
 const handleDispatch = vi.fn();
 const dbExecute = vi.fn();
 
-// ISS-64 — runTickInner now reads `agent_sessions.failureReason` BEFORE
-// dispatch and writes it back to null AFTER a successful dispatch when the
-// prior reason was `waiting_on_dep`. Mock the chains so each test can
-// program the prior failure reason and observe the clearing update.
-const sessionSelectLimit = vi.fn(async () => [] as Array<{ failureReason: string | null }>);
-const sessionSelectWhere = vi.fn(() => ({ limit: sessionSelectLimit }));
-const sessionSelectFrom = vi.fn(() => ({ where: sessionSelectWhere }));
-const dbSelect = vi.fn(() => ({ from: sessionSelectFrom }));
-const sessionUpdateWhere = vi.fn(async () => undefined);
-const sessionUpdateSet = vi.fn(() => ({ where: sessionUpdateWhere }));
-const dbUpdate = vi.fn(() => ({ set: sessionUpdateSet }));
-
 const wsPublish = vi.fn();
 
 vi.mock('./dispatch-gates.js', () => ({
@@ -38,8 +26,6 @@ vi.mock('./dispatcher.js', () => ({
 vi.mock('../db/client.js', () => ({
   db: {
     execute: dbExecute,
-    select: dbSelect,
-    update: dbUpdate,
   },
 }));
 
@@ -67,10 +53,6 @@ beforeEach(() => {
   pickFn.mockReset();
   handleDispatch.mockReset();
   setDispatchTickDebounceMs(0); // disable debounce for deterministic tests
-  sessionSelectLimit.mockReset();
-  sessionSelectLimit.mockResolvedValue([]);
-  sessionUpdateWhere.mockClear();
-  sessionUpdateSet.mockClear();
   wsPublish.mockClear();
 });
 
@@ -126,15 +108,15 @@ describe('dispatchTickForProject — dependency.unblocked event', () => {
   const ISSUE_ID = 'issue-1';
   const BLOCKER_ID = 'blocker-1';
 
-  it('emits dependency.unblocked when a waiting_on_dep session dispatches', async () => {
+  it('emits dependency.unblocked when a waiting_on_dep job dispatches', async () => {
     pickFn
       .mockResolvedValueOnce({
         id: 'j1',
         agentSessionId: SESSION_ID,
         issueId: ISSUE_ID,
+        gateReason: 'waiting_on_dep',
       })
       .mockResolvedValueOnce(null);
-    sessionSelectLimit.mockResolvedValueOnce([{ failureReason: 'waiting_on_dep' }]);
     handleDispatch.mockResolvedValue('dispatched');
 
     await dispatchTickForProject('p1', { triggerBlockerIssueId: BLOCKER_ID });
@@ -149,8 +131,6 @@ describe('dispatchTickForProject — dependency.unblocked event', () => {
       issueId: ISSUE_ID,
       blockerId: BLOCKER_ID,
     });
-    // failure_reason cleared so a backstop sweep doesn't double-emit.
-    expect(sessionUpdateSet).toHaveBeenCalled();
   });
 
   it('falls back to blockerId=null when triggerBlockerIssueId is absent', async () => {
@@ -159,9 +139,9 @@ describe('dispatchTickForProject — dependency.unblocked event', () => {
         id: 'j1',
         agentSessionId: SESSION_ID,
         issueId: ISSUE_ID,
+        gateReason: 'waiting_on_dep',
       })
       .mockResolvedValueOnce(null);
-    sessionSelectLimit.mockResolvedValueOnce([{ failureReason: 'waiting_on_dep' }]);
     handleDispatch.mockResolvedValue('dispatched');
 
     await dispatchTickForProject('p1');
@@ -173,15 +153,15 @@ describe('dispatchTickForProject — dependency.unblocked event', () => {
     expect((matched?.[1] as { data: { blockerId: unknown } }).data.blockerId).toBeNull();
   });
 
-  it('does not emit when prior failureReason was not waiting_on_dep', async () => {
+  it('does not emit when prior gateReason was not waiting_on_dep', async () => {
     pickFn
       .mockResolvedValueOnce({
         id: 'j1',
         agentSessionId: SESSION_ID,
         issueId: ISSUE_ID,
+        gateReason: null,
       })
       .mockResolvedValueOnce(null);
-    sessionSelectLimit.mockResolvedValueOnce([{ failureReason: null }]);
     handleDispatch.mockResolvedValue('dispatched');
 
     await dispatchTickForProject('p1', { triggerBlockerIssueId: BLOCKER_ID });
@@ -198,9 +178,9 @@ describe('dispatchTickForProject — dependency.unblocked event', () => {
         id: 'j1',
         agentSessionId: SESSION_ID,
         issueId: ISSUE_ID,
+        gateReason: 'waiting_on_dep',
       })
       .mockResolvedValueOnce(null);
-    sessionSelectLimit.mockResolvedValueOnce([{ failureReason: 'waiting_on_dep' }]);
     handleDispatch.mockResolvedValue('skipped');
 
     await dispatchTickForProject('p1', { triggerBlockerIssueId: BLOCKER_ID });

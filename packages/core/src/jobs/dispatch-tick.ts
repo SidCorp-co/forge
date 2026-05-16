@@ -16,9 +16,8 @@
  * so the 60s pg-boss schedule is the recovery mechanism.
  */
 
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -95,47 +94,19 @@ async function runTickInner(
     if (seen.has(job.id)) return;
     seen.add(job.id);
 
-    // Snapshot the linked session's prior failure reason BEFORE dispatch so we
-    // can detect a `waiting_on_dep` clear and emit `dependency.unblocked`. We
-    // intentionally read here (and not after dispatch) because handleDispatch
-    // / its downstream code can race-write `failureReason`.
-    let priorFailureReason: string | null = null;
-    if (job.agentSessionId) {
-      try {
-        const [sessionRow] = await db
-          .select({ failureReason: agentSessions.failureReason })
-          .from(agentSessions)
-          .where(eq(agentSessions.id, job.agentSessionId))
-          .limit(1);
-        priorFailureReason = sessionRow?.failureReason ?? null;
-      } catch {
-        // Snapshot is best-effort; missing it just suppresses the WS event.
-      }
-    }
+    // Snapshot the prior gate reason BEFORE dispatch so we can detect a
+    // `waiting_on_dep` clear and emit `dependency.unblocked`. The successful
+    // dispatch path clears jobs.gate_reason atomically with the status flip,
+    // so reading after dispatch would miss the transition.
+    const priorGateReason = job.gateReason;
 
     const outcome = await handleDispatch({ jobId: job.id });
 
     if (
       outcome === 'dispatched' &&
-      priorFailureReason === 'waiting_on_dep' &&
+      priorGateReason === 'waiting_on_dep' &&
       job.issueId
     ) {
-      // Clear the stale `waiting_on_dep` reason so a backstop sweep that
-      // re-picks this session (rare, but possible if the worker hasn't
-      // claimed it yet) doesn't double-emit the unblock event.
-      if (job.agentSessionId) {
-        try {
-          await db
-            .update(agentSessions)
-            .set({ failureReason: null, updatedAt: new Date() })
-            .where(eq(agentSessions.id, job.agentSessionId));
-        } catch (err) {
-          logger.warn(
-            { err, sessionId: job.agentSessionId },
-            'dispatch-tick: failed to clear waiting_on_dep failure_reason',
-          );
-        }
-      }
       roomManager.publish(projectRoom(projectId), {
         event: 'dependency.unblocked',
         data: {

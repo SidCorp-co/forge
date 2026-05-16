@@ -20,7 +20,7 @@ import {
   checkLayer3ProjectFull,
   checkLayer4RunnerFull,
   type GateResult,
-  markSessionGated,
+  markJobGated,
   runnerSupportsJobType,
 } from './dispatch-gates.js';
 import { JOB_QUEUE_NAME, PM_QUEUE_NAME } from './queue-name.js';
@@ -154,9 +154,9 @@ async function dispatchViaDevice(job: typeof jobs.$inferSelect): Promise<'dispat
 }
 
 /**
- * Centralised "gate failed → leave queued" path. Mirrors the cause onto the
- * linked agent_sessions row so the UI can render a useful tooltip, then
- * returns 'skipped' so the caller short-circuits.
+ * Centralised "gate failed → leave queued" path. Records the cause on the
+ * job row (canonical signal for queued-watchdog) and returns 'skipped' so
+ * the caller short-circuits.
  */
 async function reportGateSkip(
   jobId: string,
@@ -164,7 +164,7 @@ async function reportGateSkip(
   layer: 'L1' | 'L2' | 'L3' | 'L4',
 ): Promise<'skipped'> {
   if (result.pass) return 'skipped'; // unreachable but keeps the type narrow
-  await markSessionGated(jobId, result.reason, result.hint, result.metadata);
+  await markJobGated(jobId, result.reason, result.hint, result.metadata);
   logger.info(
     {
       jobId,
@@ -257,11 +257,11 @@ async function dispatchViaRunner(
       { jobId: job.id, projectId: job.projectId, fallbackChain },
       'dispatcher: no runner online, leaving queued',
     );
-    // ISS-118 — surface the no-runner state on the agent_sessions row so
-    // the UI and Sentry breadcrumb can explain why the job is sitting in
-    // queued. Uses `runner_full` as the canonical skip reason; the hint
-    // narrates the real cause for operator log greps.
-    await markSessionGated(job.id, 'runner_full', 'no online runner', {
+    // Surface the no-runner state on the job row so queued-watchdog and
+    // Sentry breadcrumb explain why the job is sitting in queued. Uses
+    // `runner_full` as the canonical skip reason; the hint narrates the
+    // real cause for operator log greps.
+    await markJobGated(job.id, 'runner_full', 'no online runner', {
       fallbackChain,
     });
     return 'skipped';
@@ -317,6 +317,10 @@ async function dispatchViaRunner(
       // remains null in that case.
       deviceId: runner.deviceId,
       dispatchedAt,
+      // Clear gate state — dispatch succeeded.
+      gateReason: null,
+      gateAt: null,
+      gateMetadata: null,
     })
     .where(and(eq(jobs.id, job.id), eq(jobs.status, 'queued')))
     .returning({ id: jobs.id });

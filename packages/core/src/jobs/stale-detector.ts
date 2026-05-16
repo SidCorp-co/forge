@@ -26,7 +26,6 @@ type StaleJobRow = {
   cancellation_requested: boolean;
   queued_at: Date;
   dispatched_at: Date | null;
-  started_at: Date | null;
   finished_at: Date | null;
   exit_code: number | null;
   error: string | null;
@@ -92,8 +91,10 @@ export async function runStaleSweep(): Promise<{
         status: 'failed' as never,
         queuedAt: updatedRow.queued_at,
         dispatchedAt: updatedRow.dispatched_at,
-        startedAt: updatedRow.started_at,
         finishedAt: updatedRow.finished_at,
+        gateReason: null,
+        gateAt: null,
+        gateMetadata: null,
         exitCode: updatedRow.exit_code,
         error: 'stale',
         modelTier: updatedRow.model_tier as never,
