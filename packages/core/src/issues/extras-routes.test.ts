@@ -55,8 +55,9 @@ vi.mock('../ws/server.js', () => ({
 // transition.ts imports `dispatchTickForProject` directly, which transitively
 // loads `queue/boss.ts` (pg-boss init). Mock the leaf so the module graph
 // initialises without a DATABASE_URL.
+const dispatchTick = vi.fn();
 vi.mock('../jobs/dispatch-tick.js', () => ({
-  dispatchTickForProject: vi.fn(),
+  dispatchTickForProject: (...args: unknown[]) => dispatchTick(...args),
 }));
 
 // ISS-108 — stub the skill resolver so the manual-trigger test doesn't need
@@ -122,6 +123,7 @@ beforeEach(() => {
   txInsert.mockClear();
   txInsertValues.mockClear();
   transactionMock.mockClear();
+  dispatchTick.mockClear();
 });
 
 function authVerified() {
@@ -442,6 +444,8 @@ describe('PATCH /api/issues/:id/manual-hold', () => {
     expect(txInsertValues).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'issue.manualHold.set' }),
     );
+    // ISS-133 — setting hold must NOT tick (pointless work).
+    expect(dispatchTick).not.toHaveBeenCalled();
   });
 
   it('200 toggles off and writes the cleared activity action', async () => {
@@ -465,6 +469,10 @@ describe('PATCH /api/issues/:id/manual-hold', () => {
     expect(txInsertValues).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'issue.manualHold.cleared' }),
     );
+    // ISS-133 — clearing hold (true → false) fires a dispatch tick for the
+    // project so queued jobs gated on `manual_hold` get re-evaluated.
+    expect(dispatchTick).toHaveBeenCalledTimes(1);
+    expect(dispatchTick).toHaveBeenCalledWith(PROJECT_ID);
   });
 
   it('200 no-op when value matches current state (no write, no activity)', async () => {
@@ -488,5 +496,7 @@ describe('PATCH /api/issues/:id/manual-hold', () => {
     expect(transactionMock).not.toHaveBeenCalled();
     expect(txUpdate).not.toHaveBeenCalled();
     expect(txInsertValues).not.toHaveBeenCalled();
+    // ISS-133 — no transition means no tick.
+    expect(dispatchTick).not.toHaveBeenCalled();
   });
 });

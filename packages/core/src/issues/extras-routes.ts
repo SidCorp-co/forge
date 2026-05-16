@@ -14,6 +14,7 @@ import {
   usageRecords,
 } from '../db/schema.js';
 import { sql } from 'drizzle-orm';
+import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import { enqueueJob } from '../jobs/enqueue.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { loadProjectAccess } from '../lib/project-access.js';
@@ -302,6 +303,13 @@ issueExtrasRoutes.patch(
             before: { manualHold: before },
             after: { manualHold: value },
           });
+          // ISS-133 — clearing manualHold must wake the dispatcher so jobs
+          // gated on `manual_hold` get re-evaluated within a second instead
+          // of waiting up to 60s for the pg-boss backstop (during which the
+          // queued-watchdog can kill them).
+          if (before === true && value === false) {
+            void dispatchTickForProject(row.projectId);
+          }
         }
 
         const plainUpdates: Record<string, unknown> = {};
@@ -486,6 +494,14 @@ issueExtrasRoutes.patch(
         before: { manualHold: before },
         after: { manualHold: value },
       });
+
+      // ISS-133 — clearing manualHold must wake the dispatcher so jobs
+      // gated on `manual_hold` get re-evaluated within a second instead
+      // of waiting up to 60s for the pg-boss backstop (during which the
+      // queued-watchdog can kill them).
+      if (before === true && value === false) {
+        void dispatchTickForProject(issue.projectId);
+      }
     }
 
     return c.json({ issueId, manualHold: value });
