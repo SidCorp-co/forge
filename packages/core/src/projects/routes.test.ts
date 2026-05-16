@@ -803,6 +803,115 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
   });
 });
 
+describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', () => {
+  const PID = '11111111-1111-4111-8111-111111111111';
+  const IID = '22222222-2222-4222-8222-222222222222';
+
+  it('400 BAD_REQUEST on non-uuid issueId', async () => {
+    const token = await signUserToken('uuid-user');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+
+    const res = await req(`/${PID}/issues/not-a-uuid/branch-config`, { token });
+    expect(res.status).toBe(400);
+  });
+
+  it('403 FORBIDDEN when caller is not a project member', async () => {
+    const token = await signUserToken('uuid-stranger');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-other' }])
+      .mockResolvedValueOnce([]); // no membership row
+
+    const res = await req(`/${PID}/issues/${IID}/branch-config`, { token });
+    expect(res.status).toBe(403);
+  });
+
+  it('404 NOT_FOUND when the issue does not exist in the project', async () => {
+    const token = await signUserToken('uuid-user');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-user' }])
+      .mockResolvedValueOnce([{ role: 'owner' }])
+      .mockResolvedValueOnce([{ baseBranch: 'develop', productionBranch: 'release' }])
+      .mockResolvedValueOnce([]); // issue lookup empty
+
+    const res = await req(`/${PID}/issues/${IID}/branch-config`, { token });
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('NOT_FOUND');
+  });
+
+  it('200 returns the project defaults when the issue has no override', async () => {
+    const token = await signUserToken('uuid-user');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-user' }])
+      .mockResolvedValueOnce([{ role: 'owner' }])
+      .mockResolvedValueOnce([{ baseBranch: 'develop', productionBranch: 'release' }])
+      .mockResolvedValueOnce([{ id: IID, sessionContext: null }]);
+
+    const res = await req(`/${PID}/issues/${IID}/branch-config`, { token });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      baseBranch: string;
+      targetBranch: string;
+      prodBranch: string;
+    };
+    expect(body).toEqual({
+      baseBranch: 'develop',
+      targetBranch: 'develop',
+      prodBranch: 'release',
+    });
+  });
+
+  it('200 layers a sessionContext.branchConfig override on top of project defaults', async () => {
+    const token = await signUserToken('uuid-user');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-user' }])
+      .mockResolvedValueOnce([{ role: 'owner' }])
+      .mockResolvedValueOnce([{ baseBranch: 'develop', productionBranch: 'release' }])
+      .mockResolvedValueOnce([
+        {
+          id: IID,
+          sessionContext: { branchConfig: { baseBranch: 'feat/x', prodBranch: 'hotfix' } },
+        },
+      ]);
+
+    const res = await req(`/${PID}/issues/${IID}/branch-config`, { token });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      baseBranch: string;
+      targetBranch: string;
+      prodBranch: string;
+    };
+    expect(body).toEqual({
+      baseBranch: 'feat/x',
+      targetBranch: 'feat/x', // follows the overridden base
+      prodBranch: 'hotfix',
+    });
+  });
+
+  it('200 falls back to hard default main when project defaults are null and no override', async () => {
+    const token = await signUserToken('uuid-user');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-user' }])
+      .mockResolvedValueOnce([{ role: 'owner' }])
+      .mockResolvedValueOnce([{ baseBranch: null, productionBranch: null }])
+      .mockResolvedValueOnce([{ id: IID, sessionContext: null }]);
+
+    const res = await req(`/${PID}/issues/${IID}/branch-config`, { token });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      baseBranch: string;
+      targetBranch: string;
+      prodBranch: string;
+    };
+    expect(body).toEqual({ baseBranch: 'main', targetBranch: 'main', prodBranch: 'main' });
+  });
+});
+
 describe('DELETE /api/projects/:id', () => {
   it('403 FORBIDDEN when caller is not owner', async () => {
     const token = await signUserToken('uuid-member');
