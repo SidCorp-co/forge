@@ -9,16 +9,9 @@ vi.mock('../queue/boss.js', () => ({
   boss: {},
 }));
 
-const updateReturning = vi.fn();
-const dbUpdate = vi.fn(() => ({
-  set: () => ({
-    where: () => ({
-      returning: updateReturning,
-    }),
-  }),
-}));
+const dbExecute = vi.fn();
 vi.mock('../db/client.js', () => ({
-  db: { update: dbUpdate },
+  db: { execute: dbExecute },
 }));
 
 const scheduleRetryMock = vi.fn();
@@ -34,7 +27,7 @@ beforeEach(() => {
 
 describe('jobs/stuck-watcher runStuckSweep', () => {
   it('returns zero counts when no rows match', async () => {
-    updateReturning.mockResolvedValueOnce([]);
+    dbExecute.mockResolvedValueOnce([]);
     const result = await runStuckSweep();
     expect(result.markedFailed).toBe(0);
     expect(result.retriesScheduled).toBe(0);
@@ -47,7 +40,7 @@ describe('jobs/stuck-watcher runStuckSweep', () => {
       { id: 'job-2', status: 'failed', attempts: 1, maxAttempts: 3 },
       { id: 'job-3', status: 'failed', attempts: 3, maxAttempts: 3 },
     ];
-    updateReturning.mockResolvedValueOnce(stuckRows);
+    dbExecute.mockResolvedValueOnce(stuckRows);
     scheduleRetryMock
       .mockResolvedValueOnce({ scheduled: true, newJobId: 'r1' })
       .mockResolvedValueOnce({ scheduled: true, newJobId: 'r2' })
@@ -68,7 +61,7 @@ describe('jobs/stuck-watcher runStuckSweep', () => {
       { id: 'job-1', status: 'failed', attempts: 0, maxAttempts: 3 },
       { id: 'job-2', status: 'failed', attempts: 0, maxAttempts: 3 },
     ];
-    updateReturning.mockResolvedValueOnce(stuckRows);
+    dbExecute.mockResolvedValueOnce(stuckRows);
     scheduleRetryMock
       .mockRejectedValueOnce(new Error('boom'))
       .mockResolvedValueOnce({ scheduled: true });
