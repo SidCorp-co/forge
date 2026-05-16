@@ -325,6 +325,51 @@ export async function checkLayer4RunnerFull(
 type JobRow = typeof jobs.$inferSelect;
 
 /**
+ * Refresh `gate_at` / `gate_reason` / `gate_metadata` on release-type queued
+ * jobs whose `kind='decomposes'` parent is still non-terminal. Called from
+ * `pickNextDispatchableJobForProject` BEFORE the SELECT so the picker's
+ * decompose filter and the watchdog's gate freshness check agree:
+ *
+ *   - picker SELECT excludes these rows (dispatch stays gated)
+ *   - this UPDATE writes a fresh `gate_at` (watchdog leaves them alone)
+ *
+ * The WHERE predicate MUST match the picker's `j.type = 'release' AND EXISTS
+ * (... decomposes ...)` clause; if either drifts, the watchdog kills
+ * correctly-gated jobs again (the original ISS-134 regression).
+ *
+ * Never throws — observability writes must not break dispatch. Mirrors
+ * `markJobGated`'s posture.
+ */
+export async function refreshDecompParentGates(projectId: string): Promise<void> {
+  try {
+    await db.execute(sql`
+      UPDATE jobs AS j
+      SET gate_reason = 'waiting_on_decomp_parent',
+          gate_at = now(),
+          gate_metadata = jsonb_build_object(
+            'parentId',     p2.id,
+            'parentIssSeq', p2.iss_seq,
+            'parentStatus', p2.status
+          )
+      FROM issue_dependencies d2
+      JOIN issues p2 ON p2.id = d2.from_issue_id
+      WHERE j.project_id = ${projectId}
+        AND j.status = 'queued'
+        AND j.type = 'release'
+        AND d2.to_issue_id = j.issue_id
+        AND d2.kind = 'decomposes'
+        AND (d2.valid_until IS NULL OR d2.valid_until > now())
+        AND p2.status NOT IN ('released','closed')
+    `);
+  } catch (err) {
+    logger.warn(
+      { err, projectId },
+      'dispatch-gates: refreshDecompParentGates failed',
+    );
+  }
+}
+
+/**
  * Pick the next queued job that is BOTH dependency-satisfied (Layer 2 met)
  * and not already covered by another active job for the same (issue,type).
  *
@@ -342,6 +387,13 @@ type JobRow = typeof jobs.$inferSelect;
 export async function pickNextDispatchableJobForProject(
   projectId: string,
 ): Promise<JobRow | null> {
+  // ISS-134 — refresh gate_at for release jobs the SELECT below is about to
+  // filter out (decompose-parent non-terminal). Without this, queued-watchdog
+  // can't tell "correctly gated" from "pg-boss dropped the message" and kills
+  // the job after 600s. Predicate MUST stay literally identical to the
+  // `j.type = 'release' AND EXISTS (...)` clause in the SELECT — drift causes
+  // the watchdog and picker to disagree.
+  await refreshDecompParentGates(projectId);
   const rows = await db.execute<JobRow>(sql`
     SELECT j.*
     FROM jobs j

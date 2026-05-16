@@ -117,4 +117,21 @@ describe('runQueuedSweep', () => {
     expect(text).toContain('finished_at');
     expect(text).toMatch(/120/);
   });
+
+  // ISS-134 — regression guard. Release jobs gated by a non-terminal
+  // decomposition parent rely on `pickNextDispatchableJobForProject`
+  // refreshing `gate_at` every tick. The watchdog's job is to leave those
+  // alone; this test pins the 300s freshness window into the UPDATE filter
+  // so a future refactor can't widen it to "ignore gate_at entirely" and
+  // resurrect the 05:24-05:51Z 2026-05-16 regression that killed ISS-122 /
+  // 126 / 127 / 128.
+  it('preserves the 300s gate_at freshness window in the UPDATE filter', async () => {
+    dbExecute.mockResolvedValueOnce([]);
+    const r = await runQueuedSweep();
+    expect(r.markedFailed).toBe(0);
+    const text = lastSqlText();
+    expect(text).toMatch(/gate_at\s+IS\s+NULL/);
+    expect(text).toMatch(/gate_at\s*<\s*now\(\)\s*-\s*interval/);
+    expect(text).toContain('300');
+  });
 });
