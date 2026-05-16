@@ -2,18 +2,24 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { Activity, AlertTriangle } from 'lucide-react';
-import { useProjectsHealth } from '@/features/project/hooks/use-projects';
+import { AlertTriangle, Workflow } from 'lucide-react';
+import { useProjectBySlug, useProjectsHealth } from '@/features/project/hooks/use-projects';
 import { StatCard } from '@/components/ui/stat-card';
-import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ALL_STATUSES, STATUS_COLORS } from '@/lib/constants';
 import { formatApiError } from '@/lib/api/error';
 import type { IssueStatus } from '@/features/issue/types';
+import { AttentionQueue } from './attention-queue';
+import { PipelineFeed } from './pipeline-feed';
+import { usePipelineActivity } from '../hooks/use-pipeline-activity';
+import { CostVelocityPanel } from './cost-velocity-panel';
+import { ProjectOnboardingChecklist } from './project-onboarding-checklist';
 
 export function ProjectDashboard() {
   const { slug } = useParams<{ slug: string }>();
+  const project = useProjectBySlug(slug);
   const { data, isLoading, error } = useProjectsHealth();
+  const { running, queued, recentCompleted, isLoading: pipelineLoading } = usePipelineActivity(slug);
 
   const row = data?.find((r) => r.projectSlug === slug);
 
@@ -39,20 +45,25 @@ export function ProjectDashboard() {
     );
   }
 
-  if (!row) {
-    return (
-      <EmptyState
-        icon={<Activity className="h-8 w-8" />}
-        title="No health data for this project"
-        description="You may not be a member of this project, or no issues have been created yet."
-      />
-    );
+  const totalIssues = row
+    ? Object.values(row.statusDistribution).reduce((a, b) => a + b, 0)
+    : 0;
+  const isBrandNew = !!project && totalIssues === 0 && !project.repoPath;
+
+  if (isBrandNew) {
+    return <ProjectOnboardingChecklist slug={slug} />;
   }
 
-  const totalIssues = Object.values(row.statusDistribution).reduce((a, b) => a + b, 0);
+  if (!row) {
+    return <ProjectOnboardingChecklist slug={slug} />;
+  }
+
   const distEntries = ALL_STATUSES
     .map((s) => ({ status: s.value, label: s.label, count: row.statusDistribution[s.value] ?? 0 }))
     .filter((e) => e.count > 0);
+
+  const hasPipelineActivity =
+    running.length + queued.length + recentCompleted.length > 0;
 
   return (
     <div className="space-y-6">
@@ -65,6 +76,26 @@ export function ProjectDashboard() {
           accent={row.pendingEscalations > 0 ? 'text-warning' : undefined}
         />
       </div>
+
+      {(pipelineLoading || hasPipelineActivity) && (
+        <section className="space-y-2">
+          <h2 className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">
+            <Workflow className="h-3.5 w-3.5" />
+            Pipeline in-flight
+          </h2>
+          {pipelineLoading ? (
+            <Skeleton className="h-24" />
+          ) : (
+            <PipelineFeed
+              running={running}
+              queued={queued}
+              recentCompleted={recentCompleted}
+            />
+          )}
+        </section>
+      )}
+
+      <AttentionQueue />
 
       <section className="space-y-2">
         <div className="flex items-center justify-between">
@@ -131,6 +162,8 @@ export function ProjectDashboard() {
           </ul>
         )}
       </section>
+
+      {project && <CostVelocityPanel projectId={project.id} />}
     </div>
   );
 }

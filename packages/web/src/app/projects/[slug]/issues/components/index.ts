@@ -4,3 +4,4 @@ export { IssuesPagination } from './issues-pagination';
 export { IssuesTable } from './issues-table';
 export { IssuesToolbar } from './issues-toolbar';
 export { IssuesView } from './issues-view';
+export { SavedViewPopover } from './saved-view-popover';

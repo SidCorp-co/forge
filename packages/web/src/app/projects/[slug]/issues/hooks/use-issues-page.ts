@@ -11,7 +11,20 @@ import type { BatchPatchData, IssueSort } from '@/features/issue/api/issue-api';
 import { useProjectBySlug } from '@/features/project/hooks/use-projects';
 import { useProjectMembers } from '@/features/project/hooks/use-project-members';
 import type { Issue, IssuePatchInput } from '@forge/contracts';
-import { PAGE_SIZE, type SortOption, type ViewMode } from '../constants';
+import {
+  PAGE_SIZE,
+  type Density,
+  type GroupBy,
+  type SavedView,
+  type SortOption,
+  type ViewMode,
+} from '../constants';
+
+const DENSITY_STORAGE_KEY = 'forge:web:issuesDensity';
+
+function savedViewsKey(slug: string | undefined): string | null {
+  return slug ? `issues-saved-views:${slug}` : null;
+}
 
 // ISS-42 B1 — map the toolbar's user-facing SortOption values to the core
 // `searchQuerySchema` enum so the new sort+category flags actually reach the
@@ -23,7 +36,7 @@ const SORT_TO_API: Record<SortOption, IssueSort> = {
   priority: 'priority:asc',
 };
 
-const PERSISTED_KEYS = ['status', 'priority', 'sort', 'q', 'view', 'assignee'] as const;
+const PERSISTED_KEYS = ['status', 'priority', 'sort', 'q', 'view', 'assignee', 'groupBy'] as const;
 
 function storageKey(slug: string | undefined): string | null {
   return slug ? `issues-filters:${slug}` : null;
@@ -40,6 +53,8 @@ export function useIssuesPage() {
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [density, setDensityState] = useState<Density>('comfortable');
+  const [savedViews, setSavedViews] = useState<SavedView[]>([]);
 
   const statusParam = searchParams.get('status') ?? '';
   const statusFilter = statusParam ? statusParam.split(',') : [];
@@ -50,6 +65,14 @@ export function useIssuesPage() {
   const assigneeFilter = searchParams.get('assignee') ?? 'all';
   const searchQuery = searchParams.get('q') ?? '';
   const currentPage = Number(searchParams.get('page') ?? '1');
+  const groupByParam = searchParams.get('groupBy');
+  const groupBy: GroupBy =
+    groupByParam === 'status' ||
+    groupByParam === 'assignee' ||
+    groupByParam === 'priority' ||
+    groupByParam === 'parent'
+      ? groupByParam
+      : 'none';
 
   const { data: members = [] } = useProjectMembers(projectId);
 
@@ -67,6 +90,7 @@ export function useIssuesPage() {
     sort: SORT_TO_API[sortBy],
     limit: PAGE_SIZE,
     offset: (currentPage - 1) * PAGE_SIZE,
+    withAgentSessions: true,
   });
 
   const rawIssues: Issue[] = paginatedData?.items ?? [];
@@ -106,7 +130,7 @@ export function useIssuesPage() {
   const setParam = useCallback(
     (key: string, value: string) => {
       const params = new URLSearchParams(searchParams.toString());
-      if (value === 'all' || value === '' || value === 'newest') {
+      if (value === 'all' || value === '' || value === 'newest' || value === 'none') {
         params.delete(key);
       } else {
         params.set(key, value);
@@ -167,6 +191,110 @@ export function useIssuesPage() {
       /* quota / disabled */
     }
   }, [slug, searchParams]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const v = window.localStorage.getItem(DENSITY_STORAGE_KEY);
+      if (v === 'compact' || v === 'comfortable') setDensityState(v);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const setDensity = useCallback((v: Density) => {
+    setDensityState(v);
+    try {
+      window.localStorage.setItem(DENSITY_STORAGE_KEY, v);
+    } catch {
+      /* quota / disabled */
+    }
+  }, []);
+
+  const hydratedViewsSlug = useRef<string | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const key = savedViewsKey(slug);
+    if (!key) return;
+    if (hydratedViewsSlug.current === slug) return;
+    hydratedViewsSlug.current = slug;
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) {
+        setSavedViews([]);
+        return;
+      }
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) {
+        const safe: SavedView[] = parsed.flatMap((entry) => {
+          if (
+            entry &&
+            typeof entry === 'object' &&
+            typeof (entry as SavedView).name === 'string' &&
+            typeof (entry as SavedView).query === 'string'
+          ) {
+            return [{ name: (entry as SavedView).name, query: (entry as SavedView).query }];
+          }
+          return [];
+        });
+        setSavedViews(safe);
+      } else {
+        setSavedViews([]);
+      }
+    } catch {
+      setSavedViews([]);
+    }
+  }, [slug]);
+
+  const persistSavedViews = useCallback(
+    (views: SavedView[]) => {
+      const key = savedViewsKey(slug);
+      if (!key) return;
+      try {
+        if (views.length === 0) {
+          window.localStorage.removeItem(key);
+        } else {
+          window.localStorage.setItem(key, JSON.stringify(views));
+        }
+      } catch {
+        /* quota / disabled */
+      }
+    },
+    [slug],
+  );
+
+  const saveCurrentView = useCallback(
+    (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      const query = searchParams.toString();
+      const next = [
+        ...savedViews.filter((v) => v.name !== trimmed),
+        { name: trimmed, query },
+      ];
+      setSavedViews(next);
+      persistSavedViews(next);
+    },
+    [savedViews, searchParams, persistSavedViews],
+  );
+
+  const deleteSavedView = useCallback(
+    (name: string) => {
+      const next = savedViews.filter((v) => v.name !== name);
+      setSavedViews(next);
+      persistSavedViews(next);
+    },
+    [savedViews, persistSavedViews],
+  );
+
+  const applySavedView = useCallback(
+    (view: SavedView) => {
+      router.replace(
+        `/projects/${slug}/issues${view.query ? `?${view.query}` : ''}`,
+      );
+    },
+    [router, slug],
+  );
 
   const handleUpdate = useCallback(
     (id: string, patch: IssuePatchInput) => {
@@ -245,5 +373,12 @@ export function useIssuesPage() {
     handleStartSession,
     desktopConnected: false,
     isBuildingPrompt: false,
+    groupBy,
+    density,
+    setDensity,
+    savedViews,
+    saveCurrentView,
+    deleteSavedView,
+    applySavedView,
   };
 }

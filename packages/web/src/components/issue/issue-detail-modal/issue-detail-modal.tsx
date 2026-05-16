@@ -1,13 +1,24 @@
 'use client';
 
 import Link from 'next/link';
+import { useCallback, useEffect, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
-import { Modal, Markdown, Skeleton, Button, ToastContainer } from '@/components/ui';
-import { useIssue, usePatchIssue } from '@/features/issue/hooks/use-issues';
+import { Modal, Skeleton, Button, ToastContainer } from '@/components/ui';
+import {
+  useIssue,
+  usePatchIssue,
+  useTransitionIssue,
+  useSetManualHold,
+} from '@/features/issue/hooks/use-issues';
 import { useProjectMembers } from '@/features/project/hooks/use-project-members';
-import { AssigneePicker } from '@/components/issue/assignee-picker';
+import { useMeProfile } from '@/features/me/hooks/use-me';
 import { useToast } from '@/hooks/use-toast';
 import { formatApiError } from '@/lib/api/error';
+import { IssueDetailBody } from '@/components/issue/issue-detail-body';
+import { STATUS_TAB_MAP } from '@/components/issue/issue-detail-header';
+import { type IssueDetailTabKey } from '@/components/issue/issue-detail-tabs';
+import type { IssuePatchInput } from '@forge/contracts';
+import type { IssueStatus } from '@/features/issue/types';
 
 interface IssueDetailModalProps {
   open: boolean;
@@ -17,16 +28,49 @@ interface IssueDetailModalProps {
 }
 
 /**
- * A1.6 quick-preview. Loads only the issue row (no comments, no activity)
- * and renders description + key metadata. Esc + click-outside close — both
- * handled by `<Modal>`. The "Open full" link navigates to the dedicated
- * detail page where comments and pipeline actions live.
+ * Quick-preview modal — renders the full issue body inline. Modal handles
+ * Esc + click-outside + focus trap; the "Open full" link navigates to the
+ * dedicated detail page when the operator wants the agent-drawer split.
  */
 export function IssueDetailModal({ open, issueId, projectSlug, onClose }: IssueDetailModalProps) {
   const { data: issue, isLoading, error } = useIssue(open && issueId ? issueId : undefined);
   const { data: members = [] } = useProjectMembers(issue?.projectId);
+  const { data: meProfile } = useMeProfile();
   const patchIssue = usePatchIssue();
+  const transitionIssue = useTransitionIssue();
+  const setManualHold = useSetManualHold();
   const { toasts, addToast } = useToast();
+
+  const [tab, setTab] = useState<IssueDetailTabKey>('overview');
+  const [sessionId, setSessionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open && issue) setTab(STATUS_TAB_MAP[issue.status as IssueStatus]);
+  }, [open, issue?.id]);
+
+  const handleStatusUpdate = useCallback(
+    (issueIdValue: string, data: { status: IssueStatus }) => {
+      if (issue && data.status === issue.status) return;
+      transitionIssue.mutate({ id: issueIdValue, toStatus: data.status });
+    },
+    [issue, transitionIssue],
+  );
+
+  const handlePatch = useCallback(
+    (issueIdValue: string, patch: IssuePatchInput) => {
+      patchIssue.mutate(
+        { id: issueIdValue, patch },
+        {
+          onSuccess: () => {
+            if (Object.prototype.hasOwnProperty.call(patch, 'assigneeId')) {
+              addToast('Assignee updated');
+            }
+          },
+        },
+      );
+    },
+    [patchIssue, addToast],
+  );
 
   return (
     <Modal open={open} onClose={onClose}>
@@ -45,52 +89,25 @@ export function IssueDetailModal({ open, issueId, projectSlug, onClose }: IssueD
           <p className="text-[11px] text-outline">Issue not found.</p>
         ) : (
           <>
-            <header className="mb-4 flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="mb-1 font-mono text-[11px] tracking-widest text-primary">
-                  {issue.displayId}
-                </div>
-                <h2 className="text-base font-bold tracking-tight text-on-surface">
-                  {issue.title}
-                </h2>
-              </div>
-              <span className="shrink-0 rounded-sm border border-outline-variant/30 bg-surface-container-high px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                {issue.status}
-              </span>
-            </header>
+            <div className="max-h-[75vh] overflow-y-auto">
+              <IssueDetailBody
+                issue={issue}
+                projectSlug={projectSlug}
+                members={members}
+                meProfile={meProfile ?? null}
+                isProjectOwner={false}
+                activeTab={tab}
+                onTabChange={setTab}
+                selectedSessionId={sessionId}
+                onSelectSession={setSessionId}
+                onPatch={handlePatch}
+                onStatusUpdate={handleStatusUpdate}
+                onSetManualHold={(v) => setManualHold.mutate({ id: issue.id, value: v })}
+                manualHoldPending={setManualHold.isPending}
+              />
+            </div>
 
-            <dl className="mb-4 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-4">
-              <Cell label="Priority" value={issue.priority} />
-              <Cell label="Category" value={issue.category ?? '—'} />
-              <Cell label="Complexity" value={issue.complexity ?? '—'} />
-              <div>
-                <dt className="text-[9px] font-bold uppercase tracking-widest text-outline">
-                  Assignee
-                </dt>
-                <dd className="mt-0.5">
-                  <AssigneePicker
-                    value={issue.assigneeId ?? null}
-                    members={members}
-                    onChange={(assigneeId) =>
-                      patchIssue.mutate(
-                        { id: issue.id, patch: { assigneeId } },
-                        { onSuccess: () => addToast('Assignee updated') },
-                      )
-                    }
-                  />
-                </dd>
-              </div>
-            </dl>
-
-            <section className="mb-4 max-h-[55vh] overflow-y-auto rounded-sm border border-outline-variant/20 bg-surface-container-low p-4 text-sm">
-              {issue.description ? (
-                <Markdown>{issue.description}</Markdown>
-              ) : (
-                <span className="text-outline">No description provided.</span>
-              )}
-            </section>
-
-            <footer className="flex items-center justify-end gap-2">
+            <footer className="mt-4 flex items-center justify-end gap-2">
               <Button variant="ghost" onClick={onClose} size="xs">
                 Close
               </Button>
@@ -108,14 +125,5 @@ export function IssueDetailModal({ open, issueId, projectSlug, onClose }: IssueD
       </div>
       <ToastContainer toasts={toasts} />
     </Modal>
-  );
-}
-
-function Cell({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-[9px] font-bold uppercase tracking-widest text-outline">{label}</dt>
-      <dd className="font-mono text-on-surface">{value}</dd>
-    </div>
   );
 }

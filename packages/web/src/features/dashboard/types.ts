@@ -19,6 +19,29 @@ export interface AttentionResponse {
   total: number;
 }
 
+export type StepName =
+  | 'triage'
+  | 'clarify'
+  | 'plan'
+  | 'code'
+  | 'review'
+  | 'test'
+  | 'release'
+  | 'fix'
+  | 'custom'
+  | 'pm';
+
+export interface StepDurationRow {
+  runId: string;
+  issueId: string | null;
+  projectId: string;
+  step: StepName;
+  startedAt: string;
+  finishedAt: string;
+  durationSeconds: number;
+  costUsd: number;
+}
+
 export interface ProjectHealth {
   projectName: string;
   projectSlug: string;

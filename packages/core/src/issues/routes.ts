@@ -29,6 +29,7 @@ import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { recordActivityTx } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
+import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 
 const attachmentInputSchema = z
@@ -90,6 +91,9 @@ export const issueFiltersSchema = paginationSchema.extend({
   assigneeId: z.uuid().optional(),
   category: z.string().trim().min(1).max(100).optional(),
   sort: z.enum(issueSortValues).optional().default('createdAt:desc'),
+  // ISS-128 — opt-in hydration of `agentSessions[]` + derived `agentStatus`.
+  // Off by default so existing callers don't pay the extra query.
+  withAgentSessions: z.coerce.boolean().optional().default(false),
 });
 
 export type IssueFilters = z.infer<typeof issueFiltersSchema>;
@@ -350,7 +354,26 @@ issueProjectRoutes.get(
       .offset(q.offset);
 
     setTotalCount(c, Number(n));
-    return c.json(rows.map((r) => serializeIssue(r as IssueRow)));
+
+    const serialized = rows.map((r) => serializeIssue(r as IssueRow));
+    if (!q.withAgentSessions || serialized.length === 0) {
+      return c.json(serialized);
+    }
+
+    const map = await hydrateAgentSessionsForIssues(
+      projectId,
+      serialized.map((r) => r.id),
+    );
+    return c.json(
+      serialized.map((r) => {
+        const bucket = map.get(r.id);
+        return {
+          ...r,
+          agentSessions: bucket?.agentSessions ?? [],
+          agentStatus: bucket?.agentStatus ?? null,
+        };
+      }),
+    );
   },
 );
 

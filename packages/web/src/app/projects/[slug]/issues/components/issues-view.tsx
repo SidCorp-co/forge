@@ -2,22 +2,46 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Eye } from 'lucide-react';
+import { Eye, Rows2, Rows3, X } from 'lucide-react';
 import { Button, Input, Select, Skeleton, ToastContainer } from '@/components/ui';
-import { ALL_PRIORITIES, COMPLEXITY_COLORS } from '@/lib/constants';
+import { ALL_PRIORITIES } from '@/lib/constants';
 import type { Issue } from '@forge/contracts';
-import type { IssueComplexity } from '@/features/issue/types';
+import type { ProjectMemberRow } from '@/features/project/hooks/use-project-members';
 import { useIssuesPage } from '../hooks';
 import { StatusMultiSelect } from './status-multi-select';
+import { SavedViewPopover } from './saved-view-popover';
+import { GROUP_BY_OPTIONS, type GroupBy } from '../constants';
 import type { IssueStatus } from '@/features/issue/types';
 import { IssueDetailModal } from '@/components/issue/issue-detail-modal/issue-detail-modal';
+import { AgentQueueBadge, pickActiveSession } from '@/components/issue/agent-queue-badge';
 import { AssigneePicker } from '@/components/issue/assignee-picker';
-import { AwaitingHumanBadge, isAwaitingHumanStatus } from '@/components/issue/awaiting-human-badge';
 import { BulkActionBar } from '@/components/issue/bulk-action-bar';
-import { usePatchIssue } from '@/features/issue/hooks/use-issues';
+import { InlineComplexitySelect } from '@/components/issue/inline-complexity-select';
+import { InlinePrioritySelect } from '@/components/issue/inline-priority-select';
+import { InlineStatusSelect } from '@/components/issue/inline-status-select';
+import { usePatchIssue, useTransitionIssue } from '@/features/issue/hooks/use-issues';
 import { useUnblockedIssueIds } from '@/features/issue/hooks/use-unblock-cascade';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils/cn';
+
+function groupKey(
+  issue: Issue,
+  by: Exclude<GroupBy, 'none'>,
+  members: ProjectMemberRow[],
+): { key: string; label: string } {
+  if (by === 'status') return { key: issue.status, label: issue.status };
+  if (by === 'priority') return { key: issue.priority, label: issue.priority };
+  if (by === 'assignee') {
+    const id = issue.assigneeId ?? '__unassigned__';
+    const label =
+      id === '__unassigned__'
+        ? 'Unassigned'
+        : members.find((m) => m.userId === id)?.email ?? 'Unknown';
+    return { key: id, label };
+  }
+  const id = issue.parentIssueId ?? '__no_parent__';
+  return { key: id, label: id === '__no_parent__' ? 'No parent' : id };
+}
 
 const REASON_LABELS: Record<string, string> = {
   illegal_transition: 'illegal transition',
@@ -53,9 +77,17 @@ export function IssuesView() {
     setChecked,
     toggleCheck,
     handleBulkUpdate,
+    groupBy,
+    density,
+    setDensity,
+    savedViews,
+    saveCurrentView,
+    deleteSavedView,
+    applySavedView,
   } = useIssuesPage();
   const { toasts, addToast } = useToast();
   const patchIssue = usePatchIssue();
+  const transitionIssue = useTransitionIssue();
   const { ids: unblockedIssueIds, blockerSeqFor } = useUnblockedIssueIds();
 
   function handleAssigneeChange(issueId: string, assigneeId: string | null) {
@@ -63,6 +95,28 @@ export function IssuesView() {
       { id: issueId, patch: { assigneeId } },
       { onSuccess: () => addToast('Assignee updated') },
     );
+  }
+
+  function handleStatusUpdate(id: string, data: { status: IssueStatus }) {
+    transitionIssue.mutate(
+      { id, toStatus: data.status },
+      {
+        onSuccess: () => addToast('Status updated'),
+        onError: () => addToast('Status update failed'),
+      },
+    );
+  }
+
+  function handlePatchUpdate(label: string) {
+    return (id: string, patch: Parameters<typeof patchIssue.mutate>[0]['patch']) => {
+      patchIssue.mutate(
+        { id, patch },
+        {
+          onSuccess: () => addToast(`${label} updated`),
+          onError: () => addToast(`${label} update failed`),
+        },
+      );
+    };
   }
 
   const visibleCategories = useMemo(
@@ -105,6 +159,19 @@ export function IssuesView() {
       setChecked(new Set(issues.map((i) => i.id)));
     }
   }
+
+  const groups = useMemo(() => {
+    if (groupBy === 'none') return null;
+    const by = groupBy;
+    const map = new Map<string, { label: string; items: Issue[] }>();
+    for (const issue of issues) {
+      const { key, label } = groupKey(issue, by, members);
+      const entry = map.get(key) ?? { label, items: [] };
+      entry.items.push(issue);
+      map.set(key, entry);
+    }
+    return Array.from(map.entries());
+  }, [issues, groupBy, members]);
 
   function handleRowToggle(issueId: string) {
     const isShift = shiftKeyRef.current;
@@ -174,8 +241,125 @@ export function IssuesView() {
     }
   }
 
+  function renderRow(issue: Issue) {
+    const isUnblocked = unblockedIssueIds.has(issue.id);
+    const blockerSeq = isUnblocked ? blockerSeqFor(issue.id) : null;
+    const unblockedTitle = isUnblocked
+      ? blockerSeq != null
+        ? `Unblocked by ISS-${blockerSeq}`
+        : 'Unblocked'
+      : undefined;
+    return (
+      <li
+        key={issue.id}
+        className={cn('flex items-center pr-2', isUnblocked && 'animate-amber-pulse')}
+        title={unblockedTitle}
+      >
+        <input
+          type="checkbox"
+          checked={checked.has(issue.id)}
+          onMouseDown={(e) => {
+            shiftKeyRef.current = e.shiftKey;
+          }}
+          onChange={() => handleRowToggle(issue.id)}
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`Select ${issue.displayId}`}
+          className="ml-3 h-3.5 w-3.5 shrink-0 cursor-pointer accent-primary"
+        />
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            setPreviewIssueId(issue.id);
+          }}
+          className="ml-2 mr-1 shrink-0 rounded-sm p-1.5 text-outline transition-colors hover:bg-surface-container-high hover:text-on-surface"
+          aria-label={`Quick preview ${issue.displayId}`}
+          title="Quick preview"
+        >
+          <Eye className="h-3.5 w-3.5" />
+        </button>
+        <Link
+          href={`/projects/${slug}/issues/${issue.displayId}`}
+          className={cn(
+            'flex min-w-0 flex-1 items-center gap-4 px-2 text-sm transition-colors hover:bg-surface-container-low',
+            density === 'compact' ? 'py-1.5' : 'py-3',
+          )}
+        >
+          <span className="w-20 shrink-0 font-mono text-[11px] text-primary">
+            {issue.displayId}
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate font-medium text-on-surface">{issue.title}</span>
+            <AgentQueueBadge
+              session={pickActiveSession(issue.agentSessions)}
+              agentStatus={issue.agentStatus}
+              className="mt-0.5"
+            />
+          </span>
+        </Link>
+        {issue.manualHold && (
+          <span
+            className="ml-2 shrink-0 rounded-sm bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-amber-400"
+            title="Manual hold — automation paused"
+          >
+            Paused
+          </span>
+        )}
+        <span className="ml-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <InlineComplexitySelect issue={issue} onUpdate={handlePatchUpdate('Complexity')} />
+        </span>
+        {issue.category && (
+          <span className="ml-2 shrink-0 text-[10px] uppercase tracking-widest text-outline">
+            {issue.category}
+          </span>
+        )}
+        <span className="ml-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <InlineStatusSelect issue={issue} onUpdate={handleStatusUpdate} />
+        </span>
+        <span className="ml-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <InlinePrioritySelect issue={issue} onUpdate={handlePatchUpdate('Priority')} />
+        </span>
+        <span className="ml-2 shrink-0">
+          <AssigneePicker
+            compact
+            value={issue.assigneeId ?? null}
+            members={members}
+            onChange={(id) => handleAssigneeChange(issue.id, id)}
+          />
+        </span>
+      </li>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      {savedViews.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {savedViews.map((v) => (
+            <span
+              key={v.name}
+              className="inline-flex items-center gap-1 rounded-full border border-outline-variant/30 bg-surface-container-low px-2.5 py-1 text-xs"
+            >
+              <button
+                type="button"
+                onClick={() => applySavedView(v)}
+                className="text-on-surface hover:text-primary"
+              >
+                {v.name}
+              </button>
+              <button
+                type="button"
+                onClick={() => deleteSavedView(v.name)}
+                aria-label={`Delete saved view ${v.name}`}
+                className="text-outline hover:text-on-surface"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
       <div className="flex flex-wrap items-end gap-2">
         <Input
           type="text"
@@ -232,6 +416,33 @@ export function IssuesView() {
           <option value="priority">Priority</option>
           <option value="updated">Recently updated</option>
         </Select>
+        <Select
+          value={groupBy}
+          onChange={(e) => setParam('groupBy', e.currentTarget.value)}
+          aria-label="Group by"
+        >
+          {GROUP_BY_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </Select>
+        <button
+          type="button"
+          onClick={() => setDensity(density === 'compact' ? 'comfortable' : 'compact')}
+          aria-label={
+            density === 'compact' ? 'Switch to comfortable rows' : 'Switch to compact rows'
+          }
+          title={density === 'compact' ? 'Comfortable rows' : 'Compact rows'}
+          className="flex items-center gap-1.5 rounded-sm border border-outline-variant/30 px-3 py-2 text-sm text-outline transition-colors hover:bg-surface-container-high"
+        >
+          {density === 'compact' ? (
+            <Rows2 className="h-3.5 w-3.5" />
+          ) : (
+            <Rows3 className="h-3.5 w-3.5" />
+          )}
+        </button>
+        <SavedViewPopover onSave={saveCurrentView} />
       </div>
 
       <div className="flex items-center justify-between">
@@ -270,96 +481,27 @@ export function IssuesView() {
                 : `Select all (${issues.length})`}
             </span>
           </div>
-          <ul className="divide-y divide-outline-variant/20">
-          {issues.map((issue: Issue) => {
-            const isUnblocked = unblockedIssueIds.has(issue.id);
-            const blockerSeq = isUnblocked ? blockerSeqFor(issue.id) : null;
-            const unblockedTitle = isUnblocked
-              ? blockerSeq != null
-                ? `Unblocked by ISS-${blockerSeq}`
-                : 'Unblocked'
-              : undefined;
-            return (
-            <li
-              key={issue.id}
-              className={cn('flex items-center pr-2', isUnblocked && 'animate-amber-pulse')}
-              title={unblockedTitle}
-            >
-              <input
-                type="checkbox"
-                checked={checked.has(issue.id)}
-                onMouseDown={(e) => { shiftKeyRef.current = e.shiftKey; }}
-                onChange={() => handleRowToggle(issue.id)}
-                onClick={(e) => e.stopPropagation()}
-                aria-label={`Select ${issue.displayId}`}
-                className="ml-3 h-3.5 w-3.5 shrink-0 cursor-pointer accent-primary"
-              />
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  setPreviewIssueId(issue.id);
-                }}
-                className="ml-2 mr-1 shrink-0 rounded-sm p-1.5 text-outline transition-colors hover:bg-surface-container-high hover:text-on-surface"
-                aria-label={`Quick preview ${issue.displayId}`}
-                title="Quick preview"
+          {groups === null ? (
+            <ul className="divide-y divide-outline-variant/20">
+              {issues.map((issue: Issue) => renderRow(issue))}
+            </ul>
+          ) : (
+            groups.map(([key, { label, items }]) => (
+              <details
+                key={key}
+                open
+                className="border-b border-outline-variant/20 last:border-b-0"
               >
-                <Eye className="h-3.5 w-3.5" />
-              </button>
-              <Link
-                href={`/projects/${slug}/issues/${issue.displayId}`}
-                className="flex flex-1 items-center gap-4 px-2 py-3 text-sm transition-colors hover:bg-surface-container-low"
-              >
-                <span className="w-20 font-mono text-[11px] text-primary">
-                  {issue.displayId}
-                </span>
-                <span className="flex-1 truncate font-medium text-on-surface">
-                  {issue.title}
-                </span>
-                {issue.manualHold && (
-                  <span
-                    className="rounded-sm bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-amber-400"
-                    title="Manual hold — automation paused"
-                  >
-                    Paused
-                  </span>
-                )}
-                {issue.complexity && (
-                  <span
-                    className={`rounded-sm px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-widest ${COMPLEXITY_COLORS[issue.complexity as IssueComplexity]}`}
-                  >
-                    {issue.complexity}
-                  </span>
-                )}
-                {issue.category && (
-                  <span className="text-[10px] uppercase tracking-widest text-outline">
-                    {issue.category}
-                  </span>
-                )}
-                {isAwaitingHumanStatus(issue.status) ? (
-                  <AwaitingHumanBadge status={issue.status} />
-                ) : (
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                    {issue.status}
-                  </span>
-                )}
-                <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                  {issue.priority}
-                </span>
-              </Link>
-              <span className="ml-2 shrink-0">
-                <AssigneePicker
-                  compact
-                  value={issue.assigneeId ?? null}
-                  members={members}
-                  onChange={(id) => handleAssigneeChange(issue.id, id)}
-                />
-              </span>
-            </li>
-            );
-          })}
-          </ul>
+                <summary className="flex cursor-pointer items-center gap-2 bg-surface-container-low px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                  <span>{label}</span>
+                  <span className="text-outline">({items.length})</span>
+                </summary>
+                <ul className="divide-y divide-outline-variant/20">
+                  {items.map((issue) => renderRow(issue))}
+                </ul>
+              </details>
+            ))
+          )}
         </div>
       )}
       {checked.size > 0 && (
