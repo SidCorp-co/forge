@@ -9,6 +9,7 @@ import { DropColumn } from './drop-column';
 import { DraggableIssueCard } from './draggable-issue-card';
 import { DraggableTaskCard } from './draggable-task-card';
 import type { useBoard } from '../hooks/use-board';
+import type { IssueStatus } from '@/features/issue/types';
 
 type BoardState = ReturnType<typeof useBoard>;
 
@@ -16,8 +17,13 @@ export function BoardView(props: BoardState) {
   const {
     slug,
     viewMode, setViewMode, loading,
-    issues, selectedIssueId, setSelectedIssueId, changedIssueIds,
-    visibleCols, showColPicker, setShowColPicker, toggleCol, handleIssueDrop,
+    selectedIssueId, setSelectedIssueId, changedIssueIds,
+    visibleCols, showColPicker, setShowColPicker, toggleCol,
+    handleIssueDropCell,
+    groupedIssues, groupByRow, setGroupByRow,
+    density, setDensity,
+    collapsedCols, toggleCollapsedCol,
+    wipLimits, setWipLimit,
     filteredTasks, changedTaskIds,
     assignees, assigneeFilter, setAssigneeFilter, agentFilter, setAgentFilter,
     handleTaskDrop, toasts,
@@ -45,6 +51,10 @@ export function BoardView(props: BoardState) {
         onToggleColPicker={() => setShowColPicker(!showColPicker)}
         onCloseColPicker={() => setShowColPicker(false)}
         onToggleCol={toggleCol}
+        density={density}
+        onDensityChange={setDensity}
+        groupByRow={groupByRow}
+        onGroupByRowChange={setGroupByRow}
         assignees={assignees}
         assigneeFilter={assigneeFilter}
         onAssigneeFilterChange={setAssigneeFilter}
@@ -53,34 +63,62 @@ export function BoardView(props: BoardState) {
       />
 
       {viewMode === 'issues' && (
-        <div className="flex gap-3 overflow-x-auto pb-4">
-          {activeCols.map((col) => {
-            const colIssues = issues.filter((i: { status: string }) => i.status === col.status);
-            return (
-              <DropColumn
-                key={col.status}
-                label={col.label}
-                color={col.color}
-                bg={col.bg}
-                count={colIssues.length}
-                status={col.status}
-                onDrop={handleIssueDrop}
-                dragType="issueId"
-              >
-                {colIssues.map((issue: { id: string }) => (
-                  <DraggableIssueCard
-                    key={issue.id}
-                    issue={issue as never}
-                    onSelect={setSelectedIssueId}
-                    highlight={changedIssueIds.has(issue.id)}
-                  />
-                ))}
-                {colIssues.length === 0 && (
-                  <p className="py-8 text-center text-xs text-outline">No issues</p>
+        <div className="overflow-x-auto pb-4">
+          <div className="flex flex-col gap-4">
+            {groupedIssues.map(({ rowKey, rowLabel, issues: rowIssues }) => (
+              <div key={rowKey} className="flex gap-3">
+                {groupByRow !== 'none' && (
+                  <div className="sticky left-0 z-10 flex w-32 shrink-0 items-start pt-3 text-sm font-medium text-on-surface-variant">
+                    {rowLabel}
+                  </div>
                 )}
-              </DropColumn>
-            );
-          })}
+                {activeCols.map((col) => {
+                  const cellIssues = rowIssues.filter((i) => i.status === col.status);
+                  const wipLimit = wipLimits[col.status] ?? null;
+                  const wipCurrent =
+                    wipLimit != null
+                      ? // WIP measured across all rows in this column, not the
+                        // cell — limits apply to total status load.
+                        groupedIssues.reduce(
+                          (acc, g) => acc + g.issues.filter((i) => i.status === col.status).length,
+                          0,
+                        )
+                      : undefined;
+                  const collapsed = !!collapsedCols[col.status];
+                  return (
+                    <DropColumn
+                      key={col.status}
+                      label={col.label}
+                      color={col.color}
+                      bg={col.bg}
+                      count={cellIssues.length}
+                      status={col.status}
+                      onDrop={(itemId, status) => handleIssueDropCell(itemId, status, rowKey)}
+                      dragType="issueId"
+                      wipCurrent={wipCurrent}
+                      wipLimit={wipLimit}
+                      collapsed={collapsed}
+                      onToggleCollapsed={() => toggleCollapsedCol(col.status)}
+                      onEditWipLimit={(s: IssueStatus, v) => setWipLimit(s, v)}
+                    >
+                      {!collapsed && cellIssues.map((issue) => (
+                        <DraggableIssueCard
+                          key={issue.id}
+                          issue={issue as never}
+                          onSelect={setSelectedIssueId}
+                          highlight={changedIssueIds.has(issue.id)}
+                          density={density}
+                        />
+                      ))}
+                      {!collapsed && cellIssues.length === 0 && (
+                        <p className="py-8 text-center text-xs text-outline">No issues</p>
+                      )}
+                    </DropColumn>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

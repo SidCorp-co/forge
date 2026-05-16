@@ -115,6 +115,47 @@ export function useInviteProjectMember() {
   });
 }
 
+/**
+ * Per-project board WIP limits live under `agentConfig.boardConfig.wipLimits`.
+ * Last-write-wins across concurrent tabs — WIP edits are infrequent enough
+ * that the race is acceptable for v1.
+ */
+export function useUpdateProjectBoardConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      projectId,
+      wipLimits,
+    }: {
+      projectId: string;
+      wipLimits: Record<string, number | null>;
+    }) => {
+      const projects = qc.getQueryData<Project[]>(projectKeys.all);
+      const current = projects?.find((p) => p.id === projectId) ?? null;
+      const agentConfig =
+        (current?.agentConfig as Record<string, unknown> | null | undefined) ?? {};
+      const boardConfig =
+        ((agentConfig.boardConfig as Record<string, unknown> | undefined) ?? {});
+      const existingLimits =
+        ((boardConfig.wipLimits as Record<string, number> | undefined) ?? {});
+      const merged: Record<string, number> = { ...existingLimits };
+      for (const [status, value] of Object.entries(wipLimits)) {
+        if (value == null) delete merged[status];
+        else merged[status] = value;
+      }
+      const nextAgentConfig = {
+        ...agentConfig,
+        boardConfig: { ...boardConfig, wipLimits: merged },
+      };
+      return projectApi.update(projectId, { agentConfig: nextAgentConfig } as never);
+    },
+    onSuccess: (_data, { projectId }) => {
+      qc.invalidateQueries({ queryKey: projectKeys.all });
+      qc.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+    },
+  });
+}
+
 export function useAddDeviceToPool() {
   const qc = useQueryClient();
   return useMutation({

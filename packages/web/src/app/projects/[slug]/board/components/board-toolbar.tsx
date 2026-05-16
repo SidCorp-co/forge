@@ -1,7 +1,14 @@
 'use client';
 
 import { Button, Checkbox, SegmentedControl, Select } from '@/components/ui';
-import { ALL_ISSUE_COLS, BOARD_VIEW_OPTIONS } from '../constants';
+import {
+  ALL_ISSUE_COLS,
+  BOARD_DENSITY_OPTIONS,
+  BOARD_GROUP_BY_OPTIONS,
+  BOARD_VIEW_OPTIONS,
+  type BoardDensity,
+  type BoardGroupBy,
+} from '../constants';
 import type { IssueStatus } from '@/features/issue/types';
 
 interface BoardToolbarProps {
@@ -12,6 +19,10 @@ interface BoardToolbarProps {
   onToggleColPicker: () => void;
   onCloseColPicker: () => void;
   onToggleCol: (status: IssueStatus) => void;
+  density: BoardDensity;
+  onDensityChange: (v: BoardDensity) => void;
+  groupByRow: BoardGroupBy;
+  onGroupByRowChange: (v: BoardGroupBy) => void;
   assignees: string[];
   assigneeFilter: string;
   onAssigneeFilterChange: (v: string) => void;
@@ -27,6 +38,10 @@ export function BoardToolbar({
   onToggleColPicker,
   onCloseColPicker,
   onToggleCol,
+  density,
+  onDensityChange,
+  groupByRow,
+  onGroupByRowChange,
   assignees,
   assigneeFilter,
   onAssigneeFilterChange,
@@ -74,6 +89,29 @@ export function BoardToolbar({
             </>
           )}
         </div>
+      )}
+
+      {viewMode === 'issues' && (
+        <>
+          <label className="flex items-center gap-2 text-sm text-on-surface-variant">
+            Group by row
+            <Select
+              value={groupByRow}
+              onChange={(e) => onGroupByRowChange(e.currentTarget.value as BoardGroupBy)}
+            >
+              {BOARD_GROUP_BY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <SegmentedControl
+            options={BOARD_DENSITY_OPTIONS}
+            value={density}
+            onChange={onDensityChange}
+          />
+        </>
       )}
 
       {viewMode === 'tasks' && (
