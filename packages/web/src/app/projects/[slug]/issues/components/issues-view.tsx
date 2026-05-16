@@ -4,9 +4,8 @@ import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Eye, Rows2, Rows3, X } from 'lucide-react';
 import { Button, Input, Select, Skeleton, ToastContainer } from '@/components/ui';
-import { ALL_PRIORITIES, COMPLEXITY_COLORS } from '@/lib/constants';
+import { ALL_PRIORITIES } from '@/lib/constants';
 import type { Issue } from '@forge/contracts';
-import type { IssueComplexity } from '@/features/issue/types';
 import type { ProjectMemberRow } from '@/features/project/hooks/use-project-members';
 import { useIssuesPage } from '../hooks';
 import { StatusMultiSelect } from './status-multi-select';
@@ -14,10 +13,13 @@ import { SavedViewPopover } from './saved-view-popover';
 import { GROUP_BY_OPTIONS, type GroupBy } from '../constants';
 import type { IssueStatus } from '@/features/issue/types';
 import { IssueDetailModal } from '@/components/issue/issue-detail-modal/issue-detail-modal';
+import { AgentQueueBadge, pickActiveSession } from '@/components/issue/agent-queue-badge';
 import { AssigneePicker } from '@/components/issue/assignee-picker';
-import { AwaitingHumanBadge, isAwaitingHumanStatus } from '@/components/issue/awaiting-human-badge';
 import { BulkActionBar } from '@/components/issue/bulk-action-bar';
-import { usePatchIssue } from '@/features/issue/hooks/use-issues';
+import { InlineComplexitySelect } from '@/components/issue/inline-complexity-select';
+import { InlinePrioritySelect } from '@/components/issue/inline-priority-select';
+import { InlineStatusSelect } from '@/components/issue/inline-status-select';
+import { usePatchIssue, useTransitionIssue } from '@/features/issue/hooks/use-issues';
 import { useUnblockedIssueIds } from '@/features/issue/hooks/use-unblock-cascade';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils/cn';
@@ -85,6 +87,7 @@ export function IssuesView() {
   } = useIssuesPage();
   const { toasts, addToast } = useToast();
   const patchIssue = usePatchIssue();
+  const transitionIssue = useTransitionIssue();
   const { ids: unblockedIssueIds, blockerSeqFor } = useUnblockedIssueIds();
 
   function handleAssigneeChange(issueId: string, assigneeId: string | null) {
@@ -92,6 +95,28 @@ export function IssuesView() {
       { id: issueId, patch: { assigneeId } },
       { onSuccess: () => addToast('Assignee updated') },
     );
+  }
+
+  function handleStatusUpdate(id: string, data: { status: IssueStatus }) {
+    transitionIssue.mutate(
+      { id, toStatus: data.status },
+      {
+        onSuccess: () => addToast('Status updated'),
+        onError: () => addToast('Status update failed'),
+      },
+    );
+  }
+
+  function handlePatchUpdate(label: string) {
+    return (id: string, patch: Parameters<typeof patchIssue.mutate>[0]['patch']) => {
+      patchIssue.mutate(
+        { id, patch },
+        {
+          onSuccess: () => addToast(`${label} updated`),
+          onError: () => addToast(`${label} update failed`),
+        },
+      );
+    };
   }
 
   const visibleCategories = useMemo(
@@ -257,43 +282,44 @@ export function IssuesView() {
         <Link
           href={`/projects/${slug}/issues/${issue.displayId}`}
           className={cn(
-            'flex flex-1 items-center gap-4 px-2 text-sm transition-colors hover:bg-surface-container-low',
+            'flex min-w-0 flex-1 items-center gap-4 px-2 text-sm transition-colors hover:bg-surface-container-low',
             density === 'compact' ? 'py-1.5' : 'py-3',
           )}
         >
-          <span className="w-20 font-mono text-[11px] text-primary">{issue.displayId}</span>
-          <span className="flex-1 truncate font-medium text-on-surface">{issue.title}</span>
-          {issue.manualHold && (
-            <span
-              className="rounded-sm bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-amber-400"
-              title="Manual hold — automation paused"
-            >
-              Paused
-            </span>
-          )}
-          {issue.complexity && (
-            <span
-              className={`rounded-sm px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-widest ${COMPLEXITY_COLORS[issue.complexity as IssueComplexity]}`}
-            >
-              {issue.complexity}
-            </span>
-          )}
-          {issue.category && (
-            <span className="text-[10px] uppercase tracking-widest text-outline">
-              {issue.category}
-            </span>
-          )}
-          {isAwaitingHumanStatus(issue.status) ? (
-            <AwaitingHumanBadge status={issue.status} />
-          ) : (
-            <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-              {issue.status}
-            </span>
-          )}
-          <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-            {issue.priority}
+          <span className="w-20 shrink-0 font-mono text-[11px] text-primary">
+            {issue.displayId}
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate font-medium text-on-surface">{issue.title}</span>
+            <AgentQueueBadge
+              session={pickActiveSession(issue.agentSessions)}
+              agentStatus={issue.agentStatus}
+              className="mt-0.5"
+            />
           </span>
         </Link>
+        {issue.manualHold && (
+          <span
+            className="ml-2 shrink-0 rounded-sm bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-amber-400"
+            title="Manual hold — automation paused"
+          >
+            Paused
+          </span>
+        )}
+        <span className="ml-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <InlineComplexitySelect issue={issue} onUpdate={handlePatchUpdate('Complexity')} />
+        </span>
+        {issue.category && (
+          <span className="ml-2 shrink-0 text-[10px] uppercase tracking-widest text-outline">
+            {issue.category}
+          </span>
+        )}
+        <span className="ml-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <InlineStatusSelect issue={issue} onUpdate={handleStatusUpdate} />
+        </span>
+        <span className="ml-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <InlinePrioritySelect issue={issue} onUpdate={handlePatchUpdate('Priority')} />
+        </span>
         <span className="ml-2 shrink-0">
           <AssigneePicker
             compact

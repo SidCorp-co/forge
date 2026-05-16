@@ -83,7 +83,7 @@ export function AssigneePicker({
         <Avatar
           email={current?.email ?? null}
           userId={current?.userId ?? null}
-          size={compact ? 'xs' : 'sm'}
+          size={compact ? 'sm' : 'md'}
         />
         {!compact && (
           <span className="max-w-[160px] truncate">

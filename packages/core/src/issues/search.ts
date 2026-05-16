@@ -8,6 +8,7 @@ import { issueLabels, issuePriorities, issueStatuses, issues } from '../db/schem
 import { setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 
 const coerceArray = <T>(v: T | T[] | undefined): T[] | undefined =>
@@ -36,6 +37,8 @@ const searchQuerySchema = z
     sort: z.enum(issueSortValues).optional().default('createdAt:desc'),
     limit: z.coerce.number().int().min(1).max(200).default(50),
     offset: z.coerce.number().int().min(0).default(0),
+    // ISS-128 — opt-in hydration of `agentSessions[]` + derived `agentStatus`.
+    withAgentSessions: z.coerce.boolean().optional().default(false),
   })
   .strict();
 
@@ -126,8 +129,29 @@ searchRoutes.get(
       .offset(q.offset);
 
     setTotalCount(c, Number(n));
+
+    const serialized = rows.map((r) => ({
+      ...r,
+      displayId: `ISS-${(r as { issSeq: number }).issSeq}`,
+    }));
+    if (!q.withAgentSessions || serialized.length === 0) {
+      return c.json(serialized);
+    }
+
+    const map = await hydrateAgentSessionsForIssues(
+      projectId,
+      serialized.map((r) => (r as { id: string }).id),
+    );
     return c.json(
-      rows.map((r) => ({ ...r, displayId: `ISS-${(r as { issSeq: number }).issSeq}` })),
+      serialized.map((r) => {
+        const id = (r as { id: string }).id;
+        const bucket = map.get(id);
+        return {
+          ...r,
+          agentSessions: bucket?.agentSessions ?? [],
+          agentStatus: bucket?.agentStatus ?? null,
+        };
+      }),
     );
   },
 );

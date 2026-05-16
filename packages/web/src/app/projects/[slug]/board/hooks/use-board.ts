@@ -135,6 +135,7 @@ export function useBoard() {
     projectId: projectId ?? '',
     status: visibleStatuses,
     limit: 200,
+    withAgentSessions: true,
   });
 
   const issues: IssueRow[] = (data?.items ?? []) as IssueRow[];

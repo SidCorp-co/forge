@@ -1,7 +1,8 @@
 'use client';
 
 import { cn } from '@/lib/utils/cn';
-import { AgentStatusIndicator, PriorityBadge } from '@/components/ui';
+import { PriorityBadge } from '@/components/ui';
+import { AgentQueueBadge, pickActiveSession } from '@/components/issue/agent-queue-badge';
 import { DRAGGABLE_CARD_CLASS, type BoardDensity } from '../constants';
 import type { Issue } from '@/features/issue/types';
 
@@ -47,7 +48,12 @@ export function DraggableIssueCard({
         <p className={cn('font-medium leading-tight', compact ? 'text-xs' : 'text-sm')}>
           {issue.title}
         </p>
-        {!compact && <AgentStatusIndicator status={issue.agentStatus} />}
+        {!compact && (
+          <AgentQueueBadge
+            session={pickActiveSession(issue.agentSessions)}
+            agentStatus={issue.agentStatus}
+          />
+        )}
       </div>
       {!compact && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
