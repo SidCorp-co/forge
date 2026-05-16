@@ -7,7 +7,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const dbExecute = vi.fn();
+const dbExecute = vi.fn(async () => [] as unknown[]);
 const dbSelect = vi.fn();
 const dbUpdate = vi.fn();
 
@@ -30,8 +30,11 @@ const {
   checkLayer4RunnerFull,
   pickNextDispatchableJobForProject,
   countInFlightForRunner,
+  refreshDecompParentGates,
   DEFAULT_MAX_CONCURRENT_ISSUES,
 } = await import('./dispatch-gates.js');
+
+const { logger: mockLogger } = await import('../logger.js');
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -40,6 +43,29 @@ beforeEach(() => {
 afterEach(() => {
   vi.clearAllMocks();
 });
+
+function collectSqlFragments(sqlArg: unknown): string {
+  const fragments: string[] = [];
+  const visit = (node: unknown): void => {
+    if (typeof node === 'string') {
+      fragments.push(node);
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child);
+      return;
+    }
+    if (node && typeof node === 'object') {
+      const value = (node as { value?: unknown }).value;
+      if (typeof value === 'string') fragments.push(value);
+      else if (Array.isArray(value)) visit(value);
+      const chunks = (node as { queryChunks?: unknown }).queryChunks;
+      if (chunks) visit(chunks);
+    }
+  };
+  visit(sqlArg);
+  return fragments.join(' ');
+}
 
 function selectChainOnce(rows: unknown[]): void {
   dbSelect.mockImplementationOnce(() => ({
@@ -298,17 +324,61 @@ describe('countInFlightForRunner', () => {
   });
 });
 
+describe('refreshDecompParentGates (ISS-134)', () => {
+  it('writes gate state for release jobs whose decompose parent is non-terminal', async () => {
+    dbExecute.mockResolvedValueOnce([]);
+    await refreshDecompParentGates('proj-1');
+    expect(dbExecute).toHaveBeenCalledTimes(1);
+    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+    expect(text).toMatch(/UPDATE\s+jobs/i);
+    expect(text).toContain('waiting_on_decomp_parent');
+    expect(text).toMatch(/j\.type\s*=\s*'release'/);
+    expect(text).toMatch(/d2\.kind\s*=\s*'decomposes'/);
+    expect(text).toMatch(/p2\.status\s+NOT\s+IN\s*\(\s*'released'\s*,\s*'closed'\s*\)/);
+    expect(text).toMatch(/jsonb_build_object/);
+    expect(text).toContain('parentId');
+    expect(text).toContain('parentIssSeq');
+    expect(text).toContain('parentStatus');
+  });
+
+  it('does not throw when the UPDATE fails — observability writes must not break dispatch', async () => {
+    dbExecute.mockRejectedValueOnce(new Error('db down'));
+    await expect(refreshDecompParentGates('proj-1')).resolves.toBeUndefined();
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: 'proj-1' }),
+      expect.stringContaining('refreshDecompParentGates'),
+    );
+  });
+});
+
 describe('pickNextDispatchableJobForProject', () => {
   it('returns null when no rows', async () => {
-    dbExecute.mockResolvedValueOnce([]);
+    // call 1: refreshDecompParentGates UPDATE; call 2: SELECT
+    dbExecute.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     expect(await pickNextDispatchableJobForProject('p1')).toBeNull();
   });
   it('returns the first row when present', async () => {
-    dbExecute.mockResolvedValueOnce([
-      { id: 'j1', projectId: 'p1', issueId: 'i1', status: 'queued' },
-    ]);
+    dbExecute
+      .mockResolvedValueOnce([]) // refresh UPDATE
+      .mockResolvedValueOnce([
+        { id: 'j1', projectId: 'p1', issueId: 'i1', status: 'queued' },
+      ]);
     const r = await pickNextDispatchableJobForProject('p1');
     expect(r).toMatchObject({ id: 'j1' });
+  });
+
+  // ISS-134 — refresh must run BEFORE the SELECT so queued-watchdog sees a
+  // fresh gate_at on rows the SELECT is about to filter out. If the order
+  // ever flips, the watchdog wakes up on a stale gate_at and kills the job.
+  it('invokes refreshDecompParentGates UPDATE before the picker SELECT', async () => {
+    dbExecute.mockResolvedValue([]);
+    await pickNextDispatchableJobForProject('p1');
+    expect(dbExecute).toHaveBeenCalledTimes(2);
+    const firstSql = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+    const secondSql = collectSqlFragments(dbExecute.mock.calls[1]?.[0]);
+    expect(firstSql).toMatch(/UPDATE\s+jobs/i);
+    expect(firstSql).toMatch(/waiting_on_decomp_parent/);
+    expect(secondSql).toMatch(/SELECT\s+j\.\*/);
   });
 
   // ISS-101 — cohesion. We can't easily run the SQL in a mocked unit test,
