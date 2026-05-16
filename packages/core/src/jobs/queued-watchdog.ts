@@ -4,8 +4,12 @@
  * Distinguishes a dead queue from a slow-but-alive one:
  *   - Skip if dispatcher recently recorded a gate skip on the job
  *     (`gate_at` fresh) — dispatcher is actively tracking this job.
- *   - Skip if any other job in the same project has a fresh session
- *     heartbeat — queue is draining normally, this job is waiting its turn.
+ *   - Skip if any other job in the same project shows recent activity —
+ *     either a fresh session heartbeat on an in-flight job OR a sibling
+ *     job that finished within the last 120s (covers the sub-second
+ *     handoff window between two adjacent pipeline jobs, where the
+ *     previous job just moved to `done` and the next has not yet been
+ *     dispatched).
  *   - Otherwise (no gate signal, no project activity, queued past grace) →
  *     mark failed (transient) and let scheduleRetry decide.
  *
@@ -43,6 +47,16 @@ const GATE_FRESH_SECONDS = 300;
  */
 const PROJECT_ACTIVITY_FRESH_SECONDS = 60;
 
+/**
+ * Window during which a recently-finished job in the same project counts as
+ * activity, covering the sub-second handoff between adjacent pipeline jobs
+ * (previous job has just moved to `done`, next job has not yet been
+ * dispatched). 120s is generous enough to absorb dispatcher tick latency
+ * (60s pg-boss backstop + 1s debounce + L4 evaluation) without holding the
+ * watchdog off indefinitely.
+ */
+const PROJECT_FINISHED_FRESH_SECONDS = 120;
+
 export interface QueuedSweepResult {
   markedFailed: number;
   blocked: number;
@@ -69,11 +83,14 @@ export async function runQueuedSweep(): Promise<QueuedSweepResult> {
       )
       AND NOT EXISTS (
         SELECT 1 FROM jobs other_j
-        JOIN agent_sessions other_s ON other_s.id = other_j.agent_session_id
+        LEFT JOIN agent_sessions other_s ON other_s.id = other_j.agent_session_id
         WHERE other_j.project_id = jobs.project_id
           AND other_j.id <> jobs.id
-          AND other_j.status IN ('dispatched','running')
-          AND other_s.last_heartbeat_at > now() - interval '${sql.raw(String(PROJECT_ACTIVITY_FRESH_SECONDS))} seconds'
+          AND (
+            (other_j.status IN ('dispatched','running')
+             AND other_s.last_heartbeat_at > now() - interval '${sql.raw(String(PROJECT_ACTIVITY_FRESH_SECONDS))} seconds')
+            OR other_j.finished_at > now() - interval '${sql.raw(String(PROJECT_FINISHED_FRESH_SECONDS))} seconds'
+          )
       )
     RETURNING *
   `)) as unknown as Array<typeof jobs.$inferSelect>;

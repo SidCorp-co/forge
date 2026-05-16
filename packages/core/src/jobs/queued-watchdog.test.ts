@@ -106,7 +106,7 @@ describe('runQueuedSweep', () => {
     expect(r.blocked).toBe(1);
   });
 
-  it('UPDATE filter excludes jobs with fresh gate_at + project activity', async () => {
+  it('UPDATE filter accepts heartbeat OR recent finished_at as project activity', async () => {
     dbExecute.mockResolvedValueOnce([]);
     await runQueuedSweep();
     const text = lastSqlText();
@@ -114,5 +114,7 @@ describe('runQueuedSweep', () => {
     expect(text).toContain('NOT EXISTS');
     expect(text).toContain('agent_sessions');
     expect(text).toContain('last_heartbeat_at');
+    expect(text).toContain('finished_at');
+    expect(text).toMatch(/120/);
   });
 });
