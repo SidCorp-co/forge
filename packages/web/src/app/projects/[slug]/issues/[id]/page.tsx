@@ -38,10 +38,27 @@ import { IssueDecompositionPanel } from '@/components/issue/issue-decomposition-
 import { IssueRelations } from '@/components/issue/issue-relations';
 import { IssueParentBreadcrumb } from '@/components/issue/issue-parent-breadcrumb';
 import { IssueBlockedBanner } from '@/components/issue/issue-blocked-banner';
+import { IssueDetailTabs, type IssueDetailTabKey } from '@/components/issue/issue-detail-tabs';
 import { AgentSessionPanel } from '@/components/chat/agent-session-panel';
 import type { Issue } from '@forge/contracts';
 import type { IssuePatchInput } from '@forge/contracts';
 import type { IssueStatus } from '@/features/issue/types';
+
+const TAB_KEYS = ['overview', 'plan', 'activity', 'files'] as const;
+function parseTab(raw: string | null): IssueDetailTabKey {
+  return (TAB_KEYS as readonly string[]).includes(raw ?? '')
+    ? (raw as IssueDetailTabKey)
+    : 'overview';
+}
+
+const HASH_TO_TAB: Record<string, IssueDetailTabKey> = {
+  comments: 'activity',
+  timeline: 'activity',
+  activity: 'activity',
+  plan: 'plan',
+  attachments: 'files',
+  tasks: 'files',
+};
 
 const DISPLAY_ID_RE = /^ISS-\d+$/i;
 
@@ -139,6 +156,44 @@ export default function IssueDetailPage() {
     [router, searchParams],
   );
 
+  const activeTab = parseTab(searchParams.get('tab'));
+  const setActiveTab = useCallback(
+    (next: IssueDetailTabKey) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (next === 'overview') params.delete('tab');
+      else params.set('tab', next);
+      const qs = params.toString();
+      router.replace(qs ? `?${qs}` : '?', { scroll: false });
+    },
+    [router, searchParams],
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const hash = window.location.hash.slice(1);
+    if (!hash) return;
+    const target = HASH_TO_TAB[hash];
+    if (target) {
+      const params = new URLSearchParams(window.location.search);
+      if (target === 'overview') params.delete('tab');
+      else params.set('tab', target);
+      const qs = params.toString();
+      window.history.replaceState(
+        null,
+        '',
+        `${window.location.pathname}${qs ? `?${qs}` : ''}`,
+      );
+      router.replace(qs ? `?${qs}` : '?', { scroll: false });
+    } else {
+      window.history.replaceState(
+        null,
+        '',
+        `${window.location.pathname}${window.location.search}`,
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   if (isLoading) {
     return (
       <div className="p-8 text-center text-xs font-mono text-outline-variant">
@@ -178,132 +233,87 @@ export default function IssueDetailPage() {
         }
       >
         <div className={splitOpen ? 'min-w-0' : ''}>
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-            <main className="min-w-0 space-y-6">
-              <Breadcrumb slug={slug} displayId={issue.displayId} />
+          <main className="min-w-0 space-y-6">
+            <Breadcrumb slug={slug} displayId={issue.displayId} />
 
-              <header className="space-y-3">
-                <h1 className="text-2xl font-bold text-primary">{issue.title}</h1>
-                <IssueParentBreadcrumb
+            <header className="space-y-3">
+              <h1 className="text-2xl font-bold text-primary">{issue.title}</h1>
+              <IssueParentBreadcrumb
+                issueId={issueId}
+                projectSlug={slug}
+                currentDisplayId={issue.displayId}
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <InlineStatusSelect issue={issue} onUpdate={handleStatusUpdate} />
+                <InlinePrioritySelect issue={issue} onUpdate={handlePatch} />
+                <InlineComplexitySelect issue={issue} onUpdate={handlePatch} />
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                    Assignee
+                  </span>
+                  <AssigneePicker
+                    value={issue.assigneeId ?? null}
+                    members={members}
+                    onChange={(assigneeId) => handlePatch(issueId, { assigneeId })}
+                  />
+                </span>
+                {issue.category && (
+                  <span className="inline-flex items-center rounded-sm border border-outline-variant/30 bg-surface-container-high px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest">
+                    {issue.category}
+                  </span>
+                )}
+                <ManualHoldToggle
+                  issueId={issueId}
+                  value={issue.manualHold ?? false}
+                  pending={setManualHold.isPending}
+                  onToggle={(v) => setManualHold.mutate({ id: issueId, value: v })}
+                />
+              </div>
+              {(transitionError || patchError) && (
+                <p className="text-[10px] uppercase tracking-widest text-error">
+                  {formatApiError(transitionError ?? patchError)}
+                </p>
+              )}
+              <IssuePipelineActions issueId={issueId} status={issue.status} />
+            </header>
+
+            <IssueDetailTabs
+              active={activeTab}
+              onChange={setActiveTab}
+              overview={
+                <OverviewPanel
+                  issue={issue}
                   issueId={issueId}
                   projectSlug={slug}
-                  currentDisplayId={issue.displayId}
+                  onPatch={handlePatch}
                 />
-                <div className="flex flex-wrap items-center gap-2">
-                  <InlineStatusSelect issue={issue} onUpdate={handleStatusUpdate} />
-                  <InlinePrioritySelect issue={issue} onUpdate={handlePatch} />
-                  <InlineComplexitySelect issue={issue} onUpdate={handlePatch} />
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                      Assignee
-                    </span>
-                    <AssigneePicker
-                      value={issue.assigneeId ?? null}
-                      members={members}
-                      onChange={(assigneeId) => handlePatch(issueId, { assigneeId })}
-                    />
-                  </span>
-                  {issue.category && (
-                    <span className="inline-flex items-center rounded-sm border border-outline-variant/30 bg-surface-container-high px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest">
-                      {issue.category}
-                    </span>
-                  )}
-                  <ManualHoldToggle
-                    issueId={issueId}
-                    value={issue.manualHold ?? false}
-                    pending={setManualHold.isPending}
-                    onToggle={(v) => setManualHold.mutate({ id: issueId, value: v })}
-                  />
-                </div>
-                {(transitionError || patchError) && (
-                  <p className="text-[10px] uppercase tracking-widest text-error">
-                    {formatApiError(transitionError ?? patchError)}
-                  </p>
-                )}
-                <IssuePipelineActions issueId={issueId} status={issue.status} />
-              </header>
-
-              <IssuePipelineRunPanel
-                issueId={issueId}
-                projectId={issue.projectId}
-                onSelectSession={(sid) => setSessionId(sid)}
-              />
-
-              <IssueBlockedBanner issueId={issueId} />
-
-              <EditableMarkdownSection
-                title="Description"
-                value={issue.description}
-                placeholder="No description. Click Edit to add one."
-                onSave={(v) => handlePatch(issueId, { description: v })}
-              />
-
-              <EditableMarkdownSection
-                title="Acceptance Criteria"
-                value={issue.acceptanceCriteria}
-                placeholder="No acceptance criteria. Click Edit to add."
-                onSave={(v) => handlePatch(issueId, { acceptanceCriteria: v })}
-              />
-
-              <EditableMarkdownSection
-                title="Suggested Solution"
-                value={issue.suggestedSolution}
-                placeholder="No suggested solution. Click Edit to add."
-                onSave={(v) => handlePatch(issueId, { suggestedSolution: v })}
-              />
-
-              <EditableMarkdownSection
-                title="Plan"
-                value={issue.plan}
-                placeholder="No plan. Click Edit to add."
-                onSave={(v) => handlePatch(issueId, { plan: v })}
-              />
-
-              <section className="rounded-sm border border-outline-variant/20 bg-surface">
-                <div className="border-b border-outline-variant/20 bg-surface-container-low px-4 py-2">
-                  <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">
-                    Subtasks
-                  </h3>
-                </div>
-                <IssueTasks issueId={issueId} projectId={issue.projectId} />
-              </section>
-
-              <IssueAttachments
-                issueId={issueId}
-                currentUserId={meProfile?.id ?? null}
-                isProjectOwner={!!meProfile && project?.ownerId === meProfile.id}
-              />
-
-              <CommentsSection issueId={issueId} />
-              <section className="rounded-sm border border-outline-variant/20 bg-surface">
-                <div className="border-b border-outline-variant/20 bg-surface-container-low px-4 py-2">
-                  <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">
-                    Activity
-                  </h3>
-                </div>
-                <div className="p-5 text-sm">
-                  <IssueTimeline issueDocumentId={issueId} />
-                </div>
-              </section>
-              <IssueAgentSessions
-                issueId={issueId}
-                onSelect={(sid) => setSessionId(sid)}
-                selectedSessionId={sessionParam}
-              />
-              <IssueJobs issueId={issueId} projectId={issue.projectId} />
-            </main>
-
-            <aside className="space-y-6">
-              <IssueCostSummary issueId={issueId} />
-              <IssuePipelineTiming projectId={issue.projectId} />
-              <IssueDecompositionPanel issueId={issueId} projectSlug={slug} />
-              <IssueRelations
-                issueId={issueId}
-                projectId={issue.projectId}
-                projectSlug={slug}
-              />
-            </aside>
-          </div>
+              }
+              plan={
+                <PlanPanel
+                  issue={issue}
+                  issueId={issueId}
+                  projectSlug={slug}
+                  onPatch={handlePatch}
+                />
+              }
+              activity={
+                <ActivityPanel
+                  issueId={issueId}
+                  projectId={issue.projectId}
+                  selectedSessionId={sessionParam}
+                  onSelectSession={setSessionId}
+                />
+              }
+              files={
+                <FilesPanel
+                  issueId={issueId}
+                  projectId={issue.projectId}
+                  currentUserId={meProfile?.id ?? null}
+                  isProjectOwner={!!meProfile && project?.ownerId === meProfile.id}
+                />
+              }
+            />
+          </main>
         </div>
 
         {splitOpen && sessionParam && (
@@ -523,6 +533,138 @@ function CommentsSection({ issueId }: { issueId: string }) {
         </form>
       </div>
     </section>
+  );
+}
+
+function OverviewPanel({
+  issue,
+  issueId,
+  projectSlug,
+  onPatch,
+}: {
+  issue: Issue;
+  issueId: string;
+  projectSlug: string;
+  onPatch: (issueIdValue: string, patch: IssuePatchInput) => void;
+}) {
+  return (
+    <div className="space-y-6">
+      <IssueBlockedBanner issueId={issueId} />
+      <EditableMarkdownSection
+        title="Description"
+        value={issue.description}
+        placeholder="No description. Click Edit to add one."
+        onSave={(v) => onPatch(issueId, { description: v })}
+      />
+      <EditableMarkdownSection
+        title="Acceptance Criteria"
+        value={issue.acceptanceCriteria}
+        placeholder="No acceptance criteria. Click Edit to add."
+        onSave={(v) => onPatch(issueId, { acceptanceCriteria: v })}
+      />
+      <IssueRelations issueId={issueId} projectId={issue.projectId} projectSlug={projectSlug} />
+    </div>
+  );
+}
+
+function PlanPanel({
+  issue,
+  issueId,
+  projectSlug,
+  onPatch,
+}: {
+  issue: Issue;
+  issueId: string;
+  projectSlug: string;
+  onPatch: (issueIdValue: string, patch: IssuePatchInput) => void;
+}) {
+  return (
+    <div className="space-y-6">
+      <EditableMarkdownSection
+        title="Plan"
+        value={issue.plan}
+        placeholder="No plan. Click Edit to add."
+        onSave={(v) => onPatch(issueId, { plan: v })}
+      />
+      <EditableMarkdownSection
+        title="Suggested Solution"
+        value={issue.suggestedSolution}
+        placeholder="No suggested solution. Click Edit to add."
+        onSave={(v) => onPatch(issueId, { suggestedSolution: v })}
+      />
+      <IssueDecompositionPanel issueId={issueId} projectSlug={projectSlug} />
+    </div>
+  );
+}
+
+function ActivityPanel({
+  issueId,
+  projectId,
+  selectedSessionId,
+  onSelectSession,
+}: {
+  issueId: string;
+  projectId: string;
+  selectedSessionId: string | null;
+  onSelectSession: (sid: string | null) => void;
+}) {
+  return (
+    <div className="space-y-6">
+      <IssuePipelineRunPanel
+        issueId={issueId}
+        projectId={projectId}
+        onSelectSession={onSelectSession}
+      />
+      <IssuePipelineTiming projectId={projectId} />
+      <CommentsSection issueId={issueId} />
+      <section className="rounded-sm border border-outline-variant/20 bg-surface">
+        <div className="border-b border-outline-variant/20 bg-surface-container-low px-4 py-2">
+          <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">
+            Activity
+          </h3>
+        </div>
+        <div className="p-5 text-sm">
+          <IssueTimeline issueDocumentId={issueId} />
+        </div>
+      </section>
+      <IssueAgentSessions
+        issueId={issueId}
+        onSelect={onSelectSession}
+        selectedSessionId={selectedSessionId}
+      />
+      <IssueJobs issueId={issueId} projectId={projectId} />
+    </div>
+  );
+}
+
+function FilesPanel({
+  issueId,
+  projectId,
+  currentUserId,
+  isProjectOwner,
+}: {
+  issueId: string;
+  projectId: string;
+  currentUserId: string | null;
+  isProjectOwner: boolean;
+}) {
+  return (
+    <div className="space-y-6">
+      <IssueAttachments
+        issueId={issueId}
+        currentUserId={currentUserId}
+        isProjectOwner={isProjectOwner}
+      />
+      <section className="rounded-sm border border-outline-variant/20 bg-surface">
+        <div className="border-b border-outline-variant/20 bg-surface-container-low px-4 py-2">
+          <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">
+            Subtasks
+          </h3>
+        </div>
+        <IssueTasks issueId={issueId} projectId={projectId} />
+      </section>
+      <IssueCostSummary issueId={issueId} />
+    </div>
   );
 }
 
