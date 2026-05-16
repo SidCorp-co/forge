@@ -54,3 +54,22 @@ export const BOARD_VIEW_OPTIONS: { value: 'issues' | 'tasks'; label: string }[] 
 
 export const DRAGGABLE_CARD_CLASS =
   'cursor-grab rounded-lg border bg-surface-container-low p-3 shadow-sm transition-all hover:shadow-md active:cursor-grabbing';
+
+export type BoardDensity = 'compact' | 'comfortable';
+export type BoardGroupBy = 'none' | 'assignee' | 'parent' | 'category';
+
+export const BOARD_DENSITY_KEY = 'forge.web.boardDensity';
+export const boardGroupByKey = (projectId: string) => `forge.web.boardGroupBy.${projectId}`;
+export const boardCollapsedKey = (projectId: string) => `forge.web.boardCollapsed.${projectId}`;
+
+export const BOARD_DENSITY_OPTIONS: { value: BoardDensity; label: string }[] = [
+  { value: 'compact', label: 'Compact' },
+  { value: 'comfortable', label: 'Comfortable' },
+];
+
+export const BOARD_GROUP_BY_OPTIONS: { value: BoardGroupBy; label: string }[] = [
+  { value: 'none', label: 'No grouping' },
+  { value: 'assignee', label: 'Assignee' },
+  { value: 'parent', label: 'Parent' },
+  { value: 'category', label: 'Category' },
+];
