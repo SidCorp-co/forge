@@ -5,6 +5,23 @@ export const PAGE_SIZE = 10;
 export type ViewMode = 'table' | 'board';
 export type SortOption = 'newest' | 'oldest' | 'priority' | 'updated';
 
+export type GroupBy = 'none' | 'status' | 'assignee' | 'priority' | 'parent';
+
+export const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
+  { value: 'none', label: 'No grouping' },
+  { value: 'status', label: 'Group by status' },
+  { value: 'assignee', label: 'Group by assignee' },
+  { value: 'priority', label: 'Group by priority' },
+  { value: 'parent', label: 'Group by parent' },
+];
+
+export type Density = 'compact' | 'comfortable';
+
+export interface SavedView {
+  name: string;
+  query: string;
+}
+
 export const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
   { value: 'table', label: 'Table' },
   { value: 'board', label: 'Board' },
