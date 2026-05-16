@@ -1,4 +1,5 @@
 import { relations, sql } from 'drizzle-orm';
+import type { IssueBranchOverride } from '../branches/resolve.js';
 import {
   type AnyPgColumn,
   boolean,
@@ -672,6 +673,13 @@ export const issues = pgTable(
     // when operator resumes (clears manualHold). Shape typed in TS via
     // IssueFailureContext but stored generic for forward-compat.
     failureContext: jsonb('failure_context'),
+    // ISS-137 — Layer 2 branch config (per-issue override) lives here under
+    // `branchConfig`. Free-form jsonb so other per-issue settings can land
+    // here later without further migrations. NULL = no override; see
+    // packages/core/src/branches/resolve.ts for the resolution order.
+    metadata: jsonb('metadata').$type<
+      ({ branchConfig?: IssueBranchOverride | null } & Record<string, unknown>) | null
+    >(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
