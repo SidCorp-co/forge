@@ -56,6 +56,11 @@ vi.mock('../../pipeline/hooks.js', () => ({
   hooks: { emit: vi.fn().mockResolvedValue(undefined) },
 }));
 
+const dispatchTick = vi.fn();
+vi.mock('../../jobs/dispatch-tick.js', () => ({
+  dispatchTickForProject: (...args: unknown[]) => dispatchTick(...args),
+}));
+
 vi.mock('../../ws/server.js', () => ({
   roomManager: { publish: vi.fn() },
 }));
@@ -429,6 +434,45 @@ describe('forge_issues tool', () => {
         after: { manualHold: true },
       }),
     );
+    // ISS-133 — setting hold (false → true) must NOT tick.
+    expect(dispatchTick).not.toHaveBeenCalled();
+  });
+
+  it('update clearing manualHold (true → false) fires dispatchTickForProject (ISS-133)', async () => {
+    const tool = forgeIssuesTool({ device: fakeDevice, projectSlug: PROJECT_SLUG });
+    // loadIssue (manualHold currently true)
+    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, manualHold: true }]);
+    // membership check
+    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    // re-load fresh
+    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, manualHold: false }]);
+
+    await tool.handler({
+      action: 'update',
+      documentId: ISSUE_ID,
+      data: { manualHold: false },
+    });
+
+    expect(dispatchTick).toHaveBeenCalledTimes(1);
+    expect(dispatchTick).toHaveBeenCalledWith(PROJECT_ID);
+  });
+
+  it('update with non-manualHold fields does NOT fire dispatchTickForProject (ISS-133)', async () => {
+    const tool = forgeIssuesTool({ device: fakeDevice, projectSlug: PROJECT_SLUG });
+    // loadIssue
+    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, manualHold: false }]);
+    // membership check
+    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    // re-load fresh
+    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, manualHold: false }]);
+
+    await tool.handler({
+      action: 'update',
+      documentId: ISSUE_ID,
+      data: { title: 'renamed', description: 'new desc', plan: 'new plan' },
+    });
+
+    expect(dispatchTick).not.toHaveBeenCalled();
   });
 
   it('update with manualHold no-op (value matches) skips activity + hook', async () => {
@@ -453,6 +497,8 @@ describe('forge_issues tool', () => {
       'issueUpdated',
       expect.objectContaining({ fields: ['manualHold'] }),
     );
+    // ISS-133 — no transition means no tick.
+    expect(dispatchTick).not.toHaveBeenCalled();
   });
 
   it('update with status routes through state machine and rejects illegal transition', async () => {

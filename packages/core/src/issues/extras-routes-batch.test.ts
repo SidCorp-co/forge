@@ -415,5 +415,37 @@ describe('PATCH /api/issues/batch', () => {
     expect(txInsertValues).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'issue.manualHold.set' }),
     );
+    // ISS-133 — setting hold must NOT tick.
+    expect(dispatchTick).not.toHaveBeenCalled();
+  });
+
+  it('clearing manualHold on N issues fires dispatchTickForProject per row (ISS-133)', async () => {
+    authVerified();
+    selectAwait.mockResolvedValueOnce([
+      // ISS1 (project A) clears: true → false
+      { id: ISS1, issSeq: 1, projectId: PROJECT_A, status: 'open', priority: 'medium', category: null, complexity: null, manualHold: true, reopenCount: 0 },
+      // ISS2 (project A) clears: true → false
+      { id: ISS2, issSeq: 2, projectId: PROJECT_A, status: 'open', priority: 'medium', category: null, complexity: null, manualHold: true, reopenCount: 0 },
+      // ISS3 (project A) already cleared → no-op, no tick
+      { id: ISS3, issSeq: 3, projectId: PROJECT_A, status: 'open', priority: 'medium', category: null, complexity: null, manualHold: false, reopenCount: 0 },
+    ]);
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_A,
+      ownerId: USER_ID,
+      role: 'member',
+    });
+
+    const res = await buildApp().request('/api/issues/batch', {
+      method: 'PATCH',
+      headers: await headers(),
+      body: JSON.stringify({
+        ids: [ISS1, ISS2, ISS3],
+        data: { manualHold: false },
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(dispatchTick).toHaveBeenCalledTimes(2);
+    expect(dispatchTick).toHaveBeenNthCalledWith(1, PROJECT_A);
+    expect(dispatchTick).toHaveBeenNthCalledWith(2, PROJECT_A);
   });
 });

@@ -9,6 +9,7 @@ import {
   issues,
 } from '../../db/schema.js';
 import { applyStatusTransition } from '../../issues/apply-transition.js';
+import { dispatchTickForProject } from '../../jobs/dispatch-tick.js';
 import {
   AttachmentError,
   type DecodedAttachment,
@@ -407,6 +408,13 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
               before: { manualHold: manualHoldChange.before },
               after: { manualHold: manualHoldChange.after },
             });
+            // ISS-133 — clearing manualHold must wake the dispatcher so jobs
+            // gated on `manual_hold` get re-evaluated within a second instead
+            // of waiting up to 60s for the pg-boss backstop (during which the
+            // queued-watchdog can kill them).
+            if (manualHoldChange.before === true && manualHoldChange.after === false) {
+              void dispatchTickForProject(issue.projectId);
+            }
           }
         }
 
