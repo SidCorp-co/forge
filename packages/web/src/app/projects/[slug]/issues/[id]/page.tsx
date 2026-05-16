@@ -34,6 +34,8 @@ import { MetadataCard } from '@/components/issue/aside/metadata-card';
 import { PipelineCard } from '@/components/issue/aside/pipeline-card';
 import { LinkedCard } from '@/components/issue/aside/linked-card';
 import { AgentSessionPanel } from '@/components/chat/agent-session-panel';
+import { AgentSessionDrawer } from '@/components/chat/agent-session-drawer';
+import { useUserPref } from '@/features/me/hooks/use-user-prefs';
 import type { Issue } from '@forge/contracts';
 import type { IssuePatchInput } from '@forge/contracts';
 import type { IssueStatus } from '@/features/issue/types';
@@ -90,6 +92,7 @@ export default function IssueDetailPage() {
   const searchParams = useSearchParams();
   const sessionParam = searchParams.get('session');
   const isDisplayId = DISPLAY_ID_RE.test(id);
+  const [pinned, setPinned] = useUserPref('agentDrawerPinned');
 
   const projectsQuery = useProjects();
   const project = useProjectBySlug(isDisplayId ? slug : undefined);
@@ -215,18 +218,20 @@ export default function IssueDetailPage() {
   const issueId = issue.id;
   const transitionError = transitionIssue.error;
   const patchError = patchIssue.error;
-  const splitOpen = !!sessionParam;
+  const hasSession = !!sessionParam;
+  const showSplit = hasSession && pinned;
+  const showDrawer = hasSession && !pinned;
 
   return (
     <div className="relative">
       <div
         className={
-          splitOpen
+          showSplit
             ? 'mx-auto w-full max-w-7xl px-4 py-8 sm:px-8 lg:grid lg:grid-cols-[minmax(0,1fr)_420px] lg:gap-6'
             : 'mx-auto w-full max-w-7xl px-4 py-8 sm:px-8'
         }
       >
-        <div className={splitOpen ? 'min-w-0' : ''}>
+        <div className={showSplit ? 'min-w-0' : ''}>
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
             <main className="min-w-0 space-y-6">
               <Breadcrumb slug={slug} displayId={issue.displayId} />
@@ -293,14 +298,26 @@ export default function IssueDetailPage() {
           </div>
         </div>
 
-        {splitOpen && sessionParam && (
+        {showSplit && sessionParam && (
           <SessionSplitPane
             sessionId={sessionParam}
             projectSlug={slug}
+            pinned
+            onTogglePin={() => setPinned(false)}
             onClose={() => setSessionId(null)}
           />
         )}
       </div>
+
+      {showDrawer && sessionParam && (
+        <AgentSessionDrawer
+          sessionId={sessionParam}
+          projectSlug={slug}
+          onTogglePin={() => setPinned(true)}
+          onClose={() => setSessionId(null)}
+        />
+      )}
+
       <ToastContainer toasts={toasts} />
     </div>
   );
@@ -615,10 +632,14 @@ function FilesPanel({
 function SessionSplitPane({
   sessionId,
   projectSlug,
+  pinned,
+  onTogglePin,
   onClose,
 }: {
   sessionId: string;
   projectSlug: string;
+  pinned: boolean;
+  onTogglePin: () => void;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -629,6 +650,8 @@ function SessionSplitPane({
           sessionId={sessionId}
           projectSlug={projectSlug}
           onClose={onClose}
+          pinned={pinned}
+          onTogglePin={onTogglePin}
           onOpenFull={() => router.push(`/projects/${projectSlug}/agent?session=${sessionId}`)}
         />
       </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useCallback, useState } from 'react';
-import { X, ExternalLink, MoreVertical, GitBranch, RotateCcw } from 'lucide-react';
+import { X, ExternalLink, MoreVertical, GitBranch, RotateCcw, Pin, PinOff } from 'lucide-react';
 import { ChatMessages } from './chat-messages';
 import { ChatInput } from './chat-input';
 import { ContextUsageBar } from './context-usage-bar';
@@ -15,9 +15,18 @@ interface AgentSessionPanelProps {
   projectSlug: string;
   onClose: () => void;
   onOpenFull?: () => void;
+  pinned?: boolean;
+  onTogglePin?: () => void;
 }
 
-export function AgentSessionPanel({ sessionId: targetSessionId, projectSlug, onClose, onOpenFull }: AgentSessionPanelProps) {
+export function AgentSessionPanel({
+  sessionId: targetSessionId,
+  projectSlug,
+  onClose,
+  onOpenFull,
+  pinned,
+  onTogglePin,
+}: AgentSessionPanelProps) {
   const {
     messages,
     isRunning,
@@ -140,6 +149,17 @@ export function AgentSessionPanel({ sessionId: targetSessionId, projectSlug, onC
                 </div>
               )}
             </>
+          )}
+          {onTogglePin && (
+            <button
+              onClick={onTogglePin}
+              className="rounded p-1.5 text-on-surface-variant hover:text-on-surface-variant"
+              title={pinned ? 'Unpin — collapse back to peek drawer' : 'Pin — switch to side-by-side split'}
+              aria-pressed={pinned ?? false}
+              aria-label={pinned ? 'Unpin agent session' : 'Pin agent session'}
+            >
+              {pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+            </button>
           )}
           {onOpenFull && (
             <button
