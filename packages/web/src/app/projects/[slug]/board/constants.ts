@@ -45,7 +45,6 @@ export const DEFAULT_VISIBLE: Record<IssueStatus, boolean> = {
   reopen: true,
   on_hold: true,
   needs_info: true,
-  pipeline_failed: true,
 };
 
 export const BOARD_VIEW_OPTIONS: { value: 'issues' | 'tasks'; label: string }[] = [

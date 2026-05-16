@@ -13,7 +13,7 @@ import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 
 /** Issue statuses that close out the pipeline_run (mirror of transition.ts). */
-const TERMINAL_RUN_STATUSES = new Set<IssueStatus>(['released', 'closed', 'pipeline_failed']);
+const TERMINAL_RUN_STATUSES = new Set<IssueStatus>(['released', 'closed']);
 
 export type DeviceLite = { id: string; ownerId: string };
 
@@ -90,8 +90,7 @@ export async function applyStatusTransition(
   // transitions before any job is queued).
   await setCurrentStepForOpenIssueRun(issue.id, toStatus);
   if (TERMINAL_RUN_STATUSES.has(toStatus)) {
-    const outcome = toStatus === 'pipeline_failed' ? 'failed' : 'completed';
-    await closeOpenRunForIssue(issue.id, outcome);
+    await closeOpenRunForIssue(issue.id, 'completed');
   }
 
   await hooks.emit('transition', {

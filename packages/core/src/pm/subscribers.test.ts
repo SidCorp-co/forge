@@ -55,24 +55,6 @@ describe('registerPmSubscribers', () => {
     expect(spawnMock).not.toHaveBeenCalled();
   });
 
-  it('transition to pipeline_failed spawns cause=pipeline-stalled', async () => {
-    const bus = new HooksBus();
-    registerPmSubscribers(bus);
-    await bus.emit('transition', {
-      issueId: 'i-1',
-      projectId: 'p-1',
-      actor: { kind: 'user', id: 'u-1' } as never,
-      from: 'in_progress',
-      to: 'pipeline_failed',
-      reopenCount: 0,
-    });
-    expect(spawnMock).toHaveBeenCalledWith({
-      projectId: 'p-1',
-      cause: 'pipeline-stalled',
-      eventRef: { issueId: 'i-1', from: 'in_progress', to: 'pipeline_failed' },
-    });
-  });
-
   it('transition to needs_info spawns cause=needs-info', async () => {
     const bus = new HooksBus();
     registerPmSubscribers(bus);

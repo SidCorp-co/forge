@@ -105,7 +105,6 @@ const STATUS_COLOR: Record<string, string> = {
   reopen: 'bg-amber-500',
   on_hold: 'bg-amber-500',
   needs_info: 'bg-amber-500',
-  pipeline_failed: 'bg-error',
 };
 
 function StatusDot({ status }: { status: string }) {

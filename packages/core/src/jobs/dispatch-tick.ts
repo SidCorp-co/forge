@@ -3,7 +3,7 @@
  *
  * Triggers (each fires `dispatchTickForProject(projectId)` fire-and-forget):
  *   - job complete / fail / cancel
- *   - issue terminal transition (released/closed/pipeline_failed) — also ticks
+ *   - issue terminal transition (released/closed) — also ticks
  *     child projects when a cross-project blocking edge unblocks
  *   - runner online flip
  *   - 60s pg-boss backstop sweep

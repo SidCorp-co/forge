@@ -24,13 +24,6 @@ export const transitions: Record<IssueStatus, readonly IssueStatus[]> = {
   reopen: ['developed', 'deploying', 'in_progress', 'on_hold'],
   on_hold: issueStatuses.filter((s) => s !== 'on_hold'),
   needs_info: ['open', 'confirmed', 'on_hold'],
-  // pipeline_failed is set by the self-healing sweeper when a recovery
-  // budget is exhausted or a permanent failure is classified. From here
-  // the only forward paths are: human re-triages back to `confirmed` (the
-  // sweeper itself does this once per recovery window when the window
-  // expires, giving the issue a fresh chance), `closed` (drop), or
-  // `on_hold` (pause). It is NOT auto-progressed by the orchestrator.
-  pipeline_failed: ['confirmed', 'closed', 'on_hold'],
 };
 
 export function getAllowedTransitions(from: IssueStatus): readonly IssueStatus[] {

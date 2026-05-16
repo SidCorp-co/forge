@@ -28,7 +28,6 @@ export const REGISTRY_ISSUE_STATUSES = [
   'reopen',
   'on_hold',
   'needs_info',
-  'pipeline_failed',
 ] as const;
 
 export const REGISTRY_JOB_TYPES = [

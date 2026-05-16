@@ -8,8 +8,11 @@ import { spawnPmSession } from './spawner.js';
  *  - `jobFailed` → spawn with `cause='job-failed'`. PM-on-PM failures route
  *    to the three-strikes auto-disable guard instead, never to a new spawn
  *    (would loop on a misbehaving PM model).
- *  - `transition` → filter to `pipeline_failed` / `needs_info` and spawn
- *    with the matching cause.
+ *  - `transition` → filter to `needs_info` and spawn with that cause.
+ *    (`pipeline_failed` was the old recovery-exhausted signal; the new
+ *    failure model blocks via manualHold without mutating status, so this
+ *    branch is gone. A `pipelineBlocked` hook may be added in a follow-up
+ *    if PM should auto-engage on operator-blocked issues.)
  *  - `dependencyChanged` → spawn with `cause='graph-changed'`.
  *
  * Note: `jobCompleted` is intentionally NOT subscribed in v1. The payload
@@ -35,13 +38,7 @@ export function registerPmSubscribers(bus: HooksBus): void {
   });
 
   bus.on('transition', async (p) => {
-    if (p.to === 'pipeline_failed') {
-      await spawnPmSession({
-        projectId: p.projectId,
-        cause: 'pipeline-stalled',
-        eventRef: { issueId: p.issueId, from: p.from, to: p.to },
-      });
-    } else if (p.to === 'needs_info') {
+    if (p.to === 'needs_info') {
       await spawnPmSession({
         projectId: p.projectId,
         cause: 'needs-info',

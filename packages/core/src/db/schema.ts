@@ -601,12 +601,6 @@ export const issueStatuses = [
   'reopen',
   'on_hold',
   'needs_info',
-  // Pipeline self-healing (Phase H, ISS-306). Set by the sweeper when an
-  // issue exhausts its recovery budget OR hits a permanent failure (content
-  // filter, auth, validation). Distinguishes "agent gave up" from
-  // `needs_info` ("agent asked the human a question") so dashboards,
-  // reporting, and notification routing can treat the two cases separately.
-  'pipeline_failed',
 ] as const;
 export type IssueStatus = (typeof issueStatuses)[number];
 
@@ -1601,7 +1595,7 @@ export const retrievalAnalyticsRelations = relations(retrievalAnalytics, ({ one 
 //
 // Dispatcher convention (ISS-40 PR-E Layer 2): only rows with `kind='blocks'`
 // gate dispatch. An edge `(from=A, to=B, kind='blocks')` means **A must
-// reach a terminal status (`released`/`closed`/`pipeline_failed`) before B
+// reach a terminal status (`released`/`closed`) before B
 // can dispatch**. Other kinds (`relates`, `duplicates`, `parent`) are PM/UX
 // metadata only and do not affect dispatch. Cross-project edges are allowed.
 // The `decomposes` kind (epic→child) engages a separate decomposition

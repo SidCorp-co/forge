@@ -25,7 +25,6 @@ const STATUS_TO_LABEL: Record<string, string> = {
   tested: 'Release',
   reopen: 'Fix Issue',
   needs_info: 'Clarify',
-  pipeline_failed: 'Retry',
 };
 
 const TERMINAL_STATUSES = new Set(['released', 'closed', 'staging', 'pass']);

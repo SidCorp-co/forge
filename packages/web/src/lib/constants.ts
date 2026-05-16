@@ -19,10 +19,6 @@ export const STATUS_COLORS: Record<IssueStatus, string> = {
   reopen: 'bg-red-500/15 text-red-400',
   on_hold: 'bg-stone-500/20 text-stone-400',
   needs_info: 'bg-pink-500/15 text-pink-400',
-  // ISS-306 self-healing: distinct from `needs_info` (agent asked the
-  // human a question) so dashboards/notifications can route the two
-  // cases separately.
-  pipeline_failed: 'bg-rose-500/20 text-rose-300 font-medium',
 };
 
 export const PRIORITY_COLORS: Record<IssuePriority, string> = {

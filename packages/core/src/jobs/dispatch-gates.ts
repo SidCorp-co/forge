@@ -46,7 +46,7 @@ export type GateResult =
 const PASS: GateResult = { pass: true };
 
 /** Issue statuses considered "done" for Layer 2 dependency satisfaction. */
-const TERMINAL_ISSUE_STATUSES = ['released', 'closed', 'pipeline_failed'] as const;
+const TERMINAL_ISSUE_STATUSES = ['released', 'closed'] as const;
 
 /** Default per-project cap when `agent_config.pipelineConfig.maxConcurrentIssues` is unset. */
 export const DEFAULT_MAX_CONCURRENT_ISSUES = 3;
@@ -357,7 +357,7 @@ export async function pickNextDispatchableJobForProject(
         WHERE d.to_issue_id = j.issue_id
           AND d.kind = 'blocks'
           AND (d.valid_until IS NULL OR d.valid_until > now())
-          AND p.status NOT IN ('released','closed','pipeline_failed')
+          AND p.status NOT IN ('released','closed')
       )
       AND NOT (
         j.type = 'release'

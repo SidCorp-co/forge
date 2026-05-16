@@ -35,7 +35,7 @@ const inputSchema = z
 export const forgePmSetDependencyTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_pm.set_dependency',
   description:
-    "Record a dependency edge (blocks/relates/duplicates/parent/decomposes) between two issues in the same project. Idempotent on (projectId, fromIssueId, toIssueId, kind) — duplicate calls return the existing row with created:false. Caller must be a member of the project. Dispatcher convention (ISS-40 PR-E): only `kind='blocks'` rows gate dispatch — `(from=A, to=B, kind='blocks')` means A must reach a terminal status (released/closed/pipeline_failed) before B can dispatch. For `blocks` edges, cycles are rejected with a CYCLE_DETECTED error.",
+    "Record a dependency edge (blocks/relates/duplicates/parent/decomposes) between two issues in the same project. Idempotent on (projectId, fromIssueId, toIssueId, kind) — duplicate calls return the existing row with created:false. Caller must be a member of the project. Dispatcher convention (ISS-40 PR-E): only `kind='blocks'` rows gate dispatch — `(from=A, to=B, kind='blocks')` means A must reach a terminal status (released/closed) before B can dispatch. For `blocks` edges, cycles are rejected with a CYCLE_DETECTED error.",
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);

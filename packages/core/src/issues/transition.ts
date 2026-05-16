@@ -45,11 +45,7 @@ const forbidden = (message: string, code = 'FORBIDDEN') =>
   new HTTPException(403, { message, cause: { code } });
 
 /** Issue statuses that satisfy a `kind='blocks'` dependency edge (Layer 2). */
-export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>([
-  'released',
-  'closed',
-  'pipeline_failed',
-]);
+export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(['released', 'closed']);
 
 /**
  * Inline `issue.statusChanged` WS publish. Shared by the single-issue
@@ -299,9 +295,7 @@ transitionRoutes.post(
     // children via Layer 2. Tick this project, plus every distinct child
     // project for cross-project blocking edges.
     if (TERMINAL_FOR_DISPATCH.has(toStatus)) {
-      const outcome =
-        toStatus === 'pipeline_failed' ? ('failed' as const) : ('completed' as const);
-      await closeOpenRunForIssue(issue.id, outcome);
+      await closeOpenRunForIssue(issue.id, 'completed');
       await triggerTerminalDispatch([
         {
           issueId: issue.id,

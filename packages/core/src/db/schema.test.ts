@@ -713,7 +713,6 @@ describe('db/schema — issues', () => {
       'reopen',
       'on_hold',
       'needs_info',
-      'pipeline_failed',
     ]);
     expect(issuePriorities).toEqual(['critical', 'high', 'medium', 'low', 'none']);
   });
