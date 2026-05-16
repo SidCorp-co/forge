@@ -4,6 +4,10 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import {
+  type IssueBranchOverride,
+  resolveIssueBranches,
+} from '../branches/resolve.js';
 import { db } from '../db/client.js';
 import {
   devices,
@@ -630,6 +634,80 @@ projectRoutes.patch(
       : ['claude-code'];
 
     return c.json({ pipelineConfig, runnerFallback: respRunnerFallback });
+  },
+);
+
+// ─── Branch config (ISS-135 PR-A) ───────────────────────────────────────────
+//
+// Resolved branch config for one issue. Layers per-issue override (currently
+// read from `issues.sessionContext.branchConfig` — PR-C will add a dedicated
+// `issues.metadata` column) on top of the project defaults. The endpoint
+// returns the *resolved* shape only; the override source is an internal
+// detail callers should not depend on.
+
+const branchConfigParamSchema = z.object({
+  id: z.uuid(),
+  issueId: z.uuid(),
+});
+
+projectRoutes.get(
+  '/:id/issues/:issueId/branch-config',
+  zValidator('param', branchConfigParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { id, issueId } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const { role } = await loadMembership(id, userId);
+    if (!role) throw forbidden('not a project member');
+
+    const [project] = await db
+      .select({
+        baseBranch: projects.baseBranch,
+        productionBranch: projects.productionBranch,
+      })
+      .from(projects)
+      .where(eq(projects.id, id))
+      .limit(1);
+    if (!project) throw notFound();
+
+    const [issueRow] = await db
+      .select({
+        id: issues.id,
+        sessionContext: issues.sessionContext,
+      })
+      .from(issues)
+      .where(and(eq(issues.id, issueId), eq(issues.projectId, id)))
+      .limit(1);
+    if (!issueRow) {
+      throw new HTTPException(404, {
+        message: 'issue not found',
+        cause: { code: 'NOT_FOUND' },
+      });
+    }
+
+    // PR-C will add a real `issues.metadata` jsonb column. Until then accept
+    // either shape; sessionContext.branchConfig is the forward-compat probe.
+    const issueLike = issueRow as {
+      metadata?: { branchConfig?: IssueBranchOverride | null } | null;
+      sessionContext: unknown;
+    };
+    const metadataOverride =
+      (issueLike.metadata as { branchConfig?: IssueBranchOverride | null } | null)?.branchConfig ??
+      null;
+    const sessionContextOverride =
+      (issueLike.sessionContext as { branchConfig?: IssueBranchOverride | null } | null)
+        ?.branchConfig ?? null;
+    const branchConfigOverride: IssueBranchOverride | null =
+      metadataOverride ?? sessionContextOverride;
+
+    const resolved = resolveIssueBranches(
+      { metadata: { branchConfig: branchConfigOverride } },
+      project,
+    );
+
+    return c.json(resolved);
   },
 );
 
