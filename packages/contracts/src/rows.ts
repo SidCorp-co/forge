@@ -21,8 +21,19 @@ export type Label = typeof schema.labels.$inferSelect;
 
 // Core serializes issues with a `displayId: "ISS-N"` added on top of the
 // stored row (see `packages/core/src/issues/routes.ts:serializeIssue`).
+// `agentSessions` / `agentStatus` are populated only when the caller opts in
+// with `?withAgentSessions=1` (see ISS-128).
 export type Issue = typeof schema.issues.$inferSelect & {
   displayId: string;
+  agentSessions?: Array<{
+    id: string;
+    status: string;
+    metadata: Record<string, unknown> | null;
+    createdAt: Date | string;
+    updatedAt: Date | string;
+    title: string | null;
+  }>;
+  agentStatus?: 'running' | 'queued' | 'completed' | 'failed' | null;
 };
 
 export type Comment = typeof schema.comments.$inferSelect;

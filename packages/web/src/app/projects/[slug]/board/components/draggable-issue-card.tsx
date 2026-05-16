@@ -1,7 +1,8 @@
 'use client';
 
 import { cn } from '@/lib/utils/cn';
-import { AgentStatusIndicator, PriorityBadge } from '@/components/ui';
+import { PriorityBadge } from '@/components/ui';
+import { AgentQueueBadge, pickActiveSession } from '@/components/issue/agent-queue-badge';
 import { DRAGGABLE_CARD_CLASS } from '../constants';
 import type { Issue } from '@/features/issue/types';
 
@@ -29,7 +30,10 @@ export function DraggableIssueCard({ issue, onSelect, highlight }: DraggableIssu
       )}
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm font-medium leading-tight">{issue.title}</p>
-        <AgentStatusIndicator status={issue.agentStatus} />
+        <AgentQueueBadge
+          session={pickActiveSession(issue.agentSessions)}
+          agentStatus={issue.agentStatus}
+        />
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {issue.priority && issue.priority !== 'none' && (

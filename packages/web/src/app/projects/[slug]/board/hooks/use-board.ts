@@ -43,6 +43,7 @@ export function useBoard() {
     projectId: projectId ?? '',
     status: visibleStatuses,
     limit: 200,
+    withAgentSessions: true,
   });
 
   const issues: Issue[] = data?.items ?? [];

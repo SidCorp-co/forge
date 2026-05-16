@@ -67,6 +67,7 @@ export function useIssuesPage() {
     sort: SORT_TO_API[sortBy],
     limit: PAGE_SIZE,
     offset: (currentPage - 1) * PAGE_SIZE,
+    withAgentSessions: true,
   });
 
   const rawIssues: Issue[] = paginatedData?.items ?? [];

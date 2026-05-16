@@ -21,6 +21,7 @@ export interface IssueListParams {
   assigneeId?: string;
   category?: string;
   sort?: IssueSort;
+  withAgentSessions?: boolean;
 }
 
 export interface IssueSearchParams {
@@ -34,6 +35,7 @@ export interface IssueSearchParams {
   sort?: IssueSort;
   limit?: number;
   offset?: number;
+  withAgentSessions?: boolean;
 }
 
 export interface IssueDetailResponse extends Issue {
@@ -58,6 +60,7 @@ function buildListQs(p: Omit<IssueListParams, 'projectId'>): string {
   if (p.assigneeId) qs.set('assigneeId', p.assigneeId);
   if (p.category && p.category !== 'all') qs.set('category', p.category);
   if (p.sort) qs.set('sort', p.sort);
+  if (p.withAgentSessions) qs.set('withAgentSessions', '1');
   return qs.toString();
 }
 
@@ -72,6 +75,7 @@ function buildSearchQs(q: Omit<IssueSearchParams, 'projectId'>): string {
   if (q.sort) qs.set('sort', q.sort);
   qs.set('limit', String(q.limit ?? 50));
   qs.set('offset', String(q.offset ?? 0));
+  if (q.withAgentSessions) qs.set('withAgentSessions', '1');
   return qs.toString();
 }
 
