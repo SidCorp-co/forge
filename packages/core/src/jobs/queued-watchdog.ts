@@ -18,8 +18,8 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { setManualHoldBlock } from '../pipeline/manual-hold.js';
 import { boss } from '../queue/boss.js';
-import { scheduleRetry } from './retry.js';
 
 export const QUEUED_WATCHDOG_QUEUE = 'job-queued-watchdog';
 
@@ -45,7 +45,7 @@ const PROJECT_ACTIVITY_FRESH_SECONDS = 60;
 
 export interface QueuedSweepResult {
   markedFailed: number;
-  retriesScheduled: number;
+  blocked: number;
   durationMs: number;
 }
 
@@ -78,29 +78,49 @@ export async function runQueuedSweep(): Promise<QueuedSweepResult> {
     RETURNING *
   `)) as unknown as Array<typeof jobs.$inferSelect>;
 
-  let retriesScheduled = 0;
+  let blocked = 0;
   for (const row of stuck) {
+    if (!row.issueId) {
+      // PM / non-issue jobs: no operator-facing decision point. Logged
+      // failure on the job row is the only signal; PM coordinator decides
+      // how to react via its own subscriber.
+      continue;
+    }
     try {
-      const outcome = await scheduleRetry(row, 'queued-watchdog: no dispatcher attention');
-      if (outcome.scheduled) retriesScheduled += 1;
+      await setManualHoldBlock({
+        issueId: row.issueId,
+        context: {
+          step: row.type,
+          trigger: 'watchdog_kill',
+          classification: {
+            kind: 'unknown',
+            reason: 'queued without dispatcher attention (pg-boss desync or dispatcher hung)',
+            evidence: { jobId: row.id, sessionId: row.agentSessionId },
+          },
+          attempts: row.attempts,
+          lastFailureAt: new Date().toISOString(),
+          suggestedActions: ['resume', 'skip-step', 'close'],
+        },
+      });
+      blocked += 1;
     } catch (err) {
       logger.error(
-        { err, jobId: row.id },
-        'queued-watchdog: scheduleRetry threw, leaving job failed without retry',
+        { err, jobId: row.id, issueId: row.issueId },
+        'queued-watchdog: setManualHoldBlock threw, job stays failed without operator surface',
       );
     }
   }
 
   if (stuck.length > 0) {
     logger.warn(
-      { markedFailed: stuck.length, retriesScheduled },
+      { markedFailed: stuck.length, blocked },
       'queued-watchdog: swept stale queued jobs',
     );
   }
 
   return {
     markedFailed: stuck.length,
-    retriesScheduled,
+    blocked,
     durationMs: Date.now() - t0,
   };
 }

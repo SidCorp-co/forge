@@ -418,7 +418,6 @@ export const jobs = pgTable(
     error: text('error'),
     modelTier: text('model_tier', { enum: modelTiers }),
     attempts: integer('attempts').notNull().default(1),
-    maxAttempts: integer('max_attempts').notNull().default(3),
     cancellationRequested: boolean('cancellation_requested').notNull().default(false),
     retryOf: uuid('retry_of').references((): AnyPgColumn => jobs.id, { onDelete: 'set null' }),
     // Dispatcher gate state. Set when dispatcher attempts to dispatch the job
@@ -673,15 +672,6 @@ export const issues = pgTable(
     aiSuggestedSolution: text('ai_suggested_solution'),
     aiAcceptanceCriteria: jsonb('ai_acceptance_criteria').$type<string[]>(),
     aiConfidence: real('ai_confidence'),
-    // Pipeline self-healing (Phase H, ISS-306). The sweeper increments
-    // recoveryAttempts every time it re-fires the orchestrator for this
-    // issue. lastRecoveryAt anchors the sliding window; once
-    // (now - recoveryWindowStartedAt) exceeds the project's configured
-    // window (default 24h) the counter auto-resets so a one-off bad day
-    // doesn't condemn an issue forever.
-    recoveryAttempts: integer('recovery_attempts').notNull().default(0),
-    lastRecoveryAt: timestamp('last_recovery_at', { withTimezone: true }),
-    recoveryWindowStartedAt: timestamp('recovery_window_started_at', { withTimezone: true }),
     // manualHold-block model. Populated by setManualHoldBlock() when a job /
     // watchdog / dispatcher hits an unrecoverable failure point. Operator UI
     // reads this to render the failure card + suggested actions. Cleared
@@ -698,9 +688,6 @@ export const issues = pgTable(
     projectSourceExternalIdUq: uniqueIndex('issues_project_source_external_id_uq')
       .on(t.projectId, t.source, t.externalId)
       .where(sql`external_id IS NOT NULL`),
-    // Sweeper queries `WHERE status IN (...pipeline) ORDER BY last_recovery_at`
-    // to avoid revisiting the same recently-recovered issue every tick.
-    pipelineRecoveryIdx: index('issues_pipeline_recovery_idx').on(t.status, t.lastRecoveryAt),
     parentFk: foreignKey({
       columns: [t.parentIssueId],
       foreignColumns: [t.id],

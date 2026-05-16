@@ -1,10 +1,10 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { logger } from '../logger.js';
+import { setManualHoldBlock } from '../pipeline/manual-hold.js';
 import { boss } from '../queue/boss.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
-import { scheduleRetry } from './retry.js';
 
 export const STALE_DETECTOR_QUEUE = 'stale-job-detector';
 const STALE_THRESHOLD = "interval '5 minutes'";
@@ -13,34 +13,27 @@ type StaleJobRow = {
   id: string;
   project_id: string;
   attempts: number;
-  max_attempts: number;
   status: string;
-  payload: unknown;
   type: string;
-  created_by: string;
   issue_id: string | null;
-  device_id: string | null;
-  model_tier: string | null;
-  retry_of: string | null;
-  pipeline_run_id: string;
-  cancellation_requested: boolean;
-  queued_at: Date;
+  agent_session_id: string | null;
   dispatched_at: Date | null;
-  finished_at: Date | null;
-  exit_code: number | null;
-  error: string | null;
-  created_at: Date;
   [key: string]: unknown;
 };
 
+/**
+ * Find `running` jobs whose latest job_event is older than 5 minutes (or whose
+ * dispatched_at is, if no events). Mark them failed and surface the failure to
+ * the operator via setManualHoldBlock — running-with-no-progress is strong
+ * evidence the worker is wedged; auto-retry would just spawn another wedged
+ * worker against the same state.
+ */
 export async function runStaleSweep(): Promise<{
   failed: number;
-  retried: number;
+  blocked: number;
   durationMs: number;
 }> {
   const t0 = Date.now();
-  // Find running jobs whose latest signal (event ts or dispatchedAt) is older
-  // than the threshold. Signal is `GREATEST(dispatched_at, COALESCE(max event ts, dispatched_at))`.
   const stale = await db.execute<StaleJobRow>(
     sql.raw(`
     WITH last_event AS (
@@ -58,13 +51,18 @@ export async function runStaleSweep(): Promise<{
   );
 
   let failedCount = 0;
-  let retriedCount = 0;
+  let blockedCount = 0;
 
   for (const row of stale) {
     const updated = await db.execute<StaleJobRow>(
       sql.raw(`
       UPDATE jobs
-      SET status = 'failed', error = 'stale', finished_at = now()
+      SET status = 'failed',
+          error = 'stale',
+          finished_at = now(),
+          failure_kind = 'transient',
+          failure_reason = 'runner stale (no progress for >5min)',
+          classifier_version = 1
       WHERE id = '${row.id}' AND status = 'running'
       RETURNING *
     `),
@@ -78,48 +76,36 @@ export async function runStaleSweep(): Promise<{
       data: { jobId: updatedRow.id, status: 'failed', error: 'stale', reason: 'stale' },
     });
 
-    const retryOutcome = await scheduleRetry(
-      {
-        id: updatedRow.id,
-        projectId: updatedRow.project_id,
+    if (!updatedRow.issue_id) continue;
+    try {
+      await setManualHoldBlock({
         issueId: updatedRow.issue_id,
-        deviceId: updatedRow.device_id,
-        runnerId: null,
-        createdBy: updatedRow.created_by,
-        type: updatedRow.type as never,
-        payload: updatedRow.payload as never,
-        status: 'failed' as never,
-        queuedAt: updatedRow.queued_at,
-        dispatchedAt: updatedRow.dispatched_at,
-        finishedAt: updatedRow.finished_at,
-        gateReason: null,
-        gateAt: null,
-        gateMetadata: null,
-        exitCode: updatedRow.exit_code,
-        error: 'stale',
-        modelTier: updatedRow.model_tier as never,
-        attempts: updatedRow.attempts,
-        maxAttempts: updatedRow.max_attempts,
-        cancellationRequested: updatedRow.cancellation_requested,
-        retryOf: updatedRow.retry_of,
-        pipelineRunId: updatedRow.pipeline_run_id,
-        agentSessionId: null,
-        // ISS-306: stale-detector flagged failures are transient by definition
-        // (the runner went silent — almost always network / device crash, not
-        // a deterministic Anthropic policy block). The sweeper later reads
-        // this to decide whether to re-fire orchestrator vs. escalate.
-        failureKind: 'transient',
-        failureReason: 'runner stale (no progress for >5min)',
-        failureMeta: null,
-        classifierVersion: 1,
-        createdAt: updatedRow.created_at,
-      },
-      'stale',
-    );
-    if (retryOutcome.scheduled) retriedCount++;
+        context: {
+          step: updatedRow.type as never,
+          trigger: 'watchdog_kill',
+          classification: {
+            kind: 'unknown',
+            reason: 'runner stale (no progress for >5min)',
+            evidence: {
+              jobId: updatedRow.id,
+              sessionId: updatedRow.agent_session_id,
+            },
+          },
+          attempts: updatedRow.attempts,
+          lastFailureAt: new Date().toISOString(),
+          suggestedActions: ['resume', 'skip-step', 'close'],
+        },
+      });
+      blockedCount++;
+    } catch (err) {
+      logger.error(
+        { err, jobId: updatedRow.id, issueId: updatedRow.issue_id },
+        'stale-detector: setManualHoldBlock threw, job stays failed without operator surface',
+      );
+    }
   }
 
-  return { failed: failedCount, retried: retriedCount, durationMs: Date.now() - t0 };
+  return { failed: failedCount, blocked: blockedCount, durationMs: Date.now() - t0 };
 }
 
 let registered = false;

@@ -1,21 +1,20 @@
 /**
- * Admin pipeline-health surface (Phase H, ISS-306).
+ * Admin pipeline-health surface.
  *
  * GET /api/admin/pipeline/health
- *   Lists issues that the sweeper has touched recently — escalated to
- *   `pipeline_failed` OR currently mid-recovery (recovery_attempts > 0).
- *   Plus aggregate counts so the dashboard widget can render at-a-glance.
+ *   Lists issues currently blocked by the manualHold-block model
+ *   (`manual_hold = true AND failure_context IS NOT NULL`) plus aggregate
+ *   failure-kind breakdown for SRE dashboards.
  *
- * POST /api/admin/pipeline/recover/:issueId
- *   Manual override. Resets `recovery_attempts` + `recovery_window_started_at`
- *   to zero/now so the sweeper gives the issue a fresh budget on the next
- *   tick. Useful when the underlying upstream block (e.g. Anthropic
- *   content filter) is fixed and an admin wants to retry without waiting
- *   the 24h window.
+ * POST /api/admin/pipeline/clear-hold/:issueId
+ *   Admin override. Clears `manual_hold` + `failure_context` so the
+ *   dispatcher picks the issue up on the next sweep tick. Equivalent to
+ *   the per-issue "Resume" button on the operator UI — exposed here for
+ *   bulk recovery scripts and admin tooling.
  */
 
 import { zValidator } from '@hono/zod-validator';
-import { and, count, desc, eq, gt, inArray, sql } from 'drizzle-orm';
+import { and, count, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -36,7 +35,7 @@ export const pipelineHealthAdminRoutes = new Hono<{ Variables: AuthVars }>();
 pipelineHealthAdminRoutes.use('*', requireAuth(), assertEmailVerified(), requireAdmin());
 
 pipelineHealthAdminRoutes.get('/health', async (c) => {
-  const escalated = await db
+  const blocked = await db
     .select({
       id: issues.id,
       issSeq: issues.issSeq,
@@ -45,35 +44,14 @@ pipelineHealthAdminRoutes.get('/health', async (c) => {
       projectSlug: projects.slug,
       projectName: projects.name,
       status: issues.status,
-      recoveryAttempts: issues.recoveryAttempts,
-      lastRecoveryAt: issues.lastRecoveryAt,
-      recoveryWindowStartedAt: issues.recoveryWindowStartedAt,
+      manualHold: issues.manualHold,
+      failureContext: issues.failureContext,
       updatedAt: issues.updatedAt,
     })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(eq(issues.status, 'pipeline_failed'))
+    .where(and(eq(issues.manualHold, true), sql`${issues.failureContext} IS NOT NULL`))
     .orderBy(desc(issues.updatedAt))
-    .limit(100);
-
-  const recovering = await db
-    .select({
-      id: issues.id,
-      issSeq: issues.issSeq,
-      title: issues.title,
-      projectId: issues.projectId,
-      projectSlug: projects.slug,
-      projectName: projects.name,
-      status: issues.status,
-      recoveryAttempts: issues.recoveryAttempts,
-      lastRecoveryAt: issues.lastRecoveryAt,
-      recoveryWindowStartedAt: issues.recoveryWindowStartedAt,
-      updatedAt: issues.updatedAt,
-    })
-    .from(issues)
-    .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(and(gt(issues.recoveryAttempts, 0), eq(issues.status, 'confirmed' as never)))
-    .orderBy(desc(issues.lastRecoveryAt))
     .limit(100);
 
   // Latest failure breakdown per kind for the last 24h (signal for SRE).
@@ -92,8 +70,7 @@ pipelineHealthAdminRoutes.get('/health', async (c) => {
     .groupBy(jobs.failureKind);
 
   return c.json({
-    escalated,
-    recovering,
+    blocked,
     failureBreakdown: failureBreakdown.map((r) => ({
       kind: r.failureKind ?? 'unclassified',
       count: Number(r.count),
@@ -102,7 +79,7 @@ pipelineHealthAdminRoutes.get('/health', async (c) => {
 });
 
 pipelineHealthAdminRoutes.post(
-  '/recover/:issueId',
+  '/clear-hold/:issueId',
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -112,20 +89,15 @@ pipelineHealthAdminRoutes.post(
     const [updated] = await db
       .update(issues)
       .set({
-        recoveryAttempts: 0,
-        lastRecoveryAt: null,
-        recoveryWindowStartedAt: null,
-        // If currently pipeline_failed, drop back to confirmed so the
-        // orchestrator picks the issue up on the next sweep tick. The
-        // human triggering this endpoint is signalling "yes, try again".
-        status: sql`CASE WHEN status = 'pipeline_failed' THEN 'confirmed' ELSE status END`,
+        manualHold: false,
+        failureContext: null,
         updatedAt: new Date(),
       })
       .where(eq(issues.id, issueId))
       .returning({
         id: issues.id,
         status: issues.status,
-        recoveryAttempts: issues.recoveryAttempts,
+        manualHold: issues.manualHold,
       });
 
     if (!updated) throw notFound();
@@ -133,12 +105,8 @@ pipelineHealthAdminRoutes.post(
     return c.json({
       issueId: updated.id,
       status: updated.status,
-      recoveryAttempts: updated.recoveryAttempts,
+      manualHold: updated.manualHold,
       ok: true,
     });
   },
 );
-
-// Re-export so import sites don't need to know which router holds it. inArray
-// is referenced indirectly via Drizzle's tagged-template SQL above.
-void inArray;

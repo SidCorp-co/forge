@@ -57,7 +57,13 @@ vi.mock('../db/client.js', () => ({
 
 const scheduleRetryMock = vi.fn(async () => ({ scheduled: false }));
 vi.mock('./retry.js', () => ({
-  scheduleRetry: (...args: unknown[]) => scheduleRetryMock(...(args as [])),
+  scheduleAutoRetryOnce: (...args: unknown[]) => scheduleRetryMock(...(args as [])),
+}));
+
+const setManualHoldBlockMock = vi.fn(async () => undefined);
+vi.mock('../pipeline/manual-hold.js', () => ({
+  setManualHoldBlock: (...args: unknown[]) =>
+    setManualHoldBlockMock(...(args as [never])),
 }));
 
 const publishMock = vi.fn(() => 0);

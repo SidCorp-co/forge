@@ -6,9 +6,9 @@ vi.mock('../db/client.js', () => ({
   db: { execute: dbExecute },
 }));
 
-const scheduleRetry = vi.fn(async () => ({ scheduled: true, newJobId: 'retry-id' }));
-vi.mock('./retry.js', () => ({
-  scheduleRetry: (...args: unknown[]) => scheduleRetry(...(args as [never, never])),
+const setManualHoldBlock = vi.fn(async () => undefined);
+vi.mock('../pipeline/manual-hold.js', () => ({
+  setManualHoldBlock: (...args: unknown[]) => setManualHoldBlock(...(args as [never])),
 }));
 
 vi.mock('../logger.js', () => ({
@@ -48,79 +48,71 @@ describe('runQueuedSweep', () => {
     const r = await runQueuedSweep();
     expect(r).toEqual({
       markedFailed: 0,
-      retriesScheduled: 0,
+      blocked: 0,
       durationMs: expect.any(Number),
     });
-    expect(scheduleRetry).not.toHaveBeenCalled();
+    expect(setManualHoldBlock).not.toHaveBeenCalled();
   });
 
   it('marks stale-queued jobs failed with transient classification', async () => {
     dbExecute.mockResolvedValueOnce([
-      { id: 'j1', status: 'failed', error: 'queued > 600s', attempts: 1, maxAttempts: 3 },
+      { id: 'j1', issueId: null, type: 'code', attempts: 1 },
     ]);
     const r = await runQueuedSweep();
     expect(r.markedFailed).toBe(1);
     const text = lastSqlText();
-    expect(text).toContain('queued');
     expect(text).toContain('failure_kind');
     expect(text).toContain('transient');
   });
 
-  it('schedules a retry per stale job and counts the successes', async () => {
+  it('blocks each stale job with an issue via setManualHoldBlock', async () => {
     dbExecute.mockResolvedValueOnce([
-      { id: 'j1', attempts: 1, maxAttempts: 3 },
-      { id: 'j2', attempts: 1, maxAttempts: 3 },
+      { id: 'j1', issueId: 'i1', type: 'code', attempts: 1, agentSessionId: null },
+      { id: 'j2', issueId: 'i2', type: 'plan', attempts: 1, agentSessionId: null },
     ]);
     const r = await runQueuedSweep();
     expect(r.markedFailed).toBe(2);
-    expect(r.retriesScheduled).toBe(2);
-    expect(scheduleRetry).toHaveBeenCalledTimes(2);
+    expect(r.blocked).toBe(2);
+    expect(setManualHoldBlock).toHaveBeenCalledTimes(2);
+    const firstCall = setManualHoldBlock.mock.calls[0]?.[0] as {
+      issueId: string;
+      context: { trigger: string; step: string };
+    } | undefined;
+    expect(firstCall?.issueId).toBe('i1');
+    expect(firstCall?.context.trigger).toBe('watchdog_kill');
+    expect(firstCall?.context.step).toBe('code');
   });
 
-  it('does not crash when scheduleRetry throws — leaves the row failed', async () => {
+  it('skips block when job has no issueId (PM / non-issue job)', async () => {
     dbExecute.mockResolvedValueOnce([
-      { id: 'j1', attempts: 1, maxAttempts: 3 },
-      { id: 'j2', attempts: 1, maxAttempts: 3 },
+      { id: 'pm1', issueId: null, type: 'pm', attempts: 1, agentSessionId: null },
     ]);
-    scheduleRetry.mockRejectedValueOnce(new Error('boss down')).mockResolvedValueOnce({
-      scheduled: true,
-      newJobId: 'r2',
-    });
+    const r = await runQueuedSweep();
+    expect(r.markedFailed).toBe(1);
+    expect(r.blocked).toBe(0);
+    expect(setManualHoldBlock).not.toHaveBeenCalled();
+  });
+
+  it('continues sweeping when setManualHoldBlock throws on one row', async () => {
+    dbExecute.mockResolvedValueOnce([
+      { id: 'j1', issueId: 'i1', type: 'code', attempts: 1, agentSessionId: null },
+      { id: 'j2', issueId: 'i2', type: 'plan', attempts: 1, agentSessionId: null },
+    ]);
+    setManualHoldBlock
+      .mockRejectedValueOnce(new Error('db down'))
+      .mockResolvedValueOnce(undefined);
     const r = await runQueuedSweep();
     expect(r.markedFailed).toBe(2);
-    expect(r.retriesScheduled).toBe(1);
+    expect(r.blocked).toBe(1);
   });
 
-  it('UPDATE filter skips jobs with a fresh gate_at signal', async () => {
+  it('UPDATE filter excludes jobs with fresh gate_at + project activity', async () => {
     dbExecute.mockResolvedValueOnce([]);
     await runQueuedSweep();
     const text = lastSqlText();
     expect(text).toContain('gate_at');
     expect(text).toContain('NOT EXISTS');
-    // Project-activity subquery joins agent_sessions on heartbeat freshness.
     expect(text).toContain('agent_sessions');
     expect(text).toContain('last_heartbeat_at');
-  });
-
-  it('does not sweep jobs that the dispatcher recently gated', async () => {
-    // The SQL filter excludes them via `gate_at > now - 5min`, so db.execute
-    // returns nothing.
-    dbExecute.mockResolvedValueOnce([]);
-    const r = await runQueuedSweep();
-    expect(r.markedFailed).toBe(0);
-    expect(r.retriesScheduled).toBe(0);
-    expect(scheduleRetry).not.toHaveBeenCalled();
-  });
-
-  it('sweeps jobs with stale gate_at AND no project activity', async () => {
-    // Jobs with NULL gate_reason OR gate_at older than freshness window AND
-    // no other project session heartbeating → pg-boss desync, kill + retry.
-    dbExecute.mockResolvedValueOnce([
-      { id: 'j1', attempts: 1, maxAttempts: 3, agentSessionId: null },
-    ]);
-    const r = await runQueuedSweep();
-    expect(r.markedFailed).toBe(1);
-    expect(r.retriesScheduled).toBe(1);
-    expect(scheduleRetry).toHaveBeenCalledTimes(1);
   });
 });

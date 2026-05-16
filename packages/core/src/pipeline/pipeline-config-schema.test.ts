@@ -44,7 +44,6 @@ describe('pipelineConfigSchema', () => {
       enabled: true,
       autoTriage: true,
       autoCode: false,
-      recoveryMaxAttempts: 5,
     };
     expect(pipelineConfigSchema.parse(v0)).toEqual(v0);
   });
@@ -71,19 +70,15 @@ describe('pipelineConfigSchema', () => {
     expect((out as Record<string, unknown>).pipelineSteps).toBeUndefined();
   });
 
-  it('rejects out-of-range recoveryMaxAttempts', () => {
-    expect(() => pipelineConfigSchema.parse({ recoveryMaxAttempts: 21 })).toThrow();
-    expect(() => pipelineConfigSchema.parse({ recoveryMaxAttempts: -1 })).toThrow();
-  });
-
-  it('rejects non-positive recoveryWindowHours', () => {
-    expect(() => pipelineConfigSchema.parse({ recoveryWindowHours: 0 })).toThrow();
-    expect(() => pipelineConfigSchema.parse({ recoveryWindowHours: 200 })).toThrow();
-  });
-
-  it('accepts partial recoveryByFailureKind', () => {
-    const out = pipelineConfigSchema.parse({ recoveryByFailureKind: { transient: 10 } });
-    expect(out.recoveryByFailureKind).toEqual({ transient: 10 });
+  it('silently drops legacy recovery keys (no longer surfaced)', () => {
+    const legacy = {
+      enabled: true,
+      recoveryMaxAttempts: 5,
+      recoveryWindowHours: 24,
+      recoveryByFailureKind: { transient: 10 },
+    };
+    const out = pipelineConfigSchema.parse(legacy);
+    expect(out).toEqual({ enabled: true });
   });
 });
 
@@ -92,14 +87,9 @@ describe('PIPELINE_CONFIG_DEFAULTS', () => {
     expect(() => pipelineConfigSchema.parse(PIPELINE_CONFIG_DEFAULTS)).not.toThrow();
   });
 
-  it('mirrors recovery-policy defaults', () => {
-    expect(PIPELINE_CONFIG_DEFAULTS.recoveryMaxAttempts).toBe(3);
-    expect(PIPELINE_CONFIG_DEFAULTS.recoveryWindowHours).toBe(24);
-    expect(PIPELINE_CONFIG_DEFAULTS.recoveryByFailureKind).toEqual({
-      transient: 5,
-      unknown: 2,
-      permanent: 0,
-    });
+  it('exposes states defaults', () => {
+    expect(PIPELINE_CONFIG_DEFAULTS.enabled).toBe(false);
+    expect(PIPELINE_CONFIG_DEFAULTS.states).toBeDefined();
   });
 });
 

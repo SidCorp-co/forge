@@ -2,8 +2,8 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { setManualHoldBlock } from '../pipeline/manual-hold.js';
 import { boss } from '../queue/boss.js';
-import { scheduleRetry } from './retry.js';
 
 export const STUCK_WATCHER_QUEUE = 'job-stuck-watcher';
 
@@ -23,7 +23,7 @@ const HEARTBEAT_FRESH_SECONDS = 60;
 
 export interface StuckSweepResult {
   markedFailed: number;
-  retriesScheduled: number;
+  blocked: number;
   durationMs: number;
 }
 
@@ -34,14 +34,10 @@ export interface StuckSweepResult {
  * handler silently failed, runner-side spawn hit a bug before posting events,
  * or the device went offline.
  *
- * Why heartbeat, not `jobs.started_at`: nothing in core writes `jobs.started_at`
- * today — workers stream progress through `job_events`, which flip the linked
- * `agent_sessions.last_heartbeat_at` (see jobs/events-routes.ts). Using a dead
- * column as the watchdog signal previously false-positive'd every long-running
- * job past 5 minutes.
- *
- * Mark such jobs as `failed` (classified `transient`) and let `scheduleRetry`
- * enqueue a fresh attempt. `maxAttempts` caps the chain.
+ * Mark such jobs as `failed` and call setManualHoldBlock to surface the
+ * decision to the operator. The watchdog kill is strong evidence of an
+ * underlying problem — auto-retry would just burn another spawn cycle on
+ * the same broken state.
  */
 export async function runStuckSweep(): Promise<StuckSweepResult> {
   const t0 = Date.now();
@@ -65,29 +61,44 @@ export async function runStuckSweep(): Promise<StuckSweepResult> {
     RETURNING *
   `)) as unknown as Array<typeof jobs.$inferSelect>;
 
-  let retriesScheduled = 0;
+  let blocked = 0;
   for (const row of stuck) {
+    if (!row.issueId) continue;
     try {
-      const outcome = await scheduleRetry(row, 'watchdog: stuck dispatched');
-      if (outcome.scheduled) retriesScheduled += 1;
+      await setManualHoldBlock({
+        issueId: row.issueId,
+        context: {
+          step: row.type,
+          trigger: 'watchdog_kill',
+          classification: {
+            kind: 'unknown',
+            reason: 'no session heartbeat — worker likely crashed or never spawned',
+            evidence: { jobId: row.id, sessionId: row.agentSessionId },
+          },
+          attempts: row.attempts,
+          lastFailureAt: new Date().toISOString(),
+          suggestedActions: ['resume', 'skip-step', 'close'],
+        },
+      });
+      blocked += 1;
     } catch (err) {
       logger.error(
-        { err, jobId: row.id },
-        'stuck-watcher: scheduleRetry threw, leaving job failed without retry',
+        { err, jobId: row.id, issueId: row.issueId },
+        'stuck-watcher: setManualHoldBlock threw, job stays failed without operator surface',
       );
     }
   }
 
   if (stuck.length > 0) {
     logger.warn(
-      { markedFailed: stuck.length, retriesScheduled },
+      { markedFailed: stuck.length, blocked },
       'stuck-watcher: swept dispatched jobs with no heartbeat',
     );
   }
 
   return {
     markedFailed: stuck.length,
-    retriesScheduled,
+    blocked,
     durationMs: Date.now() - t0,
   };
 }

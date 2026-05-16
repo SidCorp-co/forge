@@ -1,7 +1,5 @@
 import { z } from 'zod';
-import { issueStatuses } from '../db/schema.js';
 import { PIPELINE_STEPS, type StepToggleKey } from './registry.js';
-import { DEFAULT_RECOVERY_CONFIG } from './recovery-policy.js';
 
 export type { StepToggleKey };
 
@@ -29,36 +27,6 @@ export const stepToggleSchema = z.union([
 ]);
 
 export type StepToggle = z.infer<typeof stepToggleSchema>;
-
-/**
- * Per-failure-kind retry budgets. Each axis is independently optional so a
- * partial document like `{ transient: 10 }` overrides only `transient` and
- * inherits the other two from `DEFAULT_RECOVERY_CONFIG`.
- */
-export const recoveryByKindSchema = z.object({
-  transient: z.number().int().min(0).optional(),
-  permanent: z.number().int().min(0).optional(),
-  unknown: z.number().int().min(0).optional(),
-});
-
-export type RecoveryByKind = z.infer<typeof recoveryByKindSchema>;
-
-/**
- * Recovery sub-keys read by the sweeper's `extractRecoveryConfig`. Names
- * mirror the live reader exactly — do NOT rename without a coordinated
- * migration of stored documents.
- *
- * - `recoveryMaxAttempts` — fallback cap when no per-kind override applies
- * - `recoveryWindowHours` — sliding window after which attempts auto-reset
- * - `recoveryByFailureKind` — per-kind caps; takes priority over max
- */
-export const recoveryPolicySchema = z.object({
-  recoveryMaxAttempts: z.number().int().min(0).max(20).optional(),
-  recoveryWindowHours: z.number().positive().max(168).optional(),
-  recoveryByFailureKind: recoveryByKindSchema.optional(),
-});
-
-export type RecoveryPolicy = z.infer<typeof recoveryPolicySchema>;
 
 /**
  * Authoritative list of step toggle keys exposed to projects. Derived from
@@ -169,8 +137,7 @@ export const pipelineConfigSchema = z
     // `X` (soft-skip) rather than dispatching a job. Cycle/dead-end detection
     // runs at PATCH time.
     states: statesConfigSchema,
-  })
-  .merge(recoveryPolicySchema);
+  });
 
 export type PipelineConfig = z.infer<typeof pipelineConfigSchema>;
 
@@ -189,14 +156,10 @@ export type PipelineConfigPatchInput = z.infer<typeof pipelineConfigPatchSchema>
 
 /**
  * Defaults surfaced by `GET /pipeline-config` when a project has no stored
- * document. The recovery values mirror `DEFAULT_RECOVERY_CONFIG` so the UI
- * placeholder shows the same numbers the sweeper would actually use.
+ * document.
  */
 export const PIPELINE_CONFIG_DEFAULTS: PipelineConfig = {
   enabled: false,
-  recoveryMaxAttempts: DEFAULT_RECOVERY_CONFIG.maxAttempts,
-  recoveryWindowHours: DEFAULT_RECOVERY_CONFIG.windowHours,
-  recoveryByFailureKind: { ...DEFAULT_RECOVERY_CONFIG.byKind },
   states: defaultStatesConfig(),
 };
 

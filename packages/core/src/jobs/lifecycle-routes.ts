@@ -9,11 +9,12 @@ import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { hooks } from '../pipeline/hooks.js';
+import { setManualHoldBlock } from '../pipeline/manual-hold.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
-import { scheduleRetry } from './retry.js';
+import { scheduleAutoRetryOnce } from './retry.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -89,9 +90,31 @@ jobLifecycleDeviceRoutes.post(
 
     if (!updated) throw conflict('job state changed mid-request', 'INVALID_STATE');
 
-    let retry: { scheduled: boolean; newJobId?: string; attempt?: number } | null = null;
+    let retry: { scheduled: boolean; newJobId?: string } | null = null;
     if (status === 'failed') {
-      retry = await scheduleRetry(updated, input.error ?? 'exit nonzero');
+      retry = await scheduleAutoRetryOnce(updated, input.error ?? 'exit nonzero');
+      if (!retry.scheduled && updated.issueId) {
+        await setManualHoldBlock({
+          issueId: updated.issueId,
+          context: {
+            step: updated.type,
+            trigger: 'job_failed',
+            classification: {
+              kind:
+                updated.failureKind === 'transient'
+                  ? 'transient_network'
+                  : updated.failureKind === 'permanent'
+                    ? 'permanent_invalid'
+                    : 'unknown',
+              reason: updated.failureReason ?? input.error ?? 'exit nonzero',
+              evidence: { jobId: updated.id, exitCode: input.exitCode },
+            },
+            attempts: updated.attempts,
+            lastFailureAt: new Date().toISOString(),
+            suggestedActions: ['resume', 'skip-step', 'close'],
+          },
+        });
+      }
     }
 
     // Mirror lifecycle to the linked agent_session row so /pipeline + issue
@@ -177,7 +200,29 @@ jobLifecycleDeviceRoutes.post(
 
     if (!updated) throw conflict('job state changed mid-request', 'INVALID_STATE');
 
-    const retry = await scheduleRetry(updated, input.error);
+    const retry = await scheduleAutoRetryOnce(updated, input.error);
+    if (!retry.scheduled && updated.issueId) {
+      await setManualHoldBlock({
+        issueId: updated.issueId,
+        context: {
+          step: updated.type,
+          trigger: 'job_failed',
+          classification: {
+            kind:
+              updated.failureKind === 'transient'
+                ? 'transient_network'
+                : updated.failureKind === 'permanent'
+                  ? 'permanent_invalid'
+                  : 'unknown',
+            reason: updated.failureReason ?? input.error,
+            evidence: { jobId: updated.id },
+          },
+          attempts: updated.attempts,
+          lastFailureAt: new Date().toISOString(),
+          suggestedActions: ['resume', 'skip-step', 'close'],
+        },
+      });
+    }
 
     await syncAgentSessionLifecycle(updated, 'failed', {
       retryPending: retry?.scheduled === true,

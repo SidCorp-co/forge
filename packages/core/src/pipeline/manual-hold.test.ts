@@ -5,9 +5,10 @@ vi.mock('../config/env.js', () => ({
   env: { DEVICE_TOKEN_PEPPER: TEST_PEPPER, NODE_ENV: 'test' },
 }));
 
-const issueSelectLimit = vi.fn(async () => [] as Array<{ manualHold: boolean }>);
+const issueSelectLimit = vi.fn(async () => [] as Array<{ manualHold: boolean; projectId: string; ownerId: string }>);
 const issueSelectWhere = vi.fn(() => ({ limit: issueSelectLimit }));
-const issueSelectFrom = vi.fn(() => ({ where: issueSelectWhere }));
+const issueSelectJoin = vi.fn(() => ({ where: issueSelectWhere }));
+const issueSelectFrom = vi.fn(() => ({ innerJoin: issueSelectJoin }));
 const dbSelect = vi.fn(() => ({ from: issueSelectFrom }));
 
 const issueUpdateWhere = vi.fn(async () => undefined);
@@ -53,11 +54,11 @@ const SAMPLE_CONTEXT = {
 
 describe('setManualHoldBlock', () => {
   it('writes manual_hold + failure_context onto the issue', async () => {
-    issueSelectLimit.mockResolvedValueOnce([{ manualHold: false }]);
+    issueSelectLimit.mockResolvedValueOnce([
+      { manualHold: false, projectId: 'p1', ownerId: 'u1' },
+    ]);
     await setManualHoldBlock({
       issueId: 'i1',
-      projectId: 'p1',
-      ownerId: 'u1',
       context: { ...SAMPLE_CONTEXT, suggestedActions: [...SAMPLE_CONTEXT.suggestedActions] },
     });
 
@@ -72,11 +73,11 @@ describe('setManualHoldBlock', () => {
   });
 
   it('posts a block comment when the issue was not already blocked', async () => {
-    issueSelectLimit.mockResolvedValueOnce([{ manualHold: false }]);
+    issueSelectLimit.mockResolvedValueOnce([
+      { manualHold: false, projectId: 'p1', ownerId: 'u1' },
+    ]);
     await setManualHoldBlock({
       issueId: 'i1',
-      projectId: 'p1',
-      ownerId: 'u1',
       context: { ...SAMPLE_CONTEXT, suggestedActions: [...SAMPLE_CONTEXT.suggestedActions] },
     });
 
@@ -90,25 +91,24 @@ describe('setManualHoldBlock', () => {
   });
 
   it('does not post a duplicate comment when already blocked', async () => {
-    issueSelectLimit.mockResolvedValueOnce([{ manualHold: true }]);
+    issueSelectLimit.mockResolvedValueOnce([
+      { manualHold: true, projectId: 'p1', ownerId: 'u1' },
+    ]);
     await setManualHoldBlock({
       issueId: 'i1',
-      projectId: 'p1',
-      ownerId: 'u1',
       context: { ...SAMPLE_CONTEXT, suggestedActions: [...SAMPLE_CONTEXT.suggestedActions] },
     });
 
     expect(commentInsertValues).not.toHaveBeenCalled();
-    // still updates the context with the latest failure
     expect(issueUpdateSet).toHaveBeenCalled();
   });
 
   it('broadcasts pipeline.decision_required to the project room', async () => {
-    issueSelectLimit.mockResolvedValueOnce([{ manualHold: false }]);
+    issueSelectLimit.mockResolvedValueOnce([
+      { manualHold: false, projectId: 'p1', ownerId: 'u1' },
+    ]);
     await setManualHoldBlock({
       issueId: 'i1',
-      projectId: 'p1',
-      ownerId: 'u1',
       context: { ...SAMPLE_CONTEXT, suggestedActions: [...SAMPLE_CONTEXT.suggestedActions] },
     });
 
@@ -128,16 +128,28 @@ describe('setManualHoldBlock', () => {
   });
 
   it('continues when comment insert throws', async () => {
-    issueSelectLimit.mockResolvedValueOnce([{ manualHold: false }]);
+    issueSelectLimit.mockResolvedValueOnce([
+      { manualHold: false, projectId: 'p1', ownerId: 'u1' },
+    ]);
     commentInsertValues.mockRejectedValueOnce(new Error('db down'));
     await expect(
       setManualHoldBlock({
         issueId: 'i1',
-        projectId: 'p1',
-        ownerId: 'u1',
         context: { ...SAMPLE_CONTEXT, suggestedActions: [...SAMPLE_CONTEXT.suggestedActions] },
       }),
     ).resolves.toBeUndefined();
     expect(wsPublish).toHaveBeenCalled();
+  });
+
+  it('no-ops when the issue does not exist', async () => {
+    issueSelectLimit.mockResolvedValueOnce([]);
+    await setManualHoldBlock({
+      issueId: 'i-missing',
+      context: { ...SAMPLE_CONTEXT, suggestedActions: [...SAMPLE_CONTEXT.suggestedActions] },
+    });
+
+    expect(issueUpdateSet).not.toHaveBeenCalled();
+    expect(commentInsertValues).not.toHaveBeenCalled();
+    expect(wsPublish).not.toHaveBeenCalled();
   });
 });

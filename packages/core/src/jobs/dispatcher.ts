@@ -5,6 +5,7 @@ import type { JobType, RunnerType } from '../db/schema.js';
 import { dispatchLivenessMs, isLastSeenFresh } from '../lib/dispatch-liveness.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import { logger } from '../logger.js';
+import { setManualHoldBlock } from '../pipeline/manual-hold.js';
 import { resolveRunnerChainForJob } from '../pipeline/resolve-step-runner.js';
 import { boss } from '../queue/boss.js';
 import { getRunnerAdapter } from '../runners/registry.js';
@@ -360,29 +361,53 @@ async function dispatchViaRunner(
   });
 
   if (result.status === 'failed') {
-    // Revert: put the job back on the queue so retry/stale logic can act.
-    // Conditional WHERE prevents stomping on a concurrent lifecycle update
-    // (e.g. /jobs/:id/complete fired in the meantime). Use SQL `attempts + 1`
-    // so the increment is computed against the current row, not the stale read.
+    // Adapter dispatch failure is a strong signal: the runner returned an
+    // explicit error from its claim/spawn path. Mark the job failed and
+    // surface to operator via setManualHoldBlock — auto-retry would just
+    // spawn another adapter call against the same broken state.
+    const errorReason = result.errorReason ?? 'adapter dispatch failed';
     await db
       .update(jobs)
       .set({
-        status: 'queued',
-        runnerId: null,
-        deviceId: null,
-        dispatchedAt: null,
-        error: result.errorReason ?? 'adapter dispatch failed',
-        attempts: sql`${jobs.attempts} + 1`,
+        status: 'failed',
+        finishedAt: new Date(),
+        error: errorReason,
+        failureKind: 'unknown',
+        failureReason: errorReason,
+        classifierVersion: 1,
       })
       .where(and(eq(jobs.id, job.id), eq(jobs.status, 'dispatched'), eq(jobs.runnerId, runner.id)));
-    // Also flag the runner as last-error for surface visibility.
     await db
       .update(runners)
-      .set({ lastError: result.errorReason ?? 'dispatch failed', updatedAt: new Date() })
+      .set({ lastError: errorReason, updatedAt: new Date() })
       .where(eq(runners.id, runner.id));
+    if (job.issueId) {
+      try {
+        await setManualHoldBlock({
+          issueId: job.issueId,
+          context: {
+            step: job.type,
+            trigger: 'adapter_error',
+            classification: {
+              kind: 'unknown',
+              reason: errorReason,
+              evidence: { jobId: job.id, runnerId: runner.id, runnerType: runner.type },
+            },
+            attempts: job.attempts,
+            lastFailureAt: new Date().toISOString(),
+            suggestedActions: ['resume', 'skip-step', 'close'],
+          },
+        });
+      } catch (err) {
+        logger.error(
+          { err, jobId: job.id, issueId: job.issueId },
+          'dispatcher: setManualHoldBlock threw after adapter fail',
+        );
+      }
+    }
     logger.warn(
-      { jobId: job.id, runnerId: runner.id, reason: result.errorReason },
-      'dispatcher: adapter failed, requeued',
+      { jobId: job.id, runnerId: runner.id, reason: errorReason },
+      'dispatcher: adapter failed, marked failed + operator-blocked',
     );
     return 'skipped';
   }

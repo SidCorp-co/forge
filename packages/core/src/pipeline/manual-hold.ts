@@ -22,7 +22,7 @@
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, issues } from '../db/schema.js';
+import { comments, issues, projects } from '../db/schema.js';
 import type { JobType } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
@@ -56,26 +56,40 @@ export interface IssueFailureContext {
 
 export interface SetManualHoldBlockInput {
   issueId: string;
-  projectId: string;
-  ownerId: string;
   context: IssueFailureContext;
 }
 
 /**
  * Set manualHold + failure_context on an issue, post a summary comment, and
- * broadcast `pipeline.decision_required` to the project room. Idempotent:
- * a second call on an already-blocked issue overwrites the context (latest
- * failure wins) without spamming duplicate comments.
+ * broadcast `pipeline.decision_required` to the project room. Loads
+ * projectId + ownerId from the issue→project join internally so callers
+ * (watchdogs, lifecycle, dispatcher) only need the issueId they already
+ * hold. Idempotent: a second call on an already-blocked issue overwrites
+ * the context (latest failure wins) without spamming duplicate comments.
+ *
+ * No-op if the issue does not exist (warning logged); the issue may have
+ * been deleted between failure and block.
  */
 export async function setManualHoldBlock(input: SetManualHoldBlockInput): Promise<void> {
-  const { issueId, projectId, ownerId, context } = input;
+  const { issueId, context } = input;
 
-  const [existing] = await db
-    .select({ manualHold: issues.manualHold })
+  const [row] = await db
+    .select({
+      manualHold: issues.manualHold,
+      projectId: issues.projectId,
+      ownerId: projects.ownerId,
+    })
     .from(issues)
+    .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(eq(issues.id, issueId))
     .limit(1);
-  const wasAlreadyBlocked = existing?.manualHold === true;
+
+  if (!row) {
+    logger.warn({ issueId }, 'manual-hold: issue not found, skipping block');
+    return;
+  }
+
+  const { projectId, ownerId, manualHold: wasAlreadyBlocked } = row;
 
   await db
     .update(issues)

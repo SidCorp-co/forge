@@ -414,6 +414,13 @@
       "when": 1779400120000,
       "tag": "0058_issue_failure_context",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1779400180000,
+      "tag": "0059_drop_recovery_columns",
+      "breakpoints": true
     }
   ]
 }

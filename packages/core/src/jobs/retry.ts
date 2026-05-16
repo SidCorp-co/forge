@@ -1,3 +1,19 @@
+/**
+ * Narrow auto-retry semantic — replaces the legacy exponential-backoff chain.
+ *
+ * Old model: 3 attempts with `60 * 2^n` backoff regardless of classification,
+ * coupled with a second tier of issue-level recovery in pipeline-sweeper.
+ * Result: failures burned 3-6 retries before the operator was notified.
+ *
+ * New model: AT MOST ONE auto-retry, gated on a narrow classifier whitelist
+ * (transient network errors only — HTTP 5xx, 429, ECONNRESET, timeout, etc).
+ * Everything else returns `{ scheduled: false }` immediately so the caller
+ * (lifecycle / watchdog / dispatcher) can hand off to setManualHoldBlock.
+ *
+ * No exponential backoff: the classifier already filters for genuine
+ * transients, so a flat 60s cooldown is plenty.
+ */
+
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
@@ -10,35 +26,41 @@ type JobRow = typeof jobs.$inferSelect;
 export interface RetryOutcome {
   scheduled: boolean;
   newJobId?: string;
-  attempt?: number;
-  backoffSec?: number;
+  reason?: string;
 }
 
-export function computeBackoffSeconds(attempts: number): number {
-  return 60 * 2 ** attempts;
-}
+/** Hard cap: 1 auto-retry per original job. Operator-driven retry is unbounded. */
+const MAX_AUTO_RETRIES = 1;
+
+/** Cooldown before the auto-retry fires. Transient network blips usually
+ *  recover within a minute; longer waits indicate something the operator
+ *  should look at anyway. */
+const AUTO_RETRY_COOLDOWN_SECONDS = 60;
 
 /**
- * Schedule a retry for a failed job.
+ * Schedule a single auto-retry for a failed job IF the classifier says the
+ * failure is transient. Returns `{ scheduled: false, reason }` for everything
+ * else — the caller is expected to then call `setManualHoldBlock` to surface
+ * the failure to the operator.
  *
- * Creates a NEW `jobs` row (immutable attempt history) with `attempts+1`,
- * `retry_of` pointing at the original, and enqueues via pg-boss with
- * `startAfter: backoffSec`. Returns `{ scheduled: false }` if the retry cap
- * is reached or the job was cancelled — cancellation is never retried.
+ * Idempotent: a second call on a job that already had its one retry returns
+ * `{ scheduled: false, reason: 'retry_budget_exhausted' }`.
  */
-export async function scheduleRetry(job: JobRow, reason: string): Promise<RetryOutcome> {
-  if (job.status === 'cancelled') {
-    return { scheduled: false };
+export async function scheduleAutoRetryOnce(
+  job: JobRow,
+  reason: string,
+): Promise<RetryOutcome> {
+  if (job.cancellationRequested) {
+    return { scheduled: false, reason: 'cancellation_requested' };
   }
 
-  // Persist a classification on the parent job before deciding. The
-  // sweeper reads `failure_kind` to choose recover vs escalate; the
-  // attempt cap below also short-circuits permanent failures so we do
-  // not waste API budget retrying a deterministic policy block (e.g.
-  // Anthropic content filter).
   const inputError =
     typeof job.error === 'string' && job.error.length > 0 ? job.error : reason;
   const classified = classifyFailure({ error: inputError });
+
+  // Persist classification on the failed job for the audit trail / operator
+  // UI, even when we decide not to retry. Done in a try/catch so a classifier
+  // write failure can't break the retry path.
   if (job.failureKind === null || job.failureKind === undefined) {
     try {
       await db
@@ -50,7 +72,6 @@ export async function scheduleRetry(job: JobRow, reason: string): Promise<RetryO
           classifierVersion: classified.version,
         })
         .where(eq(jobs.id, job.id));
-      // Mirror onto the in-memory row so downstream readers see it.
       job.failureKind = classified.kind;
       job.failureReason = classified.reason;
       job.classifierVersion = classified.version;
@@ -62,40 +83,34 @@ export async function scheduleRetry(job: JobRow, reason: string): Promise<RetryO
     }
   }
 
-  if (classified.kind === 'permanent') {
+  if (classified.kind !== 'transient') {
     logger.info(
-      { jobId: job.id, reason: classified.reason, classifierVersion: CLASSIFIER_VERSION },
-      'retry: skipping retry on permanent failure',
+      { jobId: job.id, kind: classified.kind, classifierVersion: CLASSIFIER_VERSION },
+      'retry: not transient, no auto-retry',
     );
-    return { scheduled: false };
+    return { scheduled: false, reason: `classifier:${classified.kind}` };
   }
 
-  if (job.attempts >= job.maxAttempts) {
+  if (job.attempts >= MAX_AUTO_RETRIES + 1) {
     logger.info(
-      { jobId: job.id, attempts: job.attempts, maxAttempts: job.maxAttempts, reason },
-      'retry: cap reached',
+      { jobId: job.id, attempts: job.attempts, reason },
+      'retry: auto-retry budget exhausted',
     );
-    return { scheduled: false };
+    return { scheduled: false, reason: 'retry_budget_exhausted' };
   }
-
-  const backoffSec = computeBackoffSeconds(job.attempts);
-  const nextAttempt = job.attempts + 1;
 
   const [created] = await db
     .insert(jobs)
     .values({
       projectId: job.projectId,
       issueId: job.issueId,
-      // ISS-101 — retry belongs to the same pipeline_run as the original
-      // attempt. The run stays open across the retry chain.
       pipelineRunId: job.pipelineRunId,
       createdBy: job.createdBy,
       type: job.type,
       payload: job.payload,
       modelTier: job.modelTier,
       status: 'queued',
-      attempts: nextAttempt,
-      maxAttempts: job.maxAttempts,
+      attempts: job.attempts + 1,
       retryOf: job.id,
     })
     .returning({ id: jobs.id });
@@ -103,15 +118,20 @@ export async function scheduleRetry(job: JobRow, reason: string): Promise<RetryO
   if (!created) throw new Error('retry: insert returned no row');
 
   try {
-    await enqueueJob(created.id, { startAfterSeconds: backoffSec });
+    await enqueueJob(created.id, { startAfterSeconds: AUTO_RETRY_COOLDOWN_SECONDS });
   } catch (err) {
     logger.error({ err, jobId: created.id }, 'retry: enqueue failed; row persisted');
   }
 
   logger.info(
-    { originalJobId: job.id, newJobId: created.id, attempt: nextAttempt, backoffSec, reason },
-    'retry: scheduled',
+    {
+      originalJobId: job.id,
+      newJobId: created.id,
+      cooldownSec: AUTO_RETRY_COOLDOWN_SECONDS,
+      reason,
+    },
+    'retry: auto-retry scheduled',
   );
 
-  return { scheduled: true, newJobId: created.id, attempt: nextAttempt, backoffSec };
+  return { scheduled: true, newJobId: created.id };
 }
