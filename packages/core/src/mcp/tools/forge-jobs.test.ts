@@ -108,9 +108,31 @@ describe('forge_jobs.list', () => {
   });
 });
 
+function makeDeviceCtx() {
+  return {
+    principal: { kind: 'device' as const, device: fakeDevice },
+    device: fakeDevice,
+    projectSlug: null,
+  };
+}
+
+function makePatCtx(projectIds: string[] | null) {
+  return {
+    principal: {
+      kind: 'pat' as const,
+      userId: OWNER_ID,
+      tokenId: '77777777-7777-4777-8777-777777777777',
+      scopes: ['read', 'write'],
+      projectIds,
+    },
+    device: fakeDevice,
+    projectSlug: null,
+  };
+}
+
 describe('forge_jobs.get', () => {
   it('returns the job + agentSessionId when device owner is member', async () => {
-    const tool = forgeJobsGetTool(fakeDevice);
+    const tool = forgeJobsGetTool(makeDeviceCtx());
     // load job
     selectLimit.mockResolvedValueOnce([baseJobRow]);
     // membership
@@ -124,23 +146,31 @@ describe('forge_jobs.get', () => {
   });
 
   it('throws NOT_FOUND for missing job', async () => {
-    const tool = forgeJobsGetTool(fakeDevice);
+    const tool = forgeJobsGetTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([]);
     await expect(tool.handler({ jobId: JOB_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 
   it('throws FORBIDDEN cross-project', async () => {
-    const tool = forgeJobsGetTool(fakeDevice);
+    const tool = forgeJobsGetTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([{ ...baseJobRow, projectId: OTHER_PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([{ ownerId: 'other' }]); // not owner
     selectLimit.mockResolvedValueOnce([]); // not member
     await expect(tool.handler({ jobId: JOB_ID })).rejects.toThrow(/FORBIDDEN/);
   });
+
+  // ISS-150 review #1 re-review — PAT projectIds allowlist regression on
+  // jobId-resolved access.
+  it('returns NOT_FOUND for a PAT when the job’s project is outside the allowlist', async () => {
+    const tool = forgeJobsGetTool(makePatCtx([OTHER_PROJECT_ID]));
+    selectLimit.mockResolvedValueOnce([baseJobRow]);
+    await expect(tool.handler({ jobId: JOB_ID })).rejects.toThrow(/NOT_FOUND/);
+  });
 });
 
 describe('forge_jobs.events', () => {
   it('returns paginated { items, lastSeq } with sinceSeq filter', async () => {
-    const tool = forgeJobsEventsTool(fakeDevice);
+    const tool = forgeJobsEventsTool(makeDeviceCtx());
     // load job
     selectLimit.mockResolvedValueOnce([baseJobRow]);
     // membership
@@ -160,7 +190,7 @@ describe('forge_jobs.events', () => {
   });
 
   it('returns lastSeq = sinceSeq when no items match', async () => {
-    const tool = forgeJobsEventsTool(fakeDevice);
+    const tool = forgeJobsEventsTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([baseJobRow]);
     selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
     selectLimit.mockResolvedValueOnce([]);
@@ -172,16 +202,22 @@ describe('forge_jobs.events', () => {
   });
 
   it('throws NOT_FOUND for missing job', async () => {
-    const tool = forgeJobsEventsTool(fakeDevice);
+    const tool = forgeJobsEventsTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([]);
     await expect(tool.handler({ jobId: JOB_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 
   it('throws FORBIDDEN cross-project', async () => {
-    const tool = forgeJobsEventsTool(fakeDevice);
+    const tool = forgeJobsEventsTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([{ ...baseJobRow, projectId: OTHER_PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([{ ownerId: 'other' }]); // not owner
     selectLimit.mockResolvedValueOnce([]); // not member
     await expect(tool.handler({ jobId: JOB_ID })).rejects.toThrow(/FORBIDDEN/);
+  });
+
+  it('returns NOT_FOUND for a PAT when the job’s project is outside the allowlist', async () => {
+    const tool = forgeJobsEventsTool(makePatCtx([OTHER_PROJECT_ID]));
+    selectLimit.mockResolvedValueOnce([baseJobRow]);
+    await expect(tool.handler({ jobId: JOB_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 });

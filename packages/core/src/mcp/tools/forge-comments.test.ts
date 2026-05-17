@@ -83,19 +83,19 @@ beforeEach(() => {
 
 describe('forge_comments tool', () => {
   it('rejects unknown action', async () => {
-    const tool = forgeCommentsTool({ device: fakeDevice, projectSlug: null });
+    const tool = forgeCommentsTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
     await expect(
       tool.handler({ action: 'edit' } as unknown as Record<string, unknown>),
     ).rejects.toThrow();
   });
 
   it('list requires filters.issue', async () => {
-    const tool = forgeCommentsTool({ device: fakeDevice, projectSlug: null });
+    const tool = forgeCommentsTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
     await expect(tool.handler({ action: 'list' })).rejects.toThrow(/BAD_REQUEST/);
   });
 
   it('list returns comments when device owner is member', async () => {
-    const tool = forgeCommentsTool({ device: fakeDevice, projectSlug: null });
+    const tool = forgeCommentsTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
     // 1. loadIssueProjectId
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
     // 2. assertDeviceOwnerIsMember → project owned by device owner
@@ -114,7 +114,7 @@ describe('forge_comments tool', () => {
   });
 
   it('list throws NOT_FOUND when issue is missing', async () => {
-    const tool = forgeCommentsTool({ device: fakeDevice, projectSlug: null });
+    const tool = forgeCommentsTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
     selectLimit.mockResolvedValueOnce([]); // no issue
     await expect(
       tool.handler({ action: 'list', filters: { issue: ISSUE_ID } }),
@@ -122,7 +122,7 @@ describe('forge_comments tool', () => {
   });
 
   it('create requires data.issue + data.body', async () => {
-    const tool = forgeCommentsTool({ device: fakeDevice, projectSlug: null });
+    const tool = forgeCommentsTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
     await expect(tool.handler({ action: 'create', data: { body: 'hi' } })).rejects.toThrow(
       /BAD_REQUEST/,
     );
@@ -132,7 +132,7 @@ describe('forge_comments tool', () => {
   });
 
   it('create attributes authorId to device.ownerId and emits commentCreated hook', async () => {
-    const tool = forgeCommentsTool({ device: fakeDevice, projectSlug: null });
+    const tool = forgeCommentsTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]); // loadIssueProjectId
     selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]); // membership
     insertReturning.mockResolvedValueOnce([baseCommentRow]); // insert
@@ -150,7 +150,7 @@ describe('forge_comments tool', () => {
   });
 
   it('delete by author succeeds', async () => {
-    const tool = forgeCommentsTool({ device: fakeDevice, projectSlug: null });
+    const tool = forgeCommentsTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
     // loadCommentForAccess (joins comments + issues)
     selectLimit.mockResolvedValueOnce([
       { id: COMMENT_ID, issueId: ISSUE_ID, authorId: OWNER_ID, projectId: PROJECT_ID },
@@ -169,10 +169,12 @@ describe('forge_comments tool', () => {
   });
 
   it('delete by non-author non-owner throws FORBIDDEN', async () => {
-    const tool = forgeCommentsTool({ device: fakeDevice, projectSlug: null });
+    const tool = forgeCommentsTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
     selectLimit.mockResolvedValueOnce([
       { id: COMMENT_ID, issueId: ISSUE_ID, authorId: OTHER_USER_ID, projectId: PROJECT_ID },
     ]);
+    // assertPrincipalIsMember (device path) → project owner check first
+    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
     // assertCommentDeletePermission: project owned by someone else
     selectLimit.mockResolvedValueOnce([{ ownerId: 'somebody-else' }]);
     // membership row exists but role is 'member' (not owner)
@@ -181,6 +183,66 @@ describe('forge_comments tool', () => {
     await expect(
       tool.handler({ action: 'delete', documentId: COMMENT_ID }),
     ).rejects.toThrow(/FORBIDDEN/);
+  });
+
+  // ISS-150 cross-tenant regression — the documentId-resolved delete path
+  // must enforce the PAT projectIds allowlist before the project-role check.
+  // Without the allowlist check, a PAT scoped to project A used by a user
+  // who is the owner of project B could destroy comments in project B.
+  describe('PAT projectIds allowlist (cross-tenant) — delete', () => {
+    const ALLOWED_PROJECT = '77777777-7777-4777-8777-777777777777';
+
+    function makePatTool(projectIds: string[] | null) {
+      return forgeCommentsTool({
+        principal: {
+          kind: 'pat',
+          userId: OWNER_ID,
+          tokenId: '55555555-5555-4555-8555-555555555555',
+          scopes: ['read', 'write'],
+          projectIds,
+        },
+        device: fakeDevice,
+        projectSlug: null,
+      });
+    }
+
+    it('delete returns NOT_FOUND when comment\'s project is outside PAT allowlist (even when PAT user owns the project)', async () => {
+      const tool = makePatTool([ALLOWED_PROJECT]);
+      // loadCommentForAccess — comment lives in PROJECT_ID (outside the allowlist),
+      // authored by a different user so the non-author branch would normally apply.
+      selectLimit.mockResolvedValueOnce([
+        { id: COMMENT_ID, issueId: ISSUE_ID, authorId: OTHER_USER_ID, projectId: PROJECT_ID },
+      ]);
+      // No further DB calls should be made: assertPrincipalIsMember rejects on
+      // the allowlist miss before any role lookup.
+      await expect(
+        tool.handler({ action: 'delete', documentId: COMMENT_ID }),
+      ).rejects.toThrow(/NOT_FOUND/);
+      expect(deleteWhere).not.toHaveBeenCalled();
+    });
+
+    it('delete succeeds when comment\'s project is inside the PAT allowlist and user is project owner', async () => {
+      const tool = makePatTool([PROJECT_ID]);
+      // loadCommentForAccess — non-author branch.
+      selectLimit.mockResolvedValueOnce([
+        { id: COMMENT_ID, issueId: ISSUE_ID, authorId: OTHER_USER_ID, projectId: PROJECT_ID },
+      ]);
+      // assertPrincipalIsMember (PAT path) → loadUserProjectRole → projects lookup
+      // returns the PAT user as the project owner.
+      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      // assertCommentDeletePermission still runs: project owner check passes
+      // because the underlying user owns the project.
+      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      deleteWhere.mockResolvedValueOnce(undefined);
+
+      const result = (await tool.handler({
+        action: 'delete',
+        documentId: COMMENT_ID,
+      })) as { status: string };
+
+      expect(result.status).toBe('deleted');
+      expect(deleteWhere).toHaveBeenCalled();
+    });
   });
 
   describe('create with attachments', () => {
@@ -204,7 +266,7 @@ describe('forge_comments tool', () => {
     const TINY_B64 = TINY_BYTES.toString('base64');
 
     it('persists a single attachment and returns its url', async () => {
-      const tool = forgeCommentsTool({ device: fakeDevice, projectSlug: null });
+      const tool = forgeCommentsTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]); // loadIssueProjectId
       selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]); // membership
       insertReturning.mockResolvedValueOnce([baseCommentRow]); // comment insert
@@ -234,7 +296,7 @@ describe('forge_comments tool', () => {
     });
 
     it('persists 5 attachments in one call', async () => {
-      const tool = forgeCommentsTool({ device: fakeDevice, projectSlug: null });
+      const tool = forgeCommentsTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
       selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
       insertReturning.mockResolvedValueOnce([baseCommentRow]);
@@ -258,7 +320,7 @@ describe('forge_comments tool', () => {
     });
 
     it('records uploaderDeviceId on the attachment insert', async () => {
-      const tool = forgeCommentsTool({ device: fakeDevice, projectSlug: null });
+      const tool = forgeCommentsTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
       selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
       insertReturning.mockResolvedValueOnce([baseCommentRow]);
@@ -287,7 +349,7 @@ describe('forge_comments tool', () => {
     });
 
     it('rejects PAYLOAD_TOO_LARGE when total exceeds UPLOADS_MAX_BYTES', async () => {
-      const tool = forgeCommentsTool({ device: fakeDevice, projectSlug: null });
+      const tool = forgeCommentsTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
       selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
 
@@ -314,7 +376,7 @@ describe('forge_comments tool', () => {
     });
 
     it('rejects PAYLOAD_TOO_LARGE when a single entry exceeds the cap', async () => {
-      const tool = forgeCommentsTool({ device: fakeDevice, projectSlug: null });
+      const tool = forgeCommentsTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
       selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
 
@@ -334,7 +396,7 @@ describe('forge_comments tool', () => {
     });
 
     it('returns MIME_NOT_ALLOWED in attachmentErrors and keeps the comment', async () => {
-      const tool = forgeCommentsTool({ device: fakeDevice, projectSlug: null });
+      const tool = forgeCommentsTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
       selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
       insertReturning.mockResolvedValueOnce([baseCommentRow]);
@@ -361,7 +423,7 @@ describe('forge_comments tool', () => {
     });
 
     it('rejects invalid base64 with BAD_REQUEST before inserting the comment', async () => {
-      const tool = forgeCommentsTool({ device: fakeDevice, projectSlug: null });
+      const tool = forgeCommentsTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
       selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
 

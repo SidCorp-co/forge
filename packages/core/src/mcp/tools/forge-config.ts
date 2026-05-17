@@ -8,7 +8,7 @@ import { db } from '../../db/client.js';
 import { issues, projects } from '../../db/schema.js';
 import {
   type ContextScopedMcpToolFactory,
-  assertDeviceOwnerIsMember,
+  assertPrincipalIsMember,
   resolveProjectIdFromSlug,
   zodToMcpSchema,
 } from './lib.js';
@@ -29,7 +29,7 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
   handler: async (args) => {
     const input = inputSchema.parse(args);
     const projectId = input.projectId ?? (await resolveProjectIdFromSlug(ctx.projectSlug));
-    await assertDeviceOwnerIsMember(ctx.device, projectId);
+    await assertPrincipalIsMember(ctx.principal, projectId);
 
     const [row] = await db
       .select({

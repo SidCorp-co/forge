@@ -3,8 +3,10 @@ import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { agentSessionStatuses, agentSessions } from '../../db/schema.js';
 import {
+  type ContextScopedMcpToolFactory,
   type DeviceScopedMcpToolFactory,
   assertDeviceOwnerIsMember,
+  assertPrincipalIsMember,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -54,10 +56,10 @@ export const forgeAgentSessionsListTool: DeviceScopedMcpToolFactory = (device) =
   },
 });
 
-export const forgeAgentSessionsGetTool: DeviceScopedMcpToolFactory = (device) => ({
+export const forgeAgentSessionsGetTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_agent_sessions.get',
   description:
-    'Fetch a single agent session. Truncates `messages` to the last 20 entries (totalMessages exposes the full count) so MCP payloads stay bounded. Requires device owner to be a member of the session’s project.',
+    'Fetch a single agent session. Truncates `messages` to the last 20 entries (totalMessages exposes the full count) so MCP payloads stay bounded. Requires the principal to be a member of the session’s project; PAT principals must additionally have the session’s project in their allowlist.',
   inputSchema: zodToMcpSchema(getInputSchema),
   handler: async (args) => {
     const { sessionId } = getInputSchema.parse(args);
@@ -67,7 +69,7 @@ export const forgeAgentSessionsGetTool: DeviceScopedMcpToolFactory = (device) =>
       .where(eq(agentSessions.id, sessionId))
       .limit(1);
     if (!row) throw new Error('NOT_FOUND: agent session not found');
-    await assertDeviceOwnerIsMember(device, row.projectId);
+    await assertPrincipalIsMember(principal, row.projectId);
 
     const allMessages = Array.isArray(row.messages) ? (row.messages as unknown[]) : [];
     const truncated = allMessages.slice(-MESSAGE_TAIL);

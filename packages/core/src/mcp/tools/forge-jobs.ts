@@ -3,8 +3,10 @@ import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { jobEvents, jobStatuses, jobTypes, jobs } from '../../db/schema.js';
 import {
+  type ContextScopedMcpToolFactory,
   type DeviceScopedMcpToolFactory,
   assertDeviceOwnerIsMember,
+  assertPrincipalIsMember,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -61,21 +63,21 @@ export const forgeJobsListTool: DeviceScopedMcpToolFactory = (device) => ({
   },
 });
 
-export const forgeJobsGetTool: DeviceScopedMcpToolFactory = (device) => ({
+export const forgeJobsGetTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_jobs.get',
   description:
-    'Fetch a single job by id including its linked agentSessionId. Requires device owner to be a member of the job’s project.',
+    'Fetch a single job by id including its linked agentSessionId. Requires the principal to be a member of the job’s project; PAT principals must additionally have the job’s project in their allowlist.',
   inputSchema: zodToMcpSchema(getInputSchema),
   handler: async (args) => {
     const { jobId } = getInputSchema.parse(args);
     const [row] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
     if (!row) throw new Error('NOT_FOUND: job not found');
-    await assertDeviceOwnerIsMember(device, row.projectId);
+    await assertPrincipalIsMember(principal, row.projectId);
     return { job: row };
   },
 });
 
-export const forgeJobsEventsTool: DeviceScopedMcpToolFactory = (device) => ({
+export const forgeJobsEventsTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_jobs.events',
   description:
     'Stream-replay job_events for a job (paginated by sinceSeq). Read-only; returns { items, lastSeq }.',
@@ -84,7 +86,7 @@ export const forgeJobsEventsTool: DeviceScopedMcpToolFactory = (device) => ({
     const { jobId, sinceSeq, limit } = eventsInputSchema.parse(args);
     const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
     if (!job) throw new Error('NOT_FOUND: job not found');
-    await assertDeviceOwnerIsMember(device, job.projectId);
+    await assertPrincipalIsMember(principal, job.projectId);
 
     const whereClauses: SQL[] = [eq(jobEvents.jobId, jobId)];
     if (sinceSeq !== undefined) whereClauses.push(gt(jobEvents.seq, sinceSeq));

@@ -7,7 +7,7 @@ import {
   projects,
   users,
 } from '../../db/schema.js';
-import { type DeviceScopedMcpToolFactory, zodToMcpSchema } from './lib.js';
+import { type ContextScopedMcpToolFactory, zodToMcpSchema } from './lib.js';
 
 /**
  * MCP Phase 1 (ISS-7) — enumerate projects visible to the device's owner.
@@ -31,18 +31,25 @@ type ListedProject = {
   role: 'owner' | ProjectMemberRole;
 };
 
-export const forgeProjectsListTool: DeviceScopedMcpToolFactory = (device) => ({
+export const forgeProjectsListTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.list',
   description:
-    'List projects visible to the device owner (owned + member; CEO sees all). Returns id, slug, name, ownerId, role.',
+    'List projects visible to the principal (owned + member; CEO sees all). For PAT principals, results are additionally narrowed to the token\'s projectIds allowlist when set. Returns id, slug, name, ownerId, role.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     inputSchema.parse(args);
+    const { principal } = ctx;
+    const userId =
+      principal.kind === 'device' ? principal.device.ownerId : principal.userId;
+    const patAllowlist =
+      principal.kind === 'pat' && principal.projectIds !== null
+        ? new Set(principal.projectIds)
+        : null;
 
     const [me] = await db
       .select({ id: users.id, isCeo: users.isCeo })
       .from(users)
-      .where(eq(users.id, device.ownerId))
+      .where(eq(users.id, userId))
       .limit(1);
 
     if (me?.isCeo) {
@@ -56,9 +63,10 @@ export const forgeProjectsListTool: DeviceScopedMcpToolFactory = (device) => ({
         .from(projects);
       const out: ListedProject[] = rows.map((r) => ({
         ...r,
-        role: r.ownerId === device.ownerId ? 'owner' : 'admin',
+        role: r.ownerId === userId ? 'owner' : 'admin',
       }));
-      return { projects: out };
+      const narrowed = patAllowlist ? out.filter((r) => patAllowlist.has(r.id)) : out;
+      return { projects: narrowed };
     }
 
     // Two separate queries instead of a left-join + selectDistinct: the join
@@ -74,7 +82,7 @@ export const forgeProjectsListTool: DeviceScopedMcpToolFactory = (device) => ({
         ownerId: projects.ownerId,
       })
       .from(projects)
-      .where(eq(projects.ownerId, device.ownerId));
+      .where(eq(projects.ownerId, userId));
 
     const memberRows = await db
       .select({
@@ -86,7 +94,7 @@ export const forgeProjectsListTool: DeviceScopedMcpToolFactory = (device) => ({
       })
       .from(projectMembers)
       .innerJoin(projects, eq(projects.id, projectMembers.projectId))
-      .where(eq(projectMembers.userId, device.ownerId));
+      .where(eq(projectMembers.userId, userId));
 
     const byId = new Map<string, ListedProject>();
     for (const r of ownedRows) {
@@ -104,6 +112,8 @@ export const forgeProjectsListTool: DeviceScopedMcpToolFactory = (device) => ({
       });
     }
 
-    return { projects: [...byId.values()] };
+    const all = [...byId.values()];
+    const narrowed = patAllowlist ? all.filter((r) => patAllowlist.has(r.id)) : all;
+    return { projects: narrowed };
   },
 });

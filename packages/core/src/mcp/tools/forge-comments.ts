@@ -11,7 +11,7 @@ import { comments, issues, projectMembers, projects } from '../../db/schema.js';
 import { hooks } from '../../pipeline/hooks.js';
 import {
   type ContextScopedMcpToolFactory,
-  assertDeviceOwnerIsMember,
+  assertPrincipalIsMember,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -126,14 +126,14 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    const { device } = ctx;
+    const { device, principal } = ctx;
 
     switch (input.action) {
       case 'list': {
         const issueId = input.filters?.issue;
         if (!issueId) throw new Error('BAD_REQUEST: filters.issue is required for list');
         const projectId = await loadIssueProjectId(issueId);
-        await assertDeviceOwnerIsMember(device, projectId);
+        await assertPrincipalIsMember(principal, projectId);
 
         const rows = await db
           .select({
@@ -160,7 +160,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!body) throw new Error('BAD_REQUEST: data.body is required for create');
 
         const projectId = await loadIssueProjectId(issueId);
-        await assertDeviceOwnerIsMember(device, projectId);
+        await assertPrincipalIsMember(principal, projectId);
 
         // Pre-decode + size-validate attachments BEFORE writing the comment row.
         // A size-cap rejection here returns PAYLOAD_TOO_LARGE without leaving an
@@ -279,10 +279,9 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
         // still delete on REST, but here we also require current membership
         // — MCP traffic comes from device principals, so a stale device on
         // an ex-member should not be able to mutate the project.
+        await assertPrincipalIsMember(principal, comment.projectId);
         if (comment.authorId !== device.ownerId) {
           await assertCommentDeletePermission(device.ownerId, comment.projectId);
-        } else {
-          await assertDeviceOwnerIsMember(device, comment.projectId);
         }
 
         await db.delete(comments).where(eq(comments.id, input.documentId));

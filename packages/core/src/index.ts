@@ -75,6 +75,8 @@ import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
 import { requireDevice } from './middleware/require-device.js';
+import { requirePatOrDevice } from './middleware/require-pat-or-device.js';
+import { patRoutes } from './pat/routes.js';
 import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cron.js';
 import { registerNotifyMentionsSubscriber } from './notifications/notify-mentions.js';
 import { notificationRoutes } from './notifications/routes.js';
@@ -230,11 +232,14 @@ registerCiFixPatternLearner(hooks);
 registerNotifyMentionsSubscriber(hooks);
 registerPmSubscribers(hooks);
 
-// MCP endpoint requires device authentication (ISS-202). Tool handlers
-// close over the authenticated Device to enforce project-scope. This is a
-// breaking change for MCP clients — packages/dev must send
-// `Authorization: Bearer <deviceToken>` instead of `X-Forge-API-Key`.
-app.use('/mcp', requireDevice());
+// MCP endpoint authentication (ISS-202 + ISS-150).
+// Accepts either a device token (legacy desktop path) or a Personal Access
+// Token (`forge_pat_*`) so non-device MCP clients (Cursor, Cline, Zed,
+// web-only users) can authenticate with per-tenant scoping. The dispatcher
+// middleware sets `c.get('principal')` to the resolved union type for the
+// handler. Desktop continues to send `Authorization: Bearer <deviceToken>`
+// with no client-side change.
+app.use('/mcp', requirePatOrDevice());
 app.post('/mcp', mcpHandler);
 app.get('/mcp', mcpHandler);
 app.delete('/mcp', mcpHandler);
@@ -247,6 +252,8 @@ app.route('/api/auth', devForceVerifyRoutes);
 app.route('/api/auth', meRoutes);
 app.route('/api/auth', preferenceRoutes);
 app.route('/api/auth', logoutRoutes);
+// ISS-150 — Personal Access Tokens (PAT) CRUD. User-scoped via JWT.
+app.route('/api', patRoutes);
 // ISS-314 — OAuth/OIDC (GitHub + Google + generic OIDC). Internally gated
 // by `socialAuth` feature flag; safe to mount unconditionally.
 app.route('/api/auth', oauthRoutes);

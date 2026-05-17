@@ -35,6 +35,11 @@ function getUserId(c: Context): string | undefined {
   return user?.id;
 }
 
+function getPatTokenId(c: Context): string | undefined {
+  const tokenId = c.get('patTokenId' as never) as string | undefined;
+  return tokenId;
+}
+
 function deriveKey(
   rule: RateLimitRule,
   ruleName: string,
@@ -42,6 +47,14 @@ function deriveKey(
 ): { key: string; dim: string } | null {
   const ip = getClientIp(c);
   const userId = getUserId(c);
+
+  if (rule.by === 'token') {
+    const tokenId = getPatTokenId(c);
+    if (tokenId) return { key: `${ruleName}:token:${tokenId}`, dim: 'token' };
+    // Fall back to IP so anonymous attackers can't bypass via no-PAT.
+    if (ip) return { key: `${ruleName}:ip:${ip}`, dim: 'ip' };
+    return null;
+  }
 
   if (rule.by === 'user') {
     if (userId) return { key: `${ruleName}:user:${userId}`, dim: 'user' };

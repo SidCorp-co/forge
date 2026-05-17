@@ -4,7 +4,7 @@ import { db } from '../../db/client.js';
 import { issuePriorities, issues, taskStatuses, tasks } from '../../db/schema.js';
 import {
   type ContextScopedMcpToolFactory,
-  assertDeviceOwnerIsMember,
+  assertPrincipalIsMember,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -107,7 +107,7 @@ export const forgeTasksTool: ContextScopedMcpToolFactory = (ctx) => ({
       const issueId = input.filters?.issue;
       if (!issueId) throw new Error('BAD_REQUEST: filters.issue required for list');
       const projectId = await loadIssueProjectId(issueId);
-      await assertDeviceOwnerIsMember(ctx.device, projectId);
+      await assertPrincipalIsMember(ctx.principal, projectId);
 
       const where = input.filters?.status
         ? and(eq(tasks.issueId, issueId), eq(tasks.status, input.filters.status))
@@ -126,7 +126,7 @@ export const forgeTasksTool: ContextScopedMcpToolFactory = (ctx) => ({
     if (input.action === 'get') {
       if (!input.documentId) throw new Error('BAD_REQUEST: documentId required for get');
       const row = await loadTaskForAccess(input.documentId);
-      await assertDeviceOwnerIsMember(ctx.device, row.projectId);
+      await assertPrincipalIsMember(ctx.principal, row.projectId);
       return { task: serialize(row) };
     }
 
@@ -135,7 +135,7 @@ export const forgeTasksTool: ContextScopedMcpToolFactory = (ctx) => ({
       if (!data?.issueId) throw new Error('BAD_REQUEST: data.issueId required');
       if (!data.title) throw new Error('BAD_REQUEST: data.title required');
       const projectId = await loadIssueProjectId(data.issueId);
-      await assertDeviceOwnerIsMember(ctx.device, projectId);
+      await assertPrincipalIsMember(ctx.principal, projectId);
 
       const [created] = await db
         .insert(tasks)
@@ -157,7 +157,7 @@ export const forgeTasksTool: ContextScopedMcpToolFactory = (ctx) => ({
     if (input.action === 'update') {
       if (!input.documentId) throw new Error('BAD_REQUEST: documentId required for update');
       const row = await loadTaskForAccess(input.documentId);
-      await assertDeviceOwnerIsMember(ctx.device, row.projectId);
+      await assertPrincipalIsMember(ctx.principal, row.projectId);
 
       const data = input.data ?? {};
       const updates: Record<string, unknown> = { updatedAt: new Date() };
@@ -180,7 +180,7 @@ export const forgeTasksTool: ContextScopedMcpToolFactory = (ctx) => ({
     if (input.action === 'delete') {
       if (!input.documentId) throw new Error('BAD_REQUEST: documentId required for delete');
       const row = await loadTaskForAccess(input.documentId);
-      await assertDeviceOwnerIsMember(ctx.device, row.projectId);
+      await assertPrincipalIsMember(ctx.principal, row.projectId);
       await db.delete(tasks).where(eq(tasks.id, input.documentId));
       return { deleted: true, documentId: input.documentId };
     }
