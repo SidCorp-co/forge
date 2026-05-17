@@ -92,6 +92,40 @@ describe('ISS-164 pipelineHealth E2E', () => {
     return id;
   }
 
+  // ISS-164 fix — `jobs.pipeline_run_id` + `agent_sessions.pipeline_run_id` are
+  // NOT NULL after migration 0054. Every job/session insert must hang off a
+  // pipeline_run row. For an issue-scoped row, reuse the same open run (the
+  // partial unique index `pipeline_runs_issue_open_uq` allows only one running
+  // issue run per issue). For issueId=null we mint a fresh `system` run.
+  async function getOrCreateRun(projectId: string, issueId: string | null): Promise<string> {
+    if (issueId) {
+      const existing = await harness.db.execute<{ id: string }>(sql`
+        SELECT id FROM pipeline_runs
+        WHERE kind = 'issue' AND issue_id = ${issueId} AND status IN ('running','paused')
+        LIMIT 1
+      `);
+      if (existing[0]?.id) return existing[0].id;
+      const id = randomUUID();
+      await harness.db.execute(sql`
+        INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status)
+        VALUES (${id}, ${projectId}, ${issueId}, 'issue', 'running')
+        ON CONFLICT DO NOTHING
+      `);
+      const after = await harness.db.execute<{ id: string }>(sql`
+        SELECT id FROM pipeline_runs
+        WHERE kind = 'issue' AND issue_id = ${issueId} AND status IN ('running','paused')
+        LIMIT 1
+      `);
+      return after[0]!.id;
+    }
+    const id = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status)
+      VALUES (${id}, ${projectId}, NULL, 'system', 'running')
+    `);
+    return id;
+  }
+
   async function insertSession(
     projectId: string,
     args: { issueId?: string | null; status?: string; skill?: string } = {},
@@ -101,9 +135,10 @@ describe('ISS-164 pipelineHealth E2E', () => {
     const metaObj: Record<string, unknown> = {};
     if (args.issueId) metaObj.issueId = args.issueId;
     if (args.skill) metaObj.skill = args.skill;
+    const runId = await getOrCreateRun(projectId, args.issueId ?? null);
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, status, metadata)
-      VALUES (${id}, ${projectId}, ${status}, ${JSON.stringify(metaObj)}::jsonb)
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, metadata)
+      VALUES (${id}, ${projectId}, ${runId}, ${status}, ${JSON.stringify(metaObj)}::jsonb)
     `);
     return id;
   }
@@ -121,10 +156,11 @@ describe('ISS-164 pipelineHealth E2E', () => {
     const status = args.status ?? 'queued';
     const type = args.type ?? 'plan';
     const queuedAt = args.queuedAt ?? new Date();
+    const runId = await getOrCreateRun(projectId, args.issueId ?? null);
     await harness.db.execute(sql`
-      INSERT INTO jobs (id, project_id, issue_id, type, status, payload, queued_at, created_by)
+      INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, payload, queued_at, created_by)
       VALUES (
-        ${id}, ${projectId}, ${args.issueId ?? null}, ${type}, ${status},
+        ${id}, ${projectId}, ${args.issueId ?? null}, ${runId}, ${type}, ${status},
         '{}'::jsonb, ${queuedAt.toISOString()},
         (SELECT owner_id FROM projects WHERE id = ${projectId})
       )
