@@ -159,6 +159,7 @@ describe('db/schema — projects', () => {
         'id',
         'name',
         'owner_id',
+        'preview_deploy',
         'production_branch',
         'repo_path',
         'slug',

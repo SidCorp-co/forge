@@ -155,6 +155,7 @@ export const projects = pgTable(
       onDelete: 'set null',
     }),
     agentConfig: jsonb('agent_config'),
+    previewDeploy: jsonb('preview_deploy'),
     webhookSecret: text('webhook_secret'),
     apiKey: text('api_key'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

@@ -22,6 +22,8 @@ export {
 export {
   createProjectSchema,
   updateProjectSchema,
+  previewDeployPatchSchema,
   type CreateProjectInput,
   type UpdateProjectInput,
+  type PreviewDeployConfig,
 } from './projects/routes.js';

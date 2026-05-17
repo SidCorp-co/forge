@@ -20,6 +20,7 @@ import { SentrySection } from './components/sentry-section';
 import { SettingsHeader } from './components/settings-header';
 import { SettingsLayout, type SettingsGroup } from './components/settings-layout';
 import { SkillRegistrationsSection } from './components/skill-registrations-section';
+import { TestingSection } from './components/testing-section';
 import { WebhookSection } from './components/webhook-section';
 import { WidgetSnippetSection } from './components/widget-snippet-section';
 import { AntigravitySection } from './components/antigravity-section';
@@ -57,6 +58,7 @@ export default function ProjectSettingsPage() {
       items: [
         { id: 'pipeline.config', label: 'Configuration', tag: 'PLC_CFG', render: () => <PipelineConfigSection projectId={projectId} /> },
         { id: 'pipeline.skills', label: 'Skills', tag: 'PLC_SKL', render: () => <SkillRegistrationsSection projectId={projectId} isOwner={isOwner} /> },
+        { id: 'pipeline.testing', label: 'Testing', tag: 'PLC_TST', render: () => <TestingSection projectId={projectId} isOwner={isOwner} /> },
       ],
     },
     {

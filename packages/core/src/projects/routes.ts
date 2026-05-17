@@ -51,6 +51,30 @@ export const createProjectSchema = z.object({
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 
+const testingUrlSchema = z.object({
+  label: z.string().trim().min(1).max(80),
+  url: z.string().trim().url().max(500),
+});
+
+const testCredentialSchema = z.object({
+  label: z.string().trim().min(1).max(80),
+  username: z.string().trim().max(200),
+  password: z.string().max(500),
+});
+
+// Free-form jsonb so future deploy knobs can be added without a migration.
+// Known fields are validated; unknown keys pass through unchanged.
+export const previewDeployPatchSchema = z
+  .object({
+    stagingUrl: z.string().trim().url().max(500).nullable().optional(),
+    stagingApiUrl: z.string().trim().url().max(500).nullable().optional(),
+    testingUrls: z.array(testingUrlSchema).max(50).optional(),
+    testCredentials: z.array(testCredentialSchema).max(50).optional(),
+  })
+  .catchall(z.unknown());
+
+export type PreviewDeployConfig = z.infer<typeof previewDeployPatchSchema>;
+
 export const updateProjectSchema = z
   .object({
     name: z.string().trim().min(1).max(200).optional(),
@@ -60,6 +84,7 @@ export const updateProjectSchema = z
     productionBranch: z.string().trim().max(100).nullable().optional(),
     defaultDeviceId: z.uuid().nullable().optional(),
     agentConfig: z.record(z.string(), z.unknown()).nullable().optional(),
+    previewDeploy: previewDeployPatchSchema.nullable().optional(),
     webhookSecret: z.string().min(16).max(128).nullable().optional(),
   })
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
@@ -202,6 +227,7 @@ projectRoutes.get(
         productionBranch: projects.productionBranch,
         defaultDeviceId: projects.defaultDeviceId,
         agentConfig: projects.agentConfig,
+        previewDeploy: projects.previewDeploy,
         webhookSecret: projects.webhookSecret,
         apiKey: projects.apiKey,
         createdAt: projects.createdAt,
@@ -321,6 +347,7 @@ projectRoutes.patch(
     if (patch.productionBranch !== undefined) updates.productionBranch = patch.productionBranch;
     if (patch.defaultDeviceId !== undefined) updates.defaultDeviceId = patch.defaultDeviceId;
     if (patch.agentConfig !== undefined) updates.agentConfig = patch.agentConfig;
+    if (patch.previewDeploy !== undefined) updates.previewDeploy = patch.previewDeploy;
     if (patch.webhookSecret !== undefined) updates.webhookSecret = patch.webhookSecret;
 
     const [updated] = await db.update(projects).set(updates).where(eq(projects.id, id)).returning({
@@ -334,6 +361,7 @@ projectRoutes.patch(
       productionBranch: projects.productionBranch,
       defaultDeviceId: projects.defaultDeviceId,
       agentConfig: projects.agentConfig,
+      previewDeploy: projects.previewDeploy,
       webhookSecret: projects.webhookSecret,
       createdAt: projects.createdAt,
     });

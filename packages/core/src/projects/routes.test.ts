@@ -481,6 +481,132 @@ describe('PATCH /api/projects/:id', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it('200 updates previewDeploy with testingUrls + testCredentials', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
+      .mockResolvedValueOnce([{ role: 'owner' }]);
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: 'p1',
+        slug: 'p-one',
+        name: 'P One',
+        ownerId: 'uuid-owner',
+        description: null,
+        repoPath: null,
+        baseBranch: null,
+        productionBranch: null,
+        defaultDeviceId: null,
+        agentConfig: null,
+        previewDeploy: {
+          testingUrls: [{ label: 'Staging', url: 'https://staging.example.com' }],
+          testCredentials: [{ label: 'Admin', username: 'qa@example.com', password: 'pw123' }],
+        },
+        webhookSecret: null,
+        createdAt: new Date(),
+      },
+    ]);
+
+    const previewDeploy = {
+      testingUrls: [{ label: 'Staging', url: 'https://staging.example.com' }],
+      testCredentials: [{ label: 'Admin', username: 'qa@example.com', password: 'pw123' }],
+    };
+
+    const res = await req('/11111111-1111-4111-8111-111111111111', {
+      method: 'PATCH',
+      body: JSON.stringify({ previewDeploy }),
+      token,
+    });
+    expect(res.status).toBe(200);
+    expect(updateSet).toHaveBeenCalledWith({ previewDeploy });
+  });
+
+  it('200 preserves unknown previewDeploy keys (catchall)', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
+      .mockResolvedValueOnce([{ role: 'owner' }]);
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: 'p1',
+        slug: 'p-one',
+        name: 'P One',
+        ownerId: 'uuid-owner',
+        description: null,
+        repoPath: null,
+        baseBranch: null,
+        productionBranch: null,
+        defaultDeviceId: null,
+        agentConfig: null,
+        previewDeploy: { stagingUrl: 'https://stg.example.com', testingUrls: [] },
+        webhookSecret: null,
+        createdAt: new Date(),
+      },
+    ]);
+
+    const previewDeploy = {
+      stagingUrl: 'https://stg.example.com',
+      testingUrls: [],
+    };
+
+    const res = await req('/11111111-1111-4111-8111-111111111111', {
+      method: 'PATCH',
+      body: JSON.stringify({ previewDeploy }),
+      token,
+    });
+    expect(res.status).toBe(200);
+    expect(updateSet).toHaveBeenCalledWith({ previewDeploy });
+  });
+
+  it('200 accepts null previewDeploy to clear config', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
+      .mockResolvedValueOnce([{ role: 'owner' }]);
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: 'p1',
+        slug: 'p-one',
+        name: 'P One',
+        ownerId: 'uuid-owner',
+        description: null,
+        repoPath: null,
+        baseBranch: null,
+        productionBranch: null,
+        defaultDeviceId: null,
+        agentConfig: null,
+        previewDeploy: null,
+        webhookSecret: null,
+        createdAt: new Date(),
+      },
+    ]);
+
+    const res = await req('/11111111-1111-4111-8111-111111111111', {
+      method: 'PATCH',
+      body: JSON.stringify({ previewDeploy: null }),
+      token,
+    });
+    expect(res.status).toBe(200);
+    expect(updateSet).toHaveBeenCalledWith({ previewDeploy: null });
+  });
+
+  it('400 BAD_REQUEST when testingUrls[].url is not a valid URL', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+
+    const res = await req('/11111111-1111-4111-8111-111111111111', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        previewDeploy: { testingUrls: [{ label: 'X', url: 'not-a-url' }] },
+      }),
+      token,
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('PUT /api/projects/:id/devices/:deviceId', () => {
