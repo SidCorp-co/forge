@@ -287,6 +287,68 @@ export const devices = pgTable(
   }),
 );
 
+// ISS-150 — Personal Access Tokens (PAT) for non-device MCP clients
+// (Cursor, Cline, Zed, web-only users). Mints + verification live in
+// packages/core/src/auth/pat.ts.
+export const personalAccessTokens = pgTable(
+  'personal_access_tokens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    // `forge_pat_<env>_<4 hex>` — 18 chars, indexed for fast lookup.
+    tokenPrefix: varchar('token_prefix', { length: 18 }).notNull(),
+    scopes: text('scopes')
+      .array()
+      .notNull()
+      .default(sql`ARRAY['read','write']::text[]`),
+    // NULL = inherit user's project memberships (global PAT). Non-null = strict allowlist.
+    projectIds: uuid('project_ids').array(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    lastUsedIp: text('last_used_ip'),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    // null = use RULES.patPerToken default; otherwise per-token override.
+    rateLimitMax: integer('rate_limit_max'),
+  },
+  (t) => ({
+    userNameUq: uniqueIndex('pat_user_name_uniq').on(t.userId, t.name),
+    userActiveIdx: index('pat_user_active_idx').on(t.userId, t.revokedAt),
+    tokenPrefixIdx: index('pat_token_prefix_idx').on(t.tokenPrefix),
+  }),
+);
+
+export const mcpAuditLog = pgTable(
+  'mcp_audit_log',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    tokenId: uuid('token_id').references(() => personalAccessTokens.id, {
+      onDelete: 'set null',
+    }),
+    deviceId: uuid('device_id').references(() => devices.id, { onDelete: 'set null' }),
+    tool: text('tool').notNull(),
+    action: text('action'),
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
+    // 'ok' | 'forbidden' | 'not_found' | 'error' | 'revoked' | 'rate_limited' | http code
+    resultCode: text('result_code').notNull(),
+    requestId: text('request_id'),
+    ip: text('ip'),
+    userAgent: text('user_agent'),
+    payloadDigest: varchar('payload_digest', { length: 64 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tokenIdIdx: index('mcp_audit_token_idx').on(t.tokenId, t.createdAt),
+    userIdx: index('mcp_audit_user_idx').on(t.userId, t.createdAt),
+    projectIdx: index('mcp_audit_project_idx').on(t.projectId, t.createdAt),
+  }),
+);
+
 export const pairingCodes = pgTable(
   'pairing_codes',
   {

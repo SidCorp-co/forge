@@ -2,18 +2,38 @@ import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Device } from '../../auth/deviceToken.js';
 import { db } from '../../db/client.js';
+import type { McpPrincipal } from '../../middleware/require-pat-or-device.js';
 import { projectMembers, projects, runners } from '../../db/schema.js';
 import type { McpTool } from './forge-version.js';
 
 /**
- * Per-request context passed to tool factories. `device` is the authenticated
- * device principal. `projectSlug` is the optional `X-Forge-Project-Slug`
- * header — tools that scope by project resolve it via
- * {@link resolveProjectIdFromSlug}.
+ * Per-request context passed to tool factories.
+ *
+ * `device` is non-null only when the principal is a paired device — kept on
+ * the context for legacy device-only tools (forge_pm_*, forge_jobs.*, etc.)
+ * that were written before PAT auth existed. Newer tools should branch on
+ * `principal.kind` directly via {@link assertPrincipalIsMember}.
+ *
+ * `projectSlug` is the optional `X-Forge-Project-Slug` header — tools that
+ * scope by project resolve it via {@link resolveProjectIdFromSlug}.
  */
 export type McpContext = {
+  principal: McpPrincipal;
+  /**
+   * Always set so legacy device-only tool factories keep their signatures.
+   * For PAT principals this is a synthesized stub whose `ownerId` is the
+   * PAT user — the membership helpers below only read `ownerId`. PAT users
+   * have no `id` that maps to a real `devices` row, so checks that pivot on
+   * `device.id` (e.g. `assertPmActor` querying `runners.deviceId = device.id`)
+   * naturally fail for them. That is the desired behaviour — PM tools
+   * require a real claude-code runner, which only paired devices can host.
+   */
   device: Device;
   projectSlug: string | null;
+  /** ISS-150 audit-log fields, threaded through for `writeMcpAudit`. */
+  requestId?: string;
+  ip?: string | null;
+  userAgent?: string | null;
 };
 
 /**
@@ -118,6 +138,77 @@ export async function assertPmActor(device: Device, projectId: string): Promise<
   if (caps.pm !== true) {
     throw new Error('FORBIDDEN: PM tools require runner capabilities.pm=true');
   }
+}
+
+/**
+ * Principal-aware membership check (ISS-150). Wraps the device-scoped
+ * helper above and adds the PAT path:
+ *   - device principal → existing assertDeviceOwnerIsMember
+ *   - PAT principal → check `projectIds` allowlist AND the underlying user
+ *     is a member of the project.
+ *
+ * On scope-allowlist miss for a PAT, we throw `NOT_FOUND` instead of
+ * `FORBIDDEN` so a probing caller cannot enumerate the project namespace
+ * via an existence-leaking 403. The MCP error mapper in `server.ts`
+ * translates this to a generic `isError: true` response.
+ */
+export async function assertPrincipalIsMember(
+  principal: McpPrincipal,
+  projectId: string,
+): Promise<void> {
+  if (principal.kind === 'device') {
+    await assertDeviceOwnerIsMember(principal.device, projectId);
+    return;
+  }
+  // PAT principal — check scope allowlist first.
+  if (principal.projectIds !== null && !principal.projectIds.includes(projectId)) {
+    throw new Error('NOT_FOUND: project not found or not accessible');
+  }
+  const role = await loadUserProjectRole(principal.userId, projectId);
+  if (!role || !role.isMember) {
+    throw new Error('NOT_FOUND: project not found or not accessible');
+  }
+}
+
+export async function assertPrincipalIsAdmin(
+  principal: McpPrincipal,
+  projectId: string,
+): Promise<void> {
+  if (principal.kind === 'device') {
+    await assertDeviceOwnerIsAdmin(principal.device, projectId);
+    return;
+  }
+  if (principal.projectIds !== null && !principal.projectIds.includes(projectId)) {
+    throw new Error('NOT_FOUND: project not found or not accessible');
+  }
+  const role = await loadUserProjectRole(principal.userId, projectId);
+  if (!role) throw new Error('NOT_FOUND: project not found or not accessible');
+  if (!role.isAdmin) {
+    throw new Error('FORBIDDEN: requires owner or admin on the project');
+  }
+}
+
+async function loadUserProjectRole(
+  userId: string,
+  projectId: string,
+): Promise<{ isMember: boolean; isAdmin: boolean } | null> {
+  const [project] = await db
+    .select({ ownerId: projects.ownerId })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  if (!project) return null;
+  if (project.ownerId === userId) return { isMember: true, isAdmin: true };
+  const [member] = await db
+    .select({ role: projectMembers.role })
+    .from(projectMembers)
+    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
+    .limit(1);
+  if (!member) return { isMember: false, isAdmin: false };
+  return {
+    isMember: true,
+    isAdmin: member.role === 'owner' || member.role === 'admin',
+  };
 }
 
 /**

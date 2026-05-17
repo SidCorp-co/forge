@@ -10,6 +10,14 @@ const EnvSchema = z.object({
   DATABASE_URL: z.url(),
   JWT_SECRET: z.string().min(32),
   DEVICE_TOKEN_PEPPER: z.string().min(32),
+  // ISS-150 — Pepper for argon2id hashing of Personal Access Tokens. In
+  // production this MUST be set explicitly; in non-prod environments we
+  // accept any 32+ char string so test runs work without operator setup.
+  PAT_PEPPER: z.string().min(32).default('dev-pat-pepper-replace-in-production-0123456789'),
+  RATE_LIMIT_PAT_MAX: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_PAT_WINDOW_MS: z.coerce.number().int().positive().optional(),
+  // Max PATs per user. Increased via env when an operator needs more.
+  PAT_MAX_PER_USER: z.coerce.number().int().positive().default(20),
   // SMTP optional — when SMTP_HOST is empty, email send is skipped (logged instead).
   // Email verification is still enforced server-side; users with no SMTP get the
   // verification token via server logs (dev mode) or must self-verify via admin.

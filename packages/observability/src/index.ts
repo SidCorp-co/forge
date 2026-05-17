@@ -34,7 +34,44 @@ export const SCRUB_BODY_KEYS: ReadonlySet<string> = new Set([
 /** Matches `?token=...` / `?jwt=...` / `?access_token=...` / `?api_key=...` query params. */
 export const URL_TOKEN_PATTERN = /([?&](?:token|jwt|access_token|refresh_token|api_key)=)[^&#]+/gi;
 
+/**
+ * ISS-150 — PAT plaintext shape (`forge_pat_<env>_<hex>`). Unanchored and
+ * global so we can redact tokens that leak inside larger strings — query
+ * params, JSON bodies, breadcrumb messages.
+ */
+export const PAT_STRING_PATTERN = /forge_pat_(?:dev|stg|prd)_[A-Fa-f0-9]+/g;
+
 export const FILTERED = '[Filtered]';
+
+/**
+ * Walk every string value in `obj` (recursively, depth-limited) and replace
+ * matches of {@link PAT_STRING_PATTERN} with `[Filtered]`. Sentry payloads
+ * are arbitrarily nested; we bound recursion to avoid pathological loops on
+ * cyclic objects.
+ */
+export function scrubStringValues(obj: unknown, depth = 0): void {
+  if (depth > 8 || !obj) return;
+  if (typeof obj !== 'object') return;
+  if (Array.isArray(obj)) {
+    for (let i = 0; i < obj.length; i++) {
+      const v = obj[i];
+      if (typeof v === 'string') obj[i] = v.replace(PAT_STRING_PATTERN, FILTERED);
+      else scrubStringValues(v, depth + 1);
+    }
+    return;
+  }
+  const rec = obj as Record<string, unknown>;
+  for (const k of Object.keys(rec)) {
+    const v = rec[k];
+    if (typeof v === 'string') rec[k] = v.replace(PAT_STRING_PATTERN, FILTERED);
+    else scrubStringValues(v, depth + 1);
+  }
+}
+
+/** Redact PAT plaintext inside a single string (URL, log line, breadcrumb message). */
+export function scrubPatInString(s: string): string {
+  return s.replace(PAT_STRING_PATTERN, FILTERED);
+}
 
 /** Mutates `obj` in place, replacing values whose keys appear in SCRUB_BODY_KEYS. Shallow only. */
 export function scrubBodyKeys(obj: unknown): void {
@@ -69,26 +106,32 @@ export function scrubUrl(url: string): string {
 export function scrubSentryEvent<E extends SentryLikeEvent>(event: E): E {
   const req = event.request;
   if (req?.headers) scrubHeaders(req.headers);
-  if (req?.url) req.url = scrubUrl(req.url);
+  if (req?.url) req.url = scrubPatInString(scrubUrl(req.url));
   if (req?.data !== undefined && req.data !== null) {
     if (typeof req.data === 'string') {
+      const rawData = req.data;
       try {
-        const parsed = JSON.parse(req.data);
+        const parsed = JSON.parse(rawData);
         scrubBodyKeys(parsed);
+        scrubStringValues(parsed);
         req.data = JSON.stringify(parsed);
       } catch {
-        // not JSON — leave as-is
+        // not JSON — still scan for raw PAT plaintext.
+        req.data = scrubPatInString(rawData);
       }
     } else {
       scrubBodyKeys(req.data);
+      scrubStringValues(req.data);
     }
   }
   if (event.breadcrumbs) {
     for (const b of event.breadcrumbs) {
+      if (typeof b.message === 'string') b.message = scrubPatInString(b.message);
       if (b.data && typeof b.data === 'object') {
         const d = b.data as Record<string, unknown>;
-        if (typeof d.url === 'string') d.url = scrubUrl(d.url);
+        if (typeof d.url === 'string') d.url = scrubPatInString(scrubUrl(d.url));
         scrubBodyKeys(d);
+        scrubStringValues(d);
       }
     }
   }
@@ -101,5 +144,5 @@ interface SentryLikeEvent {
     url?: string;
     data?: unknown;
   };
-  breadcrumbs?: Array<{ data?: unknown }>;
+  breadcrumbs?: Array<{ message?: string; data?: unknown }>;
 }

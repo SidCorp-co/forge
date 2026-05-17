@@ -52,7 +52,11 @@ describe('forgeVersionTool', () => {
 describe('@forge/core MCP server', () => {
   async function connectClient() {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    const server = createMcpServer({ device: fakeDevice, projectSlug: null });
+    const server = createMcpServer({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: null,
+    });
     await server.connect(serverTransport);
     const client = new Client({ name: 'test', version: '0.0.0' });
     await client.connect(clientTransport);
