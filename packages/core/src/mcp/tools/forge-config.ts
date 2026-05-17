@@ -6,8 +6,14 @@ import {
 } from '../../branches/resolve.js';
 import { db } from '../../db/client.js';
 import { issues, projects } from '../../db/schema.js';
+import { pipelineConfigPatchSchema } from '../../pipeline/pipeline-config-schema.js';
+import {
+  PipelineConfigError,
+  updatePipelineConfig,
+} from '../../pipeline/pipeline-config-service.js';
 import {
   type ContextScopedMcpToolFactory,
+  assertPrincipalIsAdmin,
   assertPrincipalIsMember,
   resolveProjectIdFromSlug,
   zodToMcpSchema,
@@ -15,53 +21,88 @@ import {
 
 const inputSchema = z
   .object({
-    action: z.literal('get'),
+    action: z.enum(['get', 'update']).default('get'),
     projectId: z.uuid().optional(),
     issueId: z.uuid().optional(),
+    pipelineConfig: pipelineConfigPatchSchema.optional(),
   })
   .strict();
+
+async function readProjectConfig(projectId: string) {
+  const [row] = await db
+    .select({
+      id: projects.id,
+      slug: projects.slug,
+      name: projects.name,
+      baseBranch: projects.baseBranch,
+      productionBranch: projects.productionBranch,
+      agentConfig: projects.agentConfig,
+    })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  if (!row) throw new Error('NOT_FOUND: project not found');
+  return row;
+}
+
+function formatBaseResponse(row: Awaited<ReturnType<typeof readProjectConfig>>) {
+  const ac = (row.agentConfig as Record<string, unknown> | null) ?? {};
+  return {
+    project: {
+      id: row.id,
+      slug: row.slug,
+      name: row.name,
+    },
+    config: {
+      repoPath: (ac.repoPath as string | undefined) ?? null,
+      baseBranch: (ac.baseBranch as string | undefined) ?? 'main',
+      productionBranch: (ac.productionBranch as string | undefined) ?? 'main',
+      categories: (ac.categories as string[] | undefined) ?? [],
+      pipelineConfig: (ac.pipelineConfig as Record<string, unknown> | undefined) ?? null,
+      activeDeviceId: (ac.activeDeviceId as string | undefined) ?? null,
+    },
+  };
+}
 
 export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_config',
   description:
-    'Read project configuration (agentConfig: repoPath, baseBranch, productionBranch, categories, pipelineConfig). Action: get. Project resolved from `projectId` arg or `X-Forge-Project-Slug` header. When `issueId` is supplied, the response also includes a resolved `branchConfig` (baseBranch, targetBranch, prodBranch) layering the issue override on top of the project default.',
+    'Read or write project configuration. Action `get` returns `agentConfig` (repoPath, baseBranch, productionBranch, categories, pipelineConfig); when `issueId` is supplied, also returns a resolved `branchConfig` layering the issue override on top of the project default. Action `update` (admin-gated) merges a `pipelineConfig` patch with the same invariants as `PATCH /projects/:id/pipeline-config` (rejects disabling `open`, stages with live issues, auto stages without registered skills, dead-end configs). Errors surface as `BAD_REQUEST: <code>: <message>`.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
+
+    if (input.action === 'update') {
+      if (!input.projectId) {
+        throw new Error('BAD_REQUEST: projectId is required for action=update');
+      }
+      await assertPrincipalIsAdmin(ctx.principal, input.projectId);
+      if (input.pipelineConfig) {
+        try {
+          await updatePipelineConfig({
+            projectId: input.projectId,
+            patch: input.pipelineConfig,
+          });
+        } catch (err) {
+          if (err instanceof PipelineConfigError) {
+            if (err.code === 'PROJECT_NOT_FOUND') {
+              throw new Error('NOT_FOUND: project not found');
+            }
+            const payload = JSON.stringify({ code: err.code, message: err.message, details: err.details });
+            throw new Error(`BAD_REQUEST: ${err.code}: ${payload}`);
+          }
+          throw err;
+        }
+      }
+      const row = await readProjectConfig(input.projectId);
+      return formatBaseResponse(row);
+    }
+
     const projectId = input.projectId ?? (await resolveProjectIdFromSlug(ctx.projectSlug));
     await assertPrincipalIsMember(ctx.principal, projectId);
 
-    const [row] = await db
-      .select({
-        id: projects.id,
-        slug: projects.slug,
-        name: projects.name,
-        baseBranch: projects.baseBranch,
-        productionBranch: projects.productionBranch,
-        agentConfig: projects.agentConfig,
-      })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-
-    if (!row) throw new Error('NOT_FOUND: project not found');
-
-    const ac = (row.agentConfig as Record<string, unknown> | null) ?? {};
-    const baseResponse = {
-      project: {
-        id: row.id,
-        slug: row.slug,
-        name: row.name,
-      },
-      config: {
-        repoPath: (ac.repoPath as string | undefined) ?? null,
-        baseBranch: (ac.baseBranch as string | undefined) ?? 'main',
-        productionBranch: (ac.productionBranch as string | undefined) ?? 'main',
-        categories: (ac.categories as string[] | undefined) ?? [],
-        pipelineConfig: (ac.pipelineConfig as Record<string, unknown> | undefined) ?? null,
-        activeDeviceId: (ac.activeDeviceId as string | undefined) ?? null,
-      },
-    };
+    const row = await readProjectConfig(projectId);
+    const baseResponse = formatBaseResponse(row);
 
     if (!input.issueId) return baseResponse;
 

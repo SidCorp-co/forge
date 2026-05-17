@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Device } from '../../auth/deviceToken.js';
 import { db } from '../../db/client.js';
 import type { McpPrincipal } from '../../middleware/require-pat-or-device.js';
-import { projectMembers, projects, runners } from '../../db/schema.js';
+import { projectMembers, projects, runners, users } from '../../db/schema.js';
 import type { McpTool } from './forge-version.js';
 
 /**
@@ -209,6 +209,33 @@ async function loadUserProjectRole(
     isMember: true,
     isAdmin: member.role === 'owner' || member.role === 'admin',
   };
+}
+
+/**
+ * Resolve a principal to the underlying user id — device principals expose
+ * `device.ownerId`, PAT principals carry `userId` directly. Used by tools
+ * that need to check user-level attributes (e.g. `users.isCeo`).
+ */
+export function principalUserId(principal: McpPrincipal): string {
+  return principal.kind === 'device' ? principal.device.ownerId : principal.userId;
+}
+
+/**
+ * Throw if the principal is not a system admin (`users.isCeo === true`).
+ * Used by cross-project metrics tools that surface data outside a single
+ * project's scope — same gate the analytics REST routes already enforce via
+ * `loadVisibleProjectIds`.
+ */
+export async function assertPrincipalIsSystemAdmin(principal: McpPrincipal): Promise<void> {
+  const userId = principalUserId(principal);
+  const [row] = await db
+    .select({ isCeo: users.isCeo })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!row || row.isCeo !== true) {
+    throw new Error('FORBIDDEN: requires system admin');
+  }
 }
 
 /**

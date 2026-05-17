@@ -23,6 +23,10 @@ import {
   forgeJobsListTool,
 } from './tools/forge-jobs.js';
 import { forgeMemorySearchTool } from './tools/forge-memory.js';
+import {
+  forgeMetricsAdminStepDurationsTool,
+  forgeMetricsProjectStepDurationsTool,
+} from './tools/forge-metrics.js';
 import { forgePmDispatchTool } from './tools/forge-pm-dispatch.js';
 import { forgePmEscalateTool } from './tools/forge-pm-escalate.js';
 import { forgePmFlagBlockerTool } from './tools/forge-pm-flag-blocker.js';
@@ -34,6 +38,7 @@ import { forgePmWriteDecisionTool } from './tools/forge-pm-write-decision.js';
 import { forgeProjectsListTool } from './tools/forge-projects.js';
 import {
   forgeSkillsGetTool,
+  forgeSkillsListRegistrationsTool,
   forgeSkillsListTool,
   forgeSkillsRegisterTool,
 } from './tools/forge-skills.js';
@@ -114,6 +119,9 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeSkillsListTool(device),
     forgeSkillsGetTool(device),
     forgeSkillsRegisterTool(device),
+    forgeSkillsListRegistrationsTool(ctx),
+    forgeMetricsAdminStepDurationsTool(ctx),
+    forgeMetricsProjectStepDurationsTool(ctx),
     forgeIssuesTool(ctx),
     forgeCommentsTool(ctx),
     forgeConfigTool(ctx),

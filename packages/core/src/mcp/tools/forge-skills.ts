@@ -3,10 +3,16 @@ import { issueStatuses } from '../../db/schema.js';
 import {
   getSkillForProject,
   listProjectSkills,
+  listSkillRegistrations,
   registerSkillForProject,
 } from '../../skills/service.js';
-import { assertDeviceOwnerIsAdmin, assertDeviceOwnerIsMember, zodToMcpSchema } from './lib.js';
-import type { DeviceScopedMcpToolFactory } from './lib.js';
+import {
+  assertDeviceOwnerIsAdmin,
+  assertDeviceOwnerIsMember,
+  assertPrincipalIsMember,
+  zodToMcpSchema,
+} from './lib.js';
+import type { ContextScopedMcpToolFactory, DeviceScopedMcpToolFactory } from './lib.js';
 
 const listInputSchema = z.object({ projectId: z.uuid() });
 const getInputSchema = z.object({ projectId: z.uuid(), skillId: z.uuid() });
@@ -15,6 +21,7 @@ const registerInputSchema = z.object({
   skillId: z.uuid(),
   stage: z.enum(issueStatuses).nullable(),
 });
+const listRegistrationsInputSchema = z.object({ projectId: z.uuid() }).strict();
 
 export const forgeSkillsListTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_skills.list',
@@ -55,5 +62,18 @@ export const forgeSkillsRegisterTool: DeviceScopedMcpToolFactory = (device) => (
       throw new Error('NOT_FOUND: skill not found');
     }
     return registerSkillForProject({ ...input, actorUserId: device.ownerId });
+  },
+});
+
+export const forgeSkillsListRegistrationsTool: ContextScopedMcpToolFactory = (ctx) => ({
+  name: 'forge_skills.list_registrations',
+  description:
+    "List the project's stage→skill bindings overlaid with per-stage `mode` ('auto'|'manual') and `enabled` from `agentConfig.pipelineConfig.states`. Plan agents call this before dispatching to avoid sending work into a manual or disabled stage. Stages with no registration are omitted — clients diff against `STAGE_NAMES` to find gaps. Returns `{ registrations: [{ stage, skillId, skillName, scope, mode, enabled, registeredBy, registeredAt }] }`.",
+  inputSchema: zodToMcpSchema(listRegistrationsInputSchema),
+  handler: async (args) => {
+    const { projectId } = listRegistrationsInputSchema.parse(args);
+    await assertPrincipalIsMember(ctx.principal, projectId);
+    const registrations = await listSkillRegistrations(projectId);
+    return { registrations };
   },
 });
