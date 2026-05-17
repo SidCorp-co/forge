@@ -2,6 +2,7 @@
 
 import { UnimplementedBanner } from '@/components/common/unimplemented-banner';
 import { Spinner } from '@/components/ui';
+import { ConcurrencyCard } from '@/features/pipeline/config/components/concurrency-card';
 import { PipelineMasterToggle } from '@/features/pipeline/config/components/pipeline-master-toggle';
 import { RecoveryPolicyCard } from '@/features/pipeline/config/components/recovery-policy-card';
 import { RunnerDefaultsCard } from '@/features/pipeline/config/components/runner-defaults-card';
@@ -19,6 +20,11 @@ interface Props {
  * lands in core, add it here — the dropdowns will pick it up automatically.
  */
 const KNOWN_RUNNER_TYPES = ['claude-code', 'antigravity'];
+
+// Keep in sync with DEFAULT_MAX_CONCURRENT_ISSUES in
+// packages/core/src/jobs/dispatch-gates.ts — the L3 dispatch gate falls back
+// to this value when no project override is stored.
+const DEFAULT_MAX_CONCURRENT_ISSUES = 3;
 
 export function PipelineConfigSection({ projectId }: Props) {
   const cfg = usePipelineConfig(projectId, KNOWN_RUNNER_TYPES);
@@ -72,6 +78,12 @@ export function PipelineConfigSection({ projectId }: Props) {
         onMaxAttemptsChange={(n) => cfg.setField('recoveryMaxAttempts', n)}
         onWindowHoursChange={(n) => cfg.setField('recoveryWindowHours', n)}
         onByKindChange={cfg.setRecoveryByKind}
+      />
+
+      <ConcurrencyCard
+        value={cfg.state.maxConcurrentIssues}
+        defaultValue={DEFAULT_MAX_CONCURRENT_ISSUES}
+        onChange={(v) => cfg.setField('maxConcurrentIssues', v)}
       />
 
       <RunnerDefaultsCard

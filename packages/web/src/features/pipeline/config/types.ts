@@ -56,6 +56,12 @@ export interface PipelineConfig {
   recoveryMaxAttempts?: number;
   recoveryWindowHours?: number;
   recoveryByFailureKind?: RecoveryByKind;
+  /**
+   * ISS-111 — per-project cap for the L3 dispatch gate. Read responses only
+   * ever carry a positive integer or omit the key; `null` is reserved for
+   * patch payloads as the explicit "clear the override" signal.
+   */
+  maxConcurrentIssues?: number | null;
   states?: StatesConfig;
 }
 

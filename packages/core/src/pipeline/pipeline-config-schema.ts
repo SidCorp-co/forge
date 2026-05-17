@@ -150,6 +150,11 @@ export type PipelineConfig = z.infer<typeof pipelineConfigSchema>;
  */
 export const pipelineConfigPatchSchema = pipelineConfigSchema.extend({
   runnerFallback: z.array(z.string()).optional(),
+  // `null` is the explicit "clear the override" signal. The service treats it
+  // as a request to delete the stored key so the L3 dispatch gate falls back
+  // to DEFAULT_MAX_CONCURRENT_ISSUES. Read schema keeps the field non-nullable
+  // — a stored null should never be echoed back to clients.
+  maxConcurrentIssues: z.number().int().positive().max(50).nullable().optional(),
 });
 
 export type PipelineConfigPatchInput = z.infer<typeof pipelineConfigPatchSchema>;

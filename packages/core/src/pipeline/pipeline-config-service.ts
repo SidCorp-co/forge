@@ -79,10 +79,19 @@ export async function updatePipelineConfig(
     const currentPipeline = (currentAc.pipelineConfig ?? {}) as Record<string, unknown>;
     const nextDoc: Record<string, unknown> = {};
     if (mergeDoc.pipelineConfig) {
-      const nextPipeline = {
+      const nextPipeline: Record<string, unknown> = {
         ...currentPipeline,
         ...(mergeDoc.pipelineConfig as object),
       };
+      // ISS-111 — explicit null on maxConcurrentIssues clears the override so
+      // the L3 dispatch gate falls back to DEFAULT_MAX_CONCURRENT_ISSUES. The
+      // shallow merge above would otherwise persist null, which the read
+      // schema would reject on the next GET.
+      if (
+        (mergeDoc.pipelineConfig as Record<string, unknown>).maxConcurrentIssues === null
+      ) {
+        delete nextPipeline.maxConcurrentIssues;
+      }
       const patchStates = (pipelinePatch as { states?: StagesConfig }).states;
       if (patchStates) {
         if (patchStates.open && patchStates.open.enabled === false) {

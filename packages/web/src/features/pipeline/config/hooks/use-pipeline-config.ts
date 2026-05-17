@@ -47,6 +47,8 @@ export interface PipelineConfigFormState {
   recoveryWindowHours: number;
   recoveryByKind: { transient: number; permanent: number; unknown: number };
   runnerFallback: string[];
+  /** null = no project override stored; the L3 gate uses its in-code default. */
+  maxConcurrentIssues: number | null;
 }
 
 function defaultStatesForForm(): Record<StageName, StageConfig> {
@@ -73,6 +75,7 @@ const FALLBACK_DEFAULTS: PipelineConfigFormState = {
   recoveryWindowHours: 24,
   recoveryByKind: { transient: 5, permanent: 0, unknown: 2 },
   runnerFallback: ['claude-code'],
+  maxConcurrentIssues: null,
 };
 
 function fromServer(data: PipelineConfigResponse): PipelineConfigFormState {
@@ -117,6 +120,8 @@ function fromServer(data: PipelineConfigResponse): PipelineConfigFormState {
       Array.isArray(data.runnerFallback) && data.runnerFallback.length > 0
         ? data.runnerFallback
         : FALLBACK_DEFAULTS.runnerFallback,
+    maxConcurrentIssues:
+      typeof cfg.maxConcurrentIssues === 'number' ? cfg.maxConcurrentIssues : null,
   };
 }
 
@@ -167,6 +172,12 @@ function buildPipelinePatch(
   }
   if (Object.keys(statesPatch).length > 0) {
     patch.states = statesPatch;
+  }
+
+  if (state.maxConcurrentIssues !== initial.maxConcurrentIssues) {
+    // null triggers the backend's clear-the-override path; a positive int
+    // writes/overwrites the stored value.
+    patch.maxConcurrentIssues = state.maxConcurrentIssues;
   }
 
   return patch;

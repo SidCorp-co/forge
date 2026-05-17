@@ -120,6 +120,28 @@ describe('pipelineConfigPatchSchema', () => {
   it('rejects non-array runnerFallback', () => {
     expect(() => pipelineConfigPatchSchema.parse({ runnerFallback: 'claude-code' })).toThrow();
   });
+
+  it('accepts maxConcurrentIssues null on patch (clear-override signal)', () => {
+    expect(pipelineConfigPatchSchema.parse({ maxConcurrentIssues: null })).toEqual({
+      maxConcurrentIssues: null,
+    });
+  });
+
+  it('accepts maxConcurrentIssues as a positive integer on patch', () => {
+    expect(pipelineConfigPatchSchema.parse({ maxConcurrentIssues: 5 })).toEqual({
+      maxConcurrentIssues: 5,
+    });
+  });
+
+  it('rejects maxConcurrentIssues null on the read schema', () => {
+    expect(() => pipelineConfigSchema.parse({ maxConcurrentIssues: null })).toThrow();
+  });
+
+  it('rejects maxConcurrentIssues outside 1–50 on patch', () => {
+    expect(() => pipelineConfigPatchSchema.parse({ maxConcurrentIssues: 0 })).toThrow();
+    expect(() => pipelineConfigPatchSchema.parse({ maxConcurrentIssues: -1 })).toThrow();
+    expect(() => pipelineConfigPatchSchema.parse({ maxConcurrentIssues: 51 })).toThrow();
+  });
 });
 
 describe('statesConfigSchema (ISS-110)', () => {
