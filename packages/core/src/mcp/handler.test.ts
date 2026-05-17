@@ -135,4 +135,46 @@ describe('@forge/core MCP server', () => {
       await server.close();
     }
   });
+
+  // ISS-150 — PAT principals must be 403'd from forge_pm.* tools with a stable
+  // PM_REQUIRES_DEVICE error code. Regression coverage for Finding #2 where
+  // the DEVICE_REQUIRED_TOOLS set used the wrong separator characters and
+  // never fired.
+  it('rejects PAT principal on forge_pm.* tools with PM_REQUIRES_DEVICE', async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createMcpServer({
+      principal: {
+        kind: 'pat',
+        userId: fakeDevice.ownerId,
+        tokenId: '00000000-0000-4000-8000-0000000000aa',
+        scopes: ['read', 'write'],
+        projectIds: null,
+      },
+      device: fakeDevice,
+      projectSlug: null,
+    });
+    await server.connect(serverTransport);
+    const client = new Client({ name: 'test', version: '0.0.0' });
+    await client.connect(clientTransport);
+    try {
+      for (const name of [
+        'forge_pm.snapshot',
+        'forge_pm.graph',
+        'forge_pm.runner_load',
+        'forge_pm.dispatch',
+        'forge_pm.set_dependency',
+        'forge_pm.flag_blocker',
+        'forge_pm.escalate',
+        'forge_pm.write_decision',
+      ]) {
+        const res = await client.callTool({ name, arguments: {} });
+        expect(res.isError).toBe(true);
+        const text = (res.content as Array<{ type: string; text: string }>)[0]?.text ?? '';
+        expect(text).toContain('PM_REQUIRES_DEVICE');
+      }
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
 });

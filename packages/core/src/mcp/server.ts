@@ -72,14 +72,14 @@ import type { McpContext } from './tools/lib.js';
  * stub-device id into a downstream FK lookup.
  */
 const DEVICE_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
-  'forge_pm_snapshot',
-  'forge_pm_graph',
-  'forge_pm_runner-load',
-  'forge_pm_dispatch',
-  'forge_pm_set-dependency',
-  'forge_pm_flag-blocker',
-  'forge_pm_escalate',
-  'forge_pm_write-decision',
+  'forge_pm.snapshot',
+  'forge_pm.graph',
+  'forge_pm.runner_load',
+  'forge_pm.dispatch',
+  'forge_pm.set_dependency',
+  'forge_pm.flag_blocker',
+  'forge_pm.escalate',
+  'forge_pm.write_decision',
 ]);
 
 function classifyError(err: unknown): { code: AuditResultCode; message: string } {
@@ -128,7 +128,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgePipelineRunsPauseTool(device),
     forgePipelineRunsResumeTool(device),
     forgePipelineRunsCancelTool(device),
-    forgeProjectsListTool(device),
+    forgeProjectsListTool(ctx),
     forgePmSnapshotTool(device),
     forgePmGraphTool(device),
     forgePmRunnerLoadTool(device),

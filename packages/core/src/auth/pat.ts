@@ -52,6 +52,25 @@ async function hashPatPlaintext(plaintext: string): Promise<string> {
   return argon2.hash(plaintext + env.PAT_PEPPER, ARGON2_OPTIONS);
 }
 
+/**
+ * Lazy-computed dummy argon2 hash used to keep `verifyPat` constant-time
+ * when the prefix bucket is empty. Without this, a timing attacker who can
+ * speak the auth endpoint could distinguish "prefix has no live PAT" from
+ * "prefix has live PAT(s) but body is wrong" via the absence of any
+ * argon2.verify call. The hash itself is over a random secret that is
+ * never returned to the caller.
+ */
+let dummyHashPromise: Promise<string> | null = null;
+function getDummyHash(): Promise<string> {
+  if (!dummyHashPromise) {
+    dummyHashPromise = argon2.hash(
+      `__pat_dummy__${env.PAT_PEPPER}__${Date.now()}`,
+      ARGON2_OPTIONS,
+    );
+  }
+  return dummyHashPromise;
+}
+
 export async function mintPat(input: MintPatInput): Promise<MintedPat> {
   const plaintext = generatePatPlaintext(patEnvForNodeEnv(env.NODE_ENV));
   const tokenPrefix = plaintext.slice(0, PAT_PREFIX_LEN);
@@ -105,7 +124,18 @@ export async function verifyPat(plaintext: unknown): Promise<VerifiedPat | null>
       ),
     );
 
-  if (rows.length === 0) return null;
+  if (rows.length === 0) {
+    // Constant-time guard: run a dummy argon2.verify so an empty bucket
+    // costs the same as a populated-but-mismatched bucket. The dummy hash
+    // is a one-time computation; argon2.verify uses the parameters embedded
+    // in the hash so this stays aligned with ARGON2_OPTIONS.
+    try {
+      await argon2.verify(await getDummyHash(), plaintext + env.PAT_PEPPER);
+    } catch {
+      // ignore — only here for timing parity
+    }
+    return null;
+  }
 
   let matched: Pat | null = null;
   for (const row of rows) {
@@ -209,6 +239,9 @@ export interface RotatePatInput {
  * Rotate a PAT — mint a fresh plaintext, revoke the old row immediately.
  * Returns null if the (id, userId) pair does not match. The new row
  * carries over `name`/`scopes`/`projectIds`/`rateLimitMax` from the old.
+ *
+ * The rename/revoke + insert run in a single transaction so a failed mint
+ * cannot leave the user with a revoked old PAT and no replacement.
  */
 export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null> {
   const [existing] = await db
@@ -220,22 +253,35 @@ export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null
     .limit(1);
   if (!existing) return null;
 
-  // Mint a new row, then revoke the old. We cannot reuse `name` because of
-  // the (user_id, name) uniqueness, so suffix the rotated row's old name
-  // with a timestamp and rename the new row to the original.
+  // Hash outside the tx — argon2id is slow and we don't want to hold a
+  // row-level lock for ~100ms.
+  const plaintext = generatePatPlaintext(patEnvForNodeEnv(env.NODE_ENV));
+  const tokenPrefix = plaintext.slice(0, PAT_PREFIX_LEN);
+  const tokenHash = await hashPatPlaintext(plaintext);
   const stamp = Date.now();
-  await db
-    .update(personalAccessTokens)
-    .set({ name: `${existing.name}.rotated.${stamp}`, revokedAt: sql`now()` })
-    .where(eq(personalAccessTokens.id, existing.id));
 
-  return mintPat({
-    userId: existing.userId,
-    name: existing.name,
-    scopes: existing.scopes,
-    projectIds: existing.projectIds,
-    expiresAt: input.expiresAt ?? existing.expiresAt,
-    rateLimitMax: existing.rateLimitMax,
+  return db.transaction(async (tx) => {
+    await tx
+      .update(personalAccessTokens)
+      .set({ name: `${existing.name}.rotated.${stamp}`, revokedAt: sql`now()` })
+      .where(eq(personalAccessTokens.id, existing.id));
+
+    const [row] = await tx
+      .insert(personalAccessTokens)
+      .values({
+        userId: existing.userId,
+        name: existing.name,
+        tokenHash,
+        tokenPrefix,
+        scopes: existing.scopes,
+        projectIds: existing.projectIds,
+        expiresAt: input.expiresAt ?? existing.expiresAt,
+        rateLimitMax: existing.rateLimitMax,
+      })
+      .returning();
+
+    if (!row) throw new Error('rotatePat: insert returned no row');
+    return { row, plaintext };
   });
 }
 

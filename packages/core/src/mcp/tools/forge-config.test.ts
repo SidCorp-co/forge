@@ -48,7 +48,7 @@ beforeEach(() => {
 
 describe('forge_config tool (ISS-135 PR-A)', () => {
   it('omits branchConfig from the response when no issueId is supplied (backward-compat)', async () => {
-    const tool = forgeConfigTool({ device: fakeDevice, projectSlug: null });
+    const tool = forgeConfigTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
 
     // assertDeviceOwnerIsMember: ownerId match short-circuits the membership query.
     selectLimit
@@ -76,7 +76,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
   });
 
   it('includes resolved branchConfig (project defaults) when issueId is supplied and the issue has no override', async () => {
-    const tool = forgeConfigTool({ device: fakeDevice, projectSlug: null });
+    const tool = forgeConfigTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
 
     selectLimit
       .mockResolvedValueOnce([{ ownerId: OWNER_ID }]) // membership project lookup
@@ -106,7 +106,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
   });
 
   it('layers sessionContext.branchConfig override on top of project defaults', async () => {
-    const tool = forgeConfigTool({ device: fakeDevice, projectSlug: null });
+    const tool = forgeConfigTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
 
     selectLimit
       .mockResolvedValueOnce([{ ownerId: OWNER_ID }])
@@ -141,7 +141,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
   });
 
   it('throws NOT_FOUND when issueId refers to an issue outside the project', async () => {
-    const tool = forgeConfigTool({ device: fakeDevice, projectSlug: null });
+    const tool = forgeConfigTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
 
     selectLimit
       .mockResolvedValueOnce([{ ownerId: OWNER_ID }])

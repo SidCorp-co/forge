@@ -84,7 +84,11 @@ function mockCeoListAll(rows: unknown[]) {
 
 describe('forge_projects.list', () => {
   it('non-CEO returns owned + member projects with correct role mapping', async () => {
-    const tool = forgeProjectsListTool(fakeDevice);
+    const tool = forgeProjectsListTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: null,
+    });
     mockMeLookup(false);
     mockOwnedQuery([{ id: PROJECT_A, slug: 'a', name: 'A', ownerId: OWNER_ID }]);
     mockMemberQuery([
@@ -100,7 +104,11 @@ describe('forge_projects.list', () => {
   });
 
   it('member-row with role=member surfaces as member', async () => {
-    const tool = forgeProjectsListTool(fakeDevice);
+    const tool = forgeProjectsListTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: null,
+    });
     mockMeLookup(false);
     mockOwnedQuery([]);
     mockMemberQuery([
@@ -112,7 +120,11 @@ describe('forge_projects.list', () => {
   });
 
   it('owner with co-existing member row keeps role=owner and is not duplicated', async () => {
-    const tool = forgeProjectsListTool(fakeDevice);
+    const tool = forgeProjectsListTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: null,
+    });
     mockMeLookup(false);
     mockOwnedQuery([{ id: PROJECT_A, slug: 'a', name: 'A', ownerId: OWNER_ID }]);
     // The device owner happens to also have a projectMembers row on the
@@ -130,7 +142,11 @@ describe('forge_projects.list', () => {
   });
 
   it('CEO sees all projects; role=owner when ownerId matches, else admin', async () => {
-    const tool = forgeProjectsListTool(fakeDevice);
+    const tool = forgeProjectsListTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: null,
+    });
     mockMeLookup(true);
     mockCeoListAll([
       { id: PROJECT_A, slug: 'a', name: 'A', ownerId: OWNER_ID },
@@ -145,8 +161,83 @@ describe('forge_projects.list', () => {
     expect(result.projects.find((p) => p.id === PROJECT_B)?.role).toBe('admin');
   });
 
+  it('PAT principal with projectIds allowlist filters output to allowed projects only (ISS-150)', async () => {
+    const tool = forgeProjectsListTool({
+      principal: {
+        kind: 'pat',
+        userId: OWNER_ID,
+        tokenId: 'token-id',
+        scopes: ['read'],
+        projectIds: [PROJECT_A],
+      },
+      device: fakeDevice,
+      projectSlug: null,
+    });
+    mockMeLookup(false);
+    mockOwnedQuery([{ id: PROJECT_A, slug: 'a', name: 'A', ownerId: OWNER_ID }]);
+    mockMemberQuery([
+      { id: PROJECT_B, slug: 'b', name: 'B', ownerId: OTHER_OWNER_ID, role: 'member' },
+    ]);
+
+    const result = (await tool.handler({})) as {
+      projects: Array<{ id: string }>;
+    };
+    // PROJECT_B is a real membership but NOT in the PAT's projectIds — must be filtered.
+    expect(result.projects).toHaveLength(1);
+    expect(result.projects[0]?.id).toBe(PROJECT_A);
+  });
+
+  it('PAT principal with null projectIds (global) sees everything the user can access', async () => {
+    const tool = forgeProjectsListTool({
+      principal: {
+        kind: 'pat',
+        userId: OWNER_ID,
+        tokenId: 'token-id',
+        scopes: ['read'],
+        projectIds: null,
+      },
+      device: fakeDevice,
+      projectSlug: null,
+    });
+    mockMeLookup(false);
+    mockOwnedQuery([{ id: PROJECT_A, slug: 'a', name: 'A', ownerId: OWNER_ID }]);
+    mockMemberQuery([
+      { id: PROJECT_B, slug: 'b', name: 'B', ownerId: OTHER_OWNER_ID, role: 'member' },
+    ]);
+
+    const result = (await tool.handler({})) as { projects: unknown[] };
+    expect(result.projects).toHaveLength(2);
+  });
+
+  it('PAT CEO with projectIds allowlist is still narrowed (ISS-150)', async () => {
+    const tool = forgeProjectsListTool({
+      principal: {
+        kind: 'pat',
+        userId: OWNER_ID,
+        tokenId: 'token-id',
+        scopes: ['read'],
+        projectIds: [PROJECT_B],
+      },
+      device: fakeDevice,
+      projectSlug: null,
+    });
+    mockMeLookup(true);
+    mockCeoListAll([
+      { id: PROJECT_A, slug: 'a', name: 'A', ownerId: OWNER_ID },
+      { id: PROJECT_B, slug: 'b', name: 'B', ownerId: OTHER_OWNER_ID },
+    ]);
+
+    const result = (await tool.handler({})) as { projects: Array<{ id: string }> };
+    expect(result.projects).toHaveLength(1);
+    expect(result.projects[0]?.id).toBe(PROJECT_B);
+  });
+
   it('handles missing user row gracefully (treated as non-CEO)', async () => {
-    const tool = forgeProjectsListTool(fakeDevice);
+    const tool = forgeProjectsListTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: null,
+    });
     selectImpl.mockImplementationOnce(() => ({
       from: () => ({
         where: () => ({ limit: () => Promise.resolve([]) }),

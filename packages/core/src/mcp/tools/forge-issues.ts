@@ -20,7 +20,7 @@ import { recordActivityTx } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
 import {
   type ContextScopedMcpToolFactory,
-  assertDeviceOwnerIsMember,
+  assertPrincipalIsMember,
   resolveProjectIdFromSlug,
   zodToMcpSchema,
 } from './lib.js';
@@ -196,12 +196,12 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    const { device, projectSlug } = ctx;
+    const { device, principal, projectSlug } = ctx;
 
     switch (input.action) {
       case 'list': {
         const projectId = await resolveProjectId(input, projectSlug);
-        await assertDeviceOwnerIsMember(device, projectId);
+        await assertPrincipalIsMember(principal, projectId);
 
         const conds = [eq(issues.projectId, projectId)];
         const f = input.filters;
@@ -239,14 +239,14 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'get': {
         if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for get');
         const issue = await loadIssue(input.documentId);
-        await assertDeviceOwnerIsMember(device, issue.projectId);
+        await assertPrincipalIsMember(principal, issue.projectId);
         return serialize(issue);
       }
 
       case 'create': {
         if (!input.data?.title) throw new Error('BAD_REQUEST: data.title is required for create');
         const projectId = await resolveProjectId(input, projectSlug);
-        await assertDeviceOwnerIsMember(device, projectId);
+        await assertPrincipalIsMember(principal, projectId);
 
         // ISS-130 — narrow allow-list for entry status. Only `open` (the
         // normal triage entry) and `on_hold` (the decomposition parking
@@ -331,7 +331,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for update');
         if (!input.data) throw new Error('BAD_REQUEST: data is required for update');
         const issue = await loadIssue(input.documentId);
-        await assertDeviceOwnerIsMember(device, issue.projectId);
+        await assertPrincipalIsMember(principal, issue.projectId);
 
         // Status changes always route through the state machine so the
         // transitions stay aligned with REST `/transition` (reopen-cap +
@@ -429,7 +429,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         const target = input.data?.status;
         if (!target) throw new Error('BAD_REQUEST: data.status is required for transition');
         const issue = await loadIssue(input.documentId);
-        await assertDeviceOwnerIsMember(device, issue.projectId);
+        await assertPrincipalIsMember(principal, issue.projectId);
         await applyStatusTransition(issue, target, device);
         const fresh = await loadIssue(issue.id);
         return serialize(fresh);
