@@ -437,10 +437,38 @@
       "breakpoints": true
     },
     {
+      "idx": 62,
+      "version": "7",
+      "when": 1779400360000,
+      "tag": "0062_personal_access_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1779400420000,
+      "tag": "0063_mcp_audit_log",
+      "breakpoints": true
+    },
+    {
       "idx": 64,
       "version": "7",
       "when": 1779400480000,
       "tag": "0064_drop_jobs_gate_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1779400540000,
+      "tag": "0065_fresh_auth_stamp",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1779400600000,
+      "tag": "0066_project_preview_deploy",
       "breakpoints": true
     }
   ]
