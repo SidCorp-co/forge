@@ -45,6 +45,10 @@ export const users = pgTable('users', {
   passwordHash: text('password_hash'),
   emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
   isCeo: boolean('is_ceo').notNull().default(false),
+  // Last time the user re-entered their password via POST /api/auth/reauth.
+  // Drives the requireFreshAuth() middleware; nullable for users that have
+  // never re-authed (treated as stale → forces a prompt). See migration 0065.
+  lastFreshAuthAt: timestamp('last_fresh_auth_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
