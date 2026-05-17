@@ -1,6 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, jobs, projects, runners } from '../db/schema.js';
+import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import type { JobType, RunnerType } from '../db/schema.js';
 import { dispatchLivenessMs, isLastSeenFresh } from '../lib/dispatch-liveness.js';
 import { isEnabled } from '../lib/feature-flags.js';
@@ -146,6 +147,10 @@ async function dispatchViaDevice(job: typeof jobs.$inferSelect): Promise<'dispat
   });
 
   logger.info({ jobId: job.id, deviceId }, 'dispatcher: dispatched (legacy device path)');
+  // ISS-164 — see runner-path comment below.
+  if (job.issueId) {
+    await publishPipelineHealthChanged(job.projectId, [job.issueId]);
+  }
   return 'dispatched';
 }
 
@@ -362,6 +367,12 @@ async function dispatchViaRunner(
     { jobId: job.id, runnerId: runner.id, type: runner.type },
     'dispatcher: dispatched (runner path)',
   );
+  // ISS-164 — a previously-gated job just admitted; refresh pipelineHealth
+  // so the FE sees `waitingOn` clear within one round-trip instead of
+  // waiting for the next sweep.
+  if (job.issueId) {
+    await publishPipelineHealthChanged(job.projectId, [job.issueId]);
+  }
   return 'dispatched';
 }
 

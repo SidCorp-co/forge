@@ -11,6 +11,7 @@ import {
 } from '../pipeline/state-machine.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import { publishPipelineHealthChanged } from './pipeline-health.js';
 
 /** Issue statuses that close out the pipeline_run (mirror of transition.ts). */
 const TERMINAL_RUN_STATUSES = new Set<IssueStatus>(['released', 'closed']);
@@ -114,4 +115,7 @@ export async function applyStatusTransition(
       at: updated.updatedAt,
     },
   });
+
+  // ISS-164 — refresh derived pipelineHealth (stage mirrors issues.status).
+  await publishPipelineHealthChanged(issue.projectId, [updated.id]);
 }

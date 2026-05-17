@@ -4,6 +4,7 @@ import { db } from '../../db/client.js';
 import { issueDependencies, issueDependencyKinds, issues } from '../../db/schema.js';
 import { decomposeParent } from '../../issues/decompose.js';
 import { detectCycle } from '../../issues/dependency-routes.js';
+import { publishPipelineHealthChanged } from '../../issues/pipeline-health.js';
 import { logger } from '../../logger.js';
 import { safeRecordActivity } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
@@ -141,6 +142,11 @@ export const forgePmSetDependencyTool: DeviceScopedMcpToolFactory = (device) => 
       // existing and skipped, but branch creation + metadata writes happen
       // (or short-circuit if the parent already owns an integration branch).
       await maybeRunDecomposeHelper(input, device.ownerId);
+      // ISS-164 — `blocks` / `decomposes` edges change the gated side's
+      // waiting reason; refresh pipelineHealth for the dependent (`to`) side.
+      if (input.kind === 'blocks' || input.kind === 'decomposes') {
+        await publishPipelineHealthChanged(input.projectId, [input.toIssueId]);
+      }
       return { id, created: true };
     }
 

@@ -30,6 +30,29 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { recordActivityTx } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
+import {
+  type PipelineHealth,
+  hydratePipelineHealthForIssues,
+} from './pipeline-health.js';
+import { logger } from '../logger.js';
+
+// Defence against partial drizzle mocks in unit tests + transient DB blips:
+// pipelineHealth is derived; the list/single endpoints must not 500 if the
+// derivation throws. Callers degrade to `{ stage: row.status }` per issue.
+async function safeHydratePipelineHealth(
+  projectId: string,
+  issueIds: readonly string[],
+): Promise<Map<string, PipelineHealth>> {
+  try {
+    return await hydratePipelineHealthForIssues(projectId, issueIds);
+  } catch (err) {
+    logger.warn(
+      { err, projectId, issueCount: issueIds.length },
+      'pipeline-health: hydrate failed; falling back to stage-only',
+    );
+    return new Map();
+  }
+}
 import type { IssueBranchOverride } from '../branches/resolve.js';
 import {
   DecomposeError,
@@ -325,8 +348,11 @@ issueProjectRoutes.get(
       .innerJoin(labels, eq(labels.id, issueLabels.labelId))
       .where(eq(issueLabels.issueId, issue.id));
 
+    const serialized = serializeIssue(issue);
+    const healthMap = await safeHydratePipelineHealth(projectId, [issue.id]);
     return c.json({
-      ...serializeIssue(issue),
+      ...serialized,
+      pipelineHealth: healthMap.get(issue.id) ?? { stage: serialized.status },
       labels: labelRows,
       comments: [],
       activity: [],
@@ -372,14 +398,26 @@ issueProjectRoutes.get(
     setTotalCount(c, Number(n));
 
     const serialized = rows.map((r) => serializeIssue(r as IssueRow));
-    if (!q.withAgentSessions || serialized.length === 0) {
+    if (serialized.length === 0) {
       return c.json(serialized);
     }
 
-    const map = await hydrateAgentSessionsForIssues(
-      projectId,
-      serialized.map((r) => r.id),
-    );
+    // ISS-164 — always hydrate pipelineHealth on the list payload. Cheap
+    // (6 queries flat regardless of page size) and the FE wants it on every
+    // row to render gate-aware badges.
+    const ids = serialized.map((r) => r.id);
+    const healthMap = await safeHydratePipelineHealth(projectId, ids);
+
+    if (!q.withAgentSessions) {
+      return c.json(
+        serialized.map((r) => ({
+          ...r,
+          pipelineHealth: healthMap.get(r.id) ?? { stage: r.status },
+        })),
+      );
+    }
+
+    const map = await hydrateAgentSessionsForIssues(projectId, ids);
     return c.json(
       serialized.map((r) => {
         const bucket = map.get(r.id);
@@ -387,6 +425,7 @@ issueProjectRoutes.get(
           ...r,
           agentSessions: bucket?.agentSessions ?? [],
           agentStatus: bucket?.agentStatus ?? null,
+          pipelineHealth: healthMap.get(r.id) ?? { stage: r.status },
         };
       }),
     );
@@ -424,8 +463,11 @@ issueRoutes.get(
       .innerJoin(labels, eq(labels.id, issueLabels.labelId))
       .where(eq(issueLabels.issueId, id));
 
+    const healthMap = await safeHydratePipelineHealth(issue.projectId, [issue.id]);
+    const serialized = serializeIssue(issue);
     return c.json({
-      ...serializeIssue(issue),
+      ...serialized,
+      pipelineHealth: healthMap.get(issue.id) ?? { stage: serialized.status },
       labels: labelRows,
       comments: [],
       activity: [],

@@ -21,6 +21,10 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import {
+  publishPipelineHealthChanged,
+  recordTickAt,
+} from '../issues/pipeline-health.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -91,35 +95,68 @@ async function runTickInner(
   projectId: string,
   triggerBlockerIssueId?: string,
 ): Promise<void> {
-  for (let i = 0; i < MAX_DISPATCH_PER_TICK; i++) {
-    const job = await pickNextDispatchableJobForProject(projectId);
-    if (!job) return;
+  // ISS-164 — record per-project dispatcher heartbeat for pipelineHealth.lastTickAt.
+  recordTickAt(projectId);
 
-    const outcome = await handleDispatch({ jobId: job.id });
+  // ISS-164 — issues with queued work at sweep start; the post-sweep
+  // pipelineHealth broadcast unions these with any issues whose jobs we end
+  // up dispatching so still-gated rows get a refreshed `lastTickAt`.
+  const affectedIssueIds = new Set<string>();
+  try {
+    const rows = await db.execute<{ issue_id: string }>(sql`
+      SELECT DISTINCT issue_id
+      FROM jobs
+      WHERE project_id = ${projectId}
+        AND status = 'queued'
+        AND issue_id IS NOT NULL
+    `);
+    for (const r of rows) if (r.issue_id) affectedIssueIds.add(r.issue_id);
+  } catch (err) {
+    logger.warn(
+      { err, projectId },
+      'dispatch-tick: queued-issue pre-snapshot failed',
+    );
+  }
 
-    // Emit `dependency.unblocked` only when this sweep was triggered by a
-    // terminal transition (the only caller that supplies triggerBlockerIssueId)
-    // AND a job actually dispatched. Other triggers (job-complete, runner-
-    // online, backstop) do not name a blocker and the front-end UI for those
-    // is the regular `job.assigned` stream.
-    if (outcome === 'dispatched' && triggerBlockerIssueId && job.issueId) {
-      roomManager.publish(projectRoom(projectId), {
-        event: 'dependency.unblocked',
-        data: {
-          issueId: job.issueId,
-          blockerId: triggerBlockerIssueId,
-          at: new Date().toISOString(),
-        },
-      });
+  try {
+    for (let i = 0; i < MAX_DISPATCH_PER_TICK; i++) {
+      const job = await pickNextDispatchableJobForProject(projectId);
+      if (!job) return;
+      if (job.issueId) affectedIssueIds.add(job.issueId);
+
+      const outcome = await handleDispatch({ jobId: job.id });
+
+      // Emit `dependency.unblocked` only when this sweep was triggered by a
+      // terminal transition (the only caller that supplies triggerBlockerIssueId)
+      // AND a job actually dispatched. Other triggers (job-complete, runner-
+      // online, backstop) do not name a blocker and the front-end UI for those
+      // is the regular `job.assigned` stream.
+      if (outcome === 'dispatched' && triggerBlockerIssueId && job.issueId) {
+        roomManager.publish(projectRoom(projectId), {
+          event: 'dependency.unblocked',
+          data: {
+            issueId: job.issueId,
+            blockerId: triggerBlockerIssueId,
+            at: new Date().toISOString(),
+          },
+        });
+      }
+
+      if (outcome === 'skipped') {
+        // ISS-162 — exit the loop on any skip. The picker is stateless and
+        // would keep returning the same L4-blocked or no-runner candidate on
+        // every iteration; spinning here would burn CPU until MAX_DISPATCH_PER_TICK.
+        // The next external trigger (job complete, runner online, 60s backstop)
+        // re-enters the sweep with fresh state.
+        return;
+      }
     }
-
-    if (outcome === 'skipped') {
-      // ISS-162 — exit the loop on any skip. The picker is stateless and
-      // would keep returning the same L4-blocked or no-runner candidate on
-      // every iteration; spinning here would burn CPU until MAX_DISPATCH_PER_TICK.
-      // The next external trigger (job complete, runner online, 60s backstop)
-      // re-enters the sweep with fresh state.
-      return;
+  } finally {
+    // ISS-164 — broadcast refreshed pipelineHealth for every issue we
+    // touched (dispatched) and every issue that started the tick with queued
+    // work (still-gated rows pick up the new `lastTickAt`). Best-effort.
+    if (affectedIssueIds.size > 0) {
+      await publishPipelineHealthChanged(projectId, [...affectedIssueIds]);
     }
   }
 }

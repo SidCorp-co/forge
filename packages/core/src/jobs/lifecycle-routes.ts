@@ -5,6 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
+import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
@@ -159,6 +160,12 @@ jobLifecycleDeviceRoutes.post(
     // Fire-and-forget; never await.
     void dispatchTickForProject(updated.projectId);
 
+    // ISS-164 — refresh pipelineHealth for the linked issue (activeSession
+    // clears, queued siblings may now classify differently).
+    if (updated.issueId) {
+      await publishPipelineHealthChanged(updated.projectId, [updated.issueId]);
+    }
+
     return c.json({
       jobId: updated.id,
       status: updated.status,
@@ -244,6 +251,11 @@ jobLifecycleDeviceRoutes.post(
 
     void dispatchTickForProject(updated.projectId);
 
+    // ISS-164 — see /complete comment.
+    if (updated.issueId) {
+      await publishPipelineHealthChanged(updated.projectId, [updated.issueId]);
+    }
+
     return c.json({
       jobId: updated.id,
       status: updated.status,
@@ -294,6 +306,11 @@ jobLifecycleUserRoutes.post(
 
       // Cancelling a queued job frees a slot — re-tick.
       void dispatchTickForProject(updated.projectId);
+
+      // ISS-164 — see /complete comment.
+      if (updated.issueId) {
+        await publishPipelineHealthChanged(updated.projectId, [updated.issueId]);
+      }
 
       return c.json({
         jobId: updated.id,

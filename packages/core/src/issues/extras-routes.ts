@@ -29,6 +29,7 @@ import {
   canTransition,
   isReopenEntry,
 } from '../pipeline/state-machine.js';
+import { publishPipelineHealthChanged } from './pipeline-health.js';
 import {
   TERMINAL_FOR_DISPATCH,
   publishIssueStatusChange,
@@ -502,6 +503,9 @@ issueExtrasRoutes.patch(
       if (before === true && value === false) {
         void dispatchTickForProject(issue.projectId);
       }
+
+      // ISS-164 — manual_hold flip changes the L1 gate reason for queued jobs.
+      await publishPipelineHealthChanged(issue.projectId, [issueId]);
     }
 
     return c.json({ issueId, manualHold: value });
