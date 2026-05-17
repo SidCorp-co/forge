@@ -43,10 +43,21 @@ async function parseError(res: Response): Promise<McpTestError> {
   let code: string | null = null;
   let message = res.statusText || `HTTP ${res.status}`;
   try {
-    const body = (await res.json()) as { error?: { code?: string; message?: string } };
-    if (body && typeof body === 'object' && body.error) {
-      if (typeof body.error.code === 'string') code = body.error.code;
-      if (typeof body.error.message === 'string') message = body.error.message;
+    const body = (await res.json()) as {
+      code?: string;
+      message?: string;
+      error?: { code?: string; message?: string };
+    };
+    if (body && typeof body === 'object') {
+      // core's standard error shape is top-level `{ code, message }`; the
+      // JSON-RPC envelope `{ error: { code, message } }` is also accepted so
+      // SDK-level transport errors surface cleanly.
+      if (typeof body.code === 'string') code = body.code;
+      if (typeof body.message === 'string') message = body.message;
+      if (body.error) {
+        if (code === null && typeof body.error.code === 'string') code = body.error.code;
+        if (typeof body.error.message === 'string') message = body.error.message;
+      }
     }
   } catch {
     // ignore — non-JSON error body
@@ -63,7 +74,10 @@ export async function testConnection({
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Accept: 'application/json',
+      // MCP Streamable-HTTP transport requires the client to advertise support
+      // for both JSON and SSE response framing; sending only `application/json`
+      // gets the request rejected with HTTP 406.
+      Accept: 'application/json, text/event-stream',
       Authorization: `Bearer ${token}`,
       'X-Forge-Project-Slug': projectSlug,
     },
