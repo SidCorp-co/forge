@@ -30,6 +30,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { recordActivityTx } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
+import type { IssueBranchOverride } from '../branches/resolve.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 
 const attachmentInputSchema = z
@@ -39,6 +40,14 @@ const attachmentInputSchema = z
     dataBase64: z.string().min(1),
   })
   .strict();
+
+import { issueMetadataSchema, isSelfReferentialBranch } from './metadata.js';
+export {
+  branchNameSchema,
+  branchConfigOverrideSchema,
+  issueMetadataSchema,
+  isSelfReferentialBranch,
+} from './metadata.js';
 
 export const issueCreateSchema = z
   .object({
@@ -79,6 +88,7 @@ export const issuePatchSchema = z
     suggestedSolution: z.string().max(100_000).nullable().optional(),
     assigneeId: z.uuid().nullable().optional(),
     labels: z.array(z.uuid()).max(100).optional(),
+    metadata: issueMetadataSchema.optional(),
   })
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
@@ -132,6 +142,7 @@ type IssueRow = {
   assigneeId: string | null;
   createdById: string;
   parentIssueId: string | null;
+  metadata: ({ branchConfig?: IssueBranchOverride | null } & Record<string, unknown>) | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -485,6 +496,17 @@ issueRoutes.patch(
     if (patch.assigneeId !== undefined) {
       updates.assigneeId = patch.assigneeId;
       track('assigneeId', patch.assigneeId);
+    }
+    if (patch.metadata !== undefined) {
+      const baseRaw = patch.metadata?.branchConfig?.baseBranch;
+      if (typeof baseRaw === 'string' && isSelfReferentialBranch(baseRaw, issue.issSeq)) {
+        throw new HTTPException(400, {
+          message: "baseBranch must not reference this issue's own branch",
+          cause: { code: 'BRANCH_SELF_REFERENCE' },
+        });
+      }
+      updates.metadata = patch.metadata;
+      track('metadata', patch.metadata);
     }
 
     const actor = { type: 'user' as const, id: userId };

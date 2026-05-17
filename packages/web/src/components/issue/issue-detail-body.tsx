@@ -21,6 +21,7 @@ import { IssueDetailHeader } from '@/components/issue/issue-detail-header';
 import { MetadataCard } from '@/components/issue/aside/metadata-card';
 import { PipelineCard } from '@/components/issue/aside/pipeline-card';
 import { LinkedCard } from '@/components/issue/aside/linked-card';
+import { BranchConfigCard } from '@/components/issue/aside/branch-config-card';
 import type { Issue, IssuePatchInput } from '@forge/contracts';
 import type { IssueStatus } from '@/features/issue/types';
 import type { ProjectMemberRow } from '@/features/project/hooks/use-project-members';
@@ -134,6 +135,7 @@ export function IssueDetailBody({
           onStatusUpdate={onStatusUpdate}
           onPatch={onPatch}
         />
+        <BranchConfigCard issue={issue} projectSlug={projectSlug} onPatch={onPatch} />
         <PipelineCard
           issue={issue}
           manualHoldPending={manualHoldPending}
