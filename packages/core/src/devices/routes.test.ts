@@ -84,6 +84,16 @@ vi.mock('../middleware/auth.js', () => ({
   },
 }));
 
+// Per-test override for the fresh-auth gate. Default: passthrough so the
+// existing happy-path assertions don't have to seed a stamp. The DELETE-gate
+// test below flips this to assert a stale stamp returns 403.
+const freshAuthHandler = vi.fn(async (_c: unknown, next: () => Promise<void>) => {
+  await next();
+});
+vi.mock('../middleware/require-fresh-auth.js', () => ({
+  requireFreshAuth: () => (c: unknown, next: () => Promise<void>) => freshAuthHandler(c, next),
+}));
+
 const publishMock = vi.fn(() => 0);
 vi.mock('../ws/server.js', () => ({
   roomManager: { publish: publishMock },
@@ -353,5 +363,21 @@ describe('DELETE /api/devices/:id (soft revoke + pool cleanup)', () => {
       req(`/api/devices/${ID}`, { method: 'DELETE', token: 'user-jwt' }),
     );
     expect(res.status).toBe(404);
+  });
+
+  it('403 FRESH_AUTH_REQUIRED when fresh-auth gate rejects', async () => {
+    const { HTTPException } = await import('hono/http-exception');
+    freshAuthHandler.mockImplementationOnce(async () => {
+      throw new HTTPException(403, {
+        message: 'fresh authentication required',
+        cause: { code: 'FRESH_AUTH_REQUIRED' },
+      });
+    });
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/devices/${ID}`, { method: 'DELETE', token: 'user-jwt' }),
+    );
+    expect(res.status).toBe(403);
+    expect(dbTransaction).not.toHaveBeenCalled();
   });
 });
