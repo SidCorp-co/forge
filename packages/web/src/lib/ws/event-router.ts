@@ -126,6 +126,15 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
       qc.invalidateQueries({ queryKey: ['notifications-unread'] });
       return;
     }
+    case 'pat.created':
+    case 'pat.revoked':
+    case 'pat.used': {
+      // ISS-160 — keep the /settings/tokens list in sync. The `pat.used`
+      // event is throttled to 1/min/token in the dispatcher; we still
+      // invalidate the list so last-used relative timestamps refresh.
+      qc.invalidateQueries({ queryKey: ['tokens'] });
+      return;
+    }
     default: {
       // Unknown event: no-op. Log once per event kind in dev to surface
       // missing wiring on the client side.

@@ -33,6 +33,10 @@ import {
   projects,
 } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { forgetPatThrottle } from '../middleware/require-pat-or-device.js';
+import { requireFreshAuth } from '../middleware/require-fresh-auth.js';
+import { userRoom } from '../ws/rooms.js';
+import { roomManager } from '../ws/server.js';
 
 const SCOPES = ['read', 'write'] as const;
 
@@ -94,6 +98,7 @@ patRoutes.get('/pat', async (c) => {
 
 patRoutes.post(
   '/pat',
+  requireFreshAuth(5),
   zValidator('json', createBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -152,6 +157,11 @@ patRoutes.post(
       expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
     });
 
+    roomManager.publish(userRoom(userId), {
+      event: 'pat.created',
+      data: { tokenId: minted.row.id, userId, ts: new Date().toISOString() },
+    });
+
     return c.json(
       {
         ...publicShape(minted.row),
@@ -172,6 +182,11 @@ patRoutes.delete(
     const { id } = c.req.valid('param');
     const row = await revokePat(id, userId);
     if (!row) throw notFound();
+    forgetPatThrottle(row.id);
+    roomManager.publish(userRoom(userId), {
+      event: 'pat.revoked',
+      data: { tokenId: row.id, userId, ts: new Date().toISOString() },
+    });
     return c.json(publicShape(row));
   },
 );
@@ -216,6 +231,7 @@ patRoutes.get(
 
 patRoutes.post(
   '/pat/:id/rotate',
+  requireFreshAuth(5),
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -238,6 +254,15 @@ patRoutes.post(
     }
     const minted = await rotatePat({ id, userId, expiresAt });
     if (!minted) throw notFound();
+    forgetPatThrottle(id);
+    roomManager.publish(userRoom(userId), {
+      event: 'pat.created',
+      data: { tokenId: minted.row.id, userId, rotatedFrom: id, ts: new Date().toISOString() },
+    });
+    roomManager.publish(userRoom(userId), {
+      event: 'pat.revoked',
+      data: { tokenId: id, userId, ts: new Date().toISOString() },
+    });
     return c.json({ ...publicShape(minted.row), plaintext: minted.plaintext });
   },
 );
