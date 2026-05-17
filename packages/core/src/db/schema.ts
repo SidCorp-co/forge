@@ -740,7 +740,13 @@ export const issues = pgTable(
     // here later without further migrations. NULL = no override; see
     // packages/core/src/branches/resolve.ts for the resolution order.
     metadata: jsonb('metadata').$type<
-      ({ branchConfig?: IssueBranchOverride | null } & Record<string, unknown>) | null
+      | ({
+          branchConfig?: IssueBranchOverride | null;
+          // ISS-138 (PR-D) — opt-out flag for the decomposition helper.
+          // Defaults to true (helper creates the shared integration branch).
+          useIntegrationBranch?: boolean;
+        } & Record<string, unknown>)
+      | null
     >(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

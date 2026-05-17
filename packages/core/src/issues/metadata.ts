@@ -27,6 +27,8 @@ export const branchConfigOverrideSchema = z
 export const issueMetadataSchema = z
   .object({
     branchConfig: branchConfigOverrideSchema.nullable().optional(),
+    // ISS-138 (PR-D) — opt-out flag consumed by the decomposition helper.
+    useIntegrationBranch: z.boolean().optional(),
   })
   .strict()
   .nullable();

@@ -31,6 +31,11 @@ import { recordActivityTx } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import type { IssueBranchOverride } from '../branches/resolve.js';
+import {
+  DecomposeError,
+  IntegrationBranchError,
+  decomposeParent,
+} from './decompose.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 
 const attachmentInputSchema = z
@@ -568,6 +573,94 @@ issueRoutes.patch(
     }
 
     return c.json(serializeIssue(updated));
+  },
+);
+
+// ISS-138 (PR-D) — POST /api/issues/:id/decompose
+//
+// Creates N children, wires `decomposes` edges, and (unless opted out)
+// creates a shared integration branch on the project's git remote. All
+// done atomically via `decomposeParent`. Children land at `on_hold` so the
+// existing ISS-130 cascade-approve hook flips them to `approved` when the
+// parent moves `waiting → approved`.
+const decomposeChildNewSchema = z
+  .object({
+    title: z.string().trim().min(1).max(500),
+    description: z.string().max(100_000).nullable().optional(),
+    priority: z.enum(issuePriorities).optional(),
+    category: z.string().trim().min(1).max(100).nullable().optional(),
+  })
+  .strict();
+
+const decomposeChildExistingSchema = z
+  .object({
+    existingIssueId: z.uuid(),
+  })
+  .strict();
+
+const decomposeBodySchema = z
+  .object({
+    children: z
+      .array(z.union([decomposeChildNewSchema, decomposeChildExistingSchema]))
+      .min(1)
+      .max(8),
+    useIntegrationBranch: z.boolean().optional(),
+  })
+  .strict();
+
+issueRoutes.post(
+  '/:id/decompose',
+  zValidator('param', issueIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('json', decomposeBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const body = c.req.valid('json');
+    const userId = c.get('userId');
+
+    const issue = await loadIssue(id);
+    const access = await loadProjectAccess(issue.projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+
+    try {
+      const result = await decomposeParent(
+        id,
+        body.children,
+        { userId },
+        { useIntegrationBranch: body.useIntegrationBranch },
+      );
+      return c.json(result);
+    } catch (err) {
+      if (err instanceof IntegrationBranchError) {
+        throw new HTTPException(502, {
+          message: 'integration branch operation failed',
+          cause: { code: err.code, message: err.message },
+        });
+      }
+      if (err instanceof DecomposeError) {
+        if (err.code === 'NOT_FOUND') throw notFound(err.message);
+        if (err.code === 'BAD_REQUEST') {
+          throw new HTTPException(400, {
+            message: err.message,
+            cause: { code: 'BAD_REQUEST', details: err.message },
+          });
+        }
+        if (err.code === 'INTEGRATION_BRANCH_CONFLICT') {
+          throw new HTTPException(409, {
+            message: err.message,
+            cause: { code: err.code },
+          });
+        }
+        throw new HTTPException(500, {
+          message: err.message,
+          cause: { code: err.code },
+        });
+      }
+      throw err;
+    }
   },
 );
 
