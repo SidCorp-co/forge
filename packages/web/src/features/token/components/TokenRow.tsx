@@ -52,11 +52,20 @@ export function TokenRow({ token, projects, onRevoke, onOpenAudit }: Props) {
     }
   }
 
+  function handleRowKey(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onOpenAudit();
+    }
+  }
+
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onOpenAudit}
-      className="grid w-full grid-cols-12 items-center gap-3 border-b border-outline-variant/10 px-6 py-4 text-left transition-colors hover:bg-surface-container-low"
+      onKeyDown={handleRowKey}
+      className="grid w-full grid-cols-12 cursor-pointer items-center gap-3 border-b border-outline-variant/10 px-6 py-4 text-left transition-colors hover:bg-surface-container-low focus:outline-none focus-visible:bg-surface-container-low"
     >
       <div className="col-span-12 min-w-0 md:col-span-3">
         <p className="truncate text-sm font-bold text-on-surface">{token.name}</p>
@@ -122,6 +131,6 @@ export function TokenRow({ token, projects, onRevoke, onOpenAudit }: Props) {
           )}
         </button>
       </div>
-    </button>
+    </div>
   );
 }

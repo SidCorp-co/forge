@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { QueryProvider } from "@/providers/query-provider";
 import { AuthProvider } from "@/providers/auth-provider";
+import { WsMount } from "@/providers/ws-mount";
 import { PageTitleProvider } from "@/hooks/use-page-title";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { ThemeProvider } from "@/providers/theme-provider";
@@ -47,6 +48,7 @@ export default function RootLayout({
         <ThemeProvider>
           <QueryProvider>
             <AuthProvider>
+              <WsMount />
               <PageTitleProvider>
                 <ErrorBoundary>{children}</ErrorBoundary>
               </PageTitleProvider>
