@@ -78,8 +78,9 @@ export interface PmEscalationOption {
 
 /**
  * Decoded payload of a `pm_escalation` notification's `body` field.
- * `forge_pm.escalate` writes this as a JSON string — see
- * `packages/core/src/mcp/tools/forge-pm-escalate.ts`.
+ * `forge_pm.write_decision` writes this as a JSON string when its optional
+ * `escalate` block is set — see
+ * `packages/core/src/mcp/tools/forge-pm-write-decision.ts`.
  */
 export interface PmEscalationPayload {
   decisionId: string;

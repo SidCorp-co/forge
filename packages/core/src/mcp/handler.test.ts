@@ -111,7 +111,29 @@ describe('@forge/core MCP server', () => {
       expect(names.has('forge_issues')).toBe(true);
       expect(names.has('forge_comments')).toBe(true);
       expect(names.has('forge_config')).toBe(true);
-      expect(names.has('forge_tasks')).toBe(true);
+      // forge_tasks was folded into forge_issues task sub-actions (ISS-146).
+      expect(names.has('forge_tasks')).toBe(false);
+      const issuesTool = res.tools.find((t) => t.name === 'forge_issues');
+      expect(issuesTool?.description ?? '').toContain('createTask');
+      expect(issuesTool?.description ?? '').toContain('listTasks');
+      expect(issuesTool?.description ?? '').toContain('updateTask');
+      expect(issuesTool?.description ?? '').toContain('deleteTask');
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it('does not expose retired PM tools (ISS-146)', async () => {
+    const { client, server } = await connectClient();
+    try {
+      const res = await client.listTools();
+      const names = new Set(res.tools.map((t) => t.name));
+      expect(names.has('forge_pm.flag_blocker')).toBe(false);
+      expect(names.has('forge_pm.escalate')).toBe(false);
+      const writeDecision = res.tools.find((t) => t.name === 'forge_pm.write_decision');
+      expect(writeDecision).toBeDefined();
+      expect(writeDecision?.description ?? '').toContain('escalate');
     } finally {
       await client.close();
       await server.close();
@@ -163,8 +185,6 @@ describe('@forge/core MCP server', () => {
         'forge_pm.runner_load',
         'forge_pm.dispatch',
         'forge_pm.set_dependency',
-        'forge_pm.flag_blocker',
-        'forge_pm.escalate',
         'forge_pm.write_decision',
       ]) {
         const res = await client.callTool({ name, arguments: {} });

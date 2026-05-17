@@ -38,8 +38,8 @@ export interface ApplyStatusTransitionOptions {
 }
 
 /**
- * Programmatic state-machine transition shared by MCP tools (forge_issues,
- * forge_pm.flag_blocker). Mirrors the REST `/transition` semantics — same
+ * Programmatic state-machine transition shared by MCP tools (currently only
+ * `forge_issues`). Mirrors the REST `/transition` semantics — same
  * `canTransition` guard, conditional UPDATE keyed on current status,
  * `transition` hook + WS broadcast — but uses the device principal as the
  * actor and surfaces failures as `Error`s rather than HTTPException so MCP

@@ -21,7 +21,6 @@ function formatMcpLabel(name: string, input: Record<string, unknown>): string {
       return `Issues(${action || 'list'})`;
     }
     case 'forge_comments': return `Comment(${action || 'list'})`;
-    case 'forge_tasks': return `Tasks(${action || 'list'})`;
     case 'forge_agent_sessions': return `Agent session(${action || 'list'})`;
     case 'forge_memory': return 'Memory';
     case 'forge_skills': return 'Skills';

@@ -10,7 +10,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **`forge_pm.write_decision` (ISS-146)** — now accepts an optional `escalate` object. When present, the handler inserts a `pm_escalation` notification + emits `notificationCreated` in the same call, replacing the standalone `forge_pm.escalate` tool. Response gains an `escalation: { notificationId, expiresAt }` field; existing callers ignoring it are unaffected.
+
 ### Removed
+
+- **MCP tools: `forge_pm.flag_blocker`, `forge_pm.escalate`, `forge_tasks` (ISS-146)** — callers must migrate. See Sprint 3 (ISS-146) for the replacement primitives.
+
+  | Removed tool | Replacement call shape |
+  |---|---|
+  | `forge_pm.flag_blocker` | `forge_comments` `action='create'` (body `**PM blocker flagged** …`) + `forge_issues` `action='transition' data.status='on_hold'` |
+  | `forge_pm.escalate` | `forge_pm.write_decision` with the new optional `escalate` block (`{ severity, summary, question, options, expiresAt }`) |
+  | `forge_tasks` `create`/`list`/`update`/`delete` | `forge_issues` actions `createTask` / `listTasks` / `updateTask` / `deleteTask` (task data lives on `data.taskTitle` etc.; list requires `filters.issue`) |
+
+  MCP audit rows previously tagged `tool='forge_tasks'` now log `tool='forge_issues'` with the corresponding `createTask`/`listTasks`/`updateTask`/`deleteTask` action — adjust downstream dashboards accordingly.
 
 ### Fixed
 

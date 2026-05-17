@@ -213,7 +213,8 @@ pub async fn start_session(
     }
 
     prompt.push_str(
-        "Use forge_issues/forge_tasks/forge_comments MCP tools to update status as you work.\n\
+        "Use forge_issues/forge_comments MCP tools to update status as you work.\n\
+         Task CRUD is done through forge_issues actions: createTask, listTasks, updateTask, deleteTask.\n\
          Update task status to in_progress when starting, done when complete.\n\
          Update issue status to in_progress when starting work, resolved when all tasks done.\n",
     );
