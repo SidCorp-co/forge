@@ -33,6 +33,7 @@ import {
   projects,
 } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { forgetPatThrottle } from '../middleware/require-pat-or-device.js';
 import { requireFreshAuth } from '../middleware/require-fresh-auth.js';
 import { userRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -181,6 +182,7 @@ patRoutes.delete(
     const { id } = c.req.valid('param');
     const row = await revokePat(id, userId);
     if (!row) throw notFound();
+    forgetPatThrottle(row.id);
     roomManager.publish(userRoom(userId), {
       event: 'pat.revoked',
       data: { tokenId: row.id, userId, ts: new Date().toISOString() },
@@ -252,6 +254,7 @@ patRoutes.post(
     }
     const minted = await rotatePat({ id, userId, expiresAt });
     if (!minted) throw notFound();
+    forgetPatThrottle(id);
     roomManager.publish(userRoom(userId), {
       event: 'pat.created',
       data: { tokenId: minted.row.id, userId, rotatedFrom: id, ts: new Date().toISOString() },

@@ -19,14 +19,30 @@ interface PendingPromise {
   reject: (err: Error) => void;
 }
 
+/**
+ * Backend freshness window is 5 minutes (see `requireFreshAuth(5)` on PAT
+ * routes). Shave a 30s safety buffer off the client cache so we never resolve
+ * silently on a stamp that's about to expire mid-request.
+ */
+const FRESH_WINDOW_MS = 5 * 60 * 1000;
+const FRESH_SAFETY_BUFFER_MS = 30 * 1000;
+
 export function FreshAuthProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pendingRef = useRef<PendingPromise | null>(null);
+  const stampedAtRef = useRef<number | null>(null);
 
   const request = useCallback<FreshAuthContextValue['request']>(() => {
+    const stampedAt = stampedAtRef.current;
+    if (
+      stampedAt !== null &&
+      Date.now() - stampedAt < FRESH_WINDOW_MS - FRESH_SAFETY_BUFFER_MS
+    ) {
+      return Promise.resolve();
+    }
     return new Promise<void>((resolve, reject) => {
       pendingRef.current = { resolve, reject };
       setPassword('');
@@ -48,7 +64,9 @@ export function FreshAuthProvider({ children }: { children: ReactNode }) {
     setSubmitting(true);
     setError(null);
     try {
-      await tokenApi.reauth(password);
+      const { stampedAt } = await tokenApi.reauth(password);
+      const parsed = Date.parse(stampedAt);
+      stampedAtRef.current = Number.isFinite(parsed) ? parsed : Date.now();
       pendingRef.current?.resolve();
       pendingRef.current = null;
       setOpen(false);

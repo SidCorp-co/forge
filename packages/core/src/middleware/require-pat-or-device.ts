@@ -78,6 +78,17 @@ export function __resetPatBuckets(): void {
   patUsedLastEmit.clear();
 }
 
+/**
+ * Drop in-process throttle state for a token id. Called from PAT revoke /
+ * rotate paths so the map stays bounded by active-PAT count rather than
+ * lifetime-PAT count (the entry would otherwise live for the process
+ * lifetime even after the token is unusable).
+ */
+export function forgetPatThrottle(tokenId: string): void {
+  patUsedLastEmit.delete(tokenId);
+  patBuckets.delete(tokenId);
+}
+
 interface RateLimitOutcome {
   allowed: boolean;
   remaining: number;
