@@ -93,8 +93,16 @@ describe('forge_agent_sessions.list', () => {
 });
 
 describe('forge_agent_sessions.get', () => {
+  function makeDeviceCtx() {
+    return {
+      principal: { kind: 'device' as const, device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: null,
+    };
+  }
+
   it('truncates messages to last 20 and exposes totalMessages', async () => {
-    const tool = forgeAgentSessionsGetTool(fakeDevice);
+    const tool = forgeAgentSessionsGetTool(makeDeviceCtx());
     const messages = Array.from({ length: 35 }, (_, i) => ({ role: 'user', content: `m${i}` }));
     selectLimit.mockResolvedValueOnce([{ ...baseSessionRow, messages }]);
     selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
@@ -110,7 +118,7 @@ describe('forge_agent_sessions.get', () => {
   });
 
   it('handles non-array messages gracefully', async () => {
-    const tool = forgeAgentSessionsGetTool(fakeDevice);
+    const tool = forgeAgentSessionsGetTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([{ ...baseSessionRow, messages: null }]);
     selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
 
@@ -122,16 +130,53 @@ describe('forge_agent_sessions.get', () => {
   });
 
   it('throws NOT_FOUND for missing session', async () => {
-    const tool = forgeAgentSessionsGetTool(fakeDevice);
+    const tool = forgeAgentSessionsGetTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([]);
     await expect(tool.handler({ sessionId: SESSION_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 
   it('throws FORBIDDEN cross-project', async () => {
-    const tool = forgeAgentSessionsGetTool(fakeDevice);
+    const tool = forgeAgentSessionsGetTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([baseSessionRow]);
     selectLimit.mockResolvedValueOnce([{ ownerId: 'other' }]);
     selectLimit.mockResolvedValueOnce([]);
     await expect(tool.handler({ sessionId: SESSION_ID })).rejects.toThrow(/FORBIDDEN/);
+  });
+
+  // ISS-150 review #1 re-review — PAT projectIds allowlist regression on
+  // sessionId-resolved access. Pre-fix this tool used the stub-device and
+  // the allowlist was bypassed for users who were members of both projects.
+  describe('PAT projectIds allowlist (cross-tenant)', () => {
+    const ALLOWED_PROJECT = '77777777-7777-4777-8777-777777777777';
+
+    function makePatTool(projectIds: string[] | null) {
+      return forgeAgentSessionsGetTool({
+        principal: {
+          kind: 'pat',
+          userId: OWNER_ID,
+          tokenId: '88888888-8888-4888-8888-888888888888',
+          scopes: ['read', 'write'],
+          projectIds,
+        },
+        device: fakeDevice,
+        projectSlug: null,
+      });
+    }
+
+    it('returns NOT_FOUND when the session’s project is outside the PAT allowlist (even if user is a member)', async () => {
+      const tool = makePatTool([ALLOWED_PROJECT]);
+      selectLimit.mockResolvedValueOnce([baseSessionRow]);
+      await expect(tool.handler({ sessionId: SESSION_ID })).rejects.toThrow(/NOT_FOUND/);
+    });
+
+    it('succeeds when PAT allowlist includes the session’s project and user is a project owner', async () => {
+      const tool = makePatTool([PROJECT_ID]);
+      selectLimit.mockResolvedValueOnce([baseSessionRow]);
+      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      const result = (await tool.handler({ sessionId: SESSION_ID })) as {
+        session: { id: string };
+      };
+      expect(result.session.id).toBe(SESSION_ID);
+    });
   });
 });

@@ -117,9 +117,31 @@ describe('forge_pipeline_runs.list', () => {
   });
 });
 
+function makeDeviceCtx() {
+  return {
+    principal: { kind: 'device' as const, device: fakeDevice },
+    device: fakeDevice,
+    projectSlug: null,
+  };
+}
+
+function makePatCtx(projectIds: string[] | null) {
+  return {
+    principal: {
+      kind: 'pat' as const,
+      userId: OWNER_ID,
+      tokenId: '66666666-6666-4666-8666-666666666666',
+      scopes: ['read', 'write'],
+      projectIds,
+    },
+    device: fakeDevice,
+    projectSlug: null,
+  };
+}
+
 describe('forge_pipeline_runs.get', () => {
   it('returns the run plus a per-status jobCounts breakdown', async () => {
-    const tool = forgePipelineRunsGetTool(fakeDevice);
+    const tool = forgePipelineRunsGetTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([baseRun]); // run lookup
     selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]); // member check
     selectGroupBy.mockResolvedValueOnce([
@@ -139,17 +161,27 @@ describe('forge_pipeline_runs.get', () => {
   });
 
   it('throws NOT_FOUND for a missing run', async () => {
-    const tool = forgePipelineRunsGetTool(fakeDevice);
+    const tool = forgePipelineRunsGetTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([]);
     await expect(tool.handler({ runId: RUN_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 
   it('throws FORBIDDEN when the calling device is cross-project', async () => {
-    const tool = forgePipelineRunsGetTool(fakeDevice);
+    const tool = forgePipelineRunsGetTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([baseRun]);
     selectLimit.mockResolvedValueOnce([{ ownerId: 'other' }]);
     selectLimit.mockResolvedValueOnce([]);
     await expect(tool.handler({ runId: RUN_ID })).rejects.toThrow(/FORBIDDEN/);
+  });
+
+  // ISS-150 review #1 re-review — PAT projectIds allowlist regression on
+  // runId-resolved access.
+  it('returns NOT_FOUND for a PAT when the run’s project is outside the allowlist', async () => {
+    const tool = forgePipelineRunsGetTool(
+      makePatCtx(['99999999-9999-4999-8999-999999999999']),
+    );
+    selectLimit.mockResolvedValueOnce([baseRun]);
+    await expect(tool.handler({ runId: RUN_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 });
 
@@ -160,7 +192,7 @@ describe('forge_pipeline_runs.pause/.resume/.cancel', () => {
   }
 
   it('pause delegates to pausePipelineRun and returns the run', async () => {
-    const tool = forgePipelineRunsPauseTool(fakeDevice);
+    const tool = forgePipelineRunsPauseTool(makeDeviceCtx());
     memberRunLookup();
     pauseSpy.mockResolvedValueOnce({ ...baseRun, status: 'paused' });
     const result = (await tool.handler({ runId: RUN_ID })) as { run: { status: string } };
@@ -169,7 +201,7 @@ describe('forge_pipeline_runs.pause/.resume/.cancel', () => {
   });
 
   it('resume delegates to resumePipelineRun and returns the run', async () => {
-    const tool = forgePipelineRunsResumeTool(fakeDevice);
+    const tool = forgePipelineRunsResumeTool(makeDeviceCtx());
     memberRunLookup();
     resumeSpy.mockResolvedValueOnce({ ...baseRun, status: 'running' });
     const result = (await tool.handler({ runId: RUN_ID })) as { run: { status: string } };
@@ -178,7 +210,7 @@ describe('forge_pipeline_runs.pause/.resume/.cancel', () => {
   });
 
   it('cancel returns the full side-effect summary', async () => {
-    const tool = forgePipelineRunsCancelTool(fakeDevice);
+    const tool = forgePipelineRunsCancelTool(makeDeviceCtx());
     memberRunLookup();
     cancelSpy.mockResolvedValueOnce({
       run: { ...baseRun, status: 'cancelled' },
@@ -197,11 +229,20 @@ describe('forge_pipeline_runs.pause/.resume/.cancel', () => {
   });
 
   it('cancel rejects a non-member device with FORBIDDEN', async () => {
-    const tool = forgePipelineRunsCancelTool(fakeDevice);
+    const tool = forgePipelineRunsCancelTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([baseRun]); // run lookup
     selectLimit.mockResolvedValueOnce([{ ownerId: 'other' }]);
     selectLimit.mockResolvedValueOnce([]);
     await expect(tool.handler({ runId: RUN_ID })).rejects.toThrow(/FORBIDDEN/);
+    expect(cancelSpy).not.toHaveBeenCalled();
+  });
+
+  it('cancel returns NOT_FOUND for a PAT when the run’s project is outside the allowlist', async () => {
+    const tool = forgePipelineRunsCancelTool(
+      makePatCtx(['99999999-9999-4999-8999-999999999999']),
+    );
+    selectLimit.mockResolvedValueOnce([baseRun]);
+    await expect(tool.handler({ runId: RUN_ID })).rejects.toThrow(/NOT_FOUND/);
     expect(cancelSpy).not.toHaveBeenCalled();
   });
 });
