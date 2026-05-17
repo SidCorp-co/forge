@@ -15,6 +15,30 @@ export type User = Pick<
 
 export type Project = typeof schema.projects.$inferSelect;
 
+// ISS-164 — pipeline health (D4 of ISS-141). Derived server-side from a live
+// join over `issues + jobs + agent_sessions + issue_dependencies` so the FE
+// never re-derives gate state across endpoints. See
+// `packages/core/src/issues/pipeline-health.ts` for the loader.
+export type PipelineWaitingReason =
+  | 'issue_busy'
+  | 'manual_hold'
+  | 'waiting_on_dep'
+  | 'waiting_on_decomp_parent'
+  | 'project_full'
+  | 'runner_full';
+
+export interface PipelineHealth {
+  stage: schema.IssueStatus;
+  activeSession?: { id: string; status: 'queued' | 'running'; skill: string };
+  waitingOn?: {
+    reason: PipelineWaitingReason;
+    since: string;
+    details: Record<string, unknown>;
+  };
+  queuedAt?: string;
+  lastTickAt?: string;
+}
+
 export type ProjectMember = typeof schema.projectMembers.$inferSelect;
 
 export type Label = typeof schema.labels.$inferSelect;
@@ -34,6 +58,8 @@ export type Issue = typeof schema.issues.$inferSelect & {
     title: string | null;
   }>;
   agentStatus?: 'running' | 'queued' | 'completed' | 'failed' | null;
+  // ISS-164 — list + single + by-display endpoints always populate this.
+  pipelineHealth: PipelineHealth;
 };
 
 export type Comment = typeof schema.comments.$inferSelect;

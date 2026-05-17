@@ -24,6 +24,7 @@ import {
 } from '../pipeline/state-machine.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import { publishPipelineHealthChanged } from './pipeline-health.js';
 
 const transitionBodySchema = z
   .object({
@@ -284,6 +285,9 @@ transitionRoutes.post(
       reason: reason ?? null,
       at: updated.updatedAt,
     });
+
+    // ISS-164 — derived pipelineHealth needs a refresh whenever `stage` changes.
+    await publishPipelineHealthChanged(issue.projectId, [updated.id]);
 
     // ISS-101 — stamp current_step on the issue's open run so the run timeline
     // reflects status, then close the run on terminal transitions. The picker
