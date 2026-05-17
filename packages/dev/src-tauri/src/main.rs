@@ -8,13 +8,16 @@ mod jobs;
 mod keychain;
 mod websocket;
 
-use claude_cli::{new_sessions, Sessions, WorktreeInfo};
 use claude_cli::worktree::BranchDiff;
-use config::{AppConfig, SessionData, SessionMeta, McpServerConfig, SkillLibraryEntry, StrapiSkillData, StrapiSkillGuideData};
-use tauri::{Emitter, Manager, State};
+use claude_cli::{new_sessions, Sessions, WorktreeInfo};
+use config::{
+    AppConfig, McpServerConfig, SessionData, SessionMeta, SkillLibraryEntry, StrapiSkillData,
+    StrapiSkillGuideData,
+};
 use std::sync::Arc;
-use tokio::sync::{watch, Mutex as TokioMutex};
+use tauri::{Emitter, Manager, State};
 use tauri_plugin_deep_link::DeepLinkExt;
+use tokio::sync::{watch, Mutex as TokioMutex};
 
 /// Tauri event emitted to the React frontend when the OS hands us a
 /// `forge-beta://...` URL — either at app launch (cold start) or while the
@@ -100,12 +103,7 @@ async fn pair_device(
 
 #[tauri::command]
 async fn heartbeat(core_url: String, device_token: String) -> Result<(), String> {
-    devices::heartbeat(
-        &core_url,
-        &device_token,
-        Some(env!("CARGO_PKG_VERSION")),
-    )
-    .await
+    devices::heartbeat(&core_url, &device_token, Some(env!("CARGO_PKG_VERSION"))).await
 }
 
 #[tauri::command]
@@ -132,7 +130,20 @@ async fn run_agent(
     skill: Option<String>,
     model: Option<String>,
 ) -> Result<String, String> {
-    claude_cli::run_agent(app, state.sessions.clone(), repo_path, prompt, project_slug, permission_mode, mcp_servers, worktree_branch, system_prompt, skill, model).await
+    claude_cli::run_agent(
+        app,
+        state.sessions.clone(),
+        repo_path,
+        prompt,
+        project_slug,
+        permission_mode,
+        mcp_servers,
+        worktree_branch,
+        system_prompt,
+        skill,
+        model,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -185,9 +196,23 @@ async fn send_chat(
     skill: Option<String>,
     model: Option<String>,
 ) -> Result<(), String> {
-    claude_cli::send_chat(app, state.sessions.clone(), repo_path, message, session_id, claude_session_id, project_slug, permission_mode, mcp_servers, worktree_branch, system_prompt, skill, model).await
+    claude_cli::send_chat(
+        app,
+        state.sessions.clone(),
+        repo_path,
+        message,
+        session_id,
+        claude_session_id,
+        project_slug,
+        permission_mode,
+        mcp_servers,
+        worktree_branch,
+        system_prompt,
+        skill,
+        model,
+    )
+    .await
 }
-
 
 #[tauri::command]
 async fn start_session(
@@ -199,7 +224,16 @@ async fn start_session(
     forge_token: String,
     project_slug: String,
 ) -> Result<(), String> {
-    claude_cli::start_session(repo_path, branch_name, selected_issues, selected_tasks, forge_url, forge_token, project_slug).await
+    claude_cli::start_session(
+        repo_path,
+        branch_name,
+        selected_issues,
+        selected_tasks,
+        forge_url,
+        forge_token,
+        project_slug,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -258,13 +292,32 @@ fn read_agent_files(repo_path: String, agent_type: String) -> serde_json::Value 
 }
 
 #[tauri::command]
-fn seed_agent_files(repo_path: String, agent_type: String, knowledge: Option<String>, memory: Option<String>) -> Result<(), String> {
-    config::seed_agent_files(&repo_path, &agent_type, knowledge.as_deref(), memory.as_deref())
+fn seed_agent_files(
+    repo_path: String,
+    agent_type: String,
+    knowledge: Option<String>,
+    memory: Option<String>,
+) -> Result<(), String> {
+    config::seed_agent_files(
+        &repo_path,
+        &agent_type,
+        knowledge.as_deref(),
+        memory.as_deref(),
+    )
 }
 
 #[tauri::command]
-fn install_mcp_to_cli(name: String, server: McpServerConfig, repo_path: String) -> Result<(), String> {
-    config::install_mcp_to_cli(&name, &server, &repo_path)
+fn install_mcp_to_cli(
+    name: String,
+    server: McpServerConfig,
+    repo_path: String,
+    target: Option<String>,
+    custom_path: Option<String>,
+) -> Result<(), String> {
+    // Default to claude-cli so older renderer builds that pre-date the
+    // multi-target picker keep working unchanged.
+    let target = target.as_deref().unwrap_or("claude-cli");
+    config::install_mcp_to_cli(&name, &server, &repo_path, target, custom_path.as_deref())
 }
 
 // Skills — execution only (UI managed via web app)
@@ -387,13 +440,16 @@ fn get_wsl_home() -> String {
 #[tauri::command]
 async fn ensure_directory(path: String) -> Result<(), String> {
     // Sanitize: strip newlines, NULs, and surrounding whitespace
-    let clean_path = path.replace('\n', "").replace('\r', "").replace('\0', "").trim().to_string();
+    let clean_path = path
+        .replace('\n', "")
+        .replace('\r', "")
+        .replace('\0', "")
+        .trim()
+        .to_string();
     tokio::fs::create_dir_all(&clean_path)
         .await
         .map_err(|e| format!("Failed to create directory {}: {}", clean_path, e))
 }
-
-
 
 #[tauri::command]
 async fn pick_directory(app: tauri::AppHandle) -> Result<Option<String>, String> {
@@ -421,12 +477,19 @@ async fn list_worktrees(repo_path: String) -> Result<Vec<WorktreeInfo>, String> 
 }
 
 #[tauri::command]
-async fn cleanup_merged_worktrees(repo_path: String, main_branch: String) -> Result<Vec<String>, String> {
+async fn cleanup_merged_worktrees(
+    repo_path: String,
+    main_branch: String,
+) -> Result<Vec<String>, String> {
     claude_cli::worktree::cleanup_merged_worktrees(&repo_path, &main_branch).await
 }
 
 #[tauri::command]
-async fn get_branch_diff(repo_path: String, branch: String, base: String) -> Result<BranchDiff, String> {
+async fn get_branch_diff(
+    repo_path: String,
+    branch: String,
+    base: String,
+) -> Result<BranchDiff, String> {
     claude_cli::worktree::get_branch_diff(&repo_path, &branch, &base).await
 }
 
@@ -449,7 +512,11 @@ fn main() {
                 dsn,
                 sentry::ClientOptions {
                     release: Some(env!("CARGO_PKG_VERSION").into()),
-                    environment: Some(if cfg!(debug_assertions) { "development".into() } else { "production".into() }),
+                    environment: Some(if cfg!(debug_assertions) {
+                        "development".into()
+                    } else {
+                        "production".into()
+                    }),
                     send_default_pii: false,
                     attach_stacktrace: true,
                     ..Default::default()

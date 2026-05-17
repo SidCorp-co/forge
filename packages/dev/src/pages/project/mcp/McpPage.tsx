@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { McpServerList } from "@/components/settings/mcp-server-list";
-import { McpPasteParser } from "@/components/settings/mcp-paste-parser";
 import { PageShell } from "@/components/ui/page-shell";
 import { useAppStore } from "@/stores/app-store";
 import { invoke } from "@/hooks/use-tauri-ipc";
@@ -21,16 +20,14 @@ export function McpPage() {
 
   useEffect(() => {
     if (!slug) return;
-    getProject(slug).then((p) => {
-      setSentryProject(p?.sentryProject);
-    }).catch(() => {});
+    getProject(slug)
+      .then((p) => {
+        setSentryProject(p?.sentryProject);
+      })
+      .catch(() => {});
   }, [slug]);
 
-  const [showPaste, setShowPaste] = useState(false);
-
   async function reloadConfig() {
-    // Disk shape carries auth fields — but the renderer's deviceSettings
-    // slice only mirrors the device-side fields. Refresh those from disk.
     const updated = (await invoke("get_config")) as AppConfig;
     setDeviceSettings({
       projects: updated.projects ?? {},
@@ -47,10 +44,6 @@ export function McpPage() {
       [slug]: { ...projectConfig, mcpServers: servers },
     };
     patchDeviceSettings({ projects: nextProjects });
-    // Round-trip via disk so save_config carries the full shape (Rust IPC
-    // contract). Auth fields come from the latest disk snapshot — do NOT
-    // reach into auth-store here; this code path runs inside <RequireAuth>
-    // so the disk copy is always current.
     const disk = (await invoke("get_config")) as AppConfig;
     await invoke("save_config", {
       config: { ...disk, projects: nextProjects },
@@ -71,7 +64,6 @@ export function McpPage() {
       }
     }
     await reloadConfig();
-    setShowPaste(false);
   }
 
   async function handleLibraryRemove(name: string) {
@@ -84,24 +76,18 @@ export function McpPage() {
 
   return (
     <PageShell title="MCP Servers" subtitle={`Model Context Protocol servers for ${slug}`}>
-      <div className="space-y-4">
-        <McpServerList
-          servers={mcpServers}
-          onChange={handleChange}
-          repoPath={projectConfig?.repoPath}
-          projectSlug={slug}
-          sentryProject={sentryProject}
-          libraryServers={mcpLibrary}
-          enabledLibraryServers={enabledMcpServers}
-          onLibraryToggle={handleLibraryToggle}
-          onLibraryRemove={handleLibraryRemove}
-          onShowPaste={() => setShowPaste(true)}
-        />
-
-        {showPaste && (
-          <McpPasteParser onAdd={handlePasteAdd} onCancel={() => setShowPaste(false)} />
-        )}
-      </div>
+      <McpServerList
+        servers={mcpServers}
+        onChange={handleChange}
+        repoPath={projectConfig?.repoPath}
+        projectSlug={slug}
+        sentryProject={sentryProject}
+        libraryServers={mcpLibrary}
+        enabledLibraryServers={enabledMcpServers}
+        onLibraryToggle={handleLibraryToggle}
+        onLibraryRemove={handleLibraryRemove}
+        onPasteAdd={handlePasteAdd}
+      />
     </PageShell>
   );
 }
