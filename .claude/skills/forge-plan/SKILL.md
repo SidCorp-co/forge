@@ -182,6 +182,8 @@ For Complex issues with **>3 parallel workstreams** that each ship independently
    ```
    `projectId` is the one from `forge_config → get` in Step 1. The tool is idempotent and returns `{ id, created: true|false }`.
 
+   **Integration branch (PR-D, ISS-138):** the first `decomposes` edge on a parent automatically triggers integration-branch creation in core (`packages/core/src/issues/decompose.ts`). The agent does NOT call any git tool — just chain `forge_pm_set_dependency` calls per child as before. To OPT OUT (e.g. for a decomposition that should branch off project trunk individually), pass `decomposeOpts: { useIntegrationBranch: false }` on the FIRST `forge_pm_set_dependency` call only; subsequent calls inherit the parent's metadata flag.
+
    **If the parent's plan declares sibling-blocks ordering** (e.g., Sub 2 must wait for Sub 1's pipeline to finish before its `forge-triage` dispatches), add those edges immediately after creating all children:
    ```
    forge_pm_set_dependency → {

@@ -26,7 +26,12 @@ export interface IssueBranchOverride {
 }
 
 export interface IssueLike {
-  metadata?: { branchConfig?: IssueBranchOverride | null } | null;
+  metadata?:
+    | ({ branchConfig?: IssueBranchOverride | null; useIntegrationBranch?: boolean } & Record<
+        string,
+        unknown
+      >)
+    | null;
 }
 
 export interface ProjectLike {

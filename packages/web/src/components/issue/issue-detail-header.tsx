@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { Pencil } from 'lucide-react';
 import { Button } from '@/components/ui';
+import { DecomposeButton } from './decompose-button';
 import { useToast } from '@/hooks/use-toast';
 import { PIPELINE_STAGES } from '@/app/(protected)/pipeline/progress/constants';
 import type { Issue, IssuePatchInput } from '@forge/contracts';
@@ -93,6 +94,11 @@ export function IssueDetailHeader({
           />
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          <DecomposeButton
+            issueId={issue.id}
+            displayId={issue.displayId ?? `ISS-${issue.issSeq ?? ''}`}
+            status={currentStatus}
+          />
           <Button
             size="xs"
             variant="ghost"

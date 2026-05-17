@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type AddDependencyInput,
+  type DecomposeRequest,
   issueApi,
 } from '../api/issue-api';
 import { issueKeys } from './use-issues';
@@ -39,6 +40,20 @@ export function useDeleteDependency(issueId: string | undefined) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: dependencyKey(issueId) });
       qc.invalidateQueries({ queryKey: issueKeys.detail(issueId) });
+    },
+  });
+}
+
+export function useDecomposeIssue(issueId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: DecomposeRequest) =>
+      issueApi.decompose(issueId as string, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: dependencyKey(issueId) });
+      qc.invalidateQueries({ queryKey: issueKeys.detail(issueId) });
+      qc.invalidateQueries({ queryKey: issueKeys.lists });
+      qc.invalidateQueries({ queryKey: issueKeys.searches });
     },
   });
 }

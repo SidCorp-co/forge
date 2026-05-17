@@ -160,7 +160,39 @@ export const issueApi = {
     apiClient<{ deleted: true }>(`/issues/${id}/dependencies/${edgeId}`, {
       method: 'DELETE',
     }),
+
+  // ISS-138 (PR-D) — decompose an issue into N children atomically.
+  decompose: (id: string, body: DecomposeRequest) =>
+    apiClient<DecomposeResponse>(`/issues/${id}/decompose`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 };
+
+export interface DecomposeChildNew {
+  title: string;
+  description?: string | null;
+  priority?: IssuePriority;
+  category?: string | null;
+}
+
+export interface DecomposeChildExisting {
+  existingIssueId: string;
+}
+
+export type DecomposeChild = DecomposeChildNew | DecomposeChildExisting;
+
+export interface DecomposeRequest {
+  children: DecomposeChild[];
+  useIntegrationBranch?: boolean;
+}
+
+export interface DecomposeResponse {
+  parentId: string;
+  childIds: string[];
+  integrationBranch: string | null;
+  createdEdges: number;
+}
 
 export interface IssueCostSummary {
   issueId: string;

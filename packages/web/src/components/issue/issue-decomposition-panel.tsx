@@ -44,6 +44,7 @@ export function IssueDecompositionPanel({ issueId, projectSlug }: IssueDecomposi
           Decomposition children ({children.length})
         </h3>
       </div>
+      <IntegrationBranchSubtitle firstChildId={children[0]?.toIssueId} />
       <ul className="space-y-1 p-4">
         {children.map((edge) => (
           <DecompositionChildRow
@@ -54,6 +55,24 @@ export function IssueDecompositionPanel({ issueId, projectSlug }: IssueDecomposi
         ))}
       </ul>
     </section>
+  );
+}
+
+// ISS-138 (PR-D) — surfaces the integration branch name when at least one
+// child carries a per-issue branchConfig override. We read it from the first
+// child rather than the parent's metadata so the subtitle reflects what
+// forge-code will actually check out (PR-A's resolver order).
+function IntegrationBranchSubtitle({ firstChildId }: { firstChildId: string | undefined }) {
+  const child = useIssue(firstChildId);
+  if (!child.data) return null;
+  const meta = (child.data as { metadata?: { branchConfig?: { baseBranch?: string | null } | null } | null })
+    .metadata;
+  const branch = meta?.branchConfig?.baseBranch;
+  if (!branch) return null;
+  return (
+    <div className="border-b border-outline-variant/10 px-4 py-2 text-xs text-on-surface-variant">
+      Integration branch: <code className="font-mono text-on-surface">{branch}</code>
+    </div>
   );
 }
 
