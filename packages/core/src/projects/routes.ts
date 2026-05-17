@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { zValidator } from '@hono/zod-validator';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -11,7 +11,6 @@ import {
 import { db } from '../db/client.js';
 import {
   devices,
-  type IssueStatus,
   issues,
   labels,
   projectDevices,
@@ -30,8 +29,11 @@ import {
   pipelineConfigPatchSchema,
   pipelineConfigSchema,
 } from '../pipeline/pipeline-config-schema.js';
+import {
+  PipelineConfigError,
+  updatePipelineConfig,
+} from '../pipeline/pipeline-config-service.js';
 import { STATUS_TO_JOB_TYPE } from '../pipeline/skill-mapping.js';
-import { type StagesConfig, validateStatesConfig } from '../pipeline/state-machine.js';
 
 function generateApiKey(): string {
   return `fk_${randomBytes(24).toString('hex')}`;
@@ -477,7 +479,7 @@ projectRoutes.patch(
     if (!isEnabled('pipelineControl')) throw pipelineFlagOff();
 
     const { id } = c.req.valid('param');
-    const { runnerFallback, ...pipelinePatch } = c.req.valid('json');
+    const patch = c.req.valid('json');
     const userId = c.get('userId');
 
     const { project, role } = await loadMembership(id, userId);
@@ -485,155 +487,30 @@ projectRoutes.patch(
       throw forbidden('not a project owner');
     }
 
-    // Atomic jsonb merge at the DB level. Writes pipelineConfig as a sub-key
-    // (so unknown legacy keys round-trip) AND optionally runnerFallback as a
-    // sibling — both in one UPDATE so they cannot interleave with another
-    // tab's write.
-    const mergeDoc: Record<string, unknown> = {};
-    if (Object.keys(pipelinePatch).length > 0) {
-      mergeDoc.pipelineConfig = pipelinePatch;
-    }
-    if (runnerFallback !== undefined) {
-      mergeDoc.runnerFallback = runnerFallback;
-    }
-
-    if (Object.keys(mergeDoc).length > 0) {
-      // Two-level merge: top-level keys (runnerFallback, pipelineConfig) are
-      // shallow-merged via `||`. Then for pipelineConfig specifically, we
-      // also need to deep-merge so partial step toggles don't wipe the rest.
-      // Approach: pre-merge pipelineConfig in JS using the loaded doc, then
-      // emit a single atomic write at the agentConfig level.
-      const [row] = await db
-        .select({ agentConfig: projects.agentConfig })
-        .from(projects)
-        .where(eq(projects.id, id))
-        .limit(1);
-      if (!row) throw notFound();
-      const currentAc = (row.agentConfig ?? {}) as Record<string, unknown>;
-      const currentPipeline = (currentAc.pipelineConfig ?? {}) as Record<string, unknown>;
-      const nextDoc: Record<string, unknown> = {};
-      if (mergeDoc.pipelineConfig) {
-        const nextPipeline = {
-          ...currentPipeline,
-          ...(mergeDoc.pipelineConfig as object),
-        };
-        // ISS-109 — validate `states` patch against three project-config
-        // invariants before persisting. Order matters: locked-on first so an
-        // operator who toggles `open` gets the clearest error.
-        const patchStates = (pipelinePatch as { states?: StagesConfig }).states;
-        if (patchStates) {
-          // Rule 1: `open` is locked-on; it bounds the issue lifecycle.
-          if (patchStates.open && patchStates.open.enabled === false) {
+    try {
+      const result = await updatePipelineConfig({ projectId: id, patch });
+      return c.json(result);
+    } catch (err) {
+      if (err instanceof PipelineConfigError) {
+        switch (err.code) {
+          case 'OPEN_LOCKED_ON':
+          case 'DEAD_END_CONFIG':
             throw new HTTPException(400, {
-              message: 'open stage cannot be disabled',
-              cause: { code: 'OPEN_LOCKED_ON' },
+              message: err.message,
+              cause: { code: err.code, details: err.details },
             });
-          }
-
-          // Rule 2: cannot disable a stage that has live issues sitting at
-          // it. Operator must drain (or transition) them first.
-          const stagesBeingDisabled = (
-            Object.entries(patchStates) as Array<[string, { enabled?: boolean } | undefined]>
-          )
-            .filter(([, v]) => v?.enabled === false)
-            .map(([stage]) => stage as IssueStatus);
-          if (stagesBeingDisabled.length > 0) {
-            const blocking = await db
-              .select({ id: issues.id, status: issues.status })
-              .from(issues)
-              .where(
-                and(eq(issues.projectId, id), inArray(issues.status, stagesBeingDisabled)),
-              );
-            if (blocking.length > 0) {
-              throw new HTTPException(409, {
-                message: 'cannot disable stages while issues are at those stages',
-                cause: {
-                  code: 'STAGE_HAS_ISSUES',
-                  details: {
-                    blockingIssueIds: blocking.map((b) => b.id),
-                    stagesBlocked: Array.from(new Set(blocking.map((b) => b.status))),
-                  },
-                },
-              });
-            }
-          }
-
-          // Rule 3: enabled + auto requires a registered skill — otherwise
-          // the orchestrator would silently skip dispatch for that stage.
-          const mergedStatesForRule3 = (nextPipeline as { states?: StagesConfig }).states ?? {};
-          const needRegistration = (
-            Object.entries(mergedStatesForRule3) as Array<
-              [string, { enabled?: boolean; mode?: 'auto' | 'manual' } | undefined]
-            >
-          )
-            .filter(([, v]) => v && v.enabled !== false && v.mode === 'auto')
-            .map(([stage]) => stage as IssueStatus);
-          if (needRegistration.length > 0) {
-            const regs = await db
-              .select({ stage: skillRegistrations.stage })
-              .from(skillRegistrations)
-              .where(
-                and(
-                  eq(skillRegistrations.projectId, id),
-                  inArray(skillRegistrations.stage, needRegistration),
-                ),
-              );
-            const have = new Set(regs.map((r) => r.stage));
-            const missing = needRegistration.filter((s) => !have.has(s));
-            if (missing.length > 0) {
-              throw new HTTPException(409, {
-                message: 'auto-mode stages require a registered skill',
-                cause: {
-                  code: 'AUTO_STAGE_NEEDS_SKILL',
-                  details: { stagesMissingSkill: missing },
-                },
-              });
-            }
-          }
+          case 'STAGE_HAS_ISSUES':
+          case 'AUTO_STAGE_NEEDS_SKILL':
+            throw new HTTPException(409, {
+              message: err.message,
+              cause: { code: err.code, details: err.details },
+            });
+          case 'PROJECT_NOT_FOUND':
+            throw notFound();
         }
-        // ISS-110 — reject configs whose disabled `states` would strand
-        // issues. Run against the *merged* doc so a patch that only touches
-        // one stage is still validated in the context of the existing config.
-        const mergedStates = (nextPipeline as { states?: StagesConfig }).states;
-        const dead = validateStatesConfig(mergedStates);
-        if (dead) {
-          throw new HTTPException(400, {
-            message: `Cannot disable stages with no forward path: ${dead.unreachable.join(', ')}`,
-            cause: {
-              code: dead.code,
-              details: { unreachable: dead.unreachable },
-            },
-          });
-        }
-        nextDoc.pipelineConfig = nextPipeline;
       }
-      if (runnerFallback !== undefined) {
-        nextDoc.runnerFallback = runnerFallback;
-      }
-      const subkey = JSON.stringify(nextDoc);
-      await db.execute(
-        sql`UPDATE projects
-            SET agent_config = COALESCE(agent_config, '{}'::jsonb) || ${subkey}::jsonb
-            WHERE id = ${id}`,
-      );
+      throw err;
     }
-
-    // Re-read to compose the canonical merged response.
-    const [row] = await db
-      .select({ agentConfig: projects.agentConfig })
-      .from(projects)
-      .where(eq(projects.id, id))
-      .limit(1);
-    if (!row) throw notFound();
-    const ac = (row.agentConfig ?? {}) as Record<string, unknown>;
-    const stored = (ac.pipelineConfig ?? {}) as Record<string, unknown>;
-    const parsed = pipelineConfigSchema.parse(stored);
-    const pipelineConfig: PipelineConfig = { ...PIPELINE_CONFIG_DEFAULTS, ...parsed };
-    const respRunnerFallback = Array.isArray(ac.runnerFallback)
-      ? (ac.runnerFallback as string[])
-      : ['claude-code'];
-
-    return c.json({ pipelineConfig, runnerFallback: respRunnerFallback });
   },
 );
 
