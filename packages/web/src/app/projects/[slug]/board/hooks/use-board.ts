@@ -23,6 +23,7 @@ import {
   BOARD_DENSITY_KEY,
   boardCollapsedKey,
   boardGroupByKey,
+  boardVisibleColsKey,
   DEFAULT_VISIBLE,
   type BoardDensity,
   type BoardGroupBy,
@@ -93,6 +94,13 @@ export function useBoard() {
     setCollapsedCols(
       readLocal<Partial<Record<IssueStatus, boolean>>>(boardCollapsedKey(projectId), {}),
     );
+    const savedVisible = readLocal<Partial<Record<IssueStatus, boolean>> | null>(
+      boardVisibleColsKey(projectId),
+      null,
+    );
+    if (savedVisible && typeof savedVisible === 'object') {
+      setVisibleCols({ ...DEFAULT_VISIBLE, ...savedVisible } as Record<IssueStatus, boolean>);
+    }
   }, [projectId]);
 
   const setDensity = useCallback((next: BoardDensity) => {
@@ -213,7 +221,11 @@ export function useBoard() {
   );
 
   const toggleCol = (status: IssueStatus) => {
-    setVisibleCols((prev) => ({ ...prev, [status]: !prev[status] }));
+    setVisibleCols((prev) => {
+      const next = { ...prev, [status]: !prev[status] };
+      if (projectId) writeLocal(boardVisibleColsKey(projectId), next);
+      return next;
+    });
   };
 
   // Tasks view: fetch tasks per visible issue and flatten. Only enabled when

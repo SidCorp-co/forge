@@ -101,14 +101,14 @@ export function DropColumn({
           'w-14 rounded-lg border-t-4 p-2 transition-colors flex flex-col items-center',
           color,
           bg,
-          over && 'ring-2 ring-info ring-inset',
+          over && 'bg-info-surface/30 ring-2 ring-info ring-inset',
           overWip && 'ring-2 ring-warning',
         )}
       >
         <button
           type="button"
           onClick={onToggleCollapsed}
-          className="mb-2 text-xs text-on-surface-variant hover:text-on-surface"
+          className="mb-2 inline-flex h-6 w-6 items-center justify-center rounded-sm text-xs text-on-surface-variant hover:bg-surface-container hover:text-on-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
           aria-label="Expand column"
         >
           ▸
@@ -136,7 +136,7 @@ export function DropColumn({
         'min-w-[180px] flex-1 rounded-lg border-t-4 p-2.5 sm:p-3 transition-colors',
         color,
         bg,
-        over && 'ring-2 ring-info ring-inset',
+        over && 'bg-info-surface/30 ring-2 ring-info ring-inset',
         overWip && 'ring-2 ring-warning',
       )}
     >
@@ -146,7 +146,7 @@ export function DropColumn({
             <button
               type="button"
               onClick={onToggleCollapsed}
-              className="text-xs text-on-surface-variant hover:text-on-surface"
+              className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-xs text-on-surface-variant hover:bg-surface-container hover:text-on-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
               aria-label="Collapse column"
             >
               ▾
@@ -180,7 +180,7 @@ export function DropColumn({
                   setLimitDraft(wipLimit != null ? String(wipLimit) : '');
                   setEditingLimit((v) => !v);
                 }}
-                className="text-xs text-on-surface-variant hover:text-on-surface"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-xs text-on-surface-variant hover:bg-surface-container hover:text-on-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
                 aria-label="Edit WIP limit"
               >
                 ⋯

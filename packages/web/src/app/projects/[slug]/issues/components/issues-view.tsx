@@ -10,7 +10,8 @@ import type { ProjectMemberRow } from '@/features/project/hooks/use-project-memb
 import { useIssuesPage } from '../hooks';
 import { StatusMultiSelect } from './status-multi-select';
 import { SavedViewPopover } from './saved-view-popover';
-import { GROUP_BY_OPTIONS, type GroupBy } from '../constants';
+import { IssuesPagination } from './issues-pagination';
+import { GROUP_BY_OPTIONS, PAGE_SIZE_OPTIONS, type GroupBy } from '../constants';
 import type { IssueStatus } from '@/features/issue/types';
 import { IssueDetailModal } from '@/components/issue/issue-detail-modal/issue-detail-modal';
 import { AgentQueueBadge, pickActiveSession } from '@/components/issue/agent-queue-badge';
@@ -80,6 +81,10 @@ export function IssuesView() {
     groupBy,
     density,
     setDensity,
+    pageSize,
+    setPageSize,
+    pageCount,
+    safePage,
     savedViews,
     saveCurrentView,
     deleteSavedView,
@@ -442,6 +447,15 @@ export function IssuesView() {
             <Rows3 className="h-3.5 w-3.5" />
           )}
         </button>
+        <Select
+          value={String(pageSize)}
+          onChange={(e) => setPageSize(Number(e.currentTarget.value))}
+          aria-label="Issues per page"
+        >
+          {PAGE_SIZE_OPTIONS.map((n) => (
+            <option key={n} value={n}>{n} / page</option>
+          ))}
+        </Select>
         <SavedViewPopover onSave={saveCurrentView} />
       </div>
 
@@ -501,6 +515,14 @@ export function IssuesView() {
                 </ul>
               </details>
             ))
+          )}
+          {total > pageSize && (
+            <IssuesPagination
+              total={total}
+              pageCount={pageCount}
+              safePage={safePage}
+              setParam={setParam}
+            />
           )}
         </div>
       )}
