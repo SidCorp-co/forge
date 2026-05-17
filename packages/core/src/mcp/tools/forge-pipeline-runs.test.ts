@@ -93,9 +93,17 @@ beforeEach(() => {
   cancelSpy.mockReset();
 });
 
+function makeDeviceCtx() {
+  return {
+    principal: { kind: 'device' as const, device: fakeDevice },
+    device: fakeDevice,
+    projectSlug: null,
+  };
+}
+
 describe('forge_pipeline_runs.list', () => {
   it('returns runs filtered by issueId/status when device owner is member', async () => {
-    const tool = forgePipelineRunsListTool(fakeDevice);
+    const tool = forgePipelineRunsListTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]); // member check
     selectLimit.mockResolvedValueOnce([baseRun]); // runs query
 
@@ -110,20 +118,23 @@ describe('forge_pipeline_runs.list', () => {
   });
 
   it('rejects non-member with FORBIDDEN', async () => {
-    const tool = forgePipelineRunsListTool(fakeDevice);
+    const tool = forgePipelineRunsListTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([{ ownerId: 'other' }]);
     selectLimit.mockResolvedValueOnce([]);
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
   });
-});
 
-function makeDeviceCtx() {
-  return {
-    principal: { kind: 'device' as const, device: fakeDevice },
-    device: fakeDevice,
-    projectSlug: null,
-  };
-}
+  // ISS-145 — shim records the deprecated tool name on ctx.deprecations
+  // so the HTTP handler can emit `X-MCP-Deprecation`.
+  it('records deprecation on ctx.deprecations when invoked', async () => {
+    const deprecations = new Set<string>();
+    const tool = forgePipelineRunsListTool({ ...makeDeviceCtx(), deprecations });
+    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([]);
+    await tool.handler({ projectId: PROJECT_ID });
+    expect(deprecations.has('forge_pipeline_runs.list')).toBe(true);
+  });
+});
 
 function makePatCtx(projectIds: string[] | null) {
   return {

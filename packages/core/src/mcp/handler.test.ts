@@ -158,6 +158,70 @@ describe('@forge/core MCP server', () => {
     }
   });
 
+  // ISS-145 — consolidated action dispatchers must show up in tools/list so
+  // callers can migrate without poking at undocumented names.
+  it('exposes the ISS-145 action dispatchers', async () => {
+    const { client, server } = await connectClient();
+    try {
+      const res = await client.listTools();
+      const names = new Set(res.tools.map((t) => t.name));
+      expect(names.has('forge_project_pipeline_runs')).toBe(true);
+      expect(names.has('forge_project_pm')).toBe(true);
+      // Legacy shims continue to exist for ≥ 1 release.
+      expect(names.has('forge_pipeline_runs.list')).toBe(true);
+      expect(names.has('forge_pm.snapshot')).toBe(true);
+      // Description must lead with the deprecation marker so `tools/list`
+      // callers see the migration target without invoking the tool.
+      const shim = res.tools.find((t) => t.name === 'forge_pipeline_runs.list');
+      expect(shim?.description).toMatch(/^\[DEPRECATED/);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  // ISS-145 — PAT principals must be blocked from the consolidated
+  // `forge_project_pm` dispatcher at the action level (any of the six
+  // device-only actions). Acceptance criterion 7.
+  it('blocks PAT principal on every forge_project_pm action with PM_REQUIRES_DEVICE', async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createMcpServer({
+      principal: {
+        kind: 'pat',
+        userId: fakeDevice.ownerId,
+        tokenId: '00000000-0000-4000-8000-0000000000ab',
+        scopes: ['read', 'write'],
+        projectIds: null,
+      },
+      device: fakeDevice,
+      projectSlug: null,
+    });
+    await server.connect(serverTransport);
+    const client = new Client({ name: 'test', version: '0.0.0' });
+    await client.connect(clientTransport);
+    try {
+      for (const action of [
+        'snapshot',
+        'graph',
+        'runner_load',
+        'dispatch',
+        'set_dependency',
+        'write_decision',
+      ]) {
+        const res = await client.callTool({
+          name: 'forge_project_pm',
+          arguments: { action, projectId: '00000000-0000-4000-8000-0000000000bb' },
+        });
+        expect(res.isError, `action=${action}`).toBe(true);
+        const text = (res.content as Array<{ type: string; text: string }>)[0]?.text ?? '';
+        expect(text, `action=${action}`).toContain('PM_REQUIRES_DEVICE');
+      }
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
   // ISS-150 — PAT principals must be 403'd from forge_pm.* tools with a stable
   // PM_REQUIRES_DEVICE error code. Regression coverage for Finding #2 where
   // the DEVICE_REQUIRED_TOOLS set used the wrong separator characters and

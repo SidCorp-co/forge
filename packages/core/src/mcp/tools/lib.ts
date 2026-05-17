@@ -34,6 +34,15 @@ export type McpContext = {
   requestId?: string;
   ip?: string | null;
   userAgent?: string | null;
+  /**
+   * ISS-145 — per-request collector for deprecated tool names invoked
+   * during this MCP call. Shim factories push the legacy tool name they
+   * implement; `handler.ts` reads this after the transport response and
+   * emits an `X-MCP-Deprecation` header. Always present (initialized in
+   * `handler.ts`) but typed optional so unit tests that build a minimal
+   * context can omit it without TS errors.
+   */
+  deprecations?: Set<string>;
 };
 
 /**

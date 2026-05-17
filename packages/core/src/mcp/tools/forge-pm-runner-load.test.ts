@@ -46,6 +46,12 @@ const fakeDevice = {
   createdAt: new Date(),
 };
 
+const ctx = {
+  principal: { kind: 'device' as const, device: fakeDevice },
+  device: fakeDevice,
+  projectSlug: null,
+};
+
 beforeEach(() => {
   queue.length = 0;
   vi.clearAllMocks();
@@ -53,13 +59,13 @@ beforeEach(() => {
 
 describe('forge_pm.runner_load', () => {
   it('rejects non-member', async () => {
-    const tool = forgePmRunnerLoadTool(fakeDevice);
+    const tool = forgePmRunnerLoadTool(ctx);
     queue.push([{ ownerId: 'other' }], []);
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
   });
 
   it('returns runner list with capacity + inFlight', async () => {
-    const tool = forgePmRunnerLoadTool(fakeDevice);
+    const tool = forgePmRunnerLoadTool(ctx);
     queue.push(
       [{ ownerId: OWNER_ID }], // assert
       [

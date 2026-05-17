@@ -48,6 +48,12 @@ const fakeDevice = {
   createdAt: new Date(),
 };
 
+const ctx = {
+  principal: { kind: 'device' as const, device: fakeDevice },
+  device: fakeDevice,
+  projectSlug: null,
+};
+
 beforeEach(() => {
   queue.length = 0;
   vi.clearAllMocks();
@@ -55,15 +61,16 @@ beforeEach(() => {
 
 describe('forge_pm.graph', () => {
   it('rejects non-member', async () => {
-    const tool = forgePmGraphTool(fakeDevice);
+    const tool = forgePmGraphTool(ctx);
     queue.push([{ ownerId: 'other' }], []); // assertDeviceOwnerIsMember
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
   });
 
   it('returns whole-project graph when rootIssueId omitted', async () => {
-    const tool = forgePmGraphTool(fakeDevice);
+    const tool = forgePmGraphTool(ctx);
     queue.push(
       [{ ownerId: OWNER_ID }], // assert
+      [{ total: 2 }], // count() for totalNodes
       [
         { id: ROOT_ID, status: 'open', priority: 'medium', assigneeId: null, parentIssueId: null },
         {
@@ -81,16 +88,44 @@ describe('forge_pm.graph', () => {
       nodes: unknown[];
       edges: Array<{ kind: string }>;
       truncated: boolean;
+      remainingNodes: number;
       rootIssueId: string | null;
     };
     expect(result.nodes).toHaveLength(2);
     expect(result.edges).toHaveLength(2); // 1 dep + 1 parent
     expect(result.rootIssueId).toBeNull();
     expect(result.truncated).toBe(false);
+    expect(result.remainingNodes).toBe(0);
+  });
+
+  // ISS-145 — explicit truncation contract for the project-wide branch.
+  it('returns truncated:true + remainingNodes when project exceeds the 200-node cap', async () => {
+    const tool = forgePmGraphTool(ctx);
+    const stubNodes = Array.from({ length: 200 }, (_, i) => ({
+      id: `${i}`.padStart(8, '0'),
+      status: 'open',
+      priority: 'medium',
+      assigneeId: null,
+      parentIssueId: null,
+    }));
+    queue.push(
+      [{ ownerId: OWNER_ID }], // assert
+      [{ total: 215 }], // count() — 15 more than the cap
+      stubNodes, // capped nodes
+      [], // no edges
+    );
+    const result = (await tool.handler({ projectId: PROJECT_ID })) as {
+      truncated: boolean;
+      remainingNodes: number;
+      nodes: unknown[];
+    };
+    expect(result.truncated).toBe(true);
+    expect(result.remainingNodes).toBe(15);
+    expect(result.nodes).toHaveLength(200);
   });
 
   it('BFS expands to depth and dedupes edges with cycle', async () => {
-    const tool = forgePmGraphTool(fakeDevice);
+    const tool = forgePmGraphTool(ctx);
     queue.push(
       [{ ownerId: OWNER_ID }], // assert
       // depth 1: forward deps from ROOT
@@ -125,10 +160,45 @@ describe('forge_pm.graph', () => {
     expect(result.rootIssueId).toBe(ROOT_ID);
   });
 
-  it('rejects depth > 4', async () => {
-    const tool = forgePmGraphTool(fakeDevice);
+  it('rejects depth > 5', async () => {
+    const tool = forgePmGraphTool(ctx);
     await expect(
-      tool.handler({ projectId: PROJECT_ID, rootIssueId: ROOT_ID, depth: 5 }),
+      tool.handler({ projectId: PROJECT_ID, rootIssueId: ROOT_ID, depth: 6 }),
     ).rejects.toThrow();
+  });
+
+  // ISS-145 — input parse must accept depth=5 (raised from previous cap of 4).
+  it('accepts depth=5 at the input boundary', async () => {
+    const tool = forgePmGraphTool(ctx);
+    queue.push(
+      [{ ownerId: OWNER_ID }], // assert
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [], // final nodeRows
+    );
+    const result = (await tool.handler({
+      projectId: PROJECT_ID,
+      rootIssueId: ROOT_ID,
+      depth: 5,
+    })) as { depth: number };
+    expect(result.depth).toBe(5);
   });
 });

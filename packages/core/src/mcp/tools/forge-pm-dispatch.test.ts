@@ -76,6 +76,12 @@ const fakeDevice = {
   createdAt: new Date(),
 };
 
+const ctx = {
+  principal: { kind: 'device' as const, device: fakeDevice },
+  device: fakeDevice,
+  projectSlug: null,
+};
+
 function pushPmActorOk() {
   queue.push([{ ownerId: OWNER_ID }]); // assertDeviceOwnerIsMember: project (owner)
   queue.push([{ capabilities: { pm: true } }]); // runner row
@@ -89,7 +95,7 @@ beforeEach(() => {
 
 describe('forge_pm.dispatch', () => {
   it('rejects when device has no claude-code runner', async () => {
-    const tool = forgePmDispatchTool(fakeDevice);
+    const tool = forgePmDispatchTool(ctx);
     queue.push([{ ownerId: OWNER_ID }]); // assertMember
     queue.push([]); // no runner
     await expect(
@@ -103,7 +109,7 @@ describe('forge_pm.dispatch', () => {
   });
 
   it('rejects when capabilities.pm is not true', async () => {
-    const tool = forgePmDispatchTool(fakeDevice);
+    const tool = forgePmDispatchTool(ctx);
     queue.push([{ ownerId: OWNER_ID }]);
     queue.push([{ capabilities: { pm: false } }]);
     await expect(
@@ -117,7 +123,7 @@ describe('forge_pm.dispatch', () => {
   });
 
   it('rejects unknown jobType (pm)', async () => {
-    const tool = forgePmDispatchTool(fakeDevice);
+    const tool = forgePmDispatchTool(ctx);
     pushPmActorOk();
     await expect(
       tool.handler({
@@ -130,7 +136,7 @@ describe('forge_pm.dispatch', () => {
   });
 
   it('rejects cross-project issue', async () => {
-    const tool = forgePmDispatchTool(fakeDevice);
+    const tool = forgePmDispatchTool(ctx);
     pushPmActorOk();
     queue.push([{ projectId: OTHER_PROJECT_ID }]); // issue
     await expect(
@@ -144,7 +150,7 @@ describe('forge_pm.dispatch', () => {
   });
 
   it('happy path inserts a job + enqueues', async () => {
-    const tool = forgePmDispatchTool(fakeDevice);
+    const tool = forgePmDispatchTool(ctx);
     pushPmActorOk();
     queue.push([{ projectId: PROJECT_ID }]); // issue
     queue.push([{ agentConfig: { pipelineConfig: { states: {} } } }]); // states lookup
@@ -172,7 +178,7 @@ describe('forge_pm.dispatch', () => {
   });
 
   it('rejects when the stage is configured as manual-only (ISS-108)', async () => {
-    const tool = forgePmDispatchTool(fakeDevice);
+    const tool = forgePmDispatchTool(ctx);
     pushPmActorOk();
     queue.push([{ projectId: PROJECT_ID }]); // issue
     queue.push([
@@ -194,7 +200,7 @@ describe('forge_pm.dispatch', () => {
   });
 
   it('rejects when no skill_registration exists for the project (ISS-108)', async () => {
-    const tool = forgePmDispatchTool(fakeDevice);
+    const tool = forgePmDispatchTool(ctx);
     pushPmActorOk();
     queue.push([{ projectId: PROJECT_ID }]); // issue
     queue.push([{ agentConfig: { pipelineConfig: { states: {} } } }]);
@@ -211,7 +217,7 @@ describe('forge_pm.dispatch', () => {
   });
 
   it('returns pipelineRun=null when the parent run vanished after dispatch', async () => {
-    const tool = forgePmDispatchTool(fakeDevice);
+    const tool = forgePmDispatchTool(ctx);
     pushPmActorOk();
     queue.push([{ projectId: PROJECT_ID }]);
     queue.push([{ agentConfig: { pipelineConfig: { states: {} } } }]);
@@ -231,7 +237,7 @@ describe('forge_pm.dispatch', () => {
   });
 
   it('returns already_active on unique-violation', async () => {
-    const tool = forgePmDispatchTool(fakeDevice);
+    const tool = forgePmDispatchTool(ctx);
     pushPmActorOk();
     queue.push([{ projectId: PROJECT_ID }]); // issue
     queue.push([{ agentConfig: { pipelineConfig: { states: {} } } }]);

@@ -77,6 +77,12 @@ const fakeDevice = {
   createdAt: new Date(),
 };
 
+const ctx = {
+  principal: { kind: 'device' as const, device: fakeDevice },
+  device: fakeDevice,
+  projectSlug: null,
+};
+
 // ISS-131 — gate relaxed from `assertPmActor` to `assertDeviceOwnerIsMember`.
 // The member-only check does ONE select on `projects.ownerId`; when the device
 // owns the project that short-circuits as both member + admin without a
@@ -93,7 +99,7 @@ beforeEach(() => {
 
 describe('forge_pm.set_dependency', () => {
   it('rejects self-edge', async () => {
-    const tool = forgePmSetDependencyTool(fakeDevice);
+    const tool = forgePmSetDependencyTool(ctx);
     pushMemberOk();
     await expect(
       tool.handler({
@@ -106,7 +112,7 @@ describe('forge_pm.set_dependency', () => {
   });
 
   it('rejects when an issue is in another project', async () => {
-    const tool = forgePmSetDependencyTool(fakeDevice);
+    const tool = forgePmSetDependencyTool(ctx);
     pushMemberOk();
     queue.push([
       { id: FROM_ID, projectId: PROJECT_ID },
@@ -123,7 +129,7 @@ describe('forge_pm.set_dependency', () => {
   });
 
   it('inserts a new edge → created:true and emits dependencyChanged', async () => {
-    const tool = forgePmSetDependencyTool(fakeDevice);
+    const tool = forgePmSetDependencyTool(ctx);
     pushMemberOk();
     queue.push([
       { id: FROM_ID, projectId: PROJECT_ID },
@@ -156,7 +162,7 @@ describe('forge_pm.set_dependency', () => {
   });
 
   it('returns existing edge → created:false on conflict, no hook emit', async () => {
-    const tool = forgePmSetDependencyTool(fakeDevice);
+    const tool = forgePmSetDependencyTool(ctx);
     pushMemberOk();
     queue.push([
       { id: FROM_ID, projectId: PROJECT_ID },
@@ -189,7 +195,7 @@ describe('forge_pm.set_dependency', () => {
   // lookup hits the device's `ownerId` and short-circuits as member+admin
   // without ever inspecting the `runners` table.
   it('admits a non-PM device that owns the project (ISS-131 gate relaxation)', async () => {
-    const tool = forgePmSetDependencyTool(fakeDevice);
+    const tool = forgePmSetDependencyTool(ctx);
     // Queue ONLY the project-owner lookup — no runner-capabilities row, which
     // would have been needed under the old `assertPmActor` path.
     pushMemberOk();
@@ -213,7 +219,7 @@ describe('forge_pm.set_dependency', () => {
   // ISS-138 (PR-D) — decomposes-edge inserts trigger the integration-branch
   // helper. Blocks edges and opt-out callers must not.
   it('calls decomposeParent after a fresh decomposes edge insert', async () => {
-    const tool = forgePmSetDependencyTool(fakeDevice);
+    const tool = forgePmSetDependencyTool(ctx);
     pushMemberOk();
     queue.push([
       { id: FROM_ID, projectId: PROJECT_ID },
@@ -238,7 +244,7 @@ describe('forge_pm.set_dependency', () => {
   });
 
   it('skips decomposeParent when decomposeOpts.useIntegrationBranch is false', async () => {
-    const tool = forgePmSetDependencyTool(fakeDevice);
+    const tool = forgePmSetDependencyTool(ctx);
     pushMemberOk();
     queue.push([
       { id: FROM_ID, projectId: PROJECT_ID },
@@ -258,7 +264,7 @@ describe('forge_pm.set_dependency', () => {
   });
 
   it('does not call decomposeParent for non-decomposes edges', async () => {
-    const tool = forgePmSetDependencyTool(fakeDevice);
+    const tool = forgePmSetDependencyTool(ctx);
     pushMemberOk();
     queue.push([
       { id: FROM_ID, projectId: PROJECT_ID },
@@ -280,7 +286,7 @@ describe('forge_pm.set_dependency', () => {
   // member row must still be rejected. This is the FORBIDDEN branch in
   // `loadDeviceProjectRole` → `assertDeviceOwnerIsMember`.
   it('rejects a device whose owner is not a project member', async () => {
-    const tool = forgePmSetDependencyTool(fakeDevice);
+    const tool = forgePmSetDependencyTool(ctx);
     // Project exists but is owned by a stranger; no projectMembers row.
     queue.push([{ ownerId: 'ffffffff-ffff-4fff-8fff-ffffffffffff' }]);
     queue.push([]); // projectMembers lookup returns nothing

@@ -2,6 +2,7 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import type { Context } from 'hono';
 import type { Device } from '../auth/deviceToken.js';
 import type { PrincipalVars } from '../middleware/require-pat-or-device.js';
+import { formatDeprecationHeader } from './deprecation.js';
 import { createMcpServer } from './server.js';
 
 /**
@@ -45,6 +46,11 @@ export async function mcpHandler(c: Context<{ Variables: PrincipalVars }>): Prom
     null;
   const userAgent = c.req.header('user-agent') ?? null;
 
+  // ISS-145 — per-request collector for deprecated legacy tool names. Shim
+  // factories push the legacy name they implement; after the transport
+  // returns its `Response` we attach an `X-MCP-Deprecation` header so
+  // callers can migrate before the shims are removed.
+  const deprecations = new Set<string>();
   const server = createMcpServer({
     principal,
     device,
@@ -52,6 +58,7 @@ export async function mcpHandler(c: Context<{ Variables: PrincipalVars }>): Prom
     requestId,
     ip,
     userAgent,
+    deprecations,
   });
   const transport = new WebStandardStreamableHTTPServerTransport({
     enableJsonResponse: true,
@@ -67,7 +74,15 @@ export async function mcpHandler(c: Context<{ Variables: PrincipalVars }>): Prom
   await server.connect(transport);
 
   try {
-    return await transport.handleRequest(c.req.raw);
+    const res = await transport.handleRequest(c.req.raw);
+    if (deprecations.size === 0) return res;
+    const headers = new Headers(res.headers);
+    headers.set('X-MCP-Deprecation', formatDeprecationHeader(deprecations));
+    return new Response(res.body, {
+      status: res.status,
+      statusText: res.statusText,
+      headers,
+    });
   } finally {
     void transport.close();
     void server.close();
