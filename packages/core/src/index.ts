@@ -16,10 +16,10 @@ import { desktopRoutes } from './auth/desktop/routes.js';
 import { devForceVerifyRoutes } from './auth/dev-force-verify.js';
 import { loginRoutes } from './auth/login.js';
 import { logoutRoutes } from './auth/logout.js';
-import { reauthRoutes } from './auth/reauth.js';
 import { meRoutes } from './auth/me.js';
 import { oauthRoutes } from './auth/oauth/routes.js';
 import { preferenceRoutes } from './auth/preferences.js';
+import { reauthRoutes } from './auth/reauth.js';
 import { refreshRoutes } from './auth/refresh.js';
 import { authRoutes } from './auth/register.js';
 import { verifyRoutes } from './auth/verify.js';
@@ -253,7 +253,9 @@ app.route('/api/auth', devForceVerifyRoutes);
 app.route('/api/auth', meRoutes);
 app.route('/api/auth', preferenceRoutes);
 app.route('/api/auth', logoutRoutes);
-// ISS-149 Sub 1 — step-up re-auth gate consumed by PAT mint/rotate.
+// ISS-158 — Fresh re-auth primitive for sensitive surfaces (PAT creation,
+// device revoke, password change). Sibling children attach the
+// requireFreshAuth() middleware at the gated routes.
 app.route('/api/auth', reauthRoutes);
 // ISS-150 — Personal Access Tokens (PAT) CRUD. User-scoped via JWT.
 app.route('/api', patRoutes);

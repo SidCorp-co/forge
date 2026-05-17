@@ -11,6 +11,7 @@ import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { requireFreshAuth } from '../middleware/require-fresh-auth.js';
 import { redeemPairingCode } from './pair.js';
 
 const badRequest = (details: unknown) =>
@@ -165,6 +166,7 @@ deviceOwnerRoutes.patch(
 // pool so it stops appearing in dispatcher candidate lists.
 deviceOwnerRoutes.delete(
   '/devices/:id',
+  requireFreshAuth(5),
   zValidator('param', deviceIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),

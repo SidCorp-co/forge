@@ -6,14 +6,15 @@ import { Modal } from '@/components/ui/modal';
 import { ApiError } from '@/lib/api/client';
 import { formatApiError } from '@/lib/api/error';
 import { useProjects } from '@/features/project/hooks/use-projects';
+import { ReauthCancelledError } from '@/features/auth/hooks/use-require-fresh-auth';
 import { useCreateToken } from '../hooks/use-tokens';
-import { FreshAuthCancelledError, useRequireFreshAuth } from '../hooks/use-fresh-auth';
 import type { CreatePatInput, PatScope, PatWithPlaintext } from '../types';
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onCreated: (token: PatWithPlaintext) => void;
+  requireFreshAuth: () => Promise<void>;
 }
 
 type ScopePreset = 'read' | 'standard' | 'admin';
@@ -30,10 +31,16 @@ function expiryToIso(preset: ExpiryPreset): string | undefined {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 }
 
-export function CreateTokenModal({ open, onClose, onCreated }: Props) {
+export function CreateTokenModal({ open, onClose, onCreated, requireFreshAuth }: Props) {
   return (
     <Modal open={open} onClose={onClose}>
-      {open && <CreateTokenForm onClose={onClose} onCreated={onCreated} />}
+      {open && (
+        <CreateTokenForm
+          onClose={onClose}
+          onCreated={onCreated}
+          requireFreshAuth={requireFreshAuth}
+        />
+      )}
     </Modal>
   );
 }
@@ -41,9 +48,11 @@ export function CreateTokenModal({ open, onClose, onCreated }: Props) {
 function CreateTokenForm({
   onClose,
   onCreated,
+  requireFreshAuth,
 }: {
   onClose: () => void;
   onCreated: (token: PatWithPlaintext) => void;
+  requireFreshAuth: () => Promise<void>;
 }) {
   const [name, setName] = useState('');
   const [scope, setScope] = useState<ScopePreset>('standard');
@@ -54,7 +63,6 @@ function CreateTokenForm({
 
   const projects = useProjects();
   const createToken = useCreateToken();
-  const requireFreshAuth = useRequireFreshAuth();
 
   const resolvedScopes: PatScope[] = scope === 'admin' ? [] : SCOPE_MAP[scope];
 
@@ -81,7 +89,7 @@ function CreateTokenForm({
       await requireFreshAuth();
     } catch (err) {
       setSubmitting(false);
-      if (err instanceof FreshAuthCancelledError) return;
+      if (err instanceof ReauthCancelledError) return;
       setError(formatApiError(err));
       return;
     }

@@ -1,45 +1,37 @@
-/**
- * Step-up re-authentication endpoint (ISS-149 Sub 1).
- *
- * `POST /api/auth/reauth { password }` — verifies the current user's password
- * and marks them "fresh" for a short window. Sensitive endpoints (PAT mint,
- * PAT rotate; future: destructive account actions) gate behind
- * `requireFreshAuth(minutes)` in `middleware/require-fresh-auth.ts`.
- *
- * Returns `{ stampedAt }` so the caller can display a countdown if desired.
- * Rate-limited under the same bucket as `/auth/local` to make brute-forcing
- * the password unappealing.
- */
-
 import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
-import { markFreshAuth } from '../middleware/require-fresh-auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
+import { RULES } from '../config/rate-limits.js';
 import { getDummyPasswordHash, verifyPassword } from './password.js';
 
-const reauthSchema = z
-  .object({ password: z.string().min(1).max(1024) })
-  .strict();
-
+// ISS-158 — Fresh re-auth primitive. Sibling children (PAT creation, device
+// revoke, password change) call POST /api/auth/reauth before submitting
+// destructive or sensitive requests so the server-side requireFreshAuth()
+// gate sees a recent stamp on the users row.
 export const reauthRoutes = new Hono<{ Variables: AuthVars }>();
 
+const reauthSchema = z.object({
+  password: z.string().min(1).max(1024),
+});
+
+// Reuse the authLocal rate-limit bucket: same risk profile (password brute-
+// force against a known user), keyed by IP. Five attempts per 15 minutes.
 reauthRoutes.use('/reauth', rateLimit(RULES.authLocal, { name: 'authReauth' }));
+reauthRoutes.use('/reauth', requireAuth());
 
 reauthRoutes.post(
   '/reauth',
-  requireAuth(),
-  zValidator('json', reauthSchema, (r) => {
-    if (!r.success) {
+  zValidator('json', reauthSchema, (result) => {
+    if (!result.success) {
       throw new HTTPException(400, {
-        message: 'invalid input',
-        cause: { code: 'BAD_REQUEST', details: z.flattenError(r.error) },
+        message: 'Invalid reauth input',
+        cause: { code: 'BAD_REQUEST', details: z.flattenError(result.error) },
       });
     }
   }),
@@ -47,21 +39,21 @@ reauthRoutes.post(
     const userId = c.get('userId');
     const { password } = c.req.valid('json');
 
-    const [user] = await db
-      .select({ passwordHash: users.passwordHash })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-
     const invalid = () =>
       new HTTPException(401, {
         message: 'invalid credentials',
         cause: { code: 'INVALID_CREDENTIALS' },
       });
 
+    const [user] = await db
+      .select({ id: users.id, passwordHash: users.passwordHash })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    // OAuth-only users have no local password (passwordHash is NULL since
+    // 0037). Equalize timing with the wrong-password path before refusing.
     if (!user || !user.passwordHash) {
-      // OAuth-only users have no local password — they cannot use this gate.
-      // Burn a dummy verify for timing parity.
       await verifyPassword(password, await getDummyPasswordHash());
       throw invalid();
     }
@@ -69,8 +61,12 @@ reauthRoutes.post(
     const ok = await verifyPassword(password, user.passwordHash);
     if (!ok) throw invalid();
 
-    const stampedAt = Date.now();
-    markFreshAuth(userId, stampedAt);
-    return c.json({ stampedAt: new Date(stampedAt).toISOString() });
+    const freshAuthAt = new Date();
+    await db
+      .update(users)
+      .set({ lastFreshAuthAt: freshAuthAt })
+      .where(eq(users.id, userId));
+
+    return c.json({ freshAuthAt: freshAuthAt.toISOString() });
   },
 );

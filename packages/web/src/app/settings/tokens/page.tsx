@@ -1,14 +1,12 @@
 'use client';
 
-import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { ChevronLeft, KeyRound, Plus } from 'lucide-react';
-import { Shell } from '@/components/layout/shell';
+import { KeyRound, Plus } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSetPageTitle } from '@/hooks/use-page-title';
 import { useProjects } from '@/features/project/hooks/use-projects';
+import { useRequireFreshAuth } from '@/features/auth/hooks/use-require-fresh-auth';
 import { CreateTokenModal } from '@/features/token/components/CreateTokenModal';
-import { FreshAuthProvider } from '@/features/token/components/FreshAuthProvider';
 import { PlaintextRevealModal } from '@/features/token/components/PlaintextRevealModal';
 import { TokenAuditDrawer } from '@/features/token/components/TokenAuditDrawer';
 import { TokenList } from '@/features/token/components/TokenList';
@@ -17,17 +15,10 @@ import type { Pat, PatWithPlaintext } from '@/features/token/types';
 
 export default function TokensPage() {
   useSetPageTitle('Tokens');
-  return (
-    <FreshAuthProvider>
-      <TokensPageInner />
-    </FreshAuthProvider>
-  );
-}
-
-function TokensPageInner() {
   const tokens = useTokens();
   const projects = useProjects();
   const revoke = useRevokeToken();
+  const { require: requireFreshAuth, modal: reauthModal } = useRequireFreshAuth();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [revealed, setRevealed] = useState<PatWithPlaintext | null>(null);
@@ -53,17 +44,9 @@ function TokensPageInner() {
   }
 
   return (
-    <Shell>
+    <>
       <div className="h-full overflow-y-auto bg-background">
         <div className="mx-auto max-w-5xl p-6 md:p-12">
-          <Link
-            href="/settings"
-            className="mb-6 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-outline hover:text-on-surface"
-          >
-            <ChevronLeft className="h-3 w-3" />
-            Back to settings
-          </Link>
-
           <header className="mb-8">
             <div className="mb-2 flex items-baseline justify-between gap-4">
               <h1 className="text-4xl font-black tracking-tighter text-primary uppercase">
@@ -113,6 +96,7 @@ function TokensPageInner() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onCreated={handleCreated}
+        requireFreshAuth={requireFreshAuth}
       />
       <PlaintextRevealModal
         open={revealed !== null}
@@ -124,7 +108,8 @@ function TokensPageInner() {
         tokenName={auditTokenName}
         onClose={() => setAuditTokenId(null)}
       />
-    </Shell>
+      {reauthModal}
+    </>
   );
 }
 
