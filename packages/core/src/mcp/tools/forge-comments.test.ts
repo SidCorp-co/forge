@@ -173,6 +173,8 @@ describe('forge_comments tool', () => {
     selectLimit.mockResolvedValueOnce([
       { id: COMMENT_ID, issueId: ISSUE_ID, authorId: OTHER_USER_ID, projectId: PROJECT_ID },
     ]);
+    // assertPrincipalIsMember (device path) → project owner check first
+    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
     // assertCommentDeletePermission: project owned by someone else
     selectLimit.mockResolvedValueOnce([{ ownerId: 'somebody-else' }]);
     // membership row exists but role is 'member' (not owner)
@@ -181,6 +183,66 @@ describe('forge_comments tool', () => {
     await expect(
       tool.handler({ action: 'delete', documentId: COMMENT_ID }),
     ).rejects.toThrow(/FORBIDDEN/);
+  });
+
+  // ISS-150 cross-tenant regression — the documentId-resolved delete path
+  // must enforce the PAT projectIds allowlist before the project-role check.
+  // Without the allowlist check, a PAT scoped to project A used by a user
+  // who is the owner of project B could destroy comments in project B.
+  describe('PAT projectIds allowlist (cross-tenant) — delete', () => {
+    const ALLOWED_PROJECT = '77777777-7777-4777-8777-777777777777';
+
+    function makePatTool(projectIds: string[] | null) {
+      return forgeCommentsTool({
+        principal: {
+          kind: 'pat',
+          userId: OWNER_ID,
+          tokenId: '55555555-5555-4555-8555-555555555555',
+          scopes: ['read', 'write'],
+          projectIds,
+        },
+        device: fakeDevice,
+        projectSlug: null,
+      });
+    }
+
+    it('delete returns NOT_FOUND when comment\'s project is outside PAT allowlist (even when PAT user owns the project)', async () => {
+      const tool = makePatTool([ALLOWED_PROJECT]);
+      // loadCommentForAccess — comment lives in PROJECT_ID (outside the allowlist),
+      // authored by a different user so the non-author branch would normally apply.
+      selectLimit.mockResolvedValueOnce([
+        { id: COMMENT_ID, issueId: ISSUE_ID, authorId: OTHER_USER_ID, projectId: PROJECT_ID },
+      ]);
+      // No further DB calls should be made: assertPrincipalIsMember rejects on
+      // the allowlist miss before any role lookup.
+      await expect(
+        tool.handler({ action: 'delete', documentId: COMMENT_ID }),
+      ).rejects.toThrow(/NOT_FOUND/);
+      expect(deleteWhere).not.toHaveBeenCalled();
+    });
+
+    it('delete succeeds when comment\'s project is inside the PAT allowlist and user is project owner', async () => {
+      const tool = makePatTool([PROJECT_ID]);
+      // loadCommentForAccess — non-author branch.
+      selectLimit.mockResolvedValueOnce([
+        { id: COMMENT_ID, issueId: ISSUE_ID, authorId: OTHER_USER_ID, projectId: PROJECT_ID },
+      ]);
+      // assertPrincipalIsMember (PAT path) → loadUserProjectRole → projects lookup
+      // returns the PAT user as the project owner.
+      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      // assertCommentDeletePermission still runs: project owner check passes
+      // because the underlying user owns the project.
+      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      deleteWhere.mockResolvedValueOnce(undefined);
+
+      const result = (await tool.handler({
+        action: 'delete',
+        documentId: COMMENT_ID,
+      })) as { status: string };
+
+      expect(result.status).toBe('deleted');
+      expect(deleteWhere).toHaveBeenCalled();
+    });
   });
 
   describe('create with attachments', () => {

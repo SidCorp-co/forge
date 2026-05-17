@@ -279,10 +279,9 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
         // still delete on REST, but here we also require current membership
         // — MCP traffic comes from device principals, so a stale device on
         // an ex-member should not be able to mutate the project.
+        await assertPrincipalIsMember(principal, comment.projectId);
         if (comment.authorId !== device.ownerId) {
           await assertCommentDeletePermission(device.ownerId, comment.projectId);
-        } else {
-          await assertPrincipalIsMember(principal, comment.projectId);
         }
 
         await db.delete(comments).where(eq(comments.id, input.documentId));
