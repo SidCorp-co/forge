@@ -21,6 +21,8 @@ import { type Device, verifyDeviceToken } from '../auth/deviceToken.js';
 import { isPatLike } from '../auth/pat-format.js';
 import { forceRevokePat, touchPatUsage, verifyPat } from '../auth/pat.js';
 import { RULES } from '../config/rate-limits.js';
+import { userRoom } from '../ws/rooms.js';
+import { roomManager } from '../ws/server.js';
 import { getClientIp } from './rate-limit.js';
 
 export type PatPrincipal = {
@@ -61,8 +63,19 @@ type PatBucket = {
 };
 const patBuckets = new Map<string, PatBucket>();
 
+/**
+ * Throttle map for `pat.used` WS events. The dispatcher fires once per
+ * successful PAT request, but high-frequency MCP clients can hammer at many
+ * Hz — without throttling we'd flood the user's WS connection. Emit at most
+ * once per token per minute; the audit log remains the source of truth for
+ * fine-grained per-request history.
+ */
+const patUsedLastEmit = new Map<string, number>();
+const PAT_USED_THROTTLE_MS = 60 * 1000;
+
 export function __resetPatBuckets(): void {
   patBuckets.clear();
+  patUsedLastEmit.clear();
 }
 
 interface RateLimitOutcome {
@@ -112,6 +125,17 @@ function checkPatRateLimit(tokenId: string, maxOverride: number | null): RateLim
   };
 }
 
+function maybeEmitPatUsed(tokenId: string, userId: string): void {
+  const now = Date.now();
+  const last = patUsedLastEmit.get(tokenId);
+  if (last && now - last < PAT_USED_THROTTLE_MS) return;
+  patUsedLastEmit.set(tokenId, now);
+  roomManager.publish(userRoom(userId), {
+    event: 'pat.used',
+    data: { tokenId, userId, ts: new Date(now).toISOString() },
+  });
+}
+
 export const requirePatOrDevice = (): MiddlewareHandler<{ Variables: PrincipalVars }> => {
   return async (c, next) => {
     const header = c.req.header('authorization');
@@ -142,6 +166,7 @@ export const requirePatOrDevice = (): MiddlewareHandler<{ Variables: PrincipalVa
       }
 
       touchPatUsage(row.id, getClientIp(c));
+      maybeEmitPatUsed(row.id, row.userId);
       c.set('patTokenId', row.id);
       c.set('principal', {
         kind: 'pat',

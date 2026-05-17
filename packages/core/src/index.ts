@@ -16,6 +16,7 @@ import { desktopRoutes } from './auth/desktop/routes.js';
 import { devForceVerifyRoutes } from './auth/dev-force-verify.js';
 import { loginRoutes } from './auth/login.js';
 import { logoutRoutes } from './auth/logout.js';
+import { reauthRoutes } from './auth/reauth.js';
 import { meRoutes } from './auth/me.js';
 import { oauthRoutes } from './auth/oauth/routes.js';
 import { preferenceRoutes } from './auth/preferences.js';
@@ -252,6 +253,8 @@ app.route('/api/auth', devForceVerifyRoutes);
 app.route('/api/auth', meRoutes);
 app.route('/api/auth', preferenceRoutes);
 app.route('/api/auth', logoutRoutes);
+// ISS-149 Sub 1 — step-up re-auth gate consumed by PAT mint/rotate.
+app.route('/api/auth', reauthRoutes);
 // ISS-150 — Personal Access Tokens (PAT) CRUD. User-scoped via JWT.
 app.route('/api', patRoutes);
 // ISS-314 — OAuth/OIDC (GitHub + Google + generic OIDC). Internally gated

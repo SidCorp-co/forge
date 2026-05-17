@@ -7,6 +7,7 @@ import { useMounted } from '@/hooks/use-mounted';
 import {
   ChevronRight,
   FolderKanban,
+  KeyRound,
   Laptop,
   Loader2,
   Monitor,
@@ -65,6 +66,7 @@ export default function SettingsPage() {
 
             <section className="col-span-12 space-y-6 lg:col-span-5">
               <DevicesCard />
+              <TokensCard />
               <SystemInfoCard />
               <AppearanceCard />
               <LanguageCard />
@@ -218,6 +220,29 @@ function DevicesCard() {
         className="block w-full border border-outline-variant/40 py-2 text-center text-[0.6875rem] font-bold uppercase tracking-widest transition-colors hover:bg-surface-container-highest"
       >
         Manage All Nodes
+      </Link>
+    </div>
+  );
+}
+
+function TokensCard() {
+  return (
+    <div className="relative overflow-hidden rounded-sm border border-outline-variant/20 bg-surface-container-low p-6">
+      <div className="absolute right-0 top-0 p-2 opacity-10">
+        <KeyRound className="h-16 w-16" />
+      </div>
+      <h3 className="mb-4 text-[0.6875rem] uppercase tracking-[0.2em] text-outline">
+        Personal Access Tokens
+      </h3>
+      <p className="mb-6 text-[10px] leading-relaxed text-on-surface-variant">
+        Authenticate MCP clients and API integrations outside the browser
+        session. Scope per project, rotate, and revoke at any time.
+      </p>
+      <Link
+        href="/settings/tokens"
+        className="block w-full border border-outline-variant/40 py-2 text-center text-[0.6875rem] font-bold uppercase tracking-widest transition-colors hover:bg-surface-container-highest"
+      >
+        Manage Tokens
       </Link>
     </div>
   );
