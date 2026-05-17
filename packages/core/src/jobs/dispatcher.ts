@@ -16,12 +16,7 @@ import { roomManager } from '../ws/server.js';
 import { getActiveDeviceId } from './active-device.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
 import {
-  checkLayer1IssueBusy,
-  checkLayer2Dependencies,
-  checkLayer3ProjectFull,
   checkLayer4RunnerFull,
-  type GateResult,
-  markJobGated,
   runnerSupportsJobType,
 } from './dispatch-gates.js';
 import { JOB_QUEUE_NAME, PM_QUEUE_NAME } from './queue-name.js';
@@ -154,30 +149,6 @@ async function dispatchViaDevice(job: typeof jobs.$inferSelect): Promise<'dispat
   return 'dispatched';
 }
 
-/**
- * Centralised "gate failed → leave queued" path. Records the cause on the
- * job row (canonical signal for queued-watchdog) and returns 'skipped' so
- * the caller short-circuits.
- */
-async function reportGateSkip(
-  jobId: string,
-  result: GateResult,
-  layer: 'L1' | 'L2' | 'L3' | 'L4',
-): Promise<'skipped'> {
-  if (result.pass) return 'skipped'; // unreachable but keeps the type narrow
-  await markJobGated(jobId, result.reason, result.hint, result.metadata);
-  logger.info(
-    {
-      jobId,
-      layer,
-      reason: result.reason,
-      hint: result.hint,
-    },
-    'dispatcher: gate failed, leaving queued',
-  );
-  return 'skipped';
-}
-
 async function loadRepoPath(projectId: string): Promise<string | null> {
   const [row] = await db
     .select({ repoPath: projects.repoPath, agentConfig: projects.agentConfig })
@@ -200,35 +171,9 @@ async function dispatchViaRunner(
   forcedCapabilities?: RequiredCapabilities,
   forcedChain?: RunnerType[],
 ): Promise<'dispatched' | 'skipped'> {
-  // ISS-40 PR-E — pre-runner-selection gates. PM jobs (issueId=null) bypass
-  // L1+L2 since they are project-scoped coordinators governed by the
-  // existing `jobs_pm_per_project_unique_idx`. Layer 3 is also a no-op for
-  // PM (it counts agent_sessions with issueId, PM sessions don't have one).
-  const isPm = job.type === 'pm';
-  if (!isPm && job.issueId) {
-    // The pipeline pre-creates `agent_sessions` for issue-driven jobs and
-    // links via `job.agent_session_id`. Exclude that row so a single queued
-    // session doesn't self-trip the gate.
-    const l1Opts: { excludeJobId: string; excludeSessionId?: string } = {
-      excludeJobId: job.id,
-    };
-    if (job.agentSessionId) l1Opts.excludeSessionId = job.agentSessionId;
-    const l1 = await checkLayer1IssueBusy(job.issueId, l1Opts);
-    if (!l1.pass) return reportGateSkip(job.id, l1, 'L1');
-
-    const l2 = await checkLayer2Dependencies(job.issueId, job.type);
-    if (!l2.pass) return reportGateSkip(job.id, l2, 'L2');
-  }
-  if (!isPm && job.issueId) {
-    // Skip L3 for non-PM jobs without an issueId: the gate's "exclude
-    // candidate's own issue from the running count" logic only works when
-    // we have a candidateIssueId to exclude. Such jobs are rare (PM is the
-    // designed bypass) but typing allows them; treat as PASS rather than
-    // applying a one-stricter cap.
-    const l3 = await checkLayer3ProjectFull(job.projectId, job.issueId);
-    if (!l3.pass) return reportGateSkip(job.id, l3, 'L3');
-  }
-
+  // ISS-162 — L1/L2/L3 are evaluated inline by the picker. The dispatcher
+  // trusts the picker and only enforces post-pick checks that depend on the
+  // runner selection step below (L4 + race-loss guard).
   let required: RequiredCapabilities;
   let fallbackChain: RunnerType[];
 
@@ -258,13 +203,6 @@ async function dispatchViaRunner(
       { jobId: job.id, projectId: job.projectId, fallbackChain },
       'dispatcher: no runner online, leaving queued',
     );
-    // Surface the no-runner state on the job row so queued-watchdog and
-    // Sentry breadcrumb explain why the job is sitting in queued. Uses
-    // `runner_full` as the canonical skip reason; the hint narrates the
-    // real cause for operator log greps.
-    await markJobGated(job.id, 'runner_full', 'no online runner', {
-      fallbackChain,
-    });
     return 'skipped';
   }
 
@@ -303,9 +241,21 @@ async function dispatchViaRunner(
 
   // L4 — runner-cap check after we've picked a runner. We don't pre-filter
   // full runners in selectRunnerForJob to keep its signature simple; if a
-  // runner is full we just skip and the next tick will retry.
+  // runner is full we just skip and the next tick will retry. No persisted
+  // gate state — the picker will skip this candidate if/when it remains
+  // ineligible (sibling job in flight) on the next sweep.
   const l4 = await checkLayer4RunnerFull(runner.id, { excludeJobId: job.id });
-  if (!l4.pass) return reportGateSkip(job.id, l4, 'L4');
+  if (!l4.pass) {
+    logger.info(
+      {
+        jobId: job.id,
+        runnerId: runner.id,
+        hint: l4.hint,
+      },
+      'dispatcher: runner full, leaving queued',
+    );
+    return 'skipped';
+  }
 
   const dispatchedAt = new Date();
   const updated = await db
@@ -318,10 +268,6 @@ async function dispatchViaRunner(
       // remains null in that case.
       deviceId: runner.deviceId,
       dispatchedAt,
-      // Clear gate state — dispatch succeeded.
-      gateReason: null,
-      gateAt: null,
-      gateMetadata: null,
     })
     .where(and(eq(jobs.id, job.id), eq(jobs.status, 'queued')))
     .returning({ id: jobs.id });

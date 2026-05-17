@@ -12,8 +12,11 @@
  * for the same project collapse into a single sweep. A 1-second debounce
  * absorbs bursts (e.g. five jobs completing within 200ms in a fan-out).
  *
- * The lock is in-process — losing it on crash means we drop pending sweeps,
- * so the 60s pg-boss schedule is the recovery mechanism.
+ * The lock is self-healing: any throw inside the inner sweep clears the
+ * project's lock entry in the `finally` block, so a buggy tick cannot
+ * poison the project's tick path forever (ISS-162 / ISS-141 amendment §1a).
+ * The 60s pg-boss schedule is the cross-process recovery mechanism if the
+ * core process crashes mid-tick.
  */
 
 import { sql } from 'drizzle-orm';
@@ -44,8 +47,7 @@ const MAX_DISPATCH_PER_TICK = 50;
  * `options.triggerBlockerIssueId` propagates from the terminal-transition
  * cascade so any `dependency.unblocked` event emitted during this sweep
  * names the blocker that triggered it. All other callers (job complete,
- * runner online, backstop sweep) pass nothing and the event falls back to
- * `blockerId: null` (front-end renders a generic `Unblocked` tooltip).
+ * runner online, backstop sweep) pass nothing and the event is suppressed.
  *
  * Always resolves; never rejects (errors are logged, not propagated).
  */
@@ -59,24 +61,29 @@ export function dispatchTickForProject(
 
   const triggerBlockerIssueId = options?.triggerBlockerIssueId;
   const tail = projectLocks.get(projectId) ?? Promise.resolve();
-  const next = tail
+  // Forward-declare `next` so the `.then` callback can clear the lock entry
+  // on its own promise — keeps a freshly-chained sweep from clobbering us.
+  let next: Promise<void>;
+  next = tail
     .catch(() => undefined) // isolate from prior tick errors
     .then(async () => {
       pendingTrigger.delete(projectId);
-      if (debounceMs > 0) {
-        await new Promise((r) => setTimeout(r, debounceMs));
-      }
       try {
+        if (debounceMs > 0) {
+          await new Promise((r) => setTimeout(r, debounceMs));
+        }
         await runTickInner(projectId, triggerBlockerIssueId);
       } catch (err) {
         logger.error({ err, projectId }, 'dispatch-tick: inner sweep threw');
+      } finally {
+        // Self-healing lock: even if runTickInner throws (or a hypothetical
+        // synchronous throw from the setTimeout path), the lock entry is
+        // released so the next external trigger starts a fresh chain.
+        if (projectLocks.get(projectId) === next) projectLocks.delete(projectId);
       }
     });
 
   projectLocks.set(projectId, next);
-  next.finally(() => {
-    if (projectLocks.get(projectId) === next) projectLocks.delete(projectId);
-  });
   return next;
 }
 
@@ -84,44 +91,35 @@ async function runTickInner(
   projectId: string,
   triggerBlockerIssueId?: string,
 ): Promise<void> {
-  const seen = new Set<string>();
   for (let i = 0; i < MAX_DISPATCH_PER_TICK; i++) {
     const job = await pickNextDispatchableJobForProject(projectId);
     if (!job) return;
-    // If we keep picking the same job (e.g. it's deps-satisfied but Layer 4
-    // keeps rejecting because the only runner is full), break out to avoid
-    // a hot loop — the next external trigger will pick it up.
-    if (seen.has(job.id)) return;
-    seen.add(job.id);
-
-    // Snapshot the prior gate reason BEFORE dispatch so we can detect a
-    // `waiting_on_dep` clear and emit `dependency.unblocked`. The successful
-    // dispatch path clears jobs.gate_reason atomically with the status flip,
-    // so reading after dispatch would miss the transition.
-    const priorGateReason = job.gateReason;
 
     const outcome = await handleDispatch({ jobId: job.id });
 
-    if (
-      outcome === 'dispatched' &&
-      priorGateReason === 'waiting_on_dep' &&
-      job.issueId
-    ) {
+    // Emit `dependency.unblocked` only when this sweep was triggered by a
+    // terminal transition (the only caller that supplies triggerBlockerIssueId)
+    // AND a job actually dispatched. Other triggers (job-complete, runner-
+    // online, backstop) do not name a blocker and the front-end UI for those
+    // is the regular `job.assigned` stream.
+    if (outcome === 'dispatched' && triggerBlockerIssueId && job.issueId) {
       roomManager.publish(projectRoom(projectId), {
         event: 'dependency.unblocked',
         data: {
           issueId: job.issueId,
-          blockerId: triggerBlockerIssueId ?? null,
+          blockerId: triggerBlockerIssueId,
           at: new Date().toISOString(),
         },
       });
     }
 
     if (outcome === 'skipped') {
-      // Could be Layer 1/2/3/4 fail OR a no-runner branch. The next iter
-      // will pick a different job (priority/queued_at order); seen-guard
-      // prevents reselecting the same one.
-      continue;
+      // ISS-162 — exit the loop on any skip. The picker is stateless and
+      // would keep returning the same L4-blocked or no-runner candidate on
+      // every iteration; spinning here would burn CPU until MAX_DISPATCH_PER_TICK.
+      // The next external trigger (job complete, runner online, 60s backstop)
+      // re-enters the sweep with fresh state.
+      return;
     }
   }
 }

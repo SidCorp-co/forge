@@ -1,17 +1,21 @@
 /**
  * Watchdog for jobs stuck at `status='queued'`.
  *
- * Distinguishes a dead queue from a slow-but-alive one:
- *   - Skip if dispatcher recently recorded a gate skip on the job
- *     (`gate_at` fresh) — dispatcher is actively tracking this job.
+ * ISS-162 — gate state is no longer persisted on the job row. The watchdog
+ * now relies on the project-activity NOT EXISTS clause alone to distinguish
+ * a draining queue from a dead one:
  *   - Skip if any other job in the same project shows recent activity —
  *     either a fresh session heartbeat on an in-flight job OR a sibling
  *     job that finished within the last 120s (covers the sub-second
  *     handoff window between two adjacent pipeline jobs, where the
  *     previous job just moved to `done` and the next has not yet been
  *     dispatched).
- *   - Otherwise (no gate signal, no project activity, queued past grace) →
- *     mark failed (transient) and let scheduleRetry decide.
+ *   - Otherwise (no project activity, queued past grace) → mark failed
+ *     (transient) and let scheduleRetry decide.
+ *
+ * A persistently-gated job on an otherwise-idle project will be killed
+ * after the grace window — that is the same failure mode as before D2
+ * ships, and D2 (delete watchdog entirely) is the proper fix.
  *
  * Catches: pg-boss losing the dispatch message (e.g. core restart with
  * in-flight messages archived) AND runners stuck in a state where they
@@ -33,13 +37,6 @@ export const QUEUED_WATCHDOG_QUEUE = 'job-queued-watchdog';
  * activity is almost certainly a queue/dispatcher hiccup.
  */
 const QUEUED_GRACE_SECONDS = 600;
-
-/**
- * Window during which a gate skip counts as "dispatcher is actively tracking
- * this job". The dispatcher tick runs at least every 60s (pg-boss backstop)
- * so 5 minutes is generous.
- */
-const GATE_FRESH_SECONDS = 300;
 
 /**
  * Window during which another running session in the same project counts as
@@ -77,10 +74,6 @@ export async function runQueuedSweep(): Promise<QueuedSweepResult> {
         classifier_version = 1
     WHERE status = 'queued'
       AND queued_at < now() - interval '${sql.raw(String(QUEUED_GRACE_SECONDS))} seconds'
-      AND (
-        gate_at IS NULL
-        OR gate_at < now() - interval '${sql.raw(String(GATE_FRESH_SECONDS))} seconds'
-      )
       AND NOT EXISTS (
         SELECT 1 FROM jobs other_j
         LEFT JOIN agent_sessions other_s ON other_s.id = other_j.agent_session_id

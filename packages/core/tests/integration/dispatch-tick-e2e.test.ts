@@ -234,7 +234,10 @@ describe('ISS-40 dispatch-tick E2E', () => {
       expect(handleDispatch).not.toHaveBeenCalled();
     });
 
-    it('breaks on the seen-job guard if the same id keeps being picked', async () => {
+    // ISS-162 — picker is stateless, so an L4-blocked candidate would keep
+    // being returned. The tick breaks on the first `skipped` outcome to
+    // avoid spinning; the next external trigger or 60s backstop re-enters.
+    it('breaks the loop on the first skipped outcome', async () => {
       const { project } = await seedProject();
       const issueId = await insertIssue(project.id);
       const stuck = await insertJob(project.id, { issueId });
@@ -242,12 +245,9 @@ describe('ISS-40 dispatch-tick E2E', () => {
       const dispatcher = await import('../../src/jobs/dispatcher.js');
       const handleDispatch = dispatcher.handleDispatch as unknown as ReturnType<typeof vi.fn>;
       handleDispatch.mockClear();
-      // Always return 'skipped' WITHOUT changing the job status — simulates
-      // a layer-4 reject loop with one available runner.
       handleDispatch.mockResolvedValue('skipped');
 
       await mods.dispatchTickForProject(project.id);
-      // First iteration picks the job, second iteration sees the same id and breaks.
       expect(handleDispatch).toHaveBeenCalledWith({ jobId: stuck });
       expect(handleDispatch).toHaveBeenCalledTimes(1);
     });

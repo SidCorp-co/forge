@@ -435,6 +435,13 @@
       "when": 1779400300000,
       "tag": "0061_issue_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1779400480000,
+      "tag": "0064_drop_jobs_gate_state",
+      "breakpoints": true
     }
   ]
 }
