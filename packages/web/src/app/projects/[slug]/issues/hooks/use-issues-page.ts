@@ -12,7 +12,9 @@ import { useProjectBySlug } from '@/features/project/hooks/use-projects';
 import { useProjectMembers } from '@/features/project/hooks/use-project-members';
 import type { Issue, IssuePatchInput } from '@forge/contracts';
 import {
-  PAGE_SIZE,
+  DEFAULT_PAGE_SIZE,
+  PAGE_SIZE_OPTIONS,
+  issuesPageSizeKey,
   type Density,
   type GroupBy,
   type SavedView,
@@ -55,6 +57,7 @@ export function useIssuesPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [density, setDensityState] = useState<Density>('comfortable');
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
+  const [pageSize, setPageSizeState] = useState<number>(DEFAULT_PAGE_SIZE);
 
   const statusParam = searchParams.get('status') ?? '';
   const statusFilter = statusParam ? statusParam.split(',') : [];
@@ -88,8 +91,8 @@ export function useIssuesPage() {
     ...(categoryFilter !== 'all' ? { category: categoryFilter } : {}),
     ...(isUuidAssignee ? { assignee: assigneeFilter } : {}),
     sort: SORT_TO_API[sortBy],
-    limit: PAGE_SIZE,
-    offset: (currentPage - 1) * PAGE_SIZE,
+    limit: pageSize,
+    offset: (currentPage - 1) * pageSize,
     withAgentSessions: true,
   });
 
@@ -101,7 +104,7 @@ export function useIssuesPage() {
     ? rawIssues.filter((i) => i.assigneeId == null)
     : rawIssues;
   const total = isUnassigned ? issues.length : (paginatedData?.totalCount ?? 0);
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(currentPage, pageCount);
 
   const patchIssue = usePatchIssue();
@@ -210,6 +213,46 @@ export function useIssuesPage() {
       /* quota / disabled */
     }
   }, []);
+
+  const hydratedPageSizeSlug = useRef<string | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const key = issuesPageSizeKey(slug);
+    if (!key) return;
+    if (hydratedPageSizeSlug.current === slug) return;
+    hydratedPageSizeSlug.current = slug;
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) return;
+      const parsed = Number.parseInt(raw, 10);
+      if (PAGE_SIZE_OPTIONS.includes(parsed)) setPageSizeState(parsed);
+    } catch {
+      /* ignore */
+    }
+  }, [slug]);
+
+  const setPageSize = useCallback(
+    (n: number) => {
+      if (!PAGE_SIZE_OPTIONS.includes(n)) return;
+      setPageSizeState(n);
+      const key = issuesPageSizeKey(slug);
+      if (key && typeof window !== 'undefined') {
+        try {
+          window.localStorage.setItem(key, String(n));
+        } catch {
+          /* quota / disabled */
+        }
+      }
+      // Reset to page 1 when page size changes so the offset stays valid.
+      const params = new URLSearchParams(searchParams.toString());
+      if (params.has('page')) {
+        params.delete('page');
+        const qs = params.toString();
+        router.replace(`/projects/${slug}/issues${qs ? `?${qs}` : ''}`);
+      }
+    },
+    [slug, searchParams, router],
+  );
 
   const hydratedViewsSlug = useRef<string | null>(null);
   useEffect(() => {
@@ -367,6 +410,8 @@ export function useIssuesPage() {
     paginated: issues,
     pageCount,
     safePage,
+    pageSize,
+    setPageSize,
     total,
     handleUpdate,
     handleBulkUpdate,

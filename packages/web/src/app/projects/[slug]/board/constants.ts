@@ -31,20 +31,20 @@ export const TASK_COLS: { status: TaskStatus; label: string; color: string; bg: 
 export const DEFAULT_VISIBLE: Record<IssueStatus, boolean> = {
   open: true,
   confirmed: true,
-  waiting: true,
+  waiting: false,
   approved: true,
   in_progress: true,
   developed: true,
-  deploying: true,
+  deploying: false,
   testing: true,
-  tested: true,
-  pass: true,
-  staging: true,
+  tested: false,
+  pass: false,
+  staging: false,
   released: true,
-  closed: true,
-  reopen: true,
-  on_hold: true,
-  needs_info: true,
+  closed: false,
+  reopen: false,
+  on_hold: false,
+  needs_info: false,
 };
 
 export const BOARD_VIEW_OPTIONS: { value: 'issues' | 'tasks'; label: string }[] = [
@@ -61,6 +61,7 @@ export type BoardGroupBy = 'none' | 'assignee' | 'parent' | 'category';
 export const BOARD_DENSITY_KEY = 'forge.web.boardDensity';
 export const boardGroupByKey = (projectId: string) => `forge.web.boardGroupBy.${projectId}`;
 export const boardCollapsedKey = (projectId: string) => `forge.web.boardCollapsed.${projectId}`;
+export const boardVisibleColsKey = (projectId: string) => `forge.web.boardVisibleCols.${projectId}`;
 
 export const BOARD_DENSITY_OPTIONS: { value: BoardDensity; label: string }[] = [
   { value: 'compact', label: 'Compact' },

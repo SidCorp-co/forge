@@ -1,6 +1,11 @@
 import type { IssueStatus } from '@/features/issue/types';
 
-export const PAGE_SIZE = 10;
+export const DEFAULT_PAGE_SIZE = 10;
+export const PAGE_SIZE_OPTIONS: number[] = [10, 25, 50];
+
+export function issuesPageSizeKey(slug: string | undefined): string | null {
+  return slug ? `forge:web:issuesPageSize:${slug}` : null;
+}
 
 export type ViewMode = 'table' | 'board';
 export type SortOption = 'newest' | 'oldest' | 'priority' | 'updated';
