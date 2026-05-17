@@ -483,13 +483,6 @@ export const jobs = pgTable(
     attempts: integer('attempts').notNull().default(1),
     cancellationRequested: boolean('cancellation_requested').notNull().default(false),
     retryOf: uuid('retry_of').references((): AnyPgColumn => jobs.id, { onDelete: 'set null' }),
-    // Dispatcher gate state. Set when dispatcher attempts to dispatch the job
-    // but a gate (L1-L4) returns skip. Cleared on successful dispatch. The
-    // queued-watchdog reads `gate_at` to distinguish "queued because dispatcher
-    // is actively gating" from "queued because pg-boss lost the message".
-    gateReason: text('gate_reason'),
-    gateAt: timestamp('gate_at', { withTimezone: true }),
-    gateMetadata: jsonb('gate_metadata'),
     // ISS-4: link to the observability `agent_sessions` row created by the
     // dispatcher so /pipeline + issue detail surfaces can render pipeline
     // jobs alongside interactive sessions. Bare uuid (no FK) to match the
@@ -514,9 +507,6 @@ export const jobs = pgTable(
     runnerIdIdx: index('jobs_runner_id_idx').on(t.runnerId),
     retryOfIdx: index('jobs_retry_of_idx').on(t.retryOf),
     agentSessionIdIdx: index('jobs_agent_session_id_idx').on(t.agentSessionId),
-    gateAtIdx: index('jobs_gate_at_idx')
-      .on(t.gateAt)
-      .where(sql`gate_reason IS NOT NULL`),
     activeUniqueIdx: uniqueIndex('jobs_active_unique')
       .on(t.issueId, t.type)
       .where(sql`status IN ('queued','dispatched','running') AND issue_id IS NOT NULL`),
@@ -1472,9 +1462,10 @@ export type AgentSessionStatus = (typeof agentSessionStatuses)[number];
 // Terminal cause written to `agent_sessions.failure_reason`. Reserved for
 // actual session execution failures (zombie sweeper, worker errors, user
 // cancellation). Dispatcher gate skips (issue_busy/waiting_on_dep/
-// project_full/runner_full/manual_hold) live on `jobs.gate_reason` — the
-// session row is not the right place for gate state because new jobs may
-// not have a session yet at gate-decision time.
+// project_full/runner_full/manual_hold) are recomputed by the picker on
+// every tick (ISS-162 Stateless Gates) — no persisted gate state lives on
+// the session row, and the picker itself filters gated jobs out of its
+// SELECT.
 export const agentSessionFailureReasons = [
   'queue_timeout',
   'heartbeat_timeout',

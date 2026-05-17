@@ -26,7 +26,6 @@ import {
 type Mods = {
   findDecompositionChildren: typeof import('../../src/pipeline/decomposition.js').findDecompositionChildren;
   findDecompositionParent: typeof import('../../src/pipeline/decomposition.js').findDecompositionParent;
-  checkLayer2Dependencies: typeof import('../../src/jobs/dispatch-gates.js').checkLayer2Dependencies;
   pickNextDispatchableJobForProject: typeof import('../../src/jobs/dispatch-gates.js').pickNextDispatchableJobForProject;
   registerDecompositionSubscribers: typeof import('../../src/pipeline/decomposition-subscribers.js').registerDecompositionSubscribers;
   applyStatusTransition: typeof import('../../src/issues/apply-transition.js').applyStatusTransition;
@@ -61,7 +60,6 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
     mods = {
       findDecompositionChildren: decompMod.findDecompositionChildren,
       findDecompositionParent: decompMod.findDecompositionParent,
-      checkLayer2Dependencies: gatesMod.checkLayer2Dependencies,
       pickNextDispatchableJobForProject: gatesMod.pickNextDispatchableJobForProject,
       registerDecompositionSubscribers: subsMod.registerDecompositionSubscribers,
       applyStatusTransition: applyMod.applyStatusTransition,
@@ -246,47 +244,6 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
     });
   });
 
-  // ---------- L2 release gate -------------------------------------------
-
-  describe('L2 release gate', () => {
-    it('blocks a release job when decomposition parent is not released', async () => {
-      const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id);
-      const parent = await insertIssue(project.id, owner.id, { status: 'approved', issSeq: 31 });
-      const child = await insertIssue(project.id, owner.id, { status: 'staging', issSeq: 32 });
-      await insertDecomposesEdge(project.id, parent, child);
-
-      const r = await mods.checkLayer2Dependencies(child, 'release');
-      expect(r.pass).toBe(false);
-      if (!r.pass) {
-        expect(r.reason).toBe('waiting_on_decomp_parent');
-        expect(r.metadata?.parentIssSeq).toBe(31);
-      }
-    });
-
-    it('passes a release job when decomposition parent is released', async () => {
-      const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id);
-      const parent = await insertIssue(project.id, owner.id, { status: 'released', issSeq: 41 });
-      const child = await insertIssue(project.id, owner.id, { status: 'staging', issSeq: 42 });
-      await insertDecomposesEdge(project.id, parent, child);
-
-      const r = await mods.checkLayer2Dependencies(child, 'release');
-      expect(r.pass).toBe(true);
-    });
-
-    it('passes non-release jobs even when decomposition parent is mid-pipeline', async () => {
-      const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id);
-      const parent = await insertIssue(project.id, owner.id, { status: 'approved', issSeq: 51 });
-      const child = await insertIssue(project.id, owner.id, { status: 'approved', issSeq: 52 });
-      await insertDecomposesEdge(project.id, parent, child);
-
-      const r = await mods.checkLayer2Dependencies(child, 'code');
-      expect(r.pass).toBe(true);
-    });
-  });
-
   // ---------- Picker SQL filter -----------------------------------------
 
   describe('pickNextDispatchableJobForProject', () => {
@@ -350,14 +307,6 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
       expect((first as unknown as { id: string; issue_id: string })?.id).toBe(j1);
       expect((first as unknown as { id: string; issue_id: string })?.issue_id).toBe(sub1);
 
-      // Verify the gate helpers agree (defence-in-depth: the picker SQL and
-      // `checkLayer2Dependencies` evaluate `blocks` independently).
-      const sub2Gate = await mods.checkLayer2Dependencies(sub2, 'triage');
-      expect(sub2Gate.pass).toBe(false);
-      if (!sub2Gate.pass) expect(sub2Gate.reason).toBe('waiting_on_dep');
-      const sub3Gate = await mods.checkLayer2Dependencies(sub3, 'triage');
-      expect(sub3Gate.pass).toBe(false);
-
       // Simulate sub1 reaching terminal — sub2 unblocks, sub3 still waits.
       await harness.db.execute(sql`
         UPDATE jobs SET status = 'completed', finished_at = now() WHERE id = ${j1}
@@ -367,10 +316,15 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
       const second = await mods.pickNextDispatchableJobForProject(project.id);
       expect(second).not.toBeNull();
       expect((second as unknown as { issue_id: string })?.issue_id).toBe(sub2);
-
-      const sub3StillGated = await mods.checkLayer2Dependencies(sub3, 'triage');
-      expect(sub3StillGated.pass).toBe(false);
-      if (!sub3StillGated.pass) expect(sub3StillGated.reason).toBe('waiting_on_dep');
+      // sub3 is still gated by sub2 (which is still queued, not terminal).
+      // The picker would normally pick sub2 first; force it past pick by
+      // flipping it to dispatched so the next pick attempt evaluates sub3.
+      // sub3 must remain unpickable because its blocker sub2 is not terminal.
+      await harness.db.execute(sql`
+        UPDATE jobs SET status = 'dispatched' WHERE id = ${(second as unknown as { id: string }).id}
+      `);
+      const third = await mods.pickNextDispatchableJobForProject(project.id);
+      expect(third).toBeNull();
     });
   });
 

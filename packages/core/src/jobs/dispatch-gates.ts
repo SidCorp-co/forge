@@ -1,52 +1,43 @@
 /**
- * ISS-40 PR-E — dispatcher 4-layer gating helpers.
+ * ISS-162 — Stateless Gates. `pickNextDispatchableJobForProject` evaluates
+ * all four gate layers inline on every call; no gate signal is persisted on
+ * the job row. A job that fails any gate is simply absent from the SELECT
+ * result, and the next tick recomputes the gate from scratch.
  *
- * Each gate is an independent boolean check. The dispatcher (and the
- * project-level re-tick orchestrator) call them in sequence; the first
- * failing gate decides the skip reason and short-circuits the dispatch.
+ *   L1 issue_busy / manual_hold — at most one active session per issue;
+ *                                  `issues.manual_hold = true` excludes
+ *   L2 waiting_on_dep / decomp  — every `kind='blocks'` parent must be
+ *                                  terminal; release jobs additionally wait
+ *                                  for their `kind='decomposes'` parent
+ *   L3 project_full              — DISTINCT running issue_ids per project
+ *                                  must be below the project cap (or the
+ *                                  candidate's own issue is already counted)
+ *   L4 runner_full               — evaluated post-pick inside the dispatcher
+ *                                  because runner selection happens after
+ *                                  the picker returns; on cap-hit the
+ *                                  dispatcher leaves the job queued and the
+ *                                  next tick re-picks
  *
- *   L1 issue_busy     — at most one active session per issue
- *                       (also short-circuits on `issues.manual_hold = true`,
- *                        skip-reason 'manual_hold')
- *   L2 waiting_on_dep — every `kind='blocks'` parent must be terminal
- *   L3 project_full   — DISTINCT running issue_ids per project < cap
- *   L4 runner_full    — in-flight jobs on the chosen runner < runner cap
- *
- * Jobs skipped by a gate stay `jobs.status='queued'` and `agent_sessions.
- * status='queued'`. The gate reason is recorded on `jobs.gate_reason` +
- * `jobs.gate_at` (via markJobGated) so the queued-watchdog can distinguish
- * "queued because dispatcher is actively gating" from "queued because
- * pg-boss desync".
+ * Invariants:
+ *   - No temporal predicates beyond dependency-edge `valid_until` expiry.
+ *     A future contributor adding a `gate_at + N seconds` debouncer should
+ *     trip the regression assertion in `dispatch-gates.test.ts`.
+ *   - No writes from the picker. The hot path is read-only.
  */
 
-import { and, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, jobs, projects, runners } from '../db/schema.js';
+import { jobs, projects, runners } from '../db/schema.js';
 import type { JobType, RunnerType } from '../db/schema.js';
-import { logger } from '../logger.js';
-import { Sentry, isSentryEnabled } from '../observability/sentry.js';
-import {
-  DECOMP_PARENT_RELEASED_STATUSES,
-  findDecompositionParent,
-} from '../pipeline/decomposition.js';
 import { RUNNER_CAPABILITIES } from '../pipeline/registry.js';
 
-export type GateSkipReason =
-  | 'issue_busy'
-  | 'manual_hold'
-  | 'waiting_on_dep'
-  | 'waiting_on_decomp_parent'
-  | 'project_full'
-  | 'runner_full';
+export type GateSkipReason = 'runner_full';
 
 export type GateResult =
   | { pass: true }
   | { pass: false; reason: GateSkipReason; hint?: string; metadata?: Record<string, unknown> };
 
 const PASS: GateResult = { pass: true };
-
-/** Issue statuses considered "done" for Layer 2 dependency satisfaction. */
-const TERMINAL_ISSUE_STATUSES = ['released', 'closed'] as const;
 
 /** Default per-project cap when `agent_config.pipelineConfig.maxConcurrentIssues` is unset. */
 export const DEFAULT_MAX_CONCURRENT_ISSUES = 3;
@@ -75,196 +66,6 @@ const RUNNER_DEFAULT_FALLBACK = 1;
 export function runnerSupportsJobType(runnerType: RunnerType, jobType: JobType): boolean {
   const caps = RUNNER_CAPABILITIES[runnerType];
   return caps ? caps.includes(jobType) : false;
-}
-
-/**
- * L1 — at most one active session/job per issue. Returns `pass=false` when
- * another agent_sessions row (`queued|running`) exists for the same issueId,
- * OR another job row (`dispatched|running`) is alive for the same issueId.
- *
- * `excludeJobId` excludes the candidate job from the jobs check;
- * `excludeSessionId` excludes the candidate's own pipeline session from the
- * sessions check (the pipeline pre-creates the session at status-transition
- * time, so by the time the job dispatches, the session row already exists
- * and would otherwise self-trip the gate).
- */
-export async function checkLayer1IssueBusy(
-  issueId: string,
-  options?: { excludeJobId?: string; excludeSessionId?: string },
-): Promise<GateResult> {
-  if (!issueId) return PASS;
-
-  // ISS-42 C1 — manual hold short-circuit. We check this BEFORE the busy
-  // check because the user-visible reason is more informative ("paused" beats
-  // "another session active"). A user who sets manual_hold while a job is in
-  // flight will not stop the in-flight job; they'll just block follow-ups.
-  const [holdRow] = await db
-    .select({ manualHold: issues.manualHold })
-    .from(issues)
-    .where(eq(issues.id, issueId))
-    .limit(1);
-  if (holdRow?.manualHold) {
-    return {
-      pass: false,
-      reason: 'manual_hold',
-      hint: 'issue is on manual hold; toggle off to resume automation',
-    };
-  }
-
-  // Active session for the same issue (issueId lives in metadata).
-  const sessionRows = await db.execute<{ count: string }>(sql`
-    SELECT COUNT(*)::text AS count
-    FROM agent_sessions
-    WHERE status IN ('queued', 'running')
-      AND (metadata->>'issueId') = ${issueId}
-      ${options?.excludeSessionId ? sql`AND id <> ${options.excludeSessionId}` : sql``}
-  `);
-  const sessionCount = Number(sessionRows[0]?.count ?? '0');
-
-  // Active jobs for the same issue (excluding the candidate). The
-  // jobs_active_unique partial index already rejects duplicate (issueId,type)
-  // queued+up rows, but a different job-type for the same issue can still
-  // race; treat that as busy too.
-  const conds = [
-    eq(jobs.issueId, issueId),
-    sql`${jobs.status} IN ('dispatched','running')`,
-  ];
-  if (options?.excludeJobId) {
-    conds.push(sql`${jobs.id} <> ${options.excludeJobId}`);
-  }
-  const activeJobs = await db
-    .select({ id: jobs.id })
-    .from(jobs)
-    .where(and(...conds))
-    .limit(1);
-
-  if (sessionCount > 0 || activeJobs.length > 0) {
-    return {
-      pass: false,
-      reason: 'issue_busy',
-      hint: 'another session for this issue is already active',
-    };
-  }
-  return PASS;
-}
-
-interface BlockingParent {
-  issueId: string;
-  issSeq: number;
-  status: string;
-}
-
-/**
- * L2 — every `kind='blocks'` parent must be in a terminal status. Cross-project
- * edges are honored. `valid_until` in the past is ignored.
- *
- * For `release`-type candidate jobs, also enforces the decomposition
- * release gate (ISS-119): a child of a `kind='decomposes'` parent stays
- * gated with `waiting_on_decomp_parent` until the parent reaches
- * `released` or `closed`, so children release atomically with the epic.
- *
- * On failure, `metadata.waitingOn` carries the list of parents so the sidebar
- * can render `Waiting for ISS-12, ISS-15 to finish`.
- */
-export async function checkLayer2Dependencies(
-  issueId: string,
-  jobType?: JobType,
-): Promise<GateResult> {
-  if (!issueId) return PASS;
-  const rows = await db.execute<{
-    from_issue_id: string;
-    iss_seq: number;
-    status: string;
-  }>(sql`
-    SELECT i.id AS from_issue_id, i.iss_seq, i.status
-    FROM issue_dependencies d
-    JOIN issues i ON i.id = d.from_issue_id
-    WHERE d.to_issue_id = ${issueId}
-      AND d.kind = 'blocks'
-      AND (d.valid_until IS NULL OR d.valid_until > now())
-  `);
-  const blocking: BlockingParent[] = [];
-  for (const r of rows) {
-    if (!(TERMINAL_ISSUE_STATUSES as readonly string[]).includes(r.status)) {
-      blocking.push({ issueId: r.from_issue_id, issSeq: r.iss_seq, status: r.status });
-    }
-  }
-  if (blocking.length > 0) {
-    return {
-      pass: false,
-      reason: 'waiting_on_dep',
-      hint: `waiting on ${blocking.length} blocking issue(s)`,
-      metadata: { waitingOn: blocking },
-    };
-  }
-
-  // ISS-119 — decomposition release gate. Only the `release` jobType is
-  // gated; everything else for the child (code/review/test/staging) runs
-  // independently of the epic's progress. `closed` parents count as
-  // released so an abandoned epic never strands a finished child.
-  if (jobType === 'release') {
-    const parent = await findDecompositionParent(issueId);
-    if (parent && !DECOMP_PARENT_RELEASED_STATUSES.has(parent.status)) {
-      return {
-        pass: false,
-        reason: 'waiting_on_decomp_parent',
-        hint: `decomposition parent ISS-${parent.issSeq} not released yet`,
-        metadata: {
-          parentId: parent.id,
-          parentIssSeq: parent.issSeq,
-          parentStatus: parent.status,
-        },
-      };
-    }
-  }
-
-  return PASS;
-}
-
-/**
- * L3 — DISTINCT running issueIds in the project < project cap. The candidate's
- * own issue is excluded from the count: if it's already running, Layer 1
- * would have caught it, so reaching L3 means the candidate is not yet
- * counted toward `running`.
- */
-export async function checkLayer3ProjectFull(
-  projectId: string,
-  candidateIssueId?: string | null,
-): Promise<GateResult> {
-  const [project] = await db
-    .select({ agentConfig: projects.agentConfig })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  const agentConfig = (project?.agentConfig ?? {}) as Record<string, unknown>;
-  const pipelineConfig = (agentConfig.pipelineConfig ?? {}) as Record<string, unknown>;
-  const cap =
-    typeof pipelineConfig.maxConcurrentIssues === 'number' && pipelineConfig.maxConcurrentIssues > 0
-      ? pipelineConfig.maxConcurrentIssues
-      : DEFAULT_MAX_CONCURRENT_ISSUES;
-
-  const rows = await db.execute<{ issue_id: string }>(sql`
-    SELECT DISTINCT (metadata->>'issueId') AS issue_id
-    FROM agent_sessions
-    WHERE project_id = ${projectId}
-      AND status IN ('queued', 'running')
-      AND (metadata->>'issueId') IS NOT NULL
-  `);
-  const distinctIds = rows.map((r) => r.issue_id).filter((v): v is string => Boolean(v));
-  // Don't count the candidate's own issue — the question is "are there
-  // already `cap` OTHER issues running before me?".
-  const others = candidateIssueId
-    ? distinctIds.filter((id) => id !== candidateIssueId)
-    : distinctIds;
-  if (others.length >= cap) {
-    return {
-      pass: false,
-      reason: 'project_full',
-      hint: `project running ${others.length}/${cap} concurrent issues`,
-      metadata: { cap, running: others.length },
-    };
-  }
-  return PASS;
 }
 
 /**
@@ -325,76 +126,47 @@ export async function checkLayer4RunnerFull(
 type JobRow = typeof jobs.$inferSelect;
 
 /**
- * Refresh `gate_at` / `gate_reason` / `gate_metadata` on release-type queued
- * jobs whose `kind='decomposes'` parent is still non-terminal. Called from
- * `pickNextDispatchableJobForProject` BEFORE the SELECT so the picker's
- * decompose filter and the watchdog's gate freshness check agree:
+ * Pick the next queued job that satisfies L1/L2/L3 inline, or null if no such
+ * job exists. L4 (runner_full) is evaluated post-pick by the dispatcher
+ * because runner selection happens after pick.
  *
- *   - picker SELECT excludes these rows (dispatch stays gated)
- *   - this UPDATE writes a fresh `gate_at` (watchdog leaves them alone)
- *
- * The WHERE predicate MUST match the picker's `j.type = 'release' AND EXISTS
- * (... decomposes ...)` clause; if either drifts, the watchdog kills
- * correctly-gated jobs again (the original ISS-134 regression).
- *
- * Never throws — observability writes must not break dispatch. Mirrors
- * `markJobGated`'s posture.
- */
-export async function refreshDecompParentGates(projectId: string): Promise<void> {
-  try {
-    await db.execute(sql`
-      UPDATE jobs AS j
-      SET gate_reason = 'waiting_on_decomp_parent',
-          gate_at = now(),
-          gate_metadata = jsonb_build_object(
-            'parentId',     p2.id,
-            'parentIssSeq', p2.iss_seq,
-            'parentStatus', p2.status
-          )
-      FROM issue_dependencies d2
-      JOIN issues p2 ON p2.id = d2.from_issue_id
-      WHERE j.project_id = ${projectId}
-        AND j.status = 'queued'
-        AND j.type = 'release'
-        AND d2.to_issue_id = j.issue_id
-        AND d2.kind = 'decomposes'
-        AND (d2.valid_until IS NULL OR d2.valid_until > now())
-        AND p2.status NOT IN ('released','closed')
-    `);
-  } catch (err) {
-    logger.warn(
-      { err, projectId },
-      'dispatch-gates: refreshDecompParentGates failed',
-    );
-  }
-}
-
-/**
- * Pick the next queued job that is BOTH dependency-satisfied (Layer 2 met)
- * and not already covered by another active job for the same (issue,type).
- *
- * Ordering: priority DESC (critical>high>medium>low>none>null), then
- * the parent `pipeline_run.started_at ASC` (run cohesion — ISS-101), then
+ * Ordering: priority DESC (critical>high>medium>low>none>null), then the
+ * parent `pipeline_run.started_at ASC` (run cohesion — ISS-101), then
  * `queued_at ASC` as a final tiebreaker. Same-priority tier: every job of
  * the oldest run drains before a newer run's first job gets dispatched.
- * Higher priority on a newer run still preempts because the priority key
- * is applied before the run-age key.
+ * Higher priority on a newer run still preempts because the priority key is
+ * applied before the run-age key.
  *
  * Closed/cancelled runs are filtered via `r.status = 'running'` — defence
- * in depth on top of the terminal-issue cascade that already moves jobs
- * out of `queued`.
+ * in depth on top of the terminal-issue cascade that already moves jobs out
+ * of `queued`.
  */
 export async function pickNextDispatchableJobForProject(
   projectId: string,
 ): Promise<JobRow | null> {
-  // ISS-134 — refresh gate_at for release jobs the SELECT below is about to
-  // filter out (decompose-parent non-terminal). Without this, queued-watchdog
-  // can't tell "correctly gated" from "pg-boss dropped the message" and kills
-  // the job after 600s. Predicate MUST stay literally identical to the
-  // `j.type = 'release' AND EXISTS (...)` clause in the SELECT — drift causes
-  // the watchdog and picker to disagree.
-  await refreshDecompParentGates(projectId);
+  // L3 cap comes from the project's pipelineConfig; resolve once per call so
+  // the SELECT can pass it as a single parameter. Avoiding a JSON cast inside
+  // the WHERE keeps the planner happy.
+  const [project] = await db
+    .select({ agentConfig: projects.agentConfig })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  const agentConfig = (project?.agentConfig ?? {}) as Record<string, unknown>;
+  const pipelineConfig = (agentConfig.pipelineConfig ?? {}) as Record<string, unknown>;
+  const cap =
+    typeof pipelineConfig.maxConcurrentIssues === 'number' && pipelineConfig.maxConcurrentIssues > 0
+      ? pipelineConfig.maxConcurrentIssues
+      : DEFAULT_MAX_CONCURRENT_ISSUES;
+
   const rows = await db.execute<JobRow>(sql`
+    WITH running_ids AS (
+      SELECT DISTINCT (metadata->>'issueId') AS issue_id
+      FROM agent_sessions
+      WHERE project_id = ${projectId}
+        AND status IN ('queued','running')
+        AND (metadata->>'issueId') IS NOT NULL
+    )
     SELECT j.*
     FROM jobs j
     LEFT JOIN issues i ON i.id = j.issue_id
@@ -403,6 +175,19 @@ export async function pickNextDispatchableJobForProject(
       AND j.status = 'queued'
       AND j.type <> 'pm'
       AND r.status = 'running'
+      AND (i.id IS NULL OR i.manual_hold IS NOT TRUE)
+      AND NOT EXISTS (
+        SELECT 1 FROM agent_sessions s
+        WHERE s.status IN ('queued','running')
+          AND (s.metadata->>'issueId') = j.issue_id::text
+          AND (j.agent_session_id IS NULL OR s.id <> j.agent_session_id)
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM jobs other
+        WHERE other.issue_id = j.issue_id
+          AND other.id <> j.id
+          AND other.status IN ('dispatched','running')
+      )
       AND NOT EXISTS (
         SELECT 1 FROM issue_dependencies d
         JOIN issues p ON p.id = d.from_issue_id
@@ -422,6 +207,10 @@ export async function pickNextDispatchableJobForProject(
             AND p2.status NOT IN ('released','closed')
         )
       )
+      AND (
+        j.issue_id::text IN (SELECT issue_id FROM running_ids)
+        OR (SELECT COUNT(*) FROM running_ids) < ${cap}
+      )
     ORDER BY
       CASE COALESCE(i.priority, 'none')
         WHEN 'critical' THEN 0
@@ -436,42 +225,4 @@ export async function pickNextDispatchableJobForProject(
     LIMIT 1
   `);
   return rows.length > 0 ? (rows[0] ?? null) : null;
-}
-
-/**
- * Record a gate skip on the job row. Always runs (the job always exists at
- * gate-decision time, unlike the lazily-created agent_session). The
- * queued-watchdog reads `gate_at` to distinguish active gating from a dead
- * queue (pg-boss desync). Never throws — observability writes must not
- * break dispatch.
- */
-export async function markJobGated(
-  jobId: string,
-  reason: GateSkipReason,
-  hint?: string,
-  metadata?: Record<string, unknown>,
-): Promise<void> {
-  try {
-    await db
-      .update(jobs)
-      .set({
-        gateReason: reason,
-        gateAt: new Date(),
-        gateMetadata: (metadata ?? null) as never,
-      })
-      .where(eq(jobs.id, jobId));
-    if (hint) {
-      logger.debug({ jobId, reason, hint }, 'dispatch-gates: skip');
-    }
-    if (isSentryEnabled()) {
-      Sentry.addBreadcrumb({
-        category: 'dispatch.gated',
-        level: 'info',
-        message: `gated: ${reason}`,
-        data: { jobId, reason, hint },
-      });
-    }
-  } catch (err) {
-    logger.warn({ err, jobId, reason }, 'dispatch-gates: markJobGated failed');
-  }
 }

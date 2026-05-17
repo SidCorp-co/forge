@@ -53,16 +53,10 @@ vi.mock('./agent-session-link.js', () => ({
   ensureAgentSessionForJob: vi.fn(async () => 'sess-test'),
 }));
 
-// ISS-40 PR-E — gates run inside dispatchViaRunner. They have their own
-// dedicated coverage in `dispatch-gates.test.ts`; here we stub them all to
-// pass so the dispatcher tests can keep asserting their own envelope shape
-// without seeding fake row counts for gate-internal queries.
+// ISS-162 — L1/L2/L3 are evaluated inline by the picker, not the dispatcher.
+// Only L4 (post-pick runner-cap) and runnerSupportsJobType remain mocked here.
 vi.mock('./dispatch-gates.js', () => ({
-  checkLayer1IssueBusy: vi.fn(async () => ({ pass: true })),
-  checkLayer2Dependencies: vi.fn(async () => ({ pass: true })),
-  checkLayer3ProjectFull: vi.fn(async () => ({ pass: true })),
   checkLayer4RunnerFull: vi.fn(async () => ({ pass: true })),
-  markJobGated: vi.fn(async () => {}),
   // ISS-115 — dispatcher checks runner/job-type cap match after picking a
   // runner. Default to true so unrelated tests stay focused on their own
   // envelope; the unsupported-type test overrides with mockReturnValueOnce.

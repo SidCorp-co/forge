@@ -1,7 +1,7 @@
 /**
- * ISS-40 PR-E — dispatch-tick lock + debounce + iteration tests. We mock
- * `pickNextDispatchableJobForProject` and `handleDispatch` so we can drive
- * the inner sweep deterministically.
+ * ISS-40 PR-E / ISS-162 — dispatch-tick lock + debounce + iteration tests.
+ * We mock `pickNextDispatchableJobForProject` and `handleDispatch` so we can
+ * drive the inner sweep deterministically.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -75,7 +75,10 @@ describe('dispatchTickForProject', () => {
     expect(handleDispatch).toHaveBeenNthCalledWith(2, { jobId: 'j2' });
   });
 
-  it('breaks the loop when pick returns the same job id twice (avoids hot-loop)', async () => {
+  // ISS-162 — picker is stateless; an L4-blocked candidate would keep being
+  // returned. The tick breaks on first `skipped` outcome so the loop never
+  // burns CPU; the next external trigger or 60s backstop re-enters.
+  it('breaks the loop when handleDispatch returns skipped', async () => {
     pickFn.mockResolvedValue({ id: 'j-stuck' });
     handleDispatch.mockResolvedValue('skipped');
     await dispatchTickForProject('p1');
@@ -101,21 +104,36 @@ describe('dispatchTickForProject', () => {
     // pickFn called only once across both triggers
     expect(pickFn).toHaveBeenCalledTimes(1);
   });
+
+  // ISS-162 acceptance: a throw inside runTickInner must NOT poison the
+  // project's tick path. After the throw, the project's lock entry is
+  // cleared so the next external trigger starts a fresh chain.
+  it('self-healing lock: a throw in the inner sweep does not poison subsequent ticks', async () => {
+    pickFn.mockRejectedValueOnce(new Error('boom'));
+
+    await dispatchTickForProject('p-self-heal');
+
+    // Second trigger must run pickFn again (lock cleared).
+    pickFn.mockResolvedValueOnce(null);
+    await dispatchTickForProject('p-self-heal');
+
+    expect(pickFn).toHaveBeenCalledTimes(2);
+    expect(pickFn).toHaveBeenNthCalledWith(1, 'p-self-heal');
+    expect(pickFn).toHaveBeenNthCalledWith(2, 'p-self-heal');
+  });
 });
 
 describe('dispatchTickForProject — dependency.unblocked event', () => {
-  const SESSION_ID = 'sess-1';
   const ISSUE_ID = 'issue-1';
   const BLOCKER_ID = 'blocker-1';
 
-  it('emits dependency.unblocked when a waiting_on_dep job dispatches', async () => {
+  // ISS-162 — emit condition is now keyed on `triggerBlockerIssueId` (the
+  // terminal-transition cascade is the only caller that sets it) rather
+  // than a persisted prior gate reason. A dispatched job + supplied blocker
+  // → emit; anything else → no emit.
+  it('emits dependency.unblocked when a dispatched job has triggerBlockerIssueId', async () => {
     pickFn
-      .mockResolvedValueOnce({
-        id: 'j1',
-        agentSessionId: SESSION_ID,
-        issueId: ISSUE_ID,
-        gateReason: 'waiting_on_dep',
-      })
+      .mockResolvedValueOnce({ id: 'j1', issueId: ISSUE_ID })
       .mockResolvedValueOnce(null);
     handleDispatch.mockResolvedValue('dispatched');
 
@@ -133,38 +151,13 @@ describe('dispatchTickForProject — dependency.unblocked event', () => {
     });
   });
 
-  it('falls back to blockerId=null when triggerBlockerIssueId is absent', async () => {
+  it('does not emit when triggerBlockerIssueId is absent', async () => {
     pickFn
-      .mockResolvedValueOnce({
-        id: 'j1',
-        agentSessionId: SESSION_ID,
-        issueId: ISSUE_ID,
-        gateReason: 'waiting_on_dep',
-      })
+      .mockResolvedValueOnce({ id: 'j1', issueId: ISSUE_ID })
       .mockResolvedValueOnce(null);
     handleDispatch.mockResolvedValue('dispatched');
 
     await dispatchTickForProject('p1');
-
-    const matched = wsPublish.mock.calls.find(
-      (c) => (c[1] as { event: string }).event === 'dependency.unblocked',
-    );
-    expect(matched).toBeDefined();
-    expect((matched?.[1] as { data: { blockerId: unknown } }).data.blockerId).toBeNull();
-  });
-
-  it('does not emit when prior gateReason was not waiting_on_dep', async () => {
-    pickFn
-      .mockResolvedValueOnce({
-        id: 'j1',
-        agentSessionId: SESSION_ID,
-        issueId: ISSUE_ID,
-        gateReason: null,
-      })
-      .mockResolvedValueOnce(null);
-    handleDispatch.mockResolvedValue('dispatched');
-
-    await dispatchTickForProject('p1', { triggerBlockerIssueId: BLOCKER_ID });
 
     const matched = wsPublish.mock.calls.find(
       (c) => (c[1] as { event: string }).event === 'dependency.unblocked',
@@ -174,12 +167,7 @@ describe('dispatchTickForProject — dependency.unblocked event', () => {
 
   it('does not emit when handleDispatch returns skipped', async () => {
     pickFn
-      .mockResolvedValueOnce({
-        id: 'j1',
-        agentSessionId: SESSION_ID,
-        issueId: ISSUE_ID,
-        gateReason: 'waiting_on_dep',
-      })
+      .mockResolvedValueOnce({ id: 'j1', issueId: ISSUE_ID })
       .mockResolvedValueOnce(null);
     handleDispatch.mockResolvedValue('skipped');
 

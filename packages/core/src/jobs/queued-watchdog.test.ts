@@ -110,7 +110,6 @@ describe('runQueuedSweep', () => {
     dbExecute.mockResolvedValueOnce([]);
     await runQueuedSweep();
     const text = lastSqlText();
-    expect(text).toContain('gate_at');
     expect(text).toContain('NOT EXISTS');
     expect(text).toContain('agent_sessions');
     expect(text).toContain('last_heartbeat_at');
@@ -118,20 +117,15 @@ describe('runQueuedSweep', () => {
     expect(text).toMatch(/120/);
   });
 
-  // ISS-134 — regression guard. Release jobs gated by a non-terminal
-  // decomposition parent rely on `pickNextDispatchableJobForProject`
-  // refreshing `gate_at` every tick. The watchdog's job is to leave those
-  // alone; this test pins the 300s freshness window into the UPDATE filter
-  // so a future refactor can't widen it to "ignore gate_at entirely" and
-  // resurrect the 05:24-05:51Z 2026-05-16 regression that killed ISS-122 /
-  // 126 / 127 / 128.
-  it('preserves the 300s gate_at freshness window in the UPDATE filter', async () => {
+  // ISS-162 — gate state is no longer persisted. The watchdog must not
+  // reference `gate_at` or `gate_reason` anywhere; project-activity NOT
+  // EXISTS is now the only filter beyond the grace window.
+  it('UPDATE filter contains no references to dropped gate_* columns', async () => {
     dbExecute.mockResolvedValueOnce([]);
-    const r = await runQueuedSweep();
-    expect(r.markedFailed).toBe(0);
+    await runQueuedSweep();
     const text = lastSqlText();
-    expect(text).toMatch(/gate_at\s+IS\s+NULL/);
-    expect(text).toMatch(/gate_at\s*<\s*now\(\)\s*-\s*interval/);
-    expect(text).toContain('300');
+    expect(text).not.toMatch(/gate_at/);
+    expect(text).not.toMatch(/gate_reason/);
+    expect(text).not.toMatch(/gate_metadata/);
   });
 });
