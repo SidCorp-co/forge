@@ -13,6 +13,7 @@ import { PlaintextRevealModal } from '@/features/token/components/PlaintextRevea
 import { TokenAuditDrawer } from '@/features/token/components/TokenAuditDrawer';
 import { TokenList } from '@/features/token/components/TokenList';
 import { useRevokeToken, useTokens } from '@/features/token/hooks/use-tokens';
+import { stashPlaintext } from '@/features/token/lib/plaintext-store';
 import type { Pat, PatWithPlaintext } from '@/features/token/types';
 
 export default function TokensPage() {
@@ -48,6 +49,7 @@ function TokensPageInner() {
   }
 
   function handleCreated(token: PatWithPlaintext) {
+    stashPlaintext(token.id, token.plaintext);
     setCreateOpen(false);
     setRevealed(token);
   }

@@ -147,16 +147,24 @@ const CORS_ORIGINS = [
   'tauri://localhost',
   'https://tauri.localhost',
 ];
-app.use(
-  '/api/*',
-  cors({
-    origin: (origin) => (CORS_ORIGINS.includes(origin) ? origin : null),
-    credentials: true,
-    allowHeaders: ['Content-Type', 'Authorization', 'X-Device-Token'],
-    allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    exposeHeaders: ['X-Total-Count'],
-  }),
-);
+// ISS-161 — /mcp is reachable from the browser (settings/mcp Test Connection
+// panel) so the same CORS allow-list must cover it. `X-Forge-Project-Slug`
+// is added to allowHeaders so the preflight passes for the per-project
+// header the web UI sends alongside the bearer PAT.
+const corsMiddleware = cors({
+  origin: (origin) => (CORS_ORIGINS.includes(origin) ? origin : null),
+  credentials: true,
+  allowHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Device-Token',
+    'X-Forge-Project-Slug',
+  ],
+  allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  exposeHeaders: ['X-Total-Count'],
+});
+app.use('/api/*', corsMiddleware);
+app.use('/mcp', corsMiddleware);
 
 app.get('/health', async (c) => {
   let dbOk = false;
