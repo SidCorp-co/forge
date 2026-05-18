@@ -82,7 +82,7 @@ export async function runStaleSweep(): Promise<{
         issueId: updatedRow.issue_id,
         context: {
           step: updatedRow.type as never,
-          trigger: 'watchdog_kill',
+          trigger: 'session_lost',
           classification: {
             kind: 'unknown',
             reason: 'runner stale (no progress for >5min)',

@@ -2,9 +2,10 @@
  * manualHold-block model.
  *
  * Single decision point for any unrecoverable pipeline failure (worker /fail,
- * watchdog kill, adapter dispatch error). Replaces the previous multi-tier
- * silent retry chain (`retry.ts` exponential backoff + sweeper recovery
- * budget + `pipeline_failed` escalation).
+ * lost worker session detected by stuck-watcher / stale-detector, adapter
+ * dispatch error). Replaces the previous multi-tier silent retry chain
+ * (`retry.ts` exponential backoff + sweeper recovery budget +
+ * `pipeline_failed` escalation).
  *
  * Semantics:
  *   - Issue.status STAYS at the current step (no mutation by failure logic).
@@ -28,7 +29,7 @@ import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 
-export type ManualHoldTrigger = 'job_failed' | 'watchdog_kill' | 'adapter_error';
+export type ManualHoldTrigger = 'job_failed' | 'session_lost' | 'adapter_error';
 
 export type FailureClassificationKind =
   | 'transient_network'
@@ -63,7 +64,7 @@ export interface SetManualHoldBlockInput {
  * Set manualHold + failure_context on an issue, post a summary comment, and
  * broadcast `pipeline.decision_required` to the project room. Loads
  * projectId + ownerId from the issue→project join internally so callers
- * (watchdogs, lifecycle, dispatcher) only need the issueId they already
+ * (watchers, lifecycle, dispatcher) only need the issueId they already
  * hold. Idempotent: a second call on an already-blocked issue overwrites
  * the context (latest failure wins) without spamming duplicate comments.
  *

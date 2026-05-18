@@ -7,11 +7,7 @@ export interface ClassifiedFailure {
 }
 
 const RUNNER_SKIPPED_PATTERNS = [/^unsupported job type/i, /^no runner available/i];
-const WATCHDOG_PATTERNS = [
-  /^stuck dispatched/i,
-  /^queued > .* without dispatch/i,
-  /queued-watchdog/i,
-];
+const WATCHDOG_PATTERNS = [/^stuck dispatched/i];
 
 const RUNNER_SKIPPED_TOOLTIP =
   "This job type isn't supported on the assigned runner. The pipeline tried, the runner declined, no work was lost.";

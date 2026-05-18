@@ -69,7 +69,7 @@ export async function runStuckSweep(): Promise<StuckSweepResult> {
         issueId: row.issueId,
         context: {
           step: row.type,
-          trigger: 'watchdog_kill',
+          trigger: 'session_lost',
           classification: {
             kind: 'unknown',
             reason: 'no session heartbeat — worker likely crashed or never spawned',

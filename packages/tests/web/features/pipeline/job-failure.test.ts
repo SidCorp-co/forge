@@ -20,11 +20,6 @@ describe('classifyJobFailure', () => {
     expect(r.label).toBe('Watchdog stalled');
   });
 
-  it('classifies "queued > Ns without dispatch" as watchdog-stalled', () => {
-    const r = classifyJobFailure('queued > 600s without dispatch (queued-watchdog)', 'transient');
-    expect(r.kind).toBe('watchdog-stalled');
-  });
-
   it('classifies generic agent failure as agent-errored', () => {
     const r = classifyJobFailure('Agent completed with errors', 'unknown');
     expect(r.kind).toBe('agent-errored');
