@@ -6,7 +6,10 @@ import { Modal } from '@/components/ui/modal';
 import { ApiError } from '@/lib/api/client';
 import { formatApiError } from '@/lib/api/error';
 import { useProjects } from '@/features/project/hooks/use-projects';
-import { ReauthCancelledError } from '@/features/auth/hooks/use-require-fresh-auth';
+import {
+  ReauthCancelledError,
+  ReauthUnavailableError,
+} from '@/features/auth/hooks/use-require-fresh-auth';
 import { useCreateToken } from '../hooks/use-tokens';
 import type { CreatePatInput, PatScope, PatWithPlaintext } from '../types';
 
@@ -90,6 +93,10 @@ function CreateTokenForm({
     } catch (err) {
       setSubmitting(false);
       if (err instanceof ReauthCancelledError) return;
+      if (err instanceof ReauthUnavailableError) {
+        setError(err.message);
+        return;
+      }
       setError(formatApiError(err));
       return;
     }

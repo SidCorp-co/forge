@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { userPreferences, users } from '../db/schema.js';
+import { oauthAccounts, userPreferences, users } from '../db/schema.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 
 export const meRoutes = new Hono<{ Variables: AuthVars }>();
@@ -23,6 +23,9 @@ meRoutes.get('/me', async (c) => {
       emailVerifiedAt: users.emailVerifiedAt,
       isCeo: users.isCeo,
       createdAt: users.createdAt,
+      // Selected only to derive `hasPassword` — the hash itself is never
+      // serialized below.
+      passwordHash: users.passwordHash,
     })
     .from(users)
     .where(eq(users.id, userId))
@@ -35,7 +38,21 @@ meRoutes.get('/me', async (c) => {
     });
   }
 
-  return c.json(row);
+  const oauthRows = await db
+    .select({ provider: oauthAccounts.provider })
+    .from(oauthAccounts)
+    .where(eq(oauthAccounts.userId, userId));
+  const oauthProviders = Array.from(new Set(oauthRows.map((r) => r.provider)));
+
+  return c.json({
+    id: row.id,
+    email: row.email,
+    emailVerifiedAt: row.emailVerifiedAt,
+    isCeo: row.isCeo,
+    createdAt: row.createdAt,
+    hasPassword: row.passwordHash !== null,
+    oauthProviders,
+  });
 });
 
 // `system` follows the OS preference at render time; the value just gets

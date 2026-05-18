@@ -4,6 +4,8 @@ export interface MeProfile {
   emailVerifiedAt: string | null;
   isCeo: boolean;
   createdAt: string;
+  hasPassword: boolean;
+  oauthProviders: string[];
 }
 
 export type Theme = 'system' | 'light' | 'dark';

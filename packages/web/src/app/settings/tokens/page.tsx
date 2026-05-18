@@ -1,8 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, KeyRound, LogIn, Plus, RefreshCw, ShieldAlert } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { AlertTriangle, CheckCircle2, KeyRound, LogIn, Plus, RefreshCw, ShieldAlert } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSetPageTitle } from '@/hooks/use-page-title';
 import { useProjects } from '@/features/project/hooks/use-projects';
@@ -16,12 +17,54 @@ import { stashPlaintext } from '@/features/token/lib/plaintext-store';
 import type { Pat, PatWithPlaintext } from '@/features/token/types';
 import { ApiError } from '@/lib/api/client';
 
+const REAUTH_ERROR_MESSAGES: Record<string, string> = {
+  identity_mismatch:
+    'That identity does not match this account. Sign in to the same provider you used originally.',
+  oauth_not_linked: 'This account is not linked to that provider.',
+};
+
+type ReauthBanner = { kind: 'ok' } | { kind: 'error'; message: string } | null;
+
+function ReauthQueryReader({
+  onChange,
+}: {
+  onChange: (next: ReauthBanner) => void;
+}) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const reauthFlag = searchParams.get('reauth');
+  const reauthErrorCode = searchParams.get('reauth_error');
+
+  useEffect(() => {
+    if (reauthFlag === 'ok') {
+      onChange({ kind: 'ok' });
+      router.replace('/settings/tokens');
+      const t = setTimeout(() => onChange(null), 6000);
+      return () => clearTimeout(t);
+    }
+    if (reauthErrorCode) {
+      onChange({
+        kind: 'error',
+        message:
+          REAUTH_ERROR_MESSAGES[reauthErrorCode] ??
+          'Re-authentication failed. Please try again.',
+      });
+      router.replace('/settings/tokens');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reauthFlag, reauthErrorCode]);
+
+  return null;
+}
+
 export default function TokensPage() {
   useSetPageTitle('Tokens');
   const tokens = useTokens();
   const projects = useProjects();
   const revoke = useRevokeToken();
   const { require: requireFreshAuth, modal: reauthModal } = useRequireFreshAuth();
+
+  const [reauthBanner, setReauthBanner] = useState<ReauthBanner>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [revealed, setRevealed] = useState<PatWithPlaintext | null>(null);
@@ -49,6 +92,9 @@ export default function TokensPage() {
 
   return (
     <>
+      <Suspense fallback={null}>
+        <ReauthQueryReader onChange={setReauthBanner} />
+      </Suspense>
       <div className="h-full overflow-y-auto bg-background">
         <div className="mx-auto max-w-5xl p-6 md:p-12">
           <header className="mb-8">
@@ -72,6 +118,25 @@ export default function TokensPage() {
               integration and revoke them as soon as they are no longer needed.
             </p>
           </header>
+
+          {reauthBanner?.kind === 'ok' && (
+            <div
+              role="status"
+              className="mb-6 flex items-start gap-2 border-l-2 border-l-success bg-success/10 px-4 py-3 text-[11px] uppercase tracking-[0.16em] text-on-surface"
+            >
+              <CheckCircle2 className="mt-0.5 h-4 w-4 text-success" />
+              <span>Re-authentication confirmed. Click New token to continue.</span>
+            </div>
+          )}
+          {reauthBanner?.kind === 'error' && (
+            <div
+              role="alert"
+              className="mb-6 flex items-start gap-2 border-l-2 border-l-error bg-error/10 px-4 py-3 text-[11px] uppercase tracking-[0.16em] text-on-surface"
+            >
+              <AlertTriangle className="mt-0.5 h-4 w-4 text-error" />
+              <span>{reauthBanner.message}</span>
+            </div>
+          )}
 
           {tokens.isLoading && (
             <div className="space-y-2">

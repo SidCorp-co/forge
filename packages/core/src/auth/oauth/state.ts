@@ -31,6 +31,8 @@ const COOKIE_TTL_SECONDS = 300; // 5 min — generous for slow auth screens
 const ALG = 'HS256';
 const ISSUER = 'forge.oauth.state';
 
+export type StateMode = 'login' | 'reauth';
+
 export interface StatePayload {
   /** Provider id this state belongs to. */
   p: ProviderId;
@@ -40,6 +42,19 @@ export interface StatePayload {
   v: string;
   /** Post-callback redirect path; always relative — never absolute URLs. */
   r: string;
+  /**
+   * Flow mode. `login` (default) — find-or-create user + set auth cookie.
+   * `reauth` — caller is already authenticated; stamp freshness only when
+   * the returned identity matches the linked oauth_accounts row for `uid`.
+   * Omitted on older cookies issued before ISS-167; readers default to `login`.
+   */
+  mode?: StateMode;
+  /**
+   * Authenticated user id captured at `reauth-start`. Only meaningful when
+   * `mode === 'reauth'`. The HS256 signature prevents a client from forging
+   * a `uid` here so we can trust the value at callback time.
+   */
+  uid?: string;
 }
 
 let cachedKey: Uint8Array | null = null;
@@ -89,7 +104,17 @@ export async function verifyState(token: string): Promise<StatePayload> {
   ) {
     throw new Error('state: malformed payload');
   }
-  return { p: payload.p as ProviderId, n: payload.n, v: payload.v, r: payload.r };
+  // mode defaults to 'login' for cookies issued before the reauth flow.
+  const mode: StateMode = payload.mode === 'reauth' ? 'reauth' : 'login';
+  const out: StatePayload = {
+    p: payload.p as ProviderId,
+    n: payload.n,
+    v: payload.v,
+    r: payload.r,
+    mode,
+  };
+  if (typeof payload.uid === 'string') out.uid = payload.uid;
+  return out;
 }
 
 export function setStateCookie(c: Context, jwt: string): void {

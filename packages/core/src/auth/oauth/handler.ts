@@ -58,7 +58,18 @@ function oauthErrorRedirect(c: Context, code: string): Response {
   return c.redirect(`${base}/login?oauth_error=${encodeURIComponent(code)}`, 302);
 }
 
-export async function handleStart(c: Context, providerId: ProviderId) {
+export interface StartOptions {
+  /** `login` (default) or `reauth`. Persisted on the state cookie. */
+  mode?: 'login' | 'reauth';
+  /** Authenticated user id — required when `mode === 'reauth'`. */
+  uid?: string;
+}
+
+export async function handleStart(
+  c: Context,
+  providerId: ProviderId,
+  options: StartOptions = {},
+) {
   const cfg = getProvider(providerId);
   if (!cfg) {
     throw new HTTPException(404, {
@@ -73,7 +84,14 @@ export async function handleStart(c: Context, providerId: ProviderId) {
   const challenge = await pkceChallenge(verifier);
   const target = safeRedirect(c.req.query('redirect'));
 
-  const cookieJwt = await signState({ p: providerId, n: nonce, v: verifier, r: target });
+  const cookieJwt = await signState({
+    p: providerId,
+    n: nonce,
+    v: verifier,
+    r: target,
+    mode: options.mode ?? 'login',
+    ...(options.uid ? { uid: options.uid } : {}),
+  });
   setStateCookie(c, cookieJwt);
 
   const url = await impl.buildAuthorizeUrl(cfg, {
@@ -208,6 +226,12 @@ export async function handleCallback(c: Context, providerId: ProviderId) {
     redirectUri,
   });
 
+  const appBase = env.APP_BASE_URL.replace(/\/+$/, '');
+
+  if (payload.mode === 'reauth') {
+    return handleReauthCallback(c, providerId, payload.uid, identity.providerAccountId, payload.r, appBase);
+  }
+
   let userId: string;
   try {
     ({ userId } = await findOrCreateUser(cfg, identity));
@@ -227,6 +251,54 @@ export async function handleCallback(c: Context, providerId: ProviderId) {
   // relative to the current host (the API), landing the user on
   // localhost:8080/projects which has no Next.js. `payload.r` was already
   // narrowed to a safe relative path at /start.
-  const target = `${env.APP_BASE_URL.replace(/\/+$/, '')}${payload.r}`;
+  const target = `${appBase}${payload.r}`;
   return c.redirect(target, 302);
+}
+
+async function handleReauthCallback(
+  c: Context,
+  providerId: ProviderId,
+  uid: string | undefined,
+  providerAccountId: string,
+  returnPath: string,
+  appBase: string,
+): Promise<Response> {
+  // `uid` rides inside the signed state cookie; missing means the cookie was
+  // issued by an older /start flow without reauth metadata. Treat as a hard
+  // mismatch — we will not silently fall back to login mode.
+  const mismatch = (): Response =>
+    c.redirect(`${appBase}${returnPath}?reauth_error=identity_mismatch`, 302);
+
+  if (!uid) {
+    logger.info({ provider: providerId }, 'oauth reauth: missing uid in state');
+    return mismatch();
+  }
+
+  const [linked] = await db
+    .select({ userId: oauthAccounts.userId })
+    .from(oauthAccounts)
+    .where(
+      and(
+        eq(oauthAccounts.provider, providerId),
+        eq(oauthAccounts.providerAccountId, providerAccountId),
+      ),
+    )
+    .limit(1);
+
+  if (!linked || linked.userId !== uid) {
+    logger.info(
+      { provider: providerId, expectedUserId: uid, actualUserId: linked?.userId ?? null },
+      'oauth reauth: identity mismatch',
+    );
+    return mismatch();
+  }
+
+  await db
+    .update(users)
+    .set({ lastFreshAuthAt: new Date() })
+    .where(eq(users.id, uid));
+
+  // Important: do NOT setAuthCookie() here — the user is already logged in.
+  // A successful reauth must not escalate to a new session.
+  return c.redirect(`${appBase}${returnPath}?reauth=ok`, 302);
 }
