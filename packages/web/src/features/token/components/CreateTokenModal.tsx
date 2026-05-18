@@ -23,9 +23,10 @@ interface Props {
 type ScopePreset = 'read' | 'standard' | 'admin';
 type ExpiryPreset = '30' | '90' | '365' | 'never';
 
-const SCOPE_MAP: Record<Exclude<ScopePreset, 'admin'>, PatScope[]> = {
+const SCOPE_MAP: Record<ScopePreset, PatScope[]> = {
   read: ['read'],
   standard: ['read', 'write'],
+  admin: ['admin'],
 };
 
 function expiryToIso(preset: ExpiryPreset): string | undefined {
@@ -67,7 +68,7 @@ function CreateTokenForm({
   const projects = useProjects();
   const createToken = useCreateToken();
 
-  const resolvedScopes: PatScope[] = scope === 'admin' ? [] : SCOPE_MAP[scope];
+  const resolvedScopes: PatScope[] = SCOPE_MAP[scope];
 
   function toggleProject(id: string) {
     setProjectIds((prev) =>
@@ -80,10 +81,6 @@ function CreateTokenForm({
     setError(null);
     if (!name.trim()) {
       setError('Name is required.');
-      return;
-    }
-    if (scope === 'admin') {
-      setError('Admin scope is not yet supported.');
       return;
     }
 
@@ -192,25 +189,31 @@ function CreateTokenForm({
               <p className="font-mono text-[10px] text-outline">{"['read', 'write']"}</p>
             </div>
           </label>
-          <label
-            className="flex items-start gap-2 text-sm text-on-surface-variant opacity-60"
-            title="Admin scope not yet supported"
-          >
+          <label className="flex items-start gap-2 text-sm text-on-surface">
             <input
               type="radio"
               name="scope"
               value="admin"
               checked={scope === 'admin'}
               onChange={() => setScope('admin')}
-              disabled
               className="mt-1"
             />
             <div>
               <p>Admin</p>
-              <p className="font-mono text-[10px] text-outline">Not yet supported</p>
+              <p className="font-mono text-[10px] text-outline">{"['admin']"}</p>
+              <p className="text-[10px] text-outline">
+                Grants cross-tenant admin tools (forge_admin_*). Requires system admin on this
+                account.
+              </p>
             </div>
           </label>
         </div>
+        {scope === 'admin' && (
+          <p className="mt-2 text-[10px] text-outline">
+            Admin tools are cross-tenant; the project allowlist below still narrows project-scoped
+            tools.
+          </p>
+        )}
       </fieldset>
 
       <fieldset className="mb-4">

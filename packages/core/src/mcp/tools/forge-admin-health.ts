@@ -7,7 +7,7 @@ import { isBossStarted } from '../../queue/boss.js';
 import { isWsListening } from '../../ws/server.js';
 import {
   type ContextScopedMcpToolFactory,
-  assertPrincipalIsSystemAdmin,
+  assertPrincipalCanAdmin,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -23,12 +23,12 @@ type RunnerRow = typeof runners.$inferSelect;
 export const forgeAdminHealthTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_admin_health',
   description:
-    "Extended health snapshot for system admin (`users.isCeo=true`). Returns `{ version, uptimeSeconds, db, queue, ws, runners: [{ id, name, projectId, status, lastSeenAt, inFlightCount }], projects: [{ id, slug, activeJobCount }], stuckJobs: [{ jobId, type, runnerId, dispatchedAt, ageSeconds }] }`. `staleJobThresholdSeconds` (60..86400, default 600) controls the stuckJobs cutoff.",
+    "Extended health snapshot for system admin (`users.isCeo=true`) AND PAT scope `admin` (device tokens are exempt). Returns `{ version, uptimeSeconds, db, queue, ws, runners: [{ id, name, projectId, status, lastSeenAt, inFlightCount }], projects: [{ id, slug, activeJobCount }], stuckJobs: [{ jobId, type, runnerId, dispatchedAt, ageSeconds }] }`. `staleJobThresholdSeconds` (60..86400, default 600) controls the stuckJobs cutoff.",
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
     const staleJobThresholdSeconds = input.staleJobThresholdSeconds ?? 600;
-    await assertPrincipalIsSystemAdmin(ctx.principal);
+    await assertPrincipalCanAdmin(ctx.principal);
 
     let dbOk = false;
     try {

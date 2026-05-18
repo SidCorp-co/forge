@@ -4,7 +4,7 @@ import { db } from '../../db/client.js';
 import { projectMembers, projects, users } from '../../db/schema.js';
 import {
   type ContextScopedMcpToolFactory,
-  assertPrincipalIsSystemAdmin,
+  assertPrincipalCanAdmin,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -20,13 +20,13 @@ const inputSchema = z
 export const forgeAdminUsersTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_admin_users',
   description:
-    "Cross-tenant user list with membership matrix. Requires system admin (`users.isCeo=true`). Read-only in v1. Action: `list` (optional `search` matches email prefix; paginated). Each user includes `memberships: [{ projectId, projectSlug, role }]`. Never returns passwordHash or any auth secret.",
+    "Cross-tenant user list with membership matrix. Requires system admin (`users.isCeo=true`) AND PAT scope `admin` (device tokens are exempt). Read-only in v1. Action: `list` (optional `search` matches email prefix; paginated). Each user includes `memberships: [{ projectId, projectSlug, role }]`. Never returns passwordHash or any auth secret.",
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
     const limit = input.limit ?? 50;
     const offset = input.offset ?? 0;
-    await assertPrincipalIsSystemAdmin(ctx.principal);
+    await assertPrincipalCanAdmin(ctx.principal);
 
     const whereClause = input.search
       ? ilike(users.email, `${input.search.replace(/[%_]/g, '\\$&')}%`)

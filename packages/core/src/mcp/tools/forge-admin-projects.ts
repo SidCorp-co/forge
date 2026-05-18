@@ -12,7 +12,7 @@ import {
 import { isUniqueViolation } from '../../lib/db-errors.js';
 import {
   type ContextScopedMcpToolFactory,
-  assertPrincipalIsSystemAdmin,
+  assertPrincipalCanAdmin,
   principalUserId,
   zodToMcpSchema,
 } from './lib.js';
@@ -56,11 +56,11 @@ function generateApiKey(): string {
 export const forgeAdminProjectsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_admin_projects',
   description:
-    "Cross-tenant project administration. Requires system admin (`users.isCeo=true`). Actions: `list` (paginated; `includeStats:true` adds memberCount/issueCount), `create` (slug+name+ownerId; returns project without apiKey), `archive` (hard-delete; requires `confirm:true` and refuses with PROJECT_BUSY if any agent_sessions are queued/running).",
+    "Cross-tenant project administration. Requires system admin (`users.isCeo=true`) AND PAT scope `admin` (device tokens are exempt). Actions: `list` (paginated; `includeStats:true` adds memberCount/issueCount), `create` (slug+name+ownerId; returns project without apiKey), `archive` (hard-delete; requires `confirm:true` and refuses with PROJECT_BUSY if any agent_sessions are queued/running).",
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    await assertPrincipalIsSystemAdmin(ctx.principal);
+    await assertPrincipalCanAdmin(ctx.principal);
 
     if (input.action === 'list') {
       const limit = input.limit ?? 50;

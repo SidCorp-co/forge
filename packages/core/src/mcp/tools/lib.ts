@@ -248,6 +248,26 @@ export async function assertPrincipalIsSystemAdmin(principal: McpPrincipal): Pro
 }
 
 /**
+ * Combined gate for `forge_admin_*` MCP tools (ISS-170). Checks BOTH:
+ *   1. The underlying user is a system admin (`users.isCeo === true`).
+ *   2. If the principal is a PAT, the token's `scopes` array includes `admin`.
+ *
+ * Device principals have no PAT scope vector — they pass the scope check
+ * implicitly, matching the existing pattern (`assertPrincipalIsMember` etc.).
+ *
+ * Order matters: the isCeo check runs first so a non-admin who somehow mints
+ * a PAT with `scopes:['admin']` (the create endpoint allows it; the gate is
+ * at tool time) still gets the existing `requires system admin` error
+ * rather than leaking that an `admin` scope path exists.
+ */
+export async function assertPrincipalCanAdmin(principal: McpPrincipal): Promise<void> {
+  await assertPrincipalIsSystemAdmin(principal);
+  if (principal.kind === 'pat' && !principal.scopes.includes('admin')) {
+    throw new Error('FORBIDDEN: requires admin scope on the PAT');
+  }
+}
+
+/**
  * Resolve a project slug (typically from `X-Forge-Project-Slug`) to its UUID.
  * Throws BAD_REQUEST when the slug is missing and NOT_FOUND when no project
  * matches. Tools that use slug-based scoping call this before

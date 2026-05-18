@@ -77,6 +77,31 @@ tools through a PAT, no matter what `scopes` they minted on the token.
   `projectMembers.role IN ('owner','admin')`. The PAT `scopes` array
   does NOT widen this — admin access is bound to the underlying user's
   role on the project, not to anything that can be granted at mint time.
+- For cross-tenant `forge_admin_*` tools, `assertPrincipalCanAdmin`
+  enforces a combined gate: the underlying user must have
+  `users.isCeo === true` AND, if the principal is a PAT, the token's
+  `scopes` array must include `admin`. The `isCeo` check runs first so
+  a non-admin who minted a PAT with `scopes:['admin']` still gets the
+  generic `FORBIDDEN: requires system admin` error. Device principals
+  skip the scope check (devices have no PAT scope vector).
+
+### PAT scopes
+
+A PAT's `scopes` column is a JSONB array. Three values are honored at
+tool dispatch time:
+
+| scope | What it grants |
+|---|---|
+| `read` | All read-only project tools the underlying user can already reach. |
+| `write` | Project-scoped mutating tools (issues/comments/etc.) the underlying user can already reach. |
+| `admin` | Required to invoke any `forge_admin_*` tool. Only honored when the underlying user is also `users.isCeo=true`; otherwise the tool still refuses with `FORBIDDEN: requires system admin`. |
+
+Defaults: `mintPat` writes `['read', 'write']` when the caller omits
+`scopes`. `admin` must be explicitly requested at create time and is
+never auto-included. PAT creation does not itself check `isCeo`
+(non-admins may technically mint an `admin`-scoped token); the gate
+runs at tool time, so the token is unusable for admin tools without
+the role.
 
 ### T4 — Brute force / credential stuffing
 
