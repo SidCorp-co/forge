@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { KeyRound, Plus } from 'lucide-react';
+import Link from 'next/link';
+import { AlertTriangle, KeyRound, LogIn, Plus, RefreshCw, ShieldAlert } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSetPageTitle } from '@/hooks/use-page-title';
 import { useProjects } from '@/features/project/hooks/use-projects';
@@ -13,6 +14,7 @@ import { TokenList } from '@/features/token/components/TokenList';
 import { useRevokeToken, useTokens } from '@/features/token/hooks/use-tokens';
 import { stashPlaintext } from '@/features/token/lib/plaintext-store';
 import type { Pat, PatWithPlaintext } from '@/features/token/types';
+import { ApiError } from '@/lib/api/client';
 
 export default function TokensPage() {
   useSetPageTitle('Tokens');
@@ -57,7 +59,8 @@ export default function TokensPage() {
               <button
                 type="button"
                 onClick={() => setCreateOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-[11px] font-bold uppercase tracking-widest text-on-primary hover:opacity-90"
+                disabled={!!tokens.error}
+                className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-[11px] font-bold uppercase tracking-widest text-on-primary hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Plus className="h-3.5 w-3.5" />
                 New token
@@ -78,7 +81,11 @@ export default function TokensPage() {
             </div>
           )}
           {tokens.error && (
-            <p className="text-sm text-error">{(tokens.error as Error).message}</p>
+            <TokensErrorState
+              error={tokens.error}
+              onRetry={() => tokens.refetch()}
+              retrying={tokens.isFetching}
+            />
           )}
           {tokens.data && activeTokens.length === 0 && (
             <EmptyState onCreate={() => setCreateOpen(true)} />
@@ -112,6 +119,107 @@ export default function TokensPage() {
       />
       {reauthModal}
     </>
+  );
+}
+
+function TokensErrorState({
+  error,
+  onRetry,
+  retrying,
+}: {
+  error: unknown;
+  onRetry: () => void;
+  retrying: boolean;
+}) {
+  const apiError = error instanceof ApiError ? error : null;
+  const status = apiError?.status ?? 0;
+  const code = apiError?.code;
+
+  if (status === 401 || code === 'UNAUTHENTICATED' || code === 'INVALID_TOKEN') {
+    return (
+      <ErrorCard
+        icon={<LogIn className="h-5 w-5 text-primary" />}
+        title="Sign in to manage your tokens"
+        body="Your session has expired. Sign in again to view and create personal access tokens."
+        action={
+          <Link
+            href="/login?next=/settings/tokens"
+            className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-4 py-2 text-[11px] font-bold uppercase tracking-widest text-on-primary hover:opacity-90"
+          >
+            <LogIn className="h-3.5 w-3.5" />
+            Sign in
+          </Link>
+        }
+      />
+    );
+  }
+
+  if (code === 'EMAIL_NOT_VERIFIED') {
+    return (
+      <ErrorCard
+        icon={<ShieldAlert className="h-5 w-5 text-warning" />}
+        title="Verify your email to manage tokens"
+        body="Personal access tokens are only available once your email is verified. Check your inbox or update your address in account settings."
+        action={
+          <Link
+            href="/settings/account"
+            className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-4 py-2 text-[11px] font-bold uppercase tracking-widest text-on-primary hover:opacity-90"
+          >
+            Go to account settings
+          </Link>
+        }
+      />
+    );
+  }
+
+  const isServerError = status >= 500 || (apiError && status === 0);
+  const title = isServerError
+    ? "We couldn't load your tokens"
+    : 'Could not load tokens';
+  const body = isServerError
+    ? 'The token service is temporarily unavailable. Please try again in a moment.'
+    : apiError?.message || (error instanceof Error ? error.message : 'Unknown error.');
+
+  return (
+    <ErrorCard
+      icon={<AlertTriangle className="h-5 w-5 text-error" />}
+      title={title}
+      body={body}
+      action={
+        <button
+          type="button"
+          onClick={onRetry}
+          disabled={retrying}
+          className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-4 py-2 text-[11px] font-bold uppercase tracking-widest text-on-primary hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${retrying ? 'animate-spin' : ''}`} />
+          {retrying ? 'Retrying…' : 'Try again'}
+        </button>
+      }
+    />
+  );
+}
+
+function ErrorCard({
+  icon,
+  title,
+  body,
+  action,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  body: string;
+  action: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-sm border border-outline-variant/20 bg-surface-dim p-8 text-center">
+      <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-sm bg-surface-container-highest">
+        {icon}
+      </div>
+      <h2 className="mb-2 text-lg font-bold tracking-tight text-on-surface">{title}</h2>
+      <p className="mx-auto mb-6 max-w-md text-sm text-on-surface-variant">{body}</p>
+      {action}
+    </div>
   );
 }
 
