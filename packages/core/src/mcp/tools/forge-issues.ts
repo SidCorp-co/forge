@@ -410,8 +410,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             });
             // ISS-133 — clearing manualHold must wake the dispatcher so jobs
             // gated on `manual_hold` get re-evaluated within a second instead
-            // of waiting up to 60s for the pg-boss backstop (during which the
-            // queued-watchdog can kill them).
+            // of waiting up to 60s for the pg-boss backstop.
             if (manualHoldChange.before === true && manualHoldChange.after === false) {
               void dispatchTickForProject(issue.projectId);
             }

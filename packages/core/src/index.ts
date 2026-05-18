@@ -57,7 +57,7 @@ import {
 import { registerDispatchTickBackstop } from './jobs/dispatch-tick.js';
 import { jobEventsListRoutes, jobEventsRoutes } from './jobs/events-routes.js';
 import { jobLifecycleDeviceRoutes, jobLifecycleUserRoutes } from './jobs/lifecycle-routes.js';
-import { registerQueuedWatchdog } from './jobs/queued-watchdog.js';
+import { registerPgBossHealthProbe } from './jobs/pgboss-health.js';
 import { registerRetentionSweeper } from './jobs/retention-sweeper.js';
 import { jobProjectRoutes, jobRoutes } from './jobs/routes.js';
 import { registerStaleDetector } from './jobs/stale-detector.js';
@@ -388,8 +388,8 @@ if (isMain) {
   }
   await registerRetentionSweeper();
   await registerStuckWatcher();
-  await registerQueuedWatchdog();
   await registerPipelineSweeper();
+  await registerPgBossHealthProbe();
   await registerOutboundDeliveryWorker();
   await registerScheduleTicker();
   await registerPmCadenceTicker();

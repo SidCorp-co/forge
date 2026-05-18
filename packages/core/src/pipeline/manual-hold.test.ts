@@ -41,7 +41,7 @@ beforeEach(() => {
 
 const SAMPLE_CONTEXT = {
   step: 'code' as const,
-  trigger: 'watchdog_kill' as const,
+  trigger: 'session_lost' as const,
   classification: {
     kind: 'unknown' as const,
     reason: 'no session heartbeat',
@@ -67,7 +67,7 @@ describe('setManualHoldBlock', () => {
     expect(setArg?.manualHold).toBe(true);
     expect(setArg?.failureContext).toMatchObject({
       step: 'code',
-      trigger: 'watchdog_kill',
+      trigger: 'session_lost',
       classification: { kind: 'unknown' },
     });
   });
@@ -122,7 +122,7 @@ describe('setManualHoldBlock', () => {
     expect(envelope.data).toMatchObject({
       issueId: 'i1',
       step: 'code',
-      trigger: 'watchdog_kill',
+      trigger: 'session_lost',
       attempts: 2,
     });
   });

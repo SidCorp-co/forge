@@ -54,7 +54,7 @@ describe('jobs/stuck-watcher runStuckSweep', () => {
       context: { trigger: string; step: string };
     } | undefined;
     expect(firstCall?.issueId).toBe('i1');
-    expect(firstCall?.context.trigger).toBe('watchdog_kill');
+    expect(firstCall?.context.trigger).toBe('session_lost');
   });
 
   it('skips block when job has no issueId', async () => {

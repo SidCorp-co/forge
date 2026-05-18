@@ -182,4 +182,4 @@ Keep it concise — this comment is read by both humans and downstream pipeline 
 
 ## Pitfalls
 
-- **Do not set `manualHold: true` at create time.** The dispatcher's L1 gate skips on `manual_hold`, leaving the plan job queued; the queued-watchdog formerly counted that against the 5-retry recovery budget and tipped the issue into `pipeline_failed` (ISS-66). The fix in core now skips `manual_hold`-gated jobs, but the safer idiom is still to either (a) leave `manualHold` false at creation and toggle it after the issue settles, or (b) use `status: on_hold` for an explicit, deliberate pause.
+- **Do not set `manualHold: true` at create time.** The dispatcher's L1 gate skips `manual_hold`-gated jobs cleanly, but pairing `manualHold:true` with the `confirmed`-status transition can still trip downstream skills that expect a normal pipeline handoff. Safer idiom: either (a) leave `manualHold` false at creation and toggle it after the issue settles, or (b) use `status: on_hold` for an explicit, deliberate pause.

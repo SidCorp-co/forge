@@ -19,6 +19,7 @@ import { and, eq, isNotNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
+import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
 
@@ -58,6 +59,7 @@ export interface SweepResult {
 
 export async function runPipelineSweep(now: Date = new Date()): Promise<SweepResult> {
   const t0 = Date.now();
+  recordPipelineSweeperTick(t0);
   const zombieSessions = await sweepZombieSessions(now);
   return { durationMs: Date.now() - t0, zombieSessions };
 }
