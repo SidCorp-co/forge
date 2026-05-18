@@ -84,6 +84,8 @@ git checkout "$BASE" && git pull "$REMOTE" "$BASE"
 
 The `// .config.baseBranch // "main"` chain in jq is the fallback ladder: PR-A's resolver, then the legacy project default, then the hard default — same precedence as the resolver itself, so behaviour is identical for non-overridden issues.
 
+> **Background reading for branch resolution:** the prose version (project default + per-issue override + decomposition integration branch) lives in `CLAUDE.md` § Branching strategy at the repo root. The agent-facing structured data (resolver path, storage shape, validation rules) lives in `packages/.forge/knowledge.json → branchStrategy`. Read either when an issue carries a non-default `branchConfig` and you need to reason about where its base/target/prod come from.
+
 ### Step 2: Understand the Issue
 
 Read everything: title, description, acceptanceCriteria, suggestedSolution, triage comment, attachments, relations.
@@ -183,6 +185,8 @@ For Complex issues with **>3 parallel workstreams** that each ship independently
    `projectId` is the one from `forge_config → get` in Step 1. The tool is idempotent and returns `{ id, created: true|false }`.
 
    **Integration branch (PR-D, ISS-138):** the first `decomposes` edge on a parent automatically triggers integration-branch creation in core (`packages/core/src/issues/decompose.ts`). The agent does NOT call any git tool — just chain `forge_pm_set_dependency` calls per child as before. To OPT OUT (e.g. for a decomposition that should branch off project trunk individually), pass `decomposeOpts: { useIntegrationBranch: false }` on the FIRST `forge_pm_set_dependency` call only; subsequent calls inherit the parent's metadata flag.
+
+   **When NOT to use the integration branch:** cross-package epics, core refactors, single-sub "decompositions" (just use `blocks` instead), and quick-fix bundles. Full when/when-not list + lifecycle gotchas: `packages/.forge/knowledge.json → recipes.decomposition-integration-branch` and `CLAUDE.md § Branching strategy → Decomposition + integration branch`.
 
    **If the parent's plan declares sibling-blocks ordering** (e.g., Sub 2 must wait for Sub 1's pipeline to finish before its `forge-triage` dispatches), add those edges immediately after creating all children:
    ```
