@@ -49,6 +49,12 @@ const fakeDevice = {
   createdAt: new Date(),
 };
 
+const ctx = {
+  principal: { kind: 'device' as const, device: fakeDevice },
+  device: fakeDevice,
+  projectSlug: null,
+};
+
 beforeEach(() => {
   queue.length = 0;
   vi.clearAllMocks();
@@ -56,19 +62,19 @@ beforeEach(() => {
 
 describe('forge_pm.snapshot', () => {
   it('rejects non-member with FORBIDDEN', async () => {
-    const tool = forgePmSnapshotTool(fakeDevice);
+    const tool = forgePmSnapshotTool(ctx);
     queue.push([{ ownerId: 'other' }]); // project lookup
     queue.push([]); // no member row
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
   });
 
   it('rejects invalid input', async () => {
-    const tool = forgePmSnapshotTool(fakeDevice);
+    const tool = forgePmSnapshotTool(ctx);
     await expect(tool.handler({ projectId: 'not-a-uuid' })).rejects.toThrow();
   });
 
   it('returns digest with expected shape under 2KB', async () => {
-    const tool = forgePmSnapshotTool(fakeDevice);
+    const tool = forgePmSnapshotTool(ctx);
     queue.push(
       [{ ownerId: OWNER_ID }], // assertDeviceOwnerIsMember: project (owner match)
       [

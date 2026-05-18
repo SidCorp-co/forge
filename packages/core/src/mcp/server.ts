@@ -33,6 +33,8 @@ import { forgePmRunnerLoadTool } from './tools/forge-pm-runner-load.js';
 import { forgePmSetDependencyTool } from './tools/forge-pm-set-dependency.js';
 import { forgePmSnapshotTool } from './tools/forge-pm-snapshot.js';
 import { forgePmWriteDecisionTool } from './tools/forge-pm-write-decision.js';
+import { forgeProjectPipelineRunsTool } from './tools/forge-project-pipeline-runs.js';
+import { forgeProjectPmTool } from './tools/forge-project-pm.js';
 import { forgeProjectsListTool } from './tools/forge-projects.js';
 import {
   forgeSkillsGetTool,
@@ -60,8 +62,16 @@ import type { McpContext } from './tools/lib.js';
  *    over jobs + job_events (ISS-7).
  *  - `forge_agent_sessions.list` / `.get` — read-only access to
  *    `agent_sessions` rows (ISS-7).
- *  - `forge_pipeline_runs.list` / `.get` / `.pause` / `.resume` / `.cancel` —
- *    REST-paritied lifecycle controls for `pipeline_runs` (ISS-102).
+ *  - `forge_project_pipeline_runs` — action dispatcher
+ *    (list/get/pause/resume/cancel) for `pipeline_runs` (ISS-145). The
+ *    legacy `forge_pipeline_runs.<action>` tools stay registered as
+ *    forwarding shims that emit `X-MCP-Deprecation`.
+ *  - `forge_project_pm` — action dispatcher
+ *    (snapshot/graph/runner_load/dispatch/set_dependency/write_decision)
+ *    for the PM agent surface (ISS-145). The matching legacy
+ *    `forge_pm.<action>` tools stay as shims. `flag_blocker` and the
+ *    standalone `escalate` tool were removed in ISS-146 (escalation now
+ *    lives on `write_decision.escalate`).
  *  - `forge_projects.list` — enumerate projects visible to the device owner
  *    (ISS-7, pre-req for ISS-9).
  *  - `forge_health` — server snapshot: db/queue/ws + last seed + active jobs
@@ -73,14 +83,36 @@ import type { McpContext } from './tools/lib.js';
  * For PAT principals these tools 403 with `PM_REQUIRES_DEVICE` before any
  * DB call is made, both to surface a clean error and to avoid leaking the
  * stub-device id into a downstream FK lookup.
+ *
+ * ISS-145 — gating is now `(tool, action)` to account for the consolidated
+ * `forge_project_pm` dispatcher: a `true` value gates the whole tool name
+ * (legacy shims keep this for byte-identical behaviour), a `Set<string>`
+ * gates per-action so PAT callers can still invoke unrelated actions on a
+ * dispatcher that happens to host device-only actions.
  */
-const DEVICE_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
-  'forge_pm.snapshot',
-  'forge_pm.graph',
-  'forge_pm.runner_load',
-  'forge_pm.dispatch',
-  'forge_pm.set_dependency',
-  'forge_pm.write_decision',
+const DEVICE_REQUIRED: ReadonlyMap<string, ReadonlySet<string> | true> = new Map<
+  string,
+  ReadonlySet<string> | true
+>([
+  [
+    'forge_project_pm',
+    new Set([
+      'snapshot',
+      'graph',
+      'runner_load',
+      'dispatch',
+      'set_dependency',
+      'write_decision',
+    ]),
+  ],
+  // Legacy shims keep the per-tool gate so the deprecation window is
+  // byte-identical to the pre-consolidation behaviour.
+  ['forge_pm.snapshot', true],
+  ['forge_pm.graph', true],
+  ['forge_pm.runner_load', true],
+  ['forge_pm.dispatch', true],
+  ['forge_pm.set_dependency', true],
+  ['forge_pm.write_decision', true],
 ]);
 
 function classifyError(err: unknown): { code: AuditResultCode; message: string } {
@@ -108,13 +140,13 @@ function projectIdFromArgs(args: Record<string, unknown>): string | null {
 }
 
 export function createMcpServer(ctx: McpContext): Server {
-  const { device, principal } = ctx;
+  const { principal } = ctx;
   const tools: McpTool[] = [
     forgeVersionTool,
-    forgeMemorySearchTool(device),
-    forgeSkillsListTool(device),
-    forgeSkillsGetTool(device),
-    forgeSkillsRegisterTool(device),
+    forgeMemorySearchTool(ctx.device),
+    forgeSkillsListTool(ctx.device),
+    forgeSkillsGetTool(ctx.device),
+    forgeSkillsRegisterTool(ctx.device),
     forgeSkillsListRegistrationsTool(ctx),
     forgeMetricsAdminStepDurationsTool(ctx),
     forgeMetricsProjectStepDurationsTool(ctx),
@@ -125,24 +157,29 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeIssuesTool(ctx),
     forgeCommentsTool(ctx),
     forgeConfigTool(ctx),
-    forgeJobsListTool(device),
+    forgeJobsListTool(ctx.device),
     forgeJobsGetTool(ctx),
     forgeJobsEventsTool(ctx),
-    forgeAgentSessionsListTool(device),
+    forgeAgentSessionsListTool(ctx.device),
     forgeAgentSessionsGetTool(ctx),
-    forgePipelineRunsListTool(device),
+    // ISS-145 — consolidated dispatchers first; legacy shims registered
+    // immediately after so `tools/list` order remains stable for callers
+    // that pin to the existing position.
+    forgeProjectPipelineRunsTool(ctx),
+    forgePipelineRunsListTool(ctx),
     forgePipelineRunsGetTool(ctx),
     forgePipelineRunsPauseTool(ctx),
     forgePipelineRunsResumeTool(ctx),
     forgePipelineRunsCancelTool(ctx),
     forgeProjectsListTool(ctx),
-    forgePmSnapshotTool(device),
-    forgePmGraphTool(device),
-    forgePmRunnerLoadTool(device),
-    forgePmDispatchTool(device),
-    forgePmSetDependencyTool(device),
-    forgePmWriteDecisionTool(device),
-    forgeHealthTool(device),
+    forgeProjectPmTool(ctx),
+    forgePmSnapshotTool(ctx),
+    forgePmGraphTool(ctx),
+    forgePmRunnerLoadTool(ctx),
+    forgePmDispatchTool(ctx),
+    forgePmSetDependencyTool(ctx),
+    forgePmWriteDecisionTool(ctx),
+    forgeHealthTool(ctx.device),
   ];
   const toolMap = new Map(tools.map((t) => [t.name, t]));
 
@@ -184,14 +221,20 @@ export function createMcpServer(ctx: McpContext): Server {
       };
     }
 
-    // PAT principals can't run device-only tools. Surface a stable error
-    // code so callers (Cursor/Cline) can present a clear message.
-    if (principal.kind === 'pat' && DEVICE_REQUIRED_TOOLS.has(name)) {
-      writeMcpAudit({ ...auditBase, resultCode: 'forbidden' });
-      return {
-        content: [{ type: 'text', text: 'FORBIDDEN: PM_REQUIRES_DEVICE' }],
-        isError: true,
-      };
+    // PAT principals can't run device-only tools or device-only actions on
+    // a consolidated dispatcher. Surface a stable error code so callers
+    // (Cursor/Cline) can present a clear message.
+    if (principal.kind === 'pat') {
+      const gate = DEVICE_REQUIRED.get(name);
+      const action = typeof args.action === 'string' ? args.action : null;
+      const blocked = gate === true || (gate instanceof Set && action !== null && gate.has(action));
+      if (blocked) {
+        writeMcpAudit({ ...auditBase, resultCode: 'forbidden' });
+        return {
+          content: [{ type: 'text', text: 'FORBIDDEN: PM_REQUIRES_DEVICE' }],
+          isError: true,
+        };
+      }
     }
 
     // PAT projectIds allowlist — enforce before the tool runs so we 404

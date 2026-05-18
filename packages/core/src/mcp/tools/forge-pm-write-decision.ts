@@ -1,14 +1,3 @@
-import { eq } from 'drizzle-orm';
-import { z } from 'zod';
-import { db } from '../../db/client.js';
-import { modelTiers, notifications, pmDecisions, projects } from '../../db/schema.js';
-import { logger } from '../../logger.js';
-import { indexMemory } from '../../memory/indexer.js';
-import { hooks } from '../../pipeline/hooks.js';
-import { type DeviceScopedMcpToolFactory, assertPmActor, zodToMcpSchema } from './lib.js';
-
-const ESCALATION_TITLE_MAX = 255;
-
 /**
  * `forge_pm.write_decision` (Epic 3, ISS-19) — durable record of a PM
  * decision turn. Inserts a `pm_decisions` row, then queues a memory-indexer
@@ -17,9 +6,34 @@ const ESCALATION_TITLE_MAX = 255;
  * `memory/indexer.ts`). The indexer writes a `memories` row keyed on
  * `source='decision'` so future PM turns can semantically recall what was
  * decided and why.
+ *
+ * ISS-145: handler body extracted into `pmWriteDecisionHandler` and
+ * consumed by both the legacy shim factory below and the consolidated
+ * `forge_project_pm` dispatcher.
+ *
+ * TODO ISS-145-followup: remove the legacy shim factory after the
+ * deprecation window closes.
  */
 
-const PM_DECISION_CAUSES = [
+import { eq } from 'drizzle-orm';
+import { z } from 'zod';
+import type { Device } from '../../auth/deviceToken.js';
+import { db } from '../../db/client.js';
+import { modelTiers, notifications, pmDecisions, projects } from '../../db/schema.js';
+import { logger } from '../../logger.js';
+import { indexMemory } from '../../memory/indexer.js';
+import { hooks } from '../../pipeline/hooks.js';
+import { deprecationFor } from '../deprecation.js';
+import {
+  type ContextScopedMcpToolFactory,
+  type McpContext,
+  assertPmActor,
+  zodToMcpSchema,
+} from './lib.js';
+
+const ESCALATION_TITLE_MAX = 255;
+
+export const PM_DECISION_CAUSES = [
   'job-failed',
   'pipeline-stalled',
   'needs-info',
@@ -45,7 +59,7 @@ const escalateSchema = z
   })
   .strict();
 
-const inputSchema = z
+export const pmWriteDecisionInputSchema = z
   .object({
     projectId: z.uuid(),
     sessionId: z.uuid().optional(),
@@ -60,107 +74,117 @@ const inputSchema = z
   })
   .strict();
 
-export const forgePmWriteDecisionTool: DeviceScopedMcpToolFactory = (device) => ({
-  name: 'forge_pm.write_decision',
-  description:
-    'Record a PM decision (cause + summary + actions) and queue it for memory indexing under source=decision. ' +
-    "To escalate alongside the decision, pass an 'escalate' object — top-level 'summary' is the decision summary, " +
-    "'escalate.summary' is the notification title shown to the project owner. Requires PM-actor capability.",
-  inputSchema: zodToMcpSchema(inputSchema),
-  handler: async (args) => {
-    const input = inputSchema.parse(args);
-    await assertPmActor(device, input.projectId);
+export async function pmWriteDecisionHandler(
+  device: Device,
+  input: z.infer<typeof pmWriteDecisionInputSchema>,
+) {
+  await assertPmActor(device, input.projectId);
 
-    const [inserted] = await db
-      .insert(pmDecisions)
-      .values({
-        projectId: input.projectId,
-        sessionId: input.sessionId ?? null,
-        cause: input.cause,
-        eventRef: input.eventRef,
-        summary: input.summary,
-        actions: input.actions,
-        confidence: input.confidence ?? null,
-        modelTier: input.modelTier ?? null,
-        tookMs: input.tookMs ?? null,
-      })
-      .returning({ id: pmDecisions.id });
-    if (!inserted) throw new Error('forge_pm.write_decision: insert returned no row');
+  const [inserted] = await db
+    .insert(pmDecisions)
+    .values({
+      projectId: input.projectId,
+      sessionId: input.sessionId ?? null,
+      cause: input.cause,
+      eventRef: input.eventRef,
+      summary: input.summary,
+      actions: input.actions,
+      confidence: input.confidence ?? null,
+      modelTier: input.modelTier ?? null,
+      tookMs: input.tookMs ?? null,
+    })
+    .returning({ id: pmDecisions.id });
+  if (!inserted) throw new Error('forge_pm.write_decision: insert returned no row');
 
-    const decisionId = inserted.id;
-    const indexText = `${input.summary}\n\n${JSON.stringify(input.actions)}`;
-    queueMicrotask(() => {
-      indexMemory({
-        projectId: input.projectId,
-        source: 'decision',
-        sourceRef: decisionId,
-        text: indexText,
-        metadata: { cause: input.cause },
-      }).catch((err) => {
-        logger.error(
-          { err: (err as Error).message, decisionId, projectId: input.projectId },
-          'forge_pm.write_decision: detached indexer failed',
-        );
-      });
+  const decisionId = inserted.id;
+  const indexText = `${input.summary}\n\n${JSON.stringify(input.actions)}`;
+  queueMicrotask(() => {
+    indexMemory({
+      projectId: input.projectId,
+      source: 'decision',
+      sourceRef: decisionId,
+      text: indexText,
+      metadata: { cause: input.cause },
+    }).catch((err) => {
+      logger.error(
+        { err: (err as Error).message, decisionId, projectId: input.projectId },
+        'forge_pm.write_decision: detached indexer failed',
+      );
+    });
+  });
+
+  // Decision is durable before escalation; notification failure surfaces but does not roll back the decision row.
+  if (input.escalate) {
+    const escalate = input.escalate;
+    const [project] = await db
+      .select({ ownerId: projects.ownerId })
+      .from(projects)
+      .where(eq(projects.id, input.projectId))
+      .limit(1);
+    if (!project) throw new Error('NOT_FOUND: project not found');
+
+    const title =
+      escalate.summary.length > ESCALATION_TITLE_MAX
+        ? escalate.summary.slice(0, ESCALATION_TITLE_MAX)
+        : escalate.summary;
+    const body = JSON.stringify({
+      decisionId,
+      severity: escalate.severity,
+      question: escalate.question,
+      options: escalate.options,
+      expiresAt: escalate.expiresAt,
     });
 
-    // Decision is durable before escalation; notification failure surfaces but does not roll back the decision row.
-    if (input.escalate) {
-      const escalate = input.escalate;
-      const [project] = await db
-        .select({ ownerId: projects.ownerId })
-        .from(projects)
-        .where(eq(projects.id, input.projectId))
-        .limit(1);
-      if (!project) throw new Error('NOT_FOUND: project not found');
-
-      const title =
-        escalate.summary.length > ESCALATION_TITLE_MAX
-          ? escalate.summary.slice(0, ESCALATION_TITLE_MAX)
-          : escalate.summary;
-      const body = JSON.stringify({
-        decisionId,
-        severity: escalate.severity,
-        question: escalate.question,
-        options: escalate.options,
-        expiresAt: escalate.expiresAt,
-      });
-
-      const [insertedNotification] = await db
-        .insert(notifications)
-        .values({
-          userId: project.ownerId,
-          projectId: input.projectId,
-          type: 'pm_escalation',
-          title,
-          body,
-        })
-        .returning({ id: notifications.id });
-      if (!insertedNotification) {
-        throw new Error('forge_pm.write_decision: escalation notification insert returned no row');
-      }
-
-      await hooks.emit('notificationCreated', {
-        notificationId: insertedNotification.id,
+    const [insertedNotification] = await db
+      .insert(notifications)
+      .values({
         userId: project.ownerId,
         projectId: input.projectId,
         type: 'pm_escalation',
         title,
-        issueId: null,
-        agentSessionId: null,
-        decisionId,
-      });
-
-      return {
-        decisionId,
-        indexed: 'queued' as const,
-        escalation: {
-          notificationId: insertedNotification.id,
-          expiresAt: escalate.expiresAt,
-        },
-      };
+        body,
+      })
+      .returning({ id: notifications.id });
+    if (!insertedNotification) {
+      throw new Error('forge_pm.write_decision: escalation notification insert returned no row');
     }
 
-    return { decisionId, indexed: 'queued' as const };
+    await hooks.emit('notificationCreated', {
+      notificationId: insertedNotification.id,
+      userId: project.ownerId,
+      projectId: input.projectId,
+      type: 'pm_escalation',
+      title,
+      issueId: null,
+      agentSessionId: null,
+      decisionId,
+    });
+
+    return {
+      decisionId,
+      indexed: 'queued' as const,
+      escalation: {
+        notificationId: insertedNotification.id,
+        expiresAt: escalate.expiresAt,
+      },
+    };
+  }
+
+  return { decisionId, indexed: 'queued' as const };
+}
+
+function recordDeprecation(ctx: McpContext, toolName: string) {
+  if (deprecationFor(toolName) && ctx.deprecations) ctx.deprecations.add(toolName);
+}
+
+export const forgePmWriteDecisionTool: ContextScopedMcpToolFactory = (ctx) => ({
+  name: 'forge_pm.write_decision',
+  description:
+    "[DEPRECATED — use forge_project_pm (action=write_decision)] Record a PM decision (cause + summary + actions) and queue it for memory indexing under source=decision. To escalate alongside the decision, pass an 'escalate' object — top-level 'summary' is the decision summary, 'escalate.summary' is the notification title shown to the project owner. Requires PM-actor capability.",
+  inputSchema: zodToMcpSchema(pmWriteDecisionInputSchema),
+  handler: async (args) => {
+    recordDeprecation(ctx, 'forge_pm.write_decision');
+    const input = pmWriteDecisionInputSchema.parse(args);
+    return pmWriteDecisionHandler(ctx.device, input);
   },
 });

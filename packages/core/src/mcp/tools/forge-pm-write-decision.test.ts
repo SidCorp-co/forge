@@ -61,6 +61,12 @@ const fakeDevice = {
   createdAt: new Date(),
 };
 
+const ctx = {
+  principal: { kind: 'device' as const, device: fakeDevice },
+  device: fakeDevice,
+  projectSlug: null,
+};
+
 function pushPmActorOk() {
   queue.push([{ ownerId: OWNER_ID }]);
   queue.push([{ capabilities: { pm: true } }]);
@@ -73,7 +79,7 @@ beforeEach(() => {
 
 describe('forge_pm.write_decision', () => {
   it('rejects unknown cause', async () => {
-    const tool = forgePmWriteDecisionTool(fakeDevice);
+    const tool = forgePmWriteDecisionTool(ctx);
     await expect(
       tool.handler({
         projectId: PROJECT_ID,
@@ -84,7 +90,7 @@ describe('forge_pm.write_decision', () => {
   });
 
   it('inserts decision + queues memory indexer', async () => {
-    const tool = forgePmWriteDecisionTool(fakeDevice);
+    const tool = forgePmWriteDecisionTool(ctx);
     pushPmActorOk();
     queue.push([{ id: DECISION_ID }]); // decision insert
 
@@ -111,7 +117,7 @@ describe('forge_pm.write_decision', () => {
   });
 
   it('rejects non-pm-actor', async () => {
-    const tool = forgePmWriteDecisionTool(fakeDevice);
+    const tool = forgePmWriteDecisionTool(ctx);
     queue.push([{ ownerId: OWNER_ID }]);
     queue.push([{ capabilities: {} }]); // pm flag missing
     await expect(
@@ -124,7 +130,7 @@ describe('forge_pm.write_decision', () => {
   });
 
   it('with escalate: inserts notification + emits hook + returns escalation', async () => {
-    const tool = forgePmWriteDecisionTool(fakeDevice);
+    const tool = forgePmWriteDecisionTool(ctx);
     pushPmActorOk();
     queue.push([{ id: DECISION_ID }]); // decision insert
     queue.push([{ ownerId: OWNER_ID }]); // project lookup
@@ -166,7 +172,7 @@ describe('forge_pm.write_decision', () => {
   });
 
   it('with escalate but missing project: throws NOT_FOUND', async () => {
-    const tool = forgePmWriteDecisionTool(fakeDevice);
+    const tool = forgePmWriteDecisionTool(ctx);
     pushPmActorOk();
     queue.push([{ id: DECISION_ID }]); // decision insert
     queue.push([]); // project lookup empty
@@ -189,7 +195,7 @@ describe('forge_pm.write_decision', () => {
   });
 
   it('rejects escalate with empty options', async () => {
-    const tool = forgePmWriteDecisionTool(fakeDevice);
+    const tool = forgePmWriteDecisionTool(ctx);
     await expect(
       tool.handler({
         projectId: PROJECT_ID,
