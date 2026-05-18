@@ -24,6 +24,26 @@ export type IssuePriority = 'critical' | 'high' | 'medium' | 'low' | 'none';
 // (`packages/core/src/db/schema.ts:issueComplexities`).
 export type IssueComplexity = 'xs' | 's' | 'm' | 'l' | 'xl';
 
+export type PipelineWaitingReason =
+  | 'issue_busy'
+  | 'manual_hold'
+  | 'waiting_on_dep'
+  | 'waiting_on_decomp_parent'
+  | 'project_full'
+  | 'runner_full';
+
+export interface PipelineHealth {
+  stage: IssueStatus;
+  activeSession?: { id: string; status: 'queued' | 'running'; skill: string };
+  waitingOn?: {
+    reason: PipelineWaitingReason;
+    since: string;
+    details: Record<string, unknown>;
+  };
+  queuedAt?: string;
+  lastTickAt?: string;
+}
+
 export interface IssueHistoryEntry {
   field: string;
   from: string | null;
@@ -60,6 +80,7 @@ export interface Issue extends BaseEntity {
   relations?: { type: string; targetDocumentId: string; reason?: string; targetId?: number; targetTitle?: string; targetStatus?: string }[];
   complexity?: IssueComplexity | null;
   manualHold?: boolean;
+  pipelineHealth?: PipelineHealth;
 }
 
 export interface IssueAttachment {
