@@ -14,7 +14,7 @@ import { countInFlightForRunner } from '../../jobs/dispatch-gates.js';
 import { runnerCapabilitiesSchema } from '../../runners/types.js';
 import {
   type ContextScopedMcpToolFactory,
-  assertPrincipalIsSystemAdmin,
+  assertPrincipalCanAdmin,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -80,11 +80,11 @@ function parseCapabilitiesOrThrow(input: unknown): Record<string, unknown> {
 export const forgeAdminRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_admin_runners',
   description:
-    "Cross-tenant runner administration. Requires system admin (`users.isCeo=true`). Actions: `list` (optional projectId/status/type filters; returns inFlightCount per runner), `register` (insert with default status=offline), `retire` (sets status=disabled; refuses with RUNNER_BUSY unless force:true), `update_capabilities` (replaces capabilities jsonb after server-side validation).",
+    "Cross-tenant runner administration. Requires system admin (`users.isCeo=true`) AND PAT scope `admin` (device tokens are exempt). Actions: `list` (optional projectId/status/type filters; returns inFlightCount per runner), `register` (insert with default status=offline), `retire` (sets status=disabled; refuses with RUNNER_BUSY unless force:true), `update_capabilities` (replaces capabilities jsonb after server-side validation).",
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    await assertPrincipalIsSystemAdmin(ctx.principal);
+    await assertPrincipalCanAdmin(ctx.principal);
 
     if (input.action === 'list') {
       const filters: SQL[] = [];

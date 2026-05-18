@@ -28,6 +28,7 @@ const OWNER_ID = '11111111-1111-4111-8111-111111111111';
 const NEW_OWNER_ID = '22222222-2222-4222-8222-222222222222';
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
 const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
+const TOKEN_ID = '55555555-5555-4555-8555-555555555555';
 
 const fakeDevice = {
   id: DEVICE_ID,
@@ -47,6 +48,20 @@ const fakeDevice = {
 function buildCtx() {
   return {
     principal: { kind: 'device' as const, device: fakeDevice },
+    device: fakeDevice,
+    projectSlug: null,
+  };
+}
+
+function buildPatCtx(scopes: readonly string[]) {
+  return {
+    principal: {
+      kind: 'pat' as const,
+      userId: OWNER_ID,
+      tokenId: TOKEN_ID,
+      scopes,
+      projectIds: null,
+    },
     device: fakeDevice,
     projectSlug: null,
   };
@@ -271,6 +286,43 @@ describe('forge_admin_projects', () => {
   it('system admin gate rejects project-scoped admin (cross-tenant probe)', async () => {
     mockCeoLookup(false);
     const tool = forgeAdminProjectsTool(buildCtx());
+    await expect(tool.handler({ action: 'list' })).rejects.toThrow(/FORBIDDEN: requires system admin/);
+  });
+
+  it('PAT principal without admin scope is rejected even if isCeo=true', async () => {
+    mockCeoLookup(true);
+    const tool = forgeAdminProjectsTool(buildPatCtx(['read', 'write']));
+    await expect(tool.handler({ action: 'list' })).rejects.toThrow(
+      /FORBIDDEN: requires admin scope on the PAT/,
+    );
+  });
+
+  it('PAT principal with admin scope passes the gate', async () => {
+    mockCeoLookup(true);
+    // count(*)
+    selectImpl.mockImplementationOnce(() => ({
+      from: () => Promise.resolve([{ total: 0 }]),
+    }));
+    // base list
+    selectImpl.mockImplementationOnce(() => ({
+      from: () => ({
+        leftJoin: () => ({
+          orderBy: () => ({
+            limit: () => ({
+              offset: () => Promise.resolve([]),
+            }),
+          }),
+        }),
+      }),
+    }));
+    const tool = forgeAdminProjectsTool(buildPatCtx(['admin']));
+    const res = (await tool.handler({ action: 'list' })) as { projects: unknown[]; total: number };
+    expect(res.total).toBe(0);
+  });
+
+  it('PAT principal with admin scope but isCeo=false still hits system-admin gate first', async () => {
+    mockCeoLookup(false);
+    const tool = forgeAdminProjectsTool(buildPatCtx(['admin']));
     await expect(tool.handler({ action: 'list' })).rejects.toThrow(/FORBIDDEN: requires system admin/);
   });
 });

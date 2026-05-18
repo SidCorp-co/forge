@@ -5,7 +5,7 @@
  * lifetime of the reveal modal.
  */
 
-export type PatScope = 'read' | 'write';
+export type PatScope = 'read' | 'write' | 'admin';
 
 export interface Pat {
   id: string;

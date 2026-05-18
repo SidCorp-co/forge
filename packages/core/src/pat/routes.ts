@@ -38,7 +38,7 @@ import { requireFreshAuth } from '../middleware/require-fresh-auth.js';
 import { userRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 
-const SCOPES = ['read', 'write'] as const;
+const SCOPES = ['read', 'write', 'admin'] as const;
 
 const createBodySchema = z
   .object({

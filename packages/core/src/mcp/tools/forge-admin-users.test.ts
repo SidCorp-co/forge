@@ -46,6 +46,22 @@ function buildCtx() {
   };
 }
 
+const TOKEN_ID = '66666666-6666-4666-8666-666666666666';
+
+function buildPatCtx(scopes: readonly string[]) {
+  return {
+    principal: {
+      kind: 'pat' as const,
+      userId: OWNER_ID,
+      tokenId: TOKEN_ID,
+      scopes,
+      projectIds: null,
+    },
+    device: fakeDevice,
+    projectSlug: null,
+  };
+}
+
 function mockCeoLookup(isCeo: boolean) {
   selectImpl.mockImplementationOnce(() => ({
     from: () => ({
@@ -149,5 +165,13 @@ describe('forge_admin_users', () => {
     mockCeoLookup(false);
     const tool = forgeAdminUsersTool(buildCtx());
     await expect(tool.handler({ action: 'list' })).rejects.toThrow(/FORBIDDEN/);
+  });
+
+  it('PAT principal without admin scope is rejected even if isCeo=true', async () => {
+    mockCeoLookup(true);
+    const tool = forgeAdminUsersTool(buildPatCtx(['read', 'write']));
+    await expect(tool.handler({ action: 'list' })).rejects.toThrow(
+      /FORBIDDEN: requires admin scope on the PAT/,
+    );
   });
 });

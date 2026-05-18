@@ -26,7 +26,12 @@ function expiresLabel(expiresAt: string | null): string {
 export function TokenRow({ token, projects, onRevoke, onOpenAudit }: Props) {
   const [revoking, setRevoking] = useState(false);
 
-  const scopeSummary = token.scopes.includes('write') ? 'read+write' : 'read';
+  const hasAdmin = token.scopes.includes('admin');
+  const scopeSummary = hasAdmin
+    ? 'admin'
+    : token.scopes.includes('write')
+      ? 'read+write'
+      : 'read';
   const projectBadges =
     token.projectIds === null || token.projectIds.length === 0
       ? null
@@ -74,7 +79,14 @@ export function TokenRow({ token, projects, onRevoke, onOpenAudit }: Props) {
         </p>
       </div>
       <div className="col-span-6 md:col-span-2">
-        <span className="inline-flex rounded-sm bg-surface-container-highest px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-primary">
+        <span
+          className={`inline-flex rounded-sm px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest ${
+            hasAdmin
+              ? 'bg-error/15 text-error'
+              : 'bg-surface-container-highest text-primary'
+          }`}
+          title={hasAdmin ? 'Grants cross-tenant admin tools (forge_admin_*)' : undefined}
+        >
           {scopeSummary}
         </span>
       </div>
