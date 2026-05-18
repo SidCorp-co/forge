@@ -72,6 +72,29 @@ beforeEach(() => {
   executeImpl.mockReset();
 });
 
+function collectSqlFragments(sqlArg: unknown): string {
+  const fragments: string[] = [];
+  const visit = (node: unknown): void => {
+    if (typeof node === 'string') {
+      fragments.push(node);
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child);
+      return;
+    }
+    if (node && typeof node === 'object') {
+      const value = (node as { value?: unknown }).value;
+      if (typeof value === 'string') fragments.push(value);
+      else if (Array.isArray(value)) visit(value);
+      const chunks = (node as { queryChunks?: unknown }).queryChunks;
+      if (chunks) visit(chunks);
+    }
+  };
+  visit(sqlArg);
+  return fragments.join(' ');
+}
+
 describe('forge_admin_health', () => {
   it('returns extended health snapshot', async () => {
     mockCeoLookup(true);
@@ -97,12 +120,14 @@ describe('forge_admin_health', () => {
           },
         ]),
     }));
-    // in-flight aggregation
+    // in-flight aggregation: capture the where() predicate so we can assert the
+    // job-status filter is applied (without it, terminal jobs would count).
+    const inFlightWhere = vi.fn(() => ({
+      groupBy: () => Promise.resolve([{ runnerId: RUNNER_ID, n: 3 }]),
+    }));
     selectImpl.mockImplementationOnce(() => ({
       from: () => ({
-        where: () => ({
-          groupBy: () => Promise.resolve([{ runnerId: RUNNER_ID, n: 3 }]),
-        }),
+        where: inFlightWhere,
       }),
     }));
     // projects aggregation
@@ -143,6 +168,14 @@ describe('forge_admin_health', () => {
     expect(res.runners[0].inFlightCount).toBe(3);
     expect(res.projects[0].activeJobCount).toBe(5);
     expect(res.stuckJobs[0].ageSeconds).toBe(1200);
+
+    // The in-flight aggregation must filter jobs by status so that done /
+    // failed / cancelled jobs are excluded from inFlightCount.
+    expect(inFlightWhere).toHaveBeenCalledTimes(1);
+    const wherePredicate = inFlightWhere.mock.calls[0][0];
+    const sqlText = collectSqlFragments(wherePredicate);
+    expect(sqlText).toContain('dispatched');
+    expect(sqlText).toContain('running');
   });
 
   it('honors custom staleJobThresholdSeconds', async () => {

@@ -1,4 +1,4 @@
-import { inArray, sql } from 'drizzle-orm';
+import { and, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import pkg from '../../../package.json' with { type: 'json' };
 import { db } from '../../db/client.js';
@@ -45,9 +45,12 @@ export const forgeAdminHealthTool: ContextScopedMcpToolFactory = (ctx) => ({
         .select({ runnerId: jobs.runnerId, n: sql<number>`count(*)::int` })
         .from(jobs)
         .where(
-          inArray(
-            jobs.runnerId,
-            runnerRows.map((r) => r.id),
+          and(
+            inArray(
+              jobs.runnerId,
+              runnerRows.map((r) => r.id),
+            ),
+            inArray(jobs.status, ['dispatched', 'running']),
           ),
         )
         .groupBy(jobs.runnerId);

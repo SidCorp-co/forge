@@ -48,7 +48,7 @@ export const forgeAdminUsersTool: ContextScopedMcpToolFactory = (ctx) => ({
       })
       .from(users)
       .where(whereClause)
-      .orderBy(users.createdAt)
+      .orderBy(users.createdAt, users.id)
       .limit(limit)
       .offset(offset);
 

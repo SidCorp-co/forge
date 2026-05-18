@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { type SQL, and, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import {
@@ -87,7 +87,7 @@ export const forgeAdminRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
     await assertPrincipalIsSystemAdmin(ctx.principal);
 
     if (input.action === 'list') {
-      const filters = [] as ReturnType<typeof eq>[];
+      const filters: SQL[] = [];
       if (input.projectId) filters.push(eq(runners.projectId, input.projectId));
       if (input.status) filters.push(eq(runners.status, input.status as RunnerStatus));
       if (input.type) filters.push(eq(runners.type, input.type as RunnerType));
