@@ -34,6 +34,7 @@ import {
   projects,
   projectsRelations,
   refreshTokens,
+  tasks,
   users,
 } from './schema.js';
 
@@ -70,7 +71,15 @@ describe('db/schema — users', () => {
   it('has the documented columns', () => {
     const names = getTableConfig(users).columns.map((c) => c.name);
     expect(names.sort()).toEqual(
-      ['created_at', 'email', 'email_verified_at', 'id', 'is_ceo', 'last_fresh_auth_at', 'password_hash'].sort(),
+      [
+        'created_at',
+        'email',
+        'email_verified_at',
+        'id',
+        'is_ceo',
+        'last_fresh_auth_at',
+        'password_hash',
+      ].sort(),
     );
   });
 
@@ -214,9 +223,7 @@ describe('db/schema — projects', () => {
 
   it('default_device_id references devices.id with onDelete set null', () => {
     const cfg = getTableConfig(projects);
-    const fk = cfg.foreignKeys.find(
-      (f) => f.reference().columns[0]?.name === 'default_device_id',
-    );
+    const fk = cfg.foreignKeys.find((f) => f.reference().columns[0]?.name === 'default_device_id');
     if (!fk) throw new Error('expected default_device_id FK');
     const ref = fk.reference();
     expect(ref.foreignColumns[0]?.name).toBe('id');
@@ -1076,9 +1083,9 @@ describe('db/schema — issue_dependencies', () => {
     const uq = cfg.indexes.find((i) => i.config.name === 'issue_dependencies_unique_edge_idx');
     if (!uq) throw new Error('expected unique edge idx');
     expect(uq.config.unique).toBe(true);
-    expect(
-      cfg.indexes.some((i) => i.config.name === 'issue_dependencies_project_from_idx'),
-    ).toBe(true);
+    expect(cfg.indexes.some((i) => i.config.name === 'issue_dependencies_project_from_idx')).toBe(
+      true,
+    );
     expect(cfg.indexes.some((i) => i.config.name === 'issue_dependencies_project_to_idx')).toBe(
       true,
     );
@@ -1238,5 +1245,25 @@ describe('db/schema — pm_policies', () => {
       cfg.indexes.some((i) => i.config.name === 'pm_policies_project_enabled_priority_idx'),
     ).toBe(true);
     expect(cfg.indexes.some((i) => i.config.name === 'pm_policies_embedding_hnsw_idx')).toBe(true);
+  });
+});
+
+describe('tasks table (ISS-146 cascade verification)', () => {
+  it('issue_id references issues.id with onDelete cascade so tasks are cleaned up atomically', () => {
+    const cfg = getTableConfig(tasks);
+    const issueFk = cfg.foreignKeys.find((fk) =>
+      fk.reference().columns.some((c) => c.name === 'issue_id'),
+    );
+    if (!issueFk) throw new Error('issue_id FK not found on tasks');
+    expect(issueFk.onDelete).toBe('cascade');
+  });
+
+  it('project_id references projects.id with onDelete cascade', () => {
+    const cfg = getTableConfig(tasks);
+    const projectFk = cfg.foreignKeys.find((fk) =>
+      fk.reference().columns.some((c) => c.name === 'project_id'),
+    );
+    if (!projectFk) throw new Error('project_id FK not found on tasks');
+    expect(projectFk.onDelete).toBe('cascade');
   });
 });

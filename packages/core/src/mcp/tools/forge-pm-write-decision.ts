@@ -1,13 +1,13 @@
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
-import { modelTiers, pmDecisions } from '../../db/schema.js';
+import { modelTiers, notifications, pmDecisions, projects } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { indexMemory } from '../../memory/indexer.js';
-import {
-  type DeviceScopedMcpToolFactory,
-  assertPmActor,
-  zodToMcpSchema,
-} from './lib.js';
+import { hooks } from '../../pipeline/hooks.js';
+import { type DeviceScopedMcpToolFactory, assertPmActor, zodToMcpSchema } from './lib.js';
+
+const ESCALATION_TITLE_MAX = 255;
 
 /**
  * `forge_pm.write_decision` (Epic 3, ISS-19) — durable record of a PM
@@ -32,6 +32,19 @@ const PM_DECISION_CAUSES = [
   'pm-failure',
 ] as const;
 
+const escalateSchema = z
+  .object({
+    severity: z.enum(['low', 'medium', 'high', 'critical']),
+    summary: z.string().min(1).max(2000),
+    question: z.string().min(1).max(2000),
+    options: z
+      .array(z.object({ id: z.string().min(1).max(64), label: z.string().min(1).max(255) }))
+      .min(1)
+      .max(8),
+    expiresAt: z.iso.datetime(),
+  })
+  .strict();
+
 const inputSchema = z
   .object({
     projectId: z.uuid(),
@@ -43,13 +56,16 @@ const inputSchema = z
     confidence: z.number().min(0).max(1).optional(),
     modelTier: z.enum(modelTiers).optional(),
     tookMs: z.number().int().min(0).optional(),
+    escalate: escalateSchema.optional(),
   })
   .strict();
 
 export const forgePmWriteDecisionTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_pm.write_decision',
   description:
-    'Record a PM decision (cause + summary + actions) and queue it for memory indexing under source=decision. Requires PM-actor capability.',
+    'Record a PM decision (cause + summary + actions) and queue it for memory indexing under source=decision. ' +
+    "To escalate alongside the decision, pass an 'escalate' object — top-level 'summary' is the decision summary, " +
+    "'escalate.summary' is the notification title shown to the project owner. Requires PM-actor capability.",
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -87,6 +103,63 @@ export const forgePmWriteDecisionTool: DeviceScopedMcpToolFactory = (device) => 
         );
       });
     });
+
+    // Decision is durable before escalation; notification failure surfaces but does not roll back the decision row.
+    if (input.escalate) {
+      const escalate = input.escalate;
+      const [project] = await db
+        .select({ ownerId: projects.ownerId })
+        .from(projects)
+        .where(eq(projects.id, input.projectId))
+        .limit(1);
+      if (!project) throw new Error('NOT_FOUND: project not found');
+
+      const title =
+        escalate.summary.length > ESCALATION_TITLE_MAX
+          ? escalate.summary.slice(0, ESCALATION_TITLE_MAX)
+          : escalate.summary;
+      const body = JSON.stringify({
+        decisionId,
+        severity: escalate.severity,
+        question: escalate.question,
+        options: escalate.options,
+        expiresAt: escalate.expiresAt,
+      });
+
+      const [insertedNotification] = await db
+        .insert(notifications)
+        .values({
+          userId: project.ownerId,
+          projectId: input.projectId,
+          type: 'pm_escalation',
+          title,
+          body,
+        })
+        .returning({ id: notifications.id });
+      if (!insertedNotification) {
+        throw new Error('forge_pm.write_decision: escalation notification insert returned no row');
+      }
+
+      await hooks.emit('notificationCreated', {
+        notificationId: insertedNotification.id,
+        userId: project.ownerId,
+        projectId: input.projectId,
+        type: 'pm_escalation',
+        title,
+        issueId: null,
+        agentSessionId: null,
+        decisionId,
+      });
+
+      return {
+        decisionId,
+        indexed: 'queued' as const,
+        escalation: {
+          notificationId: insertedNotification.id,
+          expiresAt: escalate.expiresAt,
+        },
+      };
+    }
 
     return { decisionId, indexed: 'queued' as const };
   },

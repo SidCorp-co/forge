@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, ilike, lt, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, ilike, lt, ne, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import {
@@ -7,15 +7,17 @@ import {
   issuePriorities,
   issueStatuses,
   issues,
+  taskStatuses,
+  tasks,
 } from '../../db/schema.js';
 import { applyStatusTransition } from '../../issues/apply-transition.js';
-import { dispatchTickForProject } from '../../jobs/dispatch-tick.js';
 import {
   AttachmentError,
   type DecodedAttachment,
   decodeAndValidateAttachments,
   persistDecodedIssueAttachments,
 } from '../../issues/attachment-service.js';
+import { dispatchTickForProject } from '../../jobs/dispatch-tick.js';
 import { recordActivityTx } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
 import {
@@ -43,6 +45,11 @@ const filtersSchema = z
     createdAfter: z.string().optional(),
     createdBefore: z.string().optional(),
     updatedAfter: z.string().optional(),
+    // listTasks: filter tasks by parent issue UUID + optional task status.
+    // `taskStatus` is named separately from the issue-level `status` so a
+    // listTasks call cannot accidentally match against issue.status.
+    issue: z.uuid().optional(),
+    taskStatus: z.enum(taskStatuses).optional(),
   })
   .strict()
   .optional();
@@ -77,10 +84,9 @@ const dataSchema = z
       .record(z.string(), z.unknown())
       .nullable()
       .optional()
-      .refine(
-        (v) => v == null || JSON.stringify(v).length <= 200_000,
-        { message: 'sessionContext serialised size exceeds 200000 bytes' },
-      ),
+      .refine((v) => v == null || JSON.stringify(v).length <= 200_000, {
+        message: 'sessionContext serialised size exceeds 200000 bytes',
+      }),
     // ISS-59 — AI enrichment fields. Skill pipeline (forge-clarify /
     // forge-plan) writes these via this tool; REST PATCH does not accept
     // them (read-only from clients).
@@ -88,18 +94,38 @@ const dataSchema = z
     aiSuggestedSolution: z.string().max(100_000).nullable().optional(),
     aiAcceptanceCriteria: z.array(z.string().max(2_000)).max(50).nullable().optional(),
     aiConfidence: z.number().min(0).max(1).nullable().optional(),
+    // Task fields — only consumed by the createTask/updateTask actions. Kept
+    // on the same `data` block to avoid splitting the input schema for what
+    // is conceptually one tool.
+    issueId: z.uuid().optional(),
+    taskTitle: z.string().trim().min(1).max(500).optional(),
+    taskDescription: z.string().max(50_000).nullable().optional(),
+    taskStatus: z.enum(taskStatuses).optional(),
+    taskPriority: z.enum(issuePriorities).optional(),
+    isAgentTask: z.boolean().optional(),
+    taskAcceptanceCriteria: z.array(z.string()).nullable().optional(),
   })
   .strict()
   .optional();
 
 const inputSchema = z
   .object({
-    action: z.enum(['list', 'get', 'create', 'update', 'transition']),
+    action: z.enum([
+      'list',
+      'get',
+      'create',
+      'update',
+      'transition',
+      'createTask',
+      'listTasks',
+      'updateTask',
+      'deleteTask',
+    ]),
     projectId: z.uuid().optional(),
     documentId: z.uuid().optional(),
     filters: filtersSchema,
     data: dataSchema,
-    limit: z.number().int().min(1).max(200).optional(),
+    limit: z.number().int().min(1).max(500).optional(),
   })
   .strict();
 
@@ -168,6 +194,56 @@ async function loadIssue(documentId: string): Promise<IssueRow> {
   return row as IssueRow;
 }
 
+type TaskRow = {
+  id: string;
+  issueId: string;
+  projectId: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  assigneeId: string | null;
+  isAgentTask: boolean;
+  agentStatus: string | null;
+  acceptanceCriteria: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+function serializeTask(row: TaskRow): Record<string, unknown> {
+  return {
+    documentId: row.id,
+    issueId: row.issueId,
+    projectId: row.projectId,
+    title: row.title,
+    description: row.description,
+    status: row.status,
+    priority: row.priority,
+    assigneeId: row.assigneeId,
+    isAgentTask: row.isAgentTask,
+    agentStatus: row.agentStatus,
+    acceptanceCriteria: row.acceptanceCriteria,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+async function loadIssueProjectId(issueId: string): Promise<string> {
+  const [row] = await db
+    .select({ projectId: issues.projectId })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  if (!row) throw new Error('NOT_FOUND: issue not found');
+  return row.projectId;
+}
+
+async function loadTaskForAccess(taskId: string): Promise<TaskRow> {
+  const [row] = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+  if (!row) throw new Error('NOT_FOUND: task not found');
+  return row as TaskRow;
+}
+
 async function resolveProjectId(input: Input, projectSlug: string | null): Promise<string> {
   if (input.projectId) return input.projectId;
   return resolveProjectIdFromSlug(projectSlug);
@@ -184,7 +260,8 @@ function parseDate(value: string, field: string): Date {
 export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_issues',
   description:
-    'CRUD for project issues. Actions: list, get, create, update, transition. ' +
+    'CRUD for project issues. Actions: list, get, create, update, transition, ' +
+    'createTask, listTasks, updateTask, deleteTask. ' +
     'Project scope is derived from the X-Forge-Project-Slug header (or an ' +
     'explicit projectId). Status changes route through the issue state machine. ' +
     'Avoid setting manualHold:true at create time — combine with confirmed ' +
@@ -192,7 +269,11 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'issue settles, or use status:on_hold for a deliberate pause. ' +
     'Create also accepts data.attachments[] (base64-inline files; up to 10 entries, ' +
     'total size ≤ UPLOADS_MAX_BYTES). On partial-failure the response includes both ' +
-    '`attachments` (succeeded) and `attachmentErrors` (failed entries with code/message).',
+    '`attachments` (succeeded) and `attachmentErrors` (failed entries with code/message). ' +
+    'Task sub-actions: createTask requires data.issueId + data.taskTitle; listTasks ' +
+    'requires filters.issue and accepts filters.taskStatus; updateTask/deleteTask ' +
+    'use documentId as the task UUID. Tasks inherit project membership from the ' +
+    'parent issue.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -352,10 +433,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         // gating still works (DB read is canonical) but other clients miss
         // the toggle on the timeline + real-time UI.
         let manualHoldChange: { before: boolean; after: boolean } | null = null;
-        if (
-          input.data.manualHold !== undefined &&
-          input.data.manualHold !== issue.manualHold
-        ) {
+        if (input.data.manualHold !== undefined && input.data.manualHold !== issue.manualHold) {
           manualHoldChange = { before: issue.manualHold, after: input.data.manualHold };
           updates.manualHold = input.data.manualHold;
         }
@@ -433,8 +511,87 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         const fresh = await loadIssue(issue.id);
         return serialize(fresh);
       }
+
+      case 'listTasks': {
+        const issueId = input.filters?.issue;
+        if (!issueId) throw new Error('BAD_REQUEST: filters.issue required for listTasks');
+        const projectId = await loadIssueProjectId(issueId);
+        await assertPrincipalIsMember(principal, projectId);
+
+        const where = input.filters?.taskStatus
+          ? and(eq(tasks.issueId, issueId), eq(tasks.status, input.filters.taskStatus))
+          : eq(tasks.issueId, issueId);
+
+        const rows = await db
+          .select()
+          .from(tasks)
+          .where(where)
+          .orderBy(asc(tasks.createdAt))
+          .limit(input.limit ?? 100);
+
+        return { tasks: (rows as TaskRow[]).map(serializeTask) };
+      }
+
+      case 'createTask': {
+        const data = input.data;
+        if (!data?.issueId) throw new Error('BAD_REQUEST: data.issueId required for createTask');
+        if (!data.taskTitle) throw new Error('BAD_REQUEST: data.taskTitle required for createTask');
+        const projectId = await loadIssueProjectId(data.issueId);
+        await assertPrincipalIsMember(principal, projectId);
+
+        const [created] = await db
+          .insert(tasks)
+          .values({
+            issueId: data.issueId,
+            projectId,
+            title: data.taskTitle,
+            description: data.taskDescription ?? null,
+            status: data.taskStatus ?? 'backlog',
+            priority: data.taskPriority ?? 'none',
+            isAgentTask: data.isAgentTask ?? false,
+            acceptanceCriteria: data.taskAcceptanceCriteria ?? null,
+          })
+          .returning();
+
+        return { task: serializeTask(created as TaskRow) };
+      }
+
+      case 'updateTask': {
+        if (!input.documentId) {
+          throw new Error('BAD_REQUEST: documentId required for updateTask');
+        }
+        const row = await loadTaskForAccess(input.documentId);
+        await assertPrincipalIsMember(principal, row.projectId);
+
+        const data = input.data ?? {};
+        const updates: Record<string, unknown> = { updatedAt: new Date() };
+        if (data.taskTitle !== undefined) updates.title = data.taskTitle;
+        if (data.taskDescription !== undefined) updates.description = data.taskDescription;
+        if (data.taskStatus !== undefined) updates.status = data.taskStatus;
+        if (data.taskPriority !== undefined) updates.priority = data.taskPriority;
+        if (data.isAgentTask !== undefined) updates.isAgentTask = data.isAgentTask;
+        if (data.taskAcceptanceCriteria !== undefined) {
+          updates.acceptanceCriteria = data.taskAcceptanceCriteria;
+        }
+
+        const [updated] = await db
+          .update(tasks)
+          .set(updates)
+          .where(eq(tasks.id, input.documentId))
+          .returning();
+
+        return { task: serializeTask(updated as TaskRow) };
+      }
+
+      case 'deleteTask': {
+        if (!input.documentId) {
+          throw new Error('BAD_REQUEST: documentId required for deleteTask');
+        }
+        const row = await loadTaskForAccess(input.documentId);
+        await assertPrincipalIsMember(principal, row.projectId);
+        await db.delete(tasks).where(eq(tasks.id, input.documentId));
+        return { deleted: true, documentId: input.documentId };
+      }
     }
   },
 });
-
-

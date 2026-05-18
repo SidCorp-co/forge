@@ -1,11 +1,21 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { type AuditResultCode, digestArgs, writeMcpAudit } from '../auth/mcp-audit.js';
 import pkg from '../../package.json' with { type: 'json' };
+import { type AuditResultCode, digestArgs, writeMcpAudit } from '../auth/mcp-audit.js';
 import {
   forgeAgentSessionsGetTool,
   forgeAgentSessionsListTool,
 } from './tools/forge-agent-sessions.js';
+import { forgeCommentsTool } from './tools/forge-comments.js';
+import { forgeConfigTool } from './tools/forge-config.js';
+import { forgeHealthTool } from './tools/forge-health.js';
+import { forgeIssuesTool } from './tools/forge-issues.js';
+import { forgeJobsEventsTool, forgeJobsGetTool, forgeJobsListTool } from './tools/forge-jobs.js';
+import { forgeMemorySearchTool } from './tools/forge-memory.js';
+import {
+  forgeMetricsAdminStepDurationsTool,
+  forgeMetricsProjectStepDurationsTool,
+} from './tools/forge-metrics.js';
 import {
   forgePipelineRunsCancelTool,
   forgePipelineRunsGetTool,
@@ -13,23 +23,7 @@ import {
   forgePipelineRunsPauseTool,
   forgePipelineRunsResumeTool,
 } from './tools/forge-pipeline-runs.js';
-import { forgeCommentsTool } from './tools/forge-comments.js';
-import { forgeConfigTool } from './tools/forge-config.js';
-import { forgeHealthTool } from './tools/forge-health.js';
-import { forgeIssuesTool } from './tools/forge-issues.js';
-import {
-  forgeJobsEventsTool,
-  forgeJobsGetTool,
-  forgeJobsListTool,
-} from './tools/forge-jobs.js';
-import { forgeMemorySearchTool } from './tools/forge-memory.js';
-import {
-  forgeMetricsAdminStepDurationsTool,
-  forgeMetricsProjectStepDurationsTool,
-} from './tools/forge-metrics.js';
 import { forgePmDispatchTool } from './tools/forge-pm-dispatch.js';
-import { forgePmEscalateTool } from './tools/forge-pm-escalate.js';
-import { forgePmFlagBlockerTool } from './tools/forge-pm-flag-blocker.js';
 import { forgePmGraphTool } from './tools/forge-pm-graph.js';
 import { forgePmRunnerLoadTool } from './tools/forge-pm-runner-load.js';
 import { forgePmSetDependencyTool } from './tools/forge-pm-set-dependency.js';
@@ -42,7 +36,6 @@ import {
   forgeSkillsListTool,
   forgeSkillsRegisterTool,
 } from './tools/forge-skills.js';
-import { forgeTasksTool } from './tools/forge-tasks.js';
 import { type McpTool, forgeVersionTool } from './tools/forge-version.js';
 import type { McpContext } from './tools/lib.js';
 
@@ -55,9 +48,10 @@ import type { McpContext } from './tools/lib.js';
  *  - `forge_version` — no context needed (uptime/version).
  *  - `forge_memory.search` — wraps `runMemorySearch` (ISS-198).
  *  - `forge_skills.list` / `.get` / `.register` — wrap ISS-196 REST logic.
- *  - `forge_issues` / `forge_comments` / `forge_config` / `forge_tasks` —
- *    action-based parity with the legacy Strapi MCP so existing `/forge-*`
- *    skills work unchanged (ISS-293).
+ *  - `forge_issues` / `forge_comments` / `forge_config` — action-based parity
+ *    with the legacy Strapi MCP so existing `/forge-*` skills work unchanged
+ *    (ISS-293). Task CRUD lives on `forge_issues` as actions `createTask` /
+ *    `listTasks` / `updateTask` / `deleteTask` (ISS-146).
  *  - `forge_jobs.list` / `.get` / `.events` — read-only diagnostic surfaces
  *    over jobs + job_events (ISS-7).
  *  - `forge_agent_sessions.list` / `.get` — read-only access to
@@ -82,8 +76,6 @@ const DEVICE_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   'forge_pm.runner_load',
   'forge_pm.dispatch',
   'forge_pm.set_dependency',
-  'forge_pm.flag_blocker',
-  'forge_pm.escalate',
   'forge_pm.write_decision',
 ]);
 
@@ -125,7 +117,6 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeIssuesTool(ctx),
     forgeCommentsTool(ctx),
     forgeConfigTool(ctx),
-    forgeTasksTool(ctx),
     forgeJobsListTool(device),
     forgeJobsGetTool(ctx),
     forgeJobsEventsTool(ctx),
@@ -142,8 +133,6 @@ export function createMcpServer(ctx: McpContext): Server {
     forgePmRunnerLoadTool(device),
     forgePmDispatchTool(device),
     forgePmSetDependencyTool(device),
-    forgePmFlagBlockerTool(device),
-    forgePmEscalateTool(device),
     forgePmWriteDecisionTool(device),
     forgeHealthTool(device),
   ];
