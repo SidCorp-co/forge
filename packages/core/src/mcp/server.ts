@@ -2,6 +2,10 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import pkg from '../../package.json' with { type: 'json' };
 import { type AuditResultCode, digestArgs, writeMcpAudit } from '../auth/mcp-audit.js';
+import { forgeAdminHealthTool } from './tools/forge-admin-health.js';
+import { forgeAdminProjectsTool } from './tools/forge-admin-projects.js';
+import { forgeAdminRunnersTool } from './tools/forge-admin-runners.js';
+import { forgeAdminUsersTool } from './tools/forge-admin-users.js';
 import {
   forgeAgentSessionsGetTool,
   forgeAgentSessionsListTool,
@@ -114,6 +118,10 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeSkillsListRegistrationsTool(ctx),
     forgeMetricsAdminStepDurationsTool(ctx),
     forgeMetricsProjectStepDurationsTool(ctx),
+    forgeAdminProjectsTool(ctx),
+    forgeAdminRunnersTool(ctx),
+    forgeAdminUsersTool(ctx),
+    forgeAdminHealthTool(ctx),
     forgeIssuesTool(ctx),
     forgeCommentsTool(ctx),
     forgeConfigTool(ctx),
