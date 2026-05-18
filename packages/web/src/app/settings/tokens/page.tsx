@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, KeyRound, LogIn, Plus, RefreshCw, ShieldAlert } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSetPageTitle } from '@/hooks/use-page-title';
@@ -25,12 +26,17 @@ const REAUTH_ERROR_MESSAGES: Record<string, string> = {
 
 type ReauthBanner = { kind: 'ok' } | { kind: 'error'; message: string } | null;
 
+const REAUTH_INTENT_STORAGE_KEY = 'forge:reauth-intent';
+
 function ReauthQueryReader({
   onChange,
+  onResumeIntent,
 }: {
   onChange: (next: ReauthBanner) => void;
+  onResumeIntent: () => void;
 }) {
   const router = useRouter();
+  const qc = useQueryClient();
   const searchParams = useSearchParams();
   const reauthFlag = searchParams.get('reauth');
   const reauthErrorCode = searchParams.get('reauth_error');
@@ -38,6 +44,25 @@ function ReauthQueryReader({
   useEffect(() => {
     if (reauthFlag === 'ok') {
       onChange({ kind: 'ok' });
+      // Refetch `me` so the freshly-stamped `lastFreshAuthAt` reaches the
+      // client; otherwise `useRequireFreshAuth` would still see the stale
+      // null and re-open the modal.
+      qc.invalidateQueries({ queryKey: ['me', 'profile'] });
+      const intent = (() => {
+        try {
+          return sessionStorage.getItem(REAUTH_INTENT_STORAGE_KEY);
+        } catch {
+          return null;
+        }
+      })();
+      if (intent === '/settings/tokens') {
+        try {
+          sessionStorage.removeItem(REAUTH_INTENT_STORAGE_KEY);
+        } catch {
+          // ignore
+        }
+        onResumeIntent();
+      }
       router.replace('/settings/tokens');
       const t = setTimeout(() => onChange(null), 6000);
       return () => clearTimeout(t);
@@ -93,7 +118,10 @@ export default function TokensPage() {
   return (
     <>
       <Suspense fallback={null}>
-        <ReauthQueryReader onChange={setReauthBanner} />
+        <ReauthQueryReader
+          onChange={setReauthBanner}
+          onResumeIntent={() => setCreateOpen(true)}
+        />
       </Suspense>
       <div className="h-full overflow-y-auto bg-background">
         <div className="mx-auto max-w-5xl p-6 md:p-12">

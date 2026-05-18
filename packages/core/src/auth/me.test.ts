@@ -72,6 +72,7 @@ describe('GET /api/auth/me', () => {
         emailVerifiedAt: null,
         isCeo: false,
         createdAt: new Date('2026-01-01T00:00:00Z'),
+        lastFreshAuthAt: null,
         passwordHash: '$argon2id$hash',
       },
     ]);
@@ -85,7 +86,32 @@ describe('GET /api/auth/me', () => {
     expect(body.email).toBe('u@example.com');
     expect(body.hasPassword).toBe(true);
     expect(body.oauthProviders).toEqual([]);
+    expect(body.lastFreshAuthAt).toBeNull();
     expect(body.passwordHash).toBeUndefined();
+  });
+
+  it('returns lastFreshAuthAt as ISO string when stamped', async () => {
+    const userId = '00000000-0000-0000-0000-000000000055';
+    const token = await signUserToken(userId);
+    const stamp = new Date('2026-05-18T00:00:00Z');
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: userId,
+        email: 'fresh@example.com',
+        emailVerifiedAt: null,
+        isCeo: false,
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        lastFreshAuthAt: stamp,
+        passwordHash: null,
+      },
+    ]);
+
+    const res = await buildApp().request('/api/auth/me', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.lastFreshAuthAt).toBe(stamp.toISOString());
   });
 
   it('flags SSO-only users with hasPassword=false + linked oauthProviders', async () => {
@@ -98,6 +124,7 @@ describe('GET /api/auth/me', () => {
         emailVerifiedAt: new Date('2026-04-01T00:00:00Z'),
         isCeo: false,
         createdAt: new Date('2026-04-01T00:00:00Z'),
+        lastFreshAuthAt: null,
         passwordHash: null,
       },
     ]);

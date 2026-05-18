@@ -6,6 +6,7 @@ export interface MeProfile {
   createdAt: string;
   hasPassword: boolean;
   oauthProviders: string[];
+  lastFreshAuthAt: string | null;
 }
 
 export type Theme = 'system' | 'light' | 'dark';
