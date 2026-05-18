@@ -37,6 +37,12 @@ interface PendingPromise {
   reject: (err: Error) => void;
 }
 
+// Server window is 5 minutes (`requireFreshAuth(5)`); the 60s cushion absorbs
+// clock skew and request latency so we never speculatively skip the modal
+// when the server is about to reject.
+const CLIENT_FRESH_WINDOW_MS = 4 * 60_000;
+const REAUTH_INTENT_STORAGE_KEY = 'forge:reauth-intent';
+
 export interface UseRequireFreshAuth {
   /** Open the modal; resolves on successful reauth, rejects on cancel. */
   require: () => Promise<void>;
@@ -97,6 +103,16 @@ export function useRequireFreshAuth(): UseRequireFreshAuth {
       // is the only realistic way to reach this branch.
       const hasPassword = profile?.hasPassword ?? true;
       const linkedProviders = profile?.oauthProviders ?? [];
+
+      // Server already considers this session fresh — skip the modal. Pairs
+      // with the `['me','profile']` invalidation on `?reauth=ok` so the
+      // stamp is up-to-date right after the OAuth bounce.
+      const stampRaw = profile?.lastFreshAuthAt;
+      const stamp = stampRaw ? Date.parse(stampRaw) : NaN;
+      if (Number.isFinite(stamp) && Date.now() - stamp < CLIENT_FRESH_WINDOW_MS) {
+        resolve();
+        return;
+      }
 
       if (hasPassword) {
         pendingPromise.current = { resolve, reject };
@@ -162,6 +178,13 @@ export function useRequireFreshAuth(): UseRequireFreshAuth {
     // again from a fresh page load.
     setPending(true);
     const returnPath = window.location.pathname + window.location.search;
+    // Breadcrumb so the destination page can auto-resume the intent
+    // (e.g. re-open the create-token modal) after the OAuth bounce.
+    try {
+      sessionStorage.setItem(REAUTH_INTENT_STORAGE_KEY, window.location.pathname);
+    } catch {
+      // Private-mode browsers can throw — non-fatal.
+    }
     window.location.assign(oauthReauthUrl(providerId, returnPath));
   }, []);
 
