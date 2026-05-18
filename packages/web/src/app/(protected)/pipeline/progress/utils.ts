@@ -65,7 +65,10 @@ export function getStageKey(status: IssueStatus, stages: PipelineStage[]): strin
 
 export function isBottlenecked(issue: Issue, stages: PipelineStage[]): boolean {
   const stageKey = getStageKey(issue.status, stages);
-  if (!stageKey || stageKey === 'done') return false;
+  if (!stageKey) return false;
+  // `done` aggregates terminal closed issues — never bottleneck. `released`
+  // is its own stage with a short threshold so we surface stuck releases.
+  if (stageKey === 'done') return false;
   const thresholdHours = BOTTLENECK_THRESHOLDS[stageKey];
   if (thresholdHours == null) return false;
   const ms = getTimeInCurrentStage(issue);

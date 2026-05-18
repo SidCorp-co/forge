@@ -299,6 +299,7 @@ export function IssuesView() {
             <AgentQueueBadge
               session={pickActiveSession(issue.agentSessions)}
               agentStatus={issue.agentStatus}
+              pipelineHealth={issue.pipelineHealth}
               className="mt-0.5"
             />
           </span>

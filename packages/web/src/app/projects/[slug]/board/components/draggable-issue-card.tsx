@@ -52,6 +52,7 @@ export function DraggableIssueCard({
           <AgentQueueBadge
             session={pickActiveSession(issue.agentSessions)}
             agentStatus={issue.agentStatus}
+            pipelineHealth={issue.pipelineHealth}
           />
         )}
       </div>

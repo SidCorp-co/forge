@@ -39,6 +39,13 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
       }
       return;
     }
+    case 'issue.pipelineHealth.changed': {
+      qc.invalidateQueries({ queryKey: ['issues', 'list'] });
+      if (data?.issueId) {
+        qc.invalidateQueries({ queryKey: ['issue', data.issueId] });
+      }
+      return;
+    }
     case 'comment.created':
     case 'comment.updated':
     case 'comment.deleted': {
