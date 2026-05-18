@@ -8,7 +8,19 @@ vi.mock('../config/env.js', () => ({
 }));
 
 const selectLimit = vi.fn();
-const selectWhere = vi.fn(() => ({ limit: selectLimit }));
+// /me selects users (.limit()) AND oauth_accounts (no .limit()) — so .where()
+// itself must be awaitable. Tests that don't care about the oauth read get an
+// empty array by default; tests that do can override via .mockResolvedValueOnce.
+const oauthWhereResult = vi.fn().mockResolvedValue([]);
+function whereChain() {
+  const promise: PromiseLike<unknown> = {
+    then(onFulfilled, onRejected) {
+      return oauthWhereResult().then(onFulfilled, onRejected);
+    },
+  };
+  return Object.assign(promise, { limit: selectLimit });
+}
+const selectWhere = vi.fn(() => whereChain());
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 
 const insertReturning = vi.fn();
@@ -40,6 +52,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   selectLimit.mockReset();
   insertReturning.mockReset();
+  oauthWhereResult.mockReset();
+  oauthWhereResult.mockResolvedValue([]);
 });
 
 describe('GET /api/auth/me', () => {
@@ -56,7 +70,9 @@ describe('GET /api/auth/me', () => {
         id: userId,
         email: 'u@example.com',
         emailVerifiedAt: null,
+        isCeo: false,
         createdAt: new Date('2026-01-01T00:00:00Z'),
+        passwordHash: '$argon2id$hash',
       },
     ]);
 
@@ -67,6 +83,37 @@ describe('GET /api/auth/me', () => {
     const body = await res.json();
     expect(body.id).toBe(userId);
     expect(body.email).toBe('u@example.com');
+    expect(body.hasPassword).toBe(true);
+    expect(body.oauthProviders).toEqual([]);
+    expect(body.passwordHash).toBeUndefined();
+  });
+
+  it('flags SSO-only users with hasPassword=false + linked oauthProviders', async () => {
+    const userId = '00000000-0000-0000-0000-000000000044';
+    const token = await signUserToken(userId);
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: userId,
+        email: 'sso@example.com',
+        emailVerifiedAt: new Date('2026-04-01T00:00:00Z'),
+        isCeo: false,
+        createdAt: new Date('2026-04-01T00:00:00Z'),
+        passwordHash: null,
+      },
+    ]);
+    oauthWhereResult.mockResolvedValueOnce([
+      { provider: 'google' },
+      { provider: 'google' },
+      { provider: 'github' },
+    ]);
+
+    const res = await buildApp().request('/api/auth/me', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.hasPassword).toBe(false);
+    expect(body.oauthProviders.sort()).toEqual(['github', 'google']);
   });
 
   it('returns 401 when the token resolves to no user', async () => {
