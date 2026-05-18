@@ -23,10 +23,70 @@
     "api": "Hono routes mounted under /api/<plural> in packages/core. Bearer token auth. WebSocket at /ws for real-time.",
     "state": "React Query for server state (web/dev). Zustand for client state (dev). Drizzle + DB triggers / route hooks for cascading updates in core."
   },
+  "branchStrategy": {
+    "summary": "Two-layer branch resolution. Each issue's effective {baseBranch, targetBranch, prodBranch} is computed field-by-field: issue override → project default → literal 'main'. See CLAUDE.md § Branching strategy for the prose version.",
+    "resolutionOrder": [
+      "issue.metadata.branchConfig.<field> (per-issue override, nullable)",
+      "projects.baseBranch / projects.productionBranch (project default)",
+      "'main' (hard default)"
+    ],
+    "targetBranchFallback": "targetBranch has no dedicated project column; if neither layer sets it, it falls through to the resolved baseBranch.",
+    "resolver": "packages/core/src/branches/resolve.ts → resolveIssueBranches(issue, project) returns { baseBranch, targetBranch, prodBranch }.",
+    "webMirror": "packages/web/src/features/issue/hooks/use-resolved-branch-config.ts (same logic, runs against React Query state).",
+    "skillsContract": "Pipeline skills (forge-plan, forge-code, forge-release, forge-fix) MUST resolve via forge_config get { issueId } and use $BASE — never hardcode 'main'.",
+    "projectDefault": {
+      "ui": "Project → Settings → Repository section.",
+      "source": "packages/web/src/app/projects/[slug]/settings/components/repo-section.tsx",
+      "columns": ["projects.baseBranch", "projects.productionBranch"],
+      "effect": "Changing the project default affects FUTURE issues. In-flight issues keep their resolved value until they get a per-issue override."
+    },
+    "issueOverride": {
+      "ui": "Issue detail page → aside → 'Branch config' card → toggle 'Override project branch config'.",
+      "source": "packages/web/src/components/issue/aside/branch-config-card.tsx",
+      "storage": "issues.metadata.branchConfig (jsonb): { baseBranch?: string|null, targetBranch?: string|null, prodBranch?: string|null }",
+      "validation": [
+        "Branch names match ^[a-zA-Z0-9._/-]{1,100}$.",
+        "Cannot equal the issue's own iss-<seq> (would create a fetch loop).",
+        "Empty strings are rejected — pass null to clear an override."
+      ],
+      "wireFormat": "PATCH /api/projects/:projectId/issues/:id with body { metadata: { branchConfig: { baseBranch, targetBranch, prodBranch } } }."
+    },
+    "schemaMigration": "packages/core/drizzle/migrations/0061_issue_metadata.sql adds issues.metadata jsonb; validator at packages/core/src/issues/metadata.ts.",
+    "whenToOverride": "Decomposed-epic integration branches (auto-set — see recipes.decomposition-integration-branch). Hot-fix bases off an older release tag. Working a branch off another in-flight branch. Otherwise leave blank."
+  },
   "recipes": {
     "new-endpoint": "1) Create packages/core/src/{name}/routes.ts (+ tests). 2) Mount in packages/core/src/index.ts. 3) Add WS broadcast if needed.",
     "new-page-web": "1) Create packages/web/src/app/(protected)/{path}/page.tsx. 2) Add feature module in packages/web/src/features/{name}/ with api.ts, types.ts, hooks/.",
-    "new-agent-tool": "1) Add tool in packages/core/src/mcp/tools/forge-{name}.ts. 2) Register in packages/core/src/mcp/server.ts."
+    "new-agent-tool": "1) Add tool in packages/core/src/mcp/tools/forge-{name}.ts. 2) Register in packages/core/src/mcp/server.ts.",
+    "decomposition-integration-branch": {
+      "id": "decomposition-integration-branch",
+      "when": "Complex epic with ≥3 sub-issues that share UI/data contracts AND live in a single package AND should ship as one atomic release. Use the shared integration branch so sub-issues merge into it (not the project trunk) and the parent pipeline merges integration → production once all children land. SKIP for cross-package work, core refactors, single-sub decompositions, or quick-fix bundles — use flat-to-trunk merges instead. Full when/when-not list: CLAUDE.md § Branching strategy → 'When to use decomposition + integration branch'.",
+      "steps": [
+        "Decide opt-in. Default useIntegrationBranch=true. To opt out (children branch off the project trunk individually), pass decomposeOpts: { useIntegrationBranch: false } on the FIRST forge_pm_set_dependency call against the parent.",
+        "For each child workstream, create the child issue at status='on_hold' (see SKILL.md Step 5.5) so cascade-approve takes over after the parent is approved.",
+        "Call forge_pm_set_dependency { projectId, fromIssueId: <parent>, toIssueId: <child>, kind: 'decomposes' } once per child. The FIRST call auto-creates the integration branch iss-<parentSeq>-<slug> off the project's baseBranch, git-pushes it inside the same DB transaction, and writes branchConfig.baseBranch=<integrationBranch> to both parent.metadata and child.metadata.",
+        "Verify the dependency edge landed: every call returns { id, created: true|false }. If FORBIDDEN / CYCLE_DETECTED is thrown, stop and post a comment — silent failure here is the ISS-131 footgun.",
+        "If the parent plan declares sibling-blocks ordering (Sub2 must wait for Sub1), add forge_pm_set_dependency { kind: 'blocks' } edges immediately after creating all children. L2 dispatcher evaluates blocks at dispatch time for every job type.",
+        "Set the parent to status='waiting' (Complex requires human approval). Cascade-approve flips children on_hold → approved when the parent is approved.",
+        "Each child's forge-code resolves its base via forge_config and checks out iss-<parentSeq>-<slug>. PRs merge back onto the integration branch, not main.",
+        "When the LAST child reaches staging, the watcher re-fires the parent pipeline. forge-test runs integration checks against the merged integration branch; forge-release merges integration → production atomically (L2 release gate 'waiting_on_decomp_parent' clears for every child).",
+        "Manual cleanup: delete the remote integration branch after release lands (auto-delete is a post-ISS-138 follow-up)."
+      ],
+      "gotchas": [
+        "Opt-out is per-decomposition, not per-child. useIntegrationBranch is read from the FIRST forge_pm_set_dependency call only; subsequent calls inherit parent.metadata.useIntegrationBranch.",
+        "Integration-branch creation runs inside the dependency-edge DB transaction. If git push fails, the row rolls back and the child appears un-decomposed — re-run the call after fixing the push.",
+        "Branch-name conflicts auto-suffix -2..-10. Past 10 slots, decompose() throws and the parent stays un-decomposed — slugify the title differently or close stale integration branches first.",
+        "Auto-create only fires when parent.status ∈ {confirmed, waiting}. Subsequent forge_pm_set_dependency calls on the same parent are allowed in any status but won't re-create the branch.",
+        "Cross-package epics (core + web + dev) accumulate merge drift on a long-lived integration branch faster than the integration win pays back — prefer flat-to-trunk merges with feature flags hiding incomplete work.",
+        "Core refactors (auth, state machine, runner protocol) must NEVER use an integration branch — every diff against main must be independently reviewable for security/correctness."
+      ],
+      "source": "packages/core/src/issues/decompose.ts",
+      "relatedRefs": [
+        "CLAUDE.md § Branching strategy → Decomposition + integration branch",
+        ".claude/skills/forge-plan/SKILL.md → Step 5.5 (decomposition workflow)",
+        "branchStrategy (this file) → resolver + storage details"
+      ]
+    }
   },
   "commands": {
     "dev-core": "cd packages/core && pnpm dev",
