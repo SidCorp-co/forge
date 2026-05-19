@@ -1,8 +1,9 @@
 'use client';
 
-import { Check, Copy, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Check, Copy, FolderCog, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import { Button, Modal } from '@/components/ui';
+import { ManageProjectsModal } from './components/manage-projects-modal';
 import {
   useMintPairingCode,
   useMyDevices,
@@ -110,6 +111,7 @@ function DeviceRow({
 }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(device.name);
+  const [manageOpen, setManageOpen] = useState(false);
   const rename = useRenameDevice();
   const revoke = useRevokeDevice();
   const isRevoked = device.status === 'revoked';
@@ -196,16 +198,31 @@ function DeviceRow({
       <td className="px-4 py-3 text-on-surface-variant">{formatRelative(device.pairedAt)}</td>
       <td className="px-4 py-3 text-right">
         {!isRevoked && (
-          <button
-            type="button"
-            onClick={() => void onRevoke()}
-            disabled={revoke.isPending}
-            className="text-danger hover:opacity-80 disabled:opacity-50"
-            aria-label="Revoke device"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
+          <div className="inline-flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setManageOpen(true)}
+              className="text-on-surface-variant hover:text-on-surface"
+              aria-label="Manage projects"
+            >
+              <FolderCog className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => void onRevoke()}
+              disabled={revoke.isPending}
+              className="text-danger hover:opacity-80 disabled:opacity-50"
+              aria-label="Revoke device"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
         )}
+        <ManageProjectsModal
+          device={device}
+          open={manageOpen}
+          onClose={() => setManageOpen(false)}
+        />
       </td>
     </tr>
   );

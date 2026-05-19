@@ -13,6 +13,7 @@ import { AttentionQueue } from './attention-queue';
 import { PipelineFeed } from './pipeline-feed';
 import { usePipelineActivity } from '../hooks/use-pipeline-activity';
 import { CostVelocityPanel } from './cost-velocity-panel';
+import { ContinueSetupBanner } from './continue-setup-banner';
 import { ProjectOnboardingChecklist } from './project-onboarding-checklist';
 
 export function ProjectDashboard() {
@@ -51,11 +52,21 @@ export function ProjectDashboard() {
   const isBrandNew = !!project && totalIssues === 0 && !project.repoPath;
 
   if (isBrandNew) {
-    return <ProjectOnboardingChecklist slug={slug} />;
+    return (
+      <div className="space-y-3">
+        <ContinueSetupBanner slug={slug} projectId={project?.id} />
+        <ProjectOnboardingChecklist slug={slug} projectId={project?.id} />
+      </div>
+    );
   }
 
   if (!row) {
-    return <ProjectOnboardingChecklist slug={slug} />;
+    return (
+      <div className="space-y-3">
+        <ContinueSetupBanner slug={slug} projectId={project?.id} />
+        <ProjectOnboardingChecklist slug={slug} projectId={project?.id} />
+      </div>
+    );
   }
 
   const distEntries = ALL_STATUSES

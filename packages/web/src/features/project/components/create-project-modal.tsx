@@ -20,10 +20,13 @@ export function CreateProjectModal({ open, onClose }: CreateProjectModalProps) {
   const createProject = useCreateProject();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [postCreateDestination, setPostCreateDestination] = useState<'setup' | 'dashboard'>(
+    'setup',
+  );
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const submit = (destination: 'setup' | 'dashboard') => {
     if (!name.trim()) return;
+    setPostCreateDestination(destination);
 
     const trimmedName = name.trim();
     const slug = trimmedName
@@ -41,10 +44,20 @@ export function CreateProjectModal({ open, onClose }: CreateProjectModalProps) {
           onClose();
           setName('');
           setDescription('');
-          router.push(`/projects/${project.slug || slug}`);
+          const finalSlug = project.slug || slug;
+          if (destination === 'setup') {
+            router.push(`/projects/${finalSlug}/setup`);
+          } else {
+            router.push(`/projects/${finalSlug}`);
+          }
         },
       },
     );
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    submit(postCreateDestination);
   };
 
   const handleClose = () => {
@@ -91,7 +104,7 @@ export function CreateProjectModal({ open, onClose }: CreateProjectModalProps) {
           />
         </div>
 
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <Button
             type="button"
             variant="secondary"
@@ -101,10 +114,22 @@ export function CreateProjectModal({ open, onClose }: CreateProjectModalProps) {
             Cancel
           </Button>
           <Button
+            type="button"
+            variant="secondary"
+            onClick={() => submit('dashboard')}
+            disabled={!name.trim() || createProject.isPending}
+          >
+            {createProject.isPending && postCreateDestination === 'dashboard'
+              ? 'Creating...'
+              : 'Create + go to dashboard'}
+          </Button>
+          <Button
             type="submit"
             disabled={!name.trim() || createProject.isPending}
           >
-            {createProject.isPending ? 'Creating...' : 'Create Project'}
+            {createProject.isPending && postCreateDestination === 'setup'
+              ? 'Creating...'
+              : 'Create + setup now'}
           </Button>
         </div>
       </form>
