@@ -7,10 +7,15 @@
 -- After: `runners` is the only home for device→project bindings. A device
 -- can be a runner for N projects (unique on `(project_id, device_id, type)`).
 --
--- Backfill BEFORE dropping the source table and BEFORE tightening the index
--- so a partial fail rolls back cleanly inside the transaction.
+-- Drop the OLD partial unique index BEFORE the backfill: any device paired to
+-- project A (existing runner row) that also sits in project B's pool would
+-- otherwise violate `runners_device_type_uq` on `(device_id, type)` mid-INSERT
+-- and roll the whole transaction back. Then backfill, then install the new
+-- per-project unique index, then drop the source table.
 
 BEGIN;
+
+DROP INDEX IF EXISTS runners_device_type_uq;
 
 INSERT INTO runners (project_id, type, host, device_id, name, capabilities, status, last_seen_at)
 SELECT
@@ -33,8 +38,6 @@ WHERE NOT EXISTS (
     AND r.device_id  = pd.device_id
     AND r.type       = 'claude-code'
 );
-
-DROP INDEX IF EXISTS runners_device_type_uq;
 
 CREATE UNIQUE INDEX runners_project_device_type_uq
   ON runners (project_id, device_id, type)

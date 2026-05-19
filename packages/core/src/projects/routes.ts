@@ -478,6 +478,8 @@ projectRoutes.delete(
       throw forbidden('owner or admin required');
     }
 
+    // Idempotent: 204 whether the runner existed or not, mirroring the old
+    // PUT/DELETE /:id/devices/:deviceId contract.
     await db
       .delete(runners)
       .where(and(eq(runners.id, runnerId), eq(runners.projectId, id)));
