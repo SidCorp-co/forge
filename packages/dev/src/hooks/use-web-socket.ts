@@ -193,6 +193,29 @@ export function useWebSocket() {
           return;
         }
 
+        // ISS-175: core emits `runner.status` (not `runner.disconnected`) from
+        // both heartbeat-ws.ts (explicit unregister) and stale-detector.ts
+        // (heartbeat lapse), broadcast to projectRoom(projectId). The project
+        // room carries status for every runner in the project — only update
+        // when the runnerId matches the one this device recorded on
+        // runner.registered, otherwise a peer device's transition would
+        // clobber our local binding.
+        if (event === "runner.status") {
+          const projectId = msg.data?.projectId;
+          const runnerId = msg.data?.runnerId ?? msg.data?.id;
+          const status = msg.data?.status;
+          if (!projectId || !runnerId || !status) return;
+          const current = useAppStore.getState().runnerBindings[String(projectId)];
+          if (!current || current.runnerId !== String(runnerId)) return;
+          if (status === "offline" || status === "online") {
+            useAppStore.getState().setRunnerBinding(String(projectId), {
+              runnerId: String(runnerId),
+              status,
+            });
+          }
+          return;
+        }
+
         // EPIC 6 (ISS-278/290/292) — single-skill update broadcast from
         // packages/core when a project override is upserted/deleted via the web
         // UI. We don't get the new content in the payload (per project room
@@ -308,6 +331,24 @@ export function useWebSocket() {
       );
     }
 
+    // ISS-175: subscribe to each project room so the server's `runner.status`
+    // broadcasts (heartbeat-ws.ts + stale-detector.ts publish into
+    // projectRoom(projectId)) reach this client. Re-fires on every connect.
+    async function subscribeToProjectRooms(sendFrame: (frame: string) => Promise<void> | void) {
+      const settings = useAppStore.getState().deviceSettings;
+      const projectIds = Object.values(settings.projects ?? {})
+        .map((p) => p.documentId)
+        .filter((id): id is string => typeof id === "string" && id.length > 0);
+      for (const pid of projectIds) {
+        const frame = JSON.stringify({ type: "subscribe", room: `project:${pid}` });
+        try {
+          await sendFrame(frame);
+        } catch (err) {
+          console.warn(`[subscribe project:${pid}] failed:`, err);
+        }
+      }
+    }
+
     let cancelled = false;
 
     async function setupListeners() {
@@ -366,10 +407,14 @@ export function useWebSocket() {
           // ISS-173: emit runner:register for every project documentId in the
           // local config. Routes through the Tauri `ws_send` command added in
           // ISS-173 §2. Re-fires on every reconnect (this listener runs again).
+          // ISS-175: also subscribe to each project room so `runner.status`
+          // broadcasts (offline/online) reach this client.
           try {
-            await registerAllRunners(async (frame) => {
+            const sendFrame = async (frame: string) => {
               await invoke("ws_send", { payload: frame });
-            });
+            };
+            await subscribeToProjectRooms(sendFrame);
+            await registerAllRunners(sendFrame);
           } catch (err) {
             console.warn("[runner:register] Rust path failed:", err);
           }
@@ -377,6 +422,11 @@ export function useWebSocket() {
         const unlisten2 = await listen("ws:disconnected", async () => {
           setWsConnected(false);
           stopHeartbeat();
+          // ISS-175: drop stale bindings on disconnect — `runner.registered`
+          // re-echoes on reconnect, repopulating them cleanly. Without this
+          // a long disconnect leaves the UI claiming "Active runner here"
+          // for a runner the server has already marked offline.
+          useAppStore.getState().clearRunnerBindings();
         });
         const unlisten3 = await listen<unknown>("ws:message", (event) => {
           handleMessage(event.payload);
@@ -704,11 +754,17 @@ export function useWebSocket() {
           if (deviceId) {
             ws.send(JSON.stringify({ type: "subscribe", room: `device:${deviceId}` }));
           }
-          void registerAllRunners((frame) => {
+          const sendFrame = (frame: string) => {
             if (ws.readyState === WebSocket.OPEN) ws.send(frame);
-          });
+          };
+          void subscribeToProjectRooms(sendFrame);
+          void registerAllRunners(sendFrame);
         };
-        ws.onclose = () => setWsConnected(false);
+        ws.onclose = () => {
+          setWsConnected(false);
+          // ISS-175: see ws:disconnected listener above — parity with Rust path.
+          useAppStore.getState().clearRunnerBindings();
+        };
         ws.onmessage = (e) => handleMessage(e.data);
         return () => ws.close();
       }

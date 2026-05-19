@@ -134,6 +134,13 @@ pub async fn connect_ws(
 
                 if *cancel.borrow() { break; }
 
+                // ISS-175: drain frames buffered while the socket was broken —
+                // callers re-emit on `ws:connected`, so anything still sitting
+                // here is stale (e.g. a `runner:register` from the previous
+                // session). Non-blocking: `try_recv` returns immediately when
+                // the queue is empty.
+                while outbound.try_recv().is_ok() {}
+
                 if let Err(e) = app.emit("ws:disconnected", ()) {
                     eprintln!("Failed to emit ws:disconnected: {e}");
                 }

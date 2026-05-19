@@ -345,6 +345,19 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     } as Partial<AuthStore>);
     breadcrumb("auth.transition.logout");
 
+    // ISS-175: drop runner bindings carried over from the previous session.
+    // After re-pair the device's bindings come back via `runner.registered`
+    // echoes on the next WS connect, but until then the UI must not claim
+    // "Active runner here" for stale bindings from the logged-out account.
+    // Lazy import keeps the auth-store ↔ app-store / api-client cycle
+    // broken (see `readDeviceSettings`).
+    try {
+      const { useAppStore } = await import("./app-store");
+      useAppStore.getState().clearRunnerBindings();
+    } catch {
+      // app-store unavailable (test harness) — ignore.
+    }
+
     await persistKeychain();
 
     const settings = await readDeviceSettings();
