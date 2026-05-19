@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowRight, Check, Square } from 'lucide-react';
+import { ArrowRight, Check, Loader2, Square } from 'lucide-react';
 import { useProjectSetupState } from '@/features/project-setup/hooks/use-project-setup-state';
 import type { ProjectSetupBooleans } from '@/features/project-setup/types';
 
@@ -82,6 +82,19 @@ export function ProjectOnboardingChecklist({
       <ul className="divide-y divide-outline-variant/20 rounded-sm border border-outline-variant/20 bg-surface-container-low">
         {items.map((item) => {
           const done = setup[item.key];
+          if (done === null) {
+            return (
+              <li key={item.key}>
+                <div
+                  data-testid={`checklist-loading-${item.key}`}
+                  className="flex items-center gap-2 px-3 py-2 text-xs text-outline"
+                >
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                  <span>{item.label}</span>
+                </div>
+              </li>
+            );
+          }
           if (done === true) {
             return (
               <li key={item.key}>

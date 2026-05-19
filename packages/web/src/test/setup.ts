@@ -20,3 +20,9 @@ if (typeof window !== 'undefined') {
 if (typeof globalThis !== 'undefined') {
   Object.defineProperty(globalThis, 'matchMedia', { writable: true, configurable: true, value: matchMediaStub });
 }
+
+// jsdom doesn't implement Element.scrollIntoView. Components that call it on
+// effect (e.g. SettingsLayout deep-link scroll) need a no-op polyfill.
+if (typeof window !== 'undefined' && !window.Element.prototype.scrollIntoView) {
+  window.Element.prototype.scrollIntoView = function () {};
+}

@@ -34,6 +34,8 @@ const STEP_DESCRIPTIONS: Record<WizardStepId, string> = {
   verify: 'Send a ping to confirm everything is wired up.',
 };
 
+const SKIPPABLE_STEPS: ReadonlyArray<WizardStepId> = ['members', 'device'];
+
 export function WizardShell({ slug }: Props) {
   const project = useProjectBySlug(slug);
   const projectId = project?.id;
@@ -156,7 +158,7 @@ export function WizardShell({ slug }: Props) {
                 ← Back
               </button>
               <div className="flex gap-2">
-                {wizard.currentStep !== 'verify' && (
+                {SKIPPABLE_STEPS.includes(wizard.currentStep) && (
                   <button
                     type="button"
                     onClick={() => {

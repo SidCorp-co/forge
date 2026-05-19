@@ -107,7 +107,7 @@ export function PipelineStep({ projectId, onSaved }: Props) {
         <button
           type="button"
           onClick={() => void onSave()}
-          disabled={cfg.isSaving || !cfg.isDirty}
+          disabled={cfg.isSaving}
           className="bg-primary text-on-primary px-4 py-2 text-sm rounded-sm disabled:opacity-50"
         >
           {cfg.isSaving ? 'Saving…' : 'Save pipeline'}
