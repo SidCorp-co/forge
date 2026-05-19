@@ -17,7 +17,7 @@ use config::{
 use std::sync::Arc;
 use tauri::{Emitter, Manager, State};
 use tauri_plugin_deep_link::DeepLinkExt;
-use tokio::sync::{watch, Mutex as TokioMutex};
+use tokio::sync::{mpsc, watch, Mutex as TokioMutex};
 
 /// Tauri event emitted to the React frontend when the OS hands us a
 /// `forge-beta://...` URL — either at app launch (cold start) or while the
@@ -28,6 +28,10 @@ const DEEP_LINK_EVENT: &str = "deep-link://received";
 struct AppState {
     sessions: Sessions,
     ws_cancel: Arc<TokioMutex<Option<watch::Sender<bool>>>>,
+    /// Outbound WS frame sender — populated by `connect_ws`, drained by the
+    /// Rust WS loop, written to by `ws_send`. Recreated on every connect so a
+    /// reconnect drops any buffered frames (callers re-emit on `ws:connected`).
+    ws_outbound: Arc<TokioMutex<Option<mpsc::UnboundedSender<String>>>>,
 }
 
 #[tauri::command]
@@ -46,8 +50,31 @@ async fn connect_ws(
     let (tx, rx) = watch::channel(false);
     *guard = Some(tx);
     drop(guard);
-    tokio::spawn(websocket::connect_ws(app, url, device_token, device_id, rx));
+
+    let (out_tx, out_rx) = mpsc::unbounded_channel::<String>();
+    {
+        let mut out_guard = state.ws_outbound.lock().await;
+        *out_guard = Some(out_tx);
+    }
+
+    tokio::spawn(websocket::connect_ws(
+        app,
+        url,
+        device_token,
+        device_id,
+        rx,
+        out_rx,
+    ));
     Ok(())
+}
+
+#[tauri::command]
+async fn ws_send(state: State<'_, AppState>, payload: String) -> Result<(), String> {
+    let guard = state.ws_outbound.lock().await;
+    match guard.as_ref() {
+        Some(tx) => tx.send(payload).map_err(|e| e.to_string()),
+        None => Err("ws not connected".to_string()),
+    }
 }
 
 #[tauri::command]
@@ -577,9 +604,11 @@ fn main() {
         .manage(AppState {
             sessions: new_sessions(),
             ws_cancel: Arc::new(TokioMutex::new(None)),
+            ws_outbound: Arc::new(TokioMutex::new(None)),
         })
         .invoke_handler(tauri::generate_handler![
             connect_ws,
+            ws_send,
             load_device_token,
             clear_device_token,
             store_user_jwt,

@@ -1,7 +1,7 @@
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
 use tauri::{AppHandle, Emitter};
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 use tokio_tungstenite::{
     connect_async, tungstenite::client::IntoClientRequest, tungstenite::http::header,
     tungstenite::Message,
@@ -26,6 +26,7 @@ pub async fn connect_ws(
     device_token: Option<String>,
     device_id: Option<String>,
     mut cancel: watch::Receiver<bool>,
+    mut outbound: mpsc::UnboundedReceiver<String>,
 ) {
     let mut retry_delay = 1u64;
     loop {
@@ -106,6 +107,20 @@ pub async fn connect_ws(
                             }
                             awaiting_pong = true;
                             pong_deadline = tokio::time::Instant::now() + PONG_TIMEOUT;
+                        }
+                        out = outbound.recv() => {
+                            // None means the sender end was dropped — the
+                            // outer reconnect loop will rebuild the channel.
+                            // Treat as a broken pipe and reconnect to keep
+                            // ws_send and the writer in lockstep.
+                            match out {
+                                Some(text) => {
+                                    if write.send(Message::Text(text.into())).await.is_err() {
+                                        break;
+                                    }
+                                }
+                                None => break,
+                            }
                         }
                         _ = timeout => {
                             eprintln!("[ws] Pong timeout — reconnecting");

@@ -179,6 +179,20 @@ export function useWebSocket() {
           return;
         }
 
+        // ISS-173: server confirms the runner registration; record it so the
+        // PairDeviceCard + ProjectSettings badge can surface "Active runner here".
+        if (event === "runner.registered" || event === "runner:registered") {
+          const projectId = msg.data?.projectId;
+          const runnerId = msg.data?.runnerId ?? msg.data?.id;
+          if (projectId && runnerId) {
+            useAppStore.getState().setRunnerBinding(String(projectId), {
+              runnerId: String(runnerId),
+              status: "online",
+            });
+          }
+          return;
+        }
+
         // EPIC 6 (ISS-278/290/292) — single-skill update broadcast from
         // packages/core when a project override is upserted/deleted via the web
         // UI. We don't get the new content in the payload (per project room
@@ -249,23 +263,31 @@ export function useWebSocket() {
       }
     }
 
-    // ISS-271: Register a `claude-code` runner with the server's runner
-    // framework. Server ignores when `runnerFramework` flag is off, so it's
-    // safe to send unconditionally. The runnerId returned by the server
-    // arrives via `runner.registered` WS message (handled in handleMessage).
-    //
-    // Tauri Rust WS path does not currently expose a way to send arbitrary
-    // outbound messages from JS — this branch fires only via the browser
-    // fallback (`new WebSocket(wsUrl)`). A follow-up issue (tracked in the
-    // PR-B comment) will add a `ws_send` Tauri command and call it from the
-    // `ws:connected` listener above.
-    async function registerAsRunner(ws: WebSocket) {
-      if (ws.readyState !== WebSocket.OPEN) return;
+    // ISS-271 / ISS-173: Register a `claude-code` runner with the server for
+    // EVERY project in deviceSettings.projects that carries a `documentId`.
+    // The Rust WS path goes through the `ws_send` Tauri command (ISS-173 §2);
+    // the browser fallback writes directly to its WebSocket.
+    async function buildRegisterFrame(projectId: string, skills: string[]) {
+      const name = (await invoke<string>("get_hostname").catch(() => "Desktop")) || "Desktop";
+      return JSON.stringify({
+        type: "runner:register",
+        data: {
+          type: "claude-code",
+          name,
+          projectId,
+          capabilities: { skills, maxConcurrent: 1 },
+          config: {},
+        },
+      });
+    }
+
+    async function registerAllRunners(sendFrame: (frame: string) => Promise<void> | void) {
       const settings = useAppStore.getState().deviceSettings;
-      const projectSlug = Object.keys(settings.projects ?? {})[0];
-      const projects = settings.projects as Record<string, { documentId?: string }> | undefined;
-      const projectId = projectSlug ? projects?.[projectSlug]?.documentId : undefined;
-      if (!projectId) return;
+      const projectIds = Object.values(settings.projects ?? {})
+        .map((p) => p.documentId)
+        .filter((id): id is string => typeof id === "string" && id.length > 0);
+      if (projectIds.length === 0) return;
+
       let skills: string[] = [];
       try {
         const hashes = (await invoke<Record<string, string>>("get_skill_hashes")) ?? {};
@@ -273,16 +295,15 @@ export function useWebSocket() {
       } catch {
         // tauri unavailable; runner registers with empty skills
       }
-      ws.send(
-        JSON.stringify({
-          type: "runner:register",
-          data: {
-            type: "claude-code",
-            name: (await invoke<string>("get_hostname").catch(() => "Desktop")) || "Desktop",
-            projectId,
-            capabilities: { skills, maxConcurrent: 1 },
-            config: {},
-          },
+
+      await Promise.all(
+        projectIds.map(async (pid) => {
+          try {
+            const frame = await buildRegisterFrame(pid, skills);
+            await sendFrame(frame);
+          } catch (err) {
+            console.warn(`[runner:register] failed for project ${pid}:`, err);
+          }
         }),
       );
     }
@@ -342,6 +363,16 @@ export function useWebSocket() {
               }
             }
           } catch { /* ignore */ }
+          // ISS-173: emit runner:register for every project documentId in the
+          // local config. Routes through the Tauri `ws_send` command added in
+          // ISS-173 §2. Re-fires on every reconnect (this listener runs again).
+          try {
+            await registerAllRunners(async (frame) => {
+              await invoke("ws_send", { payload: frame });
+            });
+          } catch (err) {
+            console.warn("[runner:register] Rust path failed:", err);
+          }
         });
         const unlisten2 = await listen("ws:disconnected", async () => {
           setWsConnected(false);
@@ -673,7 +704,9 @@ export function useWebSocket() {
           if (deviceId) {
             ws.send(JSON.stringify({ type: "subscribe", room: `device:${deviceId}` }));
           }
-          void registerAsRunner(ws);
+          void registerAllRunners((frame) => {
+            if (ws.readyState === WebSocket.OPEN) ws.send(frame);
+          });
         };
         ws.onclose = () => setWsConnected(false);
         ws.onmessage = (e) => handleMessage(e.data);

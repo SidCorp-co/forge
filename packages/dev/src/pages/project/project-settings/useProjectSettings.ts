@@ -16,6 +16,7 @@ export function useProjectSettings() {
   const [repoPath, setRepoPath] = useState(projectConfig?.repoPath ?? "");
   const [branch, setBranch] = useState(projectConfig?.branch ?? "main");
   const [instructions, setInstructions] = useState(projectConfig?.instructions ?? "");
+  const documentId = projectConfig?.documentId;
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveLog, setSaveLog] = useState<Array<{ step: string; status: "ok" | "error" | "skip"; detail?: string }>>([]);
@@ -236,11 +237,14 @@ export function useProjectSettings() {
     }
 
     // Fetch project for Sentry-Project header (no longer for apiKey — see
-    // ensureForgeMcp comment).
+    // ensureForgeMcp comment) and persist documentId so the runner can register
+    // for this project (ISS-173).
     let sentryProject: string | undefined;
+    let persistedDocumentId: string | undefined = projectConfig?.documentId;
     try {
       const project = await getProject(slug);
       sentryProject = project?.sentryProject;
+      if (project?.documentId) persistedDocumentId = project.documentId;
       addLog("Fetch project config", "ok", sentryProject ? `Sentry: ${sentryProject}` : "no Sentry project");
     } catch (err) {
       addLog("Fetch project config", "error", String(err));
@@ -267,7 +271,14 @@ export function useProjectSettings() {
     try {
       const nextProjects = {
         ...deviceSettings.projects,
-        [slug]: { slug, repoPath, branch, instructions, mcpServers },
+        [slug]: {
+          slug,
+          repoPath,
+          branch,
+          instructions,
+          mcpServers,
+          ...(persistedDocumentId ? { documentId: persistedDocumentId } : {}),
+        },
       };
       patchDeviceSettings({ projects: nextProjects });
       // Round-trip through the disk snapshot so save_config carries the auth
@@ -289,6 +300,7 @@ export function useProjectSettings() {
 
   return {
     slug,
+    documentId,
     repoPath,
     setRepoPath,
     branch,
