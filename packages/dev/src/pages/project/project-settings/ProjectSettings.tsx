@@ -4,10 +4,12 @@ import { PageShell } from "@/components/ui/page-shell";
 import { FormInput, FormTextarea } from "@/components/ui/form-input";
 import { useProjectSettings } from "./useProjectSettings";
 import { invoke } from "@/hooks/use-tauri-ipc";
+import { useAppStore } from "@/stores/app-store";
 
 export function ProjectSettings() {
   const {
     slug,
+    documentId,
     repoPath,
     setRepoPath,
     branch,
@@ -23,6 +25,10 @@ export function ProjectSettings() {
     handleIndex,
     handleSave,
   } = useProjectSettings();
+  const runnerBindings = useAppStore((s) => s.runnerBindings);
+  const runnerOnline = documentId
+    ? runnerBindings[documentId]?.status === "online"
+    : false;
 
   async function handleBrowse() {
     try {
@@ -47,6 +53,20 @@ export function ProjectSettings() {
   return (
     <PageShell title="Project Settings" subtitle={slug}>
       <div className="space-y-6">
+        {documentId && (
+          <div className="text-xs">
+            {runnerOnline ? (
+              <span className="rounded bg-green-100 px-2 py-0.5 font-medium text-green-700">
+                Active runner here
+              </span>
+            ) : (
+              <span className="rounded bg-gray-100 px-2 py-0.5 font-medium text-gray-600">
+                Not bound on this device
+              </span>
+            )}
+          </div>
+        )}
+
         <div>
           <label className="mb-1 block text-sm text-gray-600">Local Repo Path</label>
           <div className="flex gap-2">

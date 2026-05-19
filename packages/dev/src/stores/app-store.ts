@@ -65,8 +65,18 @@ interface AppState {
   setDeviceSettings: (s: DeviceSettings) => void;
   patchDeviceSettings: (patch: Partial<DeviceSettings>) => void;
 
+  runnerBindings: Record<string, RunnerBinding>;
+  setRunnerBinding: (projectId: string, binding: RunnerBinding) => void;
+  clearRunnerBindings: () => void;
+
   sidebarOpen: boolean;
   toggleSidebar: () => void;
+}
+
+export type RunnerBindingState = "online" | "offline" | "unknown";
+export interface RunnerBinding {
+  runnerId: string;
+  status: RunnerBindingState;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -107,6 +117,11 @@ export const useAppStore = create<AppState>((set) => ({
   setDeviceSettings: (s) => set({ deviceSettings: s }),
   patchDeviceSettings: (patch) =>
     set((s) => ({ deviceSettings: { ...s.deviceSettings, ...patch } })),
+
+  runnerBindings: {},
+  setRunnerBinding: (projectId, binding) =>
+    set((s) => ({ runnerBindings: { ...s.runnerBindings, [projectId]: binding } })),
+  clearRunnerBindings: () => set({ runnerBindings: {} }),
 
   sidebarOpen: true,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),

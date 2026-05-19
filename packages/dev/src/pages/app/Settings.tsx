@@ -8,6 +8,7 @@ import { PageShell } from "@/components/ui/page-shell";
 import { FormInput } from "@/components/ui/form-input";
 import { useLogout } from "@/hooks/use-logout";
 import { useAutoUpdater } from "@/hooks/use-auto-updater";
+import { request } from "@/lib/api/client";
 import type { AppConfig } from "@/lib/types";
 
 export function Settings() {
@@ -290,6 +291,11 @@ function PmAgentDeeplinkCard({ coreUrl }: { coreUrl: string }) {
 
 function PairDeviceCard() {
   const auth = useAuth();
+  return auth.deviceId ? <PairedDeviceCard /> : <UnpairedDeviceCard />;
+}
+
+function UnpairedDeviceCard() {
+  const auth = useAuth();
   const deviceSettings = useAppStore((s) => s.deviceSettings);
   const [code, setCode] = useState("");
   const [name, setName] = useState("Beta-" + (typeof navigator !== "undefined" ? navigator.platform.slice(0, 8) : "device"));
@@ -361,6 +367,131 @@ function PairDeviceCard() {
         <p className={`mt-2 text-xs ${status === "ok" ? "text-green-700" : "text-red-700"}`}>
           {msg}
         </p>
+      )}
+    </div>
+  );
+}
+
+function PairedDeviceCard() {
+  const auth = useAuth();
+  const logout = useLogout();
+  const deviceSettings = useAppStore((s) => s.deviceSettings);
+  const runnerBindings = useAppStore((s) => s.runnerBindings);
+  const [confirming, setConfirming] = useState(false);
+  const [revoking, setRevoking] = useState(false);
+  const [error, setError] = useState("");
+
+  const projectRows = Object.values(deviceSettings.projects ?? {}).map((p) => {
+    const online = p.documentId ? runnerBindings[p.documentId]?.status === "online" : false;
+    return { slug: p.slug, online };
+  });
+
+  async function handleOpenWebDevices() {
+    const base = (auth.coreUrl ?? "").replace(/\/api\/?$/, "").replace(/\/$/, "");
+    if (!base) return;
+    const target = `${base}/settings/devices`;
+    try {
+      const { open } = await import("@tauri-apps/plugin-shell");
+      await open(target);
+    } catch {
+      window.open(target, "_blank", "noopener,noreferrer");
+    }
+  }
+
+  async function handleRevoke() {
+    setRevoking(true);
+    setError("");
+    try {
+      try {
+        await request(`/devices/${auth.deviceId}`, { method: "DELETE" });
+      } catch (err) {
+        // Surface but still proceed with local logout — server-side delete may
+        // already have been processed (e.g. by the web UI) leaving a stale
+        // local token.
+        setError(`Server revoke failed: ${err}`);
+      }
+      await logout();
+    } finally {
+      setRevoking(false);
+    }
+  }
+
+  return (
+    <div className="mt-6 rounded-lg border border-green-200 bg-green-50 p-4">
+      <h3 className="text-sm font-semibold text-gray-900">Device paired</h3>
+      <p className="mt-0.5 text-xs text-gray-500">
+        Device id <code className="rounded bg-white px-1 text-[10px]">{auth.deviceId}</code>
+      </p>
+
+      <div className="mt-3">
+        <p className="text-xs font-medium text-gray-700">Projects this device is configured for:</p>
+        {projectRows.length === 0 ? (
+          <p className="mt-1 text-xs text-gray-500">
+            No projects bound yet. Use the web app to bind this device to a project.
+          </p>
+        ) : (
+          <ul className="mt-1 space-y-1 text-xs text-gray-700">
+            {projectRows.map((p) => (
+              <li key={p.slug} className="flex items-center gap-2">
+                <span
+                  className={`h-2 w-2 rounded-full ${p.online ? "bg-green-500" : "bg-gray-300"}`}
+                />
+                <span>{p.slug}</span>
+                {p.online && (
+                  <span className="text-[10px] text-green-600">Active runner here</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={handleOpenWebDevices}
+          className="text-xs font-medium text-blue-600 hover:underline"
+        >
+          Manage projects on the web app →
+        </button>
+        <button
+          type="button"
+          onClick={() => setConfirming(true)}
+          className="rounded bg-red-50 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+        >
+          Revoke this device
+        </button>
+      </div>
+
+      {confirming && (
+        <div className="mt-3 rounded border border-red-200 bg-white p-3">
+          <p className="text-xs text-gray-700">
+            Revoking this device removes its token on the server and logs you out locally.
+            You will need a new pairing code to reconnect.
+          </p>
+          {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleRevoke}
+              disabled={revoking}
+              className="rounded bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            >
+              {revoking ? "Revoking..." : "Yes, revoke"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setConfirming(false);
+                setError("");
+              }}
+              disabled={revoking}
+              className="rounded bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+            >
+              No, keep paired
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

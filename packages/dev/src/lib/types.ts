@@ -213,6 +213,8 @@ export interface ProjectConfig {
   repoPath: string;
   branch?: string;
   instructions?: string;
+  /** Backend project documentId — used for `runner:register` and the runner-bound badge. */
+  documentId?: string;
   repos?: RepoConfig[];
   mcpServers?: Record<string, McpServerConfig>;
   enabledSkills?: string[];
