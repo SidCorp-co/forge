@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 
 export interface SettingsSection {
   id: string;
@@ -20,17 +20,37 @@ interface SettingsLayoutProps {
   defaultSectionId: string;
 }
 
+// Shorthand `?section=` aliases used by checklist + VerifyStep deep links.
+// Keep in sync with section ids declared in settings/page.tsx.
+const SECTION_ALIASES: Record<string, string> = {
+  repo: 'identity.repo',
+  basics: 'identity.basics',
+  members: 'identity.members',
+  devices: 'identity.devices',
+  pipeline: 'pipeline.config',
+  skills: 'pipeline.skills',
+};
+
 export function SettingsLayout({ groups, defaultSectionId }: SettingsLayoutProps) {
   const router = useRouter();
   const params = useSearchParams();
+  const mainRef = useRef<HTMLElement | null>(null);
 
   const allSections = useMemo(() => groups.flatMap((g) => g.items), [groups]);
-  const sectionParam = params?.get('section');
+  const rawSection = params?.get('section') ?? null;
+  const resolvedSection = rawSection ? (SECTION_ALIASES[rawSection] ?? rawSection) : null;
   const activeId =
-    sectionParam && allSections.some((s) => s.id === sectionParam)
-      ? sectionParam
+    resolvedSection && allSections.some((s) => s.id === resolvedSection)
+      ? resolvedSection
       : defaultSectionId;
   const active = allSections.find((s) => s.id === activeId) ?? allSections[0];
+
+  useEffect(() => {
+    if (rawSection) {
+      mainRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
 
   const selectSection = (id: string) => {
     const next = new URLSearchParams(params?.toString() ?? '');
@@ -71,7 +91,7 @@ export function SettingsLayout({ groups, defaultSectionId }: SettingsLayoutProps
         ))}
       </nav>
 
-      <main className="min-w-0 space-y-12">{active?.render()}</main>
+      <main ref={mainRef} className="min-w-0 space-y-12">{active?.render()}</main>
     </div>
   );
 }

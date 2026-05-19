@@ -78,6 +78,7 @@ export function ProjectDashboard() {
 
   return (
     <div className="space-y-6">
+      <ContinueSetupBanner slug={slug} projectId={project?.id} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <StatCard label="Active issues" value={row.totalActive} />
         <StatCard label="Throughput (7d)" value={row.throughput} sub="closed or released" />
