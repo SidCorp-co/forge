@@ -402,14 +402,28 @@ function PairedDeviceCard() {
     setRevoking(true);
     setError("");
     try {
-      try {
-        await request(`/devices/${auth.deviceId}`, { method: "DELETE" });
-      } catch (err) {
-        // Surface but still proceed with local logout — server-side delete may
-        // already have been processed (e.g. by the web UI) leaving a stale
-        // local token.
-        setError(`Server revoke failed: ${err}`);
+      await request(`/devices/${auth.deviceId}`, { method: "DELETE" });
+      await logout();
+    } catch (err) {
+      // request() throws `Error('API error: <status> <text>')` (lib/api/client.ts).
+      // Treat 404 as success — server already revoked, local cleanup should
+      // still proceed. Any other error keeps the modal open so the user can
+      // retry or force a local-only logout.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/\b404\b/.test(msg)) {
+        await logout();
+        return;
       }
+      setError(`Could not revoke device: ${msg}`);
+    } finally {
+      setRevoking(false);
+    }
+  }
+
+  async function handleForceLocalLogout() {
+    setError("");
+    setRevoking(true);
+    try {
       await logout();
     } finally {
       setRevoking(false);
@@ -470,15 +484,37 @@ function PairedDeviceCard() {
             You will need a new pairing code to reconnect.
           </p>
           {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
-          <div className="mt-2 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleRevoke}
-              disabled={revoking}
-              className="rounded bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
-            >
-              {revoking ? "Revoking..." : "Yes, revoke"}
-            </button>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {!error && (
+              <button
+                type="button"
+                onClick={handleRevoke}
+                disabled={revoking}
+                className="rounded bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {revoking ? "Revoking..." : "Yes, revoke"}
+              </button>
+            )}
+            {error && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleRevoke}
+                  disabled={revoking}
+                  className="rounded bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  {revoking ? "Retrying..." : "Retry"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleForceLocalLogout}
+                  disabled={revoking}
+                  className="rounded bg-red-50 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+                >
+                  Force local logout anyway
+                </button>
+              </>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -488,7 +524,7 @@ function PairedDeviceCard() {
               disabled={revoking}
               className="rounded bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50"
             >
-              No, keep paired
+              {error ? "Cancel" : "No, keep paired"}
             </button>
           </div>
         </div>

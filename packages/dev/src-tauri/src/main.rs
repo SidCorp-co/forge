@@ -29,8 +29,9 @@ struct AppState {
     sessions: Sessions,
     ws_cancel: Arc<TokioMutex<Option<watch::Sender<bool>>>>,
     /// Outbound WS frame sender — populated by `connect_ws`, drained by the
-    /// Rust WS loop, written to by `ws_send`. Recreated on every connect so a
-    /// reconnect drops any buffered frames (callers re-emit on `ws:connected`).
+    /// Rust WS loop, written to by `ws_send`. Lives for the lifetime of one
+    /// `connect_ws` call; the inner reconnect loop drains any pending frames
+    /// before reconnecting so callers must re-emit on `ws:connected`.
     ws_outbound: Arc<TokioMutex<Option<mpsc::UnboundedSender<String>>>>,
 }
 
