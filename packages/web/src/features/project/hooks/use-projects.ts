@@ -156,23 +156,38 @@ export function useUpdateProjectBoardConfig() {
   });
 }
 
-export function useAddDeviceToPool() {
+/**
+ * ISS-174 — bind a device to a project as a `claude-code` runner. Idempotent
+ * on the server via `ON CONFLICT (project_id, device_id, type) DO UPDATE`.
+ */
+export function useBindRunner() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ projectId, deviceId }: { projectId: string; deviceId: string }) =>
-      projectApi.addDevice(projectId, deviceId),
+    mutationFn: ({
+      projectId,
+      body,
+    }: {
+      projectId: string;
+      body: { deviceId: string; capabilities?: Record<string, unknown> };
+    }) => projectApi.bindRunner(projectId, body),
     onSuccess: (_data, { projectId }) => {
+      qc.invalidateQueries({ queryKey: projectKeys.all });
       qc.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
     },
   });
 }
 
-export function useRemoveDeviceFromPool() {
+/**
+ * ISS-174 — drop a specific runner row (by runner UUID, NOT device UUID). The
+ * runnerId comes from `project.devicePool[].runnerId`.
+ */
+export function useUnbindRunner() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ projectId, deviceId }: { projectId: string; deviceId: string }) =>
-      projectApi.removeDevice(projectId, deviceId),
+    mutationFn: ({ projectId, runnerId }: { projectId: string; runnerId: string }) =>
+      projectApi.unbindRunner(projectId, runnerId),
     onSuccess: (_data, { projectId }) => {
+      qc.invalidateQueries({ queryKey: projectKeys.all });
       qc.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
     },
   });

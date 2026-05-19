@@ -21,7 +21,15 @@ export interface ProjectDetail extends Project {
     platform: string;
     status: string;
     lastSeenAt: string | null;
+    runnerId: string;
   }>;
+}
+
+export interface BindRunnerResponse {
+  id: string;
+  projectId: string;
+  deviceId: string;
+  status: 'online' | 'offline';
 }
 
 /**
@@ -85,13 +93,17 @@ export const projectApi = {
       { method: 'POST', body: JSON.stringify(body) },
     ),
 
-  addDevice: (projectId: string, deviceId: string) =>
-    apiClient<void>(`/projects/${projectId}/devices/${deviceId}`, {
-      method: 'PUT',
+  bindRunner: (
+    projectId: string,
+    body: { deviceId: string; capabilities?: Record<string, unknown> },
+  ) =>
+    apiClient<BindRunnerResponse>(`/projects/${projectId}/runners`, {
+      method: 'POST',
+      body: JSON.stringify(body),
     }),
 
-  removeDevice: (projectId: string, deviceId: string) =>
-    apiClient<void>(`/projects/${projectId}/devices/${deviceId}`, {
+  unbindRunner: (projectId: string, runnerId: string) =>
+    apiClient<void>(`/projects/${projectId}/runners/${runnerId}`, {
       method: 'DELETE',
     }),
 };
