@@ -47,6 +47,7 @@ export const REGISTRY_RUNNER_TYPES = ['claude-code', 'antigravity'] as const;
 
 export const REGISTRY_STEP_TOGGLE_KEYS = [
   'autoTriage',
+  'autoClarify',
   'autoPlan',
   'autoCode',
   'autoReview',

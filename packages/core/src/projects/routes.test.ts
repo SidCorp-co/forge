@@ -713,8 +713,8 @@ describe('POST /api/projects/:id/api-key/rotate', () => {
 describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
   const PID = '11111111-1111-4111-8111-111111111111';
   const EXPECTED_DEFAULT_STAGES = [
-    'approved', 'confirmed', 'deploying', 'developed', 'open', 'pass',
-    'released', 'reopen', 'staging', 'tested', 'testing',
+    'approved', 'confirmed', 'deploying', 'developed', 'needs_info', 'open',
+    'pass', 'released', 'reopen', 'staging', 'tested', 'testing',
   ].sort();
   const SKILL_IDS = {
     triage: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',

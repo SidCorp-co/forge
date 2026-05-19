@@ -26,9 +26,10 @@ describe('PIPELINE_STEPS literal sanity', () => {
     }
   });
 
-  it('has the seven automatable steps in the expected order', () => {
+  it('has the eight automatable steps in the expected order', () => {
     expect(PIPELINE_STEPS.map((s) => s.status)).toEqual([
       'open',
+      'needs_info',
       'confirmed',
       'approved',
       'developed',
@@ -38,11 +39,10 @@ describe('PIPELINE_STEPS literal sanity', () => {
     ]);
   });
 
-  it('clarify is manual-only and absent from PIPELINE_STEPS', () => {
-    expect(MANUAL_ONLY_JOB_TYPES).toEqual(['clarify']);
-    for (const step of PIPELINE_STEPS) {
-      expect(step.jobType).not.toBe('clarify');
-    }
+  it('MANUAL_ONLY_JOB_TYPES is empty after clarify promotion (ISS-171)', () => {
+    expect(MANUAL_ONLY_JOB_TYPES).toEqual([]);
+    const types = PIPELINE_STEPS.map((s) => s.jobType);
+    expect(types).toContain('clarify');
   });
 });
 
@@ -127,8 +127,8 @@ describe('getPipelineRegistry()', () => {
     const json = JSON.parse(JSON.stringify(payload));
     const parsed = pipelineRegistryResponseSchema.parse(json);
     expect(parsed.version).toBe(1);
-    expect(parsed.steps).toHaveLength(7);
-    expect(parsed.manualOnlyJobTypes).toEqual(['clarify']);
+    expect(parsed.steps).toHaveLength(8);
+    expect(parsed.manualOnlyJobTypes).toEqual([]);
   });
 });
 
@@ -145,9 +145,9 @@ describe('GET /api/pipeline/registry', () => {
 
     const body = await res.json();
     const parsed = pipelineRegistryResponseSchema.parse(body);
-    expect(parsed.steps).toHaveLength(7);
+    expect(parsed.steps).toHaveLength(8);
     expect(parsed.version).toBe(1);
-    expect(parsed.manualOnlyJobTypes).toEqual(['clarify']);
+    expect(parsed.manualOnlyJobTypes).toEqual([]);
     expect(parsed.runnerCapabilities['claude-code']).toEqual([
       'plan',
       'code',
@@ -156,6 +156,7 @@ describe('GET /api/pipeline/registry', () => {
       'triage',
       'test',
       'release',
+      'clarify',
     ]);
   });
 });

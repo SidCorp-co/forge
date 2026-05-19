@@ -482,8 +482,9 @@ projectRoutes.get(
 
     const ac = (row.agentConfig ?? {}) as Record<string, unknown>;
     const stored = (ac.pipelineConfig ?? {}) as Record<string, unknown>;
-    // Parse through schema — drops legacy keys (autoClarify, etc.) so the
-    // response is the typed surface the FE expects. Defaults fill blanks.
+    // Parse through schema — drops legacy keys (clarified, pipelineSteps,
+    // etc.) so the response is the typed surface the FE expects. Defaults
+    // fill blanks.
     const parsed = pipelineConfigSchema.parse(stored);
     const pipelineConfig: PipelineConfig = { ...PIPELINE_CONFIG_DEFAULTS, ...parsed };
 

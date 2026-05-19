@@ -37,6 +37,10 @@ beforeEach(() => {
 describe('resolveJobTypeForStatus', () => {
   it('maps every automatable status to a jobType + toggle', () => {
     expect(resolveJobTypeForStatus('open')).toEqual({ type: 'triage', toggle: 'autoTriage' });
+    expect(resolveJobTypeForStatus('needs_info')).toEqual({
+      type: 'clarify',
+      toggle: 'autoClarify',
+    });
     expect(resolveJobTypeForStatus('confirmed')).toEqual({ type: 'plan', toggle: 'autoPlan' });
     expect(resolveJobTypeForStatus('approved')).toEqual({ type: 'code', toggle: 'autoCode' });
     expect(resolveJobTypeForStatus('developed')).toEqual({ type: 'review', toggle: 'autoReview' });
@@ -46,7 +50,7 @@ describe('resolveJobTypeForStatus', () => {
   });
 
   it('returns null for human-gated statuses', () => {
-    for (const s of ['waiting', 'staging', 'on_hold', 'needs_info', 'closed'] as const) {
+    for (const s of ['waiting', 'staging', 'on_hold', 'closed'] as const) {
       expect(resolveJobTypeForStatus(s)).toBeNull();
     }
   });
@@ -54,7 +58,16 @@ describe('resolveJobTypeForStatus', () => {
   it('covers only automatable statuses (snapshot check against drift)', () => {
     const mapped = Object.keys(STATUS_TO_JOB_TYPE).sort();
     expect(mapped).toEqual(
-      ['approved', 'confirmed', 'developed', 'open', 'released', 'reopen', 'testing'].sort(),
+      [
+        'approved',
+        'confirmed',
+        'developed',
+        'needs_info',
+        'open',
+        'released',
+        'reopen',
+        'testing',
+      ].sort(),
     );
     for (const key of mapped) {
       expect(issueStatuses).toContain(key as never);
@@ -65,6 +78,7 @@ describe('resolveJobTypeForStatus', () => {
 describe('inverseJobTypeToStatus', () => {
   it('maps each jobType back to its source status', () => {
     expect(inverseJobTypeToStatus('triage')).toBe('open');
+    expect(inverseJobTypeToStatus('clarify')).toBe('needs_info');
     expect(inverseJobTypeToStatus('plan')).toBe('confirmed');
     expect(inverseJobTypeToStatus('code')).toBe('approved');
     expect(inverseJobTypeToStatus('review')).toBe('developed');

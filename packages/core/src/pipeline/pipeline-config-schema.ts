@@ -31,8 +31,9 @@ export type StepToggle = z.infer<typeof stepToggleSchema>;
 /**
  * Authoritative list of step toggle keys exposed to projects. Derived from
  * `PIPELINE_STEPS` in `./registry.ts` so a new step is added in exactly one
- * place. `clarified` is human-gated and intentionally absent from the
- * registry — there is no orchestrator code path for it.
+ * place. Includes `autoClarify` (ISS-171) for the `needs_info → clarify`
+ * auto-dispatch path; the legacy `clarified` status was never reified — the
+ * stage status is `needs_info`.
  *
  * Cast to the explicit tuple literal because Zod's `z.enum` requires a
  * `readonly [string, ...string[]]` shape that the wider `string[]` type of
@@ -40,6 +41,7 @@ export type StepToggle = z.infer<typeof stepToggleSchema>;
  */
 export const STEP_TOGGLE_KEYS = PIPELINE_STEPS.map((s) => s.toggle) as unknown as readonly [
   'autoTriage',
+  'autoClarify',
   'autoPlan',
   'autoCode',
   'autoReview',
@@ -63,6 +65,7 @@ export const STEP_TOGGLE_KEYS = PIPELINE_STEPS.map((s) => s.toggle) as unknown a
  */
 export const STAGE_NAMES = [
   'open',
+  'needs_info',
   'confirmed',
   'approved',
   'developed',
@@ -108,7 +111,7 @@ export function defaultStatesConfig(): Record<StageName, StageConfig> {
  * orchestrator + sweeper readers.
  *
  * Unknown keys are silently dropped on parse (Zod default) — this is
- * deliberate so legacy Strapi-era keys (`autoClarify`, `pipelineSteps`,
+ * deliberate so legacy Strapi-era keys (`clarified`, `pipelineSteps`,
  * `previewEnabled`, etc.) round-trip through the API without causing 400s
  * but are not surfaced as configurable controls.
  *
@@ -122,6 +125,7 @@ export const pipelineConfigSchema = z
   .object({
     enabled: z.boolean().optional(),
     autoTriage: stepToggleSchema.optional(),
+    autoClarify: stepToggleSchema.optional(),
     autoPlan: stepToggleSchema.optional(),
     autoCode: stepToggleSchema.optional(),
     autoReview: stepToggleSchema.optional(),
