@@ -6,7 +6,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
-import { devicePlatforms, devices, pairingCodes, projectDevices } from '../db/schema.js';
+import { devicePlatforms, devices, pairingCodes, runners } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
@@ -162,8 +162,9 @@ deviceOwnerRoutes.patch(
 );
 
 // Soft revoke — sets status='revoked' (preserves history; auth middleware
-// already rejects revoked tokens) and removes the device from every project
-// pool so it stops appearing in dispatcher candidate lists.
+// already rejects revoked tokens) and removes every runner row bound to this
+// device so the dispatcher stops considering it. ISS-172 Slice A unified the
+// project_devices pool into `runners`, so this is the only cleanup needed.
 deviceOwnerRoutes.delete(
   '/devices/:id',
   requireFreshAuth(5),
@@ -189,7 +190,7 @@ deviceOwnerRoutes.delete(
         .update(devices)
         .set({ status: 'revoked' })
         .where(eq(devices.id, id));
-      await tx.delete(projectDevices).where(eq(projectDevices.deviceId, id));
+      await tx.delete(runners).where(eq(runners.deviceId, id));
     });
 
     return c.body(null, 204);
@@ -272,12 +273,9 @@ deviceAuthRoutes.post(
     if (!updated) throw unauth();
 
     // Mirror the heartbeat onto any runners bound to this device so the
-    // stale-detector doesn't flip them offline. ISS-271 added a separate
-    // runner registry but the JS Tauri client does not yet send `runner:register`
-    // over the Rust WS path, so the device heartbeat is the only signal we
-    // have. This keeps the contract: a device that talks to /heartbeat is
-    // also runnable by the dispatcher.
-    const { runners } = await import('../db/schema.js');
+    // stale-detector doesn't flip them offline. After ISS-172 Slice A a
+    // single device may have one runner per project, so this update fans
+    // out across every binding.
     await db
       .update(runners)
       .set({ lastSeenAt: new Date(), status: 'online', updatedAt: new Date() })

@@ -41,7 +41,13 @@ const deleteWhere = vi.fn(async () => undefined);
 const dbDelete = vi.fn(() => ({ where: deleteWhere }));
 
 const insertOnConflict = vi.fn(async () => undefined);
-const insertValues = vi.fn(() => ({ onConflictDoNothing: insertOnConflict }));
+const insertReturning = vi.fn();
+const insertOnConflictDoUpdate = vi.fn(() => ({ returning: insertReturning }));
+const insertValues = vi.fn(() => ({
+  onConflictDoNothing: insertOnConflict,
+  onConflictDoUpdate: insertOnConflictDoUpdate,
+  returning: insertReturning,
+}));
 const dbInsert = vi.fn(() => ({ values: insertValues }));
 
 vi.mock('../db/client.js', () => ({
@@ -77,6 +83,8 @@ beforeEach(() => {
   deleteWhere.mockClear();
   insertValues.mockClear();
   insertOnConflict.mockClear();
+  insertOnConflictDoUpdate.mockClear();
+  insertReturning.mockReset();
   let callIdx = 0;
   txInsert.mockImplementation(() => {
     const idx = callIdx++;
@@ -268,7 +276,14 @@ describe('GET /api/projects/:id', () => {
       .mockResolvedValueOnce([{ userId: 'uuid-user', role: 'owner' }])
       .mockResolvedValueOnce([{ id: 'l1', name: 'bug', color: '#f00' }])
       .mockResolvedValueOnce([
-        { id: 'd1', name: 'Beta-Linux', platform: 'linux', status: 'online', lastSeenAt: null },
+        {
+          id: 'd1',
+          name: 'Beta-Linux',
+          platform: 'linux',
+          status: 'online',
+          lastSeenAt: null,
+          runnerId: 'r1',
+        },
       ]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', { token });
@@ -279,7 +294,7 @@ describe('GET /api/projects/:id', () => {
       repoPath: string;
       members: unknown[];
       labels: unknown[];
-      devicePool: unknown[];
+      devicePool: Array<{ id: string; runnerId: string }>;
     };
     expect(body.id).toBe('p1');
     expect(body.description).toBe('desc');
@@ -287,6 +302,7 @@ describe('GET /api/projects/:id', () => {
     expect(body.members).toHaveLength(1);
     expect(body.labels).toHaveLength(1);
     expect(body.devicePool).toHaveLength(1);
+    expect(body.devicePool[0]?.runnerId).toBe('r1');
   });
 
   it('returns the full apiKey to project members (no redaction)', async () => {
@@ -321,7 +337,14 @@ describe('GET /api/projects/:id', () => {
       .mockResolvedValueOnce([{ userId: 'uuid-user', role: 'owner' }])
       .mockResolvedValueOnce([{ id: 'l1', name: 'bug', color: '#f00' }])
       .mockResolvedValueOnce([
-        { id: 'd1', name: 'Beta-Linux', platform: 'linux', status: 'online', lastSeenAt: null },
+        {
+          id: 'd1',
+          name: 'Beta-Linux',
+          platform: 'linux',
+          status: 'online',
+          lastSeenAt: null,
+          runnerId: 'r1',
+        },
       ]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', { token });
@@ -609,9 +632,10 @@ describe('PATCH /api/projects/:id', () => {
   });
 });
 
-describe('PUT /api/projects/:id/devices/:deviceId', () => {
+describe('POST /api/projects/:id/runners (ISS-172)', () => {
   const PID = '11111111-1111-4111-8111-111111111111';
   const DID = '22222222-2222-4222-8222-222222222222';
+  const RID = '33333333-3333-4333-8333-333333333333';
 
   it('403 FORBIDDEN for non-owner non-admin', async () => {
     const token = await signUserToken('uuid-member');
@@ -620,36 +644,111 @@ describe('PUT /api/projects/:id/devices/:deviceId', () => {
       .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-other' }])
       .mockResolvedValueOnce([{ role: 'member' }]);
 
-    const res = await req(`/${PID}/devices/${DID}`, { method: 'PUT', token });
+    const res = await req(`/${PID}/runners`, {
+      method: 'POST',
+      body: JSON.stringify({ deviceId: DID }),
+      token,
+    });
     expect(res.status).toBe(403);
     expect(insertValues).not.toHaveBeenCalled();
   });
 
-  it('204 inserts into pool for owner (idempotent)', async () => {
+  it('404 DEVICE_NOT_FOUND when deviceId does not exist', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
       .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
-      .mockResolvedValueOnce([{ role: 'owner' }]);
+      .mockResolvedValueOnce([{ role: 'owner' }])
+      .mockResolvedValueOnce([]); // device lookup -> empty
 
-    const res = await req(`/${PID}/devices/${DID}`, { method: 'PUT', token });
-    expect(res.status).toBe(204);
-    expect(insertValues).toHaveBeenCalledWith({ projectId: PID, deviceId: DID });
-    expect(insertOnConflict).toHaveBeenCalled();
+    const res = await req(`/${PID}/runners`, {
+      method: 'POST',
+      body: JSON.stringify({ deviceId: DID }),
+      token,
+    });
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('DEVICE_NOT_FOUND');
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('201 upserts a claude-code runner row (idempotent, status=online when device fresh)', async () => {
+    const token = await signUserToken('uuid-owner');
+    const lastSeenAt = new Date();
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
+      .mockResolvedValueOnce([{ role: 'owner' }])
+      .mockResolvedValueOnce([
+        { id: DID, name: 'laptop', status: 'online', lastSeenAt },
+      ]);
+    insertReturning.mockResolvedValueOnce([
+      { id: RID, projectId: PID, deviceId: DID, status: 'online' },
+    ]);
+
+    const res = await req(`/${PID}/runners`, {
+      method: 'POST',
+      body: JSON.stringify({ deviceId: DID }),
+      token,
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { id: string; status: string };
+    expect(body.id).toBe(RID);
+    expect(body.status).toBe('online');
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: PID,
+        deviceId: DID,
+        type: 'claude-code',
+        host: 'device',
+        status: 'online',
+      }),
+    );
+    expect(insertOnConflictDoUpdate).toHaveBeenCalled();
+  });
+
+  it('201 with status=offline when device.status is offline', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
+      .mockResolvedValueOnce([{ role: 'owner' }])
+      .mockResolvedValueOnce([
+        { id: DID, name: 'laptop', status: 'offline', lastSeenAt: null },
+      ]);
+    insertReturning.mockResolvedValueOnce([
+      { id: RID, projectId: PID, deviceId: DID, status: 'offline' },
+    ]);
+
+    const res = await req(`/${PID}/runners`, {
+      method: 'POST',
+      body: JSON.stringify({ deviceId: DID }),
+      token,
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { status: string };
+    expect(body.status).toBe('offline');
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'offline' }),
+    );
   });
 
   it('400 BAD_REQUEST when deviceId is not a uuid', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
 
-    const res = await req(`/${PID}/devices/not-a-uuid`, { method: 'PUT', token });
+    const res = await req(`/${PID}/runners`, {
+      method: 'POST',
+      body: JSON.stringify({ deviceId: 'not-a-uuid' }),
+      token,
+    });
     expect(res.status).toBe(400);
   });
 });
 
-describe('DELETE /api/projects/:id/devices/:deviceId', () => {
+describe('DELETE /api/projects/:id/runners/:runnerId (ISS-172)', () => {
   const PID = '11111111-1111-4111-8111-111111111111';
-  const DID = '22222222-2222-4222-8222-222222222222';
+  const RID = '33333333-3333-4333-8333-333333333333';
 
   it('403 FORBIDDEN for non-owner non-admin', async () => {
     const token = await signUserToken('uuid-member');
@@ -658,19 +757,19 @@ describe('DELETE /api/projects/:id/devices/:deviceId', () => {
       .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-other' }])
       .mockResolvedValueOnce([{ role: 'member' }]);
 
-    const res = await req(`/${PID}/devices/${DID}`, { method: 'DELETE', token });
+    const res = await req(`/${PID}/runners/${RID}`, { method: 'DELETE', token });
     expect(res.status).toBe(403);
     expect(deleteWhere).not.toHaveBeenCalled();
   });
 
-  it('204 removes from pool for owner', async () => {
+  it('204 removes the runner row for owner', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
       .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
       .mockResolvedValueOnce([{ role: 'owner' }]);
 
-    const res = await req(`/${PID}/devices/${DID}`, { method: 'DELETE', token });
+    const res = await req(`/${PID}/runners/${RID}`, { method: 'DELETE', token });
     expect(res.status).toBe(204);
     expect(deleteWhere).toHaveBeenCalled();
   });
