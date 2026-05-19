@@ -57,17 +57,22 @@ describe('pipelineConfigSchema', () => {
     expect(pipelineConfigSchema.parse(doc)).toEqual(doc);
   });
 
-  it('drops unknown keys (legacy autoClarify, pipelineSteps)', () => {
+  it('drops unknown keys (legacy clarified, pipelineSteps)', () => {
     const legacy = {
       enabled: true,
-      autoClarify: true,
+      clarified: 'something',
       pipelineSteps: [{ status: 'open', skill: 'forge-triage' }],
       previewEnabled: false,
     };
     const out = pipelineConfigSchema.parse(legacy);
     expect(out).toEqual({ enabled: true });
-    expect((out as Record<string, unknown>).autoClarify).toBeUndefined();
+    expect((out as Record<string, unknown>).clarified).toBeUndefined();
     expect((out as Record<string, unknown>).pipelineSteps).toBeUndefined();
+  });
+
+  it('accepts autoClarify as a first-class toggle (ISS-171)', () => {
+    const out = pipelineConfigSchema.parse({ enabled: true, autoClarify: true });
+    expect(out.autoClarify).toBe(true);
   });
 
   it('silently drops legacy recovery keys (no longer surfaced)', () => {
@@ -94,9 +99,18 @@ describe('PIPELINE_CONFIG_DEFAULTS', () => {
 });
 
 describe('STEP_TOGGLE_KEYS', () => {
-  it('is exactly the seven steps the orchestrator enqueues', () => {
+  it('is exactly the eight steps the orchestrator enqueues', () => {
     expect([...STEP_TOGGLE_KEYS].sort()).toEqual(
-      ['autoCode', 'autoFix', 'autoPlan', 'autoRelease', 'autoReview', 'autoTest', 'autoTriage'].sort(),
+      [
+        'autoClarify',
+        'autoCode',
+        'autoFix',
+        'autoPlan',
+        'autoRelease',
+        'autoReview',
+        'autoTest',
+        'autoTriage',
+      ].sort(),
     );
   });
 });
@@ -147,10 +161,10 @@ describe('statesConfigSchema (ISS-110)', () => {
 
 describe('mergePipelineConfig', () => {
   it('merges patch onto current, preserving unknown keys for round-trip', () => {
-    const current = { enabled: false, autoClarify: true, autoTriage: false };
+    const current = { enabled: false, clarified: 'legacy', autoTriage: false };
     const patch = { enabled: true, autoTriage: true };
     const merged = mergePipelineConfig(current, patch);
-    expect(merged).toEqual({ enabled: true, autoClarify: true, autoTriage: true });
+    expect(merged).toEqual({ enabled: true, clarified: 'legacy', autoTriage: true });
   });
 
   it('handles null current', () => {

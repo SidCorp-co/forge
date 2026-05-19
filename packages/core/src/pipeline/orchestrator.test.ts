@@ -308,6 +308,35 @@ describe('pipeline/orchestrator', () => {
     expect(enqueueMock).toHaveBeenCalledWith('job-x');
   });
 
+  it('enqueues a clarify job on open→needs_info when autoClarify is true (ISS-171)', async () => {
+    cfgResolved({ enabled: true, autoClarify: true });
+    skillRegistered('forge-clarify', 'clarify', 'autoClarify');
+    nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+    insertReturning.mockResolvedValueOnce([{ id: 'clarify-job' }]);
+
+    const bus = makeBus();
+    await bus.emit(
+      'transition',
+      transition({ from: 'open', to: 'needs_info' }) as never,
+    );
+
+    expect(dbInsert).toHaveBeenCalledTimes(1);
+    expect(enqueueMock).toHaveBeenCalledWith('clarify-job');
+  });
+
+  it('does not enqueue on open→needs_info when autoClarify is false', async () => {
+    cfgResolved({ enabled: true, autoClarify: false });
+
+    const bus = makeBus();
+    await bus.emit(
+      'transition',
+      transition({ from: 'open', to: 'needs_info' }) as never,
+    );
+
+    expect(dbInsert).not.toHaveBeenCalled();
+    expect(resolverResolve).not.toHaveBeenCalled();
+  });
+
   it('enqueues a triage job on issueCreated when autoTriage is true', async () => {
     cfgResolved({ enabled: true, autoTriage: true });
     skillRegistered('forge-triage', 'triage', 'autoTriage');

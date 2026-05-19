@@ -14,6 +14,7 @@ export const PIPELINE_REGISTRY_VERSION = 1;
 
 export const PIPELINE_STEPS = [
   { status: 'open', jobType: 'triage', toggle: 'autoTriage', skillName: 'forge-triage' },
+  { status: 'needs_info', jobType: 'clarify', toggle: 'autoClarify', skillName: 'forge-clarify' },
   { status: 'confirmed', jobType: 'plan', toggle: 'autoPlan', skillName: 'forge-plan' },
   { status: 'approved', jobType: 'code', toggle: 'autoCode', skillName: 'forge-code' },
   { status: 'developed', jobType: 'review', toggle: 'autoReview', skillName: 'forge-review' },
@@ -34,17 +35,18 @@ export type PipelineStep = (typeof PIPELINE_STEPS)[number];
 // enum tuple it needs.
 export type StepToggleKey = PipelineStep['toggle'];
 
-// Human-gated job types with no auto-dispatch path. Lives here so the FE
-// can render the manual-only stages without hard-coding the list.
-export const MANUAL_ONLY_JOB_TYPES: readonly JobType[] = ['clarify'];
+// Human-gated job types with no auto-dispatch path. Empty after ISS-171
+// promoted 'clarify' to a first-class step; kept exported because the FE
+// renders this list.
+export const MANUAL_ONLY_JOB_TYPES: readonly JobType[] = [];
 
 // Mirrors the static map historically duplicated in
 // `packages/web/src/features/pipeline/runner-capabilities.ts`. The web copy
 // stays in place until a follow-up issue switches the FE to fetch the
 // registry; the test suite asserts the values match.
 export const RUNNER_CAPABILITIES: Record<RunnerType, readonly JobType[]> = {
-  'claude-code': ['plan', 'code', 'review', 'fix', 'triage', 'test', 'release'],
-  antigravity: ['plan', 'code', 'review', 'fix', 'triage', 'test', 'release'],
+  'claude-code': ['plan', 'code', 'review', 'fix', 'triage', 'test', 'release', 'clarify'],
+  antigravity: ['plan', 'code', 'review', 'fix', 'triage', 'test', 'release', 'clarify'],
 };
 
 export interface JobTypeMapping {
