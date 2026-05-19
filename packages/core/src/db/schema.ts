@@ -190,23 +190,6 @@ export const projectMembers = pgTable(
   }),
 );
 
-export const projectDevices = pgTable(
-  'project_devices',
-  {
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    deviceId: uuid('device_id')
-      .notNull()
-      .references((): AnyPgColumn => devices.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    pk: primaryKey({ columns: [t.projectId, t.deviceId] }),
-    deviceIdIdx: index('project_devices_device_id_idx').on(t.deviceId),
-  }),
-);
-
 export const projectsRelations = relations(projects, ({ one, many }) => ({
   owner: one(users, { fields: [projects.ownerId], references: [users.id] }),
   members: many(projectMembers),
@@ -214,17 +197,11 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
     fields: [projects.defaultDeviceId],
     references: [devices.id],
   }),
-  devicePool: many(projectDevices),
 }));
 
 export const projectMembersRelations = relations(projectMembers, ({ one }) => ({
   project: one(projects, { fields: [projectMembers.projectId], references: [projects.id] }),
   user: one(users, { fields: [projectMembers.userId], references: [users.id] }),
-}));
-
-export const projectDevicesRelations = relations(projectDevices, ({ one }) => ({
-  project: one(projects, { fields: [projectDevices.projectId], references: [projects.id] }),
-  device: one(devices, { fields: [projectDevices.deviceId], references: [devices.id] }),
 }));
 
 export const projectInvitations = pgTable(
@@ -624,8 +601,8 @@ export const runners = pgTable(
       t.type,
       t.status,
     ),
-    deviceIdIdx: uniqueIndex('runners_device_type_uq')
-      .on(t.deviceId, t.type)
+    projectDeviceTypeUq: uniqueIndex('runners_project_device_type_uq')
+      .on(t.projectId, t.deviceId, t.type)
       .where(sql`device_id IS NOT NULL`),
     // Remote runners (host='remote', deviceId IS NULL) must be uniquely
     // named per project + type so an operator can't accidentally create

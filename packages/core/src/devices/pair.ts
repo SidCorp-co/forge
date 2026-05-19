@@ -25,9 +25,13 @@ const badRequest = (code: string, message: string) =>
  *  - CODE_ALREADY_USED — `usedAt` is not null
  *  - CODE_EXPIRED — `expiresAt < now()`
  *  - On success, issues a device token bound to the code's owner.
- *  - If the code carries a `projectId` and the project's
- *    `agent_config.activeDeviceId` is currently null, auto-binds the new
- *    device to that project. Does not stomp an existing binding.
+ *
+ * Pairing is device-scoped: redeeming a code mints a token, never binds the
+ * device to a project. Project binding is a separate web-UI action driven by
+ * `POST /projects/:id/runners` (ISS-172 Slice A).
+ *
+ * `projectId` on the result echoes back the code's hint so the desktop client
+ * can still surface "you were invited to project X"; it has no DB side-effect.
  */
 export async function redeemPairingCode(input: PairInput): Promise<PairResult> {
   return db.transaction(async (tx) => {
@@ -62,36 +66,6 @@ export async function redeemPairingCode(input: PairInput): Promise<PairResult> {
       .update(pairingCodes)
       .set({ usedAt: new Date() })
       .where(eq(pairingCodes.code, input.code));
-
-    if (row.project_id) {
-      // Only set activeDeviceId when unset — do not overwrite an existing
-      // binding. Users can rebind explicitly via the runtime endpoint.
-      await tx.execute(sql`
-        UPDATE projects
-        SET agent_config = jsonb_set(
-          COALESCE(agent_config, '{}'::jsonb),
-          '{activeDeviceId}',
-          to_jsonb(${device.id}::text)
-        )
-        WHERE id = ${row.project_id}
-          AND (agent_config IS NULL OR agent_config->>'activeDeviceId' IS NULL)
-      `);
-
-      // ISS-271 runner registry: create a `claude-code` runner row bound to
-      // this device so the dispatcher's selectRunnerForJob can find it. The
-      // JS Tauri client does not yet send `runner:register` on the Rust WS
-      // path; until it does, pair-time creation is the contract for v0.1.
-      // ON CONFLICT DO NOTHING because (device_id, type) is uniquely indexed.
-      // Dev-mode seeds `capabilities.pm = true` so PM jobs dispatch without
-      // a separate opt-in (ISS-18). Production keeps it empty.
-      const pmCap =
-        process.env.NODE_ENV === 'production' ? sql`'{}'::jsonb` : sql`'{"pm": true}'::jsonb`;
-      await tx.execute(sql`
-        INSERT INTO runners (project_id, type, host, device_id, name, capabilities, status, last_seen_at)
-        VALUES (${row.project_id}, 'claude-code', 'device', ${device.id}, ${input.name}, ${pmCap}, 'online', now())
-        ON CONFLICT DO NOTHING
-      `);
-    }
 
     return { device, plaintext, projectId: row.project_id };
   });

@@ -13,12 +13,13 @@ import {
   devices,
   issues,
   labels,
-  projectDevices,
   projectMembers,
   projects,
+  runners,
   skillRegistrations,
   skills,
 } from '../db/schema.js';
+import { defaultRunnerCapabilities } from '../runners/select.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -247,6 +248,9 @@ projectRoutes.get(
       .from(labels)
       .where(eq(labels.projectId, id));
 
+    // ISS-172 Slice A — devicePool now reads from `runners`. One device can
+    // be a runner for N projects, so this is just the per-project slice of
+    // the runners table filtered to `claude-code` device-host rows.
     const devicePool = await db
       .select({
         id: devices.id,
@@ -254,10 +258,17 @@ projectRoutes.get(
         platform: devices.platform,
         status: devices.status,
         lastSeenAt: devices.lastSeenAt,
+        runnerId: runners.id,
       })
-      .from(projectDevices)
-      .innerJoin(devices, eq(devices.id, projectDevices.deviceId))
-      .where(eq(projectDevices.projectId, id));
+      .from(runners)
+      .innerJoin(devices, eq(devices.id, runners.deviceId))
+      .where(
+        and(
+          eq(runners.projectId, id),
+          eq(runners.type, 'claude-code'),
+          eq(runners.host, 'device'),
+        ),
+      );
 
     // apiKey returned as-is — caller passed loadMembership() above. See the
     // GET / list comment for the same reasoning.
@@ -371,18 +382,29 @@ projectRoutes.patch(
   },
 );
 
-const deviceParamSchema = z.object({
-  id: z.uuid(),
-  deviceId: z.uuid(),
-});
+// ISS-172 Slice A — runner-shaped binding endpoints. `POST /:id/runners`
+// upserts a (project, device, 'claude-code') runner row; `DELETE
+// /:id/runners/:runnerId` removes one binding (other projects' runners on
+// the same device are untouched).
 
-projectRoutes.put(
-  '/:id/devices/:deviceId',
-  zValidator('param', deviceParamSchema, (result) => {
+const createRunnerBodySchema = z
+  .object({
+    deviceId: z.uuid(),
+    capabilities: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict();
+
+projectRoutes.post(
+  '/:id/runners',
+  zValidator('param', idParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  zValidator('json', createRunnerBodySchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
   async (c) => {
-    const { id, deviceId } = c.req.valid('param');
+    const { id } = c.req.valid('param');
+    const { deviceId, capabilities } = c.req.valid('json');
     const userId = c.get('userId');
 
     const { project, role } = await loadMembership(id, userId);
@@ -390,26 +412,65 @@ projectRoutes.put(
       throw forbidden('owner or admin required');
     }
 
-    try {
-      await db.insert(projectDevices).values({ projectId: id, deviceId }).onConflictDoNothing();
-    } catch (err) {
-      if (isUniqueViolation(err)) {
-        // already in pool — idempotent
-      } else {
-        throw err;
-      }
+    const [device] = await db
+      .select({
+        id: devices.id,
+        name: devices.name,
+        status: devices.status,
+        lastSeenAt: devices.lastSeenAt,
+      })
+      .from(devices)
+      .where(eq(devices.id, deviceId))
+      .limit(1);
+    if (!device) {
+      throw new HTTPException(404, {
+        message: 'device not found',
+        cause: { code: 'DEVICE_NOT_FOUND' },
+      });
     }
-    return c.body(null, 204);
+
+    const status: 'online' | 'offline' =
+      device.status === 'online' && device.lastSeenAt ? 'online' : 'offline';
+
+    const [runner] = await db
+      .insert(runners)
+      .values({
+        projectId: id,
+        type: 'claude-code',
+        host: 'device',
+        deviceId,
+        name: device.name,
+        capabilities: defaultRunnerCapabilities('claude-code', capabilities),
+        status,
+      })
+      .onConflictDoUpdate({
+        target: [runners.projectId, runners.deviceId, runners.type],
+        set: {
+          status,
+          updatedAt: new Date(),
+          ...(capabilities ? { capabilities } : {}),
+        },
+      })
+      .returning({
+        id: runners.id,
+        projectId: runners.projectId,
+        deviceId: runners.deviceId,
+        status: runners.status,
+      });
+
+    return c.json(runner, 201);
   },
 );
 
+const runnerParamSchema = z.object({ id: z.uuid(), runnerId: z.uuid() });
+
 projectRoutes.delete(
-  '/:id/devices/:deviceId',
-  zValidator('param', deviceParamSchema, (result) => {
+  '/:id/runners/:runnerId',
+  zValidator('param', runnerParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
   async (c) => {
-    const { id, deviceId } = c.req.valid('param');
+    const { id, runnerId } = c.req.valid('param');
     const userId = c.get('userId');
 
     const { project, role } = await loadMembership(id, userId);
@@ -418,8 +479,8 @@ projectRoutes.delete(
     }
 
     await db
-      .delete(projectDevices)
-      .where(and(eq(projectDevices.projectId, id), eq(projectDevices.deviceId, deviceId)));
+      .delete(runners)
+      .where(and(eq(runners.id, runnerId), eq(runners.projectId, id)));
     return c.body(null, 204);
   },
 );

@@ -1,34 +1,40 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { devices, projectDevices, projects } from '../db/schema.js';
+import { devices, projects } from '../db/schema.js';
+import { dispatchLivenessMs } from './dispatch-liveness.js';
 
 /**
- * Pick a device for a new agent session for `projectId`.
+ * Pick a device for a new interactive agent session for `projectId`.
  *
  * Resolution order:
- *  1. Online device in the project's device pool (`project_devices`),
- *     preferring the most-recently-seen one. The dispatcher picks freshest
- *     so that a revived runner gets traffic immediately rather than starving
- *     behind a long-quiet sibling.
+ *  1. The freshest online `claude-code` runner row for this project (mirrors
+ *     `selectRunnerForJob` filters: status='online', host='device',
+ *     last_seen_at within the dispatch-liveness window).
  *  2. The project's `defaultDeviceId` if it points to an online device.
  *  3. `null` — caller must surface "no device available" to the user.
  *
- * Devices in `revoked` status never qualify; they would fail authentication
- * on the next heartbeat anyway.
+ * ISS-172 Slice A: the source of truth is the `runners` table, not the
+ * deprecated `project_devices` pool. A device may be a runner for N projects
+ * simultaneously; this query returns the device id for THIS project only.
  */
 export async function findAvailableDeviceForProject(
   projectId: string,
 ): Promise<string | null> {
-  const poolRows = await db
-    .select({
-      id: devices.id,
-      lastSeenAt: devices.lastSeenAt,
-    })
-    .from(projectDevices)
-    .innerJoin(devices, eq(devices.id, projectDevices.deviceId))
-    .where(and(eq(projectDevices.projectId, projectId), eq(devices.status, 'online')))
-    .orderBy(desc(devices.lastSeenAt));
-  if (poolRows[0]) return poolRows[0].id;
+  const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
+  const rows = await db.execute<{ device_id: string }>(sql`
+    SELECT r.device_id
+    FROM runners r
+    WHERE r.project_id = ${projectId}
+      AND r.type       = 'claude-code'
+      AND r.host       = 'device'
+      AND r.status     = 'online'
+      AND r.device_id IS NOT NULL
+      AND r.last_seen_at IS NOT NULL
+      AND r.last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
+    ORDER BY r.last_seen_at DESC
+    LIMIT 1
+  `);
+  if (rows[0]) return rows[0].device_id;
 
   const [project] = await db
     .select({ defaultDeviceId: projects.defaultDeviceId })

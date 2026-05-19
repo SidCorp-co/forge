@@ -108,25 +108,29 @@ describe('redeemPairingCode', () => {
     expect(txUpdate).toHaveBeenCalledOnce();
   });
 
-  it('auto-binds activeDeviceId when projectId present', async () => {
-    txExecute
-      .mockResolvedValueOnce([
-        {
-          code: 'c1',
-          user_id: 'u-1',
-          project_id: 'proj-1',
-          expires_at: new Date(Date.now() + 60_000),
-          used_at: null,
-        },
-      ])
-      .mockResolvedValueOnce({ rowCount: 1 });
+  it('echoes projectId from project-scoped code but performs no DB bind', async () => {
+    // ISS-172 Slice A: pair is device-only. The code's project_id is returned
+    // so the desktop can surface "you were invited to project X", but no
+    // runners row is inserted and no agent_config.activeDeviceId is set —
+    // project binding happens later via POST /projects/:id/runners.
+    txExecute.mockResolvedValueOnce([
+      {
+        code: 'c1',
+        user_id: 'u-1',
+        project_id: 'proj-1',
+        expires_at: new Date(Date.now() + 60_000),
+        used_at: null,
+      },
+    ]);
     const result = await redeemPairingCode({
       code: 'c1',
       name: 'laptop',
       platform: 'linux',
     });
     expect(result.projectId).toBe('proj-1');
-    // select + auto-bind activeDeviceId + insert runner row = 3 execute calls
-    expect(txExecute).toHaveBeenCalledTimes(3);
+    // Only the initial pairing_codes SELECT — no auto-bind, no runner insert.
+    expect(txExecute).toHaveBeenCalledTimes(1);
+    // Only the mark-used UPDATE on pairing_codes.
+    expect(txUpdate).toHaveBeenCalledOnce();
   });
 });
