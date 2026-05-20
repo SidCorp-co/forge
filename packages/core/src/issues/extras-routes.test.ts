@@ -189,6 +189,7 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
   //   2. issue { id, projectId, status }
   //   3. loadPipelineConfig — projects { agentConfig, ownerId }
   //   4. findActiveJob — jobs { id } or empty for no-conflict
+  //   5. loadIssueSnapshot — issues { title, status, priority, complexity, description, plan, acceptanceCriteria } (ISS-178)
   function setupHappyPath(opts: { status?: string } = {}) {
     authVerified();
     selectLimit.mockResolvedValueOnce([
@@ -201,6 +202,17 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
     });
     selectLimit.mockResolvedValueOnce([{ agentConfig: null, ownerId: USER_ID }]);
     selectLimit.mockResolvedValueOnce([]); // findActiveJob → no conflict
+    selectLimit.mockResolvedValueOnce([
+      {
+        title: 'mock',
+        status: opts.status ?? 'confirmed',
+        priority: 'medium',
+        complexity: null,
+        description: null,
+        plan: null,
+        acceptanceCriteria: null,
+      },
+    ]);
     insertReturning.mockResolvedValueOnce([{ id: JOB_ID }]);
     enqueueJobMock.mockResolvedValueOnce(undefined);
   }
