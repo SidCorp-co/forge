@@ -574,11 +574,10 @@ export function useWebSocket() {
               const jobEvents = mapStreamChunkToJobEvents(agentData);
               enqueueJobEvents(sessionId, jobEvents);
               // Accumulate per-job token usage so agent:complete can POST a
-              // single /usage-records row with the right agentSessionId.
-              // Previously usage was emitted from the dead-code useAgentStream
-              // hook with sessionId=jobId, which never matched the view JOIN
-              // on jobs.agent_session_id — hence totalCostUsd=0 on every
-              // pipeline_run_step_durations row.
+              // single /usage-records row keyed by the forge agentSessionId.
+              // The pipeline_run_step_durations view JOINs
+              // `ur.session_id = j.agent_session_id::text` — without this
+              // path every pipeline step shows totalCostUsd=0.
               try {
                 const apiMsgId = (agentData?.message as Record<string, unknown> | undefined)
                   ?.id as string | undefined;
