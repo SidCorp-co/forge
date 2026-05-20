@@ -113,6 +113,10 @@ const JOB_ID = '44444444-4444-4444-8444-444444444444';
 beforeEach(() => {
   vi.clearAllMocks();
   selectLimit.mockReset();
+  // mockReset wipes the default impl; restore an empty-row default so
+  // unmocked SELECT chains (eg. loadIssueSnapshot at orchestrator dispatch
+  // time) return [] instead of undefined and TypeError-destructuring.
+  selectLimit.mockImplementation(() => Promise.resolve([] as unknown[]));
   selectOrderByLimit.mockReset();
   projectAccess.mockReset();
   enqueueJobMock.mockReset();

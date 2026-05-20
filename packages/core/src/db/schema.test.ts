@@ -33,6 +33,7 @@ import {
   projectMembers,
   projects,
   projectsRelations,
+  promptBlobs,
   refreshTokens,
   tasks,
   users,
@@ -517,6 +518,7 @@ describe('db/schema — jobs', () => {
     expect(names.sort()).toEqual(
       [
         'agent_session_id',
+        'archive_path',
         'attempts',
         'cancellation_requested',
         'classifier_version',
@@ -533,14 +535,19 @@ describe('db/schema — jobs', () => {
         'id',
         'issue_id',
         'model_tier',
+        'model_used',
         'payload',
         'pipeline_run_id',
         'project_id',
+        'prompt_blocks',
+        'prompt_input_token_est',
         'queued_at',
         'retry_of',
         'runner_id',
         'status',
+        'system_prompt_hash',
         'type',
+        'user_prompt_snapshot',
       ].sort(),
     );
   });
@@ -552,9 +559,9 @@ describe('db/schema — jobs', () => {
     expect(id.columnType).toBe('PgUUID');
   });
 
-  it('project_id cascades, device_id/issue_id/retry_of/runner_id set null, created_by restricts, pipeline_run_id restricts', () => {
+  it('project_id cascades, device_id/issue_id/retry_of/runner_id set null, created_by/pipeline_run_id restrict, system_prompt_hash references prompt_blobs', () => {
     const cfg = getTableConfig(jobs);
-    expect(cfg.foreignKeys).toHaveLength(7);
+    expect(cfg.foreignKeys).toHaveLength(8);
     const byCol = new Map(
       cfg.foreignKeys.map((fk) => [fk.reference().columns[0]?.name ?? '', fk] as const),
     );
@@ -565,6 +572,8 @@ describe('db/schema — jobs', () => {
     expect(byCol.get('retry_of')?.onDelete).toBe('set null');
     expect(byCol.get('runner_id')?.onDelete).toBe('set null');
     expect(byCol.get('pipeline_run_id')?.onDelete).toBe('restrict');
+    // S1.1 — content-addressable system prompt blob.
+    expect(byCol.get('system_prompt_hash')?.reference().foreignTable).toBe(promptBlobs);
   });
 
   it('issue_id is nullable uuid referencing issues.id', () => {
