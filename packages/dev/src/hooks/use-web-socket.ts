@@ -3,12 +3,50 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "@/stores/app-store";
 import { useAuth } from "@/hooks/useAuth";
 import { invoke } from "./use-tauri-ipc";
-import { relayAgentEvent, patchAgentSession, getProject, getAgents, syncKnowledgeToCore, syncAgentFiles, postJobEvents, completeJob, type JobEventInput } from "@/lib/api";
+import { relayAgentEvent, patchAgentSession, getProject, getAgents, syncKnowledgeToCore, syncAgentFiles, postJobEvents, completeJob, createUsageRecord, type JobEventInput } from "@/lib/api";
 import { syncAllProjectSkills, syncProjectSkills } from "@/lib/skill-sync";
 import { SessionTracker } from "@/lib/session-tracker";
 import { useAgentCommandHandler } from "./use-agent-commands";
 import { useJobAssignedHandler } from "./use-job-handler";
 import { mapStreamChunkToJobEvents } from "@/lib/job-event-mapper";
+import { parseStreamMessages } from "@/lib/stream-parser";
+
+/**
+ * Pipeline usage accumulator. Keyed by local Tauri sessionId (jobId for
+ * pipeline jobs). Cleared on agent:complete after the row is POSTed to
+ * /usage-records. Dedup `seenIds` matches the Rust JSONL parser pattern
+ * (claude_cli/usage.rs:158) — Claude CLI emits multiple stream entries per
+ * API turn that share the same `message.id`.
+ *
+ * Module-level so the lifecycle survives hook remounts during an active
+ * dispatch.
+ */
+type UsageAcc = {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheCreation: number;
+  model: string;
+  count: number;
+  seenIds: Set<string>;
+};
+const usageAccByJob = new Map<string, UsageAcc>();
+function getOrInitUsageAcc(sessionId: string): UsageAcc {
+  let acc = usageAccByJob.get(sessionId);
+  if (!acc) {
+    acc = {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheCreation: 0,
+      model: "unknown",
+      count: 0,
+      seenIds: new Set(),
+    };
+    usageAccByJob.set(sessionId, acc);
+  }
+  return acc;
+}
 
 // Single tracker instance shared across the hook lifecycle. The
 // `remotePersist` callback writes the in-flight session snapshot to the
@@ -535,6 +573,34 @@ export function useWebSocket() {
             if (jobSessionsRef.current.has(sessionId)) {
               const jobEvents = mapStreamChunkToJobEvents(agentData);
               enqueueJobEvents(sessionId, jobEvents);
+              // Accumulate per-job token usage so agent:complete can POST a
+              // single /usage-records row with the right agentSessionId.
+              // Previously usage was emitted from the dead-code useAgentStream
+              // hook with sessionId=jobId, which never matched the view JOIN
+              // on jobs.agent_session_id — hence totalCostUsd=0 on every
+              // pipeline_run_step_durations row.
+              try {
+                const apiMsgId = (agentData?.message as Record<string, unknown> | undefined)
+                  ?.id as string | undefined;
+                const { messages: msgs } = parseStreamMessages(agentData);
+                for (const msg of msgs) {
+                  if (msg.type === "assistant" && msg.usage) {
+                    const acc = getOrInitUsageAcc(sessionId);
+                    if (apiMsgId) {
+                      if (acc.seenIds.has(apiMsgId)) continue;
+                      acc.seenIds.add(apiMsgId);
+                    }
+                    acc.input += msg.usage.input_tokens || 0;
+                    acc.output += msg.usage.output_tokens || 0;
+                    acc.cacheRead += msg.usage.cache_read_input_tokens || 0;
+                    acc.cacheCreation += msg.usage.cache_creation_input_tokens || 0;
+                    acc.count += 1;
+                    if (msg.model) acc.model = msg.model;
+                  }
+                }
+              } catch {
+                /* parse failures are non-fatal — usage gets a 0-cost row */
+              }
             }
             enqueueRelay(sessionId, "agent:message", agentData);
           },
@@ -593,8 +659,38 @@ export function useWebSocket() {
                 } catch (err) {
                   console.warn(`[agent:complete] PATCH session row failed for job ${sessionId}:`, err);
                 }
+
+                // Emit accumulated token usage as a single /usage-records
+                // row, keyed by the forge agent_sessions.id so the
+                // pipeline_run_step_durations view JOIN
+                // (ur.session_id = j.agent_session_id::text) actually
+                // matches. Without this, every pipeline step shows
+                // totalCostUsd=0 in /metrics.
+                const acc = usageAccByJob.get(sessionId);
+                if (acc && acc.count > 0) {
+                  try {
+                    await createUsageRecord({
+                      source: "desktop",
+                      model: acc.model,
+                      inputTokens: acc.input,
+                      outputTokens: acc.output,
+                      cacheReadTokens: acc.cacheRead,
+                      cacheCreationTokens: acc.cacheCreation,
+                      requestCount: acc.count,
+                      sessionId: agentSessionId,
+                      recordedAt: new Date().toISOString(),
+                    });
+                  } catch (err) {
+                    console.warn(`[agent:complete] usage POST failed for job ${sessionId}:`, err);
+                  }
+                }
+
                 jobAgentSessionsRef.current.delete(sessionId);
               }
+              // Always drop the accumulator entry — even if no agentSessionId
+              // was surfaced (older server builds), keeping it would leak
+              // memory across hot reloads and long-running dev sessions.
+              usageAccByJob.delete(sessionId);
 
               // Mirror the relay that non-job sessions get below, so web chat
               // UIs (which don't subscribe to job_events) see the session
