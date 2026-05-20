@@ -12,9 +12,14 @@ const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 
+const updateWhere = vi.fn(async () => undefined);
+const updateSet = vi.fn(() => ({ where: updateWhere }));
+const dbUpdate = vi.fn(() => ({ set: updateSet }));
+
 vi.mock('../../db/client.js', () => ({
   db: {
     select: vi.fn(() => ({ from: selectFrom })),
+    update: dbUpdate,
   },
 }));
 
@@ -44,6 +49,8 @@ const fakeDevice = {
 beforeEach(() => {
   vi.clearAllMocks();
   selectLimit.mockReset();
+  updateSet.mockClear();
+  updateWhere.mockClear();
 });
 
 describe('forge_config tool (ISS-135 PR-A)', () => {
@@ -138,6 +145,103 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
       targetBranch: 'feat/x',
       prodBranch: 'release',
     });
+  });
+
+  it('action=get exposes stateContext on the config response', async () => {
+    const tool = forgeConfigTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
+
+    selectLimit
+      .mockResolvedValueOnce([{ ownerId: OWNER_ID }])
+      .mockResolvedValueOnce([
+        {
+          id: PROJECT_ID,
+          slug: 'my-proj',
+          name: 'My Project',
+          baseBranch: 'develop',
+          productionBranch: 'release',
+          agentConfig: {
+            stateContext: {
+              code: { budget: { perRunUsd: 2, perMonthUsd: 100, action: 'pause' } },
+            },
+          },
+        },
+      ]);
+
+    const result = (await tool.handler({ action: 'get', projectId: PROJECT_ID })) as {
+      config: { stateContext: Record<string, unknown> | null };
+    };
+
+    expect(result.config.stateContext).toEqual({
+      code: { budget: { perRunUsd: 2, perMonthUsd: 100, action: 'pause' } },
+    });
+  });
+
+  it('action=update merges a stateContext patch (preserves untouched states)', async () => {
+    const tool = forgeConfigTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
+
+    selectLimit
+      .mockResolvedValueOnce([{ ownerId: OWNER_ID }]) // assertPrincipalIsAdmin: project lookup
+      .mockResolvedValueOnce([
+        {
+          agentConfig: {
+            pipelineConfig: { enabled: true },
+            stateContext: { plan: { blocks: { tip: 'keep' } } },
+          },
+        },
+      ]) // read current agentConfig for merge
+      .mockResolvedValueOnce([
+        {
+          id: PROJECT_ID,
+          slug: 'my-proj',
+          name: 'My Project',
+          baseBranch: 'develop',
+          productionBranch: 'release',
+          agentConfig: {
+            pipelineConfig: { enabled: true },
+            stateContext: {
+              plan: { blocks: { tip: 'keep' } },
+              code: { budget: { perRunUsd: 1, perMonthUsd: 50, action: 'pause' } },
+            },
+          },
+        },
+      ]); // readProjectConfig for response
+
+    const result = (await tool.handler({
+      action: 'update',
+      projectId: PROJECT_ID,
+      stateContext: {
+        code: { budget: { perRunUsd: 1, perMonthUsd: 50, action: 'pause' } },
+      },
+    })) as { config: { stateContext: Record<string, unknown> } };
+
+    expect(updateSet).toHaveBeenCalledWith({
+      agentConfig: {
+        pipelineConfig: { enabled: true },
+        stateContext: {
+          plan: { blocks: { tip: 'keep' } },
+          code: { budget: { perRunUsd: 1, perMonthUsd: 50, action: 'pause' } },
+        },
+      },
+    });
+    expect(result.config.stateContext).toEqual({
+      plan: { blocks: { tip: 'keep' } },
+      code: { budget: { perRunUsd: 1, perMonthUsd: 50, action: 'pause' } },
+    });
+  });
+
+  it('action=update rejects an invalid budget (negative perRunUsd)', async () => {
+    const tool = forgeConfigTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
+
+    await expect(
+      tool.handler({
+        action: 'update',
+        projectId: PROJECT_ID,
+        stateContext: {
+          code: { budget: { perRunUsd: -1, perMonthUsd: 50, action: 'pause' } },
+        },
+      }),
+    ).rejects.toThrow();
+    expect(updateSet).not.toHaveBeenCalled();
   });
 
   it('throws NOT_FOUND when issueId refers to an issue outside the project', async () => {

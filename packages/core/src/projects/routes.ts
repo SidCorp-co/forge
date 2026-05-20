@@ -35,6 +35,7 @@ import {
   updatePipelineConfig,
 } from '../pipeline/pipeline-config-service.js';
 import { STATUS_TO_JOB_TYPE } from '../pipeline/skill-mapping.js';
+import { mergeStateContext, stateContextSchema } from './state-context.js';
 
 function generateApiKey(): string {
   return `fk_${randomBytes(24).toString('hex')}`;
@@ -87,6 +88,7 @@ export const updateProjectSchema = z
     agentConfig: z.record(z.string(), z.unknown()).nullable().optional(),
     previewDeploy: previewDeployPatchSchema.nullable().optional(),
     webhookSecret: z.string().min(16).max(128).nullable().optional(),
+    stateContext: stateContextSchema.nullable().optional(),
   })
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
 
@@ -357,7 +359,33 @@ projectRoutes.patch(
     if (patch.baseBranch !== undefined) updates.baseBranch = patch.baseBranch;
     if (patch.productionBranch !== undefined) updates.productionBranch = patch.productionBranch;
     if (patch.defaultDeviceId !== undefined) updates.defaultDeviceId = patch.defaultDeviceId;
-    if (patch.agentConfig !== undefined) updates.agentConfig = patch.agentConfig;
+    if (patch.stateContext !== undefined) {
+      // Read-modify-write rather than Postgres's `jsonb || jsonb` (shallow
+      // merge) so a `stateContext`-only patch can't wipe sibling keys
+      // (`pipelineConfig`, `repoPath`, `categories`, …). Per-state merge
+      // granularity is intentional — see `mergeStateContext` JSDoc.
+      const [row] = await db
+        .select({ agentConfig: projects.agentConfig })
+        .from(projects)
+        .where(eq(projects.id, id))
+        .limit(1);
+      const currentAc = (row?.agentConfig ?? {}) as Record<string, unknown>;
+      const baseAc =
+        patch.agentConfig !== undefined
+          ? ((patch.agentConfig ?? {}) as Record<string, unknown>)
+          : { ...currentAc };
+      const existingSc =
+        patch.agentConfig !== undefined ? undefined : currentAc.stateContext;
+      const mergedSc = mergeStateContext(existingSc, patch.stateContext);
+      if (mergedSc === null) {
+        delete baseAc.stateContext;
+      } else {
+        baseAc.stateContext = mergedSc;
+      }
+      updates.agentConfig = baseAc;
+    } else if (patch.agentConfig !== undefined) {
+      updates.agentConfig = patch.agentConfig;
+    }
     if (patch.previewDeploy !== undefined) updates.previewDeploy = patch.previewDeploy;
     if (patch.webhookSecret !== undefined) updates.webhookSecret = patch.webhookSecret;
 

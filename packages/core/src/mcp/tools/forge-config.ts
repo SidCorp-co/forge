@@ -12,6 +12,10 @@ import {
   updatePipelineConfig,
 } from '../../pipeline/pipeline-config-service.js';
 import {
+  mergeStateContext,
+  stateContextSchema,
+} from '../../projects/state-context.js';
+import {
   type ContextScopedMcpToolFactory,
   assertPrincipalIsAdmin,
   assertPrincipalIsMember,
@@ -25,6 +29,7 @@ const inputSchema = z
     projectId: z.uuid().optional(),
     issueId: z.uuid().optional(),
     pipelineConfig: pipelineConfigPatchSchema.optional(),
+    stateContext: stateContextSchema.nullable().optional(),
   })
   .strict();
 
@@ -59,6 +64,7 @@ function formatBaseResponse(row: Awaited<ReturnType<typeof readProjectConfig>>) 
       productionBranch: (ac.productionBranch as string | undefined) ?? 'main',
       categories: (ac.categories as string[] | undefined) ?? [],
       pipelineConfig: (ac.pipelineConfig as Record<string, unknown> | undefined) ?? null,
+      stateContext: (ac.stateContext as Record<string, unknown> | undefined) ?? null,
       activeDeviceId: (ac.activeDeviceId as string | undefined) ?? null,
     },
   };
@@ -67,7 +73,7 @@ function formatBaseResponse(row: Awaited<ReturnType<typeof readProjectConfig>>) 
 export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_config',
   description:
-    'Read or write project configuration. Action `get` returns `agentConfig` (repoPath, baseBranch, productionBranch, categories, pipelineConfig); when `issueId` is supplied, also returns a resolved `branchConfig` layering the issue override on top of the project default. Action `update` (admin-gated) merges a `pipelineConfig` patch with the same invariants as `PATCH /projects/:id/pipeline-config` (rejects disabling `open`, stages with live issues, auto stages without registered skills, dead-end configs). Errors surface as `BAD_REQUEST: <code>: <message>`.',
+    "Read or write project configuration. Action `get` returns `agentConfig` (repoPath, baseBranch, productionBranch, categories, pipelineConfig, stateContext); when `issueId` is supplied, also returns a resolved `branchConfig` layering the issue override on top of the project default. Action `update` (admin-gated) merges a `pipelineConfig` patch with the same invariants as `PATCH /projects/:id/pipeline-config` and a `stateContext` patch (per-state merge — passing `{ code: {...} }` replaces only the `code` entry, other states untouched; pass `null` to wipe stateContext, or `{ code: null }` to remove one state). Errors surface as `BAD_REQUEST: <code>: <message>`.",
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -93,6 +99,23 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
           }
           throw err;
         }
+      }
+      if (input.stateContext !== undefined) {
+        const [row] = await db
+          .select({ agentConfig: projects.agentConfig })
+          .from(projects)
+          .where(eq(projects.id, input.projectId))
+          .limit(1);
+        if (!row) throw new Error('NOT_FOUND: project not found');
+        const currentAc = (row.agentConfig ?? {}) as Record<string, unknown>;
+        const mergedSc = mergeStateContext(currentAc.stateContext, input.stateContext);
+        const nextAc: Record<string, unknown> =
+          mergedSc === null
+            ? Object.fromEntries(
+                Object.entries(currentAc).filter(([k]) => k !== 'stateContext'),
+              )
+            : { ...currentAc, stateContext: mergedSc };
+        await db.update(projects).set({ agentConfig: nextAc }).where(eq(projects.id, input.projectId));
       }
       const row = await readProjectConfig(input.projectId);
       return formatBaseResponse(row);
