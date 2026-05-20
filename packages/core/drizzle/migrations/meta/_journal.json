@@ -477,6 +477,13 @@
       "when": 1779400660000,
       "tag": "0067_unify_runners",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1779400720000,
+      "tag": "0068_job_prompt_snapshot",
+      "breakpoints": true
     }
   ]
 }
