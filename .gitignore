@@ -27,8 +27,8 @@ Thumbs.db
 *Zone.Identifier
 __pycache__
 *.pyc
-.claude/worktrees/
-.claude/settings.local.json
+.claude/*
+!.claude/skills/
 skills/*
 # IDE
 .idea
