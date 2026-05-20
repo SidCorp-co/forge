@@ -8,7 +8,11 @@ import {
   projects,
 } from '../db/schema.js';
 import { applyStatusTransition, type DeviceLite } from '../issues/apply-transition.js';
-import { buildJobPromptString } from '../jobs/prompt-string.js';
+import {
+  buildJobPromptString,
+  type IssueSnapshot,
+  type SessionContextSnapshot,
+} from '../jobs/prompt-string.js';
 import { logger } from '../logger.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import type { Actor } from './activity.js';
@@ -109,6 +113,39 @@ async function buildPreventiveContext(
 // storage path's bounded contract (description schema cap is 100k).
 const MAX_QUERY_EMBED_CHARS = 8192;
 
+/**
+ * Pre-load issue fields used by `buildJobPromptString` to inline an
+ * `## Issue` block + sessionContext preamble into the runner prompt.
+ * Single SELECT; per-state field gating happens inside prompt-string.ts.
+ */
+async function loadIssueSnapshot(issueId: string): Promise<IssueSnapshot | null> {
+  const [row] = await db
+    .select({
+      title: issues.title,
+      status: issues.status,
+      priority: issues.priority,
+      complexity: issues.complexity,
+      description: issues.description,
+      plan: issues.plan,
+      acceptanceCriteria: issues.acceptanceCriteria,
+      sessionContext: issues.sessionContext,
+    })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  if (!row) return null;
+  return {
+    title: row.title,
+    status: row.status,
+    priority: row.priority,
+    complexity: row.complexity,
+    description: row.description,
+    plan: row.plan,
+    acceptanceCriteria: row.acceptanceCriteria,
+    sessionContext: (row.sessionContext ?? null) as SessionContextSnapshot | null,
+  };
+}
+
 async function loadIssueText(issueId: string): Promise<string> {
   const [row] = await db
     .select({
@@ -207,11 +244,10 @@ export async function triggerPipelineStepManual(args: {
 
   const createdBy = resolveCreatedBy(args.actor, ownerId);
 
-  const preventiveContext = await buildPreventiveContext(
-    skill.type,
-    args.projectId,
-    args.issueId,
-  );
+  const [preventiveContext, issueSnapshot] = await Promise.all([
+    buildPreventiveContext(skill.type, args.projectId, args.issueId),
+    loadIssueSnapshot(args.issueId),
+  ]);
 
   const run = await openIssueRun({ projectId: args.projectId, issueId: args.issueId });
 
@@ -227,6 +263,7 @@ export async function triggerPipelineStepManual(args: {
       skillName: skillRef.skillName,
       jobType: skillRef.type,
       issueId: args.issueId,
+      issueSnapshot,
     }),
     payloadExtras: {
       ...args.reason,
@@ -285,11 +322,10 @@ async function considerEnqueue(args: {
 
   const createdBy = resolveCreatedBy(args.actor, ownerId);
 
-  const preventiveContext = await buildPreventiveContext(
-    skill.type,
-    args.projectId,
-    args.issueId,
-  );
+  const [preventiveContext, issueSnapshot] = await Promise.all([
+    buildPreventiveContext(skill.type, args.projectId, args.issueId),
+    loadIssueSnapshot(args.issueId),
+  ]);
 
   const run = await openIssueRun({ projectId: args.projectId, issueId: args.issueId });
 
@@ -306,6 +342,7 @@ async function considerEnqueue(args: {
         skillName: skillRef.skillName,
         jobType: skillRef.type,
         issueId: args.issueId,
+        issueSnapshot,
       }),
       payloadExtras: {
         ...args.reason,

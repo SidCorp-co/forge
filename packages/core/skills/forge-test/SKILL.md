@@ -174,8 +174,6 @@ See `references/result-format.md` for full template and failure detail format.
 - **All pass** → `forge_issues → update → { data: { status: "tested" } }`
 - **Any fail** → `forge_issues → update → { data: { status: "reopen" } }` + detailed failure report with actionable info for forge-fix
 
-## Output Rules (Save Tokens)
+## Test-specific output reminder
 
-- **Zero narration.** Don't announce each test case before running it. Just execute and collect results.
-- **Report goes to the comment, not to chat.** Don't print the report in conversation AND post it — that doubles tokens.
-- **One-line status only.** "QA done: 5/6 passed, 1 FAIL. Set reopen." — nothing more.
+The QA report goes to `forge_comments.create`, NOT to chat. Don't print it twice. (See pipeline preamble for general output rules.)

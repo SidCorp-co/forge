@@ -62,6 +62,13 @@ export interface DispatchInput {
      * pre-date ISS-115.
      */
     promptString?: string | null;
+    /**
+     * Pipeline preamble (PIPELINE_RULES + TOOL_REFERENCE + project config)
+     * built server-side by `buildPipelinePreamble`. Forwarded to Claude CLI
+     * via `--append-system-prompt`. Stable across jobs of the same project,
+     * so Claude API prompt cache hits for the 2nd+ job in a 5-min window.
+     */
+    systemPrompt?: string | null;
   };
   runner: Runner;
 }

@@ -108,8 +108,4 @@ forge_comments → create → {
 forge_issues → update → { documentId: "<id>", data: { status: "staging" } }
 ```
 
-## Output Rules (Save Tokens)
-
-- **Zero narration.** Tool calls are self-documenting.
-- **One-line status only.** "Merged to main." — nothing more.
-- **Skip the recap.** The comment covers it.
+(General output rules — see pipeline preamble.)

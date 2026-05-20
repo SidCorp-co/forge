@@ -88,6 +88,7 @@ export async function handleJobAssigned(
       claudeSessionId: null,
       projectSlug: slug,
       mcpServers,
+      systemPrompt: data.systemPrompt ?? undefined,
     });
   } catch (err) {
     console.error("[job.assigned] send_chat failed:", err);

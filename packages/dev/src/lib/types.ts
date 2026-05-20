@@ -367,4 +367,11 @@ export interface JobAssignedPayload {
    * `payload.promptString` as a fallback.
    */
   promptString?: string | null;
+  /**
+   * Pipeline preamble (PIPELINE_RULES + TOOL_REFERENCE + project config)
+   * built server-side at dispatch time. Forwarded to Claude CLI as
+   * `--append-system-prompt`. Stable across jobs of the same project so
+   * Claude API prompt cache hits for the 2nd+ job in a 5-min window.
+   */
+  systemPrompt?: string | null;
 }

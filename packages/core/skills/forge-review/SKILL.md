@@ -82,8 +82,6 @@ forge_comments → create → { data: { body: "<review output>", issue: "<docume
 - **No Bug findings** → Check if the branch has been pushed: `git log origin/<branch> --oneline -1`. If pushed → `forge_issues → update → { data: { status: "deploying" } }`. If NOT pushed (subagent/standalone review before push) → do not change status, just post the review comment.
 - **Has Bug findings** → `forge_issues → update → { data: { status: "reopen" } }`, comment serves as rejection. Forge-fix picks it up.
 
-## Output Rules (Save Tokens)
+## Review-specific output reminder
 
-- **Zero narration.** Don't announce each file you're reviewing. Just read the diff, analyze, output findings.
-- **Findings go to the comment, not to chat.** Don't print the review table in conversation AND post it as a comment — that doubles tokens.
-- **One-line status only.** "Review done: 2 bugs, 1 minor. Posted comment." — nothing more.
+Findings go to `forge_comments.create`, NOT to chat. Don't print the review table twice. (See pipeline preamble for general output rules.)

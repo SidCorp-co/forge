@@ -152,7 +152,4 @@ Close the issue (and any sibling issues on the same branch):
 forge_issues → update → { documentId: "<id>", data: { status: "closed" } }
 ```
 
-## Output Rules (Save Tokens)
-
-- **Zero narration.** Just execute the steps.
-- **One-line status only.** "Merged ISS-42 to master, deploy triggered. Closed." — nothing more.
+(General output rules — see pipeline preamble.)

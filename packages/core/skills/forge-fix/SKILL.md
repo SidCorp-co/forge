@@ -151,11 +151,6 @@ Set status based on deploy mode + complexity:
 - **Simple / Medium:** `deploying` (lifecycle auto-skips to `testing`, no per-issue preview)
 - **Complex:** `developed` (triggers review step again for re-verification, then preview deploy)
 
-## Output Rules (Save Tokens)
+## Fix-specific output reminder
 
-- **Zero narration.** Do not say what you're about to do or what you just did. Tool calls are self-documenting.
-- **Code only.** When fixing, output only tool calls (Edit/Write/Bash). No explanations between edits.
-- **No preamble.** Don't restate the feedback — you already parsed it. Just fix.
-- **One-line status only.** "Build passed" or "Fix applied, pushing." — nothing more.
-- **Never repeat file contents.** After reading a file, just edit it.
-- **Skip the recap.** The commit message and comment cover it.
+Don't restate the review/CI feedback you parsed — just fix. (See pipeline preamble for general output rules.)

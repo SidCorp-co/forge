@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Unified thenable mock: each select() terminal consumes one `nextSelect` row.
-const nextSelect = vi.fn();
+// Default to empty array so unmocked SELECT calls (eg. loadIssueSnapshot when
+// the test only cares about the dispatch path) behave like a row-not-found
+// query instead of returning undefined and TypeError-destructuring.
+const nextSelect = vi.fn(() => [] as unknown[]);
 function makeWhereChain() {
   let consumed = false;
   const resolver = async () => {
@@ -155,6 +158,10 @@ function noSkillRegistered() {
 beforeEach(() => {
   vi.clearAllMocks();
   nextSelect.mockReset();
+  // mockReset wipes the default impl; restore it so unmocked SELECT calls
+  // (eg. loadIssueSnapshot when the test only cares about the dispatch path)
+  // return [] instead of undefined and TypeError-destructuring.
+  nextSelect.mockImplementation(() => [] as unknown[]);
   resolverResolve.mockReset();
 });
 

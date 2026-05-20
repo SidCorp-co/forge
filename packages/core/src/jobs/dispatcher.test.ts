@@ -198,6 +198,9 @@ describe('jobs/dispatcher', () => {
           type: 'plan',
           payload: { foo: 'bar' },
           promptString: null,
+          // P1.1: pipeline preamble is always emitted; loadProjectBranches
+          // swallows mock failures so the static rules + tools ship anyway.
+          systemPrompt: expect.any(String),
           dispatchedAt: '2026-04-27T00:00:00.000Z',
           agentSessionId: 'sess-test',
         },

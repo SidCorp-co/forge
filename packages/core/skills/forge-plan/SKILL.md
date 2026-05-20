@@ -19,9 +19,7 @@ Planning is the highest-value step in the pipeline. A good plan saves the coding
 
 ## Tools
 
-- **forge_issues** — get issue data, write plan back to `plan` field
-- **forge_comments** — read triage comment (complexity), post plan comment
-- **Codebase tools** — Read, Glob, Grep for exploring the actual code
+`forge_issues`, `forge_comments`, plus codebase exploration tools (Read, Glob, Grep).
 
 ## Two-Tier Planning
 
@@ -49,14 +47,7 @@ Verify status is `confirmed`. If the issue isn't confirmed yet, stop and explain
 
 Find the triage comment (starts with `**Triage**`) and extract the **complexity** classification. This determines both the planning depth and the exit behavior.
 
-**Checkout latest baseBranch** so exploration sees the current production code:
-
-```bash
-git fetch origin
-git checkout <baseBranch> && git pull origin <baseBranch>
-```
-
-Use the `baseBranch` from `forge_config` (defaults to `main`). This ensures the plan is based on the latest merged code, not a stale feature branch.
+Checkout the latest baseBranch (from `forge_config`, see preamble for the detection rule) so exploration sees current production code.
 
 ### Step 2: Understand the Issue
 
@@ -239,9 +230,6 @@ The full plan has been written to the issue's plan field.
 
 Keep the comment short — the full plan lives in the `plan` field, not the comment. The comment is just a notification for humans and downstream skills.
 
-## Output Rules (Save Tokens)
+## Plan-specific output reminder
 
-- **Zero narration.** Do not say what you're about to do or what you just did. Tool calls are self-documenting.
-- **No quoting files.** After reading a file or knowledge.json, don't repeat its contents. Extract what you need silently and write the plan.
-- **One-line status only.** "Plan written, setting approved." — nothing more.
-- **Plan goes to the API, not to chat.** Write the plan via `forge_issues → update`. Don't also print it in the conversation — that doubles the tokens for zero value.
+The plan goes to the API (`forge_issues → update` on the `plan` field), NOT to chat output. Don't print it twice. (See pipeline preamble for general output rules.)

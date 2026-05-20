@@ -20,11 +20,7 @@ When a plan exists (from forge-plan), this skill should be fast and focused — 
 
 ## Tools
 
-- **forge_issues** — get issue data, update status
-- **forge_comments** — read plan/triage comments, post completion comment
-- **forge_coolify_deploy** — trigger deployment after push
-- **Codebase tools** — Read, Edit, Write, Glob, Grep, Bash
-
+`forge_issues`, `forge_comments`, `forge_coolify_deploy`, plus codebase tools (Read, Edit, Write, Glob, Grep, Bash).
 
 ## Deploy Mode Detection (do this FIRST, once per run)
 
@@ -101,41 +97,14 @@ After fetching the issue, check its `relations` field. If relations exist:
 
 This takes one extra `forge_issues → get` call per relation — cheap insurance against conflicts.
 
-## Key Rules
+## Code-specific rules
 
-1. **Fetch issue first** — never assume data from prompt
-2. **Confirm branch first** — `git branch --show-current` + `git status` before any checkout. Stash/clean if dirty.
-3. **Plan = source of truth** — don't re-explore or re-plan
-4. **Branch from baseBranch** — `forge_config → get` for `baseBranch`, then `git checkout <baseBranch> && git pull && git checkout -b ISS-XX-short-title`
-5. **Stay on branch** — never switch mid-work
-6. **Build + review before push** — never push unvalidated code
-7. **Post a comment** — see `references/comments.md`
+1. **Plan = source of truth** — don't re-explore or re-plan
+2. **Build + review before push** — never push unvalidated code
+3. **Post a comment** — see `references/comments.md`
 
-## Session Context (Before Finishing)
+(Status discipline, branch rules, output rules, sessionContext schema — see pipeline preamble.)
 
-Before your final status update, update the issue's `sessionContext` via `forge_issues → update`. This preserves key context for future sessions working on the same issue.
+## Session Context fields code should populate
 
-Read the issue's current `sessionContext` (from Step 1 fetch). Then merge your new context:
-
-```json
-{
-  "lastUpdated": "<now ISO>",
-  "sessionCount": "<existing + 1>",
-  "currentState": "<where you left off>",
-  "decisions": ["<append new decisions with file paths>"],
-  "filesModified": ["<append new files>"],
-  "errorsResolved": ["<append any errors you hit and fixed>"],
-  "reviewFeedback": ["<append any review feedback you addressed>"]
-}
-```
-
-Rules: increment `sessionCount`, **append** to arrays (don't replace existing entries), update `currentState` to latest. If no meaningful work was done, skip this step. Cap each array at 20 items (drop oldest if exceeded).
-
-## Output Rules (Save Tokens)
-
-- **Zero narration.** Do not say what you're about to do or what you just did. The tool calls are self-documenting.
-- **Code only.** When implementing, output only tool calls (Edit/Write/Bash). No explanations between edits.
-- **No preamble.** Don't explain the plan back — you already read it. Just execute.
-- **One-line status only.** If you must communicate, keep it to one line: "Build failed: missing import in X.ts" or "All 5 steps done, pushing."
-- **Never repeat file contents.** After reading a file, don't quote it back. Just edit it.
-- **Skip the recap.** Don't summarize changes at the end. The commit message and comment cover it.
+Beyond the standard `currentState / decisions / filesModified / errorsResolved`, code step also reads `reviewFeedback` from a prior review (when resuming from `reopen`) and appends entries describing how each finding was addressed. Skip the field if no meaningful work was done.

@@ -165,9 +165,6 @@ forge_issues → update → { documentId: "<id>", data: { status: "clarified" } 
 **Clarify** — Auto-clarified (Simple issue, no UX verification needed)
 ```
 
-## Output Rules (Save Tokens)
+## Clarify-specific output reminder
 
-- **Zero narration.** Do not say what you're about to do or what you just did.
-- **Screenshots are evidence.** Capture them during investigation, upload them, attach to comment.
-- **One-line status only.** "Clarified, setting status." — nothing more.
-- **Always write clarify comments in English**, regardless of issue language.
+Screenshots are evidence — capture, upload, attach to comment. Always write clarify comments in English regardless of issue language. (See pipeline preamble for general output rules.)
