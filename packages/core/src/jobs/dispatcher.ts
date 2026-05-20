@@ -3,6 +3,7 @@ import { db } from '../db/client.js';
 import { devices, jobs, projects, runners } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import type { JobType, RunnerType } from '../db/schema.js';
+import { buildPipelinePreamble } from '../lib/chat-preamble.js';
 import { dispatchLivenessMs, isLastSeenFresh } from '../lib/dispatch-liveness.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import { logger } from '../logger.js';
@@ -132,6 +133,7 @@ async function dispatchViaDevice(job: typeof jobs.$inferSelect): Promise<'dispat
   const legacyPayload = (job.payload ?? {}) as { promptString?: unknown } & Record<string, unknown>;
   const legacyPromptString =
     typeof legacyPayload.promptString === 'string' ? legacyPayload.promptString : null;
+  const systemPrompt = await buildPipelinePreamble(job.projectId);
   roomManager.publish(deviceRoom(deviceId), {
     event: 'job.assigned',
     data: {
@@ -141,6 +143,7 @@ async function dispatchViaDevice(job: typeof jobs.$inferSelect): Promise<'dispat
       type: job.type,
       payload: job.payload,
       promptString: legacyPromptString,
+      systemPrompt,
       dispatchedAt: dispatchedAt.toISOString(),
       agentSessionId,
     },
@@ -297,6 +300,9 @@ async function dispatchViaRunner(
   const runnerPayload = (job.payload ?? {}) as { promptString?: unknown } & Record<string, unknown>;
   const runnerPromptString =
     typeof runnerPayload.promptString === 'string' ? runnerPayload.promptString : null;
+  // PM jobs have their own prompt contract — they would not share the cache
+  // key with skill jobs anyway, so skip the extra DB read for them.
+  const systemPrompt = job.type === 'pm' ? null : await buildPipelinePreamble(job.projectId);
   const result = await adapter.dispatch({
     job: {
       id: job.id,
@@ -305,6 +311,7 @@ async function dispatchViaRunner(
       type: job.type,
       payload: job.payload,
       promptString: runnerPromptString,
+      systemPrompt,
       dispatchedAt,
       agentSessionId,
     },

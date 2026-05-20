@@ -62,6 +62,15 @@ export interface DispatchInput {
      * pre-date ISS-115.
      */
     promptString?: string | null;
+    /**
+     * Cacheable pipeline preamble (PIPELINE_RULES + TOOL_REFERENCE + project
+     * branch config) built by the dispatcher via `buildPipelinePreamble`.
+     * Forwarded to the desktop runner on `job.assigned`; the runner attaches
+     * it as `--append-system-prompt` on the Claude CLI invocation so the
+     * Anthropic prompt cache hits across consecutive pipeline jobs. Null for
+     * PM dispatches and any path that opts out of the shared preamble.
+     */
+    systemPrompt?: string | null;
   };
   runner: Runner;
 }

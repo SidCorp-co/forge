@@ -183,6 +183,10 @@ describe('jobs/dispatcher', () => {
       // projects to feed ensureAgentSessionForJob. Mock the row so the chain
       // doesn't fall through to the unmocked .from() and crash.
       mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
+      // ISS-177 — dispatchViaDevice now also calls buildPipelinePreamble,
+      // which selects baseBranch + productionBranch from the same projects
+      // table. Feed it a configured-branch row.
+      mockSelectOnce([{ baseBranch: 'main', productionBranch: 'main' }]);
 
       const result = await handleDispatch({ jobId: 'j1' });
       expect(result).toBe('dispatched');
@@ -198,6 +202,10 @@ describe('jobs/dispatcher', () => {
           type: 'plan',
           payload: { foo: 'bar' },
           promptString: null,
+          // Pipeline preamble is content-asserted by chat-preamble.test.ts;
+          // here we only verify the field is present and shaped correctly so
+          // a future omission of the dispatcher wire trips this test.
+          systemPrompt: expect.stringContaining('## Pipeline Rules') as unknown as string,
           dispatchedAt: '2026-04-27T00:00:00.000Z',
           agentSessionId: 'sess-test',
         },
@@ -226,6 +234,8 @@ describe('jobs/dispatcher', () => {
     mockSelectOnce([{ id: 'd1', status: 'online', lastSeenAt: new Date() }]);
     mockUpdateReturn([{ id: 'j2' }]);
     mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
+    // ISS-177 — buildPipelinePreamble selects from projects again.
+    mockSelectOnce([{ baseBranch: 'main', productionBranch: 'main' }]);
 
     await handleDispatch({ jobId: 'j2' });
 
@@ -400,6 +410,8 @@ describe('jobs/dispatcher PM path', () => {
     mockSelectOnce([{ id: 'd1', status: 'online', lastSeenAt: new Date() }]);
     mockUpdateReturn([{ id: 'j-prompt' }]);
     mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
+    // ISS-177 — buildPipelinePreamble selects from projects again.
+    mockSelectOnce([{ baseBranch: 'main', productionBranch: 'main' }]);
 
     const result = await handleDispatch({ jobId: 'j-prompt' });
     expect(result).toBe('dispatched');

@@ -367,4 +367,13 @@ export interface JobAssignedPayload {
    * `payload.promptString` as a fallback.
    */
   promptString?: string | null;
+  /**
+   * Cacheable pipeline preamble built by the server (PIPELINE_RULES +
+   * TOOL_REFERENCE + project branch config). When present, the runner
+   * forwards it to `send_chat` as `systemPrompt`; the Tauri command threads
+   * it to the Claude CLI as `--append-system-prompt` so the Anthropic prompt
+   * cache (5 min TTL) hits across consecutive pipeline jobs in the same
+   * project. Null on PM dispatches and on pre-ISS-177 server builds.
+   */
+  systemPrompt?: string | null;
 }
