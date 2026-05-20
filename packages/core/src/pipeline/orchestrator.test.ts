@@ -152,6 +152,23 @@ function noSkillRegistered() {
   resolverResolve.mockResolvedValueOnce(null);
 }
 
+// ISS-178 — orchestrator now loads an issueSnapshot before insertAndEnqueueJob.
+// Mock a minimal row so the SELECT terminal resolves; the contents don't affect
+// the assertions in this file (they only feed buildJobPromptString downstream).
+function snapshotResolved() {
+  nextSelect.mockResolvedValueOnce([
+    {
+      title: 'mock',
+      status: 'open',
+      priority: 'medium',
+      complexity: null,
+      description: null,
+      plan: null,
+      acceptanceCriteria: null,
+    },
+  ]);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   nextSelect.mockReset();
@@ -163,6 +180,7 @@ describe('pipeline/orchestrator', () => {
     cfgResolved({ enabled: true, autoPlan: true });
     skillRegistered('forge-plan', 'plan', 'autoPlan');
     nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+    snapshotResolved();
     insertReturning.mockResolvedValueOnce([{ id: 'new-job' }]);
 
     const bus = makeBus();
@@ -176,6 +194,7 @@ describe('pipeline/orchestrator', () => {
     cfgResolved({ enabled: true, autoPlan: true });
     skillRegistered('custom-planner', 'plan', 'autoPlan');
     nextSelect.mockResolvedValueOnce([]);
+    snapshotResolved();
     insertReturning.mockResolvedValueOnce([{ id: 'job-x' }]);
 
     const valuesSpy = vi.fn(() => ({ returning: insertReturning }));
@@ -280,6 +299,7 @@ describe('pipeline/orchestrator', () => {
     cfgResolved({ enabled: true, autoPlan: true });
     skillRegistered('forge-plan', 'plan', 'autoPlan');
     nextSelect.mockResolvedValueOnce([]);
+    snapshotResolved();
     insertReturning.mockRejectedValueOnce(Object.assign(new Error('dup'), { code: '23505' }));
 
     const bus = makeBus();
@@ -292,6 +312,7 @@ describe('pipeline/orchestrator', () => {
     cfgResolved({ enabled: true, autoReview: true });
     skillRegistered('forge-review', 'review', 'autoReview');
     nextSelect.mockResolvedValueOnce([]);
+    snapshotResolved();
     insertReturning.mockResolvedValueOnce([{ id: 'job-x' }]);
 
     const bus = makeBus();
@@ -312,6 +333,7 @@ describe('pipeline/orchestrator', () => {
     cfgResolved({ enabled: true, autoClarify: true });
     skillRegistered('forge-clarify', 'clarify', 'autoClarify');
     nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+    snapshotResolved();
     insertReturning.mockResolvedValueOnce([{ id: 'clarify-job' }]);
 
     const bus = makeBus();
@@ -341,6 +363,7 @@ describe('pipeline/orchestrator', () => {
     cfgResolved({ enabled: true, autoTriage: true });
     skillRegistered('forge-triage', 'triage', 'autoTriage');
     nextSelect.mockResolvedValueOnce([]);
+    snapshotResolved();
     insertReturning.mockResolvedValueOnce([{ id: 'triage-job' }]);
 
     const bus = makeBus();
@@ -454,6 +477,7 @@ describe('pipeline/orchestrator soft-skip (ISS-110)', () => {
     // No issue lookup because autoSkip bails before that. considerEnqueue then
     // proceeds normally — needs a no-active-job select and the insert.
     nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+    snapshotResolved();
     insertReturning.mockResolvedValueOnce([{ id: 'review-job' }]);
 
     const bus = makeBus();

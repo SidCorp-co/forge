@@ -8,7 +8,7 @@ import {
   projects,
 } from '../db/schema.js';
 import { applyStatusTransition, type DeviceLite } from '../issues/apply-transition.js';
-import { buildJobPromptString } from '../jobs/prompt-string.js';
+import { type IssueSnapshot, buildJobPromptString } from '../jobs/prompt-string.js';
 import { logger } from '../logger.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import type { Actor } from './activity.js';
@@ -40,6 +40,23 @@ interface PipelineConfig {
   enabled?: boolean;
   states?: StagesConfig;
   [toggle: string]: unknown;
+}
+
+async function loadIssueSnapshot(issueId: string): Promise<IssueSnapshot | null> {
+  const [row] = await db
+    .select({
+      title: issues.title,
+      status: issues.status,
+      priority: issues.priority,
+      complexity: issues.complexity,
+      description: issues.description,
+      plan: issues.plan,
+      acceptanceCriteria: issues.acceptanceCriteria,
+    })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  return row ?? null;
 }
 
 async function loadPipelineConfig(
@@ -215,6 +232,8 @@ export async function triggerPipelineStepManual(args: {
 
   const run = await openIssueRun({ projectId: args.projectId, issueId: args.issueId });
 
+  const snapshot = await loadIssueSnapshot(args.issueId);
+
   const skillRef = skill;
   const { jobId } = await insertAndEnqueueJob({
     projectId: args.projectId,
@@ -223,11 +242,20 @@ export async function triggerPipelineStepManual(args: {
     createdBy,
     type: skillRef.type,
     skillName: skillRef.skillName,
-    promptString: buildJobPromptString({
-      skillName: skillRef.skillName,
-      jobType: skillRef.type,
-      issueId: args.issueId,
-    }),
+    promptString: buildJobPromptString(
+      snapshot
+        ? {
+            skillName: skillRef.skillName,
+            jobType: skillRef.type,
+            issueId: args.issueId,
+            issueSnapshot: snapshot,
+          }
+        : {
+            skillName: skillRef.skillName,
+            jobType: skillRef.type,
+            issueId: args.issueId,
+          },
+    ),
     payloadExtras: {
       ...args.reason,
       preventiveContext,
@@ -293,6 +321,8 @@ async function considerEnqueue(args: {
 
   const run = await openIssueRun({ projectId: args.projectId, issueId: args.issueId });
 
+  const snapshot = await loadIssueSnapshot(args.issueId);
+
   try {
     const skillRef = skill;
     const { jobId } = await insertAndEnqueueJob({
@@ -302,11 +332,20 @@ async function considerEnqueue(args: {
       createdBy,
       type: skillRef.type,
       skillName: skillRef.skillName,
-      promptString: buildJobPromptString({
-        skillName: skillRef.skillName,
-        jobType: skillRef.type,
-        issueId: args.issueId,
-      }),
+      promptString: buildJobPromptString(
+        snapshot
+          ? {
+              skillName: skillRef.skillName,
+              jobType: skillRef.type,
+              issueId: args.issueId,
+              issueSnapshot: snapshot,
+            }
+          : {
+              skillName: skillRef.skillName,
+              jobType: skillRef.type,
+              issueId: args.issueId,
+            },
+      ),
       payloadExtras: {
         ...args.reason,
         preventiveContext,
