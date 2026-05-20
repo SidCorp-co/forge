@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+**Style.** Every entry is read first by an end user, not a developer. Lead each bullet with a plain-language sentence describing what the user will see change; keep file paths, function names, and root-cause explanations on a separate italic `*Technical:*` sub-line. Full style guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
+
 ## [Unreleased]
 
 ### Added
@@ -18,27 +20,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.1.34] - 2026-05-21
 
-Pipeline preamble + per-state `issueSnapshot` cuts worker token cost ~30–60% per step via Claude prompt-cache hits and fewer MCP round-trips. Cost-tracking view (`pipeline_run_step_durations`) no longer reports 0 USD on pipeline steps.
+The pipeline now uses ~30–60% fewer tokens per issue thanks to smarter server-side prompt caching, and the cost dashboard finally shows real numbers (it used to display $0 on every step). MCP integrators: the `forge_pm.flag_blocker`, `forge_pm.escalate`, and `forge_tasks` tools were removed — see the migration table below.
 
 ### Added
 
-- **Pipeline `--append-system-prompt` preamble** (core + dev). New `buildPipelinePreamble(projectId)` in `packages/core/src/lib/chat-preamble.ts` combines `PIPELINE_RULES` + `TOOL_REFERENCE` + project branch config into a stable ~3 KB system prompt. The dispatcher forwards it on every `job.assigned` WS event (both the legacy device path and the runner-adapter path). Stable across jobs of the same project so the Claude API prompt cache (5-min TTL) hits for the 2nd+ job — ~90% input-token saving on the cached system block. Desktop wiring at `use-job-handler.ts:84` (`send_chat` IPC) + Rust `claude_cli/agent.rs:50-99` (existing `--append-system-prompt` arg).
-- **Pre-injected `## Issue` block in user prompt** (core). `buildJobPromptString` now accepts an optional `issueSnapshot` and renders Title / Status / Priority / Complexity / Description / Plan / Acceptance gated by a per-state policy: triage gets description only; code gets the full plan + acceptance criteria; release gets title only. When `sessionContext.sessionCount >= 1`, an additional `## Previous Session Context` block is rendered with its own per-state field selection (review skips errors / feedback; code + fix get the full trail). Orchestrator loads the snapshot in parallel with `buildPreventiveContext` at both manual and auto enqueue sites. Eliminates 1–2 MCP `forge_issues.get` round-trips per step and removes the `tool_result` blocks that previously bloated conversation history across resumed turns.
-- **Migration `0068_job_prompt_snapshot.sql` — `prompt_blobs` table + jobs snapshot columns** (core). New `prompt_blobs (hash text PK, content text, first_seen, ref_count)` for content-addressable system-prompt dedup (~70% storage saving vs inlining), plus six columns on `jobs` (`system_prompt_hash` FK, `user_prompt_snapshot`, `prompt_input_token_est`, `model_used`, `prompt_blocks`, `archive_path`) and a partial index `jobs_finished_archive_idx` for the future archival sweeper. Foundation for the Prompt Inspector + Analytics surfaces; the orchestrator write path that populates these columns is intentionally deferred to a follow-up slice.
-- **Token estimator utility** (core). New `packages/core/src/lib/token-estimator.ts` — pure heuristic ~3.6 chars / token, FIFO LRU cache (200 entries), zero external deps. Consumed by future block-contribution analytics and pre-dispatch budget previews.
+- **AI agent gets full issue context upfront — no more "fetching" round-trip at the start of each step.** Title, status, priority, plan, and acceptance criteria are now included directly in the prompt sent to Claude. Each pipeline step starts ~200–500 ms faster and uses fewer tokens.
+  *Technical: `buildJobPromptString` accepts an optional `issueSnapshot` with per-state field policy at `packages/core/src/jobs/prompt-string.ts`. Orchestrator loads it in parallel with `buildPreventiveContext` at both manual and auto enqueue sites.*
+
+- **Resumed work (forge-fix, forge-review, repeat-coding) inherits decisions from the previous attempt.** The agent now sees a summary of what was decided, which files were touched, and what review feedback was raised — rather than re-discovering it via tool calls.
+  *Technical: `## Previous Session Context` block renders when `issues.sessionContext.sessionCount >= 1`, gated by per-state field policy (review reads filesModified + decisions only; fix gets the full trail).*
+
+- **Shared pipeline rules now ship as a single cacheable preamble.** Every step (triage, plan, code, review, …) used to repeat the same status / branch / output rules in its own skill file. Those rules now ship once at the top of each agent invocation, which lets Claude's prompt cache reuse them across consecutive steps in the same project — that's where the ~90% input-token saving on the system block comes from.
+  *Technical: `buildPipelinePreamble(projectId)` in `packages/core/src/lib/chat-preamble.ts`; dispatcher forwards on `job.assigned` (both device + runner-adapter paths); desktop relays via `--append-system-prompt` in `claude_cli/agent.rs`.*
+
+- **Storage groundwork for the upcoming Prompt Inspector + cost analytics surfaces.** New columns on `jobs` and a content-addressable `prompt_blobs` table can hold a snapshot of every prompt the server ever sent, deduplicated. The write path is wired in a follow-up release; this one just lands the schema so the migration runs once and stays stable.
+  *Technical: migration `0068_job_prompt_snapshot.sql` adds `prompt_blobs (hash, content, ref_count)` + 6 columns on `jobs` (`system_prompt_hash` FK, `user_prompt_snapshot`, `prompt_input_token_est`, `model_used`, `prompt_blocks`, `archive_path`) + partial index `jobs_finished_archive_idx`.*
+
+- **Internal helper for estimating prompt token counts.** Used by the upcoming budget-preview + block-contribution analytics views; no user-visible change yet.
+  *Technical: `packages/core/src/lib/token-estimator.ts` — heuristic ~3.6 chars/token, FIFO LRU cache, zero deps.*
 
 ### Changed
 
-- **`forge_pm.write_decision` (ISS-146)** — now accepts an optional `escalate` object. When present, the handler inserts a `pm_escalation` notification + emits `notificationCreated` in the same call, replacing the standalone `forge_pm.escalate` tool. Response gains an `escalation: { notificationId, expiresAt }` field; existing callers ignoring it are unaffected.
-- **8 of 9 `SKILL.md` files trimmed of duplicated rules** (core). The "Output Rules" / "Key Rules" / verbose `Tools` blurbs were duplicated across every skill markdown; with the new pipeline preamble those rules now ship once via `--append-system-prompt`. Conservative trim — all state-specific procedures preserved; `forge-triage` left untouched. Total ~62 LOC removed (1446 → 1384). The real win is eliminating drift between the preamble and per-skill markdown, not the LOC count.
+- **PM escalation lives on `forge_pm.write_decision` now, not a separate tool.** If you call `write_decision` with an `escalate` block, the same call creates the `pm_escalation` notification — one API trip instead of two. Existing callers that don't pass `escalate` keep working unchanged.
+  *Technical: `forge_pm.write_decision` accepts optional `escalate: { severity, summary, question, options, expiresAt }`. Response gains `escalation: { notificationId, expiresAt }` when the block was provided. Replaces `forge_pm.escalate`. ISS-146.*
+
+- **Skill markdown files are leaner.** Status / branch / output / learning-capture rules are no longer repeated inside each `SKILL.md`; the shared preamble owns them. No behaviour change — the same rules still reach the agent every step.
+  *Technical: 8 of 9 SKILL.md files trimmed (forge-triage left untouched as the canonical examplar). Total ~62 LOC removed (1446 → 1384). State-specific procedures preserved.*
 
 ### Fixed
 
-- **`pipeline_run_step_durations.cost_usd` stuck at 0 for every step** (dev). The analytics view JOINs `usage_records.session_id = jobs.agent_session_id::text`, but the previous (dead-code) `useAgentStream` hook POSTed usage with `sessionId = local Tauri jobId` — the JOIN never matched, so every step in `/metrics/project-step-durations` reported `totalCostUsd=0`. The usage accumulator moved into `use-web-socket.ts` where the pipeline `agent:complete` handler already has the canonical `agentSessionId` from the `job.assigned` payload (via `jobAgentSessionsRef`). Per-job usage now accumulates in a module-level `Map`, deduped by `message.id` (same pattern as `claude_cli/usage.rs:158`), and POSTs once on completion with the forge UUID as `sessionId`. The view JOIN matches and cost columns populate as soon as a desktop runner on this build dispatches a job.
+- **The Insights → Cost dashboard now reports real spend per pipeline step.** Every triage / plan / code / review / test / release / fix row used to read $0 USD regardless of the worker's actual cost. The next pipeline run on a desktop carrying this build will populate real numbers within seconds.
+  *Technical: `usage_records.session_id` was storing the local Tauri job id instead of the forge `agent_sessions.id`, so the `pipeline_run_step_durations` view JOIN never matched. The usage accumulator moved into `packages/dev/src/hooks/use-web-socket.ts` where the pipeline `agent:complete` handler already has the canonical `agentSessionId` from `job.assigned`; per-job usage is now deduped by `message.id` and POSTed once on completion with the forge UUID as `sessionId`.*
 
 ### Removed
 
-- **MCP tools: `forge_pm.flag_blocker`, `forge_pm.escalate`, `forge_tasks` (ISS-146)** — callers must migrate. See Sprint 3 (ISS-146) for the replacement primitives.
+- **MCP tools deprecated for some time are now gone: `forge_pm.flag_blocker`, `forge_pm.escalate`, `forge_tasks` (all CRUD).** Integrations that still call these will start getting "tool not found" errors — migrate to the replacements before updating. ISS-146.
 
   | Removed tool | Replacement call shape |
   |---|---|
@@ -46,9 +62,10 @@ Pipeline preamble + per-state `issueSnapshot` cuts worker token cost ~30–60% p
   | `forge_pm.escalate` | `forge_pm.write_decision` with the new optional `escalate` block (`{ severity, summary, question, options, expiresAt }`) |
   | `forge_tasks` `create`/`list`/`update`/`delete` | `forge_issues` actions `createTask` / `listTasks` / `updateTask` / `deleteTask` (task data lives on `data.taskTitle` etc.; list requires `filters.issue`) |
 
-  MCP audit rows previously tagged `tool='forge_tasks'` now log `tool='forge_issues'` with the corresponding `createTask`/`listTasks`/`updateTask`/`deleteTask` action — adjust downstream dashboards accordingly.
+  *Technical: MCP audit rows previously tagged `tool='forge_tasks'` now log `tool='forge_issues'` with the corresponding action — adjust downstream dashboards accordingly.*
 
-- **`packages/dev/src/hooks/use-agent-stream.ts`** — dead-code hook (never imported anywhere) removed (-226 LOC). It used to POST usage records with the wrong `sessionId`; see the Fixed section above for the replacement path. Zustand state fields the hook referenced (`agentMessages`, `setAgentRunning`, …) remain in the store — they are still used by `useAgentChat` / `useAgentChatHandlers`.
+- **Dead code cleanup in the desktop runner.** A stale internal hook (never wired into the running app since the dev/prod chat split) was removed; no user-facing behaviour change beyond a faster cold start.
+  *Technical: `packages/dev/src/hooks/use-agent-stream.ts` deleted (-226 LOC). It used to be the (broken) usage-record POST source; see the Fixed section above for the replacement. Zustand state fields (`agentMessages`, `setAgentRunning`, …) stay in the store — still used by `useAgentChat` / `useAgentChatHandlers`.*
 
 ## [0.1.31] - 2026-05-06
 

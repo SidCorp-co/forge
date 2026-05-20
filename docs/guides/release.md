@@ -114,6 +114,53 @@ Mismatches cause the in-app updater to behave oddly — keep them aligned.
 
 If no matching section is found, the workflow falls back to GitHub's auto-generated commit-list.
 
+### Writing changelog entries — style guide
+
+The same CHANGELOG entry reaches end users (via the in-app updater changelog) AND developers (via the GitHub release page). It must read first as a release note for someone who has never opened the repo, with technical depth available on a second pass.
+
+**Lead with the user-visible outcome, not the implementation.**
+
+- ✅ *"The pipeline now uses ~30% fewer tokens per issue — your monthly cost on the same workload drops."*
+- ❌ *"`buildPipelinePreamble` in `chat-preamble.ts` now ships `PIPELINE_RULES` + `TOOL_REFERENCE` for prompt-cache hits."*
+
+**One concept per bullet.** If you have to say "and" twice, split it. Don't bury a fix inside a feature bullet — they belong in different `###` sections (`### Added` vs `### Fixed`).
+
+**Plain language in the first sentence; code in a sub-line.** Tool names, function names, file paths, and migration numbers belong in an italic `*Technical:*` sub-line under the user-facing one. Skip the sub-line entirely if there is no useful debugging breadcrumb to leave.
+
+**Numbers > adjectives.** "~30% fewer tokens" beats "much faster". "Dropped from $1.42 to $0.45" beats "significantly cheaper". If you don't have a number, say what surface the user sees changed (e.g. "the Insights → Cost page" rather than "metrics").
+
+**No internal jargon in the user-facing sentence.** Avoid "legacy device path", "Wave 1", "PR-B", `ISS-NNN`, "the L2 dispatcher gate". These are fine inside `*Technical:*`. If a feature exists *because of* a removed system, name the user-visible thing it replaces, not the old system's internal name.
+
+**One headline per release.** The first line under `## [X.Y.Z]` is 1–2 sentences in plain language summarising why a user would update. Lead with the user benefit, ideally with one concrete number.
+
+#### Template
+
+```markdown
+## [X.Y.Z] - YYYY-MM-DD
+
+<headline — 1–2 sentences in plain language. Mention numbers where you have them.>
+
+### Added | Changed | Fixed | Removed | Security
+
+- **<Plain user-facing summary in 1 sentence.>** <Why it matters / what they'll see — 1 more sentence, optional.>
+  *Technical: file paths, function names, migration numbers, root cause. Optional — include only when useful for debugging.*
+```
+
+#### Worked example
+
+```markdown
+## [0.1.34] - 2026-05-21
+
+The pipeline now uses ~30–60% fewer tokens per issue thanks to smarter server-side prompt caching, and the cost dashboard finally shows real numbers (it used to display $0 on every step).
+
+### Fixed
+
+- **The Insights → Cost dashboard now shows actual spend per pipeline step.** Every triage / plan / code / review / test / release / fix row used to report $0 USD regardless of real cost. The next issue your worker handles will populate real numbers within seconds.
+  *Technical: `usage_records.session_id` was storing the local Tauri job id instead of the forge `agent_sessions.id`, so the `pipeline_run_step_durations` view JOIN never matched. Accumulator + POST moved to `use-web-socket.ts`'s pipeline-complete handler, keyed by the forge UUID surfaced on `job.assigned`.*
+```
+
+Two-pass rule of thumb: a non-developer reading only the bold-text first sentence of every bullet should walk away knowing what the release does for them. A developer reading the *Technical:* lines should know where to start debugging if the change misbehaves.
+
 ## Testing a release without publishing
 
 Push a pre-release tag — the workflow runs, but `prerelease: true` is set on the GitHub Release so it doesn't compete with the latest stable for `/download`'s "latest" lookup:
