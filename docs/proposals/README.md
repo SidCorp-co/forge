@@ -8,6 +8,8 @@ Planned features that are not yet implemented. When a proposal ships, its doc mo
 |----------|--------|--------|
 | [cost-aware-model-routing.md](cost-aware-model-routing.md) | Draft | v0.2 (manual hint) → v0.3 (auto-classify) → v1.0 (budget) |
 | [core-strapi-decoupling.md](core-strapi-decoupling.md) | Resolved (pending acceptance) | Clean break — no Strapi parity, single flip PR at Phase 2.5 |
+| [permission-model-v2.md](permission-model-v2.md) | Draft (candidate for RFC promotion) | Phase 1–2 side-by-side + backfill → Phase 3 cut → Phase 4 cleanup |
+| [pipeline-wave-2.md](pipeline-wave-2.md) | Draft | Post-v0.1.34 backlog: prompt observability + cost analytics + budgets + Phase 2 optimizations |
 
 ## Naming convention
 
