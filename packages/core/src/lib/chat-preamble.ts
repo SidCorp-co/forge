@@ -1,6 +1,21 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
+import { estimateTokens } from './token-estimator.js';
+
+export type PreambleBlockId = 'pipeline-rules' | 'tool-reference' | 'project-config';
+
+export interface PreambleBlock {
+  id: PreambleBlockId;
+  kind: 'system' | 'user';
+  chars: number;
+  estTokens: number;
+}
+
+export interface BuiltPreamble {
+  content: string;
+  blocks: PreambleBlock[];
+}
 
 const BRANCH_SENTINEL = '<detect-from-git>';
 
@@ -118,4 +133,34 @@ export async function buildPipelinePreamble(projectId: string): Promise<string> 
     TOOL_REFERENCE,
     formatProjectConfig(project.baseBranch, project.productionBranch),
   ].join('\n\n');
+}
+
+/**
+ * Structured variant of buildPipelinePreamble. Returns the same joined
+ * string plus a per-block breakdown (chars + estTokens) for the prompt
+ * snapshot stored on `jobs.prompt_blocks` (Surface A / Surface C analytics).
+ *
+ * Kept independent of `buildPipelinePreamble` — duplicating ~3 lines is
+ * cheaper than refactoring the heavily-tested existing function.
+ */
+export async function buildPipelinePreambleStructured(projectId: string): Promise<BuiltPreamble> {
+  const project = await loadProjectBranches(projectId);
+  const sections: Array<{ id: PreambleBlockId; body: string }> = [
+    { id: 'pipeline-rules', body: PIPELINE_RULES },
+    { id: 'tool-reference', body: TOOL_REFERENCE },
+  ];
+  if (project) {
+    sections.push({
+      id: 'project-config',
+      body: formatProjectConfig(project.baseBranch, project.productionBranch),
+    });
+  }
+  const content = sections.map((s) => s.body).join('\n\n');
+  const blocks: PreambleBlock[] = sections.map((s) => ({
+    id: s.id,
+    kind: 'system',
+    chars: s.body.length,
+    estTokens: estimateTokens(s.body),
+  }));
+  return { content, blocks };
 }

@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { devices, jobs, projects, runners } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import type { JobType, RunnerType } from '../db/schema.js';
-import { buildPipelinePreamble } from '../lib/chat-preamble.js';
+import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
 import { dispatchLivenessMs, isLastSeenFresh } from '../lib/dispatch-liveness.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import { logger } from '../logger.js';
@@ -21,6 +21,7 @@ import {
   checkLayer4RunnerFull,
   runnerSupportsJobType,
 } from './dispatch-gates.js';
+import { persistPromptSnapshot } from './prompt-snapshot.js';
 import { JOB_QUEUE_NAME, PM_QUEUE_NAME } from './queue-name.js';
 
 interface DispatchMessage {
@@ -133,7 +134,14 @@ async function dispatchViaDevice(job: typeof jobs.$inferSelect): Promise<'dispat
   const legacyPayload = (job.payload ?? {}) as { promptString?: unknown } & Record<string, unknown>;
   const legacyPromptString =
     typeof legacyPayload.promptString === 'string' ? legacyPayload.promptString : null;
-  const systemPrompt = await buildPipelinePreamble(job.projectId);
+  const { content: systemPrompt, blocks } = await buildPipelinePreambleStructured(job.projectId);
+  await persistPromptSnapshot({
+    jobId: job.id,
+    systemPrompt,
+    userPrompt: legacyPromptString ?? '',
+    blocks,
+    model: job.modelTier ?? 'default',
+  });
   roomManager.publish(deviceRoom(deviceId), {
     event: 'job.assigned',
     data: {
@@ -300,7 +308,15 @@ async function dispatchViaRunner(
   const runnerPayload = (job.payload ?? {}) as { promptString?: unknown } & Record<string, unknown>;
   const runnerPromptString =
     typeof runnerPayload.promptString === 'string' ? runnerPayload.promptString : null;
-  const runnerSystemPrompt = await buildPipelinePreamble(job.projectId);
+  const { content: runnerSystemPrompt, blocks: runnerBlocks } =
+    await buildPipelinePreambleStructured(job.projectId);
+  await persistPromptSnapshot({
+    jobId: job.id,
+    systemPrompt: runnerSystemPrompt,
+    userPrompt: runnerPromptString ?? '',
+    blocks: runnerBlocks,
+    model: job.modelTier ?? 'default',
+  });
   const result = await adapter.dispatch({
     job: {
       id: job.id,

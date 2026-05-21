@@ -53,6 +53,13 @@ vi.mock('./agent-session-link.js', () => ({
   ensureAgentSessionForJob: vi.fn(async () => 'sess-test'),
 }));
 
+// ISS-186 — prompt-snapshot helper writes two rows per dispatch (prompt_blobs
+// UPSERT + jobs UPDATE). Mock so dispatcher tests focus on the dispatch
+// envelope; the helper itself is covered in prompt-snapshot.test.ts.
+vi.mock('./prompt-snapshot.js', () => ({
+  persistPromptSnapshot: vi.fn(async () => {}),
+}));
+
 // ISS-162 — L1/L2/L3 are evaluated inline by the picker, not the dispatcher.
 // Only L4 (post-pick runner-cap) and runnerSupportsJobType remain mocked here.
 vi.mock('./dispatch-gates.js', () => ({
@@ -80,6 +87,7 @@ const { boss } = await import('../queue/boss.js');
 const { roomManager } = await import('../ws/server.js');
 const { selectRunnerForJob } = await import('../runners/select.js');
 const { getRunnerAdapter } = await import('../runners/registry.js');
+const { persistPromptSnapshot } = await import('./prompt-snapshot.js');
 
 type Row = Record<string, unknown>;
 
@@ -266,6 +274,70 @@ describe('jobs/dispatcher', () => {
     expect((boss as any).offWork).toHaveBeenCalledTimes(1);
     expect(isDispatcherRegistered()).toBe(false);
   });
+
+  // ISS-186 — prompt-snapshot is persisted after the `dispatched` flip and
+  // before roomManager.publish so a snapshot lands on the same row even if
+  // a follow-on consumer (web Inspector) reads quickly after dispatch.
+  it('persists prompt snapshot after dispatched flip and before publish', async () => {
+    mockSelectOnce([
+      {
+        id: 'j-snap',
+        status: 'queued',
+        projectId: 'p1',
+        issueId: 'i1',
+        type: 'plan',
+        payload: { promptString: 'user-prompt-body' },
+        modelTier: 'sonnet',
+      },
+    ]);
+    (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
+    mockSelectOnce([{ id: 'd1', status: 'online', lastSeenAt: new Date() }]);
+    mockUpdateReturn([{ id: 'j-snap' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
+
+    await handleDispatch({ jobId: 'j-snap' });
+
+    expect(persistPromptSnapshot).toHaveBeenCalledTimes(1);
+    const args = (persistPromptSnapshot as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(args).toMatchObject({
+      jobId: 'j-snap',
+      userPrompt: 'user-prompt-body',
+      model: 'sonnet',
+    });
+    expect(typeof args.systemPrompt).toBe('string');
+    expect(args.systemPrompt.length).toBeGreaterThan(0);
+    expect(Array.isArray(args.blocks)).toBe(true);
+
+    // Ordering: snapshot fires before roomManager.publish.
+    const snapInvocation = (persistPromptSnapshot as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0];
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock
+    const publishInvocation = (roomManager as any).publish.mock.invocationCallOrder[0];
+    expect(snapInvocation).toBeLessThan(publishInvocation);
+  });
+
+  it('defaults model to "default" when modelTier is not set', async () => {
+    mockSelectOnce([
+      {
+        id: 'j-default-model',
+        status: 'queued',
+        projectId: 'p1',
+        issueId: 'i1',
+        type: 'plan',
+        payload: {},
+        modelTier: null,
+      },
+    ]);
+    (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
+    mockSelectOnce([{ id: 'd1', status: 'online', lastSeenAt: new Date() }]);
+    mockUpdateReturn([{ id: 'j-default-model' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
+
+    await handleDispatch({ jobId: 'j-default-model' });
+
+    const args = (persistPromptSnapshot as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(args.model).toBe('default');
+    expect(args.userPrompt).toBe('');
+  });
 });
 
 describe('jobs/dispatcher PM path', () => {
@@ -292,9 +364,8 @@ describe('jobs/dispatcher PM path', () => {
       type: 'claude-code',
       deviceId: 'd1',
     });
-    (getRunnerAdapter as ReturnType<typeof vi.fn>).mockReturnValueOnce({
-      dispatch: vi.fn(async () => ({ status: 'dispatched' })),
-    });
+    const dispatchSpy = vi.fn(async () => ({ status: 'dispatched' }));
+    (getRunnerAdapter as ReturnType<typeof vi.fn>).mockReturnValueOnce({ dispatch: dispatchSpy });
     mockUpdateReturn([{ id: 'pm-1' }]);
     mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
 
@@ -305,6 +376,16 @@ describe('jobs/dispatcher PM path', () => {
       requiredCapabilities: { pm: true },
       fallbackChain: ['claude-code'],
     });
+
+    // ISS-186 — snapshot must persist on runner path too, before adapter.dispatch.
+    expect(persistPromptSnapshot).toHaveBeenCalledTimes(1);
+    const snapArgs = (persistPromptSnapshot as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(snapArgs).toMatchObject({ jobId: 'pm-1', userPrompt: '' });
+    expect(typeof snapArgs.systemPrompt).toBe('string');
+    expect(Array.isArray(snapArgs.blocks)).toBe(true);
+    const snapInvocation = (persistPromptSnapshot as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0];
+    const adapterInvocation = dispatchSpy.mock.invocationCallOrder[0];
+    expect(snapInvocation).toBeLessThan(adapterInvocation);
   });
 
   it('forces the {pm:true} filter even when payload tries to override it', async () => {
