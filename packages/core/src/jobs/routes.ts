@@ -1,16 +1,31 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, count, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { devices, issues, jobStatuses, jobTypes, jobs, modelTiers } from '../db/schema.js';
+import {
+  devices,
+  issues,
+  jobStatuses,
+  jobTypes,
+  jobs,
+  modelTiers,
+  promptBlobs,
+  usageRecords,
+} from '../db/schema.js';
 import { paginationSchema, setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { openIssueRun, openOneShotRun } from '../pipeline/runs.js';
 import { enqueueJob } from './enqueue.js';
+import {
+  type ActualUsage,
+  type PromptEnvelope,
+  extractPayloadExtras,
+  redactMcpSecrets,
+} from './prompt-route.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -65,6 +80,35 @@ async function loadJob(jobId: string) {
   const [row] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
   if (!row) throw notFound('job not found');
   return row;
+}
+
+// Roll up usage_records for a job. Repo convention (see runs-rollup.ts) is
+// `usage_records.session_id::uuid = jobs.id` — usage rows are tagged with the
+// job id, not the observability agent_sessions row id. Returns null when no
+// rows match.
+async function loadActualUsage(jobId: string): Promise<ActualUsage | null> {
+  const [row] = await db
+    .select({
+      input: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
+      output: sql<number>`coalesce(sum(${usageRecords.outputTokens}), 0)`.mapWith(Number),
+      cached: sql<number>`coalesce(sum(${usageRecords.cacheReadTokens}), 0)`.mapWith(Number),
+      cacheCreation:
+        sql<number>`coalesce(sum(${usageRecords.cacheCreationTokens}), 0)`.mapWith(Number),
+      cost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
+      count: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
+      samples: sql<number>`count(${usageRecords.id})`.mapWith(Number),
+    })
+    .from(usageRecords)
+    .where(sql`${usageRecords.sessionId}::uuid = ${jobId}::uuid`);
+  if (!row || row.samples === 0) return null;
+  return {
+    input: row.input,
+    output: row.output,
+    cached: row.cached,
+    cacheCreation: row.cacheCreation,
+    cost: row.cost,
+    count: row.count,
+  };
 }
 
 export const jobProjectRoutes = new Hono<{ Variables: AuthVars }>();
@@ -225,5 +269,63 @@ jobRoutes.patch(
     const [updated] = await db.update(jobs).set(updates).where(eq(jobs.id, id)).returning();
     if (!updated) throw notFound('job not found');
     return c.json(updated);
+  },
+);
+
+// W2.1.2 — Inspector prompt envelope. Returns the snapshot stored by W2.1.1
+// (system prompt resolved through prompt_blobs, inline user prompt, blocks,
+// est tokens, model, actual usage rollup) with MCP headers redacted.
+jobRoutes.get(
+  '/:id/prompt',
+  requireAuth(),
+  assertEmailVerified(),
+  zValidator('param', jobIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const job = await loadJob(id);
+    const access = await loadProjectAccess(job.projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+
+    // Archive-path stub (W2.1.5 will land the real fetcher).
+    if (job.archivePath && !job.userPromptSnapshot && !job.systemPromptHash) {
+      return c.json({ archived: true, path: job.archivePath }, 410);
+    }
+
+    let systemPrompt: string | null = null;
+    if (job.systemPromptHash) {
+      const [blob] = await db
+        .select({ content: promptBlobs.content })
+        .from(promptBlobs)
+        .where(eq(promptBlobs.hash, job.systemPromptHash))
+        .limit(1);
+      systemPrompt = blob?.content ?? null;
+    }
+
+    if (!systemPrompt && !job.userPromptSnapshot) {
+      throw notFound('prompt snapshot not stored (pre-v0.1.35 job)');
+    }
+
+    const actualUsage = job.agentSessionId ? await loadActualUsage(job.id) : null;
+
+    const payload = (job.payload ?? {}) as Record<string, unknown>;
+    const mcpServersRaw = payload.mcpServers ?? null;
+    const mcpConfig = mcpServersRaw == null ? null : redactMcpSecrets(mcpServersRaw);
+
+    const envelope: PromptEnvelope = {
+      jobId: job.id,
+      systemPrompt,
+      userPrompt: job.userPromptSnapshot,
+      blocks: Array.isArray(job.promptBlocks) ? (job.promptBlocks as unknown[]) : [],
+      estTokens: { input: job.promptInputTokenEst ?? null },
+      actualUsage,
+      mcpConfig,
+      model: job.modelUsed,
+      payloadExtras: extractPayloadExtras(payload),
+    };
+    return c.json(envelope);
   },
 );
