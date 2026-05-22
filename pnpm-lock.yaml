@@ -90,8 +90,8 @@ importers:
         specifier: ^3.4.9
         version: 3.4.9
       ws:
-        specifier: ^8.20.0
-        version: 8.20.0
+        specifier: ^8.20.1
+        version: 8.20.1
       zod:
         specifier: ^4.0.0
         version: 4.3.6
@@ -9144,18 +9144,6 @@ packages:
       utf-8-validate:
         optional: true
 
-  ws@8.20.0:
-    resolution: {integrity: sha512-sAt8BhgNbzCtgGbt2OxmpuryO63ZoDk/sqaB/znQm94T4fCEsy/yV+7CdC1kJhOU9lboAEU7R3kquuycDoibVA==}
-    engines: {node: '>=10.0.0'}
-    peerDependencies:
-      bufferutil: ^4.0.1
-      utf-8-validate: '>=5.0.2'
-    peerDependenciesMeta:
-      bufferutil:
-        optional: true
-      utf-8-validate:
-        optional: true
-
   ws@8.20.1:
     resolution: {integrity: sha512-It4dO0K5v//JtTXuPkfEOaI3uUN87iYPnqo/ZzqCoG3g8uhA66QUMs/SrM0YK7/NAu+r4LMh/9dq2A7k+rHs+w==}
     engines: {node: '>=10.0.0'}
@@ -11106,7 +11094,7 @@ snapshots:
   '@google/genai@0.7.0':
     dependencies:
       google-auth-library: 9.15.1
-      ws: 8.20.0
+      ws: 8.20.1
     transitivePeerDependencies:
       - bufferutil
       - encoding
@@ -19882,10 +19870,7 @@ snapshots:
   ws@7.5.10:
     optional: true
 
-  ws@8.20.0: {}
-
-  ws@8.20.1:
-    optional: true
+  ws@8.20.1: {}
 
   xcode@3.0.1:
     dependencies:
