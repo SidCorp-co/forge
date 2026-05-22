@@ -71,7 +71,14 @@ const DEFAULT_FIELD_CAPS: Record<IssueField, number> = {
   acceptanceCriteria: 4000,
 };
 
-const DEFAULT_SESSION_DEPTH = 10;
+/**
+ * Default sessionContext depth. `Number.POSITIVE_INFINITY` so callers that
+ * do NOT supply a `userPromptPolicy.sessionContext.depth` retain the original
+ * per-field SESSION_CAPS limits (decisions:10, filesModified:15,
+ * errorsResolved:5, reviewFeedback:5) instead of being narrowed to a single
+ * shared cap. Operators who want narrower history pass an explicit depth.
+ */
+const DEFAULT_SESSION_DEPTH = Number.POSITIVE_INFINITY;
 
 const SESSION_CAPS = {
   decisions: 10,
@@ -250,6 +257,40 @@ function formatSessionContext(
  * system prompt at the top of the user prompt as turn-level rules. The agent
  * follows the rules either way; cache may miss for that turn.
  */
+/**
+ * Inject a "Pipeline Rules (this turn)" block into an already-built prompt
+ * string. Used at dispatch time (NOT enqueue time) when we discover the
+ * job is resuming a prior CLI session — embeds the current state's system
+ * prompt redundantly into the user message so the agent follows it even if
+ * the Claude CLI ignores `--append-system-prompt` on `--resume`
+ * (behavior undocumented).
+ *
+ * Inserts the block immediately after the first line (the `/<skill> <id>`
+ * invocation) so the agent reads the rules before any issue context.
+ *
+ * Returns the input unchanged when `turnLevelSystemPrompt` is empty.
+ */
+export function injectTurnLevelRules(
+  promptString: string,
+  turnLevelSystemPrompt: string | null | undefined,
+): string {
+  const tlSp = turnLevelSystemPrompt?.trim();
+  if (!tlSp || tlSp.length === 0) return promptString;
+  const block = [
+    '',
+    '## Pipeline Rules (this turn)',
+    'These rules apply to this turn — apply them in addition to any session-level system prompt:',
+    '',
+    tlSp,
+  ].join('\n');
+  // Find the first \n (end of the `/<skill> <id>` line) and splice in the
+  // rules block right after it. If there is no newline (single-line prompt),
+  // append the block to the end.
+  const firstNl = promptString.indexOf('\n');
+  if (firstNl === -1) return `${promptString}${block}`;
+  return `${promptString.slice(0, firstNl)}${block}${promptString.slice(firstNl)}`;
+}
+
 export function buildJobPromptString(args: {
   skillName?: string | null;
   jobType: JobType;

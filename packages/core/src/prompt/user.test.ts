@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildJobPromptString, type IssueSnapshot } from './user.js';
+import { buildJobPromptString, injectTurnLevelRules, type IssueSnapshot } from './user.js';
 
 const SAMPLE: IssueSnapshot = {
   title: 'Add rate limiting',
@@ -132,5 +132,35 @@ describe('buildJobPromptString turn-level system prompt', () => {
     const issueIdx = out.indexOf('## Issue');
     expect(tlIdx).toBeGreaterThanOrEqual(0);
     expect(issueIdx).toBeGreaterThan(tlIdx);
+  });
+});
+
+describe('injectTurnLevelRules', () => {
+  it('returns input unchanged when turnLevelSystemPrompt is empty/null/undefined', () => {
+    const base = '/forge-code iss-1\n\n## Issue\nTitle: Hello';
+    expect(injectTurnLevelRules(base, null)).toBe(base);
+    expect(injectTurnLevelRules(base, undefined)).toBe(base);
+    expect(injectTurnLevelRules(base, '')).toBe(base);
+    expect(injectTurnLevelRules(base, '   \n  ')).toBe(base);
+  });
+
+  it('inserts a rules block immediately after the first line', () => {
+    const base = '/forge-code iss-1\n\n## Issue\nTitle: Hello';
+    const out = injectTurnLevelRules(base, '## Rules\n- A');
+    // Format: skill line, then injected block, then existing remainder.
+    const skillLine = '/forge-code iss-1';
+    expect(out.startsWith(skillLine)).toBe(true);
+    const tlIdx = out.indexOf('## Pipeline Rules (this turn)');
+    const issueIdx = out.indexOf('## Issue');
+    expect(tlIdx).toBeGreaterThan(skillLine.length);
+    expect(issueIdx).toBeGreaterThan(tlIdx);
+    expect(out).toContain('## Rules\n- A');
+  });
+
+  it('appends rules block when the input is a single line (no \\n)', () => {
+    const out = injectTurnLevelRules('/forge-code iss-1', '## Rules\n- A');
+    expect(out.startsWith('/forge-code iss-1')).toBe(true);
+    expect(out).toContain('## Pipeline Rules (this turn)');
+    expect(out).toContain('## Rules');
   });
 });

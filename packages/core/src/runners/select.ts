@@ -168,7 +168,18 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
   return rowToRunner(rows[0]!);
 }
 
-/** Lookup a single runner by (projectId, deviceId) with the same liveness/cap gates. */
+/**
+ * Lookup a single runner by (projectId, deviceId) with the same liveness/cap
+ * gates. The runner-type filter is bound as a parameterised JSON array so
+ * `fallbackChain` values are never interpolated into the SQL string —
+ * eliminates any latent injection path when types come from type-erased
+ * sources (JSON config, IPC, future API endpoints).
+ *
+ * `(SELECT array_agg(value::text) FROM jsonb_array_elements_text($1::jsonb))`
+ * builds a `text[]` from the bound JSON array; `type = ANY(...)` then filters
+ * against it. The bound value goes through libpq's parameter protocol so the
+ * literal SQL never contains any caller-controlled string.
+ */
 async function findByDevice(
   projectId: string,
   deviceId: string,
@@ -176,11 +187,13 @@ async function findByDevice(
   livenessSeconds: number,
   fallbackChain: RunnerType[] | undefined,
 ): Promise<Runner | null> {
-  // Respect runner-type filter when supplied; otherwise any type is fine.
-  const typeFilter =
-    fallbackChain && fallbackChain.length > 0
-      ? sql`AND type = ANY (${sql.raw(`ARRAY[${fallbackChain.map((t) => `'${t}'`).join(',')}]::text[]`)})`
-      : sql``;
+  const hasChain = fallbackChain && fallbackChain.length > 0;
+  const typeFilter = hasChain
+    ? sql`AND type = ANY (
+        SELECT value::text
+        FROM jsonb_array_elements_text(${JSON.stringify(fallbackChain)}::jsonb)
+      )`
+    : sql``;
 
   const rows = await db.execute<RunnerRow>(
     sql`

@@ -40,7 +40,14 @@ async function loadOnResumeFailPolicy(projectId: string): Promise<OnResumeFailPo
     const pc = (ac.pipelineConfig ?? {}) as Record<string, unknown>;
     const policy = pc.onResumeFail;
     return policy === 'abort' ? 'abort' : 'fresh';
-  } catch {
+  } catch (err) {
+    // Fail safe — default to 'fresh' so the auto-retry still fires. Log so
+    // operators can see when DB-derived policy was bypassed (avoids a
+    // silent "I configured 'abort' but the job keeps retrying" mystery).
+    logger.warn(
+      { err, projectId },
+      'resume-failed: failed to load onResumeFail policy, defaulting to fresh',
+    );
     return 'fresh';
   }
 }

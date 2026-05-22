@@ -115,11 +115,19 @@ async function loadProjectBranches(projectId: string): Promise<{
  * Build a non-pipeline (chat / interactive) system prompt. The chat variant
  * nudges the agent to call `forge_config.get_knowledge` since no per-state
  * preamble has been pre-loaded into the conversation.
+ *
+ * Returns `''` when the project does not exist / can't be read — the caller
+ * concatenates the preamble onto the user prompt, so an empty string keeps
+ * the chat send byte-identical to the pre-PR-3 behavior (avoids surprise
+ * cache misses or orphaned preambles for missing-project sessions).
  */
 export async function buildChatPreamble(projectId: string): Promise<string> {
   const project = await loadProjectBranches(projectId);
-  const sections: string[] = [CHAT_NUDGE];
-  if (project) sections.push(formatProjectConfig(project.baseBranch, project.productionBranch));
+  if (!project) return '';
+  const sections: string[] = [
+    CHAT_NUDGE,
+    formatProjectConfig(project.baseBranch, project.productionBranch),
+  ];
   return `${sections.join('\n\n')}\n\n---\n\n`;
 }
 

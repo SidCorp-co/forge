@@ -19,6 +19,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
+import { logger } from '../logger.js';
 import type {
   BudgetConfig,
   StageConfig,
@@ -75,7 +76,14 @@ async function loadStageMap(
     const states = (pc as { states?: unknown }).states;
     if (!states || typeof states !== 'object') return null;
     return states as Record<string, StageConfig>;
-  } catch {
+  } catch (err) {
+    // Per-state overrides are best-effort; a DB hiccup should NOT crash a
+    // dispatch — but operators need to see the degradation. Log and proceed
+    // with defaults (no per-state overrides applied this dispatch).
+    logger.warn(
+      { err, projectId },
+      'stage-overrides: failed to load pipelineConfig.states, dispatching with defaults',
+    );
     return null;
   }
 }
@@ -91,14 +99,20 @@ export async function resolveStageOverrides(
   const stage = states?.[stageStatus];
   if (!stage) return EMPTY;
 
+  // Shallow-clone object/array fields so callers that mutate the result
+  // (e.g. layer project defaults onto mcpServers, push extra tools onto
+  // allowedTools) never leak changes back into the cached drizzle row
+  // reference. Primitive fields are safe to pass through.
   return {
-    systemPrompt: stage.systemPrompt ?? null,
+    systemPrompt: stage.systemPrompt ? { ...stage.systemPrompt } : null,
     model: stage.model ?? null,
-    allowedTools: stage.allowedTools ?? null,
+    allowedTools: stage.allowedTools ? [...stage.allowedTools] : null,
     permissionMode: stage.permissionMode ?? null,
     timeoutSeconds: stage.timeoutSeconds ?? null,
-    mcpServers: (stage.mcpServers as Record<string, unknown>) ?? null,
-    budget: stage.budget ?? null,
+    mcpServers: stage.mcpServers
+      ? { ...(stage.mcpServers as Record<string, unknown>) }
+      : null,
+    budget: stage.budget ? { ...stage.budget } : null,
     sessionGroup: stage.sessionGroup ?? null,
   };
 }

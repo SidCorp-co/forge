@@ -97,9 +97,12 @@ export async function handleJobAssigned(
       model: data.model ?? undefined,
       allowedTools: data.allowedTools ?? undefined,
       permissionMode: data.permissionMode ?? undefined,
-      // timeoutSeconds plumbed to Rust spawn (overrides hardcoded 30min).
-      // TODO(PR-4b finalization): wire this to the Rust spawn timeout
-      // signature in a follow-up — for now Rust still ignores it.
+      // PR-4 — per-state `timeoutSeconds` overrides the Rust 30-min default
+      // when supplied. Cast to ensure Tauri serialises as `Option<u64>`.
+      timeoutSeconds:
+        typeof data.timeoutSeconds === "number" && data.timeoutSeconds > 0
+          ? data.timeoutSeconds
+          : undefined,
     });
   } catch (err) {
     console.error("[job.assigned] send_chat failed:", err);

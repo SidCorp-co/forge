@@ -484,6 +484,13 @@
       "when": 1779400720000,
       "tag": "0068_job_prompt_snapshot",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1779420000000,
+      "tag": "0069_agent_sessions_resume_lookup",
+      "breakpoints": true
     }
   ]
 }

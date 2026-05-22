@@ -20,6 +20,7 @@
 import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
+import { logger } from '../logger.js';
 
 export interface PriorSession {
   claudeSessionId: string;
@@ -49,7 +50,14 @@ export async function findPriorSessionInGroup(args: {
       .limit(1);
     if (!row?.claudeSessionId) return null;
     return { claudeSessionId: row.claudeSessionId, deviceId: row.deviceId };
-  } catch {
+  } catch (err) {
+    // Surface DB hiccups so operators don't see "no prior session" as silent
+    // resume regressions. Caller treats null as "dispatch fresh" — the
+    // failure is non-fatal, but invisible degradation is the worst kind.
+    logger.warn(
+      { err, issueId: args.issueId, sessionGroup: args.sessionGroup },
+      'session-resume: prior-session lookup failed, falling back to fresh dispatch',
+    );
     return null;
   }
 }

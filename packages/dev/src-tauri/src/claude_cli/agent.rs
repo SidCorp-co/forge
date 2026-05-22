@@ -137,9 +137,10 @@ pub async fn run_agent(
     skill: Option<String>,
     model: Option<String>,
     allowed_tools: Option<String>,
+    timeout_seconds: Option<u64>,
 ) -> Result<String, String> {
     let session_id = Uuid::new_v4().to_string();
-    log(&format!("[run_agent] repo_path={repo_path} slug={project_slug:?} worktree_branch={worktree_branch:?} skill={skill:?} model={model:?}"));
+    log(&format!("[run_agent] repo_path={repo_path} slug={project_slug:?} worktree_branch={worktree_branch:?} skill={skill:?} model={model:?} timeout_seconds={timeout_seconds:?}"));
 
     let (effective_repo, wt_path) = resolve_worktree(&repo_path, worktree_branch.as_deref()).await?;
 
@@ -160,7 +161,7 @@ pub async fn run_agent(
     args.push(prompt);
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    spawn_and_stream(app, sessions, &arg_refs, &effective_repo, session_id.clone(), mcp_temp_path, wt_path).await?;
+    spawn_and_stream(app, sessions, &arg_refs, &effective_repo, session_id.clone(), mcp_temp_path, wt_path, timeout_seconds).await?;
     Ok(session_id)
 }
 
@@ -179,8 +180,9 @@ pub async fn send_chat(
     skill: Option<String>,
     model: Option<String>,
     allowed_tools: Option<String>,
+    timeout_seconds: Option<u64>,
 ) -> Result<(), String> {
-    log(&format!("[send_chat] session={session_id}, slug={project_slug:?} worktree_branch={worktree_branch:?} skill={skill:?} model={model:?} resuming={}", claude_session_id.is_some()));
+    log(&format!("[send_chat] session={session_id}, slug={project_slug:?} worktree_branch={worktree_branch:?} skill={skill:?} model={model:?} timeout_seconds={timeout_seconds:?} resuming={}", claude_session_id.is_some()));
 
     // If a CLI process is already running for this session, kill it before starting a new one.
     // This prevents orphaned processes when pipeline triggers overlap with manual sends.
@@ -227,7 +229,7 @@ pub async fn send_chat(
     args.push(message);
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    spawn_and_stream(app, sessions, &arg_refs, &effective_repo, session_id, mcp_temp_path, wt_path).await
+    spawn_and_stream(app, sessions, &arg_refs, &effective_repo, session_id, mcp_temp_path, wt_path, timeout_seconds).await
 }
 
 pub async fn abort_agent(app: AppHandle, sessions: Sessions, session_id: &str) -> Result<(), String> {

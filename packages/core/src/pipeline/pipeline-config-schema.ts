@@ -92,7 +92,20 @@ export const systemPromptOverrideSchema = z
     mode: z.enum(['append', 'replace']).optional(),
     extras: z.string().max(32_000).nullable().optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (v) => {
+      // `mode='replace'` with empty/null extras would silently degrade to
+      // the static prefix — confusing the operator who explicitly set
+      // 'replace' to override it. Force extras to be present when replacing.
+      if (v.mode !== 'replace') return true;
+      return typeof v.extras === 'string' && v.extras.trim().length > 0;
+    },
+    {
+      message: 'systemPrompt.mode="replace" requires non-empty extras',
+      path: ['extras'],
+    },
+  );
 
 export type SystemPromptOverrideConfig = z.infer<typeof systemPromptOverrideSchema>;
 

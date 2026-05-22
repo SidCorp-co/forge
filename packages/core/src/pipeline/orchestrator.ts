@@ -242,6 +242,10 @@ export async function triggerPipelineStepManual(args: {
       // Stamp the stage so dispatcher can re-resolve overrides without a
       // second pipelineConfig load.
       stageStatus: args.status,
+      // PR-5 — stamp session group membership so the dispatcher's
+      // runner-framework path + agent-session-link can find the prior
+      // session of the same (issue, group) without a second config load.
+      ...(stageCfg?.sessionGroup ? { sessionGroup: stageCfg.sessionGroup } : {}),
     },
     resolveRacingJobId: () => findActiveJob(args.issueId, skillRef.type),
   });
@@ -325,6 +329,8 @@ async function considerEnqueue(args: {
         ...args.reason,
         preventiveContext,
         stageStatus: args.status,
+        // PR-5 — stamp session group membership; see manual-trigger comment.
+        ...(stageCfg?.sessionGroup ? { sessionGroup: stageCfg.sessionGroup } : {}),
       },
     });
     logger.info(

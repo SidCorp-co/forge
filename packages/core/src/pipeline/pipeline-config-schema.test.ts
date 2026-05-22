@@ -209,6 +209,32 @@ describe('stageConfigSchema per-state overrides', () => {
     ).toThrow();
   });
 
+  it('rejects replace mode with empty / null / whitespace extras (F12)', () => {
+    for (const extras of ['', '   ', null] as const) {
+      expect(() =>
+        pipelineConfigSchema.parse({
+          states: { approved: { systemPrompt: { mode: 'replace', extras } } },
+        }),
+      ).toThrow();
+    }
+  });
+
+  it('accepts replace mode when extras has real content', () => {
+    expect(() =>
+      pipelineConfigSchema.parse({
+        states: { approved: { systemPrompt: { mode: 'replace', extras: 'ONLY THIS' } } },
+      }),
+    ).not.toThrow();
+  });
+
+  it('accepts append mode with empty extras (no-op but valid)', () => {
+    expect(() =>
+      pipelineConfigSchema.parse({
+        states: { approved: { systemPrompt: { mode: 'append', extras: '' } } },
+      }),
+    ).not.toThrow();
+  });
+
   it('accepts userPromptPolicy with all knobs', () => {
     const parsed = pipelineConfigSchema.parse({
       states: {
