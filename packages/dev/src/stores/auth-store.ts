@@ -255,22 +255,34 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     // BEFORE the keychain write so any micro-task that races in observes a
     // consistent (coreUrl, token) pair. Keychain failure logs to Sentry
     // but does not roll back — same trade-off as the v0.1.27 LoginPage path.
+    //
+    // Fine-grained breadcrumbs per ISS-190: a hang inside persistKeychain
+    // (libsecret on Linux without gnome-keyring-daemon) must be
+    // distinguishable from a hang in clearApiCaches or saveConfigBestEffort.
+    // The single auth.transition.login breadcrumb below stays as the legacy
+    // marker; the per-step crumbs are children of the same transition.
+    breadcrumb("login:start", { coreUrl });
     await clearApiCaches();
+    breadcrumb("login:caches-cleared");
     set({
       phase: "authenticated",
       coreUrl,
       token,
       deviceId: finalDeviceId,
     });
+    breadcrumb("login:state-set");
     if (finalDeviceId) Sentry.setUser({ id: finalDeviceId });
     breadcrumb("auth.transition.login", { coreUrl });
 
     await persistKeychain();
+    breadcrumb("login:keychain-persisted");
 
     const settings = await readDeviceSettings();
+    breadcrumb("login:settings-read");
     await saveConfigBestEffort(
       buildDiskConfig({ coreUrl, token, deviceId: finalDeviceId }, settings),
     );
+    breadcrumb("login:done");
   },
 
   expire: () => {
