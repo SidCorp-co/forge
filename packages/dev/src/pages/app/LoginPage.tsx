@@ -6,9 +6,27 @@ import {
   cancelInFlight,
   fetchEnabledProviders,
   signInWithProvider,
+  type DesktopOAuthPhase,
   type OAuthProvider,
 } from "@/lib/desktop-oauth";
 import { clearApiCache, resolveApiBase } from "@/lib/api-discovery";
+
+function phaseLabel(phase: DesktopOAuthPhase | null, providerLabel: string): string {
+  switch (phase) {
+    case "starting":
+      return "Opening browser…";
+    case "awaiting-deep-link":
+      return "Waiting for browser sign-in…";
+    case "deep-link-received":
+      return "Received callback…";
+    case "exchanging-code":
+      return "Signing in…";
+    case "exchanged":
+      return "Finalising…";
+    default:
+      return providerLabel;
+  }
+}
 
 export function LoginPage() {
   const auth = useAuth();
@@ -34,6 +52,12 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [providers, setProviders] = useState<OAuthProvider[]>([]);
   const [oauthLoading, setOauthLoading] = useState<string | null>(null);
+  const [oauthPhase, setOauthPhase] = useState<DesktopOAuthPhase | null>(null);
+  const [showSlowExchangeHint, setShowSlowExchangeHint] = useState(false);
+  // Tracks the latest phase synchronously for the error path — useState
+  // setter is async, so reading `oauthPhase` inside the catch would see the
+  // previous value.
+  const phaseRef = useRef<DesktopOAuthPhase | null>(null);
 
   // Redirect if already logged in. Calling navigate() in the render body is
   // unsupported in React Router 6+; do it from an effect.
@@ -65,20 +89,45 @@ export function LoginPage() {
     };
   }, [coreUrl]);
 
+  // Slow-exchange hint: if the renderer is stuck talking to /exchange for
+  // more than 10 s, surface a "still working" line so the user knows the
+  // app isn't dead. Cleared on any phase change or unmount.
+  useEffect(() => {
+    if (oauthPhase !== "exchanging-code") {
+      setShowSlowExchangeHint(false);
+      return;
+    }
+    const t = setTimeout(() => setShowSlowExchangeHint(true), 10_000);
+    return () => clearTimeout(t);
+  }, [oauthPhase]);
+
   async function handleOAuth(providerId: OAuthProvider["id"]) {
     setError("");
     setOauthLoading(providerId);
+    setOauthPhase("starting");
+    phaseRef.current = "starting";
     try {
       const userUrl = coreUrl.replace(/\/+$/, "");
-      const { token, user } = await signInWithProvider({ coreUrl: userUrl, provider: providerId });
+      const { token, user } = await signInWithProvider({
+        coreUrl: userUrl,
+        provider: providerId,
+        onPhase: (p) => {
+          phaseRef.current = p;
+          setOauthPhase(p);
+        },
+      });
       const apiUrl = await resolveApiBase(userUrl);
       await auth.login({ coreUrl: apiUrl, token, deviceId: auth.deviceId ?? "" });
       navigate(from, { replace: true });
       void user;
     } catch (err) {
-      setError(err instanceof Error ? err.message : `Sign-in with ${providerId} failed`);
+      const message = err instanceof Error ? err.message : `Sign-in with ${providerId} failed`;
+      const failedAt = phaseRef.current;
+      setError(failedAt ? `Sign-in failed at ${failedAt}: ${message}` : message);
     } finally {
       setOauthLoading(null);
+      setOauthPhase(null);
+      phaseRef.current = null;
     }
   }
 
@@ -153,18 +202,26 @@ export function LoginPage() {
           {providers.length > 0 && (
             <>
               <div className="mb-4 flex flex-col gap-2">
-                {providers.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    disabled={oauthLoading !== null}
-                    onClick={() => handleOAuth(p.id)}
-                    className="w-full rounded-lg border border-gray-300 bg-white py-2.5 text-sm font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    {oauthLoading === p.id ? `Opening browser…` : p.label}
-                  </button>
-                ))}
+                {providers.map((p) => {
+                  const active = oauthLoading === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      disabled={oauthLoading !== null}
+                      onClick={() => handleOAuth(p.id)}
+                      className="w-full rounded-lg border border-gray-300 bg-white py-2.5 text-sm font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {active ? phaseLabel(oauthPhase, p.label) : p.label}
+                    </button>
+                  );
+                })}
               </div>
+              {showSlowExchangeHint && (
+                <p className="mb-3 text-[11px] text-gray-500">
+                  Still working — talking to {coreUrl.replace(/\/+$/, "")}.
+                </p>
+              )}
               <div className="mb-4 flex items-center gap-3 text-[10px] uppercase tracking-wider text-gray-400">
                 <div className="h-px flex-1 bg-gray-200" />
                 <span>or</span>

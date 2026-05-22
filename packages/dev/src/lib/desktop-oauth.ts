@@ -21,8 +21,23 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { open as openUrl } from '@tauri-apps/plugin-shell';
 import { resolveApiBase } from './api-discovery';
+import { Sentry } from './sentry';
 
 export type DesktopProviderId = 'github' | 'google' | 'oidc';
+
+/**
+ * Lifecycle phases the sign-in flow reports via `onPhase`. ISS-190: phases
+ * exist so a stuck flow surfaces the last successful step in the UI and in
+ * Sentry breadcrumbs, instead of looking dead for the full 5-minute timeout.
+ */
+export type DesktopOAuthPhase =
+  | 'starting'
+  | 'awaiting-deep-link'
+  | 'deep-link-received'
+  | 'exchanging-code'
+  | 'exchanged'
+  | 'timed-out'
+  | 'failed';
 
 export interface DesktopOAuthUser {
   id: string;
@@ -38,8 +53,14 @@ interface ExchangeResponse {
 const DEEP_LINK_EVENT = 'deep-link://received';
 /** Custom URL scheme — must match tauri.conf.json plugins.deep-link.desktop.schemes. */
 const SCHEME = 'forge-beta';
-/** How long we wait for the deep-link to come back before giving up. */
-const FLOW_TIMEOUT_MS = 5 * 60 * 1000;
+/** Max wall-clock between opening the browser and receiving the deep-link. */
+const BROWSER_WAIT_MS = 5 * 60 * 1000;
+/**
+ * Max wall-clock from deep-link receipt through `/exchange` completion.
+ * A hung exchange POST surfaces inside 30s instead of looking dead for the
+ * full browser-wait budget.
+ */
+const POST_DEEP_LINK_MS = 30_000;
 
 // === PKCE primitives (Web Crypto, not Node crypto — frontend bundle) ===
 
@@ -81,12 +102,19 @@ export interface SignInOptions {
   /** Forge core API base URL — e.g. https://forge-beta-api.example.com */
   coreUrl: string;
   provider: DesktopProviderId;
+  /**
+   * Optional progress callback. Fires synchronously for each phase
+   * transition. Errors from the callback are swallowed so a buggy listener
+   * cannot abort the sign-in flow.
+   */
+  onPhase?: (phase: DesktopOAuthPhase, extra?: Record<string, unknown>) => void;
 }
 
 /**
  * Run the full PKCE handoff. Returns the signed JWT + user when the
  * deep-link comes back and the exchange succeeds. Throws on:
- *   - timeout (no deep-link in 5 min)
+ *   - browser-wait timeout (no deep-link in 5 min)
+ *   - post-deep-link timeout (exchange did not complete within 30 s)
  *   - exchange rejection (PKCE mismatch, expired handoff, etc.)
  *   - browser open failure
  */
@@ -95,6 +123,26 @@ export async function signInWithProvider(opts: SignInOptions): Promise<ExchangeR
     pending.reject(new Error('superseded by a new sign-in attempt'));
     pending = null;
   }
+
+  // Track the most recent phase so error paths can attribute the failure.
+  let lastPhase: DesktopOAuthPhase = 'starting';
+
+  function phase(p: DesktopOAuthPhase, extra?: Record<string, unknown>): void {
+    lastPhase = p;
+    Sentry.addBreadcrumb({
+      category: 'oauth',
+      level: p === 'failed' || p === 'timed-out' ? 'warning' : 'info',
+      message: `oauth:${p}`,
+      data: extra,
+    });
+    try {
+      opts.onPhase?.(p, extra);
+    } catch {
+      // Swallow listener errors — diagnostic plumbing must never break the flow.
+    }
+  }
+
+  phase('starting');
 
   const verifier = randomB64url(32);
   const challenge = await sha256B64url(verifier);
@@ -128,10 +176,18 @@ export async function signInWithProvider(opts: SignInOptions): Promise<ExchangeR
       pending = null;
     };
 
+    const failWith = (err: Error) => {
+      cleanup();
+      phase('failed', { phase_at_fail: lastPhase, message: err.message });
+      reject(err);
+    };
+
     pending = {
       verifier,
       reject: (err) => {
         cleanup();
+        // No 'failed' breadcrumb here — supersede/cancel are not failures
+        // worth tagging; the caller initiated them deliberately.
         reject(err);
       },
     };
@@ -145,40 +201,65 @@ export async function signInWithProvider(opts: SignInOptions): Promise<ExchangeR
         const parsed = new URL(url);
         const handoffId = parsed.searchParams.get('handoff_id');
         const code = parsed.searchParams.get('code');
+        // Breadcrumb shape-only: lengths confirm the URL was well-formed
+        // without leaking the live one-time `code` into Sentry.
+        phase('deep-link-received', {
+          handoff_id_len: handoffId ? handoffId.length : 0,
+          code_len: code ? code.length : 0,
+        });
         if (!handoffId || !code) {
           throw new Error('deep-link missing handoff_id or code');
         }
+        // Kill the browser-wait timer and arm the inner post-deep-link
+        // timer. A hung /exchange POST now surfaces inside 30s instead of
+        // waiting out the full 5-minute browser budget.
+        if (timer) {
+          clearTimeout(timer);
+        }
+        timer = setTimeout(() => {
+          cleanup();
+          phase('timed-out', { phase_at_timeout: lastPhase });
+          reject(new Error('Exchange timed out — server did not respond within 30 seconds.'));
+        }, POST_DEEP_LINK_MS);
+
+        phase('exchanging-code');
         const exchanged = await exchangeCode(baseUrl, {
           handoff_id: handoffId,
           code,
           code_verifier: verifier,
         });
+        phase('exchanged');
         cleanup();
         resolve(exchanged);
       } catch (err) {
-        cleanup();
-        reject(err instanceof Error ? err : new Error(String(err)));
+        const normalized = err instanceof Error ? err : new Error(String(err));
+        failWith(normalized);
       }
     })
       .then((u) => {
         unlisten = u;
       })
       .catch((err) => {
-        cleanup();
-        reject(err instanceof Error ? err : new Error(String(err)));
+        failWith(err instanceof Error ? err : new Error(String(err)));
       });
 
     timer = setTimeout(() => {
       cleanup();
+      phase('timed-out', { phase_at_timeout: lastPhase });
       reject(new Error('Sign-in timed out — no response from browser within 5 minutes.'));
-    }, FLOW_TIMEOUT_MS);
+    }, BROWSER_WAIT_MS);
 
     // Open the system browser. If this fails (no default browser, sandbox
     // denial), bail immediately — the deep-link would never arrive.
-    openUrl(startUrl).catch((err: unknown) => {
-      cleanup();
-      reject(err instanceof Error ? err : new Error(String(err)));
-    });
+    openUrl(startUrl)
+      .then(() => {
+        // Only advance to awaiting-deep-link if we haven't already received
+        // the deep-link (fast network, slow openUrl resolve) or failed.
+        if (lastPhase === 'starting') phase('awaiting-deep-link');
+      })
+      .catch((err: unknown) => {
+        failWith(err instanceof Error ? err : new Error(String(err)));
+      });
   });
 }
 
@@ -203,12 +284,20 @@ async function exchangeCode(
   });
   if (!res.ok) {
     let bodyText: string;
+    let errorCode: string | undefined;
     try {
       const j = (await res.json()) as { code?: string; message?: string };
       bodyText = j.message ?? j.code ?? `HTTP ${res.status}`;
+      errorCode = j.code;
     } catch {
       bodyText = `HTTP ${res.status}`;
     }
+    Sentry.addBreadcrumb({
+      category: 'oauth',
+      level: 'warning',
+      message: 'oauth:exchange-http-error',
+      data: { status: res.status, code: errorCode },
+    });
     throw new Error(`exchange failed: ${bodyText}`);
   }
   return (await res.json()) as ExchangeResponse;
