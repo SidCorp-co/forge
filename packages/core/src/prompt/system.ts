@@ -22,6 +22,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { estimateTokens } from '../lib/token-estimator.js';
+import type { SystemPromptOverrideConfig } from '../pipeline/pipeline-config-schema.js';
 
 export type PreambleBlockId = 'pipeline-rules' | 'tool-reference' | 'project-config' | 'state-extras';
 
@@ -37,11 +38,13 @@ export interface BuiltPreamble {
   blocks: PreambleBlock[];
 }
 
-/** Per-state overrides resolved from `appConfig.pipeline.states[state].systemPrompt`. */
-export interface SystemPromptOverride {
-  mode?: 'append' | 'replace';
-  extras?: string | null;
-}
+/**
+ * Per-state overrides resolved from `appConfig.pipeline.states[state].systemPrompt`.
+ * Re-exported from the canonical Zod-inferred type so this module + the
+ * preview endpoint + the dispatcher all agree on the shape (including
+ * exactOptionalPropertyTypes `| undefined` on each field).
+ */
+export type SystemPromptOverride = SystemPromptOverrideConfig;
 
 const BRANCH_SENTINEL = '<detect-from-git>';
 
@@ -77,6 +80,8 @@ export const TOOL_REFERENCE = `## Tool Reference
 - **forge_skills** — list available skills + per-project enable/disable.`;
 
 const CHAT_NUDGE = `## Project Orientation
+You are working in a Forge-managed project. Forge MCP tools are available for project management — \`forge_issues\`, \`forge_comments\`, \`forge_config\`, \`forge_memory\`, \`forge_pm_*\`. Use them when the request relates to issues, tasks, status, or project memory.
+
 For codebase orientation, call \`forge_config\` with action \`get_knowledge\` before exploring with search tools — it returns pre-indexed context (architecture, key files, conventions).`;
 
 function formatProjectConfig(

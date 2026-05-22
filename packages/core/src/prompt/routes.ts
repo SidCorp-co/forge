@@ -9,6 +9,13 @@ import {
   assertEmailVerified,
   requireAuth,
 } from '../middleware/auth.js';
+// Single source of truth for stage-override schemas. Reused here so the
+// preview endpoint inherits the F12 refinement (replace mode requires
+// non-empty extras) and any future invariants stay in lockstep.
+import {
+  systemPromptOverrideSchema,
+  userPromptPolicySchema,
+} from '../pipeline/pipeline-config-schema.js';
 import { loadIssueSnapshot } from './issue-snapshot.js';
 import {
   buildPipelinePreambleStructured,
@@ -25,44 +32,6 @@ const forbidden = (m: string) =>
   new HTTPException(403, { message: m, cause: { code: 'FORBIDDEN' } });
 const notFound = (m: string) =>
   new HTTPException(404, { message: m, cause: { code: 'NOT_FOUND' } });
-
-// Conservative caps for raw inline overrides — operator can stuff arbitrary
-// text into systemPrompt.extras; this prevents accidental megabyte payloads
-// while still leaving plenty of headroom for legitimate per-project rules.
-const SYSTEM_PROMPT_EXTRAS_MAX = 32_000;
-
-const systemPromptOverrideSchema = z
-  .object({
-    mode: z.enum(['append', 'replace']).optional(),
-    extras: z.string().max(SYSTEM_PROMPT_EXTRAS_MAX).nullable().optional(),
-  })
-  .strict();
-
-const userPromptPolicySchema = z
-  .object({
-    includeFields: z
-      .array(z.enum(['description', 'plan', 'acceptanceCriteria']))
-      .optional(),
-    sessionContext: z
-      .object({
-        depth: z.int().nonnegative().max(50).optional(),
-        fields: z
-          .array(z.enum(['decisions', 'filesModified', 'errorsResolved', 'reviewFeedback']))
-          .optional(),
-      })
-      .strict()
-      .optional(),
-    fieldCaps: z
-      .object({
-        description: z.int().positive().optional(),
-        plan: z.int().positive().optional(),
-        acceptanceCriteria: z.int().positive().optional(),
-      })
-      .strict()
-      .optional(),
-    truncationStrategy: z.enum(['paragraph-boundary', 'byte-cut']).optional(),
-  })
-  .strict();
 
 const previewBodySchema = z
   .object({

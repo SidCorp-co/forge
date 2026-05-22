@@ -406,7 +406,9 @@ pub(crate) async fn spawn_and_stream(
     // PR-5c — only treat CLI errors as RESUME_FAILED when --resume was actually
     // requested. Prevents false positives where a fresh invocation's stderr
     // happens to mention "session" or "resume" (help text, deprecation notes).
-    let invoked_with_resume = args.iter().any(|a| *a == "--resume");
+    // `.starts_with` covers both `--resume <id>` (current syntax) and a
+    // hypothetical `--resume=<id>` combined-form a future CLI might adopt.
+    let invoked_with_resume = args.iter().any(|a| a.starts_with("--resume"));
 
     let (mut cmd, temp_script) = build_command(args, repo_path)?;
 
@@ -601,6 +603,11 @@ pub(crate) async fn spawn_and_stream(
         // Match only specific phrases that name a missing/unreadable session
         // file — avoid the bare `--resume` substring (would match help text,
         // deprecation notices, etc.).
+        //
+        // TODO(PR-6): once the manual `--resume` interaction test is run
+        // (see docs/proposals/pipeline-prompt-ssot.md §PR-5/PR-6), expand
+        // this phrase list to cover whatever the CLI actually emits when it
+        // rejects `--append-system-prompt` alongside `--resume` (if anything).
         let resume_failed = invoked_with_resume
             && !succeeded
             && {

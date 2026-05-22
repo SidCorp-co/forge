@@ -9,6 +9,19 @@
 -- to rows the resume path actually queries (completed status + claude
 -- session id present) — keeps the index small.
 --
+-- Locking trade-off: standard `CREATE INDEX` takes ACCESS EXCLUSIVE on
+-- agent_sessions for the duration of the build. Drizzle's migration runner
+-- wraps each file in a transaction, so `CONCURRENTLY` is not an option
+-- here. For deployments where agent_sessions already has >100k rows, run
+-- this migration during a maintenance window OR drop these statements,
+-- run the migration, then create the indices manually with:
+--   CREATE INDEX CONCURRENTLY IF NOT EXISTS agent_sessions_resume_lookup_idx
+--     ON agent_sessions ((metadata->>'issueId'), (metadata->>'sessionGroup'))
+--     WHERE status = 'completed' AND claude_session_id IS NOT NULL;
+--   CREATE INDEX CONCURRENTLY IF NOT EXISTS agent_sessions_invalidate_lookup_idx
+--     ON agent_sessions ((metadata->>'issueId'), (metadata->>'sessionGroup'))
+--     WHERE claude_session_id IS NOT NULL;
+--
 -- Reversible: DROP INDEX, no data migration.
 
 CREATE INDEX IF NOT EXISTS "agent_sessions_resume_lookup_idx"

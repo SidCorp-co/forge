@@ -327,7 +327,8 @@ jobRoutes.get(
       model: job.modelUsed,
       payloadExtras: extractPayloadExtras(payload),
       resolvedFlags: extractResolvedFlags(payload, {
-        skillName: job.skillName,
+        // skillName lives on payload (stamped by orchestrator), not a job column.
+        skillName: typeof payload.skillName === 'string' ? payload.skillName : null,
         modelUsed: job.modelUsed,
       }),
     };

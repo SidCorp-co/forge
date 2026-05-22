@@ -28,8 +28,14 @@ import {
   resolveJobTypeForStatus,
 } from './skill-mapping.js';
 import {
+  type PipelineConfig,
+  STAGE_NAMES,
+  type StageConfig,
+  type StageName,
+  pipelineConfigSchema,
+} from './pipeline-config-schema.js';
+import {
   SKIPPABLE_STAGES,
-  type StagesConfig,
   resolveSkipTarget,
 } from './state-machine.js';
 
@@ -37,10 +43,19 @@ export { ActiveJobConflictError } from './enqueue-helper.js';
 
 const ACTIVE_JOB_STATUSES = ['queued', 'dispatched', 'running'] as const;
 
-interface PipelineConfig {
-  enabled?: boolean;
-  states?: StagesConfig;
-  [toggle: string]: unknown;
+const STAGE_NAME_SET: ReadonlySet<string> = new Set(STAGE_NAMES);
+
+/**
+ * Look up per-state config for a given issue status. Returns `undefined` for
+ * statuses that are not valid stage names (e.g. `in_progress`, `closed`,
+ * `on_hold`, `waiting` — terminal/transition states that don't dispatch).
+ * Lets callers chain `cfg?.states && stageConfigFor(cfg, status)?.skillName`
+ * without TS complaining about indexing a partial record with a wider key.
+ */
+function stageConfigFor(cfg: PipelineConfig | null, status: IssueStatus): StageConfig | undefined {
+  if (!cfg?.states) return undefined;
+  if (!STAGE_NAME_SET.has(status)) return undefined;
+  return cfg.states[status as StageName];
 }
 
 async function loadPipelineConfig(
@@ -52,12 +67,19 @@ async function loadPipelineConfig(
     .where(eq(projects.id, projectId))
     .limit(1);
   if (!row) return { cfg: null, ownerId: null };
-  const ac = row.agentConfig as { pipelineConfig?: PipelineConfig } | null;
-  return { cfg: ac?.pipelineConfig ?? null, ownerId: row.ownerId ?? null };
+  const ac = (row.agentConfig as { pipelineConfig?: unknown } | null) ?? {};
+  // Parse through the canonical schema so the typed read path stays in
+  // lockstep with what was validated on write. Bad data → cfg=null (caller
+  // falls through to "no auto pipeline" behavior, same as missing row).
+  const parsed = pipelineConfigSchema.safeParse(ac.pipelineConfig ?? {});
+  return {
+    cfg: parsed.success ? parsed.data : null,
+    ownerId: row.ownerId ?? null,
+  };
 }
 
 function isToggleEnabled(cfg: PipelineConfig, key: string): boolean {
-  const v = cfg[key];
+  const v = (cfg as Record<string, unknown>)[key];
   if (v === undefined) return false;
   if (typeof v === 'boolean') return v;
   if (typeof v === 'object' && v !== null) {
@@ -219,7 +241,7 @@ export async function triggerPipelineStepManual(args: {
   const run = await openIssueRun({ projectId: args.projectId, issueId: args.issueId });
 
   const skillRef = skill;
-  const stageCfg = cfg?.states?.[args.status];
+  const stageCfg = stageConfigFor(cfg, args.status);
   // Operator-supplied per-state skill name wins over the resolver default.
   const effectiveSkillName = stageCfg?.skillName ?? skillRef.skillName;
   const { jobId } = await insertAndEnqueueJob({
@@ -274,7 +296,7 @@ async function considerEnqueue(args: {
   // enqueue a job. autoSkipDisabledStages should have moved the issue past
   // this stage already; this fallback ensures a failed skip path never
   // produces a job for a stage the operator explicitly turned off.
-  const stageCfg = cfg.states?.[args.status];
+  const stageCfg = stageConfigFor(cfg, args.status);
   if (stageCfg && stageCfg.enabled === false) return;
   if (stageCfg && stageCfg.mode === 'manual') return;
   if (!isToggleEnabled(cfg, jobMap.toggle)) return;
@@ -309,7 +331,7 @@ async function considerEnqueue(args: {
 
   try {
     const skillRef = skill;
-    const stageCfg = cfg?.states?.[args.status];
+    const stageCfg = stageConfigFor(cfg, args.status);
     const effectiveSkillName = stageCfg?.skillName ?? skillRef.skillName;
     const { jobId } = await insertAndEnqueueJob({
       projectId: args.projectId,
@@ -374,7 +396,12 @@ async function autoSkipDisabledStages(
   // null when the source isn't skippable, isn't disabled, or has no valid
   // forward chain. Per-hop iteration below only handles side-effects
   // (transition + Sentry breadcrumb + WS broadcast).
-  const skipResult = resolveSkipTarget(payload.to, states);
+  // `states` is `StatesConfig` (schema-inferred, keys narrower than IssueStatus
+   // because `STAGE_NAMES ⊂ issueStatuses`); resolveSkipTarget reads only
+   // `.enabled`. Cast through `unknown` to bridge the
+   // exactOptionalPropertyTypes mismatch — the structural compatibility
+   // (`enabled?: boolean`) is intact.
+  const skipResult = resolveSkipTarget(payload.to, states as unknown as Parameters<typeof resolveSkipTarget>[1]);
   if (!skipResult) return;
 
   const [issue] = await db

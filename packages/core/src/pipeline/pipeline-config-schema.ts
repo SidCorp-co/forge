@@ -158,28 +158,31 @@ export type BudgetConfig = z.infer<typeof budgetConfigSchema>;
 // the rest. New per-state config fields (skillName, model, allowedTools,
 // permissionMode, timeoutSeconds, mcpServers, systemPrompt, userPromptPolicy,
 // budget, sessionGroup) are all optional; defaults preserve the
-// current hardcoded behavior. `.passthrough()` keeps legacy keys round-trippable.
-export const stageConfigSchema = z
-  .object({
-    enabled: z.boolean().optional(),
-    mode: z.enum(['auto', 'manual']).optional(),
-    // Skill + dispatch flags
-    skillName: z.string().min(1).max(128).optional(),
-    model: z.string().min(1).max(64).optional(),
-    allowedTools: z.array(z.string().min(1).max(128)).max(100).nullable().optional(),
-    permissionMode: z.enum(['default', 'plan', 'acceptEdits', 'bypassPermissions']).optional(),
-    timeoutSeconds: z.int().positive().max(86_400).optional(),
-    mcpServers: z.record(z.string(), z.unknown()).optional(),
-    // Prompt content overrides — orchestrator + dispatcher resolve before stamping.
-    systemPrompt: systemPromptOverrideSchema.optional(),
-    userPromptPolicy: userPromptPolicySchema.optional(),
-    // Budget caps (consumed by dispatcher pre-flight + in-flight kill paths).
-    budget: budgetConfigSchema.optional(),
-    // Session-group membership (PR-5). Joins this stage to a named group whose
-    // members share a Claude CLI session via --resume across the group.
-    sessionGroup: z.string().min(1).max(64).optional(),
-  })
-  .passthrough();
+// current hardcoded behavior.
+//
+// No `.passthrough()` — the merge layer (`mergePipelineConfig`) handles
+// legacy-key round-trip at the top level via spread. Stage-level legacy
+// keys are not preserved by design; the schema is the source of truth for
+// what a stage block may contain.
+export const stageConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  mode: z.enum(['auto', 'manual']).optional(),
+  // Skill + dispatch flags
+  skillName: z.string().min(1).max(128).optional(),
+  model: z.string().min(1).max(64).optional(),
+  allowedTools: z.array(z.string().min(1).max(128)).max(100).nullable().optional(),
+  permissionMode: z.enum(['default', 'plan', 'acceptEdits', 'bypassPermissions']).optional(),
+  timeoutSeconds: z.int().positive().max(86_400).optional(),
+  mcpServers: z.record(z.string(), z.unknown()).optional(),
+  // Prompt content overrides — orchestrator + dispatcher resolve before stamping.
+  systemPrompt: systemPromptOverrideSchema.optional(),
+  userPromptPolicy: userPromptPolicySchema.optional(),
+  // Budget caps (consumed by dispatcher pre-flight + in-flight kill paths).
+  budget: budgetConfigSchema.optional(),
+  // Session-group membership (PR-5). Joins this stage to a named group whose
+  // members share a Claude CLI session via --resume across the group.
+  sessionGroup: z.string().min(1).max(64).optional(),
+});
 
 export type StageConfig = z.infer<typeof stageConfigSchema>;
 
@@ -255,6 +258,26 @@ export const pipelineConfigSchema = z
     // PR-5 — session-group routing.
     sessionGroups: sessionGroupsSchema.optional(),
     onResumeFail: z.enum(['fresh', 'abort']).optional(),
+  })
+  // PR-5 — cross-field validation: every `states[x].sessionGroup` must be a
+  // declared group in `sessionGroups`. Without this, a typo
+  // (`'implmentation'` vs `'implementation'`) passes Zod silently and the
+  // orchestrator stamps a group name that `findPriorSessionInGroup` will
+  // never match — operator sees fresh sessions instead of resume.
+  .superRefine((cfg, ctx) => {
+    if (!cfg.states || !cfg.sessionGroups) return;
+    const declaredGroups = new Set(Object.keys(cfg.sessionGroups));
+    for (const [stageName, stageCfg] of Object.entries(cfg.states)) {
+      if (!stageCfg || typeof stageCfg !== 'object') continue;
+      const sg = (stageCfg as { sessionGroup?: unknown }).sessionGroup;
+      if (typeof sg === 'string' && sg.length > 0 && !declaredGroups.has(sg)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['states', stageName, 'sessionGroup'],
+          message: `sessionGroup "${sg}" is not declared in pipelineConfig.sessionGroups`,
+        });
+      }
+    }
   });
 
 export type PipelineConfig = z.infer<typeof pipelineConfigSchema>;

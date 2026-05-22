@@ -23,6 +23,7 @@
  */
 
 import type { JobType } from '../db/schema.js';
+import type { UserPromptPolicyConfig } from '../pipeline/pipeline-config-schema.js';
 
 export interface IssueSnapshot {
   title: string;
@@ -54,16 +55,13 @@ export type SessionContextField =
   | 'errorsResolved'
   | 'reviewFeedback';
 
-/** Per-state policy override resolved from `appConfig.pipeline.states[state].userPromptPolicy`. */
-export interface UserPromptPolicyOverride {
-  includeFields?: IssueField[];
-  sessionContext?: {
-    depth?: number;
-    fields?: SessionContextField[];
-  };
-  fieldCaps?: Partial<Record<IssueField, number>>;
-  truncationStrategy?: 'paragraph-boundary' | 'byte-cut';
-}
+/**
+ * Per-state policy override resolved from `appConfig.pipeline.states[state].userPromptPolicy`.
+ * Re-exported from the canonical Zod-inferred type so this module + the
+ * preview endpoint + the orchestrator all agree on the shape (including
+ * exactOptionalPropertyTypes `| undefined` on each field).
+ */
+export type UserPromptPolicyOverride = UserPromptPolicyConfig;
 
 const DEFAULT_FIELD_CAPS: Record<IssueField, number> = {
   description: 8000,
@@ -177,7 +175,15 @@ function formatIssueSnapshot(
   policy?: UserPromptPolicyOverride | null,
 ): string {
   const fields = resolveIssueFields(jobType, policy?.includeFields);
-  const fieldCaps = { ...DEFAULT_FIELD_CAPS, ...(policy?.fieldCaps ?? {}) };
+  // Layer policy overrides onto defaults, skipping undefined values so an
+  // unset cap doesn't clobber the default to `undefined` (Zod's optional
+  // properties carry `| undefined` in their value type).
+  const fieldCaps: Record<IssueField, number> = { ...DEFAULT_FIELD_CAPS };
+  if (policy?.fieldCaps) {
+    for (const [k, v] of Object.entries(policy.fieldCaps) as Array<[IssueField, number | undefined]>) {
+      if (typeof v === 'number') fieldCaps[k] = v;
+    }
+  }
   const strategy = policy?.truncationStrategy ?? 'paragraph-boundary';
   const lines: string[] = ['## Issue', `Title: ${snapshot.title}`];
 
