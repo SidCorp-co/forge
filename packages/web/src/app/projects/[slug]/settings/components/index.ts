@@ -19,4 +19,3 @@ export type { SettingsGroup, SettingsSection } from './settings-layout';
 export { SkillRegistrationsSection } from './skill-registrations-section';
 export { TestingSection } from './testing-section';
 export { WebhookSection } from './webhook-section';
-export { WidgetSnippetSection } from './widget-snippet-section';

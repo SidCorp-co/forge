@@ -23,6 +23,7 @@ import {
   Sun,
   Moon,
   Crown,
+  LifeBuoy,
 } from 'lucide-react';
 import { useThemePreference } from '@/hooks/use-theme-preference';
 import { useMounted } from '@/hooks/use-mounted';
@@ -110,6 +111,44 @@ function AvatarDropdown({ user, connected, logout, pathname }: {
         </div>
       )}
     </div>
+  );
+}
+
+function FeedbackButton() {
+  const openHelpdesk = () => {
+    const fab = document.querySelector<HTMLButtonElement>(
+      '#sid-desk-widget-root .sid-fab'
+    );
+    if (fab) {
+      fab.click();
+      return;
+    }
+    // Script may not have finished bootstrapping; poll briefly.
+    let tries = 0;
+    const id = window.setInterval(() => {
+      tries += 1;
+      const el = document.querySelector<HTMLButtonElement>(
+        '#sid-desk-widget-root .sid-fab'
+      );
+      if (el) {
+        window.clearInterval(id);
+        el.click();
+      } else if (tries > 20) {
+        window.clearInterval(id);
+      }
+    }, 150);
+  };
+
+  return (
+    <button
+      onClick={openHelpdesk}
+      className="w-full flex items-center gap-3 px-3 py-2 rounded-sm text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors"
+      title="Send feedback or chat with support"
+      aria-label="Feedback"
+    >
+      <LifeBuoy className="h-4 w-4" />
+      <span className="text-xs">Feedback</span>
+    </button>
   );
 }
 
@@ -361,6 +400,7 @@ export function SidebarNav({ onClose }: SidebarNavProps) {
       </nav>
 
       <div className="mt-auto px-3 pt-3 md:pt-6 pb-3 md:pb-6 border-t border-outline-variant/20 space-y-2">
+        <FeedbackButton />
         <ThemeToggle />
         <AvatarDropdown user={user} connected={connected} logout={logout} pathname={pathname} />
       </div>

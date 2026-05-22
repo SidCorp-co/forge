@@ -27,7 +27,6 @@ import { chatLogRoutes } from './chat-logs/routes.js';
 import { bootstrapChatProviders } from './chat/providers/bootstrap.js';
 import { chatRoutes } from './chat/routes.js';
 import { chatSessionRoutes } from './chat/sessions-routes.js';
-import { widgetChatRoutes } from './chat/widget-routes.js';
 import { commentRoutes } from './comments/routes.js';
 import { commentUploadRoutes } from './comments/upload.js';
 import { attachmentRoutes } from './issues/attachment-routes.js';
@@ -122,7 +121,6 @@ import { usageRecordRoutes } from './usage-records/routes.js';
 import { webhookInboundRoutes } from './webhooks/inbound-routes.js';
 import { registerOutboundDeliveryWorker } from './webhooks/outbound.js';
 import { registerWebhookSubscribers } from './webhooks/subscribers.js';
-import { widgetBundleRoutes } from './widget/bundle-routes.js';
 import { registerWsBroadcastSubscribers } from './ws/broadcast-subscribers.js';
 import { attachWs, closeWs, isWsListening } from './ws/server.js';
 
@@ -341,7 +339,6 @@ app.route('/api/runners', runnerCallbackRoutes);
 // so a default `main` build behaves as if the route doesn't exist.
 if (isEnabled('chatProvider')) {
   app.route('/api/chat', chatRoutes);
-  app.route('/api/widget/chat', widgetChatRoutes);
 }
 
 // ISS-22 (PM Agent Epic 6) — config / policies / decisions CRUD + escalation
@@ -349,12 +346,6 @@ if (isEnabled('chatProvider')) {
 if (isEnabled('pmAgent')) {
   app.route('/api/projects', pmRoutes);
 }
-
-// Widget bundle (ISS-295 PR-C) — public, project-scoped delivery of the
-// `packages/web` widget IIFE. Mounts unconditionally so embed snippets keep
-// working even when the chat flag is off (the widget itself can decide
-// what to render in that case).
-app.route('/api/widget', widgetBundleRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 

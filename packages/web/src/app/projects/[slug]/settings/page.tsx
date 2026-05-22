@@ -22,7 +22,6 @@ import { SettingsLayout, type SettingsGroup } from './components/settings-layout
 import { SkillRegistrationsSection } from './components/skill-registrations-section';
 import { TestingSection } from './components/testing-section';
 import { WebhookSection } from './components/webhook-section';
-import { WidgetSnippetSection } from './components/widget-snippet-section';
 import { AntigravitySection } from './components/antigravity-section';
 
 export default function ProjectSettingsPage() {
@@ -77,7 +76,6 @@ export default function ProjectSettingsPage() {
         { id: 'int.gitlab', label: 'GitLab Webhook', tag: 'INT_GLB', render: () => <GitlabWebhookSection previewMode /> },
         { id: 'int.channels', label: 'Channels', tag: 'INT_CHN', render: () => <ChannelsSection previewMode /> },
         { id: 'int.webhooks', label: 'Generic Webhooks', tag: 'INT_WHK', render: () => <WebhookSection previewMode /> },
-        { id: 'int.widget', label: 'Widget Snippet', tag: 'INT_WGT', render: () => <WidgetSnippetSection projectSlug={project.slug} projectName={project.name} previewMode /> },
       ],
     },
   ];

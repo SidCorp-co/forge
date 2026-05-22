@@ -353,3 +353,13 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-outline-variant);
 }
+
+/* SidCorp helpdesk widget: hide the floating bubble — opened via sidebar Feedback button.
+   Kept clickable (no display:none) so `.click()` can flip its React state. */
+#sid-desk-widget-root .sid-fab-wrap {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+#sid-desk-widget-root .sid-fab-wrap .sid-fab {
+  pointer-events: auto !important;
+}

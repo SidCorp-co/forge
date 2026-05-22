@@ -61,10 +61,6 @@ pnpm --filter web test          # vitest (component + unit)
 
 → Module behavior is documented at [`docs/modules/`](../../docs/modules/) at the repo root. Web is one of three clients (web, dev, app) that all consume the same core contract — never re-derive shapes, import from [`@forge/contracts`](../contracts).
 
-## Embeddable widget
-
-`pnpm build:widget` builds `dist-widget/forge-widget.js` and copies it into [`@forge/core`](../core)`/public/` so core can serve it from `/widget/<project>/forge-widget.js`. Source lives in [`vite.widget.config.ts`](./vite.widget.config.ts).
-
 ## Other scripts
 
 | Script | Purpose |

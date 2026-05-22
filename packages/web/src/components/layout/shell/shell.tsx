@@ -2,6 +2,7 @@
 
 import { useState, useEffect, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
+import Script from 'next/script';
 import { cn } from '@/lib/utils/cn';
 import { SidebarNav } from './sidebar-nav';
 import { TopBar } from './top-bar';
@@ -62,6 +63,14 @@ export function Shell({ children }: { children: ReactNode }) {
         <TopBar onMenuOpen={() => setMobileOpen(true)} />
         {children}
       </main>
+
+      <Script
+        src="https://helpdesk-api.sidcorp.co/widget/chat.js"
+        strategy="lazyOnload"
+        data-brand-id="hzbl4sa73y9gw14cec5li0xz"
+        data-color="#ff9500"
+        data-theme="modern"
+      />
     </div>
   );
 }

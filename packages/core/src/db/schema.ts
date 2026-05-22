@@ -1433,11 +1433,9 @@ export type ChatSessionSource = (typeof chatSessionSources)[number];
  * Persisted chat sessions. Two separate identity columns are intentional:
  *
  * - `userId` is the authenticated owner — set when the request carries a Bearer
- *   JWT (web/desktop). Null for unauthenticated widget traffic. Drives the
- *   per-user scoping in GET/PATCH/DELETE.
+ *   JWT (web/desktop). Drives the per-user scoping in GET/PATCH/DELETE.
  * - `userKey` is the chat_logs audit key — propagated to `chat_logs.userKey`
- *   inside `chat/run-turn.ts`. May be null for widget sessions where there is
- *   no logged-in user (see `chat/widget-routes.ts`).
+ *   inside `chat/run-turn.ts`.
  */
 export const chatSessions = pgTable(
   'chat_sessions',

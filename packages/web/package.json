@@ -7,8 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "build:widget": "vite build --config vite.widget.config.ts && mkdir -p ../core/public && cp dist-widget/forge-widget.js ../core/public/forge-widget.js"
+    "lint": "eslint"
   },
   "dependencies": {
     "@forge/contracts": "workspace:*",

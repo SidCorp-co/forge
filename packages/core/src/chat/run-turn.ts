@@ -1,8 +1,6 @@
 /**
- * Shared SSE turn runner for the cookie-auth (`/api/chat`, PR-B) and
- * api-key-auth (`/api/widget/chat`, PR-C) chat routes. Both routes load a
- * project + provider + session and then stream the same way; this module
- * captures that shared tail so the two route handlers stay 5–10 lines each.
+ * SSE turn runner for the cookie-auth `/api/chat` (PR-B) route. Loads a
+ * project + provider + session and streams the assistant reply.
  */
 
 import type { Context } from 'hono';

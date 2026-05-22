@@ -4,8 +4,6 @@
  *
  * The shared streaming + persistence logic lives in `./run-turn.ts`; this
  * file owns auth, project membership lookup, and session source tagging.
- * The widget sibling (`./widget-routes.ts`) reuses the same helper under
- * `requireProjectApiKey()`.
  *
  * The whole route is gated by feature flag `chatProvider`.
  */
