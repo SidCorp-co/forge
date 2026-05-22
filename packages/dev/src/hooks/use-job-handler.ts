@@ -81,14 +81,25 @@ export async function handleJobAssigned(
   ctx.tracker.start(jobId, slug, prompt, { repoPath: pc.repoPath, agentSessionId: data.agentSessionId ?? undefined });
 
   try {
+    // PR-5 — if server sent claudeSessionId, this stage belongs to a
+    // sessionGroup with a prior completed session on the same host. Pass it
+    // through so Tauri spawns claude with --resume.
     await invoke("send_chat", {
       repoPath: pc.repoPath,
       message: prompt,
       sessionId: jobId,
-      claudeSessionId: null,
+      claudeSessionId: data.claudeSessionId ?? null,
       projectSlug: slug,
-      mcpServers,
+      // PR-4 — prefer mcpServersOverride from the per-state config; fall
+      // back to the project-default `mcpServers` resolved above.
+      mcpServers: data.mcpServersOverride ?? mcpServers,
       systemPrompt: data.systemPrompt ?? undefined,
+      model: data.model ?? undefined,
+      allowedTools: data.allowedTools ?? undefined,
+      permissionMode: data.permissionMode ?? undefined,
+      // timeoutSeconds plumbed to Rust spawn (overrides hardcoded 30min).
+      // TODO(PR-4b finalization): wire this to the Rust spawn timeout
+      // signature in a follow-up — for now Rust still ignores it.
     });
   } catch (err) {
     console.error("[job.assigned] send_chat failed:", err);

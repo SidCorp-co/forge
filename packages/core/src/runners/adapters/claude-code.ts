@@ -32,6 +32,22 @@ export const claudeCodeAdapter: RunnerAdapter = {
     if (!runner.deviceId) {
       return { status: 'failed', errorReason: 'claude-code runner missing deviceId' };
     }
+    // PR-4 — per-state overrides arrive on `job.payload` (merged by the
+    // dispatcher before calling adapter.dispatch). Lift them to top-level
+    // WS fields so the runner can consume without re-parsing `payload`.
+    const payload = (job.payload ?? {}) as Record<string, unknown>;
+    const overrideForwards: Record<string, unknown> = {};
+    for (const key of [
+      'model',
+      'allowedTools',
+      'permissionMode',
+      'timeoutSeconds',
+      'mcpServersOverride',
+      'sessionGroup',
+    ] as const) {
+      if (key in payload) overrideForwards[key] = payload[key];
+    }
+
     roomManager.publish(deviceRoom(runner.deviceId), {
       event: 'job.assigned',
       data: {
@@ -42,6 +58,7 @@ export const claudeCodeAdapter: RunnerAdapter = {
         payload: job.payload,
         promptString: job.promptString ?? null,
         systemPrompt: job.systemPrompt ?? null,
+        ...overrideForwards,
         runnerId: runner.id,
         runnerType: runner.type,
         dispatchedAt: job.dispatchedAt.toISOString(),

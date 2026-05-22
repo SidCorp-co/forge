@@ -375,6 +375,7 @@ describe('jobs/dispatcher PM path', () => {
       projectId: 'p1',
       requiredCapabilities: { pm: true },
       fallbackChain: ['claude-code'],
+      pinDeviceId: null,
     });
 
     // ISS-186 — snapshot must persist on runner path too, before adapter.dispatch.
@@ -408,6 +409,7 @@ describe('jobs/dispatcher PM path', () => {
       projectId: 'p1',
       requiredCapabilities: { pm: true },
       fallbackChain: ['claude-code'],
+      pinDeviceId: null,
     });
   });
 

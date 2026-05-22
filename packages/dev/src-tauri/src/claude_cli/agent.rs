@@ -9,32 +9,14 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
-/// Forge system preamble appended to the default Claude CLI system prompt.
-/// Two variants:
-/// - `FORGE_SYSTEM_PREAMBLE_CHAT`: used for manual chat sessions where no
-///   project context has been pre-loaded. Tells the agent to call
-///   forge_config get_knowledge for orientation.
-/// - `FORGE_SYSTEM_PREAMBLE_PIPELINE`: used for pipeline sessions where core
-///   has already inlined knowledge + conventions + PIPELINE_RULES via the
-///   `system_prompt` parameter. Does NOT nudge the agent to call get_knowledge,
-///   because the data is already in the system prompt.
-const FORGE_SYSTEM_PREAMBLE_CHAT: &str = "\
-You are working in a Forge-managed project. \
-Forge MCP tools are available for project management: \
-forge_issues, forge_comments, forge_config, forge_memory, forge_coolify_deploy, forge_projects. \
-Use them when the request relates to issues, tasks, or project status.\n\n\
-For codebase orientation, call forge_config with action 'get_knowledge' before exploring with search tools — \
-it returns pre-indexed context (architecture, key files, conventions).";
-
-const FORGE_SYSTEM_PREAMBLE_PIPELINE: &str = "\
-You are working in a Forge-managed project. \
-Forge MCP tools are available for project management: \
-forge_issues, forge_comments, forge_config, forge_memory, forge_coolify_deploy, forge_projects. \
-Use them when the request relates to issues, tasks, or project status.";
-
 /// Per-skill allowed-tools whitelist. Applied only to skills with a provably
 /// bounded tool set — forge-triage, forge-staging, forge-release. Returning None
 /// means "no whitelist, CLI default applies" (which lets all tools through).
+///
+/// Note: server-side `appConfig.pipeline.states[state].allowedTools` can also
+/// override this — the server passes its choice via the `skill` parameter
+/// resolving to a different whitelist, OR via passing the literal list. For
+/// now this stays as a static map; PR-4b adds the override plumbing.
 fn allowed_tools_for(skill: &str) -> Option<&'static str> {
     match skill {
         "forge-triage" => Some("mcp__forge__forge_issues,mcp__forge__forge_comments,mcp__forge__forge_memory"),
@@ -45,46 +27,47 @@ fn allowed_tools_for(skill: &str) -> Option<&'static str> {
     }
 }
 
-/// Build the base CLI args with optional system prompt, allowed-tools whitelist, and model override.
-/// Returns owned `Vec<String>` because the combined system prompt is dynamic.
+/// Build the base CLI args. `system_prompt` is forwarded verbatim from the
+/// server (built by `@forge/core` `src/prompt/system.ts`) — Rust no longer
+/// owns any prompt content. When `system_prompt` is empty or None, the CLI
+/// runs with no `--append-system-prompt` flag, matching the bare interactive
+/// `claude` invocation.
 fn build_base_args(
     permission_mode: Option<&str>,
     system_prompt: Option<&str>,
+    allowed_tools_override: Option<&str>,
     skill: Option<&str>,
     model: Option<&str>,
 ) -> Vec<String> {
     let mode = permission_mode.unwrap_or("bypassPermissions");
 
-    // Combine the static Forge preamble with any pipeline-specific system prompt
-    // (knowledge + conventions + PIPELINE_RULES) into one --append-system-prompt.
-    // When core provides a pipeline system_prompt, use the pipeline variant
-    // (no "call get_knowledge" nudge). Otherwise it's a manual chat — use the
-    // chat variant which tells the agent to fetch project context itself.
-    let combined_system = match system_prompt {
-        Some(sp) if !sp.is_empty() => format!("{}\n\n{}", FORGE_SYSTEM_PREAMBLE_PIPELINE, sp),
-        _ => FORGE_SYSTEM_PREAMBLE_CHAT.to_string(),
-    };
-
-    // Debug: log the exact --append-system-prompt payload so operators can
-    // inspect what reached the CLI. Logs length + full body to the Tauri log.
-    log(&format!(
-        "[build_base_args] --append-system-prompt ({} chars):\n{}",
-        combined_system.len(),
-        combined_system,
-    ));
-
     let mut args: Vec<String> = vec![
         "--output-format".into(), "stream-json".into(), "--verbose".into(),
         "--permission-mode".into(), mode.into(),
-        "--append-system-prompt".into(), combined_system,
     ];
 
-    // Scoped tool whitelist — only for skills with a bounded tool set.
-    if let Some(s) = skill {
-        if let Some(tools) = allowed_tools_for(s) {
-            args.push("--allowed-tools".into());
-            args.push(tools.into());
+    // Forward the server-built system prompt as-is (empty string suppresses
+    // the flag — matches bare `claude` interactive behavior).
+    if let Some(sp) = system_prompt {
+        if !sp.is_empty() {
+            // Debug log so operators can inspect exactly what reached the CLI.
+            log(&format!(
+                "[build_base_args] --append-system-prompt ({} chars)",
+                sp.len(),
+            ));
+            args.push("--append-system-prompt".into());
+            args.push(sp.to_string());
         }
+    }
+
+    // Tool whitelist precedence: explicit server override > per-skill default.
+    let allowed = allowed_tools_override
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .or_else(|| skill.and_then(allowed_tools_for).map(|s| s.to_string()));
+    if let Some(tools) = allowed {
+        args.push("--allowed-tools".into());
+        args.push(tools);
     }
 
     // Model override (e.g. sonnet for forge-code).
@@ -153,6 +136,7 @@ pub async fn run_agent(
     system_prompt: Option<String>,
     skill: Option<String>,
     model: Option<String>,
+    allowed_tools: Option<String>,
 ) -> Result<String, String> {
     let session_id = Uuid::new_v4().to_string();
     log(&format!("[run_agent] repo_path={repo_path} slug={project_slug:?} worktree_branch={worktree_branch:?} skill={skill:?} model={model:?}"));
@@ -162,6 +146,7 @@ pub async fn run_agent(
     let mut args = build_base_args(
         permission_mode.as_deref(),
         system_prompt.as_deref(),
+        allowed_tools.as_deref(),
         skill.as_deref(),
         model.as_deref(),
     );
@@ -193,6 +178,7 @@ pub async fn send_chat(
     system_prompt: Option<String>,
     skill: Option<String>,
     model: Option<String>,
+    allowed_tools: Option<String>,
 ) -> Result<(), String> {
     log(&format!("[send_chat] session={session_id}, slug={project_slug:?} worktree_branch={worktree_branch:?} skill={skill:?} model={model:?} resuming={}", claude_session_id.is_some()));
 
@@ -213,20 +199,19 @@ pub async fn send_chat(
 
     let (effective_repo, wt_path) = resolve_worktree(&repo_path, worktree_branch.as_deref()).await?;
 
-    // For resume (claude_session_id is Some), the Claude CLI reuses the prior
-    // session's system prompt, tool whitelist, and model. Re-passing those flags
-    // may be rejected or reset state, so we skip them and only pass --resume + -p.
-    let is_resume = claude_session_id.is_some();
-    let mut args = if is_resume {
-        build_base_args(permission_mode.as_deref(), None, None, None)
-    } else {
-        build_base_args(
-            permission_mode.as_deref(),
-            system_prompt.as_deref(),
-            skill.as_deref(),
-            model.as_deref(),
-        )
-    };
+    // Always pass full flags — including on --resume. CLI behavior with
+    // override flags on resume is undocumented; server-side embeds the state's
+    // own system prompt redundantly as turn-level rules in the user prompt
+    // body (see core/src/prompt/user.ts `turnLevelSystemPrompt`) so the agent
+    // sees the right rules whether or not the CLI honors --append-system-prompt
+    // on resume.
+    let mut args = build_base_args(
+        permission_mode.as_deref(),
+        system_prompt.as_deref(),
+        allowed_tools.as_deref(),
+        skill.as_deref(),
+        model.as_deref(),
+    );
 
     let slug = project_slug.as_deref().unwrap_or("");
     let (mcp_path_str, mcp_temp_path) = resolve_mcp_config(slug, mcp_servers.as_ref())?;

@@ -581,9 +581,28 @@ pub(crate) async fn spawn_and_stream(
             cid
         };
 
+        // PR-5c — detect resume failure so the server can re-dispatch the
+        // job without claudeSessionId (or fail it, per onResumeFail config).
+        // Pattern-match a few common phrases the CLI uses when the session
+        // file is missing or unreadable; conservative — false positives just
+        // mean we tag a generic CLI error as a resume failure, which still
+        // lets the server retry safely.
+        let resume_failed = {
+            let blob = format!("{err_output}").to_lowercase();
+            !succeeded
+                && (blob.contains("session not found")
+                    || blob.contains("could not resume")
+                    || blob.contains("--resume")
+                    || blob.contains("no such session"))
+        };
+
         let error_msg = if let Some(ref ulm) = final_usage_limit {
             // Tag usage limit errors for downstream parsing
             Some(format!("[USAGE_LIMIT] {ulm}"))
+        } else if resume_failed {
+            let trimmed = err_output.trim();
+            let body = trimmed.chars().take(500).collect::<String>();
+            Some(format!("[RESUME_FAILED] {body}"))
         } else if !succeeded {
             // Include stderr in error message for better diagnostics
             let trimmed = err_output.trim();

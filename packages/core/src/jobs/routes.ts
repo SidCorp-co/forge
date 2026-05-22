@@ -24,6 +24,7 @@ import {
   type ActualUsage,
   type PromptEnvelope,
   extractPayloadExtras,
+  extractResolvedFlags,
   redactMcpSecrets,
 } from './prompt-route.js';
 
@@ -325,6 +326,10 @@ jobRoutes.get(
       mcpConfig,
       model: job.modelUsed,
       payloadExtras: extractPayloadExtras(payload),
+      resolvedFlags: extractResolvedFlags(payload, {
+        skillName: job.skillName,
+        modelUsed: job.modelUsed,
+      }),
     };
     return c.json(envelope);
   },

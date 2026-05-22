@@ -15,6 +15,7 @@ import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
+import { handleResumeFailed, isResumeFailedError } from './handle-resume-failed.js';
 import { scheduleAutoRetryOnce } from './retry.js';
 
 const badRequest = (details: unknown) =>
@@ -93,7 +94,26 @@ jobLifecycleDeviceRoutes.post(
 
     let retry: { scheduled: boolean; newJobId?: string } | null = null;
     if (status === 'failed') {
-      retry = await scheduleAutoRetryOnce(updated, input.error ?? 'exit nonzero');
+      // PR-5c — resume failure takes precedence: invalidate prior session
+      // and branch by `onResumeFail` policy (fresh → retry; abort → no retry).
+      let resumePolicy: 'fresh' | 'abort' | null = null;
+      if (isResumeFailedError(input.error)) {
+        resumePolicy = await handleResumeFailed({
+          id: updated.id,
+          projectId: updated.projectId,
+          issueId: updated.issueId,
+          payload: updated.payload,
+        });
+      }
+      if (resumePolicy === 'abort') {
+        await db
+          .update(jobs)
+          .set({ failureReason: 'resume_failed', failureKind: 'permanent', classifierVersion: 1 })
+          .where(eq(jobs.id, updated.id));
+        retry = { scheduled: false };
+      } else {
+        retry = await scheduleAutoRetryOnce(updated, input.error ?? 'exit nonzero');
+      }
       if (!retry.scheduled && updated.issueId) {
         await setManualHoldBlock({
           issueId: updated.issueId,
@@ -207,7 +227,26 @@ jobLifecycleDeviceRoutes.post(
 
     if (!updated) throw conflict('job state changed mid-request', 'INVALID_STATE');
 
-    const retry = await scheduleAutoRetryOnce(updated, input.error);
+    // PR-5c — same resume-failed branching as the user-lifecycle path.
+    let resumePolicy: 'fresh' | 'abort' | null = null;
+    if (isResumeFailedError(input.error)) {
+      resumePolicy = await handleResumeFailed({
+        id: updated.id,
+        projectId: updated.projectId,
+        issueId: updated.issueId,
+        payload: updated.payload,
+      });
+    }
+    let retry: { scheduled: boolean; newJobId?: string };
+    if (resumePolicy === 'abort') {
+      await db
+        .update(jobs)
+        .set({ failureReason: 'resume_failed', failureKind: 'permanent', classifierVersion: 1 })
+        .where(eq(jobs.id, updated.id));
+      retry = { scheduled: false };
+    } else {
+      retry = await scheduleAutoRetryOnce(updated, input.error);
+    }
     if (!retry.scheduled && updated.issueId) {
       await setManualHoldBlock({
         issueId: updated.issueId,

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { extractPayloadExtras, redactMcpSecrets } from './prompt-route.js';
+import {
+  extractPayloadExtras,
+  extractResolvedFlags,
+  redactMcpSecrets,
+} from './prompt-route.js';
 
 describe('redactMcpSecrets', () => {
   it('redacts Authorization header with length marker', () => {
@@ -106,5 +110,73 @@ describe('extractPayloadExtras', () => {
     expect(
       extractPayloadExtras({ promptString: 'x', skillName: 'y', mcpServers: [] }),
     ).toEqual({});
+  });
+
+  it('strips dispatcher-stamped resolvedFlags keys so they do not double-render', () => {
+    expect(
+      extractPayloadExtras({
+        model: 'sonnet',
+        allowedTools: 'Bash',
+        permissionMode: 'acceptEdits',
+        timeoutSeconds: 1800,
+        sessionGroup: 'impl',
+        stageStatus: 'developed',
+        claudeSessionId: 'cli-abc',
+        mcpServersOverride: { x: 1 },
+        // Real extras
+        preventiveContext: { hint: 'h' },
+      }),
+    ).toEqual({ preventiveContext: { hint: 'h' } });
+  });
+});
+
+describe('extractResolvedFlags', () => {
+  it('returns all-null when no dispatcher fields stamped', () => {
+    const r = extractResolvedFlags({}, { skillName: null, modelUsed: null });
+    expect(r).toEqual({
+      state: null,
+      skillName: null,
+      model: null,
+      allowedTools: null,
+      permissionMode: null,
+      timeoutSeconds: null,
+      sessionGroup: null,
+      claudeSessionId: null,
+      systemPromptMode: null,
+    });
+  });
+
+  it('prefers job.modelUsed + job.skillName over payload-stamped values', () => {
+    const r = extractResolvedFlags(
+      { model: 'opus', skillName: 'forge-old' },
+      { skillName: 'forge-new', modelUsed: 'sonnet' },
+    );
+    expect(r.skillName).toBe('forge-new');
+    expect(r.model).toBe('sonnet');
+  });
+
+  it('normalises allowedTools as comma-joined string', () => {
+    const r = extractResolvedFlags(
+      { allowedTools: ['Bash', 'mcp__forge__forge_issues'] },
+      { skillName: null, modelUsed: null },
+    );
+    expect(r.allowedTools).toBe('Bash,mcp__forge__forge_issues');
+  });
+
+  it('rejects unknown permissionMode strings', () => {
+    const r = extractResolvedFlags(
+      { permissionMode: 'foo' },
+      { skillName: null, modelUsed: null },
+    );
+    expect(r.permissionMode).toBeNull();
+  });
+
+  it('surfaces sessionGroup + claudeSessionId for the Inspector resume badge', () => {
+    const r = extractResolvedFlags(
+      { sessionGroup: 'impl', claudeSessionId: 'cli-xyz' },
+      { skillName: null, modelUsed: null },
+    );
+    expect(r.sessionGroup).toBe('impl');
+    expect(r.claudeSessionId).toBe('cli-xyz');
   });
 });

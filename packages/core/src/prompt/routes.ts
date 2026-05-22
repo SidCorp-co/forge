@@ -1,0 +1,158 @@
+import { zValidator } from '@hono/zod-validator';
+import { Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
+import { z } from 'zod';
+import { type JobType, jobTypes } from '../db/schema.js';
+import { loadProjectAccess } from '../lib/project-access.js';
+import {
+  type AuthVars,
+  assertEmailVerified,
+  requireAuth,
+} from '../middleware/auth.js';
+import { loadIssueSnapshot } from './issue-snapshot.js';
+import {
+  buildPipelinePreambleStructured,
+  type SystemPromptOverride,
+} from './system.js';
+import {
+  buildJobPromptString,
+  type UserPromptPolicyOverride,
+} from './user.js';
+
+const badRequest = (details: unknown) =>
+  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
+const forbidden = (m: string) =>
+  new HTTPException(403, { message: m, cause: { code: 'FORBIDDEN' } });
+const notFound = (m: string) =>
+  new HTTPException(404, { message: m, cause: { code: 'NOT_FOUND' } });
+
+// Conservative caps for raw inline overrides — operator can stuff arbitrary
+// text into systemPrompt.extras; this prevents accidental megabyte payloads
+// while still leaving plenty of headroom for legitimate per-project rules.
+const SYSTEM_PROMPT_EXTRAS_MAX = 32_000;
+
+const systemPromptOverrideSchema = z
+  .object({
+    mode: z.enum(['append', 'replace']).optional(),
+    extras: z.string().max(SYSTEM_PROMPT_EXTRAS_MAX).nullable().optional(),
+  })
+  .strict();
+
+const userPromptPolicySchema = z
+  .object({
+    includeFields: z
+      .array(z.enum(['description', 'plan', 'acceptanceCriteria']))
+      .optional(),
+    sessionContext: z
+      .object({
+        depth: z.int().nonnegative().max(50).optional(),
+        fields: z
+          .array(z.enum(['decisions', 'filesModified', 'errorsResolved', 'reviewFeedback']))
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    fieldCaps: z
+      .object({
+        description: z.int().positive().optional(),
+        plan: z.int().positive().optional(),
+        acceptanceCriteria: z.int().positive().optional(),
+      })
+      .strict()
+      .optional(),
+    truncationStrategy: z.enum(['paragraph-boundary', 'byte-cut']).optional(),
+  })
+  .strict();
+
+const previewBodySchema = z
+  .object({
+    projectId: z.uuid(),
+    state: z.enum(jobTypes),
+    issueId: z.uuid().optional(),
+    skillName: z.string().min(1).max(128).optional(),
+    overrides: z
+      .object({
+        systemPrompt: systemPromptOverrideSchema.optional(),
+        userPromptPolicy: userPromptPolicySchema.optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+export const promptRoutes = new Hono<{ Variables: AuthVars }>();
+
+/**
+ * Build the system + user prompt the runner WOULD see for `state` on the
+ * given issue, applying optional per-state overrides. Read-only — does not
+ * mutate `projects.appConfig` or enqueue anything. Used by the State Editor
+ * UI for live preview and by operators to debug prompt resolution.
+ */
+promptRoutes.post(
+  '/preview',
+  requireAuth(),
+  assertEmailVerified(),
+  zValidator('json', previewBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const body = c.req.valid('json');
+    const userId = c.get('userId');
+
+    // Project-member auth — same as jobRoutes.get('/:id').
+    // loadProjectAccess throws 404 if the project does not exist.
+    const access = await loadProjectAccess(body.projectId, userId);
+    if (!access.role && access.ownerId !== userId) {
+      throw forbidden('not a project member');
+    }
+
+    const systemPromptOverride: SystemPromptOverride | null =
+      body.overrides?.systemPrompt ?? null;
+    const userPromptPolicy: UserPromptPolicyOverride | null =
+      body.overrides?.userPromptPolicy ?? null;
+
+    const { content: systemPrompt, blocks } = await buildPipelinePreambleStructured(
+      body.projectId,
+      systemPromptOverride,
+    );
+
+    const issueSnapshot =
+      body.issueId !== undefined ? await loadIssueSnapshot(body.issueId) : null;
+    if (body.issueId !== undefined && !issueSnapshot) {
+      throw notFound('issue not found');
+    }
+
+    const userPrompt = buildJobPromptString({
+      skillName: body.skillName ?? null,
+      jobType: body.state as JobType,
+      issueId: body.issueId ?? 'preview-no-issue',
+      issueSnapshot,
+      policy: userPromptPolicy,
+    });
+
+    // Hash combines system + user, so diff between previews is detectable
+    // via hash alone in the UI before fetching the full content.
+    const hash = await sha256Hex(`${systemPrompt}\n---\n${userPrompt}`);
+
+    return c.json({
+      systemPrompt,
+      userPrompt,
+      blocks,
+      hash,
+      resolvedFlags: {
+        state: body.state,
+        skillName: body.skillName ?? `forge-${body.state}`,
+        systemPromptMode: systemPromptOverride?.mode ?? 'append',
+        hasUserPromptPolicyOverride: userPromptPolicy !== null,
+      },
+    });
+  },
+);
+
+async function sha256Hex(input: string): Promise<string> {
+  const enc = new TextEncoder();
+  const buf = await crypto.subtle.digest('SHA-256', enc.encode(input));
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}

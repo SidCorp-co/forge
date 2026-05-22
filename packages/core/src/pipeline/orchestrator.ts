@@ -8,11 +8,8 @@ import {
   projects,
 } from '../db/schema.js';
 import { applyStatusTransition, type DeviceLite } from '../issues/apply-transition.js';
-import {
-  buildJobPromptString,
-  type IssueSnapshot,
-  type SessionContextSnapshot,
-} from '../jobs/prompt-string.js';
+import { buildJobPromptString } from '../jobs/prompt-string.js';
+import { loadIssueSnapshot } from '../prompt/issue-snapshot.js';
 import { logger } from '../logger.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import type { Actor } from './activity.js';
@@ -113,38 +110,8 @@ async function buildPreventiveContext(
 // storage path's bounded contract (description schema cap is 100k).
 const MAX_QUERY_EMBED_CHARS = 8192;
 
-/**
- * Pre-load issue fields used by `buildJobPromptString` to inline an
- * `## Issue` block + sessionContext preamble into the runner prompt.
- * Single SELECT; per-state field gating happens inside prompt-string.ts.
- */
-async function loadIssueSnapshot(issueId: string): Promise<IssueSnapshot | null> {
-  const [row] = await db
-    .select({
-      title: issues.title,
-      status: issues.status,
-      priority: issues.priority,
-      complexity: issues.complexity,
-      description: issues.description,
-      plan: issues.plan,
-      acceptanceCriteria: issues.acceptanceCriteria,
-      sessionContext: issues.sessionContext,
-    })
-    .from(issues)
-    .where(eq(issues.id, issueId))
-    .limit(1);
-  if (!row) return null;
-  return {
-    title: row.title,
-    status: row.status,
-    priority: row.priority,
-    complexity: row.complexity,
-    description: row.description,
-    plan: row.plan,
-    acceptanceCriteria: row.acceptanceCriteria,
-    sessionContext: (row.sessionContext ?? null) as SessionContextSnapshot | null,
-  };
-}
+// loadIssueSnapshot moved to `prompt/issue-snapshot.ts` so the preview
+// endpoint (POST /api/prompts/preview) can share the same loader.
 
 async function loadIssueText(issueId: string): Promise<string> {
   const [row] = await db
@@ -237,7 +204,7 @@ export async function triggerPipelineStepManual(args: {
   }
   if (!skill) throw new Error('NO_SKILL_REGISTERED: no skill registration for this status');
 
-  const { ownerId } = await loadPipelineConfig(args.projectId);
+  const { cfg, ownerId } = await loadPipelineConfig(args.projectId);
 
   const existing = await findActiveJob(args.issueId, skill.type);
   if (existing) throw new ActiveJobConflictError(existing, skill.type);
@@ -252,22 +219,29 @@ export async function triggerPipelineStepManual(args: {
   const run = await openIssueRun({ projectId: args.projectId, issueId: args.issueId });
 
   const skillRef = skill;
+  const stageCfg = cfg?.states?.[args.status];
+  // Operator-supplied per-state skill name wins over the resolver default.
+  const effectiveSkillName = stageCfg?.skillName ?? skillRef.skillName;
   const { jobId } = await insertAndEnqueueJob({
     projectId: args.projectId,
     issueId: args.issueId,
     pipelineRunId: run.id,
     createdBy,
     type: skillRef.type,
-    skillName: skillRef.skillName,
+    skillName: effectiveSkillName,
     promptString: buildJobPromptString({
-      skillName: skillRef.skillName,
+      skillName: effectiveSkillName,
       jobType: skillRef.type,
       issueId: args.issueId,
       issueSnapshot,
+      policy: stageCfg?.userPromptPolicy ?? null,
     }),
     payloadExtras: {
       ...args.reason,
       preventiveContext,
+      // Stamp the stage so dispatcher can re-resolve overrides without a
+      // second pipelineConfig load.
+      stageStatus: args.status,
     },
     resolveRacingJobId: () => findActiveJob(args.issueId, skillRef.type),
   });
@@ -331,22 +305,26 @@ async function considerEnqueue(args: {
 
   try {
     const skillRef = skill;
+    const stageCfg = cfg?.states?.[args.status];
+    const effectiveSkillName = stageCfg?.skillName ?? skillRef.skillName;
     const { jobId } = await insertAndEnqueueJob({
       projectId: args.projectId,
       issueId: args.issueId,
       pipelineRunId: run.id,
       createdBy,
       type: skillRef.type,
-      skillName: skillRef.skillName,
+      skillName: effectiveSkillName,
       promptString: buildJobPromptString({
-        skillName: skillRef.skillName,
+        skillName: effectiveSkillName,
         jobType: skillRef.type,
         issueId: args.issueId,
         issueSnapshot,
+        policy: stageCfg?.userPromptPolicy ?? null,
       }),
       payloadExtras: {
         ...args.reason,
         preventiveContext,
+        stageStatus: args.status,
       },
     });
     logger.info(

@@ -16,6 +16,18 @@ function deriveSkillName(payload: unknown): string | null {
   return typeof v === 'string' && v.length > 0 ? v : null;
 }
 
+function deriveSessionGroup(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const v = (payload as Record<string, unknown>).sessionGroup;
+  return typeof v === 'string' && v.length > 0 ? v : null;
+}
+
+function deriveStageStatus(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const v = (payload as Record<string, unknown>).stageStatus;
+  return typeof v === 'string' && v.length > 0 ? v : null;
+}
+
 function buildTitle(skillName: string | null, jobType: string, issueTitle: string | null): string {
   const head = skillName ?? jobType;
   const tail = issueTitle && issueTitle.length > 0 ? `: ${issueTitle}` : '';
@@ -110,6 +122,16 @@ export async function ensureAgentSessionForJob(
     if (issueIssSeq !== null) metadata.issSeq = issueIssSeq;
     if (skillName) metadata.skillName = skillName;
     if (job.deviceId) metadata.deviceId = job.deviceId;
+    // PR-5 — session-group membership. The orchestrator stamped this on
+    // job.payload.sessionGroup at enqueue time (resolved from
+    // pipelineConfig.states[stage].sessionGroup); we propagate it here so
+    // `findPriorSessionInGroup` can index by (issueId, sessionGroup).
+    const payloadSessionGroup = deriveSessionGroup(job.payload);
+    if (payloadSessionGroup) metadata.sessionGroup = payloadSessionGroup;
+    // PR-5 — stamp the stage status so resume lookup can prefer prior
+    // sessions whose stage is in the same group (without re-parsing job.type).
+    const payloadStageStatus = deriveStageStatus(job.payload);
+    if (payloadStageStatus) metadata.stageStatus = payloadStageStatus;
 
     // Pipeline sessions enter `queued`; worker CAS flips to `running` on
     // first write (routes.ts PATCH/send). Separates "waiting for worker"
