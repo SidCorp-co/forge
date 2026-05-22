@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const execute = vi.fn();
+const limit = vi.fn();
+const where = vi.fn(() => ({ limit }));
+const from = vi.fn(() => ({ where }));
+const select = vi.fn(() => ({ from }));
+
 vi.mock('../db/client.js', () => ({
-  db: { execute },
+  db: { execute, select },
 }));
 
 vi.mock('../lib/dispatch-liveness.js', () => ({
@@ -13,6 +18,9 @@ const { selectRunnerForJob } = await import('./select.js');
 
 beforeEach(() => {
   execute.mockReset();
+  limit.mockReset();
+  // Default: no defaultDeviceId set on project.
+  limit.mockResolvedValue([{ defaultDeviceId: null }]);
 });
 
 describe('selectRunnerForJob', () => {
@@ -68,5 +76,72 @@ describe('selectRunnerForJob', () => {
     execute.mockResolvedValueOnce([]);
     const r = await selectRunnerForJob({ projectId: PROJECT_A });
     expect(r).toBeNull();
+  });
+
+  it('prefers pinDeviceId when the pinned runner is online + fresh', async () => {
+    const pinned = {
+      id: 'r-pinned',
+      project_id: PROJECT_A,
+      type: 'claude-code',
+      host: 'device',
+      device_id: DEVICE_X,
+      name: 'pinned',
+      labels: [],
+      capabilities: {},
+      config: {},
+      status: 'online',
+      last_seen_at: new Date().toISOString(),
+      last_error: null,
+    };
+    // First execute = pinDeviceId lookup → return the pinned row.
+    execute.mockResolvedValueOnce([pinned]);
+    const r = await selectRunnerForJob({ projectId: PROJECT_A, pinDeviceId: DEVICE_X });
+    expect(r?.id).toBe('r-pinned');
+  });
+
+  it('falls through to defaultDeviceId when pin is stale', async () => {
+    const def = {
+      id: 'r-default',
+      project_id: PROJECT_A,
+      type: 'claude-code',
+      host: 'device',
+      device_id: 'dev-default',
+      name: 'default',
+      labels: [],
+      capabilities: {},
+      config: {},
+      status: 'online',
+      last_seen_at: new Date().toISOString(),
+      last_error: null,
+    };
+    // First execute = pinDeviceId lookup → stale (no row).
+    execute.mockResolvedValueOnce([]);
+    // defaultDeviceId is set on the project.
+    limit.mockResolvedValueOnce([{ defaultDeviceId: 'dev-default' }]);
+    // Second execute = defaultDeviceId lookup → returns the default runner.
+    execute.mockResolvedValueOnce([def]);
+    const r = await selectRunnerForJob({ projectId: PROJECT_A, pinDeviceId: DEVICE_X });
+    expect(r?.id).toBe('r-default');
+  });
+
+  it('falls back to freshest when neither pin nor default are available', async () => {
+    const fresh = {
+      id: 'r-fresh',
+      project_id: PROJECT_A,
+      type: 'claude-code',
+      host: 'device',
+      device_id: 'dev-fresh',
+      name: 'fresh',
+      labels: [],
+      capabilities: {},
+      config: {},
+      status: 'online',
+      last_seen_at: new Date().toISOString(),
+      last_error: null,
+    };
+    // No defaultDeviceId set (handled by beforeEach default).
+    execute.mockResolvedValueOnce([fresh]); // freshest-pick query
+    const r = await selectRunnerForJob({ projectId: PROJECT_A });
+    expect(r?.id).toBe('r-fresh');
   });
 });

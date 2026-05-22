@@ -23,6 +23,9 @@ import {
 } from './dispatch-gates.js';
 import { persistPromptSnapshot } from './prompt-snapshot.js';
 import { JOB_QUEUE_NAME, PM_QUEUE_NAME } from './queue-name.js';
+import { injectTurnLevelRules } from '../prompt/user.js';
+import { findPriorSessionInGroup } from './session-resume.js';
+import { resolveStageOverrides, type StageOverrides } from './stage-overrides.js';
 
 interface DispatchMessage {
   jobId: string;
@@ -30,6 +33,23 @@ interface DispatchMessage {
 
 let workerId: string | null = null;
 let pmWorkerId: string | null = null;
+
+/**
+ * Flatten stage overrides into the WS payload/job.payload shape consumed by
+ * runners (the desktop dev runner in `use-job-handler.ts` + future remote
+ * runners). Skips null fields so legacy jobs (no stageStatus stamped) emit
+ * an unchanged payload — backwards-compatible.
+ */
+function buildOverridesPayload(o: StageOverrides): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (o.model !== null) out.model = o.model;
+  if (o.allowedTools !== null) out.allowedTools = o.allowedTools.join(',');
+  if (o.permissionMode !== null) out.permissionMode = o.permissionMode;
+  if (o.timeoutSeconds !== null) out.timeoutSeconds = o.timeoutSeconds;
+  if (o.mcpServers !== null) out.mcpServersOverride = o.mcpServers;
+  if (o.sessionGroup !== null) out.sessionGroup = o.sessionGroup;
+  return out;
+}
 
 export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched' | 'skipped'> {
   const { jobId } = msg;
@@ -134,13 +154,36 @@ async function dispatchViaDevice(job: typeof jobs.$inferSelect): Promise<'dispat
   const legacyPayload = (job.payload ?? {}) as { promptString?: unknown } & Record<string, unknown>;
   const legacyPromptString =
     typeof legacyPayload.promptString === 'string' ? legacyPayload.promptString : null;
-  const { content: systemPrompt, blocks } = await buildPipelinePreambleStructured(job.projectId);
+  const stageOverrides = await resolveStageOverrides(job.projectId, job.payload);
+  const { content: systemPrompt, blocks } = await buildPipelinePreambleStructured(
+    job.projectId,
+    stageOverrides.systemPrompt,
+  );
+
+  // PR-5 — resume prior CLI session in the same sessionGroup.
+  let legacyPriorClaudeSessionId: string | null = null;
+  if (stageOverrides.sessionGroup && job.issueId) {
+    const prior = await findPriorSessionInGroup({
+      issueId: job.issueId,
+      sessionGroup: stageOverrides.sessionGroup,
+    });
+    if (prior) legacyPriorClaudeSessionId = prior.claudeSessionId;
+  }
+
+  // PR-5 fallback — embed system prompt redundantly in user prompt when
+  // resuming, so the agent sees the state's rules even if CLI ignores
+  // --append-system-prompt on --resume. See dispatchViaRunner for context.
+  const legacyEffectivePromptString =
+    legacyPriorClaudeSessionId && legacyPromptString
+      ? injectTurnLevelRules(legacyPromptString, systemPrompt)
+      : legacyPromptString;
+
   await persistPromptSnapshot({
     jobId: job.id,
     systemPrompt,
-    userPrompt: legacyPromptString ?? '',
+    userPrompt: legacyEffectivePromptString ?? '',
     blocks,
-    model: job.modelTier ?? 'default',
+    model: stageOverrides.model ?? job.modelTier ?? 'default',
   });
   roomManager.publish(deviceRoom(deviceId), {
     event: 'job.assigned',
@@ -150,8 +193,13 @@ async function dispatchViaDevice(job: typeof jobs.$inferSelect): Promise<'dispat
       issueId: job.issueId,
       type: job.type,
       payload: job.payload,
-      promptString: legacyPromptString,
+      promptString: legacyEffectivePromptString,
       systemPrompt,
+      // PR-4 — per-state dispatch overrides forwarded to runner.
+      ...buildOverridesPayload(stageOverrides),
+      // PR-5 — resume the prior session's claudeSessionId when this stage
+      // belongs to a sessionGroup with a completed prior run.
+      ...(legacyPriorClaudeSessionId ? { claudeSessionId: legacyPriorClaudeSessionId } : {}),
       dispatchedAt: dispatchedAt.toISOString(),
       agentSessionId,
     },
@@ -209,10 +257,30 @@ async function dispatchViaRunner(
     fallbackChain = resolveRunnerChainForJob(job.type, agentConfig);
   }
 
+  // PR-5 — if this job belongs to a sessionGroup AND a prior session of the
+  // same (issue, group) exists, pin selection to that device so the runner
+  // can resume the same CLI session file. Source `sessionGroup` from the
+  // per-state config resolver (same SoT as the legacy dispatchViaDevice
+  // path) so the two paths can never disagree on the group name.
+  const preDispatchOverrides = await resolveStageOverrides(job.projectId, job.payload);
+  let priorClaudeSessionId: string | null = null;
+  let pinDeviceId: string | null = null;
+  if (preDispatchOverrides.sessionGroup && job.issueId) {
+    const prior = await findPriorSessionInGroup({
+      issueId: job.issueId,
+      sessionGroup: preDispatchOverrides.sessionGroup,
+    });
+    if (prior) {
+      priorClaudeSessionId = prior.claudeSessionId;
+      pinDeviceId = prior.deviceId;
+    }
+  }
+
   const runner = await selectRunnerForJob({
     projectId: job.projectId,
     requiredCapabilities: required,
     fallbackChain,
+    pinDeviceId,
   });
   if (!runner) {
     logger.warn(
@@ -306,16 +374,30 @@ async function dispatchViaRunner(
   );
 
   const runnerPayload = (job.payload ?? {}) as { promptString?: unknown } & Record<string, unknown>;
-  const runnerPromptString =
+  const runnerBasePromptString =
     typeof runnerPayload.promptString === 'string' ? runnerPayload.promptString : null;
+  // Reuse the overrides we resolved before runner selection — saves one
+  // round-trip to projects, and guarantees the sessionGroup we pinned on
+  // matches the sessionGroup we forward to the runner.
+  const runnerStageOverrides = preDispatchOverrides;
   const { content: runnerSystemPrompt, blocks: runnerBlocks } =
-    await buildPipelinePreambleStructured(job.projectId);
+    await buildPipelinePreambleStructured(job.projectId, runnerStageOverrides.systemPrompt);
+
+  // PR-5 fallback — when resuming a prior CLI session via --resume, the CLI
+  // may ignore --append-system-prompt (undocumented). Embed the state's
+  // system prompt redundantly at the head of the user prompt so the agent
+  // sees the right rules either way. No-op for fresh dispatches.
+  const runnerPromptString =
+    priorClaudeSessionId && runnerBasePromptString
+      ? injectTurnLevelRules(runnerBasePromptString, runnerSystemPrompt)
+      : runnerBasePromptString;
+
   await persistPromptSnapshot({
     jobId: job.id,
     systemPrompt: runnerSystemPrompt,
     userPrompt: runnerPromptString ?? '',
     blocks: runnerBlocks,
-    model: job.modelTier ?? 'default',
+    model: runnerStageOverrides.model ?? job.modelTier ?? 'default',
   });
   const result = await adapter.dispatch({
     job: {
@@ -323,7 +405,14 @@ async function dispatchViaRunner(
       projectId: job.projectId,
       issueId: job.issueId,
       type: job.type,
-      payload: job.payload,
+      // Surface stage overrides + claudeSessionId (PR-5 resume) on payload so
+      // adapters that forward `payload` verbatim (claude-code) propagate them
+      // to the runner.
+      payload: {
+        ...(job.payload ?? {}),
+        ...buildOverridesPayload(runnerStageOverrides),
+        ...(priorClaudeSessionId ? { claudeSessionId: priorClaudeSessionId } : {}),
+      },
       promptString: runnerPromptString,
       systemPrompt: runnerSystemPrompt,
       dispatchedAt,

@@ -42,6 +42,17 @@ export function createHandlers(deps: HandlerDeps) {
     setSavedSessions, makeMessage, getActivePrompt, getMcpServersParam, activeItem,
   } = deps;
 
+  // TODO(tech-debt, follow-up): this hook double-dispatches — calls
+  // `startAgentSession` (creates a cloud agent_sessions row) AND spawns the
+  // Claude CLI locally via `invoke('send_chat', ...)`. After PR-3 moved the
+  // chat preamble to the server (`prompt/system.ts:buildChatPreamble`), the
+  // local spawn here no longer receives a system prompt and the orientation
+  // nudge reaches the CLI only via the user-prompt prefix on the first turn.
+  // Cleanup options for a follow-up PR:
+  //   (a) drop the local invoke — rely entirely on the cloud→WS→runner path,
+  //   (b) call `POST /api/prompts/preview { kind: 'chat' }` here and pass
+  //       result as `systemPrompt` so the SSOT preamble reaches the CLI.
+  // See docs/proposals/pipeline-prompt-ssot.md §"Out of scope (follow-up)".
   async function handleSend(filesOrText?: File[] | string) {
     const textOverride = typeof filesOrText === "string" ? filesOrText : undefined;
     const files = Array.isArray(filesOrText) ? filesOrText : undefined;

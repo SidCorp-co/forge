@@ -157,6 +157,8 @@ async fn run_agent(
     system_prompt: Option<String>,
     skill: Option<String>,
     model: Option<String>,
+    allowed_tools: Option<String>,
+    timeout_seconds: Option<u64>,
 ) -> Result<String, String> {
     claude_cli::run_agent(
         app,
@@ -170,6 +172,8 @@ async fn run_agent(
         system_prompt,
         skill,
         model,
+        allowed_tools,
+        timeout_seconds,
     )
     .await
 }
@@ -223,6 +227,8 @@ async fn send_chat(
     system_prompt: Option<String>,
     skill: Option<String>,
     model: Option<String>,
+    allowed_tools: Option<String>,
+    timeout_seconds: Option<u64>,
 ) -> Result<(), String> {
     claude_cli::send_chat(
         app,
@@ -238,6 +244,8 @@ async fn send_chat(
         system_prompt,
         skill,
         model,
+        allowed_tools,
+        timeout_seconds,
     )
     .await
 }

@@ -374,4 +374,23 @@ export interface JobAssignedPayload {
    * Claude API prompt cache hits for the 2nd+ job in a 5-min window.
    */
   systemPrompt?: string | null;
+  /**
+   * PR-4 — per-state dispatch overrides resolved from
+   * `appConfig.pipeline.states[stage]`. Forwarded verbatim to the Tauri
+   * runner (`run_agent` / `send_chat` IPC) which passes them as `--model`,
+   * `--allowed-tools`, `--permission-mode`, and the spawn timeout.
+   */
+  model?: string | null;
+  allowedTools?: string | null;
+  permissionMode?: 'default' | 'plan' | 'acceptEdits' | 'bypassPermissions' | null;
+  timeoutSeconds?: number | null;
+  mcpServersOverride?: Record<string, unknown> | null;
+  /**
+   * PR-5 — session-group membership + resume token. When a stage belongs to
+   * a sessionGroup AND a prior completed session of the same (issue, group)
+   * exists, the dispatcher sets `claudeSessionId` to that prior session id
+   * so the runner can `--resume` it.
+   */
+  sessionGroup?: string | null;
+  claudeSessionId?: string | null;
 }

@@ -1,5 +1,13 @@
-import { buildTaskPrompt } from "@/lib/prompt-builders";
 import type { Issue, Task, ProjectConfig } from "@/lib/types";
+
+/**
+ * Chat-initiated skill invocations. These are intentionally trivial template
+ * strings — the COMPLEX prompt building (system preamble, issueSnapshot,
+ * sessionContext) lives server-side in `@forge/core` under `src/prompt/`.
+ * Pipeline jobs build through that SSOT and forward the resulting prompt to
+ * the runner; chat "run on this issue" shortcuts only need the skill
+ * invocation here because the skill itself fetches data via MCP.
+ */
 
 export function getMcpServersParam(projectConfig: ProjectConfig | undefined) {
   const servers = projectConfig?.mcpServers;
@@ -7,9 +15,14 @@ export function getMcpServersParam(projectConfig: ProjectConfig | undefined) {
   return servers;
 }
 
-// Agent-chat "run on this issue" shortcut. The dev runner is no longer the
-// pipeline executor (ISS-115); these chat-initiated prompts default to
-// /forge-code so the user can keep coding without picking a stage manually.
+function buildTaskPrompt(task: Task): string {
+  const issueId = task.issue?.documentId;
+  if (issueId) {
+    return `/forge-code ${issueId}\n\nFocus on task: ${task.title} (${task.documentId})`;
+  }
+  return `Work on task: ${task.title}\n\n${task.description ?? ""}\n\nTask DocumentId: ${task.documentId}`;
+}
+
 function buildAgentChatIssuePrompt(issue: Issue): string {
   return `/forge-code ${issue.documentId}`;
 }

@@ -101,17 +101,18 @@ Schema mới `projects.appConfig.pipeline.states[<state>]` (jsonb, no migration)
 
 ## Roadmap
 
-| PR | Scope | Deps | LOC |
-|---|---|---|---|
-| PR-1 | A1 bug fix + tests | — | ~30 |
-| PR-2 | A7+A8+A10+A11 cleanups | — | ~80 |
-| PR-3 | B1 prompt SoT + endpoint | PR-1 | ~400 |
-| PR-4 | B2 schema + per-state override engine | PR-3 | ~300 |
-| PR-5 | A6 empirical test `--resume` | — | manual |
-| PR-6 | B3 sessionGroups + Rust strip is_resume + fallback | PR-4, PR-5 | ~280 |
-| PR-7 | B4 UI Pipeline State Editor + Inspector + Preview | PR-4 | ~600 |
+| PR | Scope | Deps | LOC | Status |
+|---|---|---|---|---|
+| PR-1 | A1 bug fix + tests | — | ~30 | ✅ landed (53a7da43) |
+| PR-2 | A7+A8+A10+A11 cleanups | — | ~80 | ✅ landed (53a7da43) |
+| PR-3 | B1 prompt SoT + endpoint | PR-1 | ~400 | ✅ this branch |
+| PR-4 | B2 schema + per-state override engine | PR-3 | ~300 | ✅ this branch |
+| PR-5 | A6 empirical test `--resume` | — | manual | ⏳ pending (manual run) |
+| PR-6 | B3 sessionGroups + Rust strip is_resume + fallback + resume-fail handler | PR-4, PR-5 | ~280 | ✅ this branch |
+| PR-7a | B4 backend: Inspector envelope `resolvedFlags` field | PR-4 | ~50 | ✅ this branch |
+| PR-7b | B4 frontend: Monaco State Editor + Preview UI | PR-7a | ~600 | ⏳ deferred (separate UI PR) |
 
-**Recommended order**: PR-1 ∥ PR-2 → PR-3 → PR-4 → PR-5 (manual, parallel) → PR-6 → PR-7.
+**Recommended order**: PR-1 ∥ PR-2 → PR-3 → PR-4 → PR-5 (manual, parallel) → PR-6 → PR-7a → PR-7b.
 
 ## Decisions (resolved 2026-05-21)
 

@@ -8,11 +8,8 @@ import {
   projects,
 } from '../db/schema.js';
 import { applyStatusTransition, type DeviceLite } from '../issues/apply-transition.js';
-import {
-  buildJobPromptString,
-  type IssueSnapshot,
-  type SessionContextSnapshot,
-} from '../jobs/prompt-string.js';
+import { buildJobPromptString } from '../jobs/prompt-string.js';
+import { loadIssueSnapshot } from '../prompt/issue-snapshot.js';
 import { logger } from '../logger.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import type { Actor } from './activity.js';
@@ -31,8 +28,14 @@ import {
   resolveJobTypeForStatus,
 } from './skill-mapping.js';
 import {
+  type PipelineConfig,
+  STAGE_NAMES,
+  type StageConfig,
+  type StageName,
+  pipelineConfigSchema,
+} from './pipeline-config-schema.js';
+import {
   SKIPPABLE_STAGES,
-  type StagesConfig,
   resolveSkipTarget,
 } from './state-machine.js';
 
@@ -40,10 +43,19 @@ export { ActiveJobConflictError } from './enqueue-helper.js';
 
 const ACTIVE_JOB_STATUSES = ['queued', 'dispatched', 'running'] as const;
 
-interface PipelineConfig {
-  enabled?: boolean;
-  states?: StagesConfig;
-  [toggle: string]: unknown;
+const STAGE_NAME_SET: ReadonlySet<string> = new Set(STAGE_NAMES);
+
+/**
+ * Look up per-state config for a given issue status. Returns `undefined` for
+ * statuses that are not valid stage names (e.g. `in_progress`, `closed`,
+ * `on_hold`, `waiting` — terminal/transition states that don't dispatch).
+ * Lets callers chain `cfg?.states && stageConfigFor(cfg, status)?.skillName`
+ * without TS complaining about indexing a partial record with a wider key.
+ */
+function stageConfigFor(cfg: PipelineConfig | null, status: IssueStatus): StageConfig | undefined {
+  if (!cfg?.states) return undefined;
+  if (!STAGE_NAME_SET.has(status)) return undefined;
+  return cfg.states[status as StageName];
 }
 
 async function loadPipelineConfig(
@@ -55,12 +67,19 @@ async function loadPipelineConfig(
     .where(eq(projects.id, projectId))
     .limit(1);
   if (!row) return { cfg: null, ownerId: null };
-  const ac = row.agentConfig as { pipelineConfig?: PipelineConfig } | null;
-  return { cfg: ac?.pipelineConfig ?? null, ownerId: row.ownerId ?? null };
+  const ac = (row.agentConfig as { pipelineConfig?: unknown } | null) ?? {};
+  // Parse through the canonical schema so the typed read path stays in
+  // lockstep with what was validated on write. Bad data → cfg=null (caller
+  // falls through to "no auto pipeline" behavior, same as missing row).
+  const parsed = pipelineConfigSchema.safeParse(ac.pipelineConfig ?? {});
+  return {
+    cfg: parsed.success ? parsed.data : null,
+    ownerId: row.ownerId ?? null,
+  };
 }
 
 function isToggleEnabled(cfg: PipelineConfig, key: string): boolean {
-  const v = cfg[key];
+  const v = (cfg as Record<string, unknown>)[key];
   if (v === undefined) return false;
   if (typeof v === 'boolean') return v;
   if (typeof v === 'object' && v !== null) {
@@ -113,38 +132,8 @@ async function buildPreventiveContext(
 // storage path's bounded contract (description schema cap is 100k).
 const MAX_QUERY_EMBED_CHARS = 8192;
 
-/**
- * Pre-load issue fields used by `buildJobPromptString` to inline an
- * `## Issue` block + sessionContext preamble into the runner prompt.
- * Single SELECT; per-state field gating happens inside prompt-string.ts.
- */
-async function loadIssueSnapshot(issueId: string): Promise<IssueSnapshot | null> {
-  const [row] = await db
-    .select({
-      title: issues.title,
-      status: issues.status,
-      priority: issues.priority,
-      complexity: issues.complexity,
-      description: issues.description,
-      plan: issues.plan,
-      acceptanceCriteria: issues.acceptanceCriteria,
-      sessionContext: issues.sessionContext,
-    })
-    .from(issues)
-    .where(eq(issues.id, issueId))
-    .limit(1);
-  if (!row) return null;
-  return {
-    title: row.title,
-    status: row.status,
-    priority: row.priority,
-    complexity: row.complexity,
-    description: row.description,
-    plan: row.plan,
-    acceptanceCriteria: row.acceptanceCriteria,
-    sessionContext: (row.sessionContext ?? null) as SessionContextSnapshot | null,
-  };
-}
+// loadIssueSnapshot moved to `prompt/issue-snapshot.ts` so the preview
+// endpoint (POST /api/prompts/preview) can share the same loader.
 
 async function loadIssueText(issueId: string): Promise<string> {
   const [row] = await db
@@ -237,7 +226,7 @@ export async function triggerPipelineStepManual(args: {
   }
   if (!skill) throw new Error('NO_SKILL_REGISTERED: no skill registration for this status');
 
-  const { ownerId } = await loadPipelineConfig(args.projectId);
+  const { cfg, ownerId } = await loadPipelineConfig(args.projectId);
 
   const existing = await findActiveJob(args.issueId, skill.type);
   if (existing) throw new ActiveJobConflictError(existing, skill.type);
@@ -252,22 +241,33 @@ export async function triggerPipelineStepManual(args: {
   const run = await openIssueRun({ projectId: args.projectId, issueId: args.issueId });
 
   const skillRef = skill;
+  const stageCfg = stageConfigFor(cfg, args.status);
+  // Operator-supplied per-state skill name wins over the resolver default.
+  const effectiveSkillName = stageCfg?.skillName ?? skillRef.skillName;
   const { jobId } = await insertAndEnqueueJob({
     projectId: args.projectId,
     issueId: args.issueId,
     pipelineRunId: run.id,
     createdBy,
     type: skillRef.type,
-    skillName: skillRef.skillName,
+    skillName: effectiveSkillName,
     promptString: buildJobPromptString({
-      skillName: skillRef.skillName,
+      skillName: effectiveSkillName,
       jobType: skillRef.type,
       issueId: args.issueId,
       issueSnapshot,
+      policy: stageCfg?.userPromptPolicy ?? null,
     }),
     payloadExtras: {
       ...args.reason,
       preventiveContext,
+      // Stamp the stage so dispatcher can re-resolve overrides without a
+      // second pipelineConfig load.
+      stageStatus: args.status,
+      // PR-5 — stamp session group membership so the dispatcher's
+      // runner-framework path + agent-session-link can find the prior
+      // session of the same (issue, group) without a second config load.
+      ...(stageCfg?.sessionGroup ? { sessionGroup: stageCfg.sessionGroup } : {}),
     },
     resolveRacingJobId: () => findActiveJob(args.issueId, skillRef.type),
   });
@@ -296,7 +296,7 @@ async function considerEnqueue(args: {
   // enqueue a job. autoSkipDisabledStages should have moved the issue past
   // this stage already; this fallback ensures a failed skip path never
   // produces a job for a stage the operator explicitly turned off.
-  const stageCfg = cfg.states?.[args.status];
+  const stageCfg = stageConfigFor(cfg, args.status);
   if (stageCfg && stageCfg.enabled === false) return;
   if (stageCfg && stageCfg.mode === 'manual') return;
   if (!isToggleEnabled(cfg, jobMap.toggle)) return;
@@ -331,22 +331,28 @@ async function considerEnqueue(args: {
 
   try {
     const skillRef = skill;
+    const stageCfg = stageConfigFor(cfg, args.status);
+    const effectiveSkillName = stageCfg?.skillName ?? skillRef.skillName;
     const { jobId } = await insertAndEnqueueJob({
       projectId: args.projectId,
       issueId: args.issueId,
       pipelineRunId: run.id,
       createdBy,
       type: skillRef.type,
-      skillName: skillRef.skillName,
+      skillName: effectiveSkillName,
       promptString: buildJobPromptString({
-        skillName: skillRef.skillName,
+        skillName: effectiveSkillName,
         jobType: skillRef.type,
         issueId: args.issueId,
         issueSnapshot,
+        policy: stageCfg?.userPromptPolicy ?? null,
       }),
       payloadExtras: {
         ...args.reason,
         preventiveContext,
+        stageStatus: args.status,
+        // PR-5 — stamp session group membership; see manual-trigger comment.
+        ...(stageCfg?.sessionGroup ? { sessionGroup: stageCfg.sessionGroup } : {}),
       },
     });
     logger.info(
@@ -390,7 +396,12 @@ async function autoSkipDisabledStages(
   // null when the source isn't skippable, isn't disabled, or has no valid
   // forward chain. Per-hop iteration below only handles side-effects
   // (transition + Sentry breadcrumb + WS broadcast).
-  const skipResult = resolveSkipTarget(payload.to, states);
+  // `states` is `StatesConfig` (schema-inferred, keys narrower than IssueStatus
+   // because `STAGE_NAMES ⊂ issueStatuses`); resolveSkipTarget reads only
+   // `.enabled`. Cast through `unknown` to bridge the
+   // exactOptionalPropertyTypes mismatch — the structural compatibility
+   // (`enabled?: boolean`) is intact.
+  const skipResult = resolveSkipTarget(payload.to, states as unknown as Parameters<typeof resolveSkipTarget>[1]);
   if (!skipResult) return;
 
   const [issue] = await db

@@ -66,12 +66,26 @@ export const SKIPPABLE_STAGES: ReadonlySet<IssueStatus> = new Set(
 
 export const MAX_SKIP_CHAIN = 5;
 
-export interface StageConfig {
-  enabled?: boolean;
-  mode?: 'auto' | 'manual';
-}
-
-export type StagesConfig = Partial<Record<IssueStatus, StageConfig>>;
+/**
+ * Stages config shape used by the skip-chain resolver. Mirrors the
+ * `enabled`/`mode` subset of `pipeline-config-schema.ts:StageConfig` —
+ * resolveSkipTarget only consults `.enabled`, so the wider per-state config
+ * shape (skillName, model, etc.) is assignable here without modification.
+ *
+ * Kept as a structural type (no name overlap with the schema's StageConfig
+ * export) so downstream typecheck doesn't trip on identical-name-different-shape
+ * collisions across modules.
+ */
+export type StagesConfig = Partial<
+  Record<
+    IssueStatus,
+    {
+      enabled?: boolean;
+      mode?: 'auto' | 'manual';
+      [extra: string]: unknown;
+    }
+  >
+>;
 
 /**
  * Given the current status and the project's states config, return the next

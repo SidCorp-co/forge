@@ -1,6 +1,6 @@
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import type { RunnerType } from '../db/schema.js';
+import { projects, type RunnerType } from '../db/schema.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import type { RequiredCapabilities, Runner } from './types.js';
 
@@ -30,6 +30,15 @@ interface SelectInput {
   projectId: string;
   requiredCapabilities?: RequiredCapabilities;
   fallbackChain?: RunnerType[];
+  /**
+   * PR-5 — When the orchestrator is resuming a session group, the job MUST
+   * land on the same device that owns the prior Claude CLI session file
+   * (sessions are local to the host that created them). Pass the prior
+   * runner's deviceId here; selection still verifies online + liveness +
+   * capabilities, so a stale pin gracefully falls through to the normal
+   * selection logic (with the session-group resume aborted by the caller).
+   */
+  pinDeviceId?: string | null;
 }
 
 type RunnerRow = {
@@ -66,21 +75,55 @@ function rowToRunner(r: RunnerRow): Runner {
 
 /**
  * Pick a runner for a job. Filters by project + status='online' +
- * jsonb-containment of required capabilities. If `fallbackChain` is provided,
- * tries each type in order; otherwise considers all types.
+ * jsonb-containment of required capabilities.
  *
- * Ranking within a type: most-recently-seen wins. RANDOM() breaks ties so a
- * fleet of equal runners spreads load.
+ * Ranking priority (most-preferred first):
+ *   1. `pinDeviceId` if provided AND that runner is online + fresh + capable
+ *      (PR-5 session-group resume — sessions are host-local, must hit the
+ *      same machine that owns the prior session file).
+ *   2. `projects.defaultDeviceId` if set AND that runner is online + fresh +
+ *      capable (D1: project owner's primary device wins).
+ *   3. Freshest-seen runner overall (fallback for multi-device / team setups
+ *      or when the default is offline).
+ *
+ * `fallbackChain`, when present, gates by runner type at every step.
  */
 export async function selectRunnerForJob(input: SelectInput): Promise<Runner | null> {
-  const { projectId, requiredCapabilities, fallbackChain } = input;
+  const { projectId, requiredCapabilities, fallbackChain, pinDeviceId } = input;
   const required = JSON.stringify(requiredCapabilities ?? {});
-
-  // Exclude runners whose last_seen_at is staler than the dispatch
-  // liveness window — `status='online'` lags reality up to the
-  // stale-detector cron interval.
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
 
+  // 1. pinDeviceId — session-group resume
+  if (pinDeviceId) {
+    const pinned = await findByDevice(
+      projectId,
+      pinDeviceId,
+      required,
+      livenessSeconds,
+      fallbackChain,
+    );
+    if (pinned) return pinned;
+    // Fall through — pin stale → orchestrator will downgrade to fresh dispatch.
+  }
+
+  // 2. defaultDeviceId — project owner preference
+  const [project] = await db
+    .select({ defaultDeviceId: projects.defaultDeviceId })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  if (project?.defaultDeviceId) {
+    const def = await findByDevice(
+      projectId,
+      project.defaultDeviceId,
+      required,
+      livenessSeconds,
+      fallbackChain,
+    );
+    if (def) return def;
+  }
+
+  // 3. Freshest fallback
   if (fallbackChain && fallbackChain.length > 0) {
     for (const type of fallbackChain) {
       const rows = await db.execute<RunnerRow>(
@@ -117,6 +160,54 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
         AND last_seen_at IS NOT NULL
         AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
       ORDER BY last_seen_at DESC, RANDOM()
+      LIMIT 1
+    `,
+  );
+  if (rows.length === 0) return null;
+  // biome-ignore lint/style/noNonNullAssertion: length checked
+  return rowToRunner(rows[0]!);
+}
+
+/**
+ * Lookup a single runner by (projectId, deviceId) with the same liveness/cap
+ * gates. The runner-type filter is bound as a parameterised JSON array so
+ * `fallbackChain` values are never interpolated into the SQL string —
+ * eliminates any latent injection path when types come from type-erased
+ * sources (JSON config, IPC, future API endpoints).
+ *
+ * `(SELECT array_agg(value::text) FROM jsonb_array_elements_text($1::jsonb))`
+ * builds a `text[]` from the bound JSON array; `type = ANY(...)` then filters
+ * against it. The bound value goes through libpq's parameter protocol so the
+ * literal SQL never contains any caller-controlled string.
+ */
+async function findByDevice(
+  projectId: string,
+  deviceId: string,
+  required: string,
+  livenessSeconds: number,
+  fallbackChain: RunnerType[] | undefined,
+): Promise<Runner | null> {
+  const hasChain = fallbackChain && fallbackChain.length > 0;
+  const typeFilter = hasChain
+    ? sql`AND type = ANY (
+        SELECT value::text
+        FROM jsonb_array_elements_text(${JSON.stringify(fallbackChain)}::jsonb)
+      )`
+    : sql``;
+
+  const rows = await db.execute<RunnerRow>(
+    sql`
+      SELECT id, project_id, type, host, device_id, name, labels,
+             capabilities, config, status, last_seen_at, last_error
+      FROM runners
+      WHERE project_id = ${projectId}
+        AND device_id = ${deviceId}
+        AND status = 'online'
+        AND capabilities @> ${required}::jsonb
+        AND last_seen_at IS NOT NULL
+        AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
+        ${typeFilter}
+      ORDER BY last_seen_at DESC
       LIMIT 1
     `,
   );

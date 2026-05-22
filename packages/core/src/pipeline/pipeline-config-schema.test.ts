@@ -159,6 +159,162 @@ describe('statesConfigSchema (ISS-110)', () => {
   });
 });
 
+describe('stageConfigSchema per-state overrides', () => {
+  it('accepts skillName, model, allowedTools, permissionMode, timeoutSeconds', () => {
+    const parsed = pipelineConfigSchema.parse({
+      states: {
+        developed: {
+          skillName: 'forge-review',
+          model: 'sonnet',
+          allowedTools: ['Bash', 'mcp__forge__forge_issues'],
+          permissionMode: 'acceptEdits',
+          timeoutSeconds: 1800,
+        },
+      },
+    });
+    expect(parsed.states?.developed?.skillName).toBe('forge-review');
+    expect(parsed.states?.developed?.model).toBe('sonnet');
+    expect(parsed.states?.developed?.allowedTools).toEqual(['Bash', 'mcp__forge__forge_issues']);
+    expect(parsed.states?.developed?.permissionMode).toBe('acceptEdits');
+    expect(parsed.states?.developed?.timeoutSeconds).toBe(1800);
+  });
+
+  it('accepts systemPrompt append/replace + extras', () => {
+    const parsed = pipelineConfigSchema.parse({
+      states: {
+        approved: {
+          systemPrompt: { mode: 'replace', extras: 'CUSTOM RULES' },
+        },
+      },
+    });
+    expect(parsed.states?.approved?.systemPrompt).toEqual({
+      mode: 'replace',
+      extras: 'CUSTOM RULES',
+    });
+  });
+
+  it('rejects unknown systemPrompt mode', () => {
+    expect(() =>
+      pipelineConfigSchema.parse({
+        states: { approved: { systemPrompt: { mode: 'merge' } } },
+      }),
+    ).toThrow();
+  });
+
+  it('caps systemPrompt.extras at 32_000 chars', () => {
+    expect(() =>
+      pipelineConfigSchema.parse({
+        states: { approved: { systemPrompt: { extras: 'x'.repeat(32_001) } } },
+      }),
+    ).toThrow();
+  });
+
+  it('rejects replace mode with empty / null / whitespace extras (F12)', () => {
+    for (const extras of ['', '   ', null] as const) {
+      expect(() =>
+        pipelineConfigSchema.parse({
+          states: { approved: { systemPrompt: { mode: 'replace', extras } } },
+        }),
+      ).toThrow();
+    }
+  });
+
+  it('accepts replace mode when extras has real content', () => {
+    expect(() =>
+      pipelineConfigSchema.parse({
+        states: { approved: { systemPrompt: { mode: 'replace', extras: 'ONLY THIS' } } },
+      }),
+    ).not.toThrow();
+  });
+
+  it('accepts append mode with empty extras (no-op but valid)', () => {
+    expect(() =>
+      pipelineConfigSchema.parse({
+        states: { approved: { systemPrompt: { mode: 'append', extras: '' } } },
+      }),
+    ).not.toThrow();
+  });
+
+  it('accepts userPromptPolicy with all knobs', () => {
+    const parsed = pipelineConfigSchema.parse({
+      states: {
+        developed: {
+          userPromptPolicy: {
+            includeFields: ['plan', 'acceptanceCriteria'],
+            sessionContext: { depth: 5, fields: ['decisions', 'filesModified'] },
+            fieldCaps: { plan: 20_000 },
+            truncationStrategy: 'byte-cut',
+          },
+        },
+      },
+    });
+    expect(parsed.states?.developed?.userPromptPolicy?.includeFields).toEqual([
+      'plan',
+      'acceptanceCriteria',
+    ]);
+    expect(parsed.states?.developed?.userPromptPolicy?.fieldCaps?.plan).toBe(20_000);
+  });
+
+  it('does NOT cap fieldCaps server-side (D3: operator owns budget)', () => {
+    // 1 million chars — silly but allowed.
+    expect(() =>
+      pipelineConfigSchema.parse({
+        states: { developed: { userPromptPolicy: { fieldCaps: { description: 1_000_000 } } } },
+      }),
+    ).not.toThrow();
+  });
+
+  it('accepts budget caps', () => {
+    const parsed = pipelineConfigSchema.parse({
+      states: {
+        developed: { budget: { perRunUsd: 2.5, perMonthUsd: 100 } },
+      },
+    });
+    expect(parsed.states?.developed?.budget).toEqual({ perRunUsd: 2.5, perMonthUsd: 100 });
+  });
+
+  it('accepts sessionGroup membership at the stage level', () => {
+    const parsed = pipelineConfigSchema.parse({
+      states: { developed: { sessionGroup: 'implementation' } },
+    });
+    expect(parsed.states?.developed?.sessionGroup).toBe('implementation');
+  });
+});
+
+describe('sessionGroups + onResumeFail', () => {
+  it('accepts a session-groups map keyed by group name', () => {
+    const parsed = pipelineConfigSchema.parse({
+      sessionGroups: {
+        implementation: ['approved', 'developed'],
+        verification: ['testing'],
+      },
+      onResumeFail: 'fresh',
+    });
+    expect(parsed.sessionGroups?.implementation).toEqual(['approved', 'developed']);
+    expect(parsed.onResumeFail).toBe('fresh');
+  });
+
+  it('rejects unknown stage names in a group', () => {
+    expect(() =>
+      pipelineConfigSchema.parse({
+        sessionGroups: { x: ['not_a_stage'] },
+      }),
+    ).toThrow();
+  });
+
+  it('rejects empty group', () => {
+    expect(() =>
+      pipelineConfigSchema.parse({ sessionGroups: { x: [] } }),
+    ).toThrow();
+  });
+
+  it('rejects unknown onResumeFail policy', () => {
+    expect(() =>
+      pipelineConfigSchema.parse({ onResumeFail: 'retry' }),
+    ).toThrow();
+  });
+});
+
 describe('mergePipelineConfig', () => {
   it('merges patch onto current, preserving unknown keys for round-trip', () => {
     const current = { enabled: false, clarified: 'legacy', autoTriage: false };

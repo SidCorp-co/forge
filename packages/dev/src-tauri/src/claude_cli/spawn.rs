@@ -7,8 +7,10 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
 
-/// Default agent timeout: 30 minutes.
-const AGENT_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+/// Default agent timeout when caller doesn't supply one: 30 minutes.
+/// Per-state `appConfig.pipeline.states[stage].timeoutSeconds` overrides this
+/// via the IPC `timeout_seconds` parameter on `send_chat` / `run_agent`.
+const DEFAULT_AGENT_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
 /// Resolve the claude binary path. Cached in a OnceLock.
 ///
@@ -394,7 +396,20 @@ pub(crate) async fn spawn_and_stream(
     session_id: String,
     temp_mcp_config: Option<std::path::PathBuf>,
     worktree_path: Option<String>,
+    timeout_seconds: Option<u64>,
 ) -> Result<(), String> {
+    // Resolve per-call timeout, falling back to the global default.
+    let agent_timeout = timeout_seconds
+        .filter(|s| *s > 0)
+        .map(Duration::from_secs)
+        .unwrap_or(DEFAULT_AGENT_TIMEOUT);
+    // PR-5c — only treat CLI errors as RESUME_FAILED when --resume was actually
+    // requested. Prevents false positives where a fresh invocation's stderr
+    // happens to mention "session" or "resume" (help text, deprecation notes).
+    // `.starts_with` covers both `--resume <id>` (current syntax) and a
+    // hypothetical `--resume=<id>` combined-form a future CLI might adopt.
+    let invoked_with_resume = args.iter().any(|a| a.starts_with("--resume"));
+
     let (mut cmd, temp_script) = build_command(args, repo_path)?;
 
     // Create new process group so we can kill the entire tree
@@ -523,14 +538,14 @@ pub(crate) async fn spawn_and_stream(
     let sessions2 = sessions.clone();
     tokio::spawn(async move {
         // Wait for stdout with timeout
-        let timed_result = tokio::time::timeout(AGENT_TIMEOUT, stdout_reader).await;
+        let timed_result = tokio::time::timeout(agent_timeout, stdout_reader).await;
 
         let (succeeded, usage_limit_msg) = match timed_result {
             Ok(Ok((s, ulm))) => (s.unwrap_or(false), ulm),
             Ok(Err(_)) => (false, None), // join error
             Err(_) => {
                 // Timeout — kill the agent
-                log(&format!("[timeout] session={sid_complete} exceeded {}s", AGENT_TIMEOUT.as_secs()));
+                log(&format!("[timeout] session={sid_complete} exceeded {}s", agent_timeout.as_secs()));
                 let mut s = sessions2.lock().await;
                 if let Some(session) = s.get_mut(&sid_complete) {
                     if let Some(mut child) = session.child.take() {
@@ -581,9 +596,36 @@ pub(crate) async fn spawn_and_stream(
             cid
         };
 
+        // PR-5c — detect resume failure so the server can re-dispatch the
+        // job without claudeSessionId (or fail it, per onResumeFail config).
+        // Gated on `invoked_with_resume` to avoid false positives for fresh
+        // invocations that happen to mention "session" / "resume" in stderr.
+        // Match only specific phrases that name a missing/unreadable session
+        // file — avoid the bare `--resume` substring (would match help text,
+        // deprecation notices, etc.).
+        //
+        // TODO(PR-6): once the manual `--resume` interaction test is run
+        // (see docs/proposals/pipeline-prompt-ssot.md §PR-5/PR-6), expand
+        // this phrase list to cover whatever the CLI actually emits when it
+        // rejects `--append-system-prompt` alongside `--resume` (if anything).
+        let resume_failed = invoked_with_resume
+            && !succeeded
+            && {
+                let blob = err_output.to_lowercase();
+                blob.contains("session not found")
+                    || blob.contains("could not resume")
+                    || blob.contains("no such session")
+                    || blob.contains("session file missing")
+                    || blob.contains("session id not found")
+            };
+
         let error_msg = if let Some(ref ulm) = final_usage_limit {
             // Tag usage limit errors for downstream parsing
             Some(format!("[USAGE_LIMIT] {ulm}"))
+        } else if resume_failed {
+            let trimmed = err_output.trim();
+            let body = trimmed.chars().take(500).collect::<String>();
+            Some(format!("[RESUME_FAILED] {body}"))
         } else if !succeeded {
             // Include stderr in error message for better diagnostics
             let trimmed = err_output.trim();

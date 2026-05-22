@@ -24,6 +24,7 @@ import {
   type ActualUsage,
   type PromptEnvelope,
   extractPayloadExtras,
+  extractResolvedFlags,
   redactMcpSecrets,
 } from './prompt-route.js';
 
@@ -325,6 +326,11 @@ jobRoutes.get(
       mcpConfig,
       model: job.modelUsed,
       payloadExtras: extractPayloadExtras(payload),
+      resolvedFlags: extractResolvedFlags(payload, {
+        // skillName lives on payload (stamped by orchestrator), not a job column.
+        skillName: typeof payload.skillName === 'string' ? payload.skillName : null,
+        modelUsed: job.modelUsed,
+      }),
     };
     return c.json(envelope);
   },
