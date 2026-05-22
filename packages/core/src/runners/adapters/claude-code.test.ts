@@ -81,6 +81,49 @@ describe('claude-code adapter', () => {
     expect(data.agentSessionId).toBe('sess-abc');
   });
 
+  it('forwards systemPrompt in the WS payload when provided', async () => {
+    const sp = '## Pipeline Rules\n- Status LAST.';
+    await claudeCodeAdapter.dispatch({
+      job: {
+        id: 'job-sp',
+        projectId: 'p-1',
+        issueId: null,
+        type: 'code',
+        payload: {},
+        promptString: '/forge-code iss-1',
+        systemPrompt: sp,
+        dispatchedAt: new Date(),
+      },
+      runner: {
+        id: 'r-1', projectId: 'p-1', type: 'claude-code', host: 'device',
+        deviceId: 'd-1', name: 'desk', labels: [], capabilities: {}, config: {},
+        status: 'online', lastSeenAt: new Date(), lastError: null,
+      },
+    });
+    const data = (publish.mock.calls[0]?.[1] as { data: { systemPrompt?: string } }).data;
+    expect(data.systemPrompt).toBe(sp);
+  });
+
+  it('publishes systemPrompt as null when not provided', async () => {
+    await claudeCodeAdapter.dispatch({
+      job: {
+        id: 'job-no-sp',
+        projectId: 'p-1',
+        issueId: null,
+        type: 'code',
+        payload: {},
+        dispatchedAt: new Date(),
+      },
+      runner: {
+        id: 'r-1', projectId: 'p-1', type: 'claude-code', host: 'device',
+        deviceId: 'd-1', name: 'desk', labels: [], capabilities: {}, config: {},
+        status: 'online', lastSeenAt: new Date(), lastError: null,
+      },
+    });
+    const data = (publish.mock.calls[0]?.[1] as { data: { systemPrompt?: unknown } }).data;
+    expect(data.systemPrompt).toBeNull();
+  });
+
   it('omits agentSessionId from the payload when not provided', async () => {
     await claudeCodeAdapter.dispatch({
       job: {

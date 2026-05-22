@@ -4,6 +4,7 @@ import { useAuthStore, type AuthState } from "@/stores/auth-store";
 import { invoke } from "./use-tauri-ipc";
 import { relayAgentEvent, relayPromptBuilt, getIssue, getProject, getAgents } from "@/lib/api";
 import { buildAgentPrompt, buildAgentReindexPrompt, type AgentConfig } from "@/lib/agent-prompt";
+import { isSafeRepoUrl, isSafeBranch } from "@/lib/repo-url-validator";
 import { SessionTracker } from "@/lib/session-tracker";
 
 /**
@@ -93,13 +94,16 @@ async function ensureRepoPath(
 /**
  * Build a setup preamble for the Claude CLI agent when a project directory is new.
  * Clones the repo and syncs skills so the agent can work immediately.
+ * Both `repoUrl` and `branch` are validated; if either is unsafe the preamble
+ * is suppressed (returns "") to avoid embedding attacker-controlled text into
+ * the agent prompt body.
  */
 async function buildSetupPreamble(projectSlug: string): Promise<string> {
   try {
     const project = await getProject(projectSlug);
     const repoUrl = (project as any).previewDeploy?.repoUrl;
     const branch = project.baseBranch || "main";
-    if (!repoUrl) return "";
+    if (!repoUrl || !isSafeRepoUrl(repoUrl) || !isSafeBranch(branch)) return "";
     return [
       "IMPORTANT: This is a fresh project directory. Before doing anything else, run these setup steps:",
       `1. Clone the repository: git clone -b ${branch} ${repoUrl} .`,
@@ -152,9 +156,6 @@ export function useAgentCommandHandler(tracker: SessionTracker) {
         ? pc.mcpServers
         : undefined;
 
-    // No context prefix needed — skill fetches its own data via MCP
-    const contextPrefix = "";
-
     // Emit user message to local UI so useAgentChat can display it
     async function emitUserMessage(sessionId: string, message: string) {
       try {
@@ -184,7 +185,7 @@ export function useAgentCommandHandler(tracker: SessionTracker) {
       );
       // If directory is newly created, prepend clone + setup instructions
       const setupPreamble = isNew && projectSlug ? await buildSetupPreamble(projectSlug) : "";
-      const enrichedPrompt = setupPreamble + (preBuilt ? prompt : contextPrefix + prompt);
+      const enrichedPrompt = setupPreamble + prompt;
 
       // Notify local UI to adopt this session (so useAgentChat shows running status)
       try {

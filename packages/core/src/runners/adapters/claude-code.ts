@@ -41,6 +41,7 @@ export const claudeCodeAdapter: RunnerAdapter = {
         type: job.type,
         payload: job.payload,
         promptString: job.promptString ?? null,
+        systemPrompt: job.systemPrompt ?? null,
         runnerId: runner.id,
         runnerType: runner.type,
         dispatchedAt: job.dispatchedAt.toISOString(),

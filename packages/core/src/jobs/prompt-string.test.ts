@@ -116,17 +116,48 @@ describe('buildJobPromptString', () => {
       expect(out).toContain('Status: approved · Priority: high · Complexity: m');
     });
 
-    it('truncates long description with marker', () => {
+    it('truncates long description with marker that names char count + tool hint', () => {
       const longDesc = 'x'.repeat(9000);
       const out = buildJobPromptString({
         jobType: 'code',
         issueId: 'iss-1',
         issueSnapshot: { ...SAMPLE, description: longDesc },
       });
-      expect(out).toContain('… [truncated]');
-      // Description block should not exceed cap + truncation marker length
+      // Marker includes the cut position + original length + tool hint
+      expect(out).toMatch(/… \[truncated at \d+\/9000 chars — call forge_issues\.get for full body\]/);
       const descSection = out.slice(out.indexOf('Description:'), out.indexOf('Plan:'));
       expect(descSection.length).toBeLessThan(9000);
+    });
+
+    it('truncates at paragraph boundary when one exists within window', () => {
+      // Build a description where a clean \n\n boundary sits inside the
+      // [80% cap, cap] window. The cut should land exactly there.
+      const head = 'A'.repeat(6500);
+      const tail = 'B'.repeat(2500);
+      const desc = `${head}\n\n${tail}`;
+      const out = buildJobPromptString({
+        jobType: 'code',
+        issueId: 'iss-1',
+        issueSnapshot: { ...SAMPLE, description: desc },
+      });
+      // Body must end at the head paragraph — no B's should leak through.
+      const descSection = out.slice(out.indexOf('Description:'), out.indexOf('Plan:'));
+      expect(descSection).not.toContain('B');
+      // And it should include the truncation marker.
+      expect(descSection).toContain('[truncated at');
+    });
+
+    it('falls back to byte cut when no boundary exists within window', () => {
+      // No spaces, no newlines → boundary search returns -1 → cut at cap.
+      const desc = 'z'.repeat(9000);
+      const out = buildJobPromptString({
+        jobType: 'code',
+        issueId: 'iss-1',
+        issueSnapshot: { ...SAMPLE, description: desc },
+      });
+      const descSection = out.slice(out.indexOf('Description:'), out.indexOf('Plan:'));
+      // Cut should be at the cap (8000); marker reports it.
+      expect(descSection).toMatch(/\[truncated at 8000\/9000 chars/);
     });
   });
 

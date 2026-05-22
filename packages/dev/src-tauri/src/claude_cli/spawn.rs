@@ -457,7 +457,17 @@ pub(crate) async fn spawn_and_stream(
 
         while let Ok(Some(line)) = lines.next_line().await {
             log(&format!("[stdout] {}", line.chars().take(200).collect::<String>()));
-            if let Ok(json) = serde_json::from_str::<Value>(&line) {
+            let parsed = serde_json::from_str::<Value>(&line);
+            if parsed.is_err() && !line.trim().is_empty() {
+                // Surface non-JSON output (CLI warnings, panics, debug prints)
+                // so it shows up in the Tauri log instead of being silently
+                // dropped by the JSONL parser.
+                log(&format!(
+                    "[stdout-non-json] {}",
+                    line.chars().take(500).collect::<String>()
+                ));
+            }
+            if let Ok(json) = parsed {
                 // Capture claude session ID from the stream
                 if captured_claude_session_id.is_none() {
                     if let Some(sid) = json.get("session_id").and_then(|v| v.as_str()) {

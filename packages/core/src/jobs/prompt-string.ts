@@ -92,9 +92,28 @@ const SESSION_FIELDS_PER_STATE: Record<JobType, SessionFieldPolicy> = {
   pm: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
 };
 
+/**
+ * Truncate at the last paragraph boundary (`\n\n`) before `cap`, falling back
+ * to the last newline or word boundary so the cut never lands inside a code
+ * fence, list item, or sentence. Appends a hint pointing the agent at
+ * `forge_issues.get` for the full body.
+ *
+ * Search window for the boundary is `cap*0.2` chars back from the cap — past
+ * that, paragraphs are too far apart and we'd waste too much capacity, so we
+ * fall through to newline/word/byte cuts.
+ */
 function truncate(text: string, cap: number): string {
   if (text.length <= cap) return text;
-  return `${text.slice(0, cap)}… [truncated]`;
+  const minStart = Math.max(0, Math.floor(cap * 0.8));
+  const head = text.slice(0, cap);
+  const candidates = [
+    head.lastIndexOf('\n\n'),
+    head.lastIndexOf('\n'),
+    head.lastIndexOf(' '),
+  ];
+  const cut = candidates.find((idx) => idx >= minStart) ?? cap;
+  const body = text.slice(0, cut).replace(/\s+$/, '');
+  return `${body}\n\n… [truncated at ${cut}/${text.length} chars — call forge_issues.get for full body]`;
 }
 
 function formatIssueSnapshot(snapshot: IssueSnapshot, jobType: JobType): string {
