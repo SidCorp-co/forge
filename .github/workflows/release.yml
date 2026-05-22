@@ -156,6 +156,13 @@ jobs:
           # disabled — contributors never silently report to the maintainer.
           VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN_FORGE_DEV }}
           FORGE_SENTRY_DSN_RUST: ${{ secrets.SENTRY_DSN_FORGE_DEV_RUST }}
+          # Default production API origin baked into the build so first-launch
+          # users don't have to type the URL on the login screen. Read by:
+          #   VITE_DEFAULT_CORE_URL    → packages/dev/src (renderer fallback)
+          #   FORGE_DEFAULT_CORE_URL   → option_env!() in src-tauri/config/mod.rs
+          # Source builds (no variable set) fall back to localhost defaults.
+          VITE_DEFAULT_CORE_URL: ${{ vars.FORGE_DEFAULT_CORE_URL }}
+          FORGE_DEFAULT_CORE_URL: ${{ vars.FORGE_DEFAULT_CORE_URL }}
         with:
           projectPath: packages/dev
           tauriScript: pnpm tauri

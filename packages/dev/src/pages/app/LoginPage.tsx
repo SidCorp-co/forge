@@ -34,11 +34,16 @@ export function LoginPage() {
   const location = useLocation();
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/";
 
-  const [coreUrl, setCoreUrl] = useState(auth.coreUrl || "http://localhost:8080");
+  // Official release artifacts bake `VITE_DEFAULT_CORE_URL` (CI variable
+  // forwarded by .github/workflows/release.yml). Source builds without the
+  // var fall back to the local Hono dev port.
+  const defaultCoreUrl =
+    (import.meta.env.VITE_DEFAULT_CORE_URL as string | undefined) || "http://localhost:8080";
+  const [coreUrl, setCoreUrl] = useState(auth.coreUrl || defaultCoreUrl);
   // The auth state machine hydrates async on mount, so on first render
-  // `auth.coreUrl` is null and the useState initializer falls back to
-  // localhost. Sync once when the real value arrives — guarded by `synced`
-  // so we don't clobber any URL the user has already started typing.
+  // `auth.coreUrl` is null and the useState initializer falls back to the
+  // build-time default. Sync once when the real value arrives — guarded by
+  // `synced` so we don't clobber any URL the user has already started typing.
   const synced = useRef(false);
   useEffect(() => {
     if (!synced.current && auth.coreUrl) {

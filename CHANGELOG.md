@@ -18,6 +18,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+## [0.1.35] - 2026-05-22
+
+Desktop sign-in becomes observable end-to-end and stops asking first-launch users to type the API URL. Linux users who saw Forge Beta hang silently after the browser handoff now get a phase-by-phase status on screen (and a matching Sentry breadcrumb trail if telemetry is on).
+
+### Added
+
+- **The sign-in button reports what step the OAuth flow is on.** Instead of a static "Sign in with…" label that sat unchanged for up to five minutes, the button now shows `Opening browser… → Waiting for browser sign-in… → Received callback… → Signing in… → Finalising…`. If the exchange step takes longer than 10 s, a "still working…" hint appears so the user knows it isn't frozen. Failed flows now name the phase they died at instead of a generic "OAuth failed".
+  *Technical: ISS-190. `signInWithProvider` emits lifecycle phases via an `onPhase` callback (`starting → awaiting-deep-link → deep-link-received → exchanging-code → exchanged → timed-out / failed`) with matching `category: "oauth"` Sentry breadcrumbs. Single 5-min hard timeout split into 5 min browser-wait + 30 s post-deep-link. `auth-store.login()` emits per-step breadcrumbs so a hang inside `persistKeychain()` (libsecret without `gnome-keyring-daemon`) is distinguishable from a hang in cache-clear or `save_config`. Rust `on_open_url` + single-instance deep-link paths log to stderr and emit `category: "deep-link"` breadcrumbs with `code` / `handoff_id` redacted to `<len:N>`. +172 LOC of new tests at `packages/tests/dev/lib/desktop-oauth.test.ts`.*
+
+- **First-launch users see the production API URL pre-filled on the login screen.** The server-URL field used to default to `http://localhost:8080` (renderer) or `http://localhost:1337` (Rust config seed), so anyone installing Forge Beta for the first time had to manually type the URL before they could sign in.
+  *Technical: official release artifacts now bake `FORGE_DEFAULT_CORE_URL` (Rust, via `option_env!`) and `VITE_DEFAULT_CORE_URL` (renderer, via `import.meta.env`) from the GitHub Actions repository variable of the same name. Source builds without the variable still fall back to the localhost defaults so `npm run tauri dev` works out of the box. Wired in `packages/dev/src-tauri/src/config/mod.rs`, `packages/dev/src/pages/app/LoginPage.tsx`, `packages/dev/src/hooks/use-tauri-ipc.ts`, and `.github/workflows/release.yml`. Existing installs that already wrote `localhost` to `~/.config/forge-beta/config.json` are not migrated automatically — fresh installs only.*
+
+### Fixed
+
+- **Rust-side Sentry now emits a boot probe so a missing DSN is visible at a glance.** Previously the `forge-dev-rust` Sentry project showed zero events for 30 days, indistinguishable between "Rust never panicked" and "the DSN didn't actually bake into the build". Each launch of an official release now sends one Info-level `forge-dev-rust booted vX.Y.Z` event so the dashboard confirms telemetry is wired.
+  *Technical: `packages/dev/src-tauri/src/main.rs` — `sentry::capture_message(...)` immediately after `sentry::init` returns a non-None guard. No PII; one message per process start.*
+
 ## [0.1.34] - 2026-05-21
 
 The pipeline now uses ~30–60% fewer tokens per issue thanks to smarter server-side prompt caching, and the cost dashboard finally shows real numbers (it used to display $0 on every step). MCP integrators: the `forge_pm.flag_blocker`, `forge_pm.escalate`, and `forge_tasks` tools were removed — see the migration table below.

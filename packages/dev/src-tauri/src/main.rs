@@ -617,6 +617,18 @@ fn main() {
             ))
         });
 
+    // Boot-time probe so we can tell from the Sentry dashboard whether the
+    // DSN was actually baked into this artifact. Without this, a missing
+    // CI secret (or a stale rust-cache layer that dropped the env var) is
+    // indistinguishable from "Rust just didn't panic this session". One
+    // breadcrumb-level message per launch; no PII.
+    if _sentry_guard.is_some() {
+        sentry::capture_message(
+            &format!("forge-dev-rust booted v{}", env!("CARGO_PKG_VERSION")),
+            sentry::Level::Info,
+        );
+    }
+
     tauri::Builder::default()
         // single-instance MUST be first per Tauri docs. With the `deep-link`
         // feature the secondary process forwards its launch URL into the

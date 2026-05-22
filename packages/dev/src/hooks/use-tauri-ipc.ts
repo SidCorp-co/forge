@@ -11,7 +11,9 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
   if (cmd === "get_config") {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) return JSON.parse(stored) as T;
-    return { coreUrl: "http://localhost:8080", authToken: "", projects: {} } as T;
+    const fallbackCoreUrl =
+      (import.meta.env.VITE_DEFAULT_CORE_URL as string | undefined) || "http://localhost:8080";
+    return { coreUrl: fallbackCoreUrl, authToken: "", projects: {} } as T;
   }
   if (cmd === "save_config" && args?.config) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(args.config));

@@ -167,10 +167,22 @@ impl AppConfig {
     }
 }
 
+/// Build-time default for `coreUrl`. Official release artifacts bake the
+/// production API origin via the CI variable `FORGE_DEFAULT_CORE_URL`
+/// (forwarded to the build env in `.github/workflows/release.yml`).
+/// Source builds without the var fall back to the Strapi dev port so
+/// `npm run tauri dev` keeps working out of the box.
+fn default_core_url() -> String {
+    option_env!("FORGE_DEFAULT_CORE_URL")
+        .filter(|s| !s.is_empty())
+        .unwrap_or("http://localhost:1337")
+        .to_string()
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            core_url: "http://localhost:1337".to_string(),
+            core_url: default_core_url(),
             auth_token: String::new(),
             device_id: uuid::Uuid::new_v4().to_string(),
             projects_root: None,
