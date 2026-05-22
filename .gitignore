@@ -27,9 +27,8 @@ Thumbs.db
 *Zone.Identifier
 __pycache__
 *.pyc
-.claude/*
-!.claude/skills/
-skills/*
+.claude/
+
 # IDE
 .idea
 .vscode
