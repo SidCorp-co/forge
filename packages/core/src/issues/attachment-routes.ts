@@ -1,7 +1,6 @@
 import { zValidator } from '@hono/zod-validator';
 import { asc, eq } from 'drizzle-orm';
-import type { Hono } from 'hono';
-import { Hono as HonoCtor } from 'hono';
+import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -9,7 +8,7 @@ import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { issueAttachments, issues } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/project-access.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { type AnyAuthVars, requireAnyAuth } from '../middleware/require-any-auth.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import { AttachmentError, persistIssueAttachment } from './attachment-service.js';
@@ -24,98 +23,115 @@ const forbidden = (message: string) =>
 const issueIdParamSchema = z.object({ id: z.uuid() });
 const attachmentIdParamSchema = z.object({ id: z.uuid() });
 
-type IssueRouter = Hono<{ Variables: AuthVars }>;
+/**
+ * Standalone router for issue attachment endpoints.
+ *
+ * Mounted at `/api/issues` in `index.ts` SEPARATELY from `issueRoutes` so it
+ * can use `requireAnyAuth()` (accepts user JWT, PAT, or device token) while
+ * `issueRoutes` retains the stricter `requireAuth + assertEmailVerified`
+ * for browser-only endpoints.
+ *
+ * Hono routes the request to whichever router has a matching handler for
+ * the path; `/:id/attachments` only exists here, so PAT/device callers
+ * (MCP runners, automation scripts) reach this router directly.
+ */
+export const issueAttachmentRoutes = new Hono<{ Variables: AnyAuthVars }>();
+issueAttachmentRoutes.use('*', requireAnyAuth());
 
-export function registerIssueAttachmentRoutes(router: IssueRouter): void {
-  router.post(
-    '/:id/attachments',
-    bodyLimit({
-      maxSize: env.UPLOADS_MAX_BYTES,
-      onError: () => {
-        throw badRequest('file too large', 'FILE_TOO_LARGE');
-      },
-    }),
-    zValidator('param', issueIdParamSchema, (r) => {
-      if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', z.flattenError(r.error));
-    }),
-    async (c) => {
-      const { id: issueId } = c.req.valid('param');
-      const userId = c.get('userId');
+issueAttachmentRoutes.post(
+  '/:id/attachments',
+  bodyLimit({
+    maxSize: env.UPLOADS_MAX_BYTES,
+    onError: () => {
+      throw badRequest('file too large', 'FILE_TOO_LARGE');
+    },
+  }),
+  zValidator('param', issueIdParamSchema, (r) => {
+    if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id: issueId } = c.req.valid('param');
+    const userId = c.get('userId');
 
-      const [issue] = await db
-        .select({ id: issues.id, projectId: issues.projectId })
-        .from(issues)
-        .where(eq(issues.id, issueId))
-        .limit(1);
-      if (!issue) throw notFound('issue not found');
+    const [issue] = await db
+      .select({ id: issues.id, projectId: issues.projectId })
+      .from(issues)
+      .where(eq(issues.id, issueId))
+      .limit(1);
+    if (!issue) throw notFound('issue not found');
 
-      const access = await loadProjectAccess(issue.projectId, userId);
-      if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    const access = await loadProjectAccess(issue.projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
 
-      const body = await c.req.parseBody();
-      const file = body['file'];
-      if (!(file instanceof File)) throw badRequest('missing "file" field');
-      const buffer = Buffer.from(await file.arrayBuffer());
-      try {
-        const row = await persistIssueAttachment({
-          issueId: issue.id,
-          name: file.name || 'file',
-          mime: file.type || 'application/octet-stream',
-          bytes: buffer,
-          uploaderId: userId,
-        });
-        return c.json(row, 201);
-      } catch (err) {
-        if (err instanceof AttachmentError) {
-          throw badRequest(err.message, err.code);
-        }
-        throw err;
+    const body = await c.req.parseBody();
+    const file = body['file'];
+    if (!(file instanceof File)) throw badRequest('missing "file" field');
+    const buffer = Buffer.from(await file.arrayBuffer());
+    try {
+      const row = await persistIssueAttachment({
+        issueId: issue.id,
+        name: file.name || 'file',
+        mime: file.type || 'application/octet-stream',
+        bytes: buffer,
+        uploaderId: userId,
+      });
+      return c.json(row, 201);
+    } catch (err) {
+      if (err instanceof AttachmentError) {
+        throw badRequest(err.message, err.code);
       }
-    },
-  );
+      throw err;
+    }
+  },
+);
 
-  router.get(
-    '/:id/attachments',
-    zValidator('param', issueIdParamSchema, (r) => {
-      if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', z.flattenError(r.error));
-    }),
-    async (c) => {
-      const { id: issueId } = c.req.valid('param');
-      const userId = c.get('userId');
+issueAttachmentRoutes.get(
+  '/:id/attachments',
+  zValidator('param', issueIdParamSchema, (r) => {
+    if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id: issueId } = c.req.valid('param');
+    const userId = c.get('userId');
 
-      const [issue] = await db
-        .select({ id: issues.id, projectId: issues.projectId })
-        .from(issues)
-        .where(eq(issues.id, issueId))
-        .limit(1);
-      if (!issue) throw notFound('issue not found');
+    const [issue] = await db
+      .select({ id: issues.id, projectId: issues.projectId })
+      .from(issues)
+      .where(eq(issues.id, issueId))
+      .limit(1);
+    if (!issue) throw notFound('issue not found');
 
-      const access = await loadProjectAccess(issue.projectId, userId);
-      if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    const access = await loadProjectAccess(issue.projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
 
-      const rows = await db
-        .select({
-          id: issueAttachments.id,
-          issueId: issueAttachments.issueId,
-          uploaderId: issueAttachments.uploaderId,
-          name: issueAttachments.name,
-          mime: issueAttachments.mime,
-          size: issueAttachments.size,
-          createdAt: issueAttachments.createdAt,
-        })
-        .from(issueAttachments)
-        .where(eq(issueAttachments.issueId, issue.id))
-        .orderBy(asc(issueAttachments.createdAt));
+    const rows = await db
+      .select({
+        id: issueAttachments.id,
+        issueId: issueAttachments.issueId,
+        uploaderId: issueAttachments.uploaderId,
+        name: issueAttachments.name,
+        mime: issueAttachments.mime,
+        size: issueAttachments.size,
+        createdAt: issueAttachments.createdAt,
+      })
+      .from(issueAttachments)
+      .where(eq(issueAttachments.issueId, issue.id))
+      .orderBy(asc(issueAttachments.createdAt));
 
-      return c.json(
-        rows.map((r) => ({ ...r, url: `/api/attachments/${r.id}/download` })),
-      );
-    },
-  );
-}
+    return c.json(
+      rows.map((r) => ({ ...r, url: `/api/attachments/${r.id}/download` })),
+    );
+  },
+);
 
-export const attachmentRoutes = new HonoCtor<{ Variables: AuthVars }>();
-attachmentRoutes.use('*', requireAuth(), assertEmailVerified());
+/**
+ * Standalone router for /api/attachments/:id (download + delete).
+ *
+ * Same combined-auth as the upload router so automation scripts can pull
+ * down attachments they've uploaded (handy for diagnostics).
+ */
+export const attachmentRoutes = new Hono<{ Variables: AnyAuthVars }>();
+attachmentRoutes.use('*', requireAnyAuth());
 
 attachmentRoutes.get(
   '/:id/download',

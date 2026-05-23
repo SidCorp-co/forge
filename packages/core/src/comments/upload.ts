@@ -8,7 +8,7 @@ import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { commentAttachments, comments, issues } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/project-access.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { type AnyAuthVars, requireAnyAuth } from '../middleware/require-any-auth.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import { AttachmentError, persistCommentAttachment } from './attachment-service.js';
 
@@ -41,8 +41,13 @@ const forbidden = (message: string) =>
 const commentIdParamSchema = z.object({ commentId: z.uuid() });
 const idParamSchema = z.object({ id: z.uuid() });
 
-export const commentUploadRoutes = new Hono<{ Variables: AuthVars }>();
-commentUploadRoutes.use('*', requireAuth(), assertEmailVerified());
+/**
+ * Comment attachment endpoints. Accepts user JWT (web upload), PAT, or
+ * device token (MCP runners post screenshots from forge-clarify / forge-test
+ * / forge-review).
+ */
+export const commentUploadRoutes = new Hono<{ Variables: AnyAuthVars }>();
+commentUploadRoutes.use('*', requireAnyAuth());
 
 commentUploadRoutes.post(
   '/:commentId/attachments',

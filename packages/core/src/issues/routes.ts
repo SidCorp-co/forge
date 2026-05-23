@@ -4,7 +4,6 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { registerIssueCommentRoutes } from '../comments/routes.js';
-import { registerIssueAttachmentRoutes } from './attachment-routes.js';
 import {
   AttachmentError,
   type AttachmentErrorEntry,
@@ -439,7 +438,9 @@ export const issueRoutes = new Hono<{ Variables: AuthVars }>();
 issueRoutes.use('*', requireAuth(), assertEmailVerified());
 
 registerIssueCommentRoutes(issueRoutes);
-registerIssueAttachmentRoutes(issueRoutes);
+// NOTE: issue attachment endpoints (POST/GET /:id/attachments) are now in a
+// standalone router (`issueAttachmentRoutes` in attachment-routes.ts) so they
+// can accept PAT + device auth. Mounted directly at /api/issues in index.ts.
 
 async function loadIssue(issueId: string): Promise<IssueRow> {
   const [row] = await db.select().from(issues).where(eq(issues.id, issueId)).limit(1);

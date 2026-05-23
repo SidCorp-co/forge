@@ -29,7 +29,7 @@ import { chatRoutes } from './chat/routes.js';
 import { chatSessionRoutes } from './chat/sessions-routes.js';
 import { commentRoutes } from './comments/routes.js';
 import { commentUploadRoutes } from './comments/upload.js';
-import { attachmentRoutes } from './issues/attachment-routes.js';
+import { attachmentRoutes, issueAttachmentRoutes } from './issues/attachment-routes.js';
 import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
 import {
@@ -292,6 +292,11 @@ app.route('/api/projects', jobProjectRoutes);
 // issueRoutes which has GET /:id with a z.uuid() validator that would
 // 400-reject the literal "pipeline-timing" segment.
 app.route('/api/issues', issueExtrasRoutes);
+// issueAttachmentRoutes (POST/GET /:id/attachments) is mounted BEFORE issueRoutes
+// so its requireAnyAuth() middleware handles attachment requests instead of
+// issueRoutes' stricter requireAuth + assertEmailVerified. Both routers live
+// under /api/issues but cover disjoint paths, so Hono routes correctly.
+app.route('/api/issues', issueAttachmentRoutes);
 app.route('/api/issues', issueRoutes);
 app.route('/api/issues', transitionRoutes);
 app.route('/api/issues', issueActivityRoutes);
