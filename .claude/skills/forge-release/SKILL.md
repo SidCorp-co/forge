@@ -98,6 +98,27 @@ This is a final sanity check that the merge didn't break anything (race conditio
 - Post comment with the failing tests + the diagnostic.
 - Stop.
 
+### 4.5. Append CHANGELOG entry (if release notes present)
+
+Read `releaseNotes` from the `forge_issues → get` response from Step 1. Shape:
+
+```typescript
+{ section: 'Added'|'Changed'|'Fixed'|'Removed'|'Security'|'Skip', userFacing: string, technical?: string|null }
+```
+
+- `releaseNotes` is `null` → skip this step (no user-facing summary drafted).
+- `section === 'Skip'` → skip this step (internal-only change).
+- Otherwise → insert a bullet under `### <section>` inside `## [Unreleased]` in `CHANGELOG.md`:
+
+```
+- **<userFacing>**
+  *Technical: <technical>*    ← only when `technical` is non-empty
+```
+
+If `### <section>` does not yet exist under `## [Unreleased]`, create it (preferred order: Added, Changed, Fixed, Removed, Security). Stage the file with `git add CHANGELOG.md` so it lands inside the merge commit from step 3 — no separate commit.
+
+If the merge was already pushed (step 5 ran in a prior attempt and crashed), amend the CHANGELOG bump as a follow-up commit `chore(release): CHANGELOG for ISS-XX` and push to `$TARGET` separately.
+
 ### 5. Push target
 
 ```bash

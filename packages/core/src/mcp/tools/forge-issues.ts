@@ -11,6 +11,7 @@ import {
   tasks,
 } from '../../db/schema.js';
 import { applyStatusTransition } from '../../issues/apply-transition.js';
+import { type ReleaseNotes, ReleaseNotesSchema } from '../../issues/release-notes.js';
 import {
   AttachmentError,
   type DecodedAttachment,
@@ -94,6 +95,10 @@ const dataSchema = z
     aiSuggestedSolution: z.string().max(100_000).nullable().optional(),
     aiAcceptanceCriteria: z.array(z.string().max(2_000)).max(50).nullable().optional(),
     aiConfidence: z.number().min(0).max(1).nullable().optional(),
+    // ISS-199 — user-facing release notes. forge-clarify writes this; the
+    // shape is validated by `ReleaseNotesSchema` so an invalid section enum
+    // is rejected at the MCP boundary.
+    releaseNotes: ReleaseNotesSchema.nullable().optional(),
     // Task fields — only consumed by the createTask/updateTask actions. Kept
     // on the same `data` block to avoid splitting the input schema for what
     // is conceptually one tool.
@@ -157,6 +162,7 @@ type IssueRow = {
   aiSuggestedSolution: string | null;
   aiAcceptanceCriteria: string[] | null;
   aiConfidence: number | null;
+  releaseNotes: ReleaseNotes | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -183,6 +189,7 @@ function serialize(row: IssueRow): Record<string, unknown> {
     aiSuggestedSolution: row.aiSuggestedSolution,
     aiAcceptanceCriteria: row.aiAcceptanceCriteria,
     aiConfidence: row.aiConfidence,
+    releaseNotes: row.releaseNotes,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -374,6 +381,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             aiSuggestedSolution: input.data.aiSuggestedSolution ?? null,
             aiAcceptanceCriteria: input.data.aiAcceptanceCriteria ?? null,
             aiConfidence: input.data.aiConfidence ?? null,
+            releaseNotes: input.data.releaseNotes ?? null,
           })
           .returning();
         if (!inserted) throw new Error('issues: insert returned no row');
@@ -456,6 +464,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
         if (input.data.aiConfidence !== undefined) {
           updates.aiConfidence = input.data.aiConfidence;
+        }
+        if (input.data.releaseNotes !== undefined) {
+          updates.releaseNotes = input.data.releaseNotes;
         }
 
         if (Object.keys(updates).length > 0) {
