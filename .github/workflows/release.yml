@@ -92,6 +92,16 @@ jobs:
             args: ""
     runs-on: ${{ matrix.platform }}
     steps:
+      # Windows runners ship `credential.helper=manager` which intercepts the
+      # AUTHORIZATION header `actions/checkout` injects and falls back to an
+      # interactive prompt — the v0.2.0 build failed `fetch tag` 3× with
+      # `could not read Username for https://github.com`. Disabling the
+      # helper for this job lets the header through unchallenged.
+      - name: Disable Windows credential helper
+        if: matrix.platform == 'windows-latest'
+        run: git config --global credential.helper ""
+        shell: bash
+
       - uses: actions/checkout@v4
 
       - name: Install Linux dependencies

@@ -102,7 +102,12 @@ describe("signInWithProvider — phase callbacks", () => {
   });
 
   it("fires 'timed-out' when /exchange never resolves within the post-deep-link budget", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: false });
+    // Real timers for setup: the PKCE challenge calls `crypto.subtle.digest`
+    // which is async but not timer-backed, and starting under fake timers
+    // raced the `listen()` mock that wires up `currentHandler` (CI flake at
+    // expect(currentHandler).not.toBeNull on line 120). Switch to fake
+    // timers AFTER the handler is wired, then advance past the 30 s inner
+    // timeout deterministically.
     openUrlMock.mockResolvedValue(undefined);
     // fetch returns a pending promise so the exchange step hangs.
     fetchMock.mockReturnValue(new Promise(() => {}));
@@ -114,10 +119,11 @@ describe("signInWithProvider — phase callbacks", () => {
       onPhase: (p) => phases.push(p),
     }).catch((e) => e);
 
-    // Let listen() + openUrl() promise chains settle so currentHandler is set.
-    await vi.advanceTimersByTimeAsync(0);
-    await vi.advanceTimersByTimeAsync(0);
+    await tick();
+    await tick();
     expect(currentHandler).not.toBeNull();
+
+    vi.useFakeTimers({ shouldAdvanceTime: false });
 
     // Fire the deep-link but do NOT await — exchangeCode awaits a never-
     // resolving fetch, so awaiting the handler would deadlock the test.
