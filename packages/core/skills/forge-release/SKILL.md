@@ -128,6 +128,29 @@ forge_coolify_deploy → deploy → {}
 
 If no Coolify: skip — CI/CD may auto-deploy from production branch, or deployment is manual.
 
+### Step 7.5: Append CHANGELOG entry (if release notes present)
+
+Read `releaseNotes` from the `forge_issues → get` response already fetched in Step 1. Shape:
+
+```typescript
+{ section: 'Added'|'Changed'|'Fixed'|'Removed'|'Security'|'Skip', userFacing: string, technical?: string|null }
+```
+
+Decision tree:
+
+- `releaseNotes` is `null` → skip this step entirely (forge-clarify did not draft one — usually a Simple issue that was auto-skipped).
+- `section === 'Skip'` → skip this step (internal-only change, no user-facing summary).
+- Otherwise → format a bullet and insert it under `### <section>` inside `## [Unreleased]` in `CHANGELOG.md`:
+
+```
+- **<userFacing>**
+  *Technical: <technical>*    ← only emit this second line when `technical` is non-empty
+```
+
+Use `awk`/`sed` to find the `## [Unreleased]` heading, the matching `### <section>` sub-heading (creating it if absent), and insert the bullet at the top of that sub-list so the most recent entry sits first. Commit the CHANGELOG bump on the production branch as part of the merge commit — do NOT create a separate commit.
+
+Style: present-tense, one short sentence, no trailing period after the bold (`**…**`) text is fine. Don't include `ISS-XX` IDs or PR references — those live in git history.
+
 ### Step 8: Clean Up Feature Branch
 
 ```bash

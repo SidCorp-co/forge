@@ -71,7 +71,46 @@ If category is not `bug`:
 4. **Identify existing UX patterns** in the same area (button styles, layouts, interactions)
 5. **Check for ambiguities** — does the issue description fully specify the desired outcome?
 
-### Step 4: Post Comment & Set Status
+### Step 4: Draft Release Notes
+
+Before posting the clarify comment, draft a user-facing release-notes blurb and persist it to the issue's typed `releaseNotes` field. forge-release reads this field at close time to append a bullet to `CHANGELOG.md` under `## [Unreleased]`. The `forge-cut-release` skill later promotes that section to a tagged version block.
+
+**Pick the section.** Map the issue to the right [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) bucket:
+
+| Section | When to pick |
+|---|---|
+| `Added` | A new feature, screen, command, endpoint, or capability the end user can perceive |
+| `Changed` | Behavior the user already had changes in a visible way (UI, defaults, semantics) |
+| `Fixed` | A bug the user could hit is now resolved |
+| `Removed` | A capability went away |
+| `Security` | A vulnerability is patched; phrase neutrally so it doesn't read like a CVE advisory |
+| `Skip` | Internal-only change (refactor, infra, test harness) — no `CHANGELOG.md` entry needed |
+
+**Draft the two strings.**
+
+- **userFacing** — 1-2 plain sentences a non-developer can understand. Lead with the user-visible verb ("Added X", "Fixed Y", "You can now Z"). Avoid file names, function names, ticket IDs. Max 500 chars.
+- **technical** *(optional)* — one terse line of breadcrumbs for maintainers (root-cause, the surface area). Max 500 chars.
+
+**Persist via the typed field.** Write to `releaseNotes` with `forge_issues → update`:
+
+```
+forge_issues → update → {
+  documentId: "<id>",
+  data: {
+    releaseNotes: {
+      section: "Fixed",
+      userFacing: "Avatar uploads no longer time out for files above 2 MB.",
+      technical: "Multipart streaming in core/issues/attachment-service handled chunks under one fetch deadline."
+    }
+  }
+}
+```
+
+For internal-only changes use `{ section: "Skip", userFacing: "-" }`. `userFacing` is required by the schema even for Skip — forge-release short-circuits on the section, not on the string.
+
+This is the source of truth — do NOT also write a release-notes block into `description`. Description belongs to the developer; the typed field belongs to the user-facing summary.
+
+### Step 5: Post Comment & Set Status
 
 Upload any captured screenshots:
 

@@ -27,3 +27,11 @@ export {
   type UpdateProjectInput,
   type PreviewDeployConfig,
 } from './projects/routes.js';
+
+export {
+  ReleaseNotesSchema,
+  ReleaseNotesSectionSchema,
+  releaseNotesSections,
+  type ReleaseNotes,
+  type ReleaseNotesSection,
+} from './issues/release-notes.js';

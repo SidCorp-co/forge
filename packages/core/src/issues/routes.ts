@@ -76,6 +76,7 @@ export {
   issueMetadataSchema,
   isSelfReferentialBranch,
 } from './metadata.js';
+import { type ReleaseNotes, ReleaseNotesSchema } from './release-notes.js';
 
 export const issueCreateSchema = z
   .object({
@@ -117,6 +118,7 @@ export const issuePatchSchema = z
     assigneeId: z.uuid().nullable().optional(),
     labels: z.array(z.uuid()).max(100).optional(),
     metadata: issueMetadataSchema.optional(),
+    releaseNotes: ReleaseNotesSchema.nullable().optional(),
   })
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
@@ -171,6 +173,7 @@ type IssueRow = {
   createdById: string;
   parentIssueId: string | null;
   metadata: ({ branchConfig?: IssueBranchOverride | null } & Record<string, unknown>) | null;
+  releaseNotes: ReleaseNotes | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -554,6 +557,10 @@ issueRoutes.patch(
       }
       updates.metadata = patch.metadata;
       track('metadata', patch.metadata);
+    }
+    if (patch.releaseNotes !== undefined) {
+      updates.releaseNotes = patch.releaseNotes;
+      track('releaseNotes', patch.releaseNotes);
     }
 
     const actor = { type: 'user' as const, id: userId };

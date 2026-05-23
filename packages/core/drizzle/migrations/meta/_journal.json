@@ -498,6 +498,20 @@
       "when": 1779432000000,
       "tag": "0070_pipeline_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1779500000000,
+      "tag": "0071_issues_release_notes",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1779500001000,
+      "tag": "0072_backfill_release_notes",
+      "breakpoints": true
     }
   ]
 }

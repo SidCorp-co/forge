@@ -128,6 +128,7 @@ const baseIssueRow = {
   aiSuggestedSolution: null,
   aiAcceptanceCriteria: null,
   aiConfidence: null,
+  releaseNotes: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -738,6 +739,71 @@ describe('forge_issues tool', () => {
         aiConfidence: 0.9,
       }),
     );
+  });
+
+  // ISS-199 — typed releaseNotes round-trip + zod rejection.
+
+  it('create persists releaseNotes and serializes them on the response', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    const rn = {
+      section: 'Fixed' as const,
+      userFacing: 'Logging in no longer logs you out instantly.',
+      technical: 'Cookie SameSite=None required after the cross-site redirect.',
+    };
+    insertReturning.mockResolvedValueOnce([{ ...baseIssueRow, releaseNotes: rn }]);
+
+    const result = (await tool.handler({
+      action: 'create',
+      data: { title: 'Login bug', releaseNotes: rn },
+    })) as { releaseNotes: typeof rn | null };
+
+    expect(result.releaseNotes).toEqual(rn);
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ releaseNotes: rn }));
+  });
+
+  it('update writes releaseNotes onto an existing issue', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    selectLimit.mockResolvedValueOnce([baseIssueRow]);
+    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    const rn = { section: 'Added' as const, userFacing: 'You can now export issues to CSV.' };
+    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, releaseNotes: rn }]);
+
+    const result = (await tool.handler({
+      action: 'update',
+      documentId: ISSUE_ID,
+      data: { releaseNotes: rn },
+    })) as { releaseNotes: typeof rn | null };
+
+    expect(result.releaseNotes).toEqual(rn);
+    expect(txUpdateSet).toHaveBeenCalledWith(expect.objectContaining({ releaseNotes: rn }));
+  });
+
+  it('update rejects releaseNotes with an invalid section enum', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    await expect(
+      tool.handler({
+        action: 'update',
+        documentId: ISSUE_ID,
+        data: { releaseNotes: { section: 'Bogus', userFacing: 'x' } } as unknown as Record<
+          string,
+          unknown
+        >,
+      }),
+    ).rejects.toThrow();
   });
 
   it('update rejects aiConfidence outside [0,1]', async () => {

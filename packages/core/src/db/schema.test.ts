@@ -756,6 +756,7 @@ describe('db/schema — issues', () => {
         'plan',
         'priority',
         'project_id',
+        'release_notes',
         'reopen_count',
         'reported_by',
         'session_context',
