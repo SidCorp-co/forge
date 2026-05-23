@@ -16,6 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **The v0.2.0 release ships a Windows desktop binary again.** The v0.2.0 tag's Windows build failed at `actions/checkout` — three retries in a row hit "could not read Username for github.com" — so the published `v0.2.0` release only attached macOS and Linux artifacts. Plain re-running the failed job wouldn't have helped without a code change; v0.2.1 re-cuts the release with the Windows checkout fix included.
+  *Technical: Windows runners ship `credential.helper=manager`, which intercepts the AUTHORIZATION header `actions/checkout` injects via `http.extraheader` and falls back to a prompt that GH Actions has disabled (`GIT_TERMINAL_PROMPT=0`). `.github/workflows/release.yml` now runs `git config --global credential.helper ""` in a Windows-only step before checkout. Also folded in: docs link-checker fix (track `.claude/skills/{forge-code,forge-plan,forge-release}/{references,scripts}/` so CI's markdown-link-check can resolve the cross-links — the SKILL.md overrides were tracked but the files they linked to were hidden by the blanket `.claude/` gitignore), `desktop-oauth` flaky timeout test (start setup under real timers and switch to fake timers only after the deep-link handler is wired — under fake timers from the start, the async PKCE `crypto.subtle.digest` chain raced the `expect(currentHandler).not.toBeNull()` assertion), and a pnpm override forcing `qs ≥ 6.15.2` to clear the open Dependabot security alert (body-parser + express transitively pin 6.15.1).*
+
 ### Security
 
 ## [0.2.0] - 2026-05-23
