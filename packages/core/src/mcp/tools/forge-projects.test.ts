@@ -319,23 +319,25 @@ function mockCreateTransaction(returnedProject: Record<string, unknown>) {
 describe('forge_projects.create', () => {
   const NEW_PROJECT_ID = '66666666-6666-4666-8666-666666666666';
 
-  it('device principal creates project owned by the device user', async () => {
+  it('device principal creates project and receives apiKey back', async () => {
     mockCreateTransaction({
       id: NEW_PROJECT_ID,
       slug: 'my-proj',
       name: 'My Project',
       ownerId: OWNER_ID,
+      apiKey: 'fk_abc123def456',
       createdAt: new Date(),
     });
     const tool = forgeProjectsCreateTool(deviceCtx());
     const res = (await tool.handler({ slug: 'my-proj', name: 'My Project' })) as {
-      project: { id: string; slug: string; ownerId: string };
+      project: { id: string; slug: string; ownerId: string; apiKey: string };
     };
     expect(res.project.id).toBe(NEW_PROJECT_ID);
     expect(res.project.slug).toBe('my-proj');
     expect(res.project.ownerId).toBe(OWNER_ID);
-    // apiKey must NOT be returned (matches forge_admin_projects.create surface).
-    expect(res.project).not.toHaveProperty('apiKey');
+    // apiKey MUST be returned — caller is the owner and needs it for widget
+    // install / device pairing (matches REST POST /api/projects).
+    expect(res.project.apiKey).toBe('fk_abc123def456');
   });
 
   it('PAT principal with write scope and null allowlist creates project', async () => {
@@ -344,6 +346,7 @@ describe('forge_projects.create', () => {
       slug: 'pat-proj',
       name: 'PAT Project',
       ownerId: OWNER_ID,
+      apiKey: 'fk_xyz',
       createdAt: new Date(),
     });
     const tool = forgeProjectsCreateTool(patCtx({ scopes: ['read', 'write'] }));
@@ -372,14 +375,46 @@ describe('forge_projects.create', () => {
     expect(transactionImpl).not.toHaveBeenCalled();
   });
 
-  it('unique-violation on slug surfaces as BAD_REQUEST SLUG_TAKEN', async () => {
+  it('unique-violation on slug constraint surfaces as BAD_REQUEST SLUG_TAKEN', async () => {
+    // Real shape from drizzle-orm/postgres-js: the postgres-js driver puts
+    // SQLSTATE + constraint_name on the inner pg error; Drizzle wraps it in
+    // `{ query, params, cause }`. Mock that nesting so the test matches
+    // production rather than a fictional flat `.code` shape.
     transactionImpl.mockImplementationOnce(async () => {
-      throw Object.assign(new Error('duplicate key value'), { code: '23505' });
+      throw Object.assign(new Error('Failed query: insert into "projects"'), {
+        query: 'insert into "projects"...',
+        params: [],
+        cause: Object.assign(new Error('duplicate key value'), {
+          code: '23505',
+          constraint_name: 'projects_slug_unique',
+        }),
+      });
     });
     const tool = forgeProjectsCreateTool(deviceCtx());
     await expect(tool.handler({ slug: 'taken', name: 'X' })).rejects.toThrow(
       /BAD_REQUEST: SLUG_TAKEN/,
     );
+  });
+
+  it('unique-violation on a non-slug constraint rethrows as-is (no false SLUG_TAKEN)', async () => {
+    // Simulates a future migration adding e.g. UNIQUE(owner_id, name), or
+    // an apiKey collision. The handler must NOT lie about which constraint
+    // failed — otherwise callers debug the wrong field.
+    const collision = Object.assign(new Error('Failed query: insert into "projects"'), {
+      query: 'insert into "projects"...',
+      params: [],
+      cause: Object.assign(new Error('duplicate key value'), {
+        code: '23505',
+        constraint_name: 'projects_owner_id_name_unique',
+      }),
+    });
+    transactionImpl.mockImplementationOnce(async () => {
+      throw collision;
+    });
+    const tool = forgeProjectsCreateTool(deviceCtx());
+    await expect(
+      tool.handler({ slug: 'unique-slug', name: 'taken-name' }),
+    ).rejects.toBe(collision);
   });
 
   it('rejects invalid slug formats at the schema layer', async () => {
@@ -391,16 +426,17 @@ describe('forge_projects.create', () => {
 
 describe('forge_projects.update', () => {
   /**
-   * `assertPrincipalIsAdmin` for a device principal performs a single
-   * `db.select({ ownerId }).from(projects).where().limit(1)` lookup. If the
-   * ownerId matches the device's owner, the helper short-circuits to admin
-   * without a projectMembers query. We mock that shape here.
+   * The owner-only gate runs two queries:
+   *   1) select({ ownerId }) from projects — short-circuits when caller is
+   *      the row's primary ownerId.
+   *   2) select({ role }) from project_members — only when (1) doesn't match;
+   *      `owner` role passes, anything else (incl. `admin`) is refused.
    */
-  function mockOwnerLookup(ownerId: string) {
+  function mockOwnerLookup(ownerId: string | null) {
     selectImpl.mockImplementationOnce(() => ({
       from: () => ({
         where: () => ({
-          limit: () => Promise.resolve([{ ownerId }]),
+          limit: () => Promise.resolve(ownerId === null ? [] : [{ ownerId }]),
         }),
       }),
     }));
@@ -426,7 +462,7 @@ describe('forge_projects.update', () => {
     }));
   }
 
-  it('owner-on-project applies patch and returns the updated row', async () => {
+  it('primary-owner applies patch and returns the updated row (no member lookup needed)', async () => {
     mockOwnerLookup(OWNER_ID);
     mockUpdateReturning({
       id: PROJECT_A,
@@ -445,27 +481,84 @@ describe('forge_projects.update', () => {
     })) as { project: { name: string; repoPath: string } };
     expect(res.project.name).toBe('A renamed');
     expect(res.project.repoPath).toBe('/srv/a');
+    // Sensitive REST-only fields must NOT appear in the response shape so a
+    // future .returning() refactor that selects them can't ship silently.
+    for (const k of ['apiKey', 'webhookSecret', 'agentConfig', 'previewDeploy', 'defaultDeviceId']) {
+      expect(res.project).not.toHaveProperty(k);
+    }
+    // The owner-only short-circuit must skip the projectMembers lookup —
+    // exactly one select call (the ownerId lookup).
+    expect(selectImpl).toHaveBeenCalledTimes(1);
   });
 
-  it('non-member device principal is refused with FORBIDDEN', async () => {
-    // Device path: project exists, owner is someone else, no projectMembers
-    // row — assertDeviceOwnerIsAdmin throws "requires owner or admin".
+  it('owner-role member (project has multiple owners) is accepted', async () => {
     mockOwnerLookup(OTHER_OWNER_ID);
-    mockMemberRoleLookup(null);
+    mockMemberRoleLookup('owner');
+    mockUpdateReturning({
+      id: PROJECT_A,
+      slug: 'a',
+      name: 'renamed by co-owner',
+      ownerId: OTHER_OWNER_ID,
+      description: null,
+      repoPath: null,
+      baseBranch: null,
+      productionBranch: null,
+    });
+    const tool = forgeProjectsUpdateTool(deviceCtx());
+    const res = (await tool.handler({
+      projectId: PROJECT_A,
+      patch: { name: 'renamed by co-owner' },
+    })) as { project: { name: string } };
+    expect(res.project.name).toBe('renamed by co-owner');
+  });
+
+  it('admin-role member is REFUSED with FORBIDDEN (matches REST owner-only PATCH)', async () => {
+    // The fix for PR-128 finding #1 — pre-fix, admin members could mutate
+    // settings via MCP even though REST PATCH /api/projects/:id requires
+    // role==='owner'. Now MCP refuses too.
+    mockOwnerLookup(OTHER_OWNER_ID);
+    mockMemberRoleLookup('admin');
     const tool = forgeProjectsUpdateTool(deviceCtx());
     await expect(
       tool.handler({ projectId: PROJECT_A, patch: { name: 'no' } }),
-    ).rejects.toThrow(/FORBIDDEN: requires owner or admin/);
+    ).rejects.toThrow(/FORBIDDEN: requires project owner/);
     expect(updateImpl).not.toHaveBeenCalled();
   });
 
-  it('member role (not admin/owner) is refused with FORBIDDEN', async () => {
+  it('member role (not owner) is refused with FORBIDDEN', async () => {
     mockOwnerLookup(OTHER_OWNER_ID);
     mockMemberRoleLookup('member');
     const tool = forgeProjectsUpdateTool(deviceCtx());
     await expect(
       tool.handler({ projectId: PROJECT_A, patch: { name: 'no' } }),
-    ).rejects.toThrow(/FORBIDDEN: requires owner or admin/);
+    ).rejects.toThrow(/FORBIDDEN: requires project owner/);
+    expect(updateImpl).not.toHaveBeenCalled();
+  });
+
+  it('non-member device principal is refused with NOT_FOUND (no existence leak)', async () => {
+    mockOwnerLookup(OTHER_OWNER_ID);
+    mockMemberRoleLookup(null);
+    const tool = forgeProjectsUpdateTool(deviceCtx());
+    await expect(
+      tool.handler({ projectId: PROJECT_A, patch: { name: 'no' } }),
+    ).rejects.toThrow(/NOT_FOUND/);
+    expect(updateImpl).not.toHaveBeenCalled();
+  });
+
+  it('non-existent project is refused with NOT_FOUND for both device and PAT', async () => {
+    // Device path
+    mockOwnerLookup(null);
+    const deviceTool = forgeProjectsUpdateTool(deviceCtx());
+    await expect(
+      deviceTool.handler({ projectId: PROJECT_A, patch: { name: 'no' } }),
+    ).rejects.toThrow(/NOT_FOUND/);
+
+    // PAT path (also expects NOT_FOUND, not FORBIDDEN)
+    mockOwnerLookup(null);
+    const patTool = forgeProjectsUpdateTool(patCtx({ scopes: ['read', 'write'] }));
+    await expect(
+      patTool.handler({ projectId: PROJECT_A, patch: { name: 'no' } }),
+    ).rejects.toThrow(/NOT_FOUND/);
     expect(updateImpl).not.toHaveBeenCalled();
   });
 
@@ -478,20 +571,43 @@ describe('forge_projects.update', () => {
     expect(updateImpl).not.toHaveBeenCalled();
   });
 
-  it('PAT with allowlist miss is refused with NOT_FOUND (no leak)', async () => {
+  it('PAT with allowlist miss is refused with NOT_FOUND without touching the DB', async () => {
     const tool = forgeProjectsUpdateTool(
       patCtx({ scopes: ['read', 'write'], projectIds: [PROJECT_B] }),
     );
     await expect(
       tool.handler({ projectId: PROJECT_A, patch: { name: 'no' } }),
     ).rejects.toThrow(/NOT_FOUND/);
+    // Short-circuit invariant: a probing PAT must not see the latency of a
+    // DB lookup leak project existence outside its allowlist.
+    expect(selectImpl).not.toHaveBeenCalled();
     expect(updateImpl).not.toHaveBeenCalled();
   });
 
-  it('empty patch is rejected at the schema layer', async () => {
+  it('empty patch is rejected by Zod refine (not by downstream SQL)', async () => {
     const tool = forgeProjectsUpdateTool(deviceCtx());
+    // Pin the throw site: must be the schema refine, not a Drizzle SQL
+    // error from set({}). If a future refactor breaks the refine, the
+    // empty-updates SQL bug would re-emerge and this exact message would
+    // disappear.
     await expect(
       tool.handler({ projectId: PROJECT_A, patch: {} }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/patch must have at least one defined field/);
+    expect(selectImpl).not.toHaveBeenCalled();
+  });
+
+  it('patch with only explicit-undefined values is rejected by refine (empty-SET guard)', async () => {
+    // Zod v4 .strict() does NOT strip explicit-undefined values, so
+    // `{name: undefined}` would pass `Object.keys.length > 0`. The refine
+    // is now on Object.values to catch this.
+    const tool = forgeProjectsUpdateTool(deviceCtx());
+    await expect(
+      tool.handler({
+        projectId: PROJECT_A,
+        patch: { name: undefined as unknown as string },
+      }),
+    ).rejects.toThrow(/patch must have at least one defined field/);
+    expect(selectImpl).not.toHaveBeenCalled();
+    expect(updateImpl).not.toHaveBeenCalled();
   });
 });

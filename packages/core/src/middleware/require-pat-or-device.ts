@@ -50,15 +50,30 @@ export type PrincipalVars = {
  * resulting 404 surfaces as a misleading "Invalid OAuth error response:
  * ZodError" instead of the real auth failure. The error.ts handler reads
  * `cause.wwwAuthenticate` and attaches the header before responding.
+ *
+ * Three challenge shapes per RFC 6750 §3:
+ *   - default (no options) → `Bearer realm="forge-mcp"` — no credentials
+ *     presented, client should send some.
+ *   - `invalidRequest` → `…, error="invalid_request"` — credentials
+ *     presented but the Authorization header is malformed (e.g. empty
+ *     token, non-Bearer scheme). Tells spec-aware clients to fix the
+ *     header rather than retry the same value.
+ *   - `invalidToken` → `…, error="invalid_token"` — Bearer token shape is
+ *     valid but the token itself was rejected by verify*.
  */
-const unauth = (message: string, options?: { invalidToken?: boolean }) =>
+const unauth = (
+  message: string,
+  options?: { invalidToken?: boolean; invalidRequest?: boolean },
+) =>
   new HTTPException(401, {
     message,
     cause: {
       code: 'UNAUTHENTICATED',
       wwwAuthenticate: options?.invalidToken
         ? 'Bearer realm="forge-mcp", error="invalid_token"'
-        : 'Bearer realm="forge-mcp"',
+        : options?.invalidRequest
+          ? 'Bearer realm="forge-mcp", error="invalid_request"'
+          : 'Bearer realm="forge-mcp"',
     },
   });
 
@@ -170,7 +185,7 @@ export const requirePatOrDevice = (): MiddlewareHandler<{ Variables: PrincipalVa
     if (!header) throw unauth('authentication required');
     const match = /^Bearer\s+(.+)$/i.exec(header);
     const token = match?.[1]?.trim();
-    if (!token) throw unauth('invalid authorization header');
+    if (!token) throw unauth('invalid authorization header', { invalidRequest: true });
 
     if (isPatLike(token)) {
       const verified = await verifyPat(token);

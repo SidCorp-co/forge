@@ -121,13 +121,29 @@ describe('requirePatOrDevice middleware (ISS-150)', () => {
     expect(res.headers.get('WWW-Authenticate')).toBe('Bearer realm="forge-mcp"');
   });
 
-  it('returns 401 with bearer challenge for a non-Bearer scheme', async () => {
+  it('returns 401 with invalid_request challenge for a non-Bearer scheme', async () => {
     const app = makeApp();
     const res = await app.request('/whoami', {
       headers: { authorization: 'Basic abc123' },
     });
     expect(res.status).toBe(401);
-    expect(res.headers.get('WWW-Authenticate')).toBe('Bearer realm="forge-mcp"');
+    // Credentials WERE presented but in the wrong scheme — RFC 6750 §3 says
+    // emit invalid_request so spec-aware clients fix the header rather than
+    // retry the same value, and so MCP clients suppress OAuth DCR fallback.
+    expect(res.headers.get('WWW-Authenticate')).toBe(
+      'Bearer realm="forge-mcp", error="invalid_request"',
+    );
+  });
+
+  it('returns 401 with invalid_request challenge for "Bearer " with empty token', async () => {
+    const app = makeApp();
+    const res = await app.request('/whoami', {
+      headers: { authorization: 'Bearer ' },
+    });
+    expect(res.status).toBe(401);
+    expect(res.headers.get('WWW-Authenticate')).toBe(
+      'Bearer realm="forge-mcp", error="invalid_request"',
+    );
   });
 
   it('returns 401 with invalid_token challenge when verifyPat returns null for a PAT-shaped token', async () => {

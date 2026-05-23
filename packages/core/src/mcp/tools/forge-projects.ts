@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import {
@@ -8,10 +8,9 @@ import {
   projects,
   users,
 } from '../../db/schema.js';
-import { isUniqueViolation } from '../../lib/db-errors.js';
+import { isUniqueViolation, uniqueViolationConstraint } from '../../lib/db-errors.js';
 import {
   type ContextScopedMcpToolFactory,
-  assertPrincipalIsAdmin,
   principalUserId,
   zodToMcpSchema,
 } from './lib.js';
@@ -158,6 +157,13 @@ const createInputSchema = z
  * path to provision a project — `forge_admin_projects.create` requires
  * `users.isCeo=true`, and the REST `POST /api/projects` is session-JWT only).
  *
+ * Surface superset of REST: REST `createProjectSchema` (projects/routes.ts)
+ * accepts only slug+name and forces description/repoPath/baseBranch/
+ * productionBranch through a follow-up PATCH. MCP collapses both steps so
+ * PAT-only clients (Cursor, Cline, Claude Code) can provision in one call —
+ * the security model is unchanged because the caller becomes owner of the
+ * just-created project, which is the same gate REST's PATCH would apply.
+ *
  * Gates:
  *   - PAT principal must carry the `write` scope. Read-only PATs are refused
  *     with FORBIDDEN_SCOPE so a leaked read-token can't mint projects.
@@ -166,13 +172,17 @@ const createInputSchema = z
  *     letting it create new ones would silently escape that scope.
  *   - Device principals always pass these checks (no scope vector).
  *
+ * Returns the apiKey alongside identity fields: the caller IS the new owner,
+ * so they need the key to install the embeddable widget or pair an MCP
+ * device. REST POST /api/projects also returns apiKey (routes.ts:148-154).
+ *
  * The created project is always owned by the principal's underlying user —
  * cross-tenant ownership transfer stays on `forge_admin_projects.create`.
  */
 export const forgeProjectsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.create',
   description:
-    "Create a new project owned by the calling principal. PAT principals must carry the `write` scope and have a null `projectIds` allowlist (scoped PATs are refused). Mirrors REST POST /api/projects: inserts the project, seeds the owner's project_members row, and returns id/slug/name/ownerId/createdAt.",
+    "Create a new project owned by the calling principal. Accepts slug+name plus optional initial description/repoPath/baseBranch/productionBranch (superset of REST POST /api/projects, which forces these through a follow-up PATCH). PAT principals must carry the `write` scope and have a null `projectIds` allowlist (scoped PATs are refused). Returns id/slug/name/ownerId/apiKey/createdAt — the apiKey is needed for widget install and device pairing.",
   inputSchema: zodToMcpSchema(createInputSchema),
   handler: async (args) => {
     const input = createInputSchema.parse(args);
@@ -209,6 +219,7 @@ export const forgeProjectsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
             slug: projects.slug,
             name: projects.name,
             ownerId: projects.ownerId,
+            apiKey: projects.apiKey,
             createdAt: projects.createdAt,
           });
         const project = inserted[0];
@@ -222,8 +233,16 @@ export const forgeProjectsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
       });
       return { project: created };
     } catch (err) {
+      // `isUniqueViolation` matches any SQLSTATE 23505 across the projects /
+      // projectMembers / api_key constraints; disambiguate by constraint name
+      // so an apiKey collision (or any future unique index on `projects`)
+      // isn't misreported as SLUG_TAKEN. With drizzle-orm/postgres-js the
+      // constraint name lives on `err.cause.constraint_name` (the helper
+      // walks the wrapper for us).
       if (isUniqueViolation(err)) {
-        throw new Error('BAD_REQUEST: SLUG_TAKEN: slug already in use');
+        if (uniqueViolationConstraint(err) === 'projects_slug_unique') {
+          throw new Error('BAD_REQUEST: SLUG_TAKEN: slug already in use');
+        }
       }
       throw err;
     }
@@ -242,7 +261,15 @@ const updateInputSchema = z
         productionBranch: z.string().trim().max(100).nullable().optional(),
       })
       .strict()
-      .refine((o) => Object.keys(o).length > 0, { message: 'patch must have at least one field' }),
+      // Zod v4 `.strict()` only rejects unknown keys; it does NOT strip
+      // explicit-undefined values from optional fields. So `{name: undefined}`
+      // would slip past an `Object.keys(o).length > 0` guard (one key) but
+      // the downstream `!== undefined` filter strips every field, leaving an
+      // empty Drizzle SET and producing malformed SQL. Refine on VALUES so
+      // the schema's intent (require at least one real field) matches runtime.
+      .refine((o) => Object.values(o).some((v) => v !== undefined), {
+        message: 'patch must have at least one defined field',
+      }),
   })
   .strict();
 
@@ -252,14 +279,17 @@ const updateInputSchema = z
  * expose to MCP. Sensitive fields (webhookSecret, apiKey, agentConfig,
  * previewDeploy, defaultDeviceId) intentionally stay on the REST handler.
  *
- * Membership is enforced via `assertPrincipalIsAdmin`, which already handles
- * PAT allowlist narrowing and translates allowlist misses to NOT_FOUND so
- * the project namespace isn't enumerable.
+ * Authorization is OWNER-ONLY, matching REST PATCH /api/projects/:id
+ * (projects/routes.ts:349-351 — `project.ownerId === userId || role === 'owner'`).
+ * The `admin` projectMembers role can manage members/labels via REST but
+ * intentionally cannot mutate project settings; the MCP surface honors the
+ * same rule so the REST contract stays the single source of truth on who
+ * can edit settings. PAT principals additionally need the `write` scope.
  */
 export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.update',
   description:
-    'Update project settings (name, description, repoPath, baseBranch, productionBranch). Caller must be owner or admin on the project; PAT principals must additionally carry the `write` scope. Sensitive fields (webhookSecret, apiKey, agentConfig, previewDeploy) stay on REST.',
+    'Update project settings (name, description, repoPath, baseBranch, productionBranch). Caller must be the project owner (members with role=admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. Sensitive fields (webhookSecret, apiKey, agentConfig, previewDeploy, defaultDeviceId) stay on REST.',
   inputSchema: zodToMcpSchema(updateInputSchema),
   handler: async (args) => {
     const input = updateInputSchema.parse(args);
@@ -269,7 +299,44 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
       throw new Error('FORBIDDEN_SCOPE: requires write scope on the PAT');
     }
 
-    await assertPrincipalIsAdmin(principal, input.projectId);
+    // PAT allowlist gate first (translates miss to NOT_FOUND so the
+    // project namespace isn't enumerable — mirrors assertPrincipalIs*).
+    if (
+      principal.kind === 'pat' &&
+      principal.projectIds !== null &&
+      !principal.projectIds.includes(input.projectId)
+    ) {
+      throw new Error('NOT_FOUND: project not found or not accessible');
+    }
+
+    const userId = principalUserId(principal);
+    const [proj] = await db
+      .select({ ownerId: projects.ownerId })
+      .from(projects)
+      .where(eq(projects.id, input.projectId))
+      .limit(1);
+    if (!proj) throw new Error('NOT_FOUND: project not found or not accessible');
+
+    if (proj.ownerId !== userId) {
+      // Not the primary owner — projects can have multiple `owner`-role
+      // members via projectMembers; allow those, refuse everyone else.
+      const [member] = await db
+        .select({ role: projectMembers.role })
+        .from(projectMembers)
+        .where(
+          and(
+            eq(projectMembers.projectId, input.projectId),
+            eq(projectMembers.userId, userId),
+          ),
+        )
+        .limit(1);
+      // Non-member returns NOT_FOUND (not FORBIDDEN) to avoid leaking
+      // existence; project-member-not-owner gets the truthful FORBIDDEN.
+      if (!member) throw new Error('NOT_FOUND: project not found or not accessible');
+      if (member.role !== 'owner') {
+        throw new Error('FORBIDDEN: requires project owner (admin role is insufficient)');
+      }
+    }
 
     const updates: Record<string, unknown> = {};
     if (input.patch.name !== undefined) updates.name = input.patch.name;

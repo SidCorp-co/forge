@@ -49,6 +49,23 @@ function makeApp() {
       },
     });
   });
+  app.get('/http-ex-500-www-auth', () => {
+    throw new HTTPException(500, {
+      message: 'storage down',
+      cause: {
+        code: 'INTERNAL_ERROR',
+        wwwAuthenticate: 'Bearer realm="forge-mcp"',
+      },
+    });
+  });
+  app.get('/http-ex-error-cause', () => {
+    // Simulate a Postgres / fs Error with a `.code` property bubbling up
+    // through a wrapping HTTPException. The error handler must NOT propagate
+    // `enoent`-style codes into the response body's `code` field — that
+    // would bypass the documented enum and leak implementation detail.
+    const fsError = Object.assign(new Error('disk gone'), { code: 'ENOENT' });
+    throw new HTTPException(500, { message: 'persist failed', cause: fsError });
+  });
   app.notFound(notFoundHandler);
   app.onError(errorHandler);
   return app;
@@ -113,5 +130,24 @@ describe('error middleware', () => {
   it('HTTPException without cause.wwwAuthenticate sets no WWW-Authenticate header', async () => {
     const res = await makeApp().request('/http-ex');
     expect(res.headers.get('WWW-Authenticate')).toBeNull();
+  });
+
+  it('cause.wwwAuthenticate is suppressed on non-401 statuses (RFC 7235)', async () => {
+    const res = await makeApp().request('/http-ex-500-www-auth');
+    expect(res.status).toBe(500);
+    // The handler must not leak a Bearer challenge on a 5xx — challenge
+    // headers are 401-specific and clients seeing one on a 500 may retry
+    // with credentials they shouldn't.
+    expect(res.headers.get('WWW-Authenticate')).toBeNull();
+  });
+
+  it('cause that is an Error instance does NOT propagate its .code into the response body', async () => {
+    const res = await makeApp().request('/http-ex-error-cause');
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as { code: string; message: string };
+    // ENOENT comes from Node's fs Error — must be filtered out so the
+    // response body's `code` stays within the documented enum.
+    expect(body.code).toBe('INTERNAL_ERROR');
+    expect(body.code).not.toBe('ENOENT');
   });
 });
