@@ -55,7 +55,7 @@ export interface HookPayloads {
     projectId: string;
     issueId: string | null;
     type: JobType;
-    failureKind: 'transient' | 'permanent' | 'unknown' | null;
+    failureKind: 'transient' | 'permission' | 'permanent' | 'timeout' | 'unknown' | null;
     failureReason: string | null;
   };
   jobCompleted: {

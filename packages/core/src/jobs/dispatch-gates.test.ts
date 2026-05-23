@@ -195,11 +195,14 @@ describe('pickNextDispatchableJobForProject', () => {
   });
 
   // ISS-162 acceptance: the picker must contain NO time-based debouncer.
-  // The only legitimate temporal predicate is `valid_until > now()` on
-  // dependency edges (edge expiry — orthogonal to gating). A future
-  // contributor adding `gate_at + N seconds` or a "seen N seconds ago"
-  // exclusion should trip this assertion deliberately.
-  it('contains no time-based debouncer beyond dependency-edge valid_until expiry', async () => {
+  // The only legitimate temporal predicates are:
+  //   • `valid_until > now()` on dependency edges (edge expiry)
+  //   • `retry_after_at <= now()` on jobs (ISS-197 cooldown gate — the
+  //     retry engine sets a future timestamp to honour provider
+  //     Retry-After; the DB-side gate hides the row until it lapses).
+  // A future contributor adding `gate_at + N seconds` or a "seen N seconds
+  // ago" exclusion should trip this assertion deliberately.
+  it('contains no time-based debouncer beyond dependency-edge valid_until / retry_after_at expiry', async () => {
     mockProjectAgentConfigOnce(null);
     dbExecute.mockResolvedValueOnce([]);
     await pickNextDispatchableJobForProject('p1');
@@ -208,10 +211,24 @@ describe('pickNextDispatchableJobForProject', () => {
     expect(text).not.toMatch(/gate_at/);
     expect(text).not.toMatch(/gate_reason/);
 
-    // Strip the dependency-edge valid_until clauses; whatever remains must
-    // not contain any `now() - interval` or `seconds` predicate.
-    const stripped = text.replace(/valid_until\s+IS\s+NULL\s+OR\s+valid_until\s*>\s*now\(\)/g, '');
+    // Strip the dependency-edge valid_until and the retry-after cooldown
+    // clauses; whatever remains must not contain any `now() - interval`
+    // or `seconds` predicate.
+    const stripped = text
+      .replace(/valid_until\s+IS\s+NULL\s+OR\s+valid_until\s*>\s*now\(\)/g, '')
+      .replace(/j\.retry_after_at\s+IS\s+NULL\s+OR\s+j\.retry_after_at\s*<=\s*now\(\)/g, '');
     expect(stripped).not.toMatch(/now\(\)\s*-\s*interval/);
     expect(stripped).not.toMatch(/seconds/i);
+  });
+
+  // ISS-197 — verify the picker emits the retry_after_at cooldown gate.
+  it('SQL inlines the retry_after_at cooldown gate (ISS-197)', async () => {
+    mockProjectAgentConfigOnce(null);
+    dbExecute.mockResolvedValueOnce([]);
+    await pickNextDispatchableJobForProject('p1');
+    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+    expect(text).toMatch(
+      /j\.retry_after_at\s+IS\s+NULL\s+OR\s+j\.retry_after_at\s*<=\s*now\(\)/,
+    );
   });
 });

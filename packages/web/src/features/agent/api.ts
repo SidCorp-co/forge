@@ -75,7 +75,39 @@ export interface PageContext {
   issueStatus?: string;
 }
 
-export type AgentSessionStatus = 'idle' | 'queued' | 'running' | 'completed' | 'failed';
+// ISS-197 — `completed_via_recovery` / `cancelled_stale` are non-failure
+// terminal markers written by the recovery-by-verification path. UI filters
+// treat them as success states, NOT failures.
+export type AgentSessionStatus =
+  | 'idle'
+  | 'queued'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'completed_via_recovery'
+  | 'cancelled_stale';
+
+// ISS-197 — populated by the retry engine on every failure. Drives the
+// sessions-panel badge: "Failed 3x (2 transient, 1 timeout)".
+export type FailureKind =
+  | 'transient'
+  | 'permission'
+  | 'permanent'
+  | 'timeout'
+  | 'unknown';
+
+export interface RecoveryStats {
+  totalFailures: number;
+  byKind: {
+    transient: number;
+    permission: number;
+    permanent: number;
+    timeout: number;
+  };
+  lastFailureAt: string;
+  lastFailureKind: FailureKind;
+  autoRetries: number;
+}
 
 // Synthetic UI-only state derived from heartbeat freshness. Backend
 // persists `running`; the `stalled` distinction is presentational only.
@@ -98,6 +130,13 @@ export type SessionFailureReason =
   | 'project_full'
   | 'runner_full';
 
+export interface PipelineHealth {
+  retryCount: number;
+  recoveryStats: RecoveryStats;
+  lastError: { message: string; ts: string; jobId: string | null } | null;
+  updatedAt: string;
+}
+
 export interface AgentSession {
   documentId: string;
   title: string;
@@ -114,6 +153,9 @@ export interface AgentSession {
   startedAt?: string | null;
   lastHeartbeatAt?: string | null;
   failureReason?: SessionFailureReason | string | null;
+  // ISS-197 — recovery counters populated by the retry engine on every
+  // failure. Null on rows that haven't failed yet.
+  pipelineHealth?: PipelineHealth | null;
   createdAt: string;
   updatedAt: string;
 }

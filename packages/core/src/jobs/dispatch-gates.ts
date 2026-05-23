@@ -175,6 +175,10 @@ export async function pickNextDispatchableJobForProject(
       AND j.status = 'queued'
       AND j.type <> 'pm'
       AND r.status = 'running'
+      -- ISS-197 — L1 cooldown gate. retry_after_at is set by the retry
+      -- engine when honouring a provider Retry-After hint; until the
+      -- timestamp passes, the job is invisible to the picker.
+      AND (j.retry_after_at IS NULL OR j.retry_after_at <= now())
       AND (i.id IS NULL OR i.manual_hold IS NOT TRUE)
       AND NOT EXISTS (
         SELECT 1 FROM agent_sessions s

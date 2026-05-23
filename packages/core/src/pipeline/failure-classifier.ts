@@ -1,9 +1,9 @@
 /**
- * Pipeline failure classifier (Phase H, ISS-306).
+ * Pipeline failure classifier.
  *
  * Maps a job-failure error string + optional structured metadata to a
- * `kind` that the sweeper + scheduleRetry use to decide whether the
- * failure is worth retrying.
+ * `kind` that the sweeper + scheduleAutoRetryWithVerify use to decide
+ * whether the failure is worth retrying.
  *
  * `version` is bumped whenever the patterns below change semantically.
  * Persisted on `jobs.classifier_version` so that, when patterns evolve,
@@ -17,40 +17,68 @@
  *     • transient: timeout / network errors / 5xx / 429 / runner stale
  *     • unknown: anything else (default; gets one cautious retry then
  *       sweeper treats as permanent)
+ *   v2 — ISS-197 split permission / timeout out of permanent / transient.
+ *     • permission: 401/403, authentication_error, permission_error,
+ *       permission_denied. Non-retryable like permanent.
+ *     • timeout: timeout / ETIMEDOUT / heartbeat stale / no progress.
+ *       Retryable like transient.
+ *     • retryAfter: Date | null extracted from
+ *       `meta.headers['retry-after']` (RFC 7231) for the retry engine to
+ *       honour rate limits before scheduling.
  */
 
-export const CLASSIFIER_VERSION = 1;
+import { parseRetryAfter, readRetryAfterHeader } from './retry-after-parser.js';
 
-export type FailureKind = 'transient' | 'permanent' | 'unknown';
+export const CLASSIFIER_VERSION = 2;
+
+export type FailureKind =
+  | 'transient'
+  | 'permission'
+  | 'permanent'
+  | 'timeout'
+  | 'unknown';
 
 export interface ClassifyResult {
   kind: FailureKind;
   reason: string;
   meta: Record<string, unknown> | null;
   version: number;
+  /** Provider Retry-After hint as an absolute timestamp, or null. */
+  retryAfter: Date | null;
 }
 
+const PERMISSION_PATTERNS: ReadonlyArray<RegExp> = [
+  /\b(401|403)\b/,
+  /\bunauthorized\b/i,
+  /\bforbidden\b/i,
+  /\bpermission[ _-]?denied\b/i,
+];
+
+const TIMEOUT_PATTERNS: ReadonlyArray<RegExp> = [
+  /\btimeout\b/i,
+  /\bETIMEDOUT\b/i,
+  /no[ _-]?progress[ _-]?for[ _-]/i,
+  /heartbeat[ _-]?(missing|stale)/i,
+];
+
+// Subpatterns moved to PERMISSION_PATTERNS / TIMEOUT_PATTERNS above are
+// intentionally absent here so each text matches exactly one bucket.
 const PERMANENT_PATTERNS: ReadonlyArray<RegExp> = [
   /content[ _-]?filter(ing)?/i,
   /invalid_request_error/i,
-  /\b(401|403)\b|\bunauthorized\b|\bforbidden\b/i,
   /\bvalidation[ _-]?error\b|\bschema[ _-]?error\b/i,
   /\bquota[ _-]?exceeded\b/i,
   /\bbilling[ _-]?(error|required)\b/i,
-  /\bpermission[ _-]?denied\b/i,
   /\bmissing_prompt_string\b/i,
   /\brunner_unsupported_type\b/i,
 ];
 
 const TRANSIENT_PATTERNS: ReadonlyArray<RegExp> = [
-  /\btimeout\b|\bETIMEDOUT\b/i,
   /\bECONN(RESET|REFUSED|ABORTED)\b/i,
   /\bEPIPE\b|\bnetwork[ _-]?error\b/i,
   /\b50[0-9]\b|\bservice[ _-]?unavailable\b|\bbad[ _-]?gateway\b/i,
   /\b429\b|\brate[ _-]?limit/i,
   /runner (offline|stale|disconnected)/i,
-  /no[ _-]?progress[ _-]?for[ _-]/i,
-  /heartbeat[ _-]?(missing|stale)/i,
   /pg-?boss[ _-]?(error|timeout)/i,
 ];
 
@@ -58,32 +86,42 @@ interface ClassifyInput {
   /** Free-form error excerpt (jobs.error or job_events result.result). */
   error?: string | null | undefined;
   /** Optional structured metadata from the runner stream (e.g. Anthropic
-   * response: `{type:'error', error:{type:'invalid_request_error',...}}`). */
+   * response: `{type:'error', error:{type:'invalid_request_error',...}}`).
+   * May also carry `headers` from the provider response for Retry-After. */
   meta?: Record<string, unknown> | null | undefined;
 }
 
 /**
- * Classify a failure into transient / permanent / unknown plus a short
- * human-readable reason. Always returns a verdict — never throws — so
- * call sites can rely on `kind` for branching without a fallback.
+ * Classify a failure into transient / permission / permanent / timeout /
+ * unknown plus a short human-readable reason and an optional Retry-After
+ * timestamp. Always returns a verdict — never throws.
  *
- * Match order: structured `meta.error.type` (highest signal) → text
- * patterns (permanent before transient because permanent indicators are
- * more specific) → unknown.
+ * Match order: structured `meta.error.type` → PERMISSION → TIMEOUT →
+ * PERMANENT → TRANSIENT → unknown. Permission/timeout precede the broader
+ * permanent/transient buckets because their patterns are more specific.
  */
 export function classifyFailure(input: ClassifyInput): ClassifyResult {
   const text = (input.error ?? '').trim();
   const meta = input.meta ?? null;
   const reasonExcerpt = text.length > 200 ? `${text.slice(0, 197)}…` : text;
+  const retryAfter = extractRetryAfter(meta);
 
-  // Structured signal: Anthropic / openai-style errors include a stable
-  // `error.type` we can trust over text matching.
   const metaErrorType = readMetaErrorType(meta);
   if (metaErrorType) {
     if (
-      metaErrorType === 'invalid_request_error' ||
       metaErrorType === 'authentication_error' ||
-      metaErrorType === 'permission_error' ||
+      metaErrorType === 'permission_error'
+    ) {
+      return {
+        kind: 'permission',
+        reason: `${metaErrorType}: ${truncate(extractMetaMessage(meta) ?? reasonExcerpt, 150)}`,
+        meta,
+        version: CLASSIFIER_VERSION,
+        retryAfter,
+      };
+    }
+    if (
+      metaErrorType === 'invalid_request_error' ||
       metaErrorType === 'billing_error'
     ) {
       return {
@@ -91,6 +129,7 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
         reason: `${metaErrorType}: ${truncate(extractMetaMessage(meta) ?? reasonExcerpt, 150)}`,
         meta,
         version: CLASSIFIER_VERSION,
+        retryAfter,
       };
     }
     if (
@@ -103,6 +142,31 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
         reason: `${metaErrorType}: ${truncate(extractMetaMessage(meta) ?? reasonExcerpt, 150)}`,
         meta,
         version: CLASSIFIER_VERSION,
+        retryAfter,
+      };
+    }
+  }
+
+  for (const pat of PERMISSION_PATTERNS) {
+    if (pat.test(text)) {
+      return {
+        kind: 'permission',
+        reason: reasonExcerpt || 'permission (pattern match)',
+        meta,
+        version: CLASSIFIER_VERSION,
+        retryAfter,
+      };
+    }
+  }
+
+  for (const pat of TIMEOUT_PATTERNS) {
+    if (pat.test(text)) {
+      return {
+        kind: 'timeout',
+        reason: reasonExcerpt || 'timeout (pattern match)',
+        meta,
+        version: CLASSIFIER_VERSION,
+        retryAfter,
       };
     }
   }
@@ -114,6 +178,7 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
         reason: reasonExcerpt || 'permanent (pattern match)',
         meta,
         version: CLASSIFIER_VERSION,
+        retryAfter,
       };
     }
   }
@@ -125,6 +190,7 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
         reason: reasonExcerpt || 'transient (pattern match)',
         meta,
         version: CLASSIFIER_VERSION,
+        retryAfter,
       };
     }
   }
@@ -134,6 +200,7 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
     reason: reasonExcerpt || 'unclassified',
     meta,
     version: CLASSIFIER_VERSION,
+    retryAfter,
   };
 }
 
@@ -144,7 +211,6 @@ function readMetaErrorType(meta: Record<string, unknown> | null): string | null 
     const t = (e as { type?: unknown }).type;
     if (typeof t === 'string') return t;
   }
-  // Some runners flatten the error onto the root object.
   const t = (meta as { type?: unknown }).type;
   if (typeof t === 'string' && t !== 'result') return t;
   return null;
@@ -156,6 +222,33 @@ function extractMetaMessage(meta: Record<string, unknown> | null): string | null
   if (e?.message && typeof e.message === 'string') return e.message;
   const m = (meta as { message?: unknown }).message;
   return typeof m === 'string' ? m : null;
+}
+
+function extractRetryAfter(meta: Record<string, unknown> | null): Date | null {
+  if (!meta) return null;
+  // Common shapes: `{ headers: {...} }`, `{ response: { headers: {...} } }`,
+  // or `{ error: { headers: {...} } }`. Probe each.
+  const candidates: Array<Record<string, unknown> | undefined> = [];
+  const direct = (meta as { headers?: unknown }).headers;
+  if (direct && typeof direct === 'object') {
+    candidates.push(direct as Record<string, unknown>);
+  }
+  const resp = (meta as { response?: { headers?: unknown } }).response;
+  if (resp?.headers && typeof resp.headers === 'object') {
+    candidates.push(resp.headers as Record<string, unknown>);
+  }
+  const err = (meta as { error?: { headers?: unknown } }).error;
+  if (err?.headers && typeof err.headers === 'object') {
+    candidates.push(err.headers as Record<string, unknown>);
+  }
+  for (const headers of candidates) {
+    const raw = readRetryAfterHeader(headers);
+    if (raw) {
+      const parsed = parseRetryAfter(raw);
+      if (parsed) return parsed;
+    }
+  }
+  return null;
 }
 
 function truncate(s: string, n: number): string {

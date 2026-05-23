@@ -465,6 +465,10 @@ export const jobs = pgTable(
     attempts: integer('attempts').notNull().default(1),
     cancellationRequested: boolean('cancellation_requested').notNull().default(false),
     retryOf: uuid('retry_of').references((): AnyPgColumn => jobs.id, { onDelete: 'set null' }),
+    // ISS-197 — when set, dispatch gate L1 skips this row until now() >=
+    // retry_after_at. Written by the retry engine after a transient/timeout
+    // failure with an optional provider Retry-After hint; NULL otherwise.
+    retryAfterAt: timestamp('retry_after_at', { withTimezone: true }),
     // ISS-4: link to the observability `agent_sessions` row created by the
     // dispatcher so /pipeline + issue detail surfaces can render pipeline
     // jobs alongside interactive sessions. Bare uuid (no FK) to match the
@@ -475,7 +479,9 @@ export const jobs = pgTable(
     // re-fire (transient/unknown) or escalate (permanent). classifierVersion
     // pins the classifier rules at write time so old rows survive future
     // pattern changes without silent reclassification.
-    failureKind: text('failure_kind', { enum: ['transient', 'permanent', 'unknown'] }),
+    failureKind: text('failure_kind', {
+      enum: ['transient', 'permission', 'permanent', 'timeout', 'unknown'],
+    }),
     failureReason: text('failure_reason'),
     failureMeta: jsonb('failure_meta'),
     classifierVersion: integer('classifier_version'),
@@ -1463,7 +1469,19 @@ export const chatSessionsRelations = relations(chatSessions, ({ one }) => ({
   user: one(users, { fields: [chatSessions.userId], references: [users.id] }),
 }));
 
-export const agentSessionStatuses = ['idle', 'queued', 'running', 'completed', 'failed'] as const;
+// ISS-197 — `completed_via_recovery` / `cancelled_stale` are non-failure
+// terminal markers written by the recovery-by-verification path in
+// `jobs/retry.ts`. UI filters / analytics that partition on
+// agent_sessions.status treat them as success states, not failures.
+export const agentSessionStatuses = [
+  'idle',
+  'queued',
+  'running',
+  'completed',
+  'failed',
+  'completed_via_recovery',
+  'cancelled_stale',
+] as const;
 export type AgentSessionStatus = (typeof agentSessionStatuses)[number];
 
 // Terminal cause written to `agent_sessions.failure_reason`. Reserved for

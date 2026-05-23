@@ -2,6 +2,7 @@
 
 import { CheckCircle2, Clock, Hourglass, Loader2, XCircle } from 'lucide-react';
 import type { AgentSessionSummary } from '../../api';
+import { RecoveryStatsBadge } from './recovery-stats-badge';
 
 interface AgentRecentSessionsProps {
   sessions: AgentSessionSummary[];
@@ -21,7 +22,7 @@ export function AgentRecentSessions({ sessions, onSessionClick }: AgentRecentSes
             onClick={() => onSessionClick(s.documentId)}
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-container-low"
           >
-            {s.status === 'completed' ? (
+            {s.status === 'completed' || s.status === 'completed_via_recovery' ? (
               <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
             ) : s.status === 'running' ? (
               <Loader2 className="h-4 w-4 shrink-0 animate-spin text-info" />
@@ -29,10 +30,13 @@ export function AgentRecentSessions({ sessions, onSessionClick }: AgentRecentSes
               <Hourglass className="h-4 w-4 shrink-0 text-warning" />
             ) : s.status === 'failed' ? (
               <XCircle className="h-4 w-4 shrink-0 text-danger" />
+            ) : s.status === 'cancelled_stale' ? (
+              <Clock className="h-4 w-4 shrink-0 text-outline" />
             ) : (
               <Clock className="h-4 w-4 shrink-0 text-outline" />
             )}
             <span className="min-w-0 flex-1 truncate text-on-surface">{s.title}</span>
+            <RecoveryStatsBadge stats={s.pipelineHealth?.recoveryStats} />
             <span className="shrink-0 text-xs text-outline">
               {new Date(s.createdAt).toLocaleDateString()}
             </span>
