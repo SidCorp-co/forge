@@ -30,12 +30,17 @@ function statusToCode(status: number): string {
   }
 }
 
-function extractCause(cause: unknown): { code?: string; details?: unknown } {
+function extractCause(cause: unknown): {
+  code?: string;
+  details?: unknown;
+  wwwAuthenticate?: string;
+} {
   if (cause && typeof cause === 'object') {
     const obj = cause as Record<string, unknown>;
-    const out: { code?: string; details?: unknown } = {};
+    const out: { code?: string; details?: unknown; wwwAuthenticate?: string } = {};
     if (typeof obj.code === 'string') out.code = obj.code;
     if ('details' in obj) out.details = obj.details;
+    if (typeof obj.wwwAuthenticate === 'string') out.wwwAuthenticate = obj.wwwAuthenticate;
     return out;
   }
   return {};
@@ -46,7 +51,7 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
 
   if (err instanceof HTTPException) {
     const status = err.status;
-    const { code: causeCode, details } = extractCause(err.cause);
+    const { code: causeCode, details, wwwAuthenticate } = extractCause(err.cause);
     const body: ErrorBody = {
       code: causeCode ?? statusToCode(status),
       message: err.message || statusToCode(status),
@@ -61,6 +66,15 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
     // see in Sentry; 4xx are expected client errors and stay out.
     if (isSentryEnabled() && status >= 500) {
       captureToSentry(err, c, body.code);
+    }
+
+    // Bearer-only WWW-Authenticate suppresses the MCP HTTP transport's
+    // automatic fallback to OAuth Dynamic Client Registration on 401 — see
+    // require-pat-or-device.ts and the MCP spec §Authorization. Without it,
+    // a 401 from an invalid PAT/device token surfaces in Claude Code as a
+    // bogus "OAuth ZodError" instead of the real auth failure.
+    if (wwwAuthenticate) {
+      c.header('WWW-Authenticate', wwwAuthenticate);
     }
 
     return c.json(body, status);

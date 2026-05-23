@@ -40,6 +40,15 @@ function makeApp() {
   app.get('/boom', () => {
     throw new Error('kaboom');
   });
+  app.get('/http-ex-www-auth', () => {
+    throw new HTTPException(401, {
+      message: 'invalid personal access token',
+      cause: {
+        code: 'UNAUTHENTICATED',
+        wwwAuthenticate: 'Bearer realm="forge-mcp", error="invalid_token"',
+      },
+    });
+  });
   app.notFound(notFoundHandler);
   app.onError(errorHandler);
   return app;
@@ -88,5 +97,21 @@ describe('error middleware', () => {
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('NOT_FOUND');
     expect(body.message).toContain('/nope');
+  });
+
+  it('HTTPException cause.wwwAuthenticate is attached to the response', async () => {
+    const res = await makeApp().request('/http-ex-www-auth');
+    expect(res.status).toBe(401);
+    expect(res.headers.get('WWW-Authenticate')).toBe(
+      'Bearer realm="forge-mcp", error="invalid_token"',
+    );
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('UNAUTHENTICATED');
+    expect(body.message).toBe('invalid personal access token');
+  });
+
+  it('HTTPException without cause.wwwAuthenticate sets no WWW-Authenticate header', async () => {
+    const res = await makeApp().request('/http-ex');
+    expect(res.headers.get('WWW-Authenticate')).toBeNull();
   });
 });

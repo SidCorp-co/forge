@@ -42,8 +42,25 @@ export type PrincipalVars = {
   patTokenId?: string;
 };
 
-const unauth = (message: string) =>
-  new HTTPException(401, { message, cause: { code: 'UNAUTHENTICATED' } });
+/**
+ * Build a 401 that includes a Bearer-only WWW-Authenticate challenge. The
+ * header tells RFC 6750 / MCP clients "this is bearer-token-only, don't
+ * try OAuth Dynamic Client Registration" — without it, Claude Code's MCP
+ * HTTP transport silently falls back to POST /register on any 401 and the
+ * resulting 404 surfaces as a misleading "Invalid OAuth error response:
+ * ZodError" instead of the real auth failure. The error.ts handler reads
+ * `cause.wwwAuthenticate` and attaches the header before responding.
+ */
+const unauth = (message: string, options?: { invalidToken?: boolean }) =>
+  new HTTPException(401, {
+    message,
+    cause: {
+      code: 'UNAUTHENTICATED',
+      wwwAuthenticate: options?.invalidToken
+        ? 'Bearer realm="forge-mcp", error="invalid_token"'
+        : 'Bearer realm="forge-mcp"',
+    },
+  });
 
 /**
  * Two-dimensional rate-limit bucket for PAT use:
@@ -157,7 +174,7 @@ export const requirePatOrDevice = (): MiddlewareHandler<{ Variables: PrincipalVa
 
     if (isPatLike(token)) {
       const verified = await verifyPat(token);
-      if (!verified) throw unauth('invalid personal access token');
+      if (!verified) throw unauth('invalid personal access token', { invalidToken: true });
       const { row } = verified;
 
       const outcome = checkPatRateLimit(row.id, row.rateLimitMax);
@@ -191,7 +208,7 @@ export const requirePatOrDevice = (): MiddlewareHandler<{ Variables: PrincipalVa
     }
 
     const device = await verifyDeviceToken(token);
-    if (!device) throw unauth('invalid device token');
+    if (!device) throw unauth('invalid device token', { invalidToken: true });
     c.set('principal', { kind: 'device', device });
     await next();
   };
