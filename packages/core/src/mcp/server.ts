@@ -35,7 +35,11 @@ import { forgePmSnapshotTool } from './tools/forge-pm-snapshot.js';
 import { forgePmWriteDecisionTool } from './tools/forge-pm-write-decision.js';
 import { forgeProjectPipelineRunsTool } from './tools/forge-project-pipeline-runs.js';
 import { forgeProjectPmTool } from './tools/forge-project-pm.js';
-import { forgeProjectsListTool } from './tools/forge-projects.js';
+import {
+  forgeProjectsCreateTool,
+  forgeProjectsListTool,
+  forgeProjectsUpdateTool,
+} from './tools/forge-projects.js';
 import {
   forgeSkillsGetTool,
   forgeSkillsListRegistrationsTool,
@@ -74,6 +78,9 @@ import type { McpContext } from './tools/lib.js';
  *    lives on `write_decision.escalate`).
  *  - `forge_projects.list` — enumerate projects visible to the device owner
  *    (ISS-7, pre-req for ISS-9).
+ *  - `forge_projects.create` / `.update` — user-facing project provisioning
+ *    over MCP for non-CEO PAT principals (cross-tenant create stays on
+ *    `forge_admin_projects.create`).
  *  - `forge_health` — server snapshot: db/queue/ws + last seed + active jobs
  *    (ISS-7). Device-token only.
  */
@@ -172,6 +179,8 @@ export function createMcpServer(ctx: McpContext): Server {
     forgePipelineRunsResumeTool(ctx),
     forgePipelineRunsCancelTool(ctx),
     forgeProjectsListTool(ctx),
+    forgeProjectsCreateTool(ctx),
+    forgeProjectsUpdateTool(ctx),
     forgeProjectPmTool(ctx),
     forgePmSnapshotTool(ctx),
     forgePmGraphTool(ctx),

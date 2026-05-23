@@ -1,4 +1,5 @@
 import type { BaseEntity } from '@/lib/types';
+import type { ReleaseNotes } from '@forge/contracts';
 
 export type IssueStatus =
   | 'open'
@@ -81,6 +82,7 @@ export interface Issue extends BaseEntity {
   complexity?: IssueComplexity | null;
   manualHold?: boolean;
   pipelineHealth?: PipelineHealth;
+  releaseNotes?: ReleaseNotes | null;
 }
 
 export interface IssueAttachment {

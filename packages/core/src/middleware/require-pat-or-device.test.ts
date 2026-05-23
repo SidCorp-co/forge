@@ -93,6 +93,8 @@ describe('requirePatOrDevice middleware (ISS-150)', () => {
     expect(body.tokenId).toBe(testPatRow.id);
     expect(vi.mocked(verifyPat)).toHaveBeenCalledWith(PAT_TOKEN);
     expect(vi.mocked(verifyDeviceToken)).not.toHaveBeenCalled();
+    // Success path must not leak the bearer challenge header.
+    expect(res.headers.get('WWW-Authenticate')).toBeNull();
   });
 
   it('routes a non-PAT token to verifyDeviceToken and attaches a device principal', async () => {
@@ -106,25 +108,45 @@ describe('requirePatOrDevice middleware (ISS-150)', () => {
     expect(body.kind).toBe('device');
     expect(body.device.id).toBe(testDevice.id);
     expect(vi.mocked(verifyPat)).not.toHaveBeenCalled();
+    expect(res.headers.get('WWW-Authenticate')).toBeNull();
   });
 
-  it('returns 401 when no Authorization header is provided', async () => {
+  it('returns 401 with bearer challenge when no Authorization header is provided', async () => {
     const app = makeApp();
     const res = await app.request('/whoami');
     expect(res.status).toBe(401);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('UNAUTHENTICATED');
+    // Missing-token case: realm only, no error= (RFC 6750 §3).
+    expect(res.headers.get('WWW-Authenticate')).toBe('Bearer realm="forge-mcp"');
   });
 
-  it('returns 401 for a non-Bearer scheme', async () => {
+  it('returns 401 with invalid_request challenge for a non-Bearer scheme', async () => {
     const app = makeApp();
     const res = await app.request('/whoami', {
       headers: { authorization: 'Basic abc123' },
     });
     expect(res.status).toBe(401);
+    // Credentials WERE presented but in the wrong scheme — RFC 6750 §3 says
+    // emit invalid_request so spec-aware clients fix the header rather than
+    // retry the same value, and so MCP clients suppress OAuth DCR fallback.
+    expect(res.headers.get('WWW-Authenticate')).toBe(
+      'Bearer realm="forge-mcp", error="invalid_request"',
+    );
   });
 
-  it('returns 401 when verifyPat returns null for a PAT-shaped token', async () => {
+  it('returns 401 with invalid_request challenge for "Bearer " with empty token', async () => {
+    const app = makeApp();
+    const res = await app.request('/whoami', {
+      headers: { authorization: 'Bearer ' },
+    });
+    expect(res.status).toBe(401);
+    expect(res.headers.get('WWW-Authenticate')).toBe(
+      'Bearer realm="forge-mcp", error="invalid_request"',
+    );
+  });
+
+  it('returns 401 with invalid_token challenge when verifyPat returns null for a PAT-shaped token', async () => {
     vi.mocked(verifyPat).mockResolvedValue(null);
     const app = makeApp();
     const res = await app.request('/whoami', {
@@ -133,15 +155,23 @@ describe('requirePatOrDevice middleware (ISS-150)', () => {
     expect(res.status).toBe(401);
     // device path must not be tried — token shape is PAT.
     expect(vi.mocked(verifyDeviceToken)).not.toHaveBeenCalled();
+    // Token-present-but-invalid: error="invalid_token" tells MCP clients to
+    // surface the failure directly instead of falling back to OAuth DCR.
+    expect(res.headers.get('WWW-Authenticate')).toBe(
+      'Bearer realm="forge-mcp", error="invalid_token"',
+    );
   });
 
-  it('returns 401 when verifyDeviceToken returns null for a non-PAT token', async () => {
+  it('returns 401 with invalid_token challenge when verifyDeviceToken returns null for a non-PAT token', async () => {
     vi.mocked(verifyDeviceToken).mockResolvedValue(null);
     const app = makeApp();
     const res = await app.request('/whoami', {
       headers: { authorization: 'Bearer not-a-pat-or-device' },
     });
     expect(res.status).toBe(401);
+    expect(res.headers.get('WWW-Authenticate')).toBe(
+      'Bearer realm="forge-mcp", error="invalid_token"',
+    );
   });
 
   it('enforces per-PAT rate limit and returns 429 with Retry-After', async () => {

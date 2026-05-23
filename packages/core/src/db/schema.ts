@@ -1,5 +1,6 @@
 import { relations, sql } from 'drizzle-orm';
 import type { IssueBranchOverride } from '../branches/resolve.js';
+import type { ReleaseNotes } from '../issues/release-notes.js';
 import {
   type AnyPgColumn,
   boolean,
@@ -740,6 +741,11 @@ export const issues = pgTable(
     // when operator resumes (clears manualHold). Shape typed in TS via
     // IssueFailureContext but stored generic for forward-compat.
     failureContext: jsonb('failure_context'),
+    // ISS-199 — user-facing release notes. Written by forge-clarify per
+    // issue, read by forge-release at close time to append a CHANGELOG.md
+    // `## [Unreleased]` bullet. Shape validated at the app layer; see
+    // `release-notes.ts` for the zod schema.
+    releaseNotes: jsonb('release_notes').$type<ReleaseNotes | null>(),
     // ISS-137 — Layer 2 branch config (per-issue override) lives here under
     // `branchConfig`. Free-form jsonb so other per-issue settings can land
     // here later without further migrations. NULL = no override; see

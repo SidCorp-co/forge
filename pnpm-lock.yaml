@@ -135,6 +135,9 @@ importers:
 
   packages/dev:
     dependencies:
+      '@forge/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@forge/observability':
         specifier: workspace:*
         version: link:../observability

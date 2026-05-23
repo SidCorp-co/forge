@@ -1,3 +1,5 @@
+import type { ReleaseNotes } from "@forge/contracts";
+
 export type AIProvider = "anthropic" | "openai" | "gemini";
 
 export interface RepoConfig {
@@ -106,6 +108,7 @@ export interface Issue {
   agentSessions?: { id: number; documentId: string; title: string; status: string; createdAt: string }[];
   createdAt: string;
   relations?: { type: string; targetDocumentId: string; reason?: string; targetId?: number; targetTitle?: string; targetStatus?: string }[];
+  releaseNotes?: ReleaseNotes | null;
   updatedAt: string;
 }
 
