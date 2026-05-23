@@ -10,11 +10,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **You can now create and edit Forge projects directly from Claude Code, Cursor, or any other MCP client.** Previously the only paths were the web UI's "New project" button or `forge_admin_projects.create` (CEO-gated). Two new user-facing tools cover create + edit for any user with a PAT carrying the `write` scope.
+  *Technical: `forge_projects.create` + `forge_projects.update` in `packages/core/src/mcp/tools/forge-projects.ts`. Update is owner-gated to match REST `PATCH /api/projects/:id` (admin-role members refused — see Fixed). Create returns the new project's `apiKey` in the response so PAT-only clients can install MCP into it immediately. PATs with a `projectIds` allowlist are refused from create — allowlisted PATs are intentionally scoped to existing projects.*
+
+- **AI agents and CI scripts can now upload images and attachments to issues and comments without the old MCP base64 path.** A new `scripts/upload-image.sh` driver takes `--issue <id>` or `--comment <id>` plus a file path and uploads via multipart, returning a JSON array of attachment metadata. The Forge skills (`forge-code` / `forge-plan` / `forge-release`) now call it in place of the inline-base64 MCP path, which was capped at 10 files and inflated screenshot token cost ~1.3×.
+  *Technical: new `requireAnyAuth` middleware in `packages/core` accepts user JWT, PAT (`forge_pat_*`), or device token. Attachment upload routes are split out (`issueAttachmentRoutes`) and mounted before `issueRoutes` under `/api/issues` so they route through the combined middleware instead of `requireAuth + assertEmailVerified`. 21 tests cover all three principals on both endpoints. The script reads `FORGE_API_URL` + `FORGE_API_TOKEN` from env.*
+
+- **Issues now have a typed `releaseNotes` field for end-of-pipeline changelog generation.** The forge-clarify / forge-release skills can write a structured `{ section, summary, technical? }` object onto every issue; `forge-release` reads it at merge time and appends the bullet to `CHANGELOG.md`. Replaces the planned "parse a `## Release notes` section out of the description" workaround.
+  *Technical: migrations `0071_issues_release_notes.sql` (adds `release_notes jsonb`) + `0072_backfill_release_notes.sql` (idempotent lift of any pre-existing description-section data — zero hits on main). `ReleaseNotesSchema` (zod) lives in `packages/core/src/issues/release-notes.ts`, re-exported via `@forge/contracts` so web + desktop share the type. Section enum is `Added | Changed | Fixed | Removed | Security | Skip`. `forge-clarify` SKILL.md grows a "Draft Release Notes" step; `forge-release` skips on `null` / `Skip`.*
+
 ### Changed
+
+- **Pipelines now self-heal when an issue's status update commits but the in-process trigger hook never fires.** Until now, if the trigger handler crashed mid-fan-out — or a path other than the orchestrator (raw SQL UPDATE, MCP, custom script) mutated the status — the issue could sit idle in an auto-dispatch state forever. A transactional outbox produced by an AFTER UPDATE OF status trigger now ensures every status change reaches the orchestrator, and a 1-minute reconciler rescues anything still stuck.
+  *Technical: ISS-196. New `pipeline_outbox` table (migration `0070`) populated by an `AFTER UPDATE OF status` trigger on `issues`. Outbox worker (`packages/core/src/pipeline/outbox-worker.ts`) drains it and re-emits `hooks.emit('transition')`. Reconciler (`packages/core/src/pipeline/reconciler.ts`) sweeps stuck-at-auto-status issues every 60 s and emits a Sentry breadcrumb when outbox lag exceeds 5 min. A `pg_advisory_xact_lock` per issue serialises `considerEnqueue` across workers; pg-boss `singletonKey` becomes `${issueId}:${jobType}` so sibling outbox rows collapse to one queued message. Clean-break: `registerDispatchTickBackstop` removed; no feature flags or fallback path.*
 
 ### Removed
 
 ### Fixed
+
+- **Connecting Claude Code / Cursor / Cline to the Forge MCP server now reports the actual auth error instead of "Invalid OAuth error response: ZodError".** A 401 from `POST /mcp` — typically an expired or wrong PAT — used to silently trigger OAuth Dynamic Client Registration, which then 404'd on `/register`; users saw the misleading OAuth-parse error and couldn't tell their token was the real problem. The 401 response now advertises plain Bearer auth via `WWW-Authenticate`, which tells spec-compliant clients to stop and surface the original 401.
+  *Technical: per RFC 6750 §3 + the MCP authorization spec, a Bearer-only `WWW-Authenticate` challenge suppresses the DCR fallback. Plumbed via `HTTPException.cause.wwwAuthenticate` so the central error handler attaches the header; gated on `status === 401` so future 5xx responses can't emit a challenge. Malformed Authorization headers (empty Bearer / non-Bearer scheme) use `error="invalid_request"` per the same spec.*
+
+- **`forge_projects.create` returns a clear `SLUG_TAKEN` error on duplicates instead of a raw Drizzle "Failed query".** The unique-violation helper was checking the top-level error code, but with `drizzle-orm/postgres-js` the SQLSTATE lives on `err.cause.code` — so duplicates leaked the underlying SQL error to the MCP client.
+  *Technical: `packages/core/src/lib/db-errors.ts` — `isUniqueViolation` walks both top-level and `cause`; new `uniqueViolationConstraint()` helper exposes the constraint name (e.g. `projects_slug_idx` vs `projects_api_key_unique`) so callers can disambiguate.*
+
+- **`forge_projects.update` over MCP is now owner-only, matching the REST PATCH endpoint.** The original gate used `assertPrincipalIsAdmin`, which also accepted `role='admin'` — letting admin-role members rewrite project settings via MCP while REST refused them.
+  *Technical: tightened to inline `project.ownerId === userId || role === 'owner'`; returns NOT_FOUND on non-members to avoid existence leaks. Separate bug fixed in the same pass: zod v4 `.strict()` doesn't strip explicit-`undefined` values, so the patch schema now refines on `Object.values(o).some(v => v !== undefined)` to prevent an empty-SET `UPDATE projects SET  WHERE id=$1`.*
 
 ### Security
 
