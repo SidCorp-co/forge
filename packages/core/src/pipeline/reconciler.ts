@@ -33,6 +33,15 @@ export async function runReconcilerOnce(): Promise<{ rescued: number; stale: num
   let rescued = 0;
   let stale = 0;
 
+  // Embed AUTO_DISPATCH_STATUSES as a parenthesised list of parameters via
+  // sql.join — passing the JS array directly into the template expands it as
+  // a record tuple, which Postgres can't cast to text[] (drizzle quirk caught
+  // by the ISS-196 forge-test smoke run).
+  const statusList = sql.join(
+    AUTO_DISPATCH_STATUSES.map((s) => sql`${s}`),
+    sql`, `,
+  );
+
   const stuck = await db.execute<{
     id: string;
     project_id: string;
@@ -42,7 +51,7 @@ export async function runReconcilerOnce(): Promise<{ rescued: number; stale: num
     SELECT i.id, i.project_id, i.status, p.owner_id
     FROM issues i
     INNER JOIN projects p ON p.id = i.project_id
-    WHERE i.status = ANY(${[...AUTO_DISPATCH_STATUSES]}::text[])
+    WHERE i.status IN (${statusList})
       AND i.manual_hold = false
       AND i.updated_at < now() - interval '${sql.raw(STUCK_ISSUE_INTERVAL)}'
       AND NOT EXISTS (
