@@ -42,8 +42,40 @@ export type PrincipalVars = {
   patTokenId?: string;
 };
 
-const unauth = (message: string) =>
-  new HTTPException(401, { message, cause: { code: 'UNAUTHENTICATED' } });
+/**
+ * Build a 401 that includes a Bearer-only WWW-Authenticate challenge. The
+ * header tells RFC 6750 / MCP clients "this is bearer-token-only, don't
+ * try OAuth Dynamic Client Registration" — without it, Claude Code's MCP
+ * HTTP transport silently falls back to POST /register on any 401 and the
+ * resulting 404 surfaces as a misleading "Invalid OAuth error response:
+ * ZodError" instead of the real auth failure. The error.ts handler reads
+ * `cause.wwwAuthenticate` and attaches the header before responding.
+ *
+ * Three challenge shapes per RFC 6750 §3:
+ *   - default (no options) → `Bearer realm="forge-mcp"` — no credentials
+ *     presented, client should send some.
+ *   - `invalidRequest` → `…, error="invalid_request"` — credentials
+ *     presented but the Authorization header is malformed (e.g. empty
+ *     token, non-Bearer scheme). Tells spec-aware clients to fix the
+ *     header rather than retry the same value.
+ *   - `invalidToken` → `…, error="invalid_token"` — Bearer token shape is
+ *     valid but the token itself was rejected by verify*.
+ */
+const unauth = (
+  message: string,
+  options?: { invalidToken?: boolean; invalidRequest?: boolean },
+) =>
+  new HTTPException(401, {
+    message,
+    cause: {
+      code: 'UNAUTHENTICATED',
+      wwwAuthenticate: options?.invalidToken
+        ? 'Bearer realm="forge-mcp", error="invalid_token"'
+        : options?.invalidRequest
+          ? 'Bearer realm="forge-mcp", error="invalid_request"'
+          : 'Bearer realm="forge-mcp"',
+    },
+  });
 
 /**
  * Two-dimensional rate-limit bucket for PAT use:
@@ -153,11 +185,11 @@ export const requirePatOrDevice = (): MiddlewareHandler<{ Variables: PrincipalVa
     if (!header) throw unauth('authentication required');
     const match = /^Bearer\s+(.+)$/i.exec(header);
     const token = match?.[1]?.trim();
-    if (!token) throw unauth('invalid authorization header');
+    if (!token) throw unauth('invalid authorization header', { invalidRequest: true });
 
     if (isPatLike(token)) {
       const verified = await verifyPat(token);
-      if (!verified) throw unauth('invalid personal access token');
+      if (!verified) throw unauth('invalid personal access token', { invalidToken: true });
       const { row } = verified;
 
       const outcome = checkPatRateLimit(row.id, row.rateLimitMax);
@@ -191,7 +223,7 @@ export const requirePatOrDevice = (): MiddlewareHandler<{ Variables: PrincipalVa
     }
 
     const device = await verifyDeviceToken(token);
-    if (!device) throw unauth('invalid device token');
+    if (!device) throw unauth('invalid device token', { invalidToken: true });
     c.set('principal', { kind: 'device', device });
     await next();
   };

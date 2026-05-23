@@ -30,12 +30,22 @@ function statusToCode(status: number): string {
   }
 }
 
-function extractCause(cause: unknown): { code?: string; details?: unknown } {
-  if (cause && typeof cause === 'object') {
+function extractCause(cause: unknown): {
+  code?: string;
+  details?: unknown;
+  wwwAuthenticate?: string;
+} {
+  // Reject Error instances (Node fs `ENOENT`, pg `23505`, libuv `EACCES`…).
+  // Their `.code` would otherwise be propagated into the response body's
+  // `code` field, leaking implementation detail and bypassing the documented
+  // enum (BAD_REQUEST, UNAUTHENTICATED, NOT_FOUND, …). Callers wanting to
+  // surface a custom code must pass a plain `cause` object.
+  if (cause && typeof cause === 'object' && !(cause instanceof Error)) {
     const obj = cause as Record<string, unknown>;
-    const out: { code?: string; details?: unknown } = {};
+    const out: { code?: string; details?: unknown; wwwAuthenticate?: string } = {};
     if (typeof obj.code === 'string') out.code = obj.code;
     if ('details' in obj) out.details = obj.details;
+    if (typeof obj.wwwAuthenticate === 'string') out.wwwAuthenticate = obj.wwwAuthenticate;
     return out;
   }
   return {};
@@ -46,7 +56,7 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
 
   if (err instanceof HTTPException) {
     const status = err.status;
-    const { code: causeCode, details } = extractCause(err.cause);
+    const { code: causeCode, details, wwwAuthenticate } = extractCause(err.cause);
     const body: ErrorBody = {
       code: causeCode ?? statusToCode(status),
       message: err.message || statusToCode(status),
@@ -61,6 +71,17 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
     // see in Sentry; 4xx are expected client errors and stay out.
     if (isSentryEnabled() && status >= 500) {
       captureToSentry(err, c, body.code);
+    }
+
+    // Bearer-only WWW-Authenticate suppresses the MCP HTTP transport's
+    // automatic fallback to OAuth Dynamic Client Registration on 401 — see
+    // require-pat-or-device.ts and the MCP spec §Authorization. Gated on 401
+    // because WWW-Authenticate is meaningless (and RFC-violating, per
+    // RFC 7235) on other statuses; if a future contributor adds
+    // `cause.wwwAuthenticate` to a 5xx for symmetry, we don't want it on
+    // the wire.
+    if (status === 401 && wwwAuthenticate) {
+      c.header('WWW-Authenticate', wwwAuthenticate);
     }
 
     return c.json(body, status);
