@@ -23,6 +23,7 @@ import { logger } from '../logger.js';
 import { recordActivityTx } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { ActiveJobConflictError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
+import { withActorContext } from '../pipeline/outbox-session.js';
 import { openIssueRun } from '../pipeline/runs.js';
 import {
   REOPEN_CAP,
@@ -222,22 +223,35 @@ issueExtrasRoutes.patch(
             skipReason = 'reopen_cap_exceeded';
           } else {
             const reopening = isReopenEntry(fromStatus, toStatus);
-            const [updated] = await db
-              .update(issues)
-              .set({
-                status: toStatus,
-                reopenCount: reopening
-                  ? sql`${issues.reopenCount} + 1`
-                  : issues.reopenCount,
-                updatedAt: sql`now()`,
-              })
-              .where(and(eq(issues.id, row.id), eq(issues.status, fromStatus)))
-              .returning({
-                id: issues.id,
-                status: issues.status,
-                reopenCount: issues.reopenCount,
-                updatedAt: issues.updatedAt,
-              });
+            // ISS-196 — UPDATE in its own tx so the trigger captures the
+            // user actor via SET LOCAL pipeline.actor_id. Outbox row is
+            // written + committed together with the status change.
+            const updated = await db.transaction((tx) =>
+              withActorContext(
+                tx,
+                { type: 'user', id: userId },
+                null,
+                async (t) => {
+                  const [u] = await t
+                    .update(issues)
+                    .set({
+                      status: toStatus,
+                      reopenCount: reopening
+                        ? sql`${issues.reopenCount} + 1`
+                        : issues.reopenCount,
+                      updatedAt: sql`now()`,
+                    })
+                    .where(and(eq(issues.id, row.id), eq(issues.status, fromStatus)))
+                    .returning({
+                      id: issues.id,
+                      status: issues.status,
+                      reopenCount: issues.reopenCount,
+                      updatedAt: issues.updatedAt,
+                    });
+                  return u;
+                },
+              ),
+            );
 
             if (!updated) {
               skipReason = 'stale';
@@ -245,14 +259,6 @@ issueExtrasRoutes.patch(
               touched = true;
               row.status = toStatus;
               row.reopenCount = updated.reopenCount;
-              await hooks.emit('transition', {
-                issueId: row.id,
-                projectId: row.projectId,
-                actor,
-                from: fromStatus,
-                to: toStatus,
-                reopenCount: updated.reopenCount,
-              });
               publishIssueStatusChange(row.projectId, {
                 issueId: row.id,
                 from: fromStatus,
@@ -429,7 +435,7 @@ issueExtrasRoutes.post(
     if (!job) throw new Error('jobs: insert returned no row');
 
     try {
-      await enqueueJob(job.id);
+      await enqueueJob({ jobId: job.id, issueId: issue.id, type: 'custom' });
     } catch (err) {
       logger.error({ err, jobId: job.id }, 'enrich: enqueueJob failed; row persisted');
     }

@@ -412,7 +412,7 @@ skillCrudRoutes.post(
           continue;
         }
         try {
-          await enqueueJob(job.id);
+          await enqueueJob({ jobId: job.id, type: 'custom' });
         } catch (err) {
           logger.error({ err, jobId: job.id }, 'skills.bulkPush: enqueueJob failed');
         }

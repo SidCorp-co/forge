@@ -24,12 +24,25 @@ const dbInsert = vi.fn(() => ({
   values: () => ({ returning: insertReturning }),
 }));
 
-vi.mock('../db/client.js', () => ({
-  db: {
+// ISS-196 — `considerEnqueue` wraps the find+insert critical section in
+// `db.transaction(tx => ...)` after taking `pg_advisory_xact_lock`. The tx
+// callback receives a tx with `execute` (for the lock) and `select`/`insert`
+// proxied to the same mocks (so `findActiveJob` and `insertAndEnqueueJob`
+// continue to see the same plumbing).
+const txExecute = vi.fn(async () => undefined);
+vi.mock('../db/client.js', () => {
+  const dbStub = {
     select: () => ({ from: () => ({ where: () => makeWhereChain() }) }),
     insert: dbInsert,
-  },
-}));
+    execute: txExecute,
+  };
+  return {
+    db: {
+      ...dbStub,
+      transaction: vi.fn(async (cb: (tx: typeof dbStub) => unknown) => cb(dbStub)),
+    },
+  };
+});
 
 const enqueueMock = vi.fn(async () => {});
 vi.mock('../jobs/enqueue.js', () => ({
@@ -176,7 +189,7 @@ describe('pipeline/orchestrator', () => {
     await bus.emit('transition', transition() as never);
 
     expect(dbInsert).toHaveBeenCalledTimes(1);
-    expect(enqueueMock).toHaveBeenCalledWith('new-job');
+    expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'new-job' }));
   });
 
   it('uses the registered skill name in the inserted job payload', async () => {
@@ -312,7 +325,7 @@ describe('pipeline/orchestrator', () => {
     );
 
     expect(dbInsert).toHaveBeenCalledTimes(1);
-    expect(enqueueMock).toHaveBeenCalledWith('job-x');
+    expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'job-x' }));
   });
 
   it('enqueues a clarify job on open→needs_info when autoClarify is true (ISS-171)', async () => {
@@ -328,7 +341,7 @@ describe('pipeline/orchestrator', () => {
     );
 
     expect(dbInsert).toHaveBeenCalledTimes(1);
-    expect(enqueueMock).toHaveBeenCalledWith('clarify-job');
+    expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'clarify-job' }));
   });
 
   it('does not enqueue on open→needs_info when autoClarify is false', async () => {
@@ -354,7 +367,7 @@ describe('pipeline/orchestrator', () => {
     await bus.emit('issueCreated', issueCreated() as never);
 
     expect(dbInsert).toHaveBeenCalledTimes(1);
-    expect(enqueueMock).toHaveBeenCalledWith('triage-job');
+    expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'triage-job' }));
   });
 
   it('does not enqueue on issueCreated when autoTriage is false', async () => {

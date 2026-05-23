@@ -35,12 +35,25 @@ const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn(() => ({ where: updateWhere }));
 
-const txUpdateWhere = vi.fn(async () => undefined);
+// txUpdateWhere supports BOTH a direct await (manual-hold / activity write
+// flows) AND `.returning(...)` (the ISS-196 status-UPDATE that flows through
+// withActorContext into `tx.update(issues)...returning(...)`).
+const txUpdateWhere = vi.fn(() => {
+  const thenable: PromiseLike<unknown> & { returning: typeof updateReturning } = {
+    returning: updateReturning,
+    then: (resolve, reject) =>
+      Promise.resolve(undefined).then(resolve as never, reject as never),
+  };
+  return thenable;
+});
 const txUpdateSet = vi.fn(() => ({ where: txUpdateWhere }));
 const txUpdate = vi.fn(() => ({ set: txUpdateSet }));
 const txInsertValues = vi.fn(async () => undefined);
 const txInsert = vi.fn(() => ({ values: txInsertValues }));
-const txProxy = { update: txUpdate, insert: txInsert };
+// ISS-196 — `withActorContext` calls `tx.execute(SELECT set_config(...))`
+// before the UPDATE; stub it so the in-memory db mock doesn't blow up.
+const txExecute = vi.fn(async () => undefined);
+const txProxy = { update: txUpdate, insert: txInsert, execute: txExecute };
 const transactionMock = vi.fn(async (cb: (tx: typeof txProxy) => Promise<unknown>) => cb(txProxy));
 
 const deleteWhere = vi.fn(async () => undefined);

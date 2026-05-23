@@ -57,7 +57,10 @@ describe('scheduleAutoRetryOnce', () => {
     const result = await scheduleAutoRetryOnce({ ...baseJob } as never, 'crashed');
     expect(result.scheduled).toBe(true);
     expect(result.newJobId).toBe('j2');
-    expect(enqueueMock).toHaveBeenCalledWith('j2', { startAfterSeconds: 60 });
+    expect(enqueueMock).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 'j2' }),
+      { startAfterSeconds: 60 },
+    );
 
     const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(inserted.retryOf).toBe('j1');

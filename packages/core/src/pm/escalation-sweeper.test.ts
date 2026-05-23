@@ -121,7 +121,9 @@ describe('runPmEscalationSweep', () => {
       cause: 'escalation-timeout',
     });
     expect((decisionValues.eventRef as Record<string, unknown>).parentDecisionId).toBe(DECISION_ID);
-    expect(enqueueJobMock).toHaveBeenCalledWith('job-1');
+    expect(enqueueJobMock).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 'job-1' }),
+    );
   });
 
   it('returns examined=0 when no expired escalations match', async () => {

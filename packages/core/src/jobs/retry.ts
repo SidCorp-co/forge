@@ -118,7 +118,10 @@ export async function scheduleAutoRetryOnce(
   if (!created) throw new Error('retry: insert returned no row');
 
   try {
-    await enqueueJob(created.id, { startAfterSeconds: AUTO_RETRY_COOLDOWN_SECONDS });
+    await enqueueJob(
+      { jobId: created.id, issueId: job.issueId, type: job.type },
+      { startAfterSeconds: AUTO_RETRY_COOLDOWN_SECONDS },
+    );
   } catch (err) {
     logger.error({ err, jobId: created.id }, 'retry: enqueue failed; row persisted');
   }

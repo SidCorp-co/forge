@@ -45,7 +45,9 @@ describe('insertAndEnqueueJob', () => {
 
     expect(result).toEqual({ jobId: 'j-1' });
     expect(mocks.setCurrentStep).toHaveBeenCalledWith('r-1', 'plan');
-    expect(mocks.enqueueJob).toHaveBeenCalledWith('j-1');
+    expect(mocks.enqueueJob).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 'j-1', issueId: 'i-1', type: 'plan' }),
+    );
   });
 
   it('throws ActiveJobConflictError with racingJobId on unique violation (23505)', async () => {

@@ -14,7 +14,7 @@ import {
 } from '../db/schema.js';
 import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { hooks } from '../pipeline/hooks.js';
+import { withActorContext } from '../pipeline/outbox-session.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
 import {
   REOPEN_CAP,
@@ -244,20 +244,37 @@ transitionRoutes.post(
 
     // Conditional UPDATE gates on current status so concurrent transitions
     // can't both win. activity_log write is owned by F5; do not insert here.
-    const [updated] = await db
-      .update(issues)
-      .set({
-        status: toStatus,
-        reopenCount: reopening ? sql`${issues.reopenCount} + 1` : issues.reopenCount,
-        updatedAt: sql`now()`,
-      })
-      .where(and(eq(issues.id, id), eq(issues.status, fromStatus)))
-      .returning({
-        id: issues.id,
-        status: issues.status,
-        reopenCount: issues.reopenCount,
-        updatedAt: issues.updatedAt,
-      });
+    //
+    // ISS-196 — the AFTER UPDATE trigger on issues.status writes a row into
+    // pipeline_outbox inside this transaction, so the outbox worker re-emits
+    // the `transition` hook out-of-band. We wrap the UPDATE in `withActorContext`
+    // so the trigger captures actor metadata via SET LOCAL session settings.
+    const updated = await db.transaction((tx) =>
+      withActorContext(
+        tx,
+        { type: 'user', id: userId },
+        reason ?? null,
+        async (t) => {
+          const [row] = await t
+            .update(issues)
+            .set({
+              status: toStatus,
+              reopenCount: reopening
+                ? sql`${issues.reopenCount} + 1`
+                : issues.reopenCount,
+              updatedAt: sql`now()`,
+            })
+            .where(and(eq(issues.id, id), eq(issues.status, fromStatus)))
+            .returning({
+              id: issues.id,
+              status: issues.status,
+              reopenCount: issues.reopenCount,
+              updatedAt: issues.updatedAt,
+            });
+          return row;
+        },
+      ),
+    );
 
     if (!updated) {
       throw new HTTPException(409, {
@@ -265,16 +282,6 @@ transitionRoutes.post(
         cause: { code: 'STALE_TRANSITION', details: { from: fromStatus, to: toStatus } },
       });
     }
-
-    await hooks.emit('transition', {
-      issueId: updated.id,
-      projectId: issue.projectId,
-      actor: { type: 'user', id: userId },
-      from: fromStatus,
-      to: toStatus,
-      reopenCount: updated.reopenCount,
-      ...(reason ? { reason } : {}),
-    });
 
     publishIssueStatusChange(issue.projectId, {
       issueId: updated.id,

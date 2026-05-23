@@ -40,6 +40,12 @@ export type StepToggleKey = PipelineStep['toggle'];
 // renders this list.
 export const MANUAL_ONLY_JOB_TYPES: readonly JobType[] = [];
 
+// ISS-196 — statuses that auto-dispatch a job. Derived from PIPELINE_STEPS
+// so adding a step here automatically expands the reconciler's rescue set.
+export const AUTO_DISPATCH_STATUSES: readonly IssueStatus[] = PIPELINE_STEPS.map(
+  (s) => s.status,
+);
+
 // Mirrors the static map historically duplicated in
 // `packages/web/src/features/pipeline/runner-capabilities.ts`. The web copy
 // stays in place until a follow-up issue switches the FE to fetch the

@@ -218,7 +218,7 @@ async function executeDispatchFallback(
   if (!insertedId) return { status: 'skipped', reason: 'insert_returned_no_row' };
 
   try {
-    await enqueueJob(insertedId);
+    await enqueueJob({ jobId: insertedId, issueId, type: jobType as JobType });
   } catch (err) {
     logger.error(
       { err, jobId: insertedId },

@@ -1826,3 +1826,28 @@ export const pmPolicies = pgTable(
 export const pmPoliciesRelations = relations(pmPolicies, ({ one }) => ({
   project: one(projects, { fields: [pmPolicies.projectId], references: [projects.id] }),
 }));
+
+// ISS-196 — transactional outbox. Rows are produced by the AFTER UPDATE
+// trigger on `issues.status` (see migration 0070) and consumed by the
+// outbox worker which re-emits the `transition` hook for the orchestrator.
+// Schema mirror; the partial index `idx_outbox_unprocessed` is enforced at
+// the DB level only.
+export const pipelineOutbox = pgTable('pipeline_outbox', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  issueId: uuid('issue_id')
+    .notNull()
+    .references(() => issues.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id')
+    .notNull()
+    .references(() => projects.id, { onDelete: 'cascade' }),
+  fromStatus: text('from_status').notNull(),
+  toStatus: text('to_status').notNull(),
+  actorId: text('actor_id'),
+  actorType: text('actor_type'),
+  reason: text('reason'),
+  payload: jsonb('payload').notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  processedAt: timestamp('processed_at', { withTimezone: true }),
+  attempts: integer('attempts').notNull().default(0),
+  lastError: text('last_error'),
+});

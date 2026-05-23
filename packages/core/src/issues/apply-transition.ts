@@ -1,7 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
-import { hooks } from '../pipeline/hooks.js';
+import { withActorContext } from '../pipeline/outbox-session.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
 import {
   REOPEN_CAP,
@@ -69,19 +69,35 @@ export async function applyStatusTransition(
     throw new Error(`REOPEN_CAP_EXCEEDED: reopen cap reached (${REOPEN_CAP})`);
   }
 
-  const [updated] = await db
-    .update(issues)
-    .set({
-      status: toStatus,
-      reopenCount: reopening ? sql`${issues.reopenCount} + 1` : issues.reopenCount,
-      updatedAt: sql`now()`,
-    })
-    .where(and(eq(issues.id, issue.id), eq(issues.status, fromStatus)))
-    .returning({
-      id: issues.id,
-      reopenCount: issues.reopenCount,
-      updatedAt: issues.updatedAt,
-    });
+  // ISS-196 — the AFTER UPDATE trigger on issues.status writes a row into
+  // pipeline_outbox inside this transaction. `withActorContext` carries the
+  // device principal through SET LOCAL session settings so the trigger
+  // attributes the row correctly.
+  const updated = await db.transaction((tx) =>
+    withActorContext(
+      tx,
+      { type: 'device', id: device.id },
+      null,
+      async (t) => {
+        const [row] = await t
+          .update(issues)
+          .set({
+            status: toStatus,
+            reopenCount: reopening
+              ? sql`${issues.reopenCount} + 1`
+              : issues.reopenCount,
+            updatedAt: sql`now()`,
+          })
+          .where(and(eq(issues.id, issue.id), eq(issues.status, fromStatus)))
+          .returning({
+            id: issues.id,
+            reopenCount: issues.reopenCount,
+            updatedAt: issues.updatedAt,
+          });
+        return row;
+      },
+    ),
+  );
   if (!updated) {
     throw new Error('STALE_TRANSITION: issue status changed concurrently');
   }
@@ -93,15 +109,6 @@ export async function applyStatusTransition(
   if (TERMINAL_RUN_STATUSES.has(toStatus)) {
     await closeOpenRunForIssue(issue.id, 'completed');
   }
-
-  await hooks.emit('transition', {
-    issueId: updated.id,
-    projectId: issue.projectId,
-    actor: { type: 'device' as const, id: device.id },
-    from: fromStatus,
-    to: toStatus,
-    reopenCount: updated.reopenCount,
-  });
 
   roomManager.publish(projectRoom(issue.projectId), {
     event: 'issue.statusChanged',

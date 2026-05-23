@@ -77,7 +77,7 @@ export async function insertAndEnqueueJob(
   await setCurrentStep(args.pipelineRunId, args.type);
 
   try {
-    await enqueueJob(insertedId);
+    await enqueueJob({ jobId: insertedId, issueId: args.issueId, type: args.type });
   } catch (err) {
     logger.error(
       { err, jobId: insertedId },

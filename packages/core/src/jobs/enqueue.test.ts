@@ -32,21 +32,33 @@ describe('jobs/enqueue', () => {
     insertMock.mockReset();
   });
 
-  it('sends to the forge.jobs queue with the jobId as singletonKey', async () => {
-    await enqueueJob('job-1');
+  it('sends to the forge.jobs queue with ${issueId}:${jobType} as singletonKey', async () => {
+    await enqueueJob({ jobId: 'job-1', issueId: 'iss-1', type: 'triage' });
     expect(sendMock).toHaveBeenCalledWith(
       JOB_QUEUE_NAME,
       { jobId: 'job-1' },
-      expect.objectContaining({ singletonKey: 'job-1' }),
+      expect.objectContaining({ singletonKey: 'iss-1:triage' }),
+    );
+  });
+
+  it('falls back to ${jobId}:${jobType} when no issueId is provided', async () => {
+    await enqueueJob({ jobId: 'job-2', type: 'custom' });
+    expect(sendMock).toHaveBeenCalledWith(
+      JOB_QUEUE_NAME,
+      { jobId: 'job-2' },
+      expect.objectContaining({ singletonKey: 'job-2:custom' }),
     );
   });
 
   it('passes startAfter when provided', async () => {
-    await enqueueJob('job-2', { startAfterSeconds: 60 });
+    await enqueueJob(
+      { jobId: 'job-3', issueId: 'iss-1', type: 'fix' },
+      { startAfterSeconds: 60 },
+    );
     expect(sendMock).toHaveBeenCalledWith(
       JOB_QUEUE_NAME,
-      { jobId: 'job-2' },
-      expect.objectContaining({ singletonKey: 'job-2', startAfter: 60 }),
+      { jobId: 'job-3' },
+      expect.objectContaining({ singletonKey: 'iss-1:fix', startAfter: 60 }),
     );
   });
 

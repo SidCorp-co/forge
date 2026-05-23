@@ -40,15 +40,26 @@ const updateMock = vi.fn(() => ({ set: updateSet }));
 // Tx proxy for manual-hold + plain-patch: `tx.update(...).set(...).where(...)`
 // resolves directly (no .returning), and `tx.insert(...).values({...})` is the
 // activity-log write.
-const txUpdateWhere = vi.fn(async () => undefined);
-const txUpdateSet = vi.fn(() => ({ where: txUpdateWhere }));
-const txUpdate = vi.fn(() => ({ set: txUpdateSet }));
+//
+// ISS-196 — the status UPDATE in extras-routes batch now also runs through
+// `db.transaction(tx => withActorContext(tx, ..., t => t.update(...).returning(...)))`.
+// We reuse the existing `updateMock` chain (which already supports both
+// thenable-await and `.returning(...)`) for `tx.update` so status path mocks
+// stay in `updateReturning`. The withActorContext helper calls
+// `tx.execute(SELECT set_config(...))` first — `txExecute` is the noop stub.
+const txExecute = vi.fn(async () => undefined);
 const txInsertValues = vi.fn(async () => undefined);
 const txInsert = vi.fn(() => ({ values: txInsertValues }));
-const txProxy = { update: txUpdate, insert: txInsert };
+const txProxy = { update: updateMock, insert: txInsert, execute: txExecute };
 const transactionMock = vi.fn(
   async (cb: (tx: typeof txProxy) => Promise<unknown>) => cb(txProxy),
 );
+// Backwards-compat aliases for the older manual-hold / plain-patch test
+// assertions that named these explicitly. They now point at the same chain
+// the status UPDATE uses, so `txUpdate` calls === `updateMock` calls.
+const txUpdate = updateMock;
+const txUpdateSet = updateSet;
+const txUpdateWhere = updateWhere;
 
 // ISS-64 — `triggerTerminalDispatch` runs a single
 // `db.select(...).from(issueDependencies).innerJoin(issues, ...).where(...)`
@@ -280,9 +291,12 @@ describe('PATCH /api/issues/batch', () => {
     expect(iss1Entry?.skipReason).toBe('illegal_transition');
     const iss2Entry = body.updated.find((u) => u.id === ISS2);
     expect(iss2Entry?.skipReason).toBeUndefined();
-    expect(transitionEmit).toHaveBeenCalledTimes(1);
+    // ISS-196 — the AFTER UPDATE trigger writes the outbox row; the legacy
+    // inline hooks emit was removed. Assert the status UPDATE ran inside a
+    // transaction (the outbox row is committed atomically with it).
+    expect(transactionMock).toHaveBeenCalled();
     // Bug fix: batch must publish `issue.statusChanged` inline alongside the
-    // transition hook (single-issue path does the same in transition.ts).
+    // status change (single-issue path does the same in transition.ts).
     expect(wsPublish).toHaveBeenCalledTimes(1);
     expect(wsPublish).toHaveBeenCalledWith(
       expect.any(String),
