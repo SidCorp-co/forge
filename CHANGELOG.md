@@ -10,6 +10,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [0.2.0] - 2026-05-23
+
+Create and edit Forge projects from Claude Code/Cursor/Cline, upload screenshots without base64, and recover from any stuck pipeline transition automatically — plus clearer MCP auth errors.
+
+### Added
+
 - **You can now create and edit Forge projects directly from Claude Code, Cursor, or any other MCP client.** Previously the only paths were the web UI's "New project" button or `forge_admin_projects.create` (CEO-gated). Two new user-facing tools cover create + edit for any user with a PAT carrying the `write` scope.
   *Technical: `forge_projects.create` + `forge_projects.update` in `packages/core/src/mcp/tools/forge-projects.ts`. Update is owner-gated to match REST `PATCH /api/projects/:id` (admin-role members refused — see Fixed). Create returns the new project's `apiKey` in the response so PAT-only clients can install MCP into it immediately. PATs with a `projectIds` allowlist are refused from create — allowlisted PATs are intentionally scoped to existing projects.*
 
