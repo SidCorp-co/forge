@@ -183,7 +183,9 @@ describe('POST /api/issues/:id/enrich', () => {
     expect(res.status).toBe(202);
     const body = (await res.json()) as { issueId: string; jobId: string; status: string };
     expect(body).toEqual({ issueId: ISSUE_ID, jobId: JOB_ID, status: 'queued' });
-    expect(enqueueJobMock).toHaveBeenCalledWith(JOB_ID);
+    expect(enqueueJobMock).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: JOB_ID }),
+    );
   });
 });
 
@@ -233,7 +235,9 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
       stage: 'plan',
       status: 'queued',
     });
-    expect(enqueueJobMock).toHaveBeenCalledWith(JOB_ID);
+    expect(enqueueJobMock).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: JOB_ID }),
+    );
   });
 
   it('202 explicit stage override', async () => {

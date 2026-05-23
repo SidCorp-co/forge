@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   type IssueStatus,
@@ -311,6 +311,7 @@ async function considerEnqueue(args: {
     return;
   }
 
+  // Cheap pre-check — short-circuits before the advisory lock acquires.
   const existing = await findActiveJob(args.issueId, skill.type);
   if (existing) {
     logger.debug(
@@ -329,10 +330,28 @@ async function considerEnqueue(args: {
 
   const run = await openIssueRun({ projectId: args.projectId, issueId: args.issueId });
 
-  try {
-    const skillRef = skill;
-    const stageCfg = stageConfigFor(cfg, args.status);
-    const effectiveSkillName = stageCfg?.skillName ?? skillRef.skillName;
+  const skillRef = skill;
+  const effectiveSkillName = stageCfg?.skillName ?? skillRef.skillName;
+
+  // ISS-196 — serialise check-active-job + INSERT job across all workers
+  // and processes. `pg_advisory_xact_lock` auto-releases at COMMIT/ROLLBACK.
+  // Multiple outbox rows for the same (issue, jobType) collapse to one
+  // INSERT because the loser re-enters with the row already present.
+  await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext('issue:' || ${args.issueId}))`,
+    );
+
+    // Re-check inside the lock — pre-check above may have raced.
+    const racing = await findActiveJob(args.issueId, skillRef.type);
+    if (racing) {
+      logger.debug(
+        { issueId: args.issueId, type: skillRef.type, racing },
+        'orchestrator: active job appeared while waiting on lock',
+      );
+      return;
+    }
+
     const { jobId } = await insertAndEnqueueJob({
       projectId: args.projectId,
       issueId: args.issueId,
@@ -356,19 +375,10 @@ async function considerEnqueue(args: {
       },
     });
     logger.info(
-      { jobId, type: skill.type, issueId: args.issueId },
+      { jobId, type: skillRef.type, issueId: args.issueId },
       'orchestrator: enqueued',
     );
-  } catch (err) {
-    if (err instanceof ActiveJobConflictError) {
-      logger.debug(
-        { issueId: args.issueId, type: skill.type },
-        'orchestrator: unique-index dedupe — active job already exists',
-      );
-      return;
-    }
-    throw err;
-  }
+  });
 }
 
 /**

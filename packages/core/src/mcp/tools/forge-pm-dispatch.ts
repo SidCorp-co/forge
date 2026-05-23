@@ -162,7 +162,7 @@ export async function pmDispatchHandler(
   if (!insertedId) throw new Error('forge_pm.dispatch: insert returned no row');
 
   try {
-    await enqueueJob(insertedId);
+    await enqueueJob({ jobId: insertedId, issueId: input.issueId, type: input.jobType });
   } catch (err) {
     logger.error(
       { err, jobId: insertedId },

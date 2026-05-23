@@ -32,13 +32,25 @@ const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn(() => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
+// ISS-196 — `withActorContext` calls `tx.execute(SELECT set_config(...))`
+// before the UPDATE. Stub `tx.execute` so it does not throw under the
+// in-memory db mock.
+const txExecute = vi.fn(async () => undefined);
 
-vi.mock('../db/client.js', () => ({
-  db: {
+vi.mock('../db/client.js', () => {
+  const txStub = {
     select: vi.fn(() => ({ from: selectFrom })),
     update: dbUpdate,
-  },
-}));
+    execute: txExecute,
+  };
+  return {
+    db: {
+      select: vi.fn(() => ({ from: selectFrom })),
+      update: dbUpdate,
+      transaction: vi.fn(async (cb: (tx: typeof txStub) => unknown) => cb(txStub)),
+    },
+  };
+});
 
 const publish = vi.fn();
 vi.mock('../ws/server.js', () => ({

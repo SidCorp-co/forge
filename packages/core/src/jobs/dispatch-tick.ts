@@ -6,7 +6,6 @@
  *   - issue terminal transition (released/closed) — also ticks
  *     child projects when a cross-project blocking edge unblocks
  *   - runner online flip
- *   - 60s pg-boss backstop sweep
  *
  * Each project has its own promise-chain lock so two simultaneous triggers
  * for the same project collapse into a single sweep. A 1-second debounce
@@ -15,8 +14,8 @@
  * The lock is self-healing: any throw inside the inner sweep clears the
  * project's lock entry in the `finally` block, so a buggy tick cannot
  * poison the project's tick path forever (ISS-162 / ISS-141 amendment §1a).
- * The 60s pg-boss schedule is the cross-process recovery mechanism if the
- * core process crashes mid-tick.
+ * Cross-process recovery for missed transitions is owned by the ISS-196
+ * outbox worker + reconciler (`pipeline/outbox-worker.ts`, `pipeline/reconciler.ts`).
  */
 
 import { sql } from 'drizzle-orm';
@@ -159,64 +158,6 @@ async function runTickInner(
       await publishPipelineHealthChanged(projectId, [...affectedIssueIds]);
     }
   }
-}
-
-/**
- * Fan-out tick across every project that currently has queued work. Used by
- * the 60s pg-boss backstop schedule. Awaits all per-project ticks so the
- * backstop's own promise resolves only once the sweep is complete (no orphan
- * fire-and-forget; per-project locks already coalesce concurrent triggers).
- */
-export async function dispatchTickAllProjectsWithQueued(): Promise<void> {
-  const rows = await db.execute<{ project_id: string }>(sql`
-    SELECT DISTINCT project_id
-    FROM (
-      SELECT project_id FROM jobs WHERE status = 'queued' AND type <> 'pm'
-      UNION
-      SELECT project_id FROM agent_sessions WHERE status = 'queued'
-    ) t
-    WHERE project_id IS NOT NULL
-  `);
-  await Promise.allSettled(
-    rows
-      .filter((r): r is { project_id: string } => Boolean(r.project_id))
-      .map((r) => dispatchTickForProject(r.project_id)),
-  );
-}
-
-export const DISPATCH_TICK_BACKSTOP_QUEUE = 'job-dispatch-tick-backstop';
-
-let backstopRegistered = false;
-
-/**
- * Register the pg-boss `* * * * *` schedule that runs the fan-out tick once
- * per minute. Idempotent.
- */
-export async function registerDispatchTickBackstop(): Promise<void> {
-  if (backstopRegistered) return;
-  // Lazy import so callsites that only need dispatchTickForProject don't
-  // pull pg-boss into the test loader (transition.test.ts, lifecycle-routes
-  // .test.ts both touch this graph indirectly).
-  const { boss } = await import('../queue/boss.js');
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
-  await (boss as any).createQueue(DISPATCH_TICK_BACKSTOP_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
-  await (boss as any).work(DISPATCH_TICK_BACKSTOP_QUEUE, async () => {
-    try {
-      await dispatchTickAllProjectsWithQueued();
-    } catch (err) {
-      logger.error({ err }, 'dispatch-tick: backstop sweep failed');
-      throw err;
-    }
-  });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
-  await (boss as any).schedule(DISPATCH_TICK_BACKSTOP_QUEUE, '* * * * *');
-  backstopRegistered = true;
-}
-
-/** Test helper — reset the backstop registration flag. */
-export function resetDispatchTickBackstopForTest(): void {
-  backstopRegistered = false;
 }
 
 /** Test helper — override the debounce window. */

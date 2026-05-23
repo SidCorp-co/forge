@@ -122,7 +122,7 @@ export async function dispatchScheduleRun(
   // before this point: a throw between insert and enqueue would otherwise
   // orphan the row (stuck `'queued'`, no boss message, schedule pointing at it).
   try {
-    await enqueueJob(job.id);
+    await enqueueJob({ jobId: job.id, type: 'custom' });
   } catch (err) {
     logger.error({ err, jobId: job.id }, 'schedule.dispatch: enqueueJob failed');
     try {

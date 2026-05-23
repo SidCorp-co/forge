@@ -1,12 +1,16 @@
 /**
  * ISS-40 PR-E — dispatch-tick integration tests against real Postgres.
  *
- * Validates the SQL that powers `dispatchTickAllProjectsWithQueued` (the
- * 60s pg-boss backstop fan-out) against the real schema, plus the per-
- * project pick → tick → mark cycle that drives the runtime sweep.
+ * Validates the per-project pick → tick → mark cycle that drives the
+ * runtime sweep against the real schema.
  *
  * Heavy WS / runner-adapter / pg-boss layers are out of scope here; the
  * dispatcher-iss40-pipeline.test.ts file exercises the end-to-end loop.
+ *
+ * NOTE: the legacy 60s `dispatchTickAllProjectsWithQueued` backstop was
+ * removed in ISS-196 (replaced by the outbox worker + reconciler). The
+ * coverage that used to live here has moved to `outbox-worker.test.ts`
+ * (unit) and is exercised in production by the trigger → outbox path.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -21,7 +25,6 @@ import {
 } from '../helpers/index.js';
 
 type DTMods = {
-  dispatchTickAllProjectsWithQueued: typeof import('../../src/jobs/dispatch-tick.js').dispatchTickAllProjectsWithQueued;
   dispatchTickForProject: typeof import('../../src/jobs/dispatch-tick.js').dispatchTickForProject;
   setDispatchTickDebounceMs: typeof import('../../src/jobs/dispatch-tick.js').setDispatchTickDebounceMs;
 };
@@ -113,78 +116,6 @@ describe('ISS-40 dispatch-tick E2E', () => {
     `);
     return id;
   }
-
-  // ---------- dispatchTickAllProjectsWithQueued ------------------------
-
-  describe('dispatchTickAllProjectsWithQueued (backstop sweep)', () => {
-    it('finds DISTINCT project_ids from queued jobs', async () => {
-      const a = await seedProject();
-      const b = await seedProject();
-      const issueA = await insertIssue(a.project.id);
-      const issueB = await insertIssue(b.project.id);
-      await insertJob(a.project.id, { issueId: issueA });
-      await insertJob(b.project.id, { issueId: issueB });
-
-      const dispatcher = await import('../../src/jobs/dispatcher.js');
-      const handleDispatch = dispatcher.handleDispatch as unknown as ReturnType<typeof vi.fn>;
-      handleDispatch.mockClear();
-
-      await mods.dispatchTickAllProjectsWithQueued();
-
-      // Each project triggers a tick. Tick picks one queued job per project.
-      // We don't care about call order, just that both jobs were dispatched.
-      const calledJobIds = handleDispatch.mock.calls.map((c) => (c[0] as { jobId: string }).jobId);
-      expect(calledJobIds.length).toBeGreaterThanOrEqual(2);
-    });
-
-    it('finds DISTINCT project_ids from queued agent_sessions', async () => {
-      const a = await seedProject();
-      const b = await seedProject();
-      // No jobs, only sessions — backstop should still tick both projects.
-      await insertSession(a.project.id, { status: 'queued' });
-      await insertSession(b.project.id, { status: 'queued' });
-
-      const rows = await harness.db.execute<{ project_id: string }>(sql`
-        SELECT DISTINCT project_id
-        FROM (
-          SELECT project_id FROM jobs WHERE status = 'queued' AND type <> 'pm'
-          UNION
-          SELECT project_id FROM agent_sessions WHERE status = 'queued'
-        ) t
-        WHERE project_id IS NOT NULL
-      `);
-      const projectIds = rows.map((r) => r.project_id).sort();
-      expect(projectIds).toEqual([a.project.id, b.project.id].sort());
-    });
-
-    it('skips PM jobs (`type=pm`)', async () => {
-      const a = await seedProject();
-      const issueA = await insertIssue(a.project.id);
-      await insertJob(a.project.id, { issueId: issueA, type: 'pm' });
-
-      const rows = await harness.db.execute<{ project_id: string }>(sql`
-        SELECT DISTINCT project_id
-        FROM (
-          SELECT project_id FROM jobs WHERE status = 'queued' AND type <> 'pm'
-          UNION
-          SELECT project_id FROM agent_sessions WHERE status = 'queued'
-        ) t
-        WHERE project_id IS NOT NULL
-      `);
-      // No agent_sessions or non-pm jobs queued → no projects returned.
-      expect(rows).toHaveLength(0);
-    });
-
-    it('returns empty when no queued work exists', async () => {
-      await seedProject();
-      const dispatcher = await import('../../src/jobs/dispatcher.js');
-      const handleDispatch = dispatcher.handleDispatch as unknown as ReturnType<typeof vi.fn>;
-      handleDispatch.mockClear();
-
-      await mods.dispatchTickAllProjectsWithQueued();
-      expect(handleDispatch).not.toHaveBeenCalled();
-    });
-  });
 
   // ---------- dispatchTickForProject (per-project sweep) ----------------
 

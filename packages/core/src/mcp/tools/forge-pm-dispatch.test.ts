@@ -173,7 +173,9 @@ describe('forge_pm.dispatch', () => {
     expect(result.ok).toBe(true);
     expect(result.jobId).toBe(JOB_ID);
     expect(result.jobType).toBe('code');
-    expect(enqueueJobSpy).toHaveBeenCalledWith(JOB_ID);
+    expect(enqueueJobSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: JOB_ID }),
+    );
     expect(result.pipelineRun).toEqual({ id: 'run-1', status: 'running' });
   });
 

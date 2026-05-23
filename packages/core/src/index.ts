@@ -53,7 +53,8 @@ import {
   unregisterDispatcher,
   unregisterPmDispatcher,
 } from './jobs/dispatcher.js';
-import { registerDispatchTickBackstop } from './jobs/dispatch-tick.js';
+import { registerOutboxWorker } from './pipeline/outbox-worker.js';
+import { registerReconciler } from './pipeline/reconciler.js';
 import { jobEventsListRoutes, jobEventsRoutes } from './jobs/events-routes.js';
 import { jobLifecycleDeviceRoutes, jobLifecycleUserRoutes } from './jobs/lifecycle-routes.js';
 import { registerPgBossHealthProbe } from './jobs/pgboss-health.js';
@@ -371,9 +372,6 @@ if (isMain) {
   bootstrapRunnerAdapters();
   await registerDispatcher();
   await registerPmDispatcher();
-  // ISS-40 PR-E — 60s backstop sweep that re-evaluates queued jobs across
-  // every project; complements the in-process dispatchTickForProject lock.
-  await registerDispatchTickBackstop();
   await registerStaleDetector();
   await registerDeviceStaleDetector();
   if (isEnabled('runnerFramework')) {
@@ -392,6 +390,12 @@ if (isMain) {
   registerWebhookSubscribers(hooks);
   registerPipelineOrchestrator(hooks);
   registerDecompositionSubscribers(hooks);
+
+  // ISS-196 — must run AFTER subscribers are wired so the worker's first
+  // drain hits a populated bus. Outbox worker polls the transactional
+  // outbox table; reconciler is the minute-cadence safety net.
+  registerOutboxWorker();
+  await registerReconciler();
 
   const server = serve({ fetch: app.fetch, port }, (info) => {
     logger.info({ port: info.port }, '@forge/core listening');

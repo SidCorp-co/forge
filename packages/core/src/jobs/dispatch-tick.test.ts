@@ -40,7 +40,6 @@ vi.mock('../logger.js', () => ({
 const {
   dispatchTickForProject,
   setDispatchTickDebounceMs,
-  dispatchTickAllProjectsWithQueued,
 } = await import('./dispatch-tick.js');
 
 beforeEach(() => {
@@ -180,27 +179,3 @@ describe('dispatchTickForProject — dependency.unblocked event', () => {
   });
 });
 
-describe('dispatchTickAllProjectsWithQueued', () => {
-  it('fans out to every distinct project with queued work', async () => {
-    dbExecute.mockResolvedValueOnce([
-      { project_id: 'pa' },
-      { project_id: 'pb' },
-    ]);
-    pickFn.mockResolvedValue(null);
-
-    await dispatchTickAllProjectsWithQueued();
-    // micro-task drain so the fire-and-forget ticks land
-    await new Promise((r) => setTimeout(r, 50));
-    expect(pickFn).toHaveBeenCalledWith('pa');
-    expect(pickFn).toHaveBeenCalledWith('pb');
-  });
-
-  it('skips rows with null project_id', async () => {
-    dbExecute.mockResolvedValueOnce([{ project_id: null }, { project_id: 'pc' }]);
-    pickFn.mockResolvedValue(null);
-    await dispatchTickAllProjectsWithQueued();
-    await new Promise((r) => setTimeout(r, 50));
-    expect(pickFn).toHaveBeenCalledTimes(1);
-    expect(pickFn).toHaveBeenCalledWith('pc');
-  });
-});

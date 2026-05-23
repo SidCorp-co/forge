@@ -160,7 +160,11 @@ jobProjectRoutes.post(
 
     // pg-boss publish failure does not roll back the job row — the stale-detector (F3) catches stuck queues.
     try {
-      await enqueueJob(inserted.id);
+      await enqueueJob({
+        jobId: inserted.id,
+        issueId: inserted.issueId,
+        type: inserted.type,
+      });
     } catch (err) {
       logger.error({ err, jobId: inserted.id }, 'enqueueJob failed; job row persisted');
     }
