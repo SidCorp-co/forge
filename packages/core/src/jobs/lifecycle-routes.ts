@@ -9,11 +9,13 @@ import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { computeHoldUntil } from '../pipeline/hold-policy.js';
 import { hooks } from '../pipeline/hooks.js';
 import {
   type FailureClassificationKind,
   setManualHoldBlock,
 } from '../pipeline/manual-hold.js';
+import { loadRecoveryStats } from '../pipeline/recovery-stats.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
@@ -140,19 +142,26 @@ jobLifecycleDeviceRoutes.post(
         retry = await scheduleAutoRetryWithVerify(updated, input.error ?? 'exit nonzero');
       }
       if (!retry.scheduled && updated.issueId) {
+        const classificationKind = mapFailureKindToClassification(updated.failureKind);
+        const recoveryStats = await loadRecoveryStats(updated.issueId);
         await setManualHoldBlock({
           issueId: updated.issueId,
           context: {
             step: updated.type,
             trigger: 'job_failed',
             classification: {
-              kind: mapFailureKindToClassification(updated.failureKind),
+              kind: classificationKind,
               reason: updated.failureReason ?? input.error ?? 'exit nonzero',
               evidence: { jobId: updated.id, exitCode: input.exitCode },
             },
             attempts: updated.attempts,
             lastFailureAt: new Date().toISOString(),
             suggestedActions: ['resume', 'skip-step', 'close'],
+            holdUntil: computeHoldUntil({
+              classificationKind,
+              trigger: 'job_failed',
+              recoveryStats,
+            }),
           },
         });
       }
@@ -268,19 +277,26 @@ jobLifecycleDeviceRoutes.post(
       retry = await scheduleAutoRetryWithVerify(updated, input.error);
     }
     if (!retry.scheduled && updated.issueId) {
+      const classificationKind = mapFailureKindToClassification(updated.failureKind);
+      const recoveryStats = await loadRecoveryStats(updated.issueId);
       await setManualHoldBlock({
         issueId: updated.issueId,
         context: {
           step: updated.type,
           trigger: 'job_failed',
           classification: {
-            kind: mapFailureKindToClassification(updated.failureKind),
+            kind: classificationKind,
             reason: updated.failureReason ?? input.error,
             evidence: { jobId: updated.id },
           },
           attempts: updated.attempts,
           lastFailureAt: new Date().toISOString(),
           suggestedActions: ['resume', 'skip-step', 'close'],
+          holdUntil: computeHoldUntil({
+            classificationKind,
+            trigger: 'job_failed',
+            recoveryStats,
+          }),
         },
       });
     }

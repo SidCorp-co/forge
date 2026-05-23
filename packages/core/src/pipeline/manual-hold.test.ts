@@ -50,6 +50,7 @@ const SAMPLE_CONTEXT = {
   attempts: 2,
   lastFailureAt: '2026-05-16T02:00:00Z',
   suggestedActions: ['resume', 'skip-step', 'close'] as const,
+  holdUntil: null as Date | null,
 };
 
 describe('setManualHoldBlock', () => {
@@ -124,7 +125,48 @@ describe('setManualHoldBlock', () => {
       step: 'code',
       trigger: 'session_lost',
       attempts: 2,
+      holdUntil: null,
     });
+  });
+
+  it('writes manual_hold_until and emits an ISO holdUntil when present', async () => {
+    issueSelectLimit.mockResolvedValueOnce([
+      { manualHold: false, projectId: 'p1', ownerId: 'u1' },
+    ]);
+    const holdUntil = new Date('2026-05-23T01:00:00Z');
+    await setManualHoldBlock({
+      issueId: 'i1',
+      context: {
+        ...SAMPLE_CONTEXT,
+        suggestedActions: [...SAMPLE_CONTEXT.suggestedActions],
+        holdUntil,
+      },
+    });
+
+    const setArg = issueUpdateSet.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+    expect(setArg?.manualHoldUntil).toBe(holdUntil);
+
+    const [, envelope] = wsPublish.mock.calls[0] as [
+      string,
+      { event: string; data: Record<string, unknown> },
+    ];
+    expect(envelope.data.holdUntil).toBe(holdUntil.toISOString());
+
+    const commentArg = commentInsertValues.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+    expect(String(commentArg?.body)).toContain('Auto-resume at:');
+    expect(String(commentArg?.body)).toContain(holdUntil.toISOString());
+  });
+
+  it('comment text reads "manual only" when holdUntil is null', async () => {
+    issueSelectLimit.mockResolvedValueOnce([
+      { manualHold: false, projectId: 'p1', ownerId: 'u1' },
+    ]);
+    await setManualHoldBlock({
+      issueId: 'i1',
+      context: { ...SAMPLE_CONTEXT, suggestedActions: [...SAMPLE_CONTEXT.suggestedActions] },
+    });
+    const commentArg = commentInsertValues.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+    expect(String(commentArg?.body)).toContain('Auto-resume:** manual only');
   });
 
   it('continues when comment insert throws', async () => {

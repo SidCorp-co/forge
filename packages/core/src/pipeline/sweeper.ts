@@ -30,7 +30,11 @@ import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
 import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
 import { logger } from '../logger.js';
+import { recordHoldAutoClear } from '../observability/hold-metrics.js';
+import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { boss } from '../queue/boss.js';
+import { projectRoom } from '../ws/rooms.js';
+import { roomManager } from '../ws/server.js';
 
 export const PIPELINE_SWEEPER_QUEUE = 'pipeline-sweeper';
 
@@ -61,22 +65,28 @@ export interface ZombieSweepResult {
   heartbeatTimedOut: number;
 }
 
+export interface ExpiredHoldsSweepResult {
+  cleared: number;
+}
+
 export interface SweepResult {
   durationMs: number;
   zombieSessions: ZombieSweepResult;
+  expiredHolds: ExpiredHoldsSweepResult;
   backstopProjects: number;
 }
 
 export async function runPipelineSweep(now: Date = new Date()): Promise<SweepResult> {
   const t0 = Date.now();
   const zombieSessions = await sweepZombieSessions(now);
+  const expiredHolds = await sweepExpiredHolds(now);
   const backstopProjects = await runDispatcherBackstop();
   // Record the heartbeat ONLY after every pass succeeded. Recording at the
   // top would leave `pgboss-health` blind to a silent backstop failure
   // (lastTickAt fresh, dispatcher.tick_missing never fires). Letting either
   // pass throw lets pg-boss retry and pgboss-health alert.
   recordPipelineSweeperTick(t0);
-  return { durationMs: Date.now() - t0, zombieSessions, backstopProjects };
+  return { durationMs: Date.now() - t0, zombieSessions, expiredHolds, backstopProjects };
 }
 
 /**
@@ -218,6 +228,90 @@ function broadcastZombieTransition(
     status: 'failed',
     failureReason: reason,
   });
+}
+
+/**
+ * ISS-198 — auto-clear expired manualHold rows.
+ *
+ * A row is cleared when:
+ *   - `manual_hold = true`,
+ *   - `manual_hold_until` is non-NULL and in the past,
+ *   - no `failed` job for the same issue finished in the last 5 minutes
+ *     (anti-ping-pong: don't clear a hold whose latest cause still smells
+ *     fresh).
+ *
+ * Re-enqueueing is implicit — the dispatcher's L1 gate stops excluding the
+ * issue the moment `manual_hold` flips false, so the next picker tick will
+ * pick up any pending job on its own. Do not add a separate enqueue here.
+ */
+export async function sweepExpiredHolds(
+  now: Date,
+  scope: SweepScope = {},
+): Promise<ExpiredHoldsSweepResult> {
+  const projectClause = scope.projectId
+    ? sql`AND issues.project_id = ${scope.projectId}`
+    : sql``;
+  const rows = await db.execute<{
+    id: string;
+    project_id: string;
+    held_at: Date | string | null;
+    failure_kind: string | null;
+  }>(sql`
+    WITH cleared AS (
+      UPDATE issues
+      SET manual_hold = false,
+          manual_hold_until = NULL,
+          updated_at = ${now}
+      WHERE manual_hold = true
+        AND manual_hold_until IS NOT NULL
+        AND manual_hold_until < ${now}
+        AND NOT EXISTS (
+          SELECT 1 FROM jobs j
+          WHERE j.issue_id = issues.id
+            AND j.status = 'failed'
+            AND j.finished_at > now() - interval '5 minutes'
+        )
+        ${projectClause}
+      RETURNING id, project_id, updated_at, failure_context
+    )
+    SELECT id, project_id,
+           updated_at AS held_at,
+           (failure_context->'classification'->>'kind') AS failure_kind
+    FROM cleared
+  `);
+
+  for (const row of rows) {
+    const kind = (row.failure_kind ?? 'unknown_no_context') as
+      | 'transient_network'
+      | 'permanent_invalid'
+      | 'unknown'
+      | 'unknown_no_context';
+    roomManager.publish(projectRoom(row.project_id), {
+      event: 'issue.holdCleared',
+      data: { issueId: row.id, reason: 'auto_clear' },
+    });
+    if (isSentryEnabled()) {
+      Sentry.addBreadcrumb({
+        category: 'pipeline.reconciler.hold_auto_cleared',
+        level: 'info',
+        message: `auto-cleared manualHold for issue ${row.id}`,
+        data: {
+          issueId: row.id,
+          holdReason: row.failure_kind,
+          // holdDuration would require capturing held_since; we don't track
+          // that today, so emit null and document the field in the contract.
+          holdDuration: null,
+        },
+      });
+    }
+    recordHoldAutoClear({ kind });
+  }
+
+  if (rows.length > 0) {
+    logger.info({ cleared: rows.length }, 'pipeline-sweeper: expired holds cleared');
+  }
+
+  return { cleared: rows.length };
 }
 
 let registered = false;
