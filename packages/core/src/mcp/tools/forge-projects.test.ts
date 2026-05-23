@@ -9,14 +9,22 @@ vi.mock('../../config/env.js', () => ({
 }));
 
 const selectImpl = vi.fn();
+const insertImpl = vi.fn();
+const updateImpl = vi.fn();
+const transactionImpl = vi.fn();
 
 vi.mock('../../db/client.js', () => ({
   db: {
     select: (...args: unknown[]) => selectImpl(...args),
+    insert: (...args: unknown[]) => insertImpl(...args),
+    update: (...args: unknown[]) => updateImpl(...args),
+    transaction: (...args: unknown[]) => transactionImpl(...args),
   },
 }));
 
-const { forgeProjectsListTool } = await import('./forge-projects.js');
+const { forgeProjectsCreateTool, forgeProjectsListTool, forgeProjectsUpdateTool } = await import(
+  './forge-projects.js'
+);
 
 const OWNER_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_OWNER_ID = '22222222-2222-4222-8222-222222222222';
@@ -42,6 +50,9 @@ const fakeDevice = {
 beforeEach(() => {
   vi.clearAllMocks();
   selectImpl.mockReset();
+  insertImpl.mockReset();
+  updateImpl.mockReset();
+  transactionImpl.mockReset();
 });
 
 function mockMeLookup(isCeo: boolean) {
@@ -248,5 +259,239 @@ describe('forge_projects.list', () => {
 
     const result = (await tool.handler({})) as { projects: unknown[] };
     expect(result.projects).toEqual([]);
+  });
+});
+
+function deviceCtx() {
+  return {
+    principal: { kind: 'device' as const, device: fakeDevice },
+    device: fakeDevice,
+    projectSlug: null,
+  };
+}
+
+function patCtx(opts: {
+  userId?: string;
+  scopes?: readonly string[];
+  projectIds?: readonly string[] | null;
+}) {
+  return {
+    principal: {
+      kind: 'pat' as const,
+      userId: opts.userId ?? OWNER_ID,
+      tokenId: 'token-id',
+      scopes: opts.scopes ?? ['read', 'write'],
+      projectIds: opts.projectIds ?? null,
+    },
+    device: fakeDevice,
+    projectSlug: null,
+  };
+}
+
+/**
+ * Stub `db.transaction(fn)` for the create path. The factory's transaction
+ * runs two inserts in order: (1) projects → returns the project row;
+ * (2) projectMembers → returns nothing. We hand the factory a `tx` proxy
+ * that dispenses two `insert()` shapes in that order.
+ */
+function mockCreateTransaction(returnedProject: Record<string, unknown>) {
+  transactionImpl.mockImplementationOnce(async (fn: (tx: unknown) => unknown) => {
+    let n = 0;
+    const tx = {
+      insert: () => {
+        n++;
+        if (n === 1) {
+          return {
+            values: () => ({
+              returning: () => Promise.resolve([returnedProject]),
+            }),
+          };
+        }
+        return {
+          values: () => Promise.resolve(undefined),
+        };
+      },
+    };
+    return fn(tx);
+  });
+}
+
+describe('forge_projects.create', () => {
+  const NEW_PROJECT_ID = '66666666-6666-4666-8666-666666666666';
+
+  it('device principal creates project owned by the device user', async () => {
+    mockCreateTransaction({
+      id: NEW_PROJECT_ID,
+      slug: 'my-proj',
+      name: 'My Project',
+      ownerId: OWNER_ID,
+      createdAt: new Date(),
+    });
+    const tool = forgeProjectsCreateTool(deviceCtx());
+    const res = (await tool.handler({ slug: 'my-proj', name: 'My Project' })) as {
+      project: { id: string; slug: string; ownerId: string };
+    };
+    expect(res.project.id).toBe(NEW_PROJECT_ID);
+    expect(res.project.slug).toBe('my-proj');
+    expect(res.project.ownerId).toBe(OWNER_ID);
+    // apiKey must NOT be returned (matches forge_admin_projects.create surface).
+    expect(res.project).not.toHaveProperty('apiKey');
+  });
+
+  it('PAT principal with write scope and null allowlist creates project', async () => {
+    mockCreateTransaction({
+      id: NEW_PROJECT_ID,
+      slug: 'pat-proj',
+      name: 'PAT Project',
+      ownerId: OWNER_ID,
+      createdAt: new Date(),
+    });
+    const tool = forgeProjectsCreateTool(patCtx({ scopes: ['read', 'write'] }));
+    const res = (await tool.handler({ slug: 'pat-proj', name: 'PAT Project' })) as {
+      project: { ownerId: string };
+    };
+    expect(res.project.ownerId).toBe(OWNER_ID);
+    expect(transactionImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('PAT principal without write scope is refused with FORBIDDEN_SCOPE', async () => {
+    const tool = forgeProjectsCreateTool(patCtx({ scopes: ['read'] }));
+    await expect(tool.handler({ slug: 'no-write', name: 'X' })).rejects.toThrow(
+      /FORBIDDEN_SCOPE: requires write scope/,
+    );
+    expect(transactionImpl).not.toHaveBeenCalled();
+  });
+
+  it('PAT principal with a projectIds allowlist is refused with FORBIDDEN_SCOPE', async () => {
+    const tool = forgeProjectsCreateTool(
+      patCtx({ scopes: ['read', 'write'], projectIds: [PROJECT_A] }),
+    );
+    await expect(tool.handler({ slug: 'scoped', name: 'X' })).rejects.toThrow(
+      /FORBIDDEN_SCOPE: PAT with a projectIds allowlist cannot create new projects/,
+    );
+    expect(transactionImpl).not.toHaveBeenCalled();
+  });
+
+  it('unique-violation on slug surfaces as BAD_REQUEST SLUG_TAKEN', async () => {
+    transactionImpl.mockImplementationOnce(async () => {
+      throw Object.assign(new Error('duplicate key value'), { code: '23505' });
+    });
+    const tool = forgeProjectsCreateTool(deviceCtx());
+    await expect(tool.handler({ slug: 'taken', name: 'X' })).rejects.toThrow(
+      /BAD_REQUEST: SLUG_TAKEN/,
+    );
+  });
+
+  it('rejects invalid slug formats at the schema layer', async () => {
+    const tool = forgeProjectsCreateTool(deviceCtx());
+    await expect(tool.handler({ slug: 'Bad Slug!', name: 'X' })).rejects.toThrow();
+    expect(transactionImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe('forge_projects.update', () => {
+  /**
+   * `assertPrincipalIsAdmin` for a device principal performs a single
+   * `db.select({ ownerId }).from(projects).where().limit(1)` lookup. If the
+   * ownerId matches the device's owner, the helper short-circuits to admin
+   * without a projectMembers query. We mock that shape here.
+   */
+  function mockOwnerLookup(ownerId: string) {
+    selectImpl.mockImplementationOnce(() => ({
+      from: () => ({
+        where: () => ({
+          limit: () => Promise.resolve([{ ownerId }]),
+        }),
+      }),
+    }));
+  }
+
+  function mockMemberRoleLookup(role: string | null) {
+    selectImpl.mockImplementationOnce(() => ({
+      from: () => ({
+        where: () => ({
+          limit: () => Promise.resolve(role === null ? [] : [{ role }]),
+        }),
+      }),
+    }));
+  }
+
+  function mockUpdateReturning(row: Record<string, unknown>) {
+    updateImpl.mockImplementationOnce(() => ({
+      set: () => ({
+        where: () => ({
+          returning: () => Promise.resolve([row]),
+        }),
+      }),
+    }));
+  }
+
+  it('owner-on-project applies patch and returns the updated row', async () => {
+    mockOwnerLookup(OWNER_ID);
+    mockUpdateReturning({
+      id: PROJECT_A,
+      slug: 'a',
+      name: 'A renamed',
+      ownerId: OWNER_ID,
+      description: null,
+      repoPath: '/srv/a',
+      baseBranch: 'main',
+      productionBranch: null,
+    });
+    const tool = forgeProjectsUpdateTool(deviceCtx());
+    const res = (await tool.handler({
+      projectId: PROJECT_A,
+      patch: { name: 'A renamed', repoPath: '/srv/a', baseBranch: 'main' },
+    })) as { project: { name: string; repoPath: string } };
+    expect(res.project.name).toBe('A renamed');
+    expect(res.project.repoPath).toBe('/srv/a');
+  });
+
+  it('non-member device principal is refused with FORBIDDEN', async () => {
+    // Device path: project exists, owner is someone else, no projectMembers
+    // row — assertDeviceOwnerIsAdmin throws "requires owner or admin".
+    mockOwnerLookup(OTHER_OWNER_ID);
+    mockMemberRoleLookup(null);
+    const tool = forgeProjectsUpdateTool(deviceCtx());
+    await expect(
+      tool.handler({ projectId: PROJECT_A, patch: { name: 'no' } }),
+    ).rejects.toThrow(/FORBIDDEN: requires owner or admin/);
+    expect(updateImpl).not.toHaveBeenCalled();
+  });
+
+  it('member role (not admin/owner) is refused with FORBIDDEN', async () => {
+    mockOwnerLookup(OTHER_OWNER_ID);
+    mockMemberRoleLookup('member');
+    const tool = forgeProjectsUpdateTool(deviceCtx());
+    await expect(
+      tool.handler({ projectId: PROJECT_A, patch: { name: 'no' } }),
+    ).rejects.toThrow(/FORBIDDEN: requires owner or admin/);
+    expect(updateImpl).not.toHaveBeenCalled();
+  });
+
+  it('PAT without write scope is refused before any DB lookup', async () => {
+    const tool = forgeProjectsUpdateTool(patCtx({ scopes: ['read'] }));
+    await expect(
+      tool.handler({ projectId: PROJECT_A, patch: { name: 'no' } }),
+    ).rejects.toThrow(/FORBIDDEN_SCOPE: requires write scope/);
+    expect(selectImpl).not.toHaveBeenCalled();
+    expect(updateImpl).not.toHaveBeenCalled();
+  });
+
+  it('PAT with allowlist miss is refused with NOT_FOUND (no leak)', async () => {
+    const tool = forgeProjectsUpdateTool(
+      patCtx({ scopes: ['read', 'write'], projectIds: [PROJECT_B] }),
+    );
+    await expect(
+      tool.handler({ projectId: PROJECT_A, patch: { name: 'no' } }),
+    ).rejects.toThrow(/NOT_FOUND/);
+    expect(updateImpl).not.toHaveBeenCalled();
+  });
+
+  it('empty patch is rejected at the schema layer', async () => {
+    const tool = forgeProjectsUpdateTool(deviceCtx());
+    await expect(
+      tool.handler({ projectId: PROJECT_A, patch: {} }),
+    ).rejects.toThrow();
   });
 });
