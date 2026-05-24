@@ -8,6 +8,7 @@ import { dispatchLivenessMs, isLastSeenFresh } from '../lib/dispatch-liveness.js
 import { isEnabled } from '../lib/feature-flags.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
+import { computeHoldUntil } from '../pipeline/hold-policy.js';
 import { setManualHoldBlock } from '../pipeline/manual-hold.js';
 import { resolveRunnerChainForJob } from '../pipeline/resolve-step-runner.js';
 import { injectTurnLevelRules } from '../prompt/user.js';
@@ -19,8 +20,10 @@ import { deviceRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { getActiveDeviceId } from './active-device.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
+import { recordRunnerDeathDetection } from '../observability/hold-metrics.js';
+import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { checkMonthlyBudget, postBudgetExhaustedComment, shouldEmitWarn } from './budget-check.js';
-import { checkLayer4RunnerFull, runnerSupportsJobType } from './dispatch-gates.js';
+import { runnerSupportsJobType } from './dispatch-gates.js';
 import { persistPromptSnapshot } from './prompt-snapshot.js';
 import { JOB_QUEUE_NAME, PM_QUEUE_NAME } from './queue-name.js';
 import { findPriorSessionInGroup } from './session-resume.js';
@@ -354,6 +357,13 @@ async function dispatchViaRunner(
     pinDeviceId,
   });
   if (!runner) {
+    // ISS-198 — selectRunnerForJob filters runners with stale heartbeats
+    // (Gate L5). When no runner is selectable, observe the worst stale
+    // candidate so the runner_death_detection_seconds histogram captures
+    // the time between worker death and dispatcher reaction. If the project
+    // simply has no runners at all there's nothing to observe; that's a
+    // configuration condition rather than a worker death.
+    await maybeRecordL5Skip(job.projectId, job.id, fallbackChain);
     logger.warn(
       { jobId: job.id, projectId: job.projectId, fallbackChain },
       'dispatcher: no runner online, leaving queued',
@@ -391,23 +401,11 @@ async function dispatchViaRunner(
     return 'skipped';
   }
 
-  // L4 — runner-cap check after we've picked a runner. We don't pre-filter
-  // full runners in selectRunnerForJob to keep its signature simple; if a
-  // runner is full we just skip and the next tick will retry. No persisted
-  // gate state — the picker will skip this candidate if/when it remains
-  // ineligible (sibling job in flight) on the next sweep.
-  const l4 = await checkLayer4RunnerFull(runner.id, { excludeJobId: job.id });
-  if (!l4.pass) {
-    logger.info(
-      {
-        jobId: job.id,
-        runnerId: runner.id,
-        hint: l4.hint,
-      },
-      'dispatcher: runner full, leaving queued',
-    );
-    return 'skipped';
-  }
+  // ISS-198 — L4 (runner capacity) is now enforced inline by the picker SQL
+  // (see `pickNextDispatchableJobForProject`). The dispatcher no longer
+  // re-checks post-pick; the only race that still survives is two pickers
+  // racing on the same job id, which is caught by the `status='queued'`
+  // CAS on the UPDATE below.
 
   const dispatchedAt = new Date();
   const updated = await db
@@ -525,6 +523,10 @@ async function dispatchViaRunner(
             attempts: job.attempts,
             lastFailureAt: new Date().toISOString(),
             suggestedActions: ['resume', 'skip-step', 'close'],
+            holdUntil: computeHoldUntil({
+              classificationKind: 'unknown',
+              trigger: 'adapter_error',
+            }),
           },
         });
       } catch (err) {
@@ -552,6 +554,59 @@ async function dispatchViaRunner(
     await publishPipelineHealthChanged(job.projectId, [job.issueId]);
   }
   return 'dispatched';
+}
+
+/**
+ * ISS-198 — emit a `dispatch.gate_l5_runner_stale` Sentry breadcrumb + add a
+ * sample to the `runner_death_detection_seconds` histogram for each candidate
+ * runner whose heartbeat is stale at the moment the dispatcher tried to pick
+ * one. Runs only when `selectRunnerForJob` returned null; we look up the
+ * runners that would have matched and observe the gap between `now()` and
+ * each one's `last_seen_at`. Runners that have never pinged (`last_seen_at`
+ * IS NULL) emit the breadcrumb without a histogram sample.
+ */
+async function maybeRecordL5Skip(
+  projectId: string,
+  jobId: string,
+  fallbackChain: RunnerType[],
+): Promise<void> {
+  try {
+    const candidates = await db.execute<{
+      id: string;
+      last_seen_at: Date | string | null;
+      type: string;
+    }>(sql`
+      SELECT id, last_seen_at, type
+      FROM runners
+      WHERE project_id = ${projectId}
+        AND status IN ('online', 'offline')
+    `);
+    const filtered =
+      fallbackChain.length === 0
+        ? candidates
+        : candidates.filter((r) => (fallbackChain as string[]).includes(r.type));
+    if (filtered.length === 0) return;
+    for (const c of filtered) {
+      const lastSeenMs = c.last_seen_at ? new Date(c.last_seen_at).getTime() : null;
+      const lastSeenAgoMs = lastSeenMs === null ? null : Date.now() - lastSeenMs;
+      if (isSentryEnabled()) {
+        Sentry.addBreadcrumb({
+          category: 'dispatch.gate_l5_runner_stale',
+          level: 'info',
+          message: `runner ${c.id} stale (lastSeenAgoMs=${lastSeenAgoMs ?? 'null'})`,
+          data: { runnerId: c.id, lastSeenAgo: lastSeenAgoMs, jobId },
+        });
+      }
+      if (lastSeenAgoMs !== null) {
+        recordRunnerDeathDetection(lastSeenAgoMs / 1000);
+      }
+    }
+  } catch (err) {
+    logger.debug(
+      { err, jobId, projectId },
+      'dispatcher: maybeRecordL5Skip telemetry failed (non-fatal)',
+    );
+  }
 }
 
 export async function registerDispatcher(): Promise<void> {

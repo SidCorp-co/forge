@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { logger } from '../logger.js';
+import { computeHoldUntil } from '../pipeline/hold-policy.js';
 import { setManualHoldBlock } from '../pipeline/manual-hold.js';
 import { boss } from '../queue/boss.js';
 import { projectRoom } from '../ws/rooms.js';
@@ -94,6 +95,10 @@ export async function runStaleSweep(): Promise<{
           attempts: updatedRow.attempts,
           lastFailureAt: new Date().toISOString(),
           suggestedActions: ['resume', 'skip-step', 'close'],
+          holdUntil: computeHoldUntil({
+            classificationKind: 'unknown',
+            trigger: 'session_lost',
+          }),
         },
       });
       blockedCount++;

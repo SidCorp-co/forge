@@ -724,6 +724,13 @@ export const issues = pgTable(
     // skip-reason 'manual_hold' so no new automation jobs spawn for this
     // issue. In-flight jobs are not killed.
     manualHold: boolean('manual_hold').notNull().default(false),
+    // ISS-198 — auto-clear horizon for manualHold. NULL while held = the hold
+    // is indefinite (permission/permanent failures); only the operator can
+    // clear it. A timestamp means the pipeline sweeper will drop the hold
+    // once now() crosses it (subject to anti-ping-pong: no fresh failure in
+    // the prior 5 minutes). See pipeline/hold-policy.ts for the policy that
+    // computes this value.
+    manualHoldUntil: timestamp('manual_hold_until', { withTimezone: true }),
     // ISS-42 C2 — t-shirt sizing (xs/s/m/l/xl) for scoping. NULL = unsized.
     complexity: text('complexity', { enum: issueComplexities }),
     reopenCount: integer('reopen_count').notNull().default(0),

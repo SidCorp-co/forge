@@ -1,11 +1,12 @@
 // Shared liveness window for the dispatcher + runner selector.
 //
-// stale-detector flips devices/runners to `offline` only on its 2-minute
-// cron, so `status='online'` can lag reality. Desktop pings every ~25s;
-// 90s default = ~3.6 missed pings of slack against network jitter / GC
-// pauses, while still beating the 2min stale-detector cycle.
+// ISS-198 tightened the default from 90s to 30s. Stale-detector now flips
+// runners to `offline` every minute, and Gate L5 in the dispatcher uses
+// this same window — anything past 30s is treated as a stale runner that
+// cannot receive new dispatches. Desktop pings every ~25s, so 30s leaves
+// only one missed ping of slack.
 
-const DEFAULT_MS = 90_000;
+const DEFAULT_MS = 30_000;
 const MIN_MS = 10_000;
 
 export function dispatchLivenessMs(): number {

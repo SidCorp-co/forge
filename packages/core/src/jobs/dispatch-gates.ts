@@ -1,6 +1,6 @@
 /**
  * ISS-162 — Stateless Gates. `pickNextDispatchableJobForProject` evaluates
- * all four gate layers inline on every call; no gate signal is persisted on
+ * the gate layers inline on every call; no gate signal is persisted on
  * the job row. A job that fails any gate is simply absent from the SELECT
  * result, and the next tick recomputes the gate from scratch.
  *
@@ -12,16 +12,26 @@
  *   L3 project_full              — DISTINCT running issue_ids per project
  *                                  must be below the project cap (or the
  *                                  candidate's own issue is already counted)
- *   L4 runner_full               — evaluated post-pick inside the dispatcher
- *                                  because runner selection happens after
- *                                  the picker returns; on cap-hit the
- *                                  dispatcher leaves the job queued and the
- *                                  next tick re-picks
+ *   L5 runner_heartbeat (pre-pick) — runner selection filters runners whose
+ *                                  `last_seen_at` falls outside the dispatch
+ *                                  liveness window (default 30s, ISS-198).
+ *                                  Implemented in `runners/select.ts`; the
+ *                                  helper {@link checkLayer5RunnerHeartbeat}
+ *                                  exposes the same predicate for tests +
+ *                                  telemetry.
+ *
+ * L4 (runner capacity) used to live post-pick inside the dispatcher. ISS-198
+ * folded the check into the picker SQL so a runner that just hit its cap no
+ * longer wastes a tick — the picker simply refuses to surface a job whose
+ * only candidate runner is full. {@link checkLayer4RunnerFull} is retained
+ * as a defence-in-depth helper for telemetry; the dispatcher itself no
+ * longer calls it.
  *
  * Invariants:
- *   - No temporal predicates beyond dependency-edge `valid_until` expiry.
- *     A future contributor adding a `gate_at + N seconds` debouncer should
- *     trip the regression assertion in `dispatch-gates.test.ts`.
+ *   - No temporal predicates beyond dependency-edge `valid_until` expiry,
+ *     stale-runner heartbeat (L5) and runner-load (L4). A future
+ *     contributor adding a `gate_at + N seconds` debouncer should trip the
+ *     regression assertion in `dispatch-gates.test.ts`.
  *   - No writes from the picker. The hot path is read-only.
  */
 
@@ -29,9 +39,10 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs, projects, runners } from '../db/schema.js';
 import type { JobType, RunnerType } from '../db/schema.js';
+import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { RUNNER_CAPABILITIES } from '../pipeline/registry.js';
 
-export type GateSkipReason = 'runner_full';
+export type GateSkipReason = 'runner_full' | 'runner_stale';
 
 export type GateResult =
   | { pass: true }
@@ -83,9 +94,47 @@ export async function countInFlightForRunner(runnerId: string): Promise<number> 
 }
 
 /**
+ * L5 — runner heartbeat freshness. Returns `pass` when the runner has
+ * pinged inside the dispatch-liveness window; otherwise reports the
+ * runner_stale skip reason with the observed `lastSeenAgoMs`. Used by tests
+ * + telemetry — the actual gate is enforced by `selectRunnerForJob`'s SQL
+ * (a stale runner is silently absent from the SELECT result).
+ */
+export async function checkLayer5RunnerHeartbeat(runnerId: string): Promise<GateResult> {
+  const [runner] = await db
+    .select({ lastSeenAt: runners.lastSeenAt })
+    .from(runners)
+    .where(eq(runners.id, runnerId))
+    .limit(1);
+  if (!runner) return PASS;
+  const lastSeen = runner.lastSeenAt ? new Date(runner.lastSeenAt).getTime() : null;
+  if (lastSeen === null) {
+    return {
+      pass: false,
+      reason: 'runner_stale',
+      hint: 'runner has never pinged',
+      metadata: { runnerId, lastSeenAgoMs: null },
+    };
+  }
+  const ageMs = Date.now() - lastSeen;
+  if (ageMs > dispatchLivenessMs()) {
+    return {
+      pass: false,
+      reason: 'runner_stale',
+      hint: `runner heartbeat ${Math.round(ageMs / 1000)}s old`,
+      metadata: { runnerId, lastSeenAgoMs: ageMs },
+    };
+  }
+  return PASS;
+}
+
+/**
  * L4 — in-flight jobs on the chosen runner < runner cap. `excludeJobId` lets
  * the caller skip the candidate job (e.g. when re-checking after a transient
  * skip-and-requeue).
+ *
+ * Retained as a defence-in-depth helper for telemetry + tests. ISS-198 moved
+ * the production gate into the picker SQL (see {@link pickNextDispatchableJobForProject}).
  */
 export async function checkLayer4RunnerFull(
   runnerId: string,
@@ -159,6 +208,14 @@ export async function pickNextDispatchableJobForProject(
       ? pipelineConfig.maxConcurrentIssues
       : DEFAULT_MAX_CONCURRENT_ISSUES;
 
+  // ISS-198 — L5 (heartbeat) + L4 (capacity) moved into the picker. A runner
+  // must be online, must have pinged inside the dispatch-liveness window,
+  // AND must have room for one more job. `runner_load` counts in-flight
+  // jobs per runner; the per-row cap reads `capabilities.maxConcurrent`
+  // with a type-aware default (antigravity=5, others=1). If no such runner
+  // exists, no job for that project is returned this tick — saves the
+  // wasted tick of returning a job only for dispatchViaRunner to skip it.
+  const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
   const rows = await db.execute<JobRow>(sql`
     WITH running_ids AS (
       SELECT DISTINCT (metadata->>'issueId') AS issue_id
@@ -166,6 +223,27 @@ export async function pickNextDispatchableJobForProject(
       WHERE project_id = ${projectId}
         AND status IN ('queued','running')
         AND (metadata->>'issueId') IS NOT NULL
+    ),
+    runner_load AS (
+      SELECT runner_id, COUNT(*)::int AS in_flight
+      FROM jobs
+      WHERE runner_id IS NOT NULL
+        AND status IN ('dispatched','running')
+      GROUP BY runner_id
+    ),
+    fresh_capable_runners AS (
+      SELECT r.id,
+             COALESCE(
+               (r.capabilities->>'maxConcurrent')::int,
+               CASE r.type WHEN 'antigravity' THEN 5 ELSE 1 END
+             ) AS cap,
+             COALESCE(rl.in_flight, 0) AS in_flight
+      FROM runners r
+      LEFT JOIN runner_load rl ON rl.runner_id = r.id
+      WHERE r.project_id = ${projectId}
+        AND r.status = 'online'
+        AND r.last_seen_at IS NOT NULL
+        AND r.last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
     )
     SELECT j.*
     FROM jobs j
@@ -210,6 +288,10 @@ export async function pickNextDispatchableJobForProject(
             AND (d2.valid_until IS NULL OR d2.valid_until > now())
             AND p2.status NOT IN ('released','closed')
         )
+      )
+      AND EXISTS (
+        SELECT 1 FROM fresh_capable_runners fcr
+        WHERE fcr.in_flight < fcr.cap
       )
       AND (
         j.issue_id::text IN (SELECT issue_id FROM running_ids)

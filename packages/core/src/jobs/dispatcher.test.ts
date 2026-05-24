@@ -60,18 +60,33 @@ vi.mock('./prompt-snapshot.js', () => ({
   persistPromptSnapshot: vi.fn(async () => {}),
 }));
 
-// ISS-162 — L1/L2/L3 are evaluated inline by the picker, not the dispatcher.
-// Only L4 (post-pick runner-cap) and runnerSupportsJobType remain mocked here.
+// ISS-162 — L1/L2/L3/L4 are evaluated inline by the picker, not the dispatcher.
+// Only runnerSupportsJobType is still consulted post-pick. ISS-198 removed the
+// dispatcher's post-pick L4 call; the picker now refuses to surface a job
+// when no fresh, capable runner has capacity.
 vi.mock('./dispatch-gates.js', () => ({
-  checkLayer4RunnerFull: vi.fn(async () => ({ pass: true })),
   // ISS-115 — dispatcher checks runner/job-type cap match after picking a
   // runner. Default to true so unrelated tests stay focused on their own
   // envelope; the unsupported-type test overrides with mockReturnValueOnce.
   runnerSupportsJobType: vi.fn(() => true),
 }));
 
+// ISS-198 — dispatcher emits a Sentry breadcrumb + histogram sample when
+// selectRunnerForJob returns null. Stub the observability surface so the
+// "no runner online" branch stays pure in tests.
+vi.mock('../observability/sentry.js', () => ({
+  Sentry: { addBreadcrumb: vi.fn() },
+  isSentryEnabled: () => false,
+}));
+vi.mock('../observability/hold-metrics.js', () => ({
+  recordRunnerDeathDetection: vi.fn(),
+  recordHoldSet: vi.fn(),
+  recordHoldAutoClear: vi.fn(),
+}));
+
 const { db } = await import('../db/client.js');
 const { getActiveDeviceId } = await import('./active-device.js');
+// ISS-198 — dispatcher no longer imports checkLayer4RunnerFull.
 const { runnerSupportsJobType } = await import('./dispatch-gates.js');
 const {
   handleDispatch,

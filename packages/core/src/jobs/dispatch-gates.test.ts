@@ -1,7 +1,9 @@
 /**
- * ISS-162 — Stateless Gates picker tests. The picker evaluates L1/L2/L3
- * inline via SQL; the only mocked layer is L4 (post-pick runner cap) which
- * keeps its dedicated unit coverage below.
+ * ISS-162 — Stateless Gates picker tests. The picker evaluates L1/L2/L3/L4/L5
+ * inline via SQL. ISS-198 added L4 (runner_load CTE) and L5
+ * (fresh_capable_runners' last_seen_at predicate) to the same query; the
+ * `checkLayer4RunnerFull` + `checkLayer5RunnerHeartbeat` helpers remain for
+ * telemetry parity.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,6 +24,7 @@ vi.mock('../logger.js', () => ({
 
 const {
   checkLayer4RunnerFull,
+  checkLayer5RunnerHeartbeat,
   pickNextDispatchableJobForProject,
   countInFlightForRunner,
   DEFAULT_MAX_CONCURRENT_ISSUES,
@@ -200,9 +203,11 @@ describe('pickNextDispatchableJobForProject', () => {
   //   • `retry_after_at <= now()` on jobs (ISS-197 cooldown gate — the
   //     retry engine sets a future timestamp to honour provider
   //     Retry-After; the DB-side gate hides the row until it lapses).
-  // A future contributor adding `gate_at + N seconds` or a "seen N seconds
-  // ago" exclusion should trip this assertion deliberately.
-  it('contains no time-based debouncer beyond dependency-edge valid_until / retry_after_at expiry', async () => {
+  //   • `last_seen_at > now() - liveness_seconds` (ISS-198 Gate L5 —
+  //     runner heartbeat freshness in fresh_capable_runners).
+  // A future contributor adding `gate_at + N seconds` or a generic
+  // "seen N seconds ago" exclusion should trip this assertion deliberately.
+  it('contains no time-based debouncer beyond dependency-edge expiry, retry_after_at, and L5 heartbeat', async () => {
     mockProjectAgentConfigOnce(null);
     dbExecute.mockResolvedValueOnce([]);
     await pickNextDispatchableJobForProject('p1');
@@ -211,14 +216,55 @@ describe('pickNextDispatchableJobForProject', () => {
     expect(text).not.toMatch(/gate_at/);
     expect(text).not.toMatch(/gate_reason/);
 
-    // Strip the dependency-edge valid_until and the retry-after cooldown
-    // clauses; whatever remains must not contain any `now() - interval`
-    // or `seconds` predicate.
+    // Strip the dependency-edge valid_until, retry_after_at cooldown, and
+    // the L5 heartbeat clauses; whatever remains must not contain any
+    // `now() - interval` or `seconds` predicate.
     const stripped = text
       .replace(/valid_until\s+IS\s+NULL\s+OR\s+valid_until\s*>\s*now\(\)/g, '')
-      .replace(/j\.retry_after_at\s+IS\s+NULL\s+OR\s+j\.retry_after_at\s*<=\s*now\(\)/g, '');
+      .replace(/j\.retry_after_at\s+IS\s+NULL\s+OR\s+j\.retry_after_at\s*<=\s*now\(\)/g, '')
+      .replace(/r\.last_seen_at\s*>\s*now\(\)[^)]+/g, '');
     expect(stripped).not.toMatch(/now\(\)\s*-\s*interval/);
     expect(stripped).not.toMatch(/seconds/i);
+  });
+
+  // ISS-198 — L4 (runner_load) + L5 (fresh_capable_runners) inline.
+  it('SQL inlines L4 runner_load CTE and L5 fresh_capable_runners heartbeat filter', async () => {
+    mockProjectAgentConfigOnce(null);
+    dbExecute.mockResolvedValueOnce([]);
+    await pickNextDispatchableJobForProject('p1');
+    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+
+    expect(text).toMatch(/runner_load/);
+    expect(text).toMatch(/fresh_capable_runners/);
+    expect(text).toMatch(/r\.last_seen_at\s*>\s*now\(\)/);
+    expect(text).toMatch(/fcr\.in_flight\s*<\s*fcr\.cap/);
+  });
+});
+
+describe('checkLayer5RunnerHeartbeat', () => {
+  it('passes when the runner row is absent (race tolerant)', async () => {
+    selectChainOnce([]);
+    const r = await checkLayer5RunnerHeartbeat('r-x');
+    expect(r.pass).toBe(true);
+  });
+
+  it('fails when last_seen_at is NULL (never pinged)', async () => {
+    selectChainOnce([{ lastSeenAt: null }]);
+    const r = await checkLayer5RunnerHeartbeat('r1');
+    expect(r).toMatchObject({ pass: false, reason: 'runner_stale' });
+  });
+
+  it('fails when last_seen_at is older than the liveness window', async () => {
+    const ancient = new Date(Date.now() - 5 * 60_000);
+    selectChainOnce([{ lastSeenAt: ancient }]);
+    const r = await checkLayer5RunnerHeartbeat('r1');
+    expect(r).toMatchObject({ pass: false, reason: 'runner_stale' });
+  });
+
+  it('passes when last_seen_at is fresh', async () => {
+    selectChainOnce([{ lastSeenAt: new Date() }]);
+    const r = await checkLayer5RunnerHeartbeat('r1');
+    expect(r.pass).toBe(true);
   });
 
   // ISS-197 — verify the picker emits the retry_after_at cooldown gate.

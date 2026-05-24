@@ -26,6 +26,7 @@ import { db } from '../db/client.js';
 import { comments, issues, projects } from '../db/schema.js';
 import type { JobType } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { recordHoldSet } from '../observability/hold-metrics.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 
@@ -53,6 +54,13 @@ export interface IssueFailureContext {
   lastFailureAt: string;
   /** Pre-computed action menu the UI renders. Order = display order. */
   suggestedActions: Array<'resume' | 'skip-step' | 'close'>;
+  /**
+   * ISS-198 — explicit auto-clear horizon for this hold. `null` = indefinite
+   * (operator must clear). A `Date` schedules the sweeper to auto-clear once
+   * `now() > holdUntil` (subject to anti-ping-pong). Required — every caller
+   * computes this via {@link computeHoldUntil} so the policy lives in one place.
+   */
+  holdUntil: Date | null;
 }
 
 export interface SetManualHoldBlockInput {
@@ -96,6 +104,7 @@ export async function setManualHoldBlock(input: SetManualHoldBlockInput): Promis
     .update(issues)
     .set({
       manualHold: true,
+      manualHoldUntil: context.holdUntil,
       failureContext: context as never,
       updatedAt: new Date(),
     })
@@ -125,6 +134,9 @@ export async function setManualHoldBlock(input: SetManualHoldBlockInput): Promis
       trigger: context.trigger,
       classification: context.classification,
       attempts: context.attempts,
+      // ISS-198 — emit holdUntil so the UI can render the countdown badge
+      // without an extra fetch. ISO string keeps the WS payload JSON-safe.
+      holdUntil: context.holdUntil ? context.holdUntil.toISOString() : null,
     },
   });
 
@@ -135,9 +147,15 @@ export async function setManualHoldBlock(input: SetManualHoldBlockInput): Promis
       trigger: context.trigger,
       kind: context.classification.kind,
       reason: context.classification.reason,
+      holdUntil: context.holdUntil ? context.holdUntil.toISOString() : null,
     },
     'manual-hold: pipeline blocked, operator action required',
   );
+
+  recordHoldSet({
+    kind: context.classification.kind,
+    indefinite: context.holdUntil === null,
+  });
 }
 
 function buildBlockComment(ctx: IssueFailureContext): string {
@@ -146,6 +164,16 @@ function buildBlockComment(ctx: IssueFailureContext): string {
     if (a === 'skip-step') return '**Skip step** — advance status to the next stage and continue';
     return '**Close** — abandon this issue';
   });
+  // ISS-198 — surface holdUntil so an operator reading the comment knows
+  // whether the system will retry on its own.
+  let holdLine: string;
+  if (ctx.holdUntil) {
+    const iso = ctx.holdUntil.toISOString();
+    const minutes = Math.max(1, Math.round((ctx.holdUntil.getTime() - Date.now()) / 60_000));
+    holdLine = `**Auto-resume at:** ${iso} (in ${minutes} min)`;
+  } else {
+    holdLine = '**Auto-resume:** manual only — an operator must resume this issue.';
+  }
   return [
     `🛑 **Pipeline blocked at step: \`${ctx.step}\`**`,
     ``,
@@ -155,6 +183,7 @@ function buildBlockComment(ctx: IssueFailureContext): string {
     `**Trigger:** ${ctx.trigger}`,
     `**Classification:** ${ctx.classification.kind} — ${ctx.classification.reason}`,
     `**Attempts before block:** ${ctx.attempts}`,
+    holdLine,
     ``,
     `**Available actions:**`,
     ...actions.map((a) => `- ${a}`),

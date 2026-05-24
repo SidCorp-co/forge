@@ -287,9 +287,17 @@ issueExtrasRoutes.patch(
           const before = row.manualHold;
           const value = data.manualHold;
           await db.transaction(async (tx) => {
+            // ISS-198 — see comment in /manual-hold above. Both branches
+            // null manualHoldUntil so any prior auto-clear horizon never
+            // survives an operator-driven toggle.
+            const updateFields = {
+              manualHold: value,
+              manualHoldUntil: null,
+              updatedAt: sql`now()` as never,
+            };
             await tx
               .update(issues)
-              .set({ manualHold: value, updatedAt: sql`now()` })
+              .set(updateFields)
               .where(eq(issues.id, row.id));
             await recordActivityTx(tx, {
               issueId: row.id,
@@ -480,9 +488,19 @@ issueExtrasRoutes.patch(
 
     if (before !== value) {
       await db.transaction(async (tx) => {
+        // ISS-198 — both branches null manualHoldUntil. Clearing skips a
+        // stale auto-clear horizon on a row the operator already resumed;
+        // setting via this endpoint is operator-driven and indefinite, so
+        // any prior expiry must not survive. Failure-driven holds set
+        // their own expiry via setManualHoldBlock.
+        const updateFields = {
+          manualHold: value,
+          manualHoldUntil: null,
+          updatedAt: new Date(),
+        };
         await tx
           .update(issues)
-          .set({ manualHold: value, updatedAt: new Date() })
+          .set(updateFields)
           .where(eq(issues.id, issueId));
         await recordActivityTx(tx, {
           issueId,
