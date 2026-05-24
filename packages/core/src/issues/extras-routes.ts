@@ -287,15 +287,14 @@ issueExtrasRoutes.patch(
           const before = row.manualHold;
           const value = data.manualHold;
           await db.transaction(async (tx) => {
-            // ISS-198 — see comment in /manual-hold above. Clearing the
-            // hold also nulls the auto-clear horizon.
-            const updateFields = value
-              ? { manualHold: value, updatedAt: sql`now()` as never }
-              : {
-                  manualHold: value,
-                  manualHoldUntil: null,
-                  updatedAt: sql`now()` as never,
-                };
+            // ISS-198 — see comment in /manual-hold above. Both branches
+            // null manualHoldUntil so any prior auto-clear horizon never
+            // survives an operator-driven toggle.
+            const updateFields = {
+              manualHold: value,
+              manualHoldUntil: null,
+              updatedAt: sql`now()` as never,
+            };
             await tx
               .update(issues)
               .set(updateFields)
@@ -489,15 +488,16 @@ issueExtrasRoutes.patch(
 
     if (before !== value) {
       await db.transaction(async (tx) => {
-        // ISS-198 — clearing manualHold also nulls manualHoldUntil so the
-        // sweeper doesn't try to re-apply auto-clear logic on a row the
-        // operator already resumed manually. Setting manualHold=true via
-        // this endpoint is operator-driven and indefinite (manualHoldUntil
-        // stays NULL); failure-driven holds set their own expiry via
-        // setManualHoldBlock.
-        const updateFields = value
-          ? { manualHold: value, updatedAt: new Date() }
-          : { manualHold: value, manualHoldUntil: null, updatedAt: new Date() };
+        // ISS-198 — both branches null manualHoldUntil. Clearing skips a
+        // stale auto-clear horizon on a row the operator already resumed;
+        // setting via this endpoint is operator-driven and indefinite, so
+        // any prior expiry must not survive. Failure-driven holds set
+        // their own expiry via setManualHoldBlock.
+        const updateFields = {
+          manualHold: value,
+          manualHoldUntil: null,
+          updatedAt: new Date(),
+        };
         await tx
           .update(issues)
           .set(updateFields)
