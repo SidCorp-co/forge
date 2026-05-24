@@ -216,12 +216,14 @@ describe('pickNextDispatchableJobForProject', () => {
     expect(text).not.toMatch(/gate_at/);
     expect(text).not.toMatch(/gate_reason/);
 
-    // Strip the dependency-edge valid_until, retry_after_at cooldown, and
-    // the L5 heartbeat clauses; whatever remains must not contain any
-    // `now() - interval` or `seconds` predicate.
+    // Strip the dependency-edge valid_until, retry_after_at cooldown, the
+    // L5 heartbeat clauses, and the running_ids cooldown-pending union
+    // (added so an issue in retry cooldown holds the cap slot); whatever
+    // remains must not contain any `now() - interval` or `seconds` predicate.
     const stripped = text
       .replace(/valid_until\s+IS\s+NULL\s+OR\s+valid_until\s*>\s*now\(\)/g, '')
       .replace(/j\.retry_after_at\s+IS\s+NULL\s+OR\s+j\.retry_after_at\s*<=\s*now\(\)/g, '')
+      .replace(/retry_after_at\s+IS\s+NOT\s+NULL\s+AND\s+retry_after_at\s*>\s*now\(\)/g, '')
       .replace(/r\.last_seen_at\s*>\s*now\(\)[^)]+/g, '');
     expect(stripped).not.toMatch(/now\(\)\s*-\s*interval/);
     expect(stripped).not.toMatch(/seconds/i);
@@ -238,6 +240,24 @@ describe('pickNextDispatchableJobForProject', () => {
     expect(text).toMatch(/fresh_capable_runners/);
     expect(text).toMatch(/r\.last_seen_at\s*>\s*now\(\)/);
     expect(text).toMatch(/fcr\.in_flight\s*<\s*fcr\.cap/);
+  });
+
+  // Strict per-cap serialization: an issue in retry cooldown must hold its
+  // cap slot, so an unrelated issue's queued job can't slip in during the
+  // cooldown window. Without this, a worker-wide failure (session/usage
+  // limit, provider 429 with long Retry-After) lets the next queued issue
+  // hit the same limit and fail too.
+  it('running_ids CTE includes cooldown-pending retries so other issues are gated', async () => {
+    mockProjectAgentConfigOnce(null);
+    dbExecute.mockResolvedValueOnce([]);
+    await pickNextDispatchableJobForProject('p1');
+    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+
+    // The CTE must UNION cooldown-pending rows alongside the agent_session
+    // membership rows; the cooldown-pending branch reads from `jobs`
+    // (scoped to the same project as the surrounding picker query) and
+    // selects rows whose `retry_after_at` is still in the future.
+    expect(text).toMatch(/WITH\s+running_ids\s+AS[\s\S]+UNION[\s\S]+FROM\s+jobs[\s\S]+retry_after_at\s+IS\s+NOT\s+NULL[\s\S]+retry_after_at\s*>\s*now\(\)/i);
   });
 });
 

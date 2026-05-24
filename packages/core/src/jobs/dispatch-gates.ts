@@ -218,11 +218,27 @@ export async function pickNextDispatchableJobForProject(
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
   const rows = await db.execute<JobRow>(sql`
     WITH running_ids AS (
+      -- Issues currently holding a slot via an active agent_session.
       SELECT DISTINCT (metadata->>'issueId') AS issue_id
       FROM agent_sessions
       WHERE project_id = ${projectId}
         AND status IN ('queued','running')
         AND (metadata->>'issueId') IS NOT NULL
+      UNION
+      -- Issues holding a slot via a retry waiting on its cooldown window.
+      -- Without this, a worker-wide failure (e.g. session/usage limit,
+      -- provider 429 with a long Retry-After) lets unrelated issues
+      -- dispatch in the cooldown gap and burn the same limit. The L3 cap
+      -- now treats "issue is retrying" as "issue is busy" — strict per-cap
+      -- serialization until the failing issue resolves or the operator
+      -- cancels it.
+      SELECT DISTINCT issue_id::text
+      FROM jobs
+      WHERE project_id = ${projectId}
+        AND status = 'queued'
+        AND retry_after_at IS NOT NULL
+        AND retry_after_at > now()
+        AND issue_id IS NOT NULL
     ),
     runner_load AS (
       SELECT runner_id, COUNT(*)::int AS in_flight
