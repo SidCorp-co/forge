@@ -100,6 +100,11 @@ async function runTickInner(
   // ISS-164 — issues with queued work at sweep start; the post-sweep
   // pipelineHealth broadcast unions these with any issues whose jobs we end
   // up dispatching so still-gated rows get a refreshed `lastTickAt`.
+  // The `retry_after_at` predicate mirrors the picker's L1 cooldown gate
+  // (dispatch-gates.ts) so issues whose only queued work is parked under
+  // a provider Retry-After hint don't trigger a per-tick WS broadcast —
+  // without this, every backstop tick fans pipelineHealth events out to
+  // every connected client for every cooldown-gated issue.
   const affectedIssueIds = new Set<string>();
   try {
     const rows = await db.execute<{ issue_id: string }>(sql`
@@ -108,6 +113,7 @@ async function runTickInner(
       WHERE project_id = ${projectId}
         AND status = 'queued'
         AND issue_id IS NOT NULL
+        AND (retry_after_at IS NULL OR retry_after_at <= now())
     `);
     for (const r of rows) if (r.issue_id) affectedIssueIds.add(r.issue_id);
   } catch (err) {

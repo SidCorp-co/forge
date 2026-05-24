@@ -120,6 +120,21 @@ describe('dispatchTickForProject', () => {
     expect(pickFn).toHaveBeenNthCalledWith(1, 'p-self-heal');
     expect(pickFn).toHaveBeenNthCalledWith(2, 'p-self-heal');
   });
+
+  // The `affectedIssueIds` snapshot SELECT must mirror the picker's L1
+  // cooldown gate (dispatch-gates.ts), otherwise the 60s sweeper backstop
+  // would publish `pipelineHealthChanged` every minute for every queued
+  // issue whose only work is parked under a provider Retry-After hint.
+  it('filters retry_after_at-gated jobs out of the post-tick WS snapshot SELECT', async () => {
+    pickFn.mockResolvedValueOnce(null);
+
+    await dispatchTickForProject('p1');
+
+    // First dbExecute call is the snapshot SELECT inside runTickInner.
+    expect(dbExecute).toHaveBeenCalled();
+    const serialized = JSON.stringify(dbExecute.mock.calls[0]?.[0]);
+    expect(serialized).toContain('retry_after_at IS NULL OR retry_after_at <= now()');
+  });
 });
 
 describe('dispatchTickForProject — dependency.unblocked event', () => {
