@@ -630,6 +630,91 @@ describe('PATCH /api/projects/:id', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  // ISS-188 — token budget schema persistence (W2.3.1).
+  it('200 stateContext: writes the patch merged under agentConfig (preserves siblings)', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
+      .mockResolvedValueOnce([{ role: 'owner' }])
+      .mockResolvedValueOnce([
+        {
+          agentConfig: {
+            pipelineConfig: { enabled: true },
+            stateContext: { plan: { blocks: { tip: 'keep' } } },
+          },
+        },
+      ]);
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: 'p1',
+        slug: 'p-one',
+        name: 'P One',
+        ownerId: 'uuid-owner',
+        agentConfig: {
+          pipelineConfig: { enabled: true },
+          stateContext: {
+            plan: { blocks: { tip: 'keep' } },
+            code: { budget: { perRunUsd: 1, perMonthUsd: 50, action: 'pause' } },
+          },
+        },
+        createdAt: new Date(),
+      },
+    ]);
+
+    const res = await req('/11111111-1111-4111-8111-111111111111', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        stateContext: {
+          code: { budget: { perRunUsd: 1, perMonthUsd: 50, action: 'pause' } },
+        },
+      }),
+      token,
+    });
+    expect(res.status).toBe(200);
+    expect(updateSet).toHaveBeenCalledWith({
+      agentConfig: {
+        pipelineConfig: { enabled: true },
+        stateContext: {
+          plan: { blocks: { tip: 'keep' } },
+          code: { budget: { perRunUsd: 1, perMonthUsd: 50, action: 'pause' } },
+        },
+      },
+    });
+  });
+
+  it('400 BAD_REQUEST when stateContext budget is negative', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+
+    const res = await req('/11111111-1111-4111-8111-111111111111', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        stateContext: {
+          code: { budget: { perRunUsd: -1, perMonthUsd: 50, action: 'pause' } },
+        },
+      }),
+      token,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('400 BAD_REQUEST when stateContext uses an unknown state name', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+
+    const res = await req('/11111111-1111-4111-8111-111111111111', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        stateContext: {
+          unknown_state: { budget: { perRunUsd: 1, perMonthUsd: 50, action: 'pause' } },
+        },
+      }),
+      token,
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('POST /api/projects/:id/runners (ISS-172)', () => {
