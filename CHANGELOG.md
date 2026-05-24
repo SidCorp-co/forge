@@ -18,6 +18,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+## [0.2.3] - 2026-05-25
+
+Hotfix for v0.2.2: desktop sign-in's pairing link no longer 404s on subdomain-split deploys (e.g. forge-beta.sidcorp.co + forge-beta-api.sidcorp.co).
+
+### Added
+
+### Changed
+
+### Removed
+
+### Fixed
+
+- **The "Sign in via the web" link from the desktop now opens the right host.** v0.2.2 sent users to `https://<api-host>/connect-device?code=…`, which 404s on any deploy where the API and web app live on different subdomains. The desktop now builds the link from the web URL the user typed at the login screen — the same host that actually serves the connect-device page.
+  *Technical: `packages/dev/src/lib/pairing.ts` was building `connectUrl` from `apiBase` (the value returned by `/.well-known/forge-config.json` discovery, i.e. the API origin). Switched to `opts.coreUrl` (the user-typed URL, which is the web origin by design). Updated the `webBaseFrom` docstring to reflect the corrected input contract. Single-origin deploys are unaffected — `coreUrl` and `apiBase` point at the same host.*
+
+### Security
+
 ## [0.2.2] - 2026-05-25
 
 Desktop sign-in switches to a pairing-code flow that works on Linux/Wayland, headless SSH sessions, and browsers that ignore custom URL schemes — replacing the old `forge-beta://` deep-link.

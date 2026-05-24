@@ -89,11 +89,17 @@ async function detectHostname(): Promise<string | undefined> {
 }
 
 /**
- * Trim '/api' off the API base so the resulting URL points at the web origin
- * (single-origin deploys serve both from the same host).
+ * Normalize a user-typed URL to the web origin that serves `/connect-device`.
+ *
+ * The pairing flow MUST use the user-typed URL (the web origin), not the
+ * resolved `apiBase` from `/.well-known/forge-config.json`. On subdomain-
+ * split deploys the API lives on a different host than the web app (e.g.
+ * `forge-beta-api.sidcorp.co` vs `forge-beta.sidcorp.co`), and the
+ * connect-device page only exists on the web origin — pointing at the API
+ * host 404s.
  */
-function webBaseFrom(apiBase: string): string {
-  const trimmed = apiBase.replace(/\/+$/, '');
+function webBaseFrom(userUrl: string): string {
+  const trimmed = userUrl.replace(/\/+$/, '');
   return trimmed.endsWith('/api') ? trimmed.slice(0, -'/api'.length) : trimmed;
 }
 
@@ -147,7 +153,7 @@ export async function startPairing(opts: StartPairingOptions): Promise<PairingHa
   }
   const init = (await initRes.json()) as PairInitResponse;
 
-  const connectUrl = `${webBaseFrom(apiBase)}/connect-device?code=${encodeURIComponent(
+  const connectUrl = `${webBaseFrom(opts.coreUrl)}/connect-device?code=${encodeURIComponent(
     init.pairing_code,
   )}`;
   const expiresAt = new Date(init.expires_at);

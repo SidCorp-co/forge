@@ -1,6 +1,6 @@
 {
   "name": "@forge/contracts",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "license": "Apache-2.0",
   "description": "Shared TypeScript types + request schemas derived from @forge/core (Drizzle rows + Zod schemas). Type-only surface — no runtime coupling.",
