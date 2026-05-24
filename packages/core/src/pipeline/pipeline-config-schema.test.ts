@@ -273,6 +273,25 @@ describe('stageConfigSchema per-state overrides', () => {
     expect(parsed.states?.developed?.budget).toEqual({ perRunUsd: 2.5, perMonthUsd: 100 });
   });
 
+  it('accepts budget action enum values', () => {
+    const parsedPause = pipelineConfigSchema.parse({
+      states: { developed: { budget: { perMonthUsd: 50, action: 'pause' } } },
+    });
+    expect(parsedPause.states?.developed?.budget?.action).toBe('pause');
+    const parsedWarn = pipelineConfigSchema.parse({
+      states: { developed: { budget: { perMonthUsd: 50, action: 'warn' } } },
+    });
+    expect(parsedWarn.states?.developed?.budget?.action).toBe('warn');
+  });
+
+  it('rejects an unknown budget.action value', () => {
+    expect(() =>
+      pipelineConfigSchema.parse({
+        states: { developed: { budget: { perMonthUsd: 50, action: 'foo' } } },
+      }),
+    ).toThrow();
+  });
+
   it('accepts sessionGroup membership at the stage level', () => {
     const parsed = pipelineConfigSchema.parse({
       states: { developed: { sessionGroup: 'implementation' } },
@@ -303,15 +322,11 @@ describe('sessionGroups + onResumeFail', () => {
   });
 
   it('rejects empty group', () => {
-    expect(() =>
-      pipelineConfigSchema.parse({ sessionGroups: { x: [] } }),
-    ).toThrow();
+    expect(() => pipelineConfigSchema.parse({ sessionGroups: { x: [] } })).toThrow();
   });
 
   it('rejects unknown onResumeFail policy', () => {
-    expect(() =>
-      pipelineConfigSchema.parse({ onResumeFail: 'retry' }),
-    ).toThrow();
+    expect(() => pipelineConfigSchema.parse({ onResumeFail: 'retry' })).toThrow();
   });
 });
 
