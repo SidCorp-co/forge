@@ -31,7 +31,7 @@ import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
-import { CLASSIFIER_VERSION, classifyFailure } from '../pipeline/failure-classifier.js';
+import { CLASSIFIER_VERSION, classifyFailure, type FailureKind } from '../pipeline/failure-classifier.js';
 import { verifyRecovery } from '../pipeline/recovery-verifier.js';
 import { MIN_RETRY_COOLDOWN_MS } from '../pipeline/retry-after-parser.js';
 import { publishSessionRecoveryChanged } from '../agent-sessions/recovery-publish.js';
@@ -50,9 +50,25 @@ export interface RetryOutcome {
   reason?: string;
 }
 
-/** Hard cap: 3 auto-retries per original job (legacy Strapi parity, was 1
- *  pre-ISS-197). Operator-driven retry remains unbounded. */
+/** Hard cap: 3 auto-retries per original job for *classified-as-retryable*
+ *  failures (transient + timeout). Legacy Strapi parity, was 1 pre-ISS-197.
+ *  Operator-driven retry remains unbounded. */
 export const MAX_AUTO_RETRIES = 3;
+
+/** Tighter cap for `unknown` failures. The classifier returns `unknown` when
+ *  no pattern matches — either a genuinely new failure mode or, more often,
+ *  a transient runner-side death (e.g. Tauri's "Agent completed with errors"
+ *  fallback when Claude CLI exits non-zero with empty stderr). Treating
+ *  unknown as hard-stop forces manual hold on every silent CLI death; treating
+ *  it like transient burns 3× tokens on permanent failures that just happen
+ *  to lack patterns. A single retry is the standard "give it one more shot"
+ *  compromise — recovers genuine transient blips, contains blast radius if
+ *  the failure is actually permanent. */
+export const MAX_AUTO_RETRIES_UNKNOWN = 1;
+
+function retryBudgetFor(kind: FailureKind): number {
+  return kind === 'unknown' ? MAX_AUTO_RETRIES_UNKNOWN : MAX_AUTO_RETRIES;
+}
 
 /**
  * Verify-first auto-retry. See file header for the full state diagram.
@@ -118,9 +134,12 @@ export async function scheduleAutoRetryWithVerify(
     }
   }
 
-  // Step 3 — non-retryable kinds. permission joins permanent here; timeout
-  // joins transient (eligible).
-  if (classified.kind !== 'transient' && classified.kind !== 'timeout') {
+  // Step 3 — non-retryable kinds. Only `permission` and `permanent` are
+  // hard-stops; classification gave us evidence the failure won't recover.
+  // `unknown` is retryable with a tighter budget (see MAX_AUTO_RETRIES_UNKNOWN)
+  // — silent runner deaths are usually transient even when the error string
+  // matches no pattern. `transient` and `timeout` keep the full budget.
+  if (classified.kind === 'permission' || classified.kind === 'permanent') {
     if (isSentryEnabled()) {
       Sentry.addBreadcrumb({
         category: 'session.recovery_skipped',
@@ -138,9 +157,10 @@ export async function scheduleAutoRetryWithVerify(
     return { scheduled: false, reason: `classifier:${classified.kind}` };
   }
 
-  // Step 4 — budget. attempts starts at 1 for the original; MAX_AUTO_RETRIES
-  // retries means attempts can go up to MAX_AUTO_RETRIES + 1.
-  if (job.attempts >= MAX_AUTO_RETRIES + 1) {
+  // Step 4 — budget. attempts starts at 1 for the original; the budget is
+  // per-kind so an `unknown` failure burns at most one retry.
+  const budget = retryBudgetFor(classified.kind);
+  if (job.attempts >= budget + 1) {
     logger.info(
       { jobId: job.id, attempts: job.attempts, reason },
       'retry: auto-retry budget exhausted',

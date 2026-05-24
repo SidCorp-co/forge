@@ -188,13 +188,28 @@ describe('scheduleAutoRetryWithVerify', () => {
     expect(result.scheduled).toBe(true);
   });
 
-  it('does NOT retry when classifier returns unknown (operator decides)', async () => {
+  it('DOES retry once when classifier returns unknown (silent runner death fallback)', async () => {
+    // Silent CLI deaths (e.g. Tauri's "Agent completed with errors" fallback
+    // when Claude CLI exits non-zero with empty stderr) classify as unknown
+    // because no pattern matches. They are usually transient; we attempt one
+    // recovery before falling through to manual hold.
+    insertReturning.mockResolvedValueOnce([{ id: 'j-unknown-retry' }]);
     const result = await scheduleAutoRetryWithVerify(
-      { ...baseJob, error: 'mystery glitch' } as never,
+      { ...baseJob, error: 'Agent completed with errors' } as never,
+      'crashed',
+    );
+    expect(result.scheduled).toBe(true);
+    expect(result.newJobId).toBe('j-unknown-retry');
+  });
+
+  it('exhausts the unknown budget after a single retry (attempts=2)', async () => {
+    const result = await scheduleAutoRetryWithVerify(
+      { ...baseJob, error: 'mystery glitch', attempts: 2 } as never,
       'crashed',
     );
     expect(result.scheduled).toBe(false);
-    expect(result.reason).toBe('classifier:unknown');
+    expect(result.reason).toBe('retry_budget_exhausted');
+    expect(dbInsert).not.toHaveBeenCalled();
   });
 
   it('does NOT retry past the MAX_AUTO_RETRIES budget', async () => {
