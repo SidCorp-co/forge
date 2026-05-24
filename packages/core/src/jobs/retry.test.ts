@@ -212,14 +212,19 @@ describe('scheduleAutoRetryWithVerify', () => {
     expect(dbInsert).not.toHaveBeenCalled();
   });
 
-  it('does NOT retry past the MAX_AUTO_RETRIES budget', async () => {
+  it('DOES retry past 3 attempts for transient (unbounded budget)', async () => {
+    // Transient/timeout kinds carry no count cap — the per-retry cooldown +
+    // verify-first gate are the safety. Operator can still cancel via
+    // cancellationRequested. Pre this change attempts >= 4 returned
+    // retry_budget_exhausted; now it keeps retrying as long as the issue
+    // hasn't moved on.
+    insertReturning.mockResolvedValueOnce([{ id: 'j-retry-100' }]);
     const result = await scheduleAutoRetryWithVerify(
-      { ...baseJob, attempts: 4 } as never,
+      { ...baseJob, attempts: 100 } as never,
       'crashed',
     );
-    expect(result.scheduled).toBe(false);
-    expect(result.reason).toBe('retry_budget_exhausted');
-    expect(dbInsert).not.toHaveBeenCalled();
+    expect(result.scheduled).toBe(true);
+    expect(result.newJobId).toBe('j-retry-100');
   });
 
   it('does NOT retry a cancelled job', async () => {

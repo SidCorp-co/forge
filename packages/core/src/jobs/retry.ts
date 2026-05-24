@@ -50,24 +50,34 @@ export interface RetryOutcome {
   reason?: string;
 }
 
-/** Hard cap: 3 auto-retries per original job for *classified-as-retryable*
- *  failures (transient + timeout). Legacy Strapi parity, was 1 pre-ISS-197.
- *  Operator-driven retry remains unbounded. */
-export const MAX_AUTO_RETRIES = 3;
-
-/** Tighter cap for `unknown` failures. The classifier returns `unknown` when
- *  no pattern matches — either a genuinely new failure mode or, more often,
- *  a transient runner-side death (e.g. Tauri's "Agent completed with errors"
- *  fallback when Claude CLI exits non-zero with empty stderr). Treating
- *  unknown as hard-stop forces manual hold on every silent CLI death; treating
- *  it like transient burns 3× tokens on permanent failures that just happen
- *  to lack patterns. A single retry is the standard "give it one more shot"
+/** Cap for `unknown` failures. The classifier returns `unknown` when no
+ *  pattern matches — usually a transient runner-side death (Tauri's "Agent
+ *  completed with errors" fallback) but possibly a genuinely permanent
+ *  failure lacking patterns. A single retry is the "give it one more shot"
  *  compromise — recovers genuine transient blips, contains blast radius if
  *  the failure is actually permanent. */
 export const MAX_AUTO_RETRIES_UNKNOWN = 1;
 
-function retryBudgetFor(kind: FailureKind): number {
-  return kind === 'unknown' ? MAX_AUTO_RETRIES_UNKNOWN : MAX_AUTO_RETRIES;
+/** Budget per classified failure kind.
+ *
+ * `transient` and `timeout` return `null` = unbounded retries. The classifier
+ * already gave evidence the failure is recoverable (network blip, 5xx, 429,
+ * runner offline, ETIMEDOUT, heartbeat stale, etc.); a count-based cap would
+ * force manualHold the operator must clear, which adds latency without
+ * removing the underlying flake. Token spend is bounded by the per-retry
+ * cooldown (60s minimum, capped at 24h per provider Retry-After) and by the
+ * verify-first gate that aborts retry if the issue advanced. Operator can
+ * still cancel by setting `cancellationRequested` on the job.
+ *
+ * `unknown` keeps the 1-retry cap so a permanent failure masquerading as
+ * unknown can't burn unbounded tokens.
+ *
+ * `permission` / `permanent` are hard-stops upstream and never reach this
+ * helper.
+ */
+function retryBudgetFor(kind: FailureKind): number | null {
+  if (kind === 'unknown') return MAX_AUTO_RETRIES_UNKNOWN;
+  return null;
 }
 
 /**
@@ -157,10 +167,11 @@ export async function scheduleAutoRetryWithVerify(
     return { scheduled: false, reason: `classifier:${classified.kind}` };
   }
 
-  // Step 4 — budget. attempts starts at 1 for the original; the budget is
-  // per-kind so an `unknown` failure burns at most one retry.
+  // Step 4 — budget. `null` budget = unbounded (transient + timeout); the
+  // per-retry cooldown + verify-first gate are the real safety. attempts
+  // starts at 1 for the original; capped kinds burn at most `budget` retries.
   const budget = retryBudgetFor(classified.kind);
-  if (job.attempts >= budget + 1) {
+  if (budget !== null && job.attempts >= budget + 1) {
     logger.info(
       { jobId: job.id, attempts: job.attempts, reason },
       'retry: auto-retry budget exhausted',
