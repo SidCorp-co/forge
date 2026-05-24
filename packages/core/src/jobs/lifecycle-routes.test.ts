@@ -58,7 +58,6 @@ vi.mock('../db/client.js', () => ({
 const scheduleRetryMock = vi.fn(async () => ({ scheduled: false }));
 vi.mock('./retry.js', () => ({
   scheduleAutoRetryWithVerify: (...args: unknown[]) => scheduleRetryMock(...(args as [])),
-  MAX_AUTO_RETRIES: 3,
 }));
 
 const setManualHoldBlockMock = vi.fn(async () => undefined);
