@@ -4,6 +4,7 @@ import {
   activityLog,
   actorTypes,
   comments,
+  desktopPairingCodes,
   devicePlatforms,
   deviceStatuses,
   devices,
@@ -47,6 +48,7 @@ type AnyTable =
   | typeof refreshTokens
   | typeof devices
   | typeof pairingCodes
+  | typeof desktopPairingCodes
   | typeof jobs
   | typeof jobEvents
   | typeof issues
@@ -492,6 +494,91 @@ describe('db/schema — pairing_codes', () => {
     expect(cfg.indexes.some((i) => i.config.name === 'pairing_codes_user_id_idx')).toBe(true);
     expect(cfg.indexes.some((i) => i.config.name === 'pairing_codes_project_id_idx')).toBe(true);
     expect(cfg.indexes.some((i) => i.config.name === 'pairing_codes_expires_at_idx')).toBe(true);
+  });
+});
+
+describe('db/schema — desktop_pairing_codes', () => {
+  it('has the documented columns', () => {
+    const names = getTableConfig(desktopPairingCodes).columns.map((c) => c.name);
+    expect(names.sort()).toEqual(
+      [
+        'approved_at',
+        'approved_user_id',
+        'code_hash',
+        'consumed_at',
+        'created_at',
+        'created_ip',
+        'created_user_agent',
+        'device_hostname',
+        'device_label',
+        'device_platform',
+        'expires_at',
+        'id',
+      ].sort(),
+    );
+  });
+
+  it('id is uuid PK with defaultRandom', () => {
+    const id = columnByName(desktopPairingCodes, 'id');
+    expect(id.primary).toBe(true);
+    expect(id.hasDefault).toBe(true);
+    expect(id.columnType).toBe('PgUUID');
+  });
+
+  it('code_hash is notNull and unique (single-use hash lookup)', () => {
+    const c = columnByName(desktopPairingCodes, 'code_hash');
+    expect(c.notNull).toBe(true);
+    expect(c.isUnique).toBe(true);
+  });
+
+  it('device_label and device_platform are notNull text', () => {
+    for (const name of ['device_label', 'device_platform']) {
+      const c = columnByName(desktopPairingCodes, name);
+      expect(c.notNull).toBe(true);
+      expect(c.columnType).toBe('PgText');
+    }
+  });
+
+  it('device_hostname, created_ip, created_user_agent, approved_user_id, approved_at, consumed_at are nullable', () => {
+    for (const name of [
+      'device_hostname',
+      'created_ip',
+      'created_user_agent',
+      'approved_user_id',
+      'approved_at',
+      'consumed_at',
+    ]) {
+      expect(columnByName(desktopPairingCodes, name).notNull).toBe(false);
+    }
+  });
+
+  it('approved_user_id references users.id with onDelete cascade', () => {
+    const cfg = getTableConfig(desktopPairingCodes);
+    expect(cfg.foreignKeys).toHaveLength(1);
+    const fk = cfg.foreignKeys[0];
+    if (!fk) throw new Error('expected FK');
+    const ref = fk.reference();
+    expect(ref.columns[0]?.name).toBe('approved_user_id');
+    expect(ref.foreignColumns[0]?.name).toBe('id');
+    expect(fk.onDelete).toBe('cascade');
+  });
+
+  it('expires_at and created_at are notNull timestamptz', () => {
+    for (const name of ['expires_at', 'created_at']) {
+      const c = columnByName(desktopPairingCodes, name);
+      expect(c.notNull).toBe(true);
+      expect(withTimezone(c)).toBe(true);
+    }
+  });
+
+  it('has named indexes on expires_at and consumed_at', () => {
+    const cfg = getTableConfig(desktopPairingCodes);
+    expect(cfg.indexes.some((i) => i.config.name === 'desktop_pairing_codes_expires_idx')).toBe(
+      true,
+    );
+    expect(cfg.indexes.some((i) => i.config.name === 'desktop_pairing_codes_consumed_idx')).toBe(
+      true,
+    );
   });
 });
 

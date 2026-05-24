@@ -12,7 +12,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Desktop sign-in now uses a short pairing code instead of a browser deep link.** On the desktop login screen, click "Sign in via the web", read the displayed code, open the matching URL in any signed-in browser, paste the code, and click Approve — the desktop signs in automatically. The pairing flow works on Linux/Wayland, headless SSH-forwarded sessions, macOS, and Windows, including browsers that ignore custom URL schemes (ISS-190 root cause).
+  *Technical: ADR 0019 supersedes ADR 0017. Adds `desktop_pairing_codes` table (migration 0074) + `POST /api/auth/desktop/{pair-init,approve}` and `GET /poll` with 10-min TTL, sha256(code) at rest, per-IP rate limits (20/h init, 10/h approve), single-use atomic UPDATE-RETURNING. Adds `/connect-device` Next.js page + `desktop-pairing-cleanup` pg-boss sweeper. Desktop client (`packages/dev/src/lib/pairing.ts`) polls every 2 s (5 s after 30 s). Drops `oauth_handoff` table and the entire PKCE deep-link surface.*
+
 ### Removed
+
+- **The `forge-beta://auth/callback` deep-link handler is gone.** The Tauri app no longer registers a custom URL scheme; the old `/auth/desktop/handoff` web bridge page is deleted; the old `/api/auth/desktop/{start,issue-code,exchange}` endpoints return 404. Existing v0.1.x desktop installs can't sign in until they update to a build with the pairing client.
+  *Technical: drops `tauri-plugin-deep-link` from `Cargo.toml` + `tauri.conf.json`; removes `DEEP_LINK_EVENT`/`on_open_url`/`redact_oauth_url` from `packages/dev/src-tauri/src/main.rs`; drops `oauth_handoff` table in migration 0074; renames `desktopOauth` feature flag to `desktopPairing`.*
 
 ### Fixed
 

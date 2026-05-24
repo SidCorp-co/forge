@@ -29,6 +29,9 @@ ADRs are **never edited after acceptance**. If a decision is reversed, write a n
 | [0014](0014-trunk-based-development.md) | Trunk-Based Development (single trunk, no `develop`/release branches) | Accepted | 2026-04-26 |
 | [0015](0015-rebrand-to-forge.md) | Rebrand to Forge | Accepted | 2026-04-28 |
 | [0016](0016-defer-glib-upgrade.md) | Defer glib 0.20 upgrade; transitive 0.18 dismissed with zero-exposure evidence | Accepted | 2026-04-29 |
+| [0017](0017-desktop-oauth-pkce.md) | Desktop OAuth via PKCE handoff | Superseded by 0019 | 2026-04-29 |
+| [0018](0018-parent-issue-edge-vs-column.md) | Parent issue edge vs column | Accepted | — |
+| [0019](0019-desktop-device-pairing.md) | Desktop sign-in via pairing code (supersedes 0017) | Accepted | 2026-05-24 |
 
 ## Status values
 
@@ -40,9 +43,9 @@ ADRs are **never edited after acceptance**. If a decision is reversed, write a n
 ## How to write a new ADR
 
 1. Copy the template format from any existing ADR
-2. Number it sequentially (next = 0017)
+2. Number it sequentially
 3. Use a short title: `NNNN-kebab-case-title.md`
 4. Commit with message: `docs(adr): NNNN <title>`
-5. Link it in this index
+5. Link it in this index (next = 0020)
 
 RFCs that affect API/architecture/cross-team surfaces go through [rfcs/](../rfcs/) first. When an RFC is accepted, summarize as an ADR here. Long-form design lives in the RFC; the ADR is the short decision record.

@@ -14,6 +14,7 @@ const PROTECTED_PREFIXES = [
   '/admin',
   '/ceo',
   '/chat-logs',
+  '/connect-device',
   '/dashboard',
   '/devices',
   '/pipeline',

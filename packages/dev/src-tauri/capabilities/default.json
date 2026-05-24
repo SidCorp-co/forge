@@ -12,7 +12,6 @@
     "dialog:default",
     "fs:default",
     "notification:default",
-    "updater:default",
-    "deep-link:default"
+    "updater:default"
   ]
 }
