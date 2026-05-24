@@ -801,18 +801,23 @@ export function useWebSocket() {
           },
         );
 
-        // Load device token from the OS keychain (ISS-214 §5). Sent as
-        // `Authorization: Bearer <token>`. Anonymous sockets are still
-        // accepted server-side; Phase 2.2 enforcement flips that on.
-        let deviceToken: string | undefined;
+        // Load the bearer for WS upgrade. Sent as `Authorization: Bearer <…>`.
+        // Server `resolveBearer` accepts a user JWT or a device token (in that
+        // order). Prefer device token if the runner has been paired against a
+        // project (ISS-214 §5); fall back to the user JWT issued at sign-in
+        // (ADR 0019) so a freshly-paired desktop without a per-project device
+        // still authenticates the socket. Anonymous upgrade is rejected 401
+        // — the stale comment about Phase 2.2 enforcement was wrong here.
+        let bearer: string | undefined;
         try {
           const tok = await invoke<string | null>("load_device_token");
-          if (tok) deviceToken = tok;
-        } catch { /* keychain unavailable — connect anonymously */ }
+          if (tok) bearer = tok;
+        } catch { /* keychain unavailable */ }
+        if (!bearer && token) bearer = token;
 
         await invoke("connect_ws", {
           url: wsUrl,
-          deviceToken,
+          deviceToken: bearer,
           deviceId: deviceId || undefined,
         });
 

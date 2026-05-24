@@ -18,6 +18,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+## [0.2.4] - 2026-05-25
+
+Hotfix for v0.2.2/v0.2.3: after signing in via the new pairing flow, the desktop's WebSocket bar stayed "Disconnected" because the upgrade went out without any Authorization header.
+
+### Added
+
+### Changed
+
+### Removed
+
+### Fixed
+
+- **The desktop now stays connected after signing in via pairing code.** v0.2.2/v0.2.3 left the WebSocket badge stuck on "Disconnected" right after first sign-in. The pairing flow issues a user JWT, but the WS client only ever read a device token from the OS keychain — which doesn't exist on a freshly-paired install — so the socket upgraded anonymously and the server 401'd it. The WS client now falls back to the user JWT from the auth store when no device token is paired, and the badge flips to "Connected" once the socket is up.
+  *Technical: `packages/dev/src/hooks/use-web-socket.ts` — `connect_ws`'s `deviceToken` param now resolves to the keychain's `device_token` if present, else the in-memory user JWT (`auth.token`). Server-side `resolveBearer` already accepts either principal type in that order (`packages/core/src/ws/server.ts`), so no server change needed. Also fixed a stale comment claiming anonymous upgrades were accepted — they have been 401'd since ISS-286.*
+
+### Security
+
 ## [0.2.3] - 2026-05-25
 
 Hotfix for v0.2.2: desktop sign-in's pairing link no longer 404s on subdomain-split deploys (e.g. forge-beta.sidcorp.co + forge-beta-api.sidcorp.co).

@@ -1,6 +1,6 @@
 {
   "name": "@forge/observability",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "license": "Apache-2.0",
   "description": "Shared observability primitives — privacy/PII scrubbing constants used by every Sentry adapter (dev renderer, core, web). Single source of truth so the privacy contract can't drift across surfaces.",
