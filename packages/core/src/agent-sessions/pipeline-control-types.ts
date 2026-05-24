@@ -30,10 +30,55 @@ export const pipelineControlInputSchema = z
 
 export type PipelineControlInput = z.infer<typeof pipelineControlInputSchema>;
 
+// ISS-197 — `recoveryStats` was previously `z.record(z.string(), z.number())`
+// but never populated (operator UI showed `{}` for every session). The
+// structured shape below feeds the sessions-panel badge
+// `"Failed 3x (2 transient, 1 timeout)"` and the WS broadcast
+// `session.recoveryChanged`. Failure kinds mirror the classifier v2 enum.
+export const failureKindEnum = z.enum([
+  'transient',
+  'permission',
+  'permanent',
+  'timeout',
+  'unknown',
+]);
+
+export const recoveryStatsSchema = z
+  .object({
+    totalFailures: z.number().int().min(0),
+    byKind: z
+      .object({
+        transient: z.number().int().min(0),
+        permission: z.number().int().min(0),
+        permanent: z.number().int().min(0),
+        timeout: z.number().int().min(0),
+      })
+      .strict(),
+    lastFailureAt: z.iso.datetime(),
+    lastFailureKind: failureKindEnum,
+    autoRetries: z.number().int().min(0),
+  })
+  .strict();
+
+export type RecoveryStats = z.infer<typeof recoveryStatsSchema>;
+
+export const DEFAULT_RECOVERY_STATS: RecoveryStats = {
+  totalFailures: 0,
+  byKind: { transient: 0, permission: 0, permanent: 0, timeout: 0 },
+  lastFailureAt: new Date(0).toISOString(),
+  lastFailureKind: 'unknown',
+  autoRetries: 0,
+};
+
 export const pipelineHealthSchema = z
   .object({
+    /**
+     * @deprecated Use `recoveryStats.autoRetries`. Retained on the row for
+     * one release so legacy readers don't break; the retry engine no longer
+     * writes to it.
+     */
     retryCount: z.number().int().min(0),
-    recoveryStats: z.record(z.string(), z.number().int().min(0)),
+    recoveryStats: recoveryStatsSchema,
     lastError: z
       .object({
         message: z.string().max(4000),
@@ -50,7 +95,7 @@ export type PipelineHealth = z.infer<typeof pipelineHealthSchema>;
 export const pipelineHealthInputSchema = z
   .object({
     retryCount: z.number().int().min(0).optional(),
-    recoveryStats: z.record(z.string(), z.number().int().min(0)).optional(),
+    recoveryStats: recoveryStatsSchema.optional(),
     lastError: z
       .object({
         message: z.string().max(4000),
@@ -67,7 +112,7 @@ export type PipelineHealthInput = z.infer<typeof pipelineHealthInputSchema>;
 
 export const DEFAULT_PIPELINE_HEALTH: PipelineHealth = {
   retryCount: 0,
-  recoveryStats: {},
+  recoveryStats: DEFAULT_RECOVERY_STATS,
   lastError: null,
   updatedAt: new Date(0).toISOString(),
 };
@@ -126,8 +171,41 @@ export function buildPipelineHealth(
 ): PipelineHealth {
   return {
     retryCount: input.retryCount ?? prev?.retryCount ?? 0,
-    recoveryStats: input.recoveryStats ?? prev?.recoveryStats ?? {},
+    recoveryStats:
+      input.recoveryStats ?? prev?.recoveryStats ?? DEFAULT_RECOVERY_STATS,
     lastError: input.lastError !== undefined ? input.lastError : prev?.lastError ?? null,
     updatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Coerce a legacy or partial `recoveryStats` blob into the canonical
+ * structured shape. Pre-ISS-197 rows wrote a free-form
+ * `Record<string, number>`; those values are dropped (they were never
+ * meaningful) and replaced with DEFAULT_RECOVERY_STATS so the next failure
+ * starts a clean counter.
+ */
+export function normaliseRecoveryStats(raw: unknown): RecoveryStats {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_RECOVERY_STATS };
+  const r = raw as Record<string, unknown>;
+  const byKindRaw = (r.byKind ?? {}) as Record<string, unknown>;
+  const num = (v: unknown): number =>
+    typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
+  const lastKind = r.lastFailureKind;
+  const lastFailureKind = failureKindEnum.safeParse(lastKind).success
+    ? (lastKind as RecoveryStats['lastFailureKind'])
+    : 'unknown';
+  const lastAt = typeof r.lastFailureAt === 'string' ? r.lastFailureAt : new Date(0).toISOString();
+  return {
+    totalFailures: num(r.totalFailures),
+    byKind: {
+      transient: num(byKindRaw.transient),
+      permission: num(byKindRaw.permission),
+      permanent: num(byKindRaw.permanent),
+      timeout: num(byKindRaw.timeout),
+    },
+    lastFailureAt: lastAt,
+    lastFailureKind,
+    autoRetries: num(r.autoRetries),
   };
 }

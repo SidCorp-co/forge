@@ -10,13 +10,16 @@ import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { hooks } from '../pipeline/hooks.js';
-import { setManualHoldBlock } from '../pipeline/manual-hold.js';
+import {
+  type FailureClassificationKind,
+  setManualHoldBlock,
+} from '../pipeline/manual-hold.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
 import { handleResumeFailed, isResumeFailedError } from './handle-resume-failed.js';
-import { scheduleAutoRetryOnce } from './retry.js';
+import { scheduleAutoRetryWithVerify } from './retry.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -26,6 +29,28 @@ const notFound = (message: string) =>
 
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
+
+/**
+ * Map classifier v2 failure kinds onto the narrower manual-hold UI enum.
+ * Permission errors join `permanent_invalid` (operator must fix credentials,
+ * no auto-retry possible). Timeout errors join `transient_network` (the
+ * retry engine already eligibilised them; this branch is only reached when
+ * the retry budget is exhausted or verification cancelled retry).
+ */
+function mapFailureKindToClassification(
+  failureKind: string | null | undefined,
+): FailureClassificationKind {
+  switch (failureKind) {
+    case 'transient':
+    case 'timeout':
+      return 'transient_network';
+    case 'permanent':
+    case 'permission':
+      return 'permanent_invalid';
+    default:
+      return 'unknown';
+  }
+}
 
 const conflict = (message: string, code: string) =>
   new HTTPException(409, { message, cause: { code } });
@@ -112,7 +137,7 @@ jobLifecycleDeviceRoutes.post(
           .where(eq(jobs.id, updated.id));
         retry = { scheduled: false };
       } else {
-        retry = await scheduleAutoRetryOnce(updated, input.error ?? 'exit nonzero');
+        retry = await scheduleAutoRetryWithVerify(updated, input.error ?? 'exit nonzero');
       }
       if (!retry.scheduled && updated.issueId) {
         await setManualHoldBlock({
@@ -121,12 +146,7 @@ jobLifecycleDeviceRoutes.post(
             step: updated.type,
             trigger: 'job_failed',
             classification: {
-              kind:
-                updated.failureKind === 'transient'
-                  ? 'transient_network'
-                  : updated.failureKind === 'permanent'
-                    ? 'permanent_invalid'
-                    : 'unknown',
+              kind: mapFailureKindToClassification(updated.failureKind),
               reason: updated.failureReason ?? input.error ?? 'exit nonzero',
               evidence: { jobId: updated.id, exitCode: input.exitCode },
             },
@@ -245,7 +265,7 @@ jobLifecycleDeviceRoutes.post(
         .where(eq(jobs.id, updated.id));
       retry = { scheduled: false };
     } else {
-      retry = await scheduleAutoRetryOnce(updated, input.error);
+      retry = await scheduleAutoRetryWithVerify(updated, input.error);
     }
     if (!retry.scheduled && updated.issueId) {
       await setManualHoldBlock({
@@ -254,12 +274,7 @@ jobLifecycleDeviceRoutes.post(
           step: updated.type,
           trigger: 'job_failed',
           classification: {
-            kind:
-              updated.failureKind === 'transient'
-                ? 'transient_network'
-                : updated.failureKind === 'permanent'
-                  ? 'permanent_invalid'
-                  : 'unknown',
+            kind: mapFailureKindToClassification(updated.failureKind),
             reason: updated.failureReason ?? input.error,
             evidence: { jobId: updated.id },
           },

@@ -1,24 +1,45 @@
 /**
- * Narrow auto-retry semantic — replaces the legacy exponential-backoff chain.
+ * Verify-first auto-retry engine (ISS-197).
  *
- * Old model: 3 attempts with `60 * 2^n` backoff regardless of classification,
- * coupled with a second tier of issue-level recovery in pipeline-sweeper.
- * Result: failures burned 3-6 retries before the operator was notified.
+ * Old model (pre-ISS-197): one flat 60s cooldown, regardless of provider
+ * Retry-After hint or issue progress. Blind retries burned tokens when the
+ * issue had already moved on, and rate-limit responses with
+ * `Retry-After: 600` got pinged again after 60s.
  *
- * New model: AT MOST ONE auto-retry, gated on a narrow classifier whitelist
- * (transient network errors only — HTTP 5xx, 429, ECONNRESET, timeout, etc).
- * Everything else returns `{ scheduled: false }` immediately so the caller
- * (lifecycle / watchdog / dispatcher) can hand off to setManualHoldBlock.
+ * New model:
+ *   1. Classify the failure (classifier v2 — transient | permission |
+ *      permanent | timeout | unknown — and an optional Retry-After hint).
+ *   2. ALWAYS increment recoveryStats on the linked agent_session, even
+ *      for non-retryable kinds; broadcast `session.recoveryChanged`.
+ *   3. Skip retry if the classifier says permanent / permission / unknown.
+ *   4. Skip retry if the auto-retry budget (3) is exhausted.
+ *   5. Verify-first: if `verifyRecovery` says the issue already advanced
+ *      past the failed job's expected exit → mark agent_session as
+ *      `completed_via_recovery` and stop. If the issue moved to a
+ *      different jobType's territory → mark `cancelled_stale` and stop.
+ *   6. Otherwise schedule the retry with `retry_after_at` set to
+ *      `max(now + MIN_RETRY_COOLDOWN_MS, classifier.retryAfter)`; the L1
+ *      dispatch gate enforces the timestamp.
  *
- * No exponential backoff: the classifier already filters for genuine
- * transients, so a flat 60s cooldown is plenty.
+ * Clean-break: the legacy flat-cooldown constant and the blind-retry path
+ * are deleted outright. The floor lives in `pipeline/retry-after-parser.ts`
+ * so a grep for the cooldown literal inside `jobs/` stays empty.
  */
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { CLASSIFIER_VERSION, classifyFailure } from '../pipeline/failure-classifier.js';
+import { verifyRecovery } from '../pipeline/recovery-verifier.js';
+import { MIN_RETRY_COOLDOWN_MS } from '../pipeline/retry-after-parser.js';
+import { publishSessionRecoveryChanged } from '../agent-sessions/recovery-publish.js';
+import {
+  incrementAutoRetryCount,
+  incrementRecoveryStats,
+  markSessionTerminal,
+} from '../agent-sessions/recovery-stats.js';
 import { enqueueJob } from './enqueue.js';
 
 type JobRow = typeof jobs.$inferSelect;
@@ -29,24 +50,20 @@ export interface RetryOutcome {
   reason?: string;
 }
 
-/** Hard cap: 1 auto-retry per original job. Operator-driven retry is unbounded. */
-const MAX_AUTO_RETRIES = 1;
-
-/** Cooldown before the auto-retry fires. Transient network blips usually
- *  recover within a minute; longer waits indicate something the operator
- *  should look at anyway. */
-const AUTO_RETRY_COOLDOWN_SECONDS = 60;
+/** Hard cap: 3 auto-retries per original job (legacy Strapi parity, was 1
+ *  pre-ISS-197). Operator-driven retry remains unbounded. */
+export const MAX_AUTO_RETRIES = 3;
 
 /**
- * Schedule a single auto-retry for a failed job IF the classifier says the
- * failure is transient. Returns `{ scheduled: false, reason }` for everything
- * else — the caller is expected to then call `setManualHoldBlock` to surface
- * the failure to the operator.
+ * Verify-first auto-retry. See file header for the full state diagram.
+ * Returns `{ scheduled: false, reason }` for every non-retry outcome so the
+ * caller (lifecycle / watchdog) can hand off to `setManualHoldBlock` only
+ * when the reason isn't a recovery-via-verification skip.
  *
- * Idempotent: a second call on a job that already had its one retry returns
- * `{ scheduled: false, reason: 'retry_budget_exhausted' }`.
+ * Idempotent: budget exhaustion + verification + classifier all guard the
+ * insert path.
  */
-export async function scheduleAutoRetryOnce(
+export async function scheduleAutoRetryWithVerify(
   job: JobRow,
   reason: string,
 ): Promise<RetryOutcome> {
@@ -56,11 +73,14 @@ export async function scheduleAutoRetryOnce(
 
   const inputError =
     typeof job.error === 'string' && job.error.length > 0 ? job.error : reason;
-  const classified = classifyFailure({ error: inputError });
+  const classified = classifyFailure({
+    error: inputError,
+    meta: (job.failureMeta as Record<string, unknown> | null) ?? null,
+  });
 
   // Persist classification on the failed job for the audit trail / operator
-  // UI, even when we decide not to retry. Done in a try/catch so a classifier
-  // write failure can't break the retry path.
+  // UI, even when we decide not to retry. Best-effort: a classifier write
+  // failure must not break the recovery path.
   if (job.failureKind === null || job.failureKind === undefined) {
     try {
       await db
@@ -83,14 +103,43 @@ export async function scheduleAutoRetryOnce(
     }
   }
 
-  if (classified.kind !== 'transient') {
+  // ALWAYS increment recoveryStats — even on non-retryable kinds — so the
+  // operator UI shows the full failure history. Broadcasts only fire when
+  // the increment succeeds.
+  if (job.agentSessionId) {
+    try {
+      await incrementRecoveryStats(job.agentSessionId, classified.kind);
+      await publishSessionRecoveryChanged(job.projectId, job.agentSessionId);
+    } catch (err) {
+      logger.warn(
+        { err, jobId: job.id, sessionId: job.agentSessionId },
+        'retry: failed to increment recoveryStats, continuing',
+      );
+    }
+  }
+
+  // Step 3 — non-retryable kinds. permission joins permanent here; timeout
+  // joins transient (eligible).
+  if (classified.kind !== 'transient' && classified.kind !== 'timeout') {
+    if (isSentryEnabled()) {
+      Sentry.addBreadcrumb({
+        category: 'session.recovery_skipped',
+        data: { sessionId: job.agentSessionId, reason: `kind:${classified.kind}` },
+      });
+    }
     logger.info(
-      { jobId: job.id, kind: classified.kind, classifierVersion: CLASSIFIER_VERSION },
-      'retry: not transient, no auto-retry',
+      {
+        jobId: job.id,
+        kind: classified.kind,
+        classifierVersion: CLASSIFIER_VERSION,
+      },
+      'retry: kind not retryable, no auto-retry',
     );
     return { scheduled: false, reason: `classifier:${classified.kind}` };
   }
 
+  // Step 4 — budget. attempts starts at 1 for the original; MAX_AUTO_RETRIES
+  // retries means attempts can go up to MAX_AUTO_RETRIES + 1.
   if (job.attempts >= MAX_AUTO_RETRIES + 1) {
     logger.info(
       { jobId: job.id, attempts: job.attempts, reason },
@@ -98,6 +147,55 @@ export async function scheduleAutoRetryOnce(
     );
     return { scheduled: false, reason: 'retry_budget_exhausted' };
   }
+
+  // Step 5 — verify-first. If the issue has already moved past the failed
+  // step, retrying is wasted token spend.
+  if (job.issueId) {
+    let verdict;
+    try {
+      verdict = await verifyRecovery(job);
+    } catch (err) {
+      logger.warn(
+        { err, jobId: job.id, issueId: job.issueId },
+        'retry: verifyRecovery failed, defaulting to pending',
+      );
+      verdict = 'pending' as const;
+    }
+    if (verdict === 'advanced') {
+      if (job.agentSessionId) {
+        await markSessionTerminal(job.agentSessionId, 'completed_via_recovery');
+        await publishSessionRecoveryChanged(job.projectId, job.agentSessionId);
+      }
+      if (isSentryEnabled()) {
+        Sentry.addBreadcrumb({
+          category: 'session.recovery_skipped',
+          data: { sessionId: job.agentSessionId, currentStatus: 'advanced' },
+        });
+      }
+      return { scheduled: false, reason: 'completed_via_recovery' };
+    }
+    if (verdict === 'reverted') {
+      if (job.agentSessionId) {
+        await markSessionTerminal(job.agentSessionId, 'cancelled_stale');
+        await publishSessionRecoveryChanged(job.projectId, job.agentSessionId);
+      }
+      if (isSentryEnabled()) {
+        Sentry.addBreadcrumb({
+          category: 'session.recovery_skipped',
+          data: { sessionId: job.agentSessionId, currentStatus: 'reverted' },
+        });
+      }
+      return { scheduled: false, reason: 'cancelled_stale' };
+    }
+  }
+
+  // Step 6 — schedule with Retry-After respect. Floor at MIN_RETRY_COOLDOWN_MS
+  // so a runaway provider responding `Retry-After: 0` still gets a small
+  // breathing room before re-dispatch.
+  const minCooldown = new Date(Date.now() + MIN_RETRY_COOLDOWN_MS);
+  const retryAfterHint = classified.retryAfter;
+  const retryAfterAt =
+    retryAfterHint && retryAfterHint > minCooldown ? retryAfterHint : minCooldown;
 
   const [created] = await db
     .insert(jobs)
@@ -112,25 +210,58 @@ export async function scheduleAutoRetryOnce(
       status: 'queued',
       attempts: job.attempts + 1,
       retryOf: job.id,
+      retryAfterAt,
+      // Carry the agent_session forward so the retry's own future failure
+      // increments stats on the same session row.
+      agentSessionId: job.agentSessionId,
     })
     .returning({ id: jobs.id });
 
   if (!created) throw new Error('retry: insert returned no row');
 
+  const startAfterSeconds = Math.max(
+    0,
+    Math.ceil((retryAfterAt.getTime() - Date.now()) / 1000),
+  );
   try {
     await enqueueJob(
       { jobId: created.id, issueId: job.issueId, type: job.type },
-      { startAfterSeconds: AUTO_RETRY_COOLDOWN_SECONDS },
+      { startAfterSeconds },
     );
   } catch (err) {
     logger.error({ err, jobId: created.id }, 'retry: enqueue failed; row persisted');
+  }
+
+  if (job.agentSessionId) {
+    try {
+      await incrementAutoRetryCount(job.agentSessionId);
+      await publishSessionRecoveryChanged(job.projectId, job.agentSessionId);
+    } catch (err) {
+      logger.warn(
+        { err, jobId: job.id, sessionId: job.agentSessionId },
+        'retry: failed to increment autoRetries, continuing',
+      );
+    }
+  }
+
+  if (isSentryEnabled()) {
+    Sentry.addBreadcrumb({
+      category: 'session.recovery_attempted',
+      data: {
+        sessionId: job.agentSessionId,
+        attempt: job.attempts + 1,
+        cooldownUsed: startAfterSeconds,
+        retryAfter: retryAfterAt.toISOString(),
+      },
+    });
   }
 
   logger.info(
     {
       originalJobId: job.id,
       newJobId: created.id,
-      cooldownSec: AUTO_RETRY_COOLDOWN_SECONDS,
+      cooldownSec: startAfterSeconds,
+      retryAfterAt: retryAfterAt.toISOString(),
       reason,
     },
     'retry: auto-retry scheduled',

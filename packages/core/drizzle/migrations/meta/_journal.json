@@ -512,6 +512,13 @@
       "when": 1779500001000,
       "tag": "0072_backfill_release_notes",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1779500002000,
+      "tag": "0073_failure_recovery_rebuild",
+      "breakpoints": true
     }
   ]
 }

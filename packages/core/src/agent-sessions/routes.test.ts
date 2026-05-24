@@ -297,7 +297,13 @@ describe('GET /api/agent-sessions/:id/pipeline-health', () => {
     authVerified();
     const stored = {
       retryCount: 3,
-      recoveryStats: { succeeded: 2, failed: 1 },
+      recoveryStats: {
+        totalFailures: 3,
+        byKind: { transient: 2, permission: 0, permanent: 0, timeout: 1 },
+        lastFailureAt: new Date().toISOString(),
+        lastFailureKind: 'timeout',
+        autoRetries: 1,
+      },
       lastError: { message: 'boom', ts: new Date().toISOString(), jobId: null },
       updatedAt: new Date().toISOString(),
     };

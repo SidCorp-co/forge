@@ -542,6 +542,7 @@ describe('db/schema — jobs', () => {
         'prompt_blocks',
         'prompt_input_token_est',
         'queued_at',
+        'retry_after_at',
         'retry_of',
         'runner_id',
         'status',

@@ -59,6 +59,17 @@ const PRESENTATION: Record<AgentSessionDisplayStatus, Presentation> = {
     tone: 'text-red-500 dark:text-red-400',
     label: 'Failed',
   },
+  // ISS-197 — non-failure terminal markers from recovery-by-verification.
+  completed_via_recovery: {
+    Icon: CheckCircle2,
+    tone: 'text-emerald-500 dark:text-emerald-400',
+    label: 'Completed (recovered)',
+  },
+  cancelled_stale: {
+    Icon: Clock,
+    tone: 'text-slate-400',
+    label: 'Cancelled (stale)',
+  },
 };
 
 // Pipeline metadata + status surface for sessions with no messages yet —
@@ -76,7 +87,11 @@ export function SessionPlaceholder({ sessionId, onRetry, onCancel }: SessionPlac
     sessionId,
   ]);
   const cachedStatus = cached?.data?.status;
-  const isTerminal = cachedStatus === 'completed' || cachedStatus === 'failed';
+  const isTerminal =
+    cachedStatus === 'completed' ||
+    cachedStatus === 'failed' ||
+    cachedStatus === 'completed_via_recovery' ||
+    cachedStatus === 'cancelled_stale';
   const { data: session = null } = useAgentSession(sessionId, {
     refetchInterval: isTerminal ? false : 10_000,
   });

@@ -1,5 +1,37 @@
 import { request } from "./client";
 
+// ISS-197 — keep parity with packages/core (db/schema.ts) and packages/web
+// (features/agent/api.ts). `completed_via_recovery` / `cancelled_stale` are
+// non-failure terminal markers from the verify-first retry path.
+export type AgentSessionStatus =
+  | "idle"
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "completed_via_recovery"
+  | "cancelled_stale";
+
+export type FailureKind =
+  | "transient"
+  | "permission"
+  | "permanent"
+  | "timeout"
+  | "unknown";
+
+export interface RecoveryStats {
+  totalFailures: number;
+  byKind: {
+    transient: number;
+    permission: number;
+    permanent: number;
+    timeout: number;
+  };
+  lastFailureAt: string;
+  lastFailureKind: FailureKind;
+  autoRetries: number;
+}
+
 export async function startAgentSession(
   projectSlug: string,
   promptOrType: string,

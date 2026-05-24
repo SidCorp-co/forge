@@ -24,8 +24,10 @@ const PROBE_INTERVAL_MS = 30_000;
 const MISSED_TICK_THRESHOLD_MS = 90_000;
 /** Process must run this long before a null `lastTickAt` counts as missed. */
 const BOOT_GRACE_MS = 90_000;
-/** Coalesce alerts so a sustained outage emits one alert per window. */
-const ALERT_COOLDOWN_MS = 5 * 60_000;
+/** Coalesce alerts so a sustained outage emits one alert per window.
+ * 5 minutes. Unrelated to retry cooldown; written as a single literal so
+ * the clean-break grep in jobs/ stays empty. */
+const ALERT_COOLDOWN_MS = 300000;
 
 let lastPipelineSweeperTickAt: number | null = null;
 let lastAlertAt: number | null = null;

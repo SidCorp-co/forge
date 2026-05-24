@@ -87,7 +87,7 @@ describe('pgboss-health', () => {
     expect(checkBackstop({ now: base, uptimeMs: 600_000 })).toBe(true);
     expect(addBreadcrumbMock).toHaveBeenCalledTimes(1);
     // Same outage, 60s later — still inside the cooldown, no fresh alert.
-    expect(checkBackstop({ now: base + 60_000, uptimeMs: 660_000 })).toBe(false);
+    expect(checkBackstop({ now: base + 60000, uptimeMs: 660000 })).toBe(false);
     expect(addBreadcrumbMock).toHaveBeenCalledTimes(1);
     expect(wsPublishMock).toHaveBeenCalledTimes(1);
   });

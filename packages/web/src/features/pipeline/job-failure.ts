@@ -17,7 +17,17 @@ const AGENT_FALLBACK_TOOLTIP = 'Agent reported an error. See job event log for d
 
 export function classifyJobFailure(
   error: string | null | undefined,
-  failureKind: 'transient' | 'permanent' | 'unknown' | null | undefined,
+  // ISS-197 — failureKind enum widened with `permission` (auth/access errors)
+  // and `timeout` (heartbeat / no-progress). They join the UI's existing
+  // categories: permission → agent-errored; timeout → watchdog-stalled.
+  failureKind:
+    | 'transient'
+    | 'permission'
+    | 'permanent'
+    | 'timeout'
+    | 'unknown'
+    | null
+    | undefined,
 ): ClassifiedFailure {
   if (error) {
     if (RUNNER_SKIPPED_PATTERNS.some((p) => p.test(error))) {
@@ -40,7 +50,7 @@ export function classifyJobFailure(
       tooltip: error,
     };
   }
-  if (failureKind === 'transient') {
+  if (failureKind === 'transient' || failureKind === 'timeout') {
     return {
       kind: 'watchdog-stalled',
       label: 'Watchdog stalled',

@@ -62,6 +62,14 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
       }
       return;
     }
+    // ISS-197 — recoveryStats refresh on the sessions panel.
+    case 'session.recoveryChanged': {
+      qc.invalidateQueries({ queryKey: ['agent-sessions'] });
+      if (data?.sessionId) {
+        qc.invalidateQueries({ queryKey: ['agent-session', data.sessionId] });
+      }
+      return;
+    }
     case 'job.event': {
       if (typeof data?.seq === 'number' && typeof data?.jobId === 'string') {
         trackJobSeq(data.jobId, data.seq);
