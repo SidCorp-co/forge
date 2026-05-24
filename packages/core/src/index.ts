@@ -83,7 +83,10 @@ import { patRoutes } from './pat/routes.js';
 import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cron.js';
 import { registerNotifyMentionsSubscriber } from './notifications/notify-mentions.js';
 import { notificationRoutes } from './notifications/routes.js';
-import { pipelineAnalyticsRoutes } from './pipeline/analytics-routes.js';
+import {
+  pipelineAnalyticsRoutes,
+  projectCostAnalyticsRoutes,
+} from './pipeline/analytics-routes.js';
 import { pipelineRegistryRoutes } from './pipeline/registry-routes.js';
 import { pipelineRunRoutes } from './pipeline/runs-routes.js';
 import {
@@ -333,6 +336,7 @@ app.route('/api', deviceOwnerRoutes);
 app.route('/api/projects', deviceUserRoutes);
 app.route('/api/pipeline/registry', pipelineRegistryRoutes);
 app.route('/api/pipeline', pipelineAnalyticsRoutes);
+app.route('/api/projects', projectCostAnalyticsRoutes);
 app.route('/api/schedules', scheduleRoutes);
 app.route('/api/knowledge', knowledgeIngestRoutes);
 app.route('/api/knowledge-edges', knowledgeEdgeRoutes);
