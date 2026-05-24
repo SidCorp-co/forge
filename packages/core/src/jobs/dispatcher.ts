@@ -1,14 +1,16 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, jobs, projects, runners } from '../db/schema.js';
-import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import type { JobType, RunnerType } from '../db/schema.js';
+import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
 import { dispatchLivenessMs, isLastSeenFresh } from '../lib/dispatch-liveness.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import { logger } from '../logger.js';
+import { hooks } from '../pipeline/hooks.js';
 import { setManualHoldBlock } from '../pipeline/manual-hold.js';
 import { resolveRunnerChainForJob } from '../pipeline/resolve-step-runner.js';
+import { injectTurnLevelRules } from '../prompt/user.js';
 import { boss } from '../queue/boss.js';
 import { getRunnerAdapter } from '../runners/registry.js';
 import { selectRunnerForJob } from '../runners/select.js';
@@ -17,15 +19,12 @@ import { deviceRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { getActiveDeviceId } from './active-device.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
-import {
-  checkLayer4RunnerFull,
-  runnerSupportsJobType,
-} from './dispatch-gates.js';
+import { checkMonthlyBudget, postBudgetExhaustedComment, shouldEmitWarn } from './budget-check.js';
+import { checkLayer4RunnerFull, runnerSupportsJobType } from './dispatch-gates.js';
 import { persistPromptSnapshot } from './prompt-snapshot.js';
 import { JOB_QUEUE_NAME, PM_QUEUE_NAME } from './queue-name.js';
-import { injectTurnLevelRules } from '../prompt/user.js';
 import { findPriorSessionInGroup } from './session-resume.js';
-import { resolveStageOverrides, type StageOverrides } from './stage-overrides.js';
+import { type StageOverrides, resolveStageOverrides } from './stage-overrides.js';
 
 interface DispatchMessage {
   jobId: string;
@@ -62,6 +61,78 @@ export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched'
   if (job.status !== 'queued') {
     logger.debug({ jobId, status: job.status }, 'dispatcher: non-queued job, skipping');
     return 'skipped';
+  }
+
+  // W2.3.2 — pre-dispatch monthly budget gate. Sits ahead of both the
+  // legacy device path and the runner path so the cap binds regardless of
+  // the runnerFramework flag. PM jobs flow through `handlePmDispatch` and
+  // therefore bypass this check by construction — see W2.3.2 PR notes.
+  const budgetCheck = await checkMonthlyBudget(job);
+  if (budgetCheck.action === 'pause') {
+    await db
+      .update(jobs)
+      .set({
+        status: 'failed',
+        finishedAt: new Date(),
+        failureKind: 'permanent',
+        failureReason: 'monthly_budget_exhausted',
+        failureMeta: {
+          spent: budgetCheck.spent,
+          budget: budgetCheck.budget,
+          stageStatus: budgetCheck.stageStatus,
+        } as never,
+        classifierVersion: 1,
+      })
+      .where(and(eq(jobs.id, job.id), eq(jobs.status, 'queued')));
+    await hooks.emit('pipeline.budgetBreach', {
+      projectId: job.projectId,
+      stageStatus: budgetCheck.stageStatus ?? '',
+      jobType: job.type,
+      spent: budgetCheck.spent,
+      budget: budgetCheck.budget ?? 0,
+      jobId: job.id,
+      issueId: job.issueId,
+    });
+    if (job.issueId) {
+      try {
+        await postBudgetExhaustedComment({
+          issueId: job.issueId,
+          jobType: job.type,
+          result: budgetCheck,
+        });
+      } catch (err) {
+        logger.warn(
+          { err, jobId: job.id, issueId: job.issueId },
+          'dispatcher: postBudgetExhaustedComment threw, continuing',
+        );
+      }
+    }
+    logger.warn(
+      {
+        jobId: job.id,
+        projectId: job.projectId,
+        stageStatus: budgetCheck.stageStatus,
+        spent: budgetCheck.spent,
+        budget: budgetCheck.budget,
+      },
+      'dispatcher: monthly budget exhausted, failing job',
+    );
+    return 'skipped';
+  }
+  if (
+    budgetCheck.action === 'warn-80' &&
+    budgetCheck.stageStatus !== null &&
+    shouldEmitWarn(job.projectId, budgetCheck.stageStatus)
+  ) {
+    await hooks.emit('pipeline.budgetWarning', {
+      projectId: job.projectId,
+      stageStatus: budgetCheck.stageStatus,
+      jobType: job.type,
+      spent: budgetCheck.spent,
+      budget: budgetCheck.budget ?? 0,
+      pct:
+        budgetCheck.budget && budgetCheck.budget > 0 ? budgetCheck.spent / budgetCheck.budget : 0,
+    });
   }
 
   if (isEnabled('runnerFramework')) {
@@ -302,10 +373,7 @@ async function dispatchViaRunner(
   // ISS-115 — runner/job-type capability gate. PM jobs run through their own
   // path (handlePmDispatch is the entrypoint but still funnels here); they
   // are not in RUNNER_CAPABILITIES so we skip the check for them.
-  if (
-    job.type !== 'pm' &&
-    !runnerSupportsJobType(runner.type as RunnerType, job.type as JobType)
-  ) {
+  if (job.type !== 'pm' && !runnerSupportsJobType(runner.type as RunnerType, job.type as JobType)) {
     const errorMsg = `runner_unsupported_type:${runner.type}`;
     await db
       .update(jobs)

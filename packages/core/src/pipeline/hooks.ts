@@ -203,6 +203,29 @@ export interface HookPayloads {
     toStatus: PipelineRunStatus;
     currentStep: string | null;
   };
+  // W2.3.2 — monthly budget gate. Fired once per hour per (project, stage)
+  // when the dispatcher observes spent ≥ 80% of `perMonthUsd`. Dedup lives
+  // in-process; see `jobs/budget-check.ts#shouldEmitWarn`.
+  'pipeline.budgetWarning': {
+    projectId: string;
+    stageStatus: string;
+    jobType: JobType;
+    spent: number;
+    budget: number;
+    pct: number;
+  };
+  // W2.3.2 — fired once per dispatch attempt that the budget gate blocks
+  // (action='pause' AND spent ≥ budget). Subscribers (W2.3.4) render
+  // Slack/email; the dispatcher also posts an issue comment + fails the job.
+  'pipeline.budgetBreach': {
+    projectId: string;
+    stageStatus: string;
+    jobType: JobType;
+    spent: number;
+    budget: number;
+    jobId: string;
+    issueId: string | null;
+  };
 }
 
 export type HookTopic = keyof HookPayloads;

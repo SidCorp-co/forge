@@ -117,9 +117,7 @@ export type SystemPromptOverrideConfig = z.infer<typeof systemPromptOverrideSche
  */
 export const userPromptPolicySchema = z
   .object({
-    includeFields: z
-      .array(z.enum(['description', 'plan', 'acceptanceCriteria']))
-      .optional(),
+    includeFields: z.array(z.enum(['description', 'plan', 'acceptanceCriteria'])).optional(),
     sessionContext: z
       .object({
         depth: z.int().nonnegative().max(50).optional(),
@@ -143,11 +141,19 @@ export const userPromptPolicySchema = z
 
 export type UserPromptPolicyConfig = z.infer<typeof userPromptPolicySchema>;
 
-/** Per-state budget caps. Pre-dispatch monthly + per-run kill thresholds. */
+/**
+ * Per-state budget caps. Pre-dispatch monthly + per-run kill thresholds.
+ *
+ * `action` selects enforcement at the monthly cap (W2.3.2):
+ *   - 'pause' (default when `perMonthUsd` is set): warn at 80%, hard-fail
+ *     new dispatches at 100% with `failureReason='monthly_budget_exhausted'`.
+ *   - 'warn'  : warn at 80% and 100% but never block dispatch.
+ */
 export const budgetConfigSchema = z
   .object({
     perRunUsd: z.number().positive().max(10_000).optional(),
     perMonthUsd: z.number().positive().max(1_000_000).optional(),
+    action: z.enum(['warn', 'pause']).optional(),
   })
   .strict();
 
