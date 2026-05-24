@@ -41,6 +41,13 @@ const EnvSchema = z.object({
   RATE_LIMIT_AUTH_REGISTER_WINDOW_MS: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_DEVICES_PAIR_MAX: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_DEVICES_PAIR_WINDOW_MS: z.coerce.number().int().positive().optional(),
+  // ADR 0019 — Desktop sign-in pairing endpoints. Defaults in
+  // `config/rate-limits.ts`; env overrides let operators widen the cap for
+  // NAT'd offices without a redeploy.
+  RATE_LIMIT_DESKTOP_PAIR_INIT_MAX: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_DESKTOP_PAIR_INIT_WINDOW_MS: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_DESKTOP_APPROVE_MAX: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_DESKTOP_APPROVE_WINDOW_MS: z.coerce.number().int().positive().optional(),
   // LiteLLM-compatible embeddings service (ADR 0011, Phase 2.5-F3).
   // Required only when memory indexing / semantic search is exercised; the
   // singleton defers client creation until first use.

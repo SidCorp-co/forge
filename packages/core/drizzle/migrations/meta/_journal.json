@@ -519,6 +519,13 @@
       "when": 1779500002000,
       "tag": "0073_failure_recovery_rebuild",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1780012800000,
+      "tag": "0074_desktop_pairing_codes",
+      "breakpoints": true
     }
   ]
 }

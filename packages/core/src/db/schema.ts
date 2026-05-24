@@ -76,23 +76,31 @@ export const oauthAccounts = pgTable(
   }),
 );
 
-// Cross-process PKCE handoff for the desktop client (ADR 0017). Holds the
-// transient state between /auth/desktop/start and /auth/desktop/exchange so
-// the desktop process can claim a JWT without ever exposing one in a URL.
-export const oauthHandoff = pgTable(
-  'oauth_handoff',
+// Desktop sign-in pairing codes (ADR 0019; supersedes ADR 0017). Short code
+// minted on the desktop, approved in a signed-in browser, polled by the
+// desktop to receive a JWT. Distinct from `pairingCodes` (further down)
+// which couples a device to a project at first run.
+export const desktopPairingCodes = pgTable(
+  'desktop_pairing_codes',
   {
-    id: text('id').primaryKey(),
-    provider: text('provider').notNull(),
-    codeChallenge: text('code_challenge').notNull(),
-    codeHash: text('code_hash'),
-    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    id: uuid('id').primaryKey().defaultRandom(),
+    codeHash: text('code_hash').notNull().unique(),
+    deviceLabel: text('device_label').notNull(),
+    devicePlatform: text('device_platform').notNull(),
+    deviceHostname: text('device_hostname'),
+    createdIp: text('created_ip'),
+    createdUserAgent: text('created_user_agent'),
+    approvedUserId: uuid('approved_user_id').references(() => users.id, {
+      onDelete: 'cascade',
+    }),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
     consumedAt: timestamp('consumed_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    expiresIdx: index('oauth_handoff_expires_idx').on(t.expiresAt),
+    expiresIdx: index('desktop_pairing_codes_expires_idx').on(t.expiresAt),
+    consumedIdx: index('desktop_pairing_codes_consumed_idx').on(t.consumedAt),
   }),
 );
 

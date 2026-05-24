@@ -67,14 +67,12 @@ const flagDefs = {
   // when those flags are added). Disable with FEATURE_PM_AGENT=false.
   pmAgent: true,
 
-  // ADR 0017 — Desktop OAuth via PKCE handoff. Gates /api/auth/desktop/*
-  // and the Tauri "Sign in with <provider>" buttons. Default-on as of
-  // v0.1.19 (the first release that ships the desktop client UI). End-to-end
-  // desktop OAuth still requires socialAuth on (above) for the provider
-  // start endpoints to be mounted. Set FEATURE_DESKTOP_OAUTH=false to
-  // re-disable the API surface (e.g. an operator who explicitly does not
-  // want desktop OAuth at all).
-  desktopOauth: true,
+  // ADR 0019 — Desktop sign-in via short pairing code (supersedes ADR 0017
+  // PKCE deep-link). Gates /api/auth/desktop/{pair-init,approve,poll} and the
+  // desktop Login screen's pairing UI. Independent from `socialAuth` — the
+  // pairing flow uses the user's existing cookie session, so it works for
+  // password-only users. Set FEATURE_DESKTOP_PAIRING=false to disable.
+  desktopPairing: true,
 } as const;
 
 export type FeatureFlag = keyof typeof flagDefs;

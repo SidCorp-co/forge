@@ -1,30 +1,27 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { useAuth } from "@/hooks/useAuth";
 import { FormInput } from "@/components/ui/form-input";
 import {
-  cancelInFlight,
-  fetchEnabledProviders,
-  signInWithProvider,
-  type DesktopOAuthPhase,
-  type OAuthProvider,
-} from "@/lib/desktop-oauth";
+  startPairing,
+  type PairingHandle,
+  type PairingPhase,
+} from "@/lib/pairing";
 import { clearApiCache, resolveApiBase } from "@/lib/api-discovery";
 
-function phaseLabel(phase: DesktopOAuthPhase | null, providerLabel: string): string {
+function phaseLabel(phase: PairingPhase | null): string {
   switch (phase) {
-    case "starting":
-      return "Opening browser…";
-    case "awaiting-deep-link":
-      return "Waiting for browser sign-in…";
-    case "deep-link-received":
-      return "Received callback…";
-    case "exchanging-code":
+    case "initializing":
+      return "Requesting a pairing code…";
+    case "awaiting-approval":
+      return "Waiting for approval in your browser…";
+    case "consuming-code":
       return "Signing in…";
-    case "exchanged":
-      return "Finalising…";
+    case "authenticated":
+      return "Done.";
     default:
-      return providerLabel;
+      return "";
   }
 }
 
@@ -34,16 +31,9 @@ export function LoginPage() {
   const location = useLocation();
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/";
 
-  // Official release artifacts bake `VITE_DEFAULT_CORE_URL` (CI variable
-  // forwarded by .github/workflows/release.yml). Source builds without the
-  // var fall back to the local Hono dev port.
   const defaultCoreUrl =
     (import.meta.env.VITE_DEFAULT_CORE_URL as string | undefined) || "http://localhost:8080";
   const [coreUrl, setCoreUrl] = useState(auth.coreUrl || defaultCoreUrl);
-  // The auth state machine hydrates async on mount, so on first render
-  // `auth.coreUrl` is null and the useState initializer falls back to the
-  // build-time default. Sync once when the real value arrives — guarded by
-  // `synced` so we don't clobber any URL the user has already started typing.
   const synced = useRef(false);
   useEffect(() => {
     if (!synced.current && auth.coreUrl) {
@@ -51,88 +41,81 @@ export function LoginPage() {
       setCoreUrl(auth.coreUrl);
     }
   }, [auth.coreUrl]);
+
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [providers, setProviders] = useState<OAuthProvider[]>([]);
-  const [oauthLoading, setOauthLoading] = useState<string | null>(null);
-  const [oauthPhase, setOauthPhase] = useState<DesktopOAuthPhase | null>(null);
-  const [showSlowExchangeHint, setShowSlowExchangeHint] = useState(false);
-  // Tracks the latest phase synchronously for the error path — useState
-  // setter is async, so reading `oauthPhase` inside the catch would see the
-  // previous value.
-  const phaseRef = useRef<DesktopOAuthPhase | null>(null);
 
-  // Redirect if already logged in. Calling navigate() in the render body is
-  // unsupported in React Router 6+; do it from an effect.
+  const [pairing, setPairing] = useState<PairingHandle | null>(null);
+  const [pairingPhase, setPairingPhase] = useState<PairingPhase | null>(null);
+  const [pairingError, setPairingError] = useState<string>("");
+  const [copyOk, setCopyOk] = useState(false);
+
+  // Cancel any in-flight pairing when the user navigates away (or the URL
+  // they typed changes, which invalidates the discovery cache).
+  useEffect(() => {
+    return () => {
+      pairing?.cancel();
+      clearApiCache();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coreUrl]);
+
   useEffect(() => {
     if (auth.phase === "authenticated") {
       navigate(from, { replace: true });
     }
   }, [auth.phase, from, navigate]);
 
-  // Refresh provider list whenever the server URL changes. Discovery and
-  // provider fetch happen inside fetchEnabledProviders → resolveApiBase →
-  // probe /.well-known/forge-config.json on the user-typed URL. Empty list
-  // silently hides the section so misconfigured / single-origin / older
-  // server deploys all degrade gracefully.
-  useEffect(() => {
-    let cancelled = false;
-    const trimmed = coreUrl.replace(/\/+$/, "");
-    if (!trimmed) {
-      setProviders([]);
-      return;
-    }
-    fetchEnabledProviders(trimmed).then((list) => {
-      if (!cancelled) setProviders(list);
-    });
-    return () => {
-      cancelled = true;
-      cancelInFlight();
-      clearApiCache();
-    };
-  }, [coreUrl]);
-
-  // Slow-exchange hint: if the renderer is stuck talking to /exchange for
-  // more than 10 s, surface a "still working" line so the user knows the
-  // app isn't dead. Cleared on any phase change or unmount.
-  useEffect(() => {
-    if (oauthPhase !== "exchanging-code") {
-      setShowSlowExchangeHint(false);
-      return;
-    }
-    const t = setTimeout(() => setShowSlowExchangeHint(true), 10_000);
-    return () => clearTimeout(t);
-  }, [oauthPhase]);
-
-  async function handleOAuth(providerId: OAuthProvider["id"]) {
-    setError("");
-    setOauthLoading(providerId);
-    setOauthPhase("starting");
-    phaseRef.current = "starting";
+  async function handlePair() {
+    setPairingError("");
+    setPairingPhase("initializing");
     try {
       const userUrl = coreUrl.replace(/\/+$/, "");
-      const { token, user } = await signInWithProvider({
+      const handle = await startPairing({
         coreUrl: userUrl,
-        provider: providerId,
-        onPhase: (p) => {
-          phaseRef.current = p;
-          setOauthPhase(p);
-        },
+        onPhase: (p) => setPairingPhase(p),
       });
-      const apiUrl = await resolveApiBase(userUrl);
-      await auth.login({ coreUrl: apiUrl, token, deviceId: auth.deviceId ?? "" });
-      navigate(from, { replace: true });
-      void user;
+      setPairing(handle);
+      // Open the user's browser to the connect URL. Failure is non-fatal —
+      // the URL is still copyable from the UI.
+      void openUrl(handle.connectUrl).catch(() => undefined);
+      try {
+        const { token, user } = await handle.done;
+        const apiUrl = await resolveApiBase(userUrl);
+        await auth.login({ coreUrl: apiUrl, token, deviceId: auth.deviceId ?? "" });
+        navigate(from, { replace: true });
+        void user;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "pairing failed";
+        setPairingError(message);
+        setPairing(null);
+        setPairingPhase(null);
+      }
     } catch (err) {
-      const message = err instanceof Error ? err.message : `Sign-in with ${providerId} failed`;
-      const failedAt = phaseRef.current;
-      setError(failedAt ? `Sign-in failed at ${failedAt}: ${message}` : message);
-    } finally {
-      setOauthLoading(null);
-      setOauthPhase(null);
-      phaseRef.current = null;
+      const message = err instanceof Error ? err.message : "could not request pairing code";
+      setPairingError(message);
+      setPairing(null);
+      setPairingPhase(null);
+    }
+  }
+
+  function handleCancelPair() {
+    pairing?.cancel();
+    setPairing(null);
+    setPairingPhase(null);
+    setPairingError("");
+  }
+
+  async function copyCode() {
+    if (!pairing) return;
+    try {
+      await navigator.clipboard.writeText(pairing.pairingCode);
+      setCopyOk(true);
+      setTimeout(() => setCopyOk(false), 1200);
+    } catch {
+      // ignore
     }
   }
 
@@ -143,9 +126,6 @@ export function LoginPage() {
     try {
       const userUrl = coreUrl.replace(/\/$/, "");
       const url = await resolveApiBase(userUrl);
-      // packages/core uses { email, password } and returns { token }; legacy
-      // Strapi used { identifier, password } and returned { jwt }. Send both
-      // identifier shapes and accept either token field for compat.
       const res = await fetch(`${url}/api/auth/local`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -170,9 +150,6 @@ export function LoginPage() {
     }
   }
 
-  // Splash until the keychain hydrate finishes, or while the redirect-back
-  // effect is about to fire. Showing the form during this window would let
-  // a logged-in user briefly see the login screen on every reload.
   if (auth.phase === "hydrating" || auth.phase === "authenticated") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
@@ -204,27 +181,63 @@ export function LoginPage() {
             </p>
           </div>
 
-          {providers.length > 0 && (
-            <>
-              <div className="mb-4 flex flex-col gap-2">
-                {providers.map((p) => {
-                  const active = oauthLoading === p.id;
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      disabled={oauthLoading !== null}
-                      onClick={() => handleOAuth(p.id)}
-                      className="w-full rounded-lg border border-gray-300 bg-white py-2.5 text-sm font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-50"
-                    >
-                      {active ? phaseLabel(oauthPhase, p.label) : p.label}
-                    </button>
-                  );
-                })}
+          {pairing ? (
+            <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <p className="text-[10px] uppercase tracking-widest text-gray-500">
+                Pairing code
+              </p>
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <p className="font-mono text-3xl tracking-widest text-gray-900">
+                  {pairing.pairingCode}
+                </p>
+                <button
+                  type="button"
+                  onClick={copyCode}
+                  className="rounded border border-gray-300 px-2 py-1 text-[10px] uppercase tracking-widest text-gray-600 hover:bg-gray-100"
+                >
+                  {copyOk ? "Copied" : "Copy"}
+                </button>
               </div>
-              {showSlowExchangeHint && (
-                <p className="mb-3 text-[11px] text-gray-500">
-                  Still working — talking to {coreUrl.replace(/\/+$/, "")}.
+              <p className="mt-3 text-xs text-gray-600">
+                Open this URL in a signed-in browser, paste the code, click Approve. We'll log
+                you in here automatically.
+              </p>
+              <a
+                href={pairing.connectUrl}
+                onClick={(e) => {
+                  e.preventDefault();
+                  void openUrl(pairing.connectUrl).catch(() => undefined);
+                }}
+                className="mt-2 block break-all font-mono text-[11px] text-blue-600 underline"
+              >
+                {pairing.connectUrl}
+              </a>
+              <p className="mt-3 text-[11px] text-gray-500">
+                {phaseLabel(pairingPhase) || "Waiting…"}
+              </p>
+              <button
+                type="button"
+                onClick={handleCancelPair}
+                className="mt-3 text-[11px] uppercase tracking-widest text-gray-500 hover:text-gray-700"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <>
+              <button
+                type="button"
+                disabled={pairingPhase !== null}
+                onClick={handlePair}
+                className="mb-4 w-full rounded-lg border border-gray-300 bg-white py-2.5 text-sm font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {pairingPhase === "initializing"
+                  ? "Requesting a pairing code…"
+                  : "Sign in via the web"}
+              </button>
+              {pairingError && (
+                <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+                  {pairingError}
                 </p>
               )}
               <div className="mb-4 flex items-center gap-3 text-[10px] uppercase tracking-wider text-gray-400">

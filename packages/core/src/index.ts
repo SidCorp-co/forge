@@ -12,7 +12,7 @@ import { adminRoutes } from './admin/routes.js';
 import { agentSessionRoutes } from './agent-sessions/routes.js';
 import { agentRoutes } from './agents/routes.js';
 import { appConfigRoutes } from './app-config/routes.js';
-import { desktopRoutes } from './auth/desktop/routes.js';
+import { pairingRoutes } from './auth/desktop/pairing-routes.js';
 import { devForceVerifyRoutes } from './auth/dev-force-verify.js';
 import { loginRoutes } from './auth/login.js';
 import { logoutRoutes } from './auth/logout.js';
@@ -59,6 +59,7 @@ import { jobEventsListRoutes, jobEventsRoutes } from './jobs/events-routes.js';
 import { jobLifecycleDeviceRoutes, jobLifecycleUserRoutes } from './jobs/lifecycle-routes.js';
 import { registerPgBossHealthProbe } from './jobs/pgboss-health.js';
 import { registerRetentionSweeper } from './jobs/retention-sweeper.js';
+import { registerDesktopPairingCleanup } from './jobs/desktop-pairing-cleanup.js';
 import { jobProjectRoutes, jobRoutes } from './jobs/routes.js';
 import { registerStaleDetector } from './jobs/stale-detector.js';
 import { registerStuckWatcher } from './jobs/stuck-watcher.js';
@@ -270,9 +271,9 @@ app.route('/api', patRoutes);
 // ISS-314 — OAuth/OIDC (GitHub + Google + generic OIDC). Internally gated
 // by `socialAuth` feature flag; safe to mount unconditionally.
 app.route('/api/auth', oauthRoutes);
-// ADR 0017 — Desktop OAuth PKCE handoff (Tauri client). Internally gated by
-// `desktopOauth` feature flag; safe to mount unconditionally.
-app.route('/api/auth', desktopRoutes);
+// ADR 0019 — Desktop sign-in via pairing code (Tauri client). Internally
+// gated by `desktopPairing` feature flag; safe to mount unconditionally.
+app.route('/api/auth', pairingRoutes);
 // projectHealthRoutes mounts /health (static) and must register before
 // projectRoutes which has GET /:id with a z.uuid() validator that would
 // 400-reject the literal "health" segment.
@@ -383,6 +384,7 @@ if (isMain) {
     await registerRunnerStaleDetector();
   }
   await registerRetentionSweeper();
+  await registerDesktopPairingCleanup();
   await registerStuckWatcher();
   await registerPipelineSweeper();
   await registerPgBossHealthProbe();

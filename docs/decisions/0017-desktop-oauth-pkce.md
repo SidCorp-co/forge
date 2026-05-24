@@ -1,6 +1,6 @@
 # ADR 0017 — Desktop OAuth via PKCE handoff
 
-**Status:** Accepted (2026-04-29)
+**Status:** Superseded by [ADR 0019](0019-desktop-device-pairing.md) (2026-05-24)
 **Related:** [ADR 0014](0014-trunk-based-development.md), RFC 8252 (OAuth 2.0 for Native Apps), RFC 7636 (PKCE)
 
 ## Context

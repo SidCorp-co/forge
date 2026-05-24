@@ -15,72 +15,8 @@ use config::{
     StrapiSkillGuideData,
 };
 use std::sync::Arc;
-use tauri::{Emitter, Manager, State};
-use tauri_plugin_deep_link::DeepLinkExt;
+use tauri::{Manager, State};
 use tokio::sync::{mpsc, watch, Mutex as TokioMutex};
-
-/// Tauri event emitted to the React frontend when the OS hands us a
-/// `forge-beta://...` URL — either at app launch (cold start) or while the
-/// app is already running (forwarded by the single-instance plugin).
-/// Frontend listens via `listen('deep-link://received', ...)`.
-const DEEP_LINK_EVENT: &str = "deep-link://received";
-
-/// Redact OAuth secrets (`code`, `handoff_id`) from a `forge-beta://` URL
-/// before logging it. ISS-190: breadcrumbs land server-side in Sentry; the
-/// raw one-time `code` is a credential the maintainer must never receive.
-/// Length-only fingerprints (`code=<len:N>`) are enough to confirm shape.
-fn redact_oauth_url(raw: &str) -> String {
-    let (head, query) = match raw.find('?') {
-        Some(i) => (&raw[..i], &raw[i + 1..]),
-        None => return raw.to_string(),
-    };
-    let mut redacted_pairs: Vec<String> = Vec::new();
-    for pair in query.split('&') {
-        let (key, value) = match pair.find('=') {
-            Some(i) => (&pair[..i], &pair[i + 1..]),
-            None => (pair, ""),
-        };
-        if key == "code" || key == "handoff_id" {
-            redacted_pairs.push(format!("{}=<len:{}>", key, value.len()));
-        } else {
-            redacted_pairs.push(pair.to_string());
-        }
-    }
-    format!("{}?{}", head, redacted_pairs.join("&"))
-}
-
-/// Emit a deep-link receipt breadcrumb to Sentry with secrets redacted.
-/// No-op on source builds (Sentry init guarded by FORGE_SENTRY_DSN_RUST).
-fn breadcrumb_deep_link(source: &str, raw: &str, emit_error: Option<&str>) {
-    let redacted = redact_oauth_url(raw);
-    let mut data = std::collections::BTreeMap::new();
-    data.insert(
-        "source".to_string(),
-        serde_json::Value::String(source.to_string()),
-    );
-    data.insert("url".to_string(), serde_json::Value::String(redacted));
-    if let Some(err) = emit_error {
-        data.insert(
-            "emit_error".to_string(),
-            serde_json::Value::String(err.to_string()),
-        );
-    }
-    sentry::add_breadcrumb(sentry::Breadcrumb {
-        category: Some("deep-link".into()),
-        message: Some(if emit_error.is_some() {
-            "received (emit failed)".into()
-        } else {
-            "received".into()
-        }),
-        level: if emit_error.is_some() {
-            sentry::Level::Warning
-        } else {
-            sentry::Level::Info
-        },
-        data,
-        ..Default::default()
-    });
-}
 
 struct AppState {
     sessions: Sessions,
@@ -630,80 +566,21 @@ fn main() {
     }
 
     tauri::Builder::default()
-        // single-instance MUST be first per Tauri docs. With the `deep-link`
-        // feature the secondary process forwards its launch URL into the
-        // primary so the running window receives the OAuth callback —
-        // otherwise on Windows / Linux a fresh process would pick up the
-        // URL while the user's existing window stays unauthed.
-        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            // single-instance with deep-link feature passes the URL as an arg.
-            for arg in args.iter().skip(1) {
-                if arg.starts_with("forge-beta://") {
-                    eprintln!(
-                        "[deep-link] single-instance received url ({} bytes), emitting {}",
-                        arg.len(),
-                        DEEP_LINK_EVENT
-                    );
-                    match app.emit(DEEP_LINK_EVENT, arg) {
-                        Ok(()) => breadcrumb_deep_link("single-instance", arg, None),
-                        Err(err) => {
-                            let msg = err.to_string();
-                            eprintln!("[deep-link] emit failed: {}", msg);
-                            breadcrumb_deep_link("single-instance", arg, Some(&msg));
-                        }
-                    }
-                }
-            }
-            // Also wake the primary window so the user sees the result.
+        // single-instance MUST be first per Tauri docs. Without the deep-link
+        // feature (dropped per ADR 0019) the secondary process is purely a
+        // focus-stealing trigger — wake the primary window and exit.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.set_focus();
                 let _ = w.unminimize();
             }
         }))
-        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .setup(|app| {
-            // Linux + Windows dev mode: register the URL scheme at runtime
-            // (production installers register via .desktop file / NSIS).
-            // No-op on macOS, where the OS handles registration via Info.plist.
-            #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
-            {
-                if let Err(e) = app.deep_link().register("forge-beta") {
-                    eprintln!("deep-link register error: {e}");
-                }
-            }
-
-            // Stream incoming URLs to the frontend. on_open_url fires for both
-            // cold-start (launch via URL) and warm runs (single-instance fan-in
-            // already covered above; this handler additionally covers macOS,
-            // where single-instance args are not used).
-            let app_handle = app.handle().clone();
-            app.deep_link().on_open_url(move |event| {
-                for url in event.urls() {
-                    let raw = url.as_str().to_string();
-                    eprintln!(
-                        "[deep-link] on_open_url received url ({} bytes), emitting {}",
-                        raw.len(),
-                        DEEP_LINK_EVENT
-                    );
-                    match app_handle.emit(DEEP_LINK_EVENT, raw.as_str()) {
-                        Ok(()) => breadcrumb_deep_link("on_open_url", &raw, None),
-                        Err(err) => {
-                            let msg = err.to_string();
-                            eprintln!("[deep-link] emit failed: {}", msg);
-                            breadcrumb_deep_link("on_open_url", &raw, Some(&msg));
-                        }
-                    }
-                }
-            });
-
-            Ok(())
-        })
         .manage(AppState {
             sessions: new_sessions(),
             ws_cancel: Arc::new(TokioMutex::new(None)),
@@ -767,34 +644,4 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
-
-#[cfg(test)]
-mod tests {
-    use super::redact_oauth_url;
-
-    #[test]
-    fn redacts_code_and_handoff_id_only() {
-        let raw = "forge-beta://auth/callback?handoff_id=abc123&code=secret-xyz&extra=keep";
-        let red = redact_oauth_url(raw);
-        assert!(red.contains("handoff_id=<len:6>"));
-        assert!(red.contains("code=<len:10>"));
-        assert!(red.contains("extra=keep"));
-        assert!(!red.contains("abc123"));
-        assert!(!red.contains("secret-xyz"));
-    }
-
-    #[test]
-    fn passes_through_urls_without_query() {
-        let raw = "forge-beta://auth/callback";
-        assert_eq!(redact_oauth_url(raw), raw);
-    }
-
-    #[test]
-    fn handles_value_with_equals_signs() {
-        let raw = "forge-beta://auth/callback?code=a=b=c";
-        let red = redact_oauth_url(raw);
-        assert!(red.contains("code=<len:5>"));
-        assert!(!red.contains("a=b=c"));
-    }
 }
