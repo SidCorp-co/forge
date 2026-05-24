@@ -12,6 +12,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+### Removed
+
+### Fixed
+
+### Security
+
+## [0.2.2] - 2026-05-25
+
+Desktop sign-in switches to a pairing-code flow that works on Linux/Wayland, headless SSH sessions, and browsers that ignore custom URL schemes — replacing the old `forge-beta://` deep-link.
+
+### Added
+
+### Changed
+
 - **Desktop sign-in now uses a short pairing code instead of a browser deep link.** On the desktop login screen, click "Sign in via the web", read the displayed code, open the matching URL in any signed-in browser, paste the code, and click Approve — the desktop signs in automatically. The pairing flow works on Linux/Wayland, headless SSH-forwarded sessions, macOS, and Windows, including browsers that ignore custom URL schemes (ISS-190 root cause).
   *Technical: ADR 0019 supersedes ADR 0017. Adds `desktop_pairing_codes` table (migration 0074) + `POST /api/auth/desktop/{pair-init,approve}` and `GET /poll` with 10-min TTL, sha256(code) at rest, per-IP rate limits (20/h init, 10/h approve), single-use atomic UPDATE-RETURNING. Adds `/connect-device` Next.js page + `desktop-pairing-cleanup` pg-boss sweeper. Desktop client (`packages/dev/src/lib/pairing.ts`) polls every 2 s (5 s after 30 s). Drops `oauth_handoff` table and the entire PKCE deep-link surface.*
 
