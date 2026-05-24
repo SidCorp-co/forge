@@ -1,24 +1,33 @@
 /**
- * Pipeline self-healing sweeper — zombie session cleanup ONLY.
+ * Pipeline self-healing sweeper — zombie session cleanup + dispatcher backstop.
  *
  * Previously this file also handled multi-tier "stuck issue" recovery
  * (re-enqueue + recoveryAttempts budget + pipeline_failed escalation).
  * The failure model now blocks issues via setManualHoldBlock at the
  * source (worker /fail, watchdog kills, adapter errors); operator
- * action is the only thing that resumes a blocked pipeline. The sweeper
- * no longer auto-recovers.
+ * action is the only thing that resumes a blocked pipeline.
  *
- * What remains: a 60s tick that fails abandoned agent_sessions
- * (queue_timeout / heartbeat_timeout). These are observability rows —
- * once flipped to `failed`, the WS broadcast clears their "running"
- * spinner in the UI without operator intervention. No job/issue state
- * is mutated here.
+ * Each 60s tick performs two best-effort passes:
+ *
+ *  1. Zombie sessions — fail agent_sessions abandoned by their worker
+ *     (queue_timeout / heartbeat_timeout). Observability rows; flipping
+ *     them to `failed` clears the UI's "running" spinner without
+ *     operator action. No job/issue state is mutated by this pass.
+ *
+ *  2. Dispatcher backstop — re-tick `dispatchTickForProject` for every
+ *     project that has queued jobs. Event-driven triggers (job complete,
+ *     runner online flip, issue transition) are best-effort and can miss
+ *     under race conditions (worker disconnect mid-flight, stale-detector
+ *     timing window). The backstop guarantees queued jobs are re-evaluated
+ *     against current runner state at least once per minute. `pgboss-health`
+ *     monitors the schedule and alerts when this tick stops firing.
  */
 
 import { and, eq, isNotNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions } from '../db/schema.js';
+import { agentSessions, jobs } from '../db/schema.js';
 import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
+import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
@@ -55,13 +64,37 @@ export interface ZombieSweepResult {
 export interface SweepResult {
   durationMs: number;
   zombieSessions: ZombieSweepResult;
+  backstopProjects: number;
 }
 
 export async function runPipelineSweep(now: Date = new Date()): Promise<SweepResult> {
   const t0 = Date.now();
-  recordPipelineSweeperTick(t0);
   const zombieSessions = await sweepZombieSessions(now);
-  return { durationMs: Date.now() - t0, zombieSessions };
+  const backstopProjects = await runDispatcherBackstop();
+  // Record the heartbeat ONLY after every pass succeeded. Recording at the
+  // top would leave `pgboss-health` blind to a silent backstop failure
+  // (lastTickAt fresh, dispatcher.tick_missing never fires). Letting either
+  // pass throw lets pg-boss retry and pgboss-health alert.
+  recordPipelineSweeperTick(t0);
+  return { durationMs: Date.now() - t0, zombieSessions, backstopProjects };
+}
+
+/**
+ * Re-tick `dispatchTickForProject` for every project with at least one
+ * queued job. Returns the count of projects observed (not ticks completed —
+ * `dispatchTickForProject` debounces per project so a recently-fired event
+ * trigger may coalesce this call into a no-op). Errors propagate to the
+ * caller so the failure is visible to `pgboss-health` instead of swallowed.
+ */
+async function runDispatcherBackstop(): Promise<number> {
+  const rows = await db
+    .selectDistinct({ projectId: jobs.projectId })
+    .from(jobs)
+    .where(eq(jobs.status, 'queued'));
+  for (const r of rows) {
+    void dispatchTickForProject(r.projectId);
+  }
+  return rows.length;
 }
 
 interface SweepScope {
