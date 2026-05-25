@@ -2,7 +2,7 @@
  * manualHold-block model.
  *
  * Single decision point for any unrecoverable pipeline failure (worker /fail,
- * lost worker session detected by stuck-watcher / stale-detector, adapter
+ * lost worker session detected by stale-detector, adapter
  * dispatch error). Replaces the previous multi-tier silent retry chain
  * (`retry.ts` exponential backoff + sweeper recovery budget +
  * `pipeline_failed` escalation).

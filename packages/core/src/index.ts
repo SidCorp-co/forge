@@ -62,7 +62,6 @@ import { registerRetentionSweeper } from './jobs/retention-sweeper.js';
 import { registerDesktopPairingCleanup } from './jobs/desktop-pairing-cleanup.js';
 import { jobProjectRoutes, jobRoutes } from './jobs/routes.js';
 import { registerStaleDetector } from './jobs/stale-detector.js';
-import { registerStuckWatcher } from './jobs/stuck-watcher.js';
 import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
 import { knowledgeIngestRoutes } from './knowledge/ingest-routes.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
@@ -389,7 +388,6 @@ if (isMain) {
   }
   await registerRetentionSweeper();
   await registerDesktopPairingCleanup();
-  await registerStuckWatcher();
   await registerPipelineSweeper();
   await registerPgBossHealthProbe();
   await registerOutboundDeliveryWorker();
