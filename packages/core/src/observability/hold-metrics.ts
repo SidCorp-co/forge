@@ -1,5 +1,8 @@
 /**
  * ISS-198 — hold lifecycle counters surfaced for Prometheus / Grafana.
+ * ISS-228 — extended with `dispatch_barrier_skips_total{reason}` so the
+ * pg-boss-path barrier ({@link assertDispatchable}) reports a per-reason
+ * skip counter the same way the picker does.
  *
  * We don't pull in a full prom-client wiring here (no metrics endpoint yet);
  * instead we maintain in-process counters that can be scraped via the
@@ -13,10 +16,15 @@
  *     sweeper auto-clears.
  *   - forge_runner_death_detection_seconds histogram: observed when the
  *     dispatcher's L5 gate refuses a stale runner; value is `now - lastSeen`.
+ *   - dispatch_barrier_skips_total{reason}: incremented every time
+ *     `handleDispatch` / `handlePmDispatch` leaves a job queued because
+ *     `assertDispatchable` reported a failing gate (ISS-228 cascade fix).
  *
  * The histogram is a simple bucket list — replace with prom-client once a
  * `/metrics` endpoint exists.
  */
+
+import type { GateSkipReason } from '../jobs/dispatch-gates.js';
 
 type HoldKind = 'transient_network' | 'permanent_invalid' | 'unknown';
 
@@ -39,10 +47,16 @@ interface RunnerDeathHistogram {
   sumSeconds: number;
 }
 
+interface DispatchBarrierCounters {
+  reason: GateSkipReason;
+  count: number;
+}
+
 interface HoldMetricsState {
   holdSet: Map<string, HoldSetCounters>;
   holdAutoClear: Map<string, HoldClearCounters>;
   runnerDeath: RunnerDeathHistogram;
+  dispatchBarrierSkips: Map<GateSkipReason, DispatchBarrierCounters>;
 }
 
 function makeState(): HoldMetricsState {
@@ -56,6 +70,7 @@ function makeState(): HoldMetricsState {
     holdSet: new Map(),
     holdAutoClear: new Map(),
     runnerDeath: histogram,
+    dispatchBarrierSkips: new Map(),
   };
 }
 
@@ -80,6 +95,22 @@ export function recordHoldAutoClear(input: { kind: HoldKind | 'unknown_no_contex
   }
 }
 
+/**
+ * ISS-228 — increment `dispatch_barrier_skips_total{reason}` every time
+ * the pg-boss path leaves a job queued because `assertDispatchable`
+ * reported a failing gate. Operators watch the `project_cap` series to
+ * detect cascade attempts (5+ skips in 90s while `manualHold` is being
+ * cleared en masse, ISS-228 forge-dev incident).
+ */
+export function recordDispatchBarrierSkip(reason: GateSkipReason): void {
+  const existing = state.dispatchBarrierSkips.get(reason);
+  if (existing) {
+    existing.count += 1;
+  } else {
+    state.dispatchBarrierSkips.set(reason, { reason, count: 1 });
+  }
+}
+
 export function recordRunnerDeathDetection(seconds: number): void {
   if (!Number.isFinite(seconds) || seconds < 0) return;
   state.runnerDeath.count += 1;
@@ -99,6 +130,7 @@ export interface HoldMetricsSnapshot {
     sumSeconds: number;
     buckets: Array<{ leSeconds: number; count: number }>;
   };
+  dispatchBarrierSkips: DispatchBarrierCounters[];
 }
 
 export function getHoldMetricsSnapshot(): HoldMetricsSnapshot {
@@ -113,6 +145,7 @@ export function getHoldMetricsSnapshot(): HoldMetricsSnapshot {
         count: state.runnerDeath.bucketsLeq.get(leSeconds) ?? 0,
       })),
     },
+    dispatchBarrierSkips: [...state.dispatchBarrierSkips.values()],
   };
 }
 

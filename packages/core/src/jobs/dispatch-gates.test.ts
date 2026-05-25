@@ -23,6 +23,7 @@ vi.mock('../logger.js', () => ({
 }));
 
 const {
+  assertDispatchable,
   checkLayer4RunnerFull,
   checkLayer5RunnerHeartbeat,
   pickNextDispatchableJobForProject,
@@ -348,5 +349,167 @@ describe('checkLayer5RunnerHeartbeat', () => {
     expect(text).toMatch(
       /j\.retry_after_at\s+IS\s+NULL\s+OR\s+j\.retry_after_at\s*<=\s*now\(\)/,
     );
+  });
+});
+
+// ISS-228 — assertDispatchable mirrors the picker's full gate set so the
+// pg-boss-direct path (`handleDispatch` / `handlePmDispatch`) enforces the
+// same invariants the picker does on every tick.
+describe('assertDispatchable', () => {
+  function mockAssertChain(opts: {
+    job: { projectId: string } | null;
+    cap?: Record<string, unknown> | null;
+    caseResult: { reason: string | null } | null | undefined;
+  }): void {
+    // 1) jobs lookup → returns [job] or []
+    selectChainOnce(opts.job ? [opts.job] : []);
+    // 2) projects lookup (only happens when job was found)
+    if (opts.job) {
+      mockProjectAgentConfigOnce(opts.cap ?? null);
+      // 3) the CASE-driven SQL — returns 0 or 1 row
+      const rows = opts.caseResult === undefined ? [] : opts.caseResult === null ? [] : [opts.caseResult];
+      dbExecute.mockResolvedValueOnce(rows);
+    }
+  }
+
+  it('returns not_found when the job row is missing', async () => {
+    mockAssertChain({ job: null, caseResult: undefined });
+    const r = await assertDispatchable('missing');
+    expect(r).toEqual({ ok: false, reason: 'not_found', hint: 'missing' });
+  });
+
+  it('returns ok:true when the CASE expression returns NULL (all gates pass)', async () => {
+    mockAssertChain({
+      job: { projectId: 'p1' },
+      cap: { pipelineConfig: { maxConcurrentIssues: 3 } },
+      caseResult: { reason: null },
+    });
+    expect(await assertDispatchable('j1')).toEqual({ ok: true });
+  });
+
+  it('returns ok:false with the failing reason verbatim from the CASE', async () => {
+    mockAssertChain({
+      job: { projectId: 'p1' },
+      cap: null,
+      caseResult: { reason: 'project_cap' },
+    });
+    expect(await assertDispatchable('j1')).toEqual({ ok: false, reason: 'project_cap' });
+  });
+
+  it('returns not_found when the CASE query returns 0 rows (race: job vanished mid-call)', async () => {
+    mockAssertChain({
+      job: { projectId: 'p1' },
+      cap: null,
+      caseResult: undefined,
+    });
+    expect(await assertDispatchable('j1')).toEqual({ ok: false, reason: 'not_found', hint: 'j1' });
+  });
+
+  // Reasons enumerated in the CASE — surface in the SQL so the
+  // `dispatch_barrier_skips_total{reason}` series stays stable.
+  it('SQL enumerates every GateSkipReason in the CASE', async () => {
+    mockAssertChain({
+      job: { projectId: 'p1' },
+      cap: null,
+      caseResult: { reason: null },
+    });
+    await assertDispatchable('j1');
+    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+    expect(text).toMatch(/'not_queued'/);
+    expect(text).toMatch(/'pipeline_run_not_running'/);
+    expect(text).toMatch(/'manual_hold'/);
+    expect(text).toMatch(/'retry_cooldown'/);
+    expect(text).toMatch(/'issue_busy'/);
+    expect(text).toMatch(/'blocked_by'/);
+    expect(text).toMatch(/'release_decompose_pending'/);
+    expect(text).toMatch(/'project_cap'/);
+    expect(text).toMatch(/'runner_stale'/);
+    expect(text).toMatch(/'runner_full'/);
+  });
+
+  it('SQL joins jobs/issues/pipeline_runs the same way the picker does', async () => {
+    mockAssertChain({
+      job: { projectId: 'p1' },
+      cap: null,
+      caseResult: { reason: null },
+    });
+    await assertDispatchable('j1');
+    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+    expect(text).toMatch(/FROM\s+jobs\s+j/);
+    expect(text).toMatch(/LEFT\s+JOIN\s+issues\s+i\s+ON\s+i\.id\s*=\s*j\.issue_id/);
+    expect(text).toMatch(/JOIN\s+pipeline_runs\s+r\s+ON\s+r\.id\s*=\s*j\.pipeline_run_id/);
+    expect(text).toMatch(/WHERE\s+j\.id\s*=/);
+  });
+
+  // SSOT anti-drift — the running_ids CTE appears in EXACTLY ONE place in
+  // the codebase (`buildBarrierFragments`); both the picker and the
+  // asserter inherit it from that builder. This test captures the SQL of
+  // BOTH queries in one run and asserts they share the same running_ids
+  // CTE text, the same fresh_capable_runners CTE text, and the same
+  // EXISTS sub-queries for the gate predicates.
+  it('parity: picker and assertDispatchable share the same CTEs + EXISTS predicates', async () => {
+    // Picker call
+    mockProjectAgentConfigOnce(null);
+    dbExecute.mockResolvedValueOnce([]);
+    await pickNextDispatchableJobForProject('p-parity');
+    const pickerSql = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+
+    // Asserter call (fresh mocks)
+    vi.clearAllMocks();
+    mockAssertChain({
+      job: { projectId: 'p-parity' },
+      cap: null,
+      caseResult: { reason: null },
+    });
+    await assertDispatchable('j-parity');
+    const asserterSql = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+
+    const cteSignatures = [
+      /running_ids\s+AS\s*\(/,
+      /SELECT\s+DISTINCT\s+\(metadata->>'issueId'\)\s+AS\s+issue_id/,
+      /retry_after_at\s+IS\s+NOT\s+NULL\s+AND\s+retry_after_at\s*>\s*now\(\)/,
+      /runner_load\s+AS\s*\(/,
+      /fresh_capable_runners\s+AS\s*\(/,
+      /r\.last_seen_at\s*>\s*now\(\)/,
+    ];
+    for (const re of cteSignatures) {
+      expect(pickerSql, `picker missing CTE chunk ${re}`).toMatch(re);
+      expect(asserterSql, `asserter missing CTE chunk ${re}`).toMatch(re);
+    }
+
+    // EXISTS predicate signatures (the bits most prone to drift)
+    const predicateSignatures = [
+      /FROM\s+agent_sessions\s+s/, // issueBusySession
+      /FROM\s+jobs\s+other/, // issueBusyJob
+      /d\.kind\s*=\s*'blocks'/, // blockedBy
+      /d2\.kind\s*=\s*'decomposes'/, // releaseDecomposePending
+    ];
+    for (const re of predicateSignatures) {
+      expect(pickerSql, `picker missing predicate ${re}`).toMatch(re);
+      expect(asserterSql, `asserter missing predicate ${re}`).toMatch(re);
+    }
+
+    // Cap + fresh_capable_runners participation: both sides reference
+    // running_ids for the cap check and fresh_capable_runners for runner
+    // availability.
+    expect(pickerSql).toMatch(/SELECT\s+COUNT\(\*\)\s+FROM\s+running_ids/);
+    expect(asserterSql).toMatch(/SELECT\s+COUNT\(\*\)\s+FROM\s+running_ids/);
+    expect(pickerSql).toMatch(/fresh_capable_runners/);
+    expect(asserterSql).toMatch(/fresh_capable_runners/);
+  });
+
+  // Clean-break grep gate: the running_ids CTE must be defined exactly
+  // once in dispatch-gates.ts (the builder), not duplicated between
+  // picker and asserter call sites. This catches a future contributor
+  // copy-pasting the CTE into one site without the other.
+  it('source: `running_ids AS (` appears exactly once in dispatch-gates.ts (single builder)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const src = readFileSync(
+      fileURLToPath(new URL('./dispatch-gates.ts', import.meta.url)),
+      'utf8',
+    );
+    const matches = src.match(/running_ids\s+AS\s*\(/g) ?? [];
+    expect(matches.length).toBe(1);
   });
 });

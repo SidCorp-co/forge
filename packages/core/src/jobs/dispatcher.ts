@@ -20,10 +20,13 @@ import { deviceRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { getActiveDeviceId } from './active-device.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
-import { recordRunnerDeathDetection } from '../observability/hold-metrics.js';
+import {
+  recordDispatchBarrierSkip,
+  recordRunnerDeathDetection,
+} from '../observability/hold-metrics.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { checkMonthlyBudget, postBudgetExhaustedComment, shouldEmitWarn } from './budget-check.js';
-import { hasNonTerminalPriorSession, runnerSupportsJobType } from './dispatch-gates.js';
+import { assertDispatchable, runnerSupportsJobType } from './dispatch-gates.js';
 import { persistPromptSnapshot } from './prompt-snapshot.js';
 import { JOB_QUEUE_NAME, PM_QUEUE_NAME } from './queue-name.js';
 import { findPriorSessionInGroup } from './session-resume.js';
@@ -66,19 +69,32 @@ export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched'
     return 'skipped';
   }
 
-  // ISS-226 — prior-session terminal barrier. Mirrors the picker's L1
-  // issue_busy gate so the pg-boss-direct delivery path enforces the same
-  // invariant as `pickNextDispatchableJobForProject`. Without this, a job
-  // enqueued while the prior stage's agent_session is still `running` would
-  // dispatch immediately and `findPriorSessionInGroup` would miss the
-  // resume. The fire-and-forget `dispatchTickForProject` re-picks the job
-  // via the picker once the prior row flips terminal in
-  // `syncAgentSessionLifecycle`.
-  if (job.issueId && (await hasNonTerminalPriorSession(job.issueId, job.agentSessionId))) {
+  // ISS-228 — SSOT dispatch barrier. Mirrors EVERY picker gate (manualHold,
+  // blocked_by, project_cap, runner_full, retry_cooldown, pipeline_run_running,
+  // issue_busy) so the pg-boss-direct path enforces the same invariants as
+  // `pickNextDispatchableJobForProject`. Replaces the ISS-226 narrow L1-only
+  // check that left 5/6 gates bypassed and caused the 2026-05-25 cascade.
+  //
+  // When the barrier fails: job stays `queued`, no row update, no
+  // setManualHoldBlock, no hook emission. The fire-and-forget
+  // `dispatchTickForProject` re-picks the job via the picker once state
+  // stabilises (job complete, manualHold cleared, runner online, terminal
+  // transition).
+  const barrier = await assertDispatchable(job.id);
+  if (!barrier.ok) {
     logger.debug(
-      { jobId, issueId: job.issueId },
-      'dispatcher: prior session non-terminal, leaving queued',
+      { jobId, reason: barrier.reason, hint: barrier.hint },
+      'dispatcher: barrier failed, leaving queued',
     );
+    recordDispatchBarrierSkip(barrier.reason);
+    if (isSentryEnabled()) {
+      Sentry.addBreadcrumb({
+        category: 'dispatch.barrier_skip',
+        level: 'info',
+        message: `dispatch barrier skip (${barrier.reason})`,
+        data: { jobId, reason: barrier.reason, hint: barrier.hint },
+      });
+    }
     return 'skipped';
   }
 
@@ -183,14 +199,26 @@ export async function handlePmDispatch(msg: DispatchMessage): Promise<'dispatche
     logger.warn({ jobId, type: job.type }, 'pm-dispatcher: non-pm job on pm queue, skipping');
     return 'skipped';
   }
-  // ISS-226 — PM jobs targeted at an issue whose pipeline session is still
-  // running must also wait for that session to reach a terminal state. PM
-  // jobs with `issueId === null` (project-scoped) bypass the check.
-  if (job.issueId && (await hasNonTerminalPriorSession(job.issueId, job.agentSessionId))) {
+  // ISS-228 — same SSOT barrier as handleDispatch. `assertDispatchable`
+  // detects `j.type = 'pm'` internally and skips `blocked_by` accordingly
+  // (PM jobs have no issue deps); other gates (manualHold, project_cap,
+  // runner_full, retry_cooldown, pipeline_run_running, issue_busy) still
+  // apply.
+  const barrier = await assertDispatchable(job.id);
+  if (!barrier.ok) {
     logger.debug(
-      { jobId, issueId: job.issueId },
-      'pm-dispatcher: prior session non-terminal, leaving queued',
+      { jobId, reason: barrier.reason, hint: barrier.hint },
+      'pm-dispatcher: barrier failed, leaving queued',
     );
+    recordDispatchBarrierSkip(barrier.reason);
+    if (isSentryEnabled()) {
+      Sentry.addBreadcrumb({
+        category: 'dispatch.barrier_skip',
+        level: 'info',
+        message: `pm-dispatch barrier skip (${barrier.reason})`,
+        data: { jobId, reason: barrier.reason, hint: barrier.hint, queue: 'pm' },
+      });
+    }
     return 'skipped';
   }
   return dispatchViaRunner(job, { pm: true }, ['claude-code']);

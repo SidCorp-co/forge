@@ -69,10 +69,11 @@ vi.mock('./dispatch-gates.js', () => ({
   // runner. Default to true so unrelated tests stay focused on their own
   // envelope; the unsupported-type test overrides with mockReturnValueOnce.
   runnerSupportsJobType: vi.fn(() => true),
-  // ISS-226 — pre-dispatch barrier in handleDispatch / handlePmDispatch.
-  // Default to false (no non-terminal prior) so existing tests dispatch
-  // unchanged; the ISS-226 regression test overrides per-call.
-  hasNonTerminalPriorSession: vi.fn(async () => false),
+  // ISS-228 — SSOT pre-dispatch barrier in handleDispatch / handlePmDispatch.
+  // Default to `{ ok: true }` so existing tests dispatch unchanged; the
+  // ISS-226 / ISS-228 regression tests override per-call with a failing
+  // barrier to assert the skip path.
+  assertDispatchable: vi.fn(async () => ({ ok: true })),
 }));
 
 // ISS-198 — dispatcher emits a Sentry breadcrumb + histogram sample when
@@ -86,12 +87,16 @@ vi.mock('../observability/hold-metrics.js', () => ({
   recordRunnerDeathDetection: vi.fn(),
   recordHoldSet: vi.fn(),
   recordHoldAutoClear: vi.fn(),
+  // ISS-228 — per-reason counter incremented when assertDispatchable
+  // leaves a job queued. Test mock so the unit tests don't need a
+  // metrics-state reset between cases.
+  recordDispatchBarrierSkip: vi.fn(),
 }));
 
 const { db } = await import('../db/client.js');
 const { getActiveDeviceId } = await import('./active-device.js');
 // ISS-198 — dispatcher no longer imports checkLayer4RunnerFull.
-const { runnerSupportsJobType, hasNonTerminalPriorSession } = await import('./dispatch-gates.js');
+const { runnerSupportsJobType, assertDispatchable } = await import('./dispatch-gates.js');
 const {
   handleDispatch,
   handlePmDispatch,
@@ -334,13 +339,12 @@ describe('jobs/dispatcher', () => {
     expect(snapInvocation).toBeLessThan(publishInvocation);
   });
 
-  // ISS-226 — race repro: when stage A's agent_session is still 'running'
-  // at the moment stage B is dispatched, the dispatcher must leave B
-  // queued (skipped) instead of dispatching against a missing prior
-  // session. Once A flips terminal, the next tick's picker re-picks B and
-  // dispatch succeeds. Without this barrier, `findPriorSessionInGroup`
-  // returns null and the sessionGroup CLI resume silently regresses.
-  it('ISS-226: leaves queued when a prior agent_session is still non-terminal for the same issue', async () => {
+  // ISS-228 — SSOT barrier replaces ISS-226's narrow L1-only check. When
+  // ANY gate fails (manual_hold, blocked_by, project_cap, runner_full,
+  // retry_cooldown, pipeline_run_running, issue_busy), the dispatcher must
+  // leave the job queued — no dispatch flip, no runner selection, no
+  // job.assigned broadcast.
+  it('ISS-228: leaves queued when assertDispatchable returns a failing barrier (issue_busy)', async () => {
     mockSelectOnce([
       {
         id: 'j-plan',
@@ -352,11 +356,14 @@ describe('jobs/dispatcher', () => {
         payload: { sessionGroup: 'planning', stageStatus: 'confirmed' },
       },
     ]);
-    (hasNonTerminalPriorSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+    (assertDispatchable as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: false,
+      reason: 'issue_busy',
+    });
 
     const result = await handleDispatch({ jobId: 'j-plan' });
     expect(result).toBe('skipped');
-    expect(hasNonTerminalPriorSession).toHaveBeenCalledWith('iss-201', null);
+    expect(assertDispatchable).toHaveBeenCalledWith('j-plan');
     // Job must remain queued — no dispatch flip, no runner selection,
     // no job.assigned broadcast.
     // biome-ignore lint/suspicious/noExplicitAny: test-only mock chain
@@ -367,7 +374,30 @@ describe('jobs/dispatcher', () => {
     expect((roomManager as any).publish).not.toHaveBeenCalled();
   });
 
-  it('ISS-226: dispatches normally once the prior session is terminal', async () => {
+  it('ISS-228: leaves queued with reason=project_cap when L3 fails (pg-boss burst protection)', async () => {
+    mockSelectOnce([
+      {
+        id: 'j-cap',
+        status: 'queued',
+        projectId: 'p1',
+        issueId: 'iss-other',
+        type: 'code',
+        agentSessionId: null,
+        payload: {},
+      },
+    ]);
+    (assertDispatchable as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: false,
+      reason: 'project_cap',
+    });
+
+    const result = await handleDispatch({ jobId: 'j-cap' });
+    expect(result).toBe('skipped');
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock chain
+    expect((db as any).update).not.toHaveBeenCalled();
+  });
+
+  it('ISS-228: dispatches normally when assertDispatchable returns ok:true', async () => {
     mockSelectOnce([
       {
         id: 'j-plan',
@@ -379,9 +409,7 @@ describe('jobs/dispatcher', () => {
         payload: { sessionGroup: 'planning' },
       },
     ]);
-    // Default mock (returns false) means the barrier passes; explicit here
-    // for clarity against the previous test.
-    (hasNonTerminalPriorSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
+    // Default mock ({ ok: true }) — barrier passes.
     (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
     mockSelectOnce([{ id: 'd1', status: 'online', lastSeenAt: new Date() }]);
     mockUpdateReturn([{ id: 'j-plan' }]);
@@ -389,12 +417,12 @@ describe('jobs/dispatcher', () => {
 
     const result = await handleDispatch({ jobId: 'j-plan' });
     expect(result).toBe('dispatched');
-    expect(hasNonTerminalPriorSession).toHaveBeenCalledWith('iss-201', null);
+    expect(assertDispatchable).toHaveBeenCalledWith('j-plan');
     // biome-ignore lint/suspicious/noExplicitAny: test-only mock
     expect((roomManager as any).publish).toHaveBeenCalledTimes(1);
   });
 
-  it('ISS-226: skips the barrier when job has no issueId (project-scoped jobs)', async () => {
+  it('ISS-228: barrier runs even for project-scoped jobs (issueId=null)', async () => {
     mockSelectOnce([
       {
         id: 'j-orphan',
@@ -412,8 +440,9 @@ describe('jobs/dispatcher', () => {
 
     const result = await handleDispatch({ jobId: 'j-orphan' });
     expect(result).toBe('dispatched');
-    // Barrier short-circuited — no DB query for the prior-session check.
-    expect(hasNonTerminalPriorSession).not.toHaveBeenCalled();
+    // SSOT barrier always runs — its SQL handles the null issue_id case
+    // correctly (project_cap clause uses `j.issue_id IS NOT NULL`).
+    expect(assertDispatchable).toHaveBeenCalledWith('j-orphan');
   });
 
   it('defaults model to "default" when modelTier is not set', async () => {
