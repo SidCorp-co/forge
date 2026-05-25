@@ -277,6 +277,13 @@ const outliersQuerySchema = z.object({
   days: z.coerce.number().int().min(1).max(90).optional().default(30),
 });
 
+const blockContribQuerySchema = z.object({
+  days: z.coerce.number().int().min(1).max(90).optional().default(30),
+  // step is REQUIRED: block shapes differ across pipeline stages so aggregating
+  // across them would mix incompatible distributions.
+  step: z.enum(jobTypes),
+});
+
 /**
  * Window cost summary. One row total, grouped-by-step rollup, and the top
  * 10 issues by cost in the window. Three SELECTs over a single CTE so the
@@ -475,5 +482,136 @@ projectCostAnalyticsRoutes.get(
     }));
 
     return c.json({ threshold, runs });
+  },
+);
+
+/**
+ * W2.2.3 — block-contribution (Surface C4). Aggregates `jobs.prompt_blocks`
+ * (jsonb populated by `persistPromptSnapshot`) across recent runs of a
+ * single pipeline step, joining `usage_records` for the per-job cache hit
+ * rate. Returns mean / population stddev / pctInput / cacheHitRate per
+ * block id so operators see which block drives input cost.
+ *
+ * Math choices (see plan):
+ * - `pctInput` is the mean of per-job (block_tokens / job_total_tokens);
+ *   weighted-by-total would let one giant job dominate.
+ * - `stddev_pop` so a single-job window returns 0, not NULL.
+ * - `cacheHitRate` is the per-job rate averaged across jobs containing the
+ *   block — a coarse signal, but per-block cache attribution is out of scope.
+ *
+ * Short-circuits to `{ step, runs: 0, blocks: [] }` (HTTP 200) when no
+ * jobs in the window have non-null `prompt_blocks`; never 500 on pre-ISS-186
+ * data.
+ */
+projectCostAnalyticsRoutes.get(
+  '/:id/analytics/block-contribution',
+  zValidator('param', projectIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('query', blockContribQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { days, step } = c.req.valid('query');
+    const userId = c.get('userId');
+    await assertProjectMember(id, userId);
+
+    const countRows = await db.execute(sql`
+      SELECT COUNT(*)::int AS runs
+      FROM jobs j
+      INNER JOIN pipeline_runs r ON r.id = j.pipeline_run_id
+      WHERE r.project_id = ${id}
+        AND j.type = ${step}
+        AND j.started_at >= now() - (${days}::int * interval '1 day')
+        AND j.prompt_blocks IS NOT NULL
+        AND jsonb_typeof(j.prompt_blocks) = 'array'
+    `);
+    const runs = Number(
+      (countRows as unknown as Array<{ runs: number }>)[0]?.runs ?? 0,
+    );
+
+    if (runs === 0) return c.json({ step, runs: 0, blocks: [] });
+
+    const blockRows = await db.execute(sql`
+      WITH window_jobs AS (
+        SELECT
+          j.id               AS job_id,
+          j.prompt_blocks    AS prompt_blocks,
+          j.agent_session_id AS agent_session_id
+        FROM jobs j
+        INNER JOIN pipeline_runs r ON r.id = j.pipeline_run_id
+        WHERE r.project_id = ${id}
+          AND j.type = ${step}
+          AND j.started_at >= now() - (${days}::int * interval '1 day')
+          AND j.prompt_blocks IS NOT NULL
+          AND jsonb_typeof(j.prompt_blocks) = 'array'
+      ),
+      job_metrics AS (
+        SELECT
+          wj.job_id,
+          wj.prompt_blocks,
+          (
+            SELECT COALESCE(SUM((b->>'estTokens')::int), 0)
+            FROM jsonb_array_elements(wj.prompt_blocks) b
+          ) AS total_tokens,
+          (
+            SELECT
+              CASE
+                WHEN SUM(ur.input_tokens + ur.cache_read_tokens) > 0
+                  THEN SUM(ur.cache_read_tokens)::float
+                       / SUM(ur.input_tokens + ur.cache_read_tokens)::float
+                ELSE NULL
+              END
+            FROM usage_records ur
+            WHERE ur.session_id = wj.agent_session_id::text
+          ) AS cache_hit_rate
+        FROM window_jobs wj
+      ),
+      block_rows AS (
+        SELECT
+          (b->>'id')              AS block_id,
+          (b->>'estTokens')::int  AS est_tokens,
+          jm.total_tokens,
+          jm.cache_hit_rate
+        FROM job_metrics jm,
+             jsonb_array_elements(jm.prompt_blocks) b
+      )
+      SELECT
+        block_id                                    AS id,
+        AVG(est_tokens)::float                      AS avg_tokens,
+        COALESCE(stddev_pop(est_tokens)::float, 0)  AS stddev,
+        AVG(
+          CASE WHEN total_tokens > 0
+               THEN est_tokens::float / total_tokens::float
+               ELSE 0 END
+        )::float                                    AS pct_input,
+        AVG(cache_hit_rate)::float                  AS cache_hit_rate
+      FROM block_rows
+      GROUP BY block_id
+      ORDER BY AVG(
+        CASE WHEN total_tokens > 0
+             THEN est_tokens::float / total_tokens::float
+             ELSE 0 END
+      ) DESC
+    `);
+
+    const blocks = (
+      blockRows as unknown as Array<{
+        id: string;
+        avg_tokens: number | string;
+        stddev: number | string;
+        pct_input: number | string;
+        cache_hit_rate: number | string | null;
+      }>
+    ).map((r) => ({
+      id: r.id,
+      avgTokens: Number(r.avg_tokens),
+      stddev: Number(r.stddev),
+      pctInput: Number(r.pct_input),
+      cacheHitRate: r.cache_hit_rate === null ? null : Number(r.cache_hit_rate),
+    }));
+
+    return c.json({ step, runs, blocks });
   },
 );

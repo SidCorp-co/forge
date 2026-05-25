@@ -607,3 +607,196 @@ describe('GET /api/projects/:id/analytics/outliers', () => {
     expect(serialized).toContain('percentile_disc(0.95)');
   });
 });
+
+describe('GET /api/projects/:id/analytics/block-contribution', () => {
+  it('401 without token', async () => {
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/projects/${PROJECT_UUID}/analytics/block-contribution?step=code`),
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('400 on bad project UUID', async () => {
+    const token = await signUserToken('u-1');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    const app = buildApp();
+    const res = await app.fetch(
+      req('/api/projects/not-uuid/analytics/block-contribution?step=code', { token }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('400 when step is missing', async () => {
+    const token = await signUserToken('u-1');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/projects/${PROJECT_UUID}/analytics/block-contribution`, { token }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('400 when step is not a known job type', async () => {
+    const token = await signUserToken('u-1');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    const app = buildApp();
+    const res = await app.fetch(
+      req(
+        `/api/projects/${PROJECT_UUID}/analytics/block-contribution?step=not-a-type`,
+        { token },
+      ),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('400 when days is below 1', async () => {
+    const token = await signUserToken('u-1');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    const app = buildApp();
+    const res = await app.fetch(
+      req(
+        `/api/projects/${PROJECT_UUID}/analytics/block-contribution?step=code&days=0`,
+        { token },
+      ),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('400 when days exceeds cap', async () => {
+    const token = await signUserToken('u-1');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    const app = buildApp();
+    const res = await app.fetch(
+      req(
+        `/api/projects/${PROJECT_UUID}/analytics/block-contribution?step=code&days=999`,
+        { token },
+      ),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('403 when caller is not a project member', async () => {
+    const token = await signUserToken('u-1');
+    mockMembership({ ownerId: 'other-owner', memberOf: false });
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/projects/${PROJECT_UUID}/analytics/block-contribution?step=code`, {
+        token,
+      }),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it('200 short-circuits to runs:0, blocks:[] without firing aggregation query', async () => {
+    const token = await signUserToken('u-1');
+    mockMembership({ ownerId: 'u-1' });
+    dbExecute.mockResolvedValueOnce([{ runs: 0 }]);
+
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/projects/${PROJECT_UUID}/analytics/block-contribution?step=code`, {
+        token,
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ step: 'code', runs: 0, blocks: [] });
+    expect(dbExecute).toHaveBeenCalledTimes(1);
+  });
+
+  it('200 maps snake_case aggregated rows to camelCase and coerces numbers', async () => {
+    const token = await signUserToken('u-1');
+    mockMembership({ ownerId: 'u-1' });
+    dbExecute
+      .mockResolvedValueOnce([{ runs: 4 }])
+      .mockResolvedValueOnce([
+        {
+          id: 'pipeline-rules',
+          avg_tokens: '120',
+          stddev: '10',
+          pct_input: '0.42',
+          cache_hit_rate: '0.75',
+        },
+        {
+          id: 'project-context',
+          avg_tokens: 80,
+          stddev: 0,
+          pct_input: 0.28,
+          cache_hit_rate: null,
+        },
+      ]);
+
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/projects/${PROJECT_UUID}/analytics/block-contribution?step=code`, {
+        token,
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      step: string;
+      runs: number;
+      blocks: Array<{
+        id: string;
+        avgTokens: number;
+        stddev: number;
+        pctInput: number;
+        cacheHitRate: number | null;
+      }>;
+    };
+    expect(body.step).toBe('code');
+    expect(body.runs).toBe(4);
+    expect(body.blocks).toHaveLength(2);
+    expect(body.blocks[0]).toEqual({
+      id: 'pipeline-rules',
+      avgTokens: 120,
+      stddev: 10,
+      pctInput: 0.42,
+      cacheHitRate: 0.75,
+    });
+    expect(body.blocks[1]).toEqual({
+      id: 'project-context',
+      avgTokens: 80,
+      stddev: 0,
+      pctInput: 0.28,
+      cacheHitRate: null,
+    });
+  });
+
+  it('aggregation SQL contains jsonb_array_elements, stddev_pop and predicate columns', async () => {
+    const token = await signUserToken('u-1');
+    mockMembership({ ownerId: 'u-1' });
+    dbExecute
+      .mockResolvedValueOnce([{ runs: 4 }])
+      .mockResolvedValueOnce([]);
+
+    const app = buildApp();
+    const res = await app.fetch(
+      req(
+        `/api/projects/${PROJECT_UUID}/analytics/block-contribution?step=code&days=14`,
+        { token },
+      ),
+    );
+    expect(res.status).toBe(200);
+    expect(dbExecute).toHaveBeenCalledTimes(2);
+
+    const aggQuery = dbExecute.mock.calls[1]?.[0] as {
+      queryChunks?: Array<{ value?: unknown }>;
+    };
+    const aggSerialized = JSON.stringify(aggQuery?.queryChunks ?? aggQuery);
+    expect(aggSerialized).toContain('jsonb_array_elements');
+    expect(aggSerialized).toContain('stddev_pop');
+    expect(aggSerialized).toContain('prompt_blocks');
+    expect(aggSerialized).toContain('project_id');
+    expect(aggSerialized).toContain('j.type');
+    expect(aggSerialized).toContain("interval '1 day'");
+    expect(aggSerialized).toContain('code');
+
+    const countQuery = dbExecute.mock.calls[0]?.[0] as {
+      queryChunks?: Array<{ value?: unknown }>;
+    };
+    const countSerialized = JSON.stringify(countQuery?.queryChunks ?? countQuery);
+    expect(countSerialized).toContain('jsonb_typeof');
+    expect(countSerialized).toContain('prompt_blocks');
+  });
+});
