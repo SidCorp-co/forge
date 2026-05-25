@@ -185,6 +185,20 @@ async fn abort_agent(
     claude_cli::abort_agent(app, state.sessions.clone(), &session_id).await
 }
 
+/// ISS-210 / W2.3.3 — per-run budget kill. Wraps `graceful_kill` and
+/// emits `agent:complete` with `error='per_run_budget_exceeded:<reason>'`
+/// so the renderer's `failJob` listener writes the correct
+/// `failureReason` + `failureKind='permanent'` server-side.
+#[tauri::command]
+async fn kill_agent_budget_exceeded(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+    reason: String,
+) -> Result<(), String> {
+    claude_cli::kill_agent_budget_exceeded(app, state.sessions.clone(), &session_id, &reason).await
+}
+
 #[tauri::command]
 async fn get_agent_status(
     state: State<'_, AppState>,
@@ -605,6 +619,7 @@ fn main() {
             post_job_events,
             run_agent,
             abort_agent,
+            kill_agent_budget_exceeded,
             get_agent_status,
             get_claude_session_id,
             open_terminal,

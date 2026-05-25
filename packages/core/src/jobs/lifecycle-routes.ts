@@ -9,6 +9,7 @@ import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { logger } from '../logger.js';
 import { computeHoldUntil } from '../pipeline/hold-policy.js';
 import { hooks } from '../pipeline/hooks.js';
 import {
@@ -21,6 +22,7 @@ import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
 import { handleResumeFailed, isResumeFailedError } from './handle-resume-failed.js';
+import { postPerRunBudgetExceededComment } from './per-run-budget-comment.js';
 import { scheduleAutoRetryWithVerify } from './retry.js';
 
 const badRequest = (details: unknown) =>
@@ -70,6 +72,12 @@ const completeBodySchema = z
 const failBodySchema = z
   .object({
     error: z.string().max(10_000),
+    // ISS-210 — runner-supplied failure metadata. When provided, the
+    // dispatcher skips the classifier and pins `classifierVersion=1` so
+    // the retry engine reads `failureKind` directly (see retry.ts:110).
+    failureReason: z.string().max(256).optional(),
+    failureKind: z.enum(['permanent', 'transient', 'unknown']).optional(),
+    failureMeta: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();
 
@@ -244,13 +252,24 @@ jobLifecycleDeviceRoutes.post(
       throw conflict('job is not in a runnable state', 'INVALID_STATE');
     }
 
+    // ISS-210 — when the device hands us pre-classified failure metadata
+    // (e.g. budget-kill), apply it on the first write and pin
+    // `classifierVersion=1` so the retry engine skips re-classification.
+    const failPatch: Record<string, unknown> = {
+      status: 'failed',
+      error: input.error,
+      finishedAt: new Date(),
+    };
+    if (input.failureReason) failPatch.failureReason = input.failureReason;
+    if (input.failureKind) {
+      failPatch.failureKind = input.failureKind;
+      failPatch.classifierVersion = 1;
+    }
+    if (input.failureMeta) failPatch.failureMeta = input.failureMeta as never;
+
     const [updated] = await db
       .update(jobs)
-      .set({
-        status: 'failed',
-        error: input.error,
-        finishedAt: new Date(),
-      })
+      .set(failPatch)
       .where(and(eq(jobs.id, id), eq(jobs.status, job.status)))
       .returning();
 
@@ -324,6 +343,24 @@ jobLifecycleDeviceRoutes.post(
     // ISS-164 — see /complete comment.
     if (updated.issueId) {
       await publishPipelineHealthChanged(updated.projectId, [updated.issueId]);
+    }
+
+    // ISS-210 — post the per-run budget operator comment after lifecycle
+    // bookkeeping. Failure isolated so a comment-table outage cannot break
+    // the fail path.
+    if (input.failureReason === 'per_run_budget_exceeded' && updated.issueId) {
+      try {
+        await postPerRunBudgetExceededComment({
+          issueId: updated.issueId,
+          jobType: updated.type,
+          failureMeta: (input.failureMeta as Record<string, unknown> | undefined) ?? null,
+        });
+      } catch (err) {
+        logger.warn(
+          { err, jobId: updated.id, issueId: updated.issueId },
+          'lifecycle-routes: postPerRunBudgetExceededComment threw, continuing',
+        );
+      }
     }
 
     return c.json({

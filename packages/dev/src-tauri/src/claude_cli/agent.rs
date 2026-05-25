@@ -249,6 +249,47 @@ pub async fn abort_agent(app: AppHandle, sessions: Sessions, session_id: &str) -
     }
 }
 
+/// ISS-210 / W2.3.3 — Kill the CLI when the renderer detects a per-run
+/// budget overrun. Mirrors `abort_agent`'s flow but emits a distinct error
+/// string (`per_run_budget_exceeded:<reason>`) so the renderer's routing
+/// can disambiguate budget-kill from user-cancel and POST
+/// `/jobs/:id/fail` with `failureReason='per_run_budget_exceeded'`.
+///
+/// Returns `Ok(())` even when the session is no longer in the map — the
+/// CLI may have terminated naturally between the renderer's threshold
+/// detection and this invoke. The renderer's `failJob` listener still
+/// posts the failure record so the row converges to the correct state.
+pub async fn kill_agent_budget_exceeded(
+    app: AppHandle,
+    sessions: Sessions,
+    session_id: &str,
+    reason: &str,
+) -> Result<(), String> {
+    log(&format!(
+        "[kill_agent_budget_exceeded] session={session_id} reason={reason}"
+    ));
+    let mut s = sessions.lock().await;
+    if let Some(session) = s.get_mut(session_id) {
+        if let Some(mut child) = session.child.take() {
+            graceful_kill(&mut child).await;
+        }
+        session.status = AgentStatus::Failed;
+        let _ = app.emit(
+            "agent:complete",
+            serde_json::json!({
+                "sessionId": session_id,
+                "error": format!("per_run_budget_exceeded:{}", reason),
+            }),
+        );
+        Ok(())
+    } else {
+        log(&format!(
+            "[kill_agent_budget_exceeded] session={session_id} already gone, no-op"
+        ));
+        Ok(())
+    }
+}
+
 pub async fn get_status(sessions: Sessions, session_id: &str) -> Result<AgentStatus, String> {
     let s = sessions.lock().await;
     s.get(session_id)

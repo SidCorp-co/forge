@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { emit as emitTauriEvent } from "@tauri-apps/api/event";
+import { estimateCost } from "@forge/observability";
 import { useAppStore } from "@/stores/app-store";
 import { useAuth } from "@/hooks/useAuth";
 import { invoke } from "./use-tauri-ipc";
@@ -30,6 +32,10 @@ type UsageAcc = {
   model: string;
   count: number;
   seenIds: Set<string>;
+  /** W2.3.3 — once `true`, the per-run kill has been emitted; do not re-emit. */
+  budgetKilled: boolean;
+  /** W2.3.3 — once `true`, the per-run warn has been emitted; do not re-emit. */
+  budgetWarned: boolean;
 };
 const usageAccByJob = new Map<string, UsageAcc>();
 function getOrInitUsageAcc(sessionId: string): UsageAcc {
@@ -43,6 +49,8 @@ function getOrInitUsageAcc(sessionId: string): UsageAcc {
       model: "unknown",
       count: 0,
       seenIds: new Set(),
+      budgetKilled: false,
+      budgetWarned: false,
     };
     usageAccByJob.set(sessionId, acc);
   }
@@ -75,7 +83,7 @@ export function useWebSocket() {
 
   // Stable ref for agent command handling — avoids re-creating WS on config changes
   const handleAgentCommandRef = useAgentCommandHandler(tracker);
-  const { handlerRef: handleJobAssignedRef, jobSessionsRef, cancelledJobsRef, jobAgentSessionsRef } = useJobAssignedHandler(tracker);
+  const { handlerRef: handleJobAssignedRef, jobSessionsRef, cancelledJobsRef, jobAgentSessionsRef, jobBudgetConfigsRef } = useJobAssignedHandler(tracker);
 
   useEffect(() => {
     // Only connect when fully authenticated. On `expire()` the auth store
@@ -624,6 +632,56 @@ export function useWebSocket() {
               } catch {
                 /* parse failures are non-fatal — usage gets a 0-cost row */
               }
+
+              // W2.3.3 (ISS-210) — per-run budget kill. Computes running
+              // cost after each assistant turn; once it crosses
+              // `perRunUsd × 1.5` the Tauri command terminates the CLI
+              // and use-job-handler's listener POSTs /jobs/:id/fail with
+              // `failureReason='per_run_budget_exceeded'`.
+              const budget = jobBudgetConfigsRef.current.get(sessionId);
+              if (budget) {
+                const acc = usageAccByJob.get(sessionId);
+                if (acc && !acc.budgetKilled) {
+                  const spent = estimateCost(acc.model, {
+                    inputTokens: acc.input,
+                    outputTokens: acc.output,
+                    cacheReadTokens: acc.cacheRead,
+                    cacheCreationTokens: acc.cacheCreation,
+                  });
+                  const killLimit = budget.perRunUsd * 1.5;
+                  if (budget.action === "pause" && spent > killLimit) {
+                    acc.budgetKilled = true;
+                    invoke("kill_agent_budget_exceeded", {
+                      sessionId,
+                      reason: `per_run_budget_exceeded:spent=${spent.toFixed(4)},limit=${killLimit.toFixed(4)}`,
+                    }).catch((err) =>
+                      console.warn("[budget-kill] invoke failed:", err),
+                    );
+                    void emitTauriEvent("agent:budget_kill", {
+                      sessionId,
+                      jobId: sessionId,
+                      spent,
+                      limit: killLimit,
+                      perRunUsd: budget.perRunUsd,
+                      model: acc.model,
+                    });
+                  } else if (
+                    budget.action === "warn" &&
+                    spent > killLimit &&
+                    !acc.budgetWarned
+                  ) {
+                    acc.budgetWarned = true;
+                    void emitTauriEvent("agent:budget_warning", {
+                      sessionId,
+                      jobId: sessionId,
+                      spent,
+                      limit: killLimit,
+                      perRunUsd: budget.perRunUsd,
+                      model: acc.model,
+                    });
+                  }
+                }
+              }
             }
             enqueueRelay(sessionId, "agent:message", agentData);
           },
@@ -714,6 +772,10 @@ export function useWebSocket() {
               // was surfaced (older server builds), keeping it would leak
               // memory across hot reloads and long-running dev sessions.
               usageAccByJob.delete(sessionId);
+              // W2.3.3 — drop the per-run budget config alongside the
+              // usage accumulator. Symmetric with `jobBudgetConfigs.set` in
+              // use-job-handler's handleJobAssigned.
+              jobBudgetConfigsRef.current.delete(sessionId);
 
               // Mirror the relay that non-job sessions get below, so web chat
               // UIs (which don't subscribe to job_events) see the session
@@ -907,5 +969,5 @@ export function useWebSocket() {
       cancelled = true;
       cleanup?.();
     };
-  }, [phase, coreUrl, deviceId, token, setWsConnected, setDeviceSettings, queryClient, handleAgentCommandRef, handleJobAssignedRef, jobSessionsRef, cancelledJobsRef, jobAgentSessionsRef]);
+  }, [phase, coreUrl, deviceId, token, setWsConnected, setDeviceSettings, queryClient, handleAgentCommandRef, handleJobAssignedRef, jobSessionsRef, cancelledJobsRef, jobAgentSessionsRef, jobBudgetConfigsRef]);
 }

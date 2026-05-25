@@ -187,4 +187,39 @@ describe('failure-classifier', () => {
       expect(r.retryAfter).toBeNull();
     });
   });
+
+  // ISS-210 / W2.3.3 — belt-and-suspenders rule for the case where
+  // `completeJob` (exitCode=1) wins the race against the dedicated
+  // `failJob` POST and lands `error='per_run_budget_exceeded:…'` before
+  // the budget-kill metadata is applied. The classifier converts that
+  // error string back to `failureKind='permanent'` so the sweeper still
+  // honours `recoveryByFailureKind.permanent=0` and skips retry.
+  describe('per_run_budget_exceeded (ISS-210)', () => {
+    it('maps the exact error string to permanent', () => {
+      const r = classifyFailure({
+        error: 'per_run_budget_exceeded: spent $0.0152 limit $0.0150',
+      });
+      expect(r.kind).toBe('permanent');
+      expect(r.reason).toBe('per_run_budget_exceeded');
+    });
+
+    it('matches the prefix even when no metadata is appended', () => {
+      const r = classifyFailure({ error: 'per_run_budget_exceeded' });
+      expect(r.kind).toBe('permanent');
+      expect(r.reason).toBe('per_run_budget_exceeded');
+    });
+
+    it('takes precedence over generic permanent patterns', () => {
+      const r = classifyFailure({
+        error: 'per_run_budget_exceeded invalid_request_error something',
+      });
+      expect(r.kind).toBe('permanent');
+      expect(r.reason).toBe('per_run_budget_exceeded');
+    });
+
+    it('does NOT match unrelated strings', () => {
+      const r = classifyFailure({ error: 'budget exceeded' });
+      expect(r.reason).not.toBe('per_run_budget_exceeded');
+    });
+  });
 });

@@ -401,4 +401,12 @@ export interface JobAssignedPayload {
    */
   sessionGroup?: string | null;
   claudeSessionId?: string | null;
+  /**
+   * W2.3.3 (ISS-210) — per-run budget config for this dispatch. When
+   * `action='pause'`, the desktop runner kills the CLI once running cost
+   * exceeds `perRunUsd * 1.5`. When `action='warn'`, a single warning
+   * event is emitted and the run continues. Absent for projects without
+   * a configured per-run budget on the dispatch stage.
+   */
+  budgetConfig?: { perRunUsd: number; action: 'warn' | 'pause' } | null;
 }

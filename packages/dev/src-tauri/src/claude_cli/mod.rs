@@ -12,7 +12,7 @@ use tokio::sync::Mutex;
 use serde::{Deserialize, Serialize};
 
 // Re-export public API
-pub use agent::{run_agent, send_chat, abort_agent, get_status, get_claude_session_id};
+pub use agent::{run_agent, send_chat, abort_agent, kill_agent_budget_exceeded, get_status, get_claude_session_id};
 pub use session::{start_session, open_terminal, SelectedIssue, SelectedTask};
 pub use worktree::WorktreeInfo;
 

@@ -82,6 +82,42 @@ vi.mock('./dispatch-tick.js', () => ({
   dispatchTickForProject: vi.fn(async () => {}),
 }));
 
+// ISS-210 — per-run budget comment helper. Stubbed to assert the lifecycle
+// route only invokes it for `failureReason='per_run_budget_exceeded'` AND
+// when `updated.issueId` is non-null.
+const postPerRunBudgetExceededCommentMock = vi.fn(async () => undefined);
+vi.mock('./per-run-budget-comment.js', () => ({
+  postPerRunBudgetExceededComment: (...args: unknown[]) =>
+    postPerRunBudgetExceededCommentMock(...(args as [never])),
+}));
+
+// loadRecoveryStats hits db.execute() which our drizzle stub doesn't model;
+// stub it out so the manual-hold branch can run without exploding.
+vi.mock('../pipeline/recovery-stats.js', () => ({
+  loadRecoveryStats: vi.fn(async () => ({
+    totalRetries: 0,
+    successfulRecoveries: 0,
+    permanentBlocks: 0,
+  })),
+}));
+
+// publishPipelineHealthChanged hits db.execute() too — stub.
+vi.mock('../issues/pipeline-health.js', () => ({
+  publishPipelineHealthChanged: vi.fn(async () => undefined),
+}));
+
+// syncAgentSessionLifecycle hits db; stub.
+vi.mock('./agent-session-link.js', () => ({
+  syncAgentSessionLifecycle: vi.fn(async () => undefined),
+}));
+
+// handleResumeFailed imports session-link helpers; stub the predicate so
+// the route falls through to the regular retry branch.
+vi.mock('./handle-resume-failed.js', () => ({
+  isResumeFailedError: () => false,
+  handleResumeFailed: vi.fn(async () => 'fresh'),
+}));
+
 // Skip the assertEmailVerified DB call by mocking auth middleware side-effects away
 const verifiedUser = { id: 'u-1', emailVerifiedAt: new Date() };
 // Our selectLimit is shared — route handler will set its own mocks per test.
@@ -235,6 +271,99 @@ describe('POST /:id/fail (device)', () => {
     const json = (await r.json()) as { status: string; retry: { scheduled: boolean } };
     expect(json.status).toBe('failed');
     expect(json.retry.scheduled).toBe(true);
+  });
+
+  // ISS-210 / W2.3.3 — runner-supplied failure metadata is threaded into
+  // the row update + the per-run budget comment helper.
+  it('applies failureReason/failureKind/failureMeta and pins classifierVersion=1', async () => {
+    const issueLinkedJob = { ...jobRow, issueId: 'i-1' };
+    selectLimit.mockResolvedValueOnce([issueLinkedJob]);
+    const updatedRow = {
+      ...issueLinkedJob,
+      status: 'failed',
+      error: 'per_run_budget_exceeded: spent $0.0152 limit $0.0150',
+      failureKind: 'permanent',
+      failureReason: 'per_run_budget_exceeded',
+    };
+    updateReturning.mockResolvedValueOnce([updatedRow]);
+    scheduleRetryMock.mockResolvedValueOnce({ scheduled: false });
+
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/fail`, {
+        method: 'POST',
+        deviceToken: 'dev-1-token',
+        body: JSON.stringify({
+          error: 'per_run_budget_exceeded: spent $0.0152 limit $0.0150',
+          failureReason: 'per_run_budget_exceeded',
+          failureKind: 'permanent',
+          failureMeta: {
+            spent: 0.0152,
+            limit: 0.015,
+            perRunUsd: 0.01,
+            model: 'claude-opus-4-7',
+          },
+        }),
+      }),
+    );
+    expect(r.status).toBe(200);
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        failureReason: 'per_run_budget_exceeded',
+        failureKind: 'permanent',
+        classifierVersion: 1,
+        failureMeta: expect.objectContaining({ spent: 0.0152, limit: 0.015 }),
+      }),
+    );
+    expect(postPerRunBudgetExceededCommentMock).toHaveBeenCalledTimes(1);
+    expect(postPerRunBudgetExceededCommentMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        issueId: 'i-1',
+        jobType: 'plan',
+        failureMeta: expect.objectContaining({ spent: 0.0152, model: 'claude-opus-4-7' }),
+      }),
+    );
+  });
+
+  it('does NOT call the comment helper when failureReason is anything else', async () => {
+    selectLimit.mockResolvedValueOnce([{ ...jobRow, issueId: 'i-1' }]);
+    updateReturning.mockResolvedValueOnce([
+      { ...jobRow, status: 'failed', error: 'crashed', issueId: 'i-1' },
+    ]);
+    scheduleRetryMock.mockResolvedValueOnce({ scheduled: false });
+
+    const app = buildApp();
+    await app.fetch(
+      req(`/api/jobs/${validJobId}/fail`, {
+        method: 'POST',
+        deviceToken: 'dev-1-token',
+        body: JSON.stringify({ error: 'crashed' }),
+      }),
+    );
+    expect(postPerRunBudgetExceededCommentMock).not.toHaveBeenCalled();
+  });
+
+  it('does NOT call the comment helper when issueId is null', async () => {
+    selectLimit.mockResolvedValueOnce([jobRow]);
+    updateReturning.mockResolvedValueOnce([
+      { ...jobRow, status: 'failed', error: 'per_run_budget_exceeded' },
+    ]);
+    scheduleRetryMock.mockResolvedValueOnce({ scheduled: false });
+
+    const app = buildApp();
+    await app.fetch(
+      req(`/api/jobs/${validJobId}/fail`, {
+        method: 'POST',
+        deviceToken: 'dev-1-token',
+        body: JSON.stringify({
+          error: 'per_run_budget_exceeded',
+          failureReason: 'per_run_budget_exceeded',
+          failureKind: 'permanent',
+        }),
+      }),
+    );
+    expect(postPerRunBudgetExceededCommentMock).not.toHaveBeenCalled();
   });
 });
 

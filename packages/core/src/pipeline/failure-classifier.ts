@@ -106,6 +106,22 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
   const reasonExcerpt = text.length > 200 ? `${text.slice(0, 197)}…` : text;
   const retryAfter = extractRetryAfter(meta);
 
+  // ISS-210 / W2.3.3 — per-run budget kill is a runner-side enforcement
+  // that emits an `agent:complete` with `error='per_run_budget_exceeded:…'`.
+  // When the renderer's `completeJob` (exitCode=1) wins the race against
+  // the dedicated `failJob` POST, the classifier sees this error first;
+  // returning `permanent` here ensures `recoveryByFailureKind.permanent=0`
+  // suppresses retries either way.
+  if (text.startsWith('per_run_budget_exceeded')) {
+    return {
+      kind: 'permanent',
+      reason: 'per_run_budget_exceeded',
+      meta,
+      version: CLASSIFIER_VERSION,
+      retryAfter,
+    };
+  }
+
   const metaErrorType = readMetaErrorType(meta);
   if (metaErrorType) {
     if (

@@ -1,3 +1,7 @@
+// Pricing helpers (model cost lookup + estimateCost). Shared across core
+// (usage_records analytics) and dev (in-flight budget kill, ISS-210).
+export { lookupPricing, estimateCost } from './pricing.js';
+
 // Canonical PII / auth scrubbing primitives. Imported by every Sentry
 // adapter (dev renderer, core, web client + server) so the privacy
 // contract is defined exactly once. Add new sensitive keys here, not

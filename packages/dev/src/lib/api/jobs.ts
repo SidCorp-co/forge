@@ -76,6 +76,24 @@ export async function completeJob(
   await deviceFetch(`/jobs/${jobId}/complete`, body);
 }
 
-export async function failJob(jobId: string, error: string): Promise<void> {
-  await deviceFetch(`/jobs/${jobId}/fail`, { error });
+export interface FailJobOpts {
+  /** Stable identifier for the failure (e.g. `per_run_budget_exceeded`). */
+  failureReason?: string;
+  /** When set, the core dispatcher pins `classifierVersion=1` and the retry
+   *  engine reads this directly — no re-classification. */
+  failureKind?: "permanent" | "transient" | "unknown";
+  /** Structured payload persisted to `jobs.failure_meta` (jsonb). */
+  failureMeta?: Record<string, unknown>;
+}
+
+export async function failJob(
+  jobId: string,
+  error: string,
+  opts?: FailJobOpts,
+): Promise<void> {
+  const body: Record<string, unknown> = { error };
+  if (opts?.failureReason) body.failureReason = opts.failureReason;
+  if (opts?.failureKind) body.failureKind = opts.failureKind;
+  if (opts?.failureMeta) body.failureMeta = opts.failureMeta;
+  await deviceFetch(`/jobs/${jobId}/fail`, body);
 }

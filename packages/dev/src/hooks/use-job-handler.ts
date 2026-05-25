@@ -1,9 +1,15 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useAppStore } from "@/stores/app-store";
 import { invoke, isTauri } from "./use-tauri-ipc";
 import { failJob, resolveProjectSlug } from "@/lib/api";
 import type { SessionTracker } from "@/lib/session-tracker";
 import type { JobAssignedPayload, ProjectConfig } from "@/lib/types";
+
+/** W2.3.3 (ISS-210) — per-run budget config forwarded by the dispatcher. */
+export interface JobBudgetConfig {
+  perRunUsd: number;
+  action: "warn" | "pause";
+}
 
 export interface JobHandlerCtx {
   projects: Record<string, ProjectConfig>;
@@ -17,6 +23,13 @@ export interface JobHandlerCtx {
    * claudeSessionId, and diff.
    */
   jobAgentSessions: Map<string, string>;
+  /**
+   * W2.3.3 (ISS-210) — per-job budget config. Populated when the dispatcher
+   * threads a `budgetConfig` into the `job.assigned` payload. The
+   * use-web-socket cost accumulator reads from this map per `agent:message`
+   * and emits `agent:budget_kill` once the threshold is crossed.
+   */
+  jobBudgetConfigs: Map<string, JobBudgetConfig>;
 }
 
 /**
@@ -78,6 +91,15 @@ export async function handleJobAssigned(
   if (data.agentSessionId) {
     ctx.jobAgentSessions.set(jobId, data.agentSessionId);
   }
+  // W2.3.3 — capture the per-run budget threshold (if any) for this job
+  // so the WS message handler can compute running cost + emit
+  // `agent:budget_kill` when crossing `perRunUsd * 1.5`.
+  if (data.budgetConfig && typeof data.budgetConfig.perRunUsd === "number") {
+    ctx.jobBudgetConfigs.set(jobId, {
+      perRunUsd: data.budgetConfig.perRunUsd,
+      action: data.budgetConfig.action ?? "pause",
+    });
+  }
   ctx.tracker.start(jobId, slug, prompt, { repoPath: pc.repoPath, agentSessionId: data.agentSessionId ?? undefined });
 
   try {
@@ -115,6 +137,16 @@ export interface JobAssignedHandlerRefs {
   jobSessionsRef: React.MutableRefObject<Set<string>>;
   cancelledJobsRef: React.MutableRefObject<Set<string>>;
   jobAgentSessionsRef: React.MutableRefObject<Map<string, string>>;
+  jobBudgetConfigsRef: React.MutableRefObject<Map<string, JobBudgetConfig>>;
+}
+
+interface BudgetKillEvent {
+  sessionId: string;
+  jobId: string;
+  spent: number;
+  limit: number;
+  perRunUsd: number;
+  model: string;
 }
 
 /**
@@ -132,6 +164,7 @@ export function useJobAssignedHandler(tracker: SessionTracker): JobAssignedHandl
   const jobSessionsRef = useRef(new Set<string>());
   const cancelledJobsRef = useRef(new Set<string>());
   const jobAgentSessionsRef = useRef(new Map<string, string>());
+  const jobBudgetConfigsRef = useRef(new Map<string, JobBudgetConfig>());
   const handlerRef = useRef<(data: JobAssignedPayload) => Promise<void>>(async () => {});
 
   handlerRef.current = (data: JobAssignedPayload) =>
@@ -140,7 +173,48 @@ export function useJobAssignedHandler(tracker: SessionTracker): JobAssignedHandl
       tracker,
       jobSessions: jobSessionsRef.current,
       jobAgentSessions: jobAgentSessionsRef.current,
+      jobBudgetConfigs: jobBudgetConfigsRef.current,
     });
 
-  return { handlerRef, jobSessionsRef, cancelledJobsRef, jobAgentSessionsRef };
+  // W2.3.3 — `agent:budget_kill` is emitted from use-web-socket once a
+  // session crosses `perRunUsd × 1.5`. The Tauri command kills the CLI;
+  // here we POST `/jobs/:id/fail` with the budget-specific failure
+  // metadata so the core dispatcher pins `failureKind='permanent'` and
+  // the sweeper skips retry. The `failure-classifier` rule for
+  // `per_run_budget_exceeded` is the belt-and-suspenders fallback for the
+  // case where `completeJob` (exitCode=1) wins the race.
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    (async () => {
+      if (!isTauri) return;
+      const { listen } = await import("@tauri-apps/api/event");
+      if (cancelled) return;
+      unlisten = await listen<BudgetKillEvent>(
+        "agent:budget_kill",
+        async (evt) => {
+          const { jobId, spent, limit, perRunUsd, model } = evt.payload;
+          try {
+            await failJob(
+              jobId,
+              `per_run_budget_exceeded: spent $${spent.toFixed(4)} limit $${limit.toFixed(4)}`,
+              {
+                failureReason: "per_run_budget_exceeded",
+                failureKind: "permanent",
+                failureMeta: { spent, limit, perRunUsd, model },
+              },
+            );
+          } catch (err) {
+            console.error("[budget-kill] failJob POST failed:", err);
+          }
+        },
+      );
+    })();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
+  return { handlerRef, jobSessionsRef, cancelledJobsRef, jobAgentSessionsRef, jobBudgetConfigsRef };
 }

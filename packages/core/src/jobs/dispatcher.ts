@@ -53,6 +53,15 @@ function buildOverridesPayload(o: StageOverrides): Record<string, unknown> {
   if (o.timeoutSeconds !== null) out.timeoutSeconds = o.timeoutSeconds;
   if (o.mcpServers !== null) out.mcpServersOverride = o.mcpServers;
   if (o.sessionGroup !== null) out.sessionGroup = o.sessionGroup;
+  // W2.3.3 (ISS-210) — per-run budget threshold forwarded to the desktop
+  // runner. Only `perRunUsd` + `action` are needed; `perMonthUsd` is
+  // server-side at `checkMonthlyBudget` and the runner has no use for it.
+  if (o.budget && typeof o.budget.perRunUsd === 'number') {
+    out.budgetConfig = {
+      perRunUsd: o.budget.perRunUsd,
+      action: o.budget.action ?? 'pause',
+    };
+  }
   return out;
 }
 
