@@ -16,6 +16,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+### Security
+
+## [0.2.7] - 2026-05-25
+
+Pairing failures now show up in Sentry; runners Use toggle no longer 500s
+
+### Added
+
+### Changed
+
+### Removed
+
+### Fixed
+
 - **Device pairing failures are now visible on the dashboard instead of silently swallowed.** When sign-in's auto-pair fails server-side (issue creating the device row), when the desktop can't write the device token to the OS keychain (gnome-keyring not running on Linux is the common case), or when the periodic 25s heartbeat stops landing because the token was revoked or the server is unreachable, the previous build emitted at most a `console.warn` — invisible to on-call and to anyone without devtools open. Now each of those paths reports to Sentry with `area=desktop-pairing` / `area=desktop-runner` tags and an outcome tag (`unauthorized` vs `transient`), so a pairing regression surfaces as one issue per affected install instead of as user complaints that "device không pair được" with no server-side trail.
   *Technical: forge-core `packages/core/src/auth/desktop/pairing-routes.ts` adds `Sentry.captureException` at the `issueOrRotateDeviceToken` catch site (tags `area=desktop-pairing, phase=auto-pair-device-create`). forge-dev `packages/dev/src/pages/app/LoginPage.tsx` wraps `store_device_token` and the post-login heartbeat verification (added in v0.2.6) with explicit captures; the heartbeat path splits 401/UNAUTHORIZED (level=error) from transient network failures (level=warning) so on-call can correlate the client 401 with the matching forge-core `auto-pair-device-create` event. `packages/dev/src/hooks/use-web-socket.ts` replaces the periodic heartbeat's empty `catch {}` with a fail-streak tracker — first two consecutive failures stay as breadcrumbs (likely transient), the third escalates to `Sentry.captureException`, and any 401 escalates immediately — preventing spam from one-off network blips while ensuring a stuck device emits one event per minute instead of going silent forever.*
 - **Project Settings "Use" toggle for runners now succeeds instead of returning HTTP 500.** The unified `runners` upsert introduced with ISS-172 was triggering `SQLSTATE 42P10` on every real device pairing because the partial unique index `runners_project_device_type_uq` requires the ON CONFLICT predicate to be repeated. Users were seeing the Settings → Devices "Use" button flash an error toast on every click — now binds and unbinds work as designed.

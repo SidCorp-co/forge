@@ -1,6 +1,6 @@
 {
   "name": "forge",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "private": true,
   "description": "Open-source control plane for Claude Code. Monorepo root.",
   "license": "Apache-2.0",
