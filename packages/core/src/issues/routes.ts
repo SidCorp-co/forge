@@ -20,8 +20,11 @@ import {
   issuePriorities,
   issueStatuses,
   issues,
+  jobTypes,
+  jobs,
   labels,
   projectMembers,
+  usageRecords,
 } from '../db/schema.js';
 import { paginationSchema, setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess } from '../lib/project-access.js';
@@ -476,6 +479,53 @@ issueRoutes.get(
       comments: [],
       activity: [],
     });
+  },
+);
+
+// W2.1.4 (ISS-202) — Inspector History tab. Returns every job of a given
+// pipeline step on the issue, newest first, with token/cost rolled up from
+// usage_records using the same `session_id::uuid = jobs.id` cast as
+// loadActualUsage in jobs/routes.ts. LEFT JOIN keeps queued/running rows
+// visible (tokens=0, cost=0). 403 contract matches GET /api/issues/:id.
+const jobHistoryQuerySchema = z.object({
+  step: z.enum(jobTypes),
+});
+
+issueRoutes.get(
+  '/:id/job-history',
+  zValidator('param', issueIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('query', jobHistoryQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { step } = c.req.valid('query');
+    const userId = c.get('userId');
+
+    const issue = await loadIssue(id);
+    const access = await loadProjectAccess(issue.projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+
+    const rows = await db
+      .select({
+        jobId: jobs.id,
+        status: jobs.status,
+        model: jobs.modelUsed,
+        startedAt: jobs.dispatchedAt,
+        finishedAt: jobs.finishedAt,
+        estTokens: jobs.promptInputTokenEst,
+        tokens: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
+        cost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
+      })
+      .from(jobs)
+      .leftJoin(usageRecords, sql`${usageRecords.sessionId}::uuid = ${jobs.id}::uuid`)
+      .where(and(eq(jobs.issueId, id), eq(jobs.type, step)))
+      .groupBy(jobs.id)
+      .orderBy(sql`coalesce(${jobs.dispatchedAt}, ${jobs.queuedAt}) desc`);
+
+    return c.json(rows);
   },
 );
 

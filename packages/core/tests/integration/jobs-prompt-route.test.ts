@@ -161,6 +161,7 @@ describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
     const body = (await res.json()) as {
       jobId: string;
       systemPrompt: string;
+      systemPromptHash: string | null;
       userPrompt: string;
       blocks: unknown[];
       estTokens: { input: number | null };
@@ -172,6 +173,7 @@ describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
 
     expect(body.jobId).toBe(jobId);
     expect(body.systemPrompt).toBe('# PIPELINE_RULES\nbe excellent');
+    expect(body.systemPromptHash).toBe(systemHash);
     expect(body.userPrompt).toBe('/forge-triage iss-1\n\n## Issue\nTitle: foo');
     expect(Array.isArray(body.blocks)).toBe(true);
     expect(body.blocks.length).toBe(2);

@@ -30,6 +30,7 @@ export interface ResolvedFlags {
 export interface PromptEnvelope {
   jobId: string;
   systemPrompt: string | null;
+  systemPromptHash: string | null;
   userPrompt: string | null;
   blocks: unknown[];
   estTokens: { input: number | null };
