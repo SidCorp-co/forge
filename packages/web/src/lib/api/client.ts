@@ -11,24 +11,41 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;
   readonly details?: unknown;
+  // Raw parsed JSON response body. Captured so callers can read non-error-shaped
+  // payloads on 4xx/5xx (e.g. the 410 `{ archived: true, path }` envelope from
+  // `GET /api/jobs/:id/prompt`). Undefined when the body wasn't JSON.
+  readonly body?: unknown;
 
-  constructor(status: number, message: string, code?: string, details?: unknown) {
+  constructor(
+    status: number,
+    message: string,
+    code?: string,
+    details?: unknown,
+    body?: unknown,
+  ) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     if (code !== undefined) this.code = code;
     if (details !== undefined) this.details = details;
+    if (body !== undefined) this.body = body;
   }
 }
 
-async function parseErrorBody(res: Response): Promise<{ message: string; code?: string; details?: unknown }> {
+async function parseErrorBody(res: Response): Promise<{
+  message: string;
+  code?: string;
+  details?: unknown;
+  body?: unknown;
+}> {
   try {
     const body = await res.json();
     if (body && typeof body === 'object') {
       const msg = typeof body.message === 'string' ? body.message : res.statusText;
       const code = typeof body.code === 'string' ? body.code : undefined;
-      return { message: msg, code, details: body.details };
+      return { message: msg, code, details: body.details, body };
     }
+    return { message: res.statusText, body };
   } catch {
     // fall through to statusText
   }
@@ -47,8 +64,8 @@ async function fetchRaw(endpoint: string, options: RequestInit = {}): Promise<Re
   });
 
   if (!res.ok) {
-    const { message, code, details } = await parseErrorBody(res);
-    throw new ApiError(res.status, message, code, details);
+    const { message, code, details, body } = await parseErrorBody(res);
+    throw new ApiError(res.status, message, code, details, body);
   }
 
   return res;
@@ -98,8 +115,8 @@ export async function apiMultipart<T>(endpoint: string, formData: FormData): Pro
     body: formData,
   });
   if (!res.ok) {
-    const { message, code, details } = await parseErrorBody(res);
-    throw new ApiError(res.status, message, code, details);
+    const { message, code, details, body } = await parseErrorBody(res);
+    throw new ApiError(res.status, message, code, details, body);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;

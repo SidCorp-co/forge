@@ -23,6 +23,7 @@ export const jobKeys = {
   list: (params: JobListParams) => ['jobs', 'list', params] as const,
   detail: (id: string | undefined) => ['job', id] as const,
   events: (id: string | undefined) => ['job', id, 'events'] as const,
+  prompt: (id: string | undefined) => ['job', id, 'prompt'] as const,
 };
 
 export function useJobs(params: JobListParams) {

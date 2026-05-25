@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { Job } from '@forge/contracts';
 import { useJobs } from '@/features/job/hooks/use-jobs';
+import { PromptInspectorDrawer } from '@/features/job/components/PromptInspectorDrawer';
 import { classifyJobFailure, type JobFailureKind } from '@/features/pipeline/job-failure';
 import { Skeleton } from '@/components/ui';
 
@@ -59,6 +60,7 @@ function groupRetryChains(rows: Job[]): JobChain[] {
 
 export function IssueJobs({ issueId, projectId }: Props) {
   const jobsQuery = useJobs({ projectId, issueId, limit: 50 });
+  const [inspectJobId, setInspectJobId] = useState<string | null>(null);
   const chains = useMemo(
     () => groupRetryChains(jobsQuery.data?.items ?? []),
     [jobsQuery.data?.items],
@@ -81,58 +83,85 @@ export function IssueJobs({ issueId, projectId }: Props) {
         ) : (
           <ul className="space-y-1">
             {chains.map((chain) => (
-              <JobChainRow key={chain.head.id} chain={chain} />
+              <JobChainRow
+                key={chain.head.id}
+                chain={chain}
+                onInspect={(id) => setInspectJobId(id)}
+              />
             ))}
           </ul>
         )}
       </div>
+      {inspectJobId && (
+        <PromptInspectorDrawer
+          jobId={inspectJobId}
+          onClose={() => setInspectJobId(null)}
+        />
+      )}
     </section>
   );
 }
 
-function JobChainRow({ chain }: { chain: JobChain }) {
+interface JobChainRowProps {
+  chain: JobChain;
+  onInspect: (jobId: string) => void;
+}
+
+function JobChainRow({ chain, onInspect }: JobChainRowProps) {
   const [expanded, setExpanded] = useState(false);
   const lastAttempt = chain.retries[chain.retries.length - 1] ?? chain.head;
   const hasRetries = chain.retries.length > 0;
   const allAttempts = [chain.head, ...chain.retries];
   const failedCount = allAttempts.filter((j) => j.status === 'failed').length;
   const ChevronIcon = expanded ? ChevronDown : ChevronRight;
+  const showInspect = lastAttempt.status === 'done';
 
   return (
     <li className="rounded-sm border border-outline-variant/15 bg-surface-container-low">
-      <button
-        type="button"
-        onClick={() => hasRetries && setExpanded((v) => !v)}
-        className={`flex w-full items-center gap-2 px-3 py-2 text-left ${
-          hasRetries ? 'cursor-pointer hover:bg-surface-container' : 'cursor-default'
-        }`}
-        disabled={!hasRetries}
-      >
-        <span className="w-3 shrink-0 text-on-surface-variant">
-          {hasRetries && <ChevronIcon className="h-3 w-3" />}
-        </span>
-        <JobStatusIcon job={lastAttempt} />
-        <span className="rounded bg-surface-container-high px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-widest text-on-surface-variant">
-          {lastAttempt.type}
-        </span>
-        <span className="flex-1 truncate text-xs text-on-surface">
-          {hasRetries ? (
-            <>
-              <span className="text-on-surface-variant">failed x {failedCount} (last attempt: </span>
-              <JobStatusLabel job={lastAttempt} />
-              <span className="text-on-surface-variant">)</span>
-            </>
-          ) : (
-            <JobStatusLabel job={lastAttempt} />
-          )}
-        </span>
-        <time
-          className="shrink-0 text-[10px] uppercase tracking-widest text-outline"
-          dateTime={queuedAtIso(lastAttempt)}
+      <div className="flex w-full items-center">
+        <button
+          type="button"
+          onClick={() => hasRetries && setExpanded((v) => !v)}
+          className={`flex flex-1 items-center gap-2 px-3 py-2 text-left ${
+            hasRetries ? 'cursor-pointer hover:bg-surface-container' : 'cursor-default'
+          }`}
+          disabled={!hasRetries}
         >
-          {new Date(queuedAtIso(lastAttempt)).toLocaleString()}
-        </time>
-      </button>
+          <span className="w-3 shrink-0 text-on-surface-variant">
+            {hasRetries && <ChevronIcon className="h-3 w-3" />}
+          </span>
+          <JobStatusIcon job={lastAttempt} />
+          <span className="rounded bg-surface-container-high px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-widest text-on-surface-variant">
+            {lastAttempt.type}
+          </span>
+          <span className="flex-1 truncate text-xs text-on-surface">
+            {hasRetries ? (
+              <>
+                <span className="text-on-surface-variant">failed x {failedCount} (last attempt: </span>
+                <JobStatusLabel job={lastAttempt} />
+                <span className="text-on-surface-variant">)</span>
+              </>
+            ) : (
+              <JobStatusLabel job={lastAttempt} />
+            )}
+          </span>
+          <time
+            className="shrink-0 text-[10px] uppercase tracking-widest text-outline"
+            dateTime={queuedAtIso(lastAttempt)}
+          >
+            {new Date(queuedAtIso(lastAttempt)).toLocaleString()}
+          </time>
+        </button>
+        {showInspect && (
+          <button
+            type="button"
+            onClick={() => onInspect(lastAttempt.id)}
+            className="mr-2 shrink-0 rounded-sm border border-outline-variant/30 px-2 py-0.5 text-[10px] uppercase tracking-widest text-on-surface-variant hover:bg-surface-container"
+          >
+            Inspect
+          </button>
+        )}
+      </div>
       {hasRetries && expanded && (
         <ul className="border-t border-outline-variant/15 bg-surface px-3 py-1.5">
           {allAttempts.map((attempt, idx) => (
@@ -151,6 +180,15 @@ function JobChainRow({ chain }: { chain: JobChain }) {
               >
                 {new Date(queuedAtIso(attempt)).toLocaleString()}
               </time>
+              {attempt.status === 'done' && (
+                <button
+                  type="button"
+                  onClick={() => onInspect(attempt.id)}
+                  className="shrink-0 rounded-sm border border-outline-variant/30 px-2 py-0.5 text-[10px] uppercase tracking-widest text-on-surface-variant hover:bg-surface-container"
+                >
+                  Inspect
+                </button>
+              )}
             </li>
           ))}
         </ul>
