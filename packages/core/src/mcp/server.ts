@@ -35,6 +35,7 @@ import { forgePmSnapshotTool } from './tools/forge-pm-snapshot.js';
 import { forgePmWriteDecisionTool } from './tools/forge-pm-write-decision.js';
 import { forgeProjectPipelineRunsTool } from './tools/forge-project-pipeline-runs.js';
 import { forgeProjectPmTool } from './tools/forge-project-pm.js';
+import { forgeProjectRunnersTool } from './tools/forge-project-runners.js';
 import {
   forgeProjectsCreateTool,
   forgeProjectsGetTool,
@@ -183,6 +184,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeProjectsCreateTool(ctx),
     forgeProjectsUpdateTool(ctx),
     forgeProjectsGetTool(ctx),
+    forgeProjectRunnersTool(ctx),
     forgeProjectPmTool(ctx),
     forgePmSnapshotTool(ctx),
     forgePmGraphTool(ctx),
