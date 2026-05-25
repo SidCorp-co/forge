@@ -34,6 +34,7 @@ import { NOTIFICATIONS_ENABLED } from '@/features/notification';
 
 const PROJECT_SUB_LINKS = [
   { path: '', label: 'Overview' },
+  { path: '/insights', label: 'Insights' },
   { path: '/issues', label: 'Issues' },
   { path: '/board', label: 'Board' },
   { path: '/agent', label: 'Chat' },
