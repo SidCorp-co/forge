@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { invoke } from "./use-tauri-ipc";
 import { relayAgentEvent, patchAgentSession, getProject, getAgents, syncKnowledgeToCore, syncAgentFiles, postJobEvents, completeJob, createUsageRecord, type JobEventInput } from "@/lib/api";
 import { syncAllProjectSkills, syncProjectSkills } from "@/lib/skill-sync";
+import { Sentry } from "@/lib/sentry";
 import { SessionTracker } from "@/lib/session-tracker";
 import { useAgentCommandHandler } from "./use-agent-commands";
 import { useJobAssignedHandler } from "./use-job-handler";
@@ -399,13 +400,36 @@ export function useWebSocket() {
         // this loop the device stays 'offline' and dispatcher leaves jobs
         // queued. 25s interval is well under the stale-detector grace window.
         let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+        // Track repeated heartbeat failures so a one-off transient blip
+        // doesn't spam Sentry but a stuck loop (device revoked, server down,
+        // keychain wiped) lands as one event per minute instead of being
+        // silently swallowed forever.
+        let heartbeatFailStreak = 0;
         async function pingHeartbeat() {
           try {
             const tok = await invoke<string | null>("load_device_token");
             if (!tok || !coreUrl) return;
             await invoke("heartbeat", { coreUrl: coreUrl, deviceToken: tok });
-          } catch {
-            // ignore — keychain unavailable or device not yet paired
+            heartbeatFailStreak = 0;
+          } catch (err) {
+            heartbeatFailStreak += 1;
+            const msg = err instanceof Error ? err.message : String(err);
+            // First fail = breadcrumb only (likely transient); 3rd+ fail =
+            // Sentry event so on-call sees the runner stop heartbeating.
+            // 401 always escalates immediately — token is invalid, the
+            // device is invisible to the dispatcher.
+            const unauthorized = /UNAUTHORIZED|401/.test(msg);
+            if (unauthorized || heartbeatFailStreak >= 3) {
+              Sentry.captureException(err instanceof Error ? err : new Error(msg), {
+                level: unauthorized ? "error" : "warning",
+                tags: {
+                  area: "desktop-runner",
+                  phase: "heartbeat-loop",
+                  outcome: unauthorized ? "unauthorized" : "transient-streak",
+                },
+                extra: { failStreak: heartbeatFailStreak, coreUrl },
+              });
+            }
           }
         }
         function startHeartbeat() {

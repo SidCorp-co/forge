@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { useAuth } from "@/hooks/useAuth";
 import { useAuthStore } from "@/stores/auth-store";
+import { Sentry } from "@/lib/sentry";
 import { FormInput } from "@/components/ui/form-input";
 import {
   startPairing,
@@ -96,7 +97,17 @@ export function LoginPage() {
           try {
             await invoke("store_device_token", { token: device.token });
           } catch (err) {
+            // Keychain failure is non-fatal — the in-memory token still works
+            // for this session — but it means next reload will lose the
+            // device-token (gnome-keyring not running on Linux is the common
+            // cause). Without Sentry capture here the failure was invisible
+            // server-side: console.warn only surfaces if devtools is open.
             console.warn("[pairing] store_device_token failed", err);
+            Sentry.captureException(err, {
+              level: "error",
+              tags: { area: "desktop-pairing", phase: "store-device-token" },
+              extra: { deviceId: device.id },
+            });
           }
         }
         await auth.login({
@@ -121,8 +132,24 @@ export function LoginPage() {
             });
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
+            const unauthorized = /UNAUTHORIZED|401/.test(msg);
             console.warn("[pairing] post-login heartbeat failed", msg);
-            if (/UNAUTHORIZED|401/.test(msg)) {
+            // 401 here is the smoking gun for "server returned a device id
+            // whose row never landed in /me/devices" — surface it so on-call
+            // can correlate with the matching forge-core
+            // `auto-pair-device-create` issue (PR #135). Non-401 failures
+            // are usually transient network errors; still send as warning so
+            // we can quantify them.
+            Sentry.captureException(err instanceof Error ? err : new Error(msg), {
+              level: unauthorized ? "error" : "warning",
+              tags: {
+                area: "desktop-pairing",
+                phase: "post-login-heartbeat",
+                outcome: unauthorized ? "unauthorized" : "transient",
+              },
+              extra: { deviceId: device.id },
+            });
+            if (unauthorized) {
               useAuthStore.getState().setDeviceId("");
             }
           }
