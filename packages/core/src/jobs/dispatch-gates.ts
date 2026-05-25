@@ -4,6 +4,15 @@
  * the job row. A job that fails any gate is simply absent from the SELECT
  * result, and the next tick recomputes the gate from scratch.
  *
+ * ISS-226 — L1 (issue_busy) now has TWO enforcement points:
+ *   1. The picker SQL `NOT EXISTS … agent_sessions … status IN ('queued','running')`
+ *      (see {@link pickNextDispatchableJobForProject}) — the primary gate.
+ *   2. {@link hasNonTerminalPriorSession} — called from `handleDispatch` so
+ *      pg-boss-direct deliveries (which bypass the picker on first delivery)
+ *      enforce the same barrier. Without (2), a job enqueued while the prior
+ *      stage's agent_session is still `running` would dispatch immediately
+ *      and `findPriorSessionInGroup` would miss the resume.
+ *
  *   L1 issue_busy / manual_hold — at most one active session per issue;
  *                                  `issues.manual_hold = true` excludes
  *   L2 waiting_on_dep / decomp  — every `kind='blocks'` parent must be
@@ -83,6 +92,33 @@ const RUNNER_DEFAULT_FALLBACK = 1;
 export function runnerSupportsJobType(runnerType: RunnerType, jobType: JobType): boolean {
   const caps = RUNNER_CAPABILITIES[runnerType];
   return caps ? caps.includes(jobType) : false;
+}
+
+/**
+ * ISS-226 — mirror of the picker's L1 issue_busy sub-query, exposed so the
+ * pg-boss-direct `handleDispatch` path can enforce the same barrier the
+ * picker enforces. Returns true when ANY agent_sessions row for the issue
+ * is non-terminal (status in 'queued','running'), excluding `excludeSessionId`
+ * if provided (the job's own linked session, for retries).
+ *
+ * Predicate must stay in lockstep with the picker's L1 clause in
+ * {@link pickNextDispatchableJobForProject}; a future contributor that
+ * widens one without widening the other will reintroduce the sessionGroup
+ * resume race (see ISS-226 repro).
+ */
+export async function hasNonTerminalPriorSession(
+  issueId: string,
+  excludeSessionId?: string | null,
+): Promise<boolean> {
+  const rows = await db.execute(sql`
+    SELECT 1
+    FROM agent_sessions
+    WHERE status IN ('queued','running')
+      AND metadata->>'issueId' = ${issueId}
+      ${excludeSessionId ? sql`AND id <> ${excludeSessionId}` : sql``}
+    LIMIT 1
+  `);
+  return rows.length > 0;
 }
 
 /**

@@ -69,6 +69,10 @@ vi.mock('./dispatch-gates.js', () => ({
   // runner. Default to true so unrelated tests stay focused on their own
   // envelope; the unsupported-type test overrides with mockReturnValueOnce.
   runnerSupportsJobType: vi.fn(() => true),
+  // ISS-226 — pre-dispatch barrier in handleDispatch / handlePmDispatch.
+  // Default to false (no non-terminal prior) so existing tests dispatch
+  // unchanged; the ISS-226 regression test overrides per-call.
+  hasNonTerminalPriorSession: vi.fn(async () => false),
 }));
 
 // ISS-198 — dispatcher emits a Sentry breadcrumb + histogram sample when
@@ -87,7 +91,7 @@ vi.mock('../observability/hold-metrics.js', () => ({
 const { db } = await import('../db/client.js');
 const { getActiveDeviceId } = await import('./active-device.js');
 // ISS-198 — dispatcher no longer imports checkLayer4RunnerFull.
-const { runnerSupportsJobType } = await import('./dispatch-gates.js');
+const { runnerSupportsJobType, hasNonTerminalPriorSession } = await import('./dispatch-gates.js');
 const {
   handleDispatch,
   handlePmDispatch,
@@ -328,6 +332,88 @@ describe('jobs/dispatcher', () => {
     // biome-ignore lint/suspicious/noExplicitAny: test-only mock
     const publishInvocation = (roomManager as any).publish.mock.invocationCallOrder[0];
     expect(snapInvocation).toBeLessThan(publishInvocation);
+  });
+
+  // ISS-226 — race repro: when stage A's agent_session is still 'running'
+  // at the moment stage B is dispatched, the dispatcher must leave B
+  // queued (skipped) instead of dispatching against a missing prior
+  // session. Once A flips terminal, the next tick's picker re-picks B and
+  // dispatch succeeds. Without this barrier, `findPriorSessionInGroup`
+  // returns null and the sessionGroup CLI resume silently regresses.
+  it('ISS-226: leaves queued when a prior agent_session is still non-terminal for the same issue', async () => {
+    mockSelectOnce([
+      {
+        id: 'j-plan',
+        status: 'queued',
+        projectId: 'p1',
+        issueId: 'iss-201',
+        type: 'plan',
+        agentSessionId: null,
+        payload: { sessionGroup: 'planning', stageStatus: 'confirmed' },
+      },
+    ]);
+    (hasNonTerminalPriorSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+    const result = await handleDispatch({ jobId: 'j-plan' });
+    expect(result).toBe('skipped');
+    expect(hasNonTerminalPriorSession).toHaveBeenCalledWith('iss-201', null);
+    // Job must remain queued — no dispatch flip, no runner selection,
+    // no job.assigned broadcast.
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock chain
+    expect((db as any).update).not.toHaveBeenCalled();
+    expect(selectRunnerForJob).not.toHaveBeenCalled();
+    expect(getActiveDeviceId).not.toHaveBeenCalled();
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock
+    expect((roomManager as any).publish).not.toHaveBeenCalled();
+  });
+
+  it('ISS-226: dispatches normally once the prior session is terminal', async () => {
+    mockSelectOnce([
+      {
+        id: 'j-plan',
+        status: 'queued',
+        projectId: 'p1',
+        issueId: 'iss-201',
+        type: 'plan',
+        agentSessionId: null,
+        payload: { sessionGroup: 'planning' },
+      },
+    ]);
+    // Default mock (returns false) means the barrier passes; explicit here
+    // for clarity against the previous test.
+    (hasNonTerminalPriorSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
+    (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
+    mockSelectOnce([{ id: 'd1', status: 'online', lastSeenAt: new Date() }]);
+    mockUpdateReturn([{ id: 'j-plan' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
+
+    const result = await handleDispatch({ jobId: 'j-plan' });
+    expect(result).toBe('dispatched');
+    expect(hasNonTerminalPriorSession).toHaveBeenCalledWith('iss-201', null);
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock
+    expect((roomManager as any).publish).toHaveBeenCalledTimes(1);
+  });
+
+  it('ISS-226: skips the barrier when job has no issueId (project-scoped jobs)', async () => {
+    mockSelectOnce([
+      {
+        id: 'j-orphan',
+        status: 'queued',
+        projectId: 'p1',
+        issueId: null,
+        type: 'plan',
+        payload: {},
+      },
+    ]);
+    (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
+    mockSelectOnce([{ id: 'd1', status: 'online', lastSeenAt: new Date() }]);
+    mockUpdateReturn([{ id: 'j-orphan' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
+
+    const result = await handleDispatch({ jobId: 'j-orphan' });
+    expect(result).toBe('dispatched');
+    // Barrier short-circuited — no DB query for the prior-session check.
+    expect(hasNonTerminalPriorSession).not.toHaveBeenCalled();
   });
 
   it('defaults model to "default" when modelTier is not set', async () => {
