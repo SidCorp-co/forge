@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { useAuth } from "@/hooks/useAuth";
+import { useAuthStore } from "@/stores/auth-store";
 import { FormInput } from "@/components/ui/form-input";
 import {
   startPairing,
@@ -103,6 +104,29 @@ export function LoginPage() {
           token,
           deviceId: device?.id ?? auth.deviceId ?? "",
         });
+        // Verify the auto-paired device is actually addressable on the server
+        // before we let the UI claim "Device paired". The poll response can
+        // include a device id whose row never made it past the dedup/insert
+        // (issueOrRotateDeviceToken catches and logs but does not surface
+        // errors to the client), in which case /me/devices stays empty on
+        // the web side and the user has no way to bind the device to a
+        // project. A 401 from /devices/heartbeat means the token is not
+        // valid → wipe the local deviceId so Settings falls back to the
+        // pair-code input and the user can recover without re-signing-in.
+        if (device) {
+          try {
+            await invoke("heartbeat", {
+              coreUrl: apiUrl,
+              deviceToken: device.token,
+            });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn("[pairing] post-login heartbeat failed", msg);
+            if (/UNAUTHORIZED|401/.test(msg)) {
+              useAuthStore.getState().setDeviceId("");
+            }
+          }
+        }
         navigate(from, { replace: true });
         void user;
       } catch (err) {
