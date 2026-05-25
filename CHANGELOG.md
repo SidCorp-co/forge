@@ -16,6 +16,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+### Security
+
+## [0.2.6] - 2026-05-25
+
+Verify auto-pair via heartbeat + manual pair-code fallback in desktop Settings
+
+### Added
+
+### Changed
+
+### Removed
+
+### Fixed
+
 - **Signing in on a fresh machine no longer leaves the desktop stuck in a "paired" state that the web can't see.** After v0.2.5 the auto-pair flow could finish locally — Settings showed a green "Device paired" card with a device id — while `/me/devices` on the web stayed empty, so users had no way to bind the device to a project and no obvious recovery path short of reinstalling. The desktop now verifies the auto-paired device id with a heartbeat right after sign-in; if the server rejects the token, the local device id is cleared so Settings falls back to the pair-code form. The green Device-paired card also carries a new "Pair with a code instead" link so the user can redeem a fresh project pairing code in-place when the auto-pair silently disagreed with the server.
   *Technical: `packages/dev/src/pages/app/LoginPage.tsx` invokes the `heartbeat` Tauri command with the freshly-minted device token after `auth.login()`; a `UNAUTHORIZED`/401 response calls `useAuthStore.getState().setDeviceId("")` so `PairDeviceCard` renders `UnpairedDeviceCard` without a re-sign-in. `Settings.tsx` introduces a `manualOverride` toggle inside `PairDeviceCard`, with an `onPairWithCode` callback exposed by `PairedDeviceCard` and an optional `onCancel` on `UnpairedDeviceCard` to swap back. Root cause: `issueOrRotateDeviceToken` in `packages/core/src/auth/desktop/pairing-routes.ts` catches DB/insert errors but does not surface them to the client — heartbeat is now the desktop's source of truth for "is this device actually addressable on the server".*
 
