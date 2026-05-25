@@ -473,6 +473,7 @@ projectRoutes.post(
       })
       .onConflictDoUpdate({
         target: [runners.projectId, runners.deviceId, runners.type],
+        targetWhere: sql`device_id IS NOT NULL`,
         set: {
           status,
           updatedAt: new Date(),
