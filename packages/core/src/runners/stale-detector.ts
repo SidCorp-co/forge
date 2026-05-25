@@ -13,8 +13,10 @@ export const RUNNER_STALE_DETECTOR_QUEUE = 'runner-status-detector';
 //
 // This sweep only marks the runner row offline — it does NOT touch any
 // jobs already picked by that runner. The L5 gate prevents *new* dispatches
-// onto stale runners; the stuck-watcher (jobs/stuck-watcher.ts) remains
-// responsible for jobs that are already in `dispatched`/`running`.
+// onto stale runners. Jobs already in `dispatched`/`running` stay there
+// until the runner posts /complete or /fail; there is no server-side
+// watchdog kill (removed because the 300s heartbeat threshold misfired on
+// slow but live Claude CLI runs and surfaced as spurious manualHold).
 const RUNNER_STALE_THRESHOLD = "interval '30 seconds'";
 
 type StaleRunnerRow = {

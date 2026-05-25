@@ -41,7 +41,7 @@ interface InsertAndEnqueueArgs {
  * can map to either 409 (manual) or debug-log + return (auto).
  *
  * pg-boss enqueue failures are logged but NOT thrown — the jobs row is
- * persisted and the dispatcher / stuck-watcher will pick it up on retry.
+ * persisted and a subsequent dispatchTickForProject will pick it up.
  */
 export async function insertAndEnqueueJob(
   args: InsertAndEnqueueArgs,

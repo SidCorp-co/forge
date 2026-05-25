@@ -56,8 +56,8 @@ export function computeHoldUntil(
   }
 
   // Runner-side timeout: worker process likely crashed or wedged. A short
-  // hold lets the dispatcher reroute to a fresh runner once stuck-watcher
-  // or stale-detector has flipped the prior runner offline.
+  // hold lets the dispatcher reroute to a fresh runner once stale-detector
+  // has flipped the prior runner offline.
   if (input.trigger === 'session_lost') {
     return new Date(now.getTime() + SESSION_LOST_HOLD_MS);
   }
