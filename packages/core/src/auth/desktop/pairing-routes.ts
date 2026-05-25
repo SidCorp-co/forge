@@ -27,6 +27,7 @@ import { isEnabled } from '../../lib/feature-flags.js';
 import { logger } from '../../logger.js';
 import { rateLimit } from '../../middleware/rate-limit.js';
 import { requireAuth, type AuthVars } from '../../middleware/auth.js';
+import { Sentry } from '../../observability/sentry.js';
 import { issueOrRotateDeviceToken } from '../deviceToken.js';
 import { signUserToken } from '../jwt.js';
 
@@ -363,6 +364,24 @@ pairingRoutes.get('/desktop/poll', async (c) => {
         { err, approvedUserId: user.id, pairingCodeId: row.id },
         'desktop pairing: auto-pair device failed (sign-in still succeeds)',
       );
+      // Logger output goes to stdout / log collector, not Sentry. The auto-pair
+      // failure path is the root cause of users seeing "Device paired" on the
+      // desktop while /me/devices on the web stays empty — we need it surfaced
+      // as a Sentry issue (with the same tags the client-side `auth.transition`
+      // breadcrumbs use) so on-call notices regressions without trawling logs.
+      Sentry.captureException(err, {
+        level: 'error',
+        tags: {
+          area: 'desktop-pairing',
+          phase: 'auto-pair-device-create',
+        },
+        extra: {
+          approvedUserId: user.id,
+          pairingCodeId: row.id,
+          deviceLabel: row.deviceLabel,
+          devicePlatform: row.devicePlatform,
+        },
+      });
     }
 
     logger.info(
