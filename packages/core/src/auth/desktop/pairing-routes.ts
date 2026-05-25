@@ -27,7 +27,10 @@ import { isEnabled } from '../../lib/feature-flags.js';
 import { logger } from '../../logger.js';
 import { rateLimit } from '../../middleware/rate-limit.js';
 import { requireAuth, type AuthVars } from '../../middleware/auth.js';
+import { issueOrRotateDeviceToken } from '../deviceToken.js';
 import { signUserToken } from '../jwt.js';
+
+type AutoPairPlatform = 'windows' | 'macos' | 'linux';
 
 export const pairingRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -313,6 +316,8 @@ pairingRoutes.get('/desktop/poll', async (c) => {
     .returning({
       id: desktopPairingCodes.id,
       approvedUserId: desktopPairingCodes.approvedUserId,
+      deviceLabel: desktopPairingCodes.deviceLabel,
+      devicePlatform: desktopPairingCodes.devicePlatform,
     });
 
   if (consumed.length === 1) {
@@ -337,11 +342,38 @@ pairingRoutes.get('/desktop/poll', async (c) => {
       });
     }
     const token = await signUserToken(user.id);
+
+    // Auto-pair the desktop as a `devices` row so it shows up in /me/devices
+    // immediately — without this the user would have to mint a second
+    // (project-scoped) pairing code from /settings/devices and paste it back
+    // into the desktop just to make the device pickable in project settings.
+    // Dedupes by (ownerId, name, platform); same-machine re-sign-in rotates
+    // the token rather than cluttering the user's device list. Best-effort:
+    // a DB failure here must not block the sign-in itself.
+    let devicePayload: { id: string; token: string } | undefined;
+    try {
+      const { device, plaintext } = await issueOrRotateDeviceToken({
+        ownerId: user.id,
+        name: row.deviceLabel,
+        platform: row.devicePlatform as AutoPairPlatform,
+      });
+      devicePayload = { id: device.id, token: plaintext };
+    } catch (err) {
+      logger.error(
+        { err, approvedUserId: user.id, pairingCodeId: row.id },
+        'desktop pairing: auto-pair device failed (sign-in still succeeds)',
+      );
+    }
+
     logger.info(
-      { approvedUserId: user.id, pairingCodeId: row.id },
+      { approvedUserId: user.id, pairingCodeId: row.id, deviceId: devicePayload?.id ?? null },
       'desktop pairing: consumed',
     );
-    return c.json({ token, user });
+    return c.json({
+      token,
+      user,
+      ...(devicePayload ? { device: devicePayload } : {}),
+    });
   }
 
   // No row consumed — disambiguate so the desktop UI shows the right message.

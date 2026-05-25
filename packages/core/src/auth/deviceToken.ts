@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import argon2 from 'argon2';
-import { type InferSelectModel, eq } from 'drizzle-orm';
+import { type InferSelectModel, and, eq, ne } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { type DevicePlatform, devices } from '../db/schema.js';
@@ -52,6 +52,67 @@ export async function issueDeviceToken(input: IssueDeviceTokenInput): Promise<Is
     throw new Error('issueDeviceToken: insert returned no row');
   }
 
+  return { device, plaintext };
+}
+
+/**
+ * Auto-pair variant used by the ISS-200 sign-in flow: if a non-revoked device
+ * already exists for the same (ownerId, name, platform) triple, rotate its
+ * token in place rather than create a duplicate row. Avoids cluttering
+ * `/me/devices` when a user signs in repeatedly from the same machine.
+ *
+ * Distinct from `issueDeviceToken`, which is always-insert and used by the
+ * legacy project pairing flow where each redemption is intentionally a fresh
+ * device row.
+ */
+export async function issueOrRotateDeviceToken(
+  input: IssueDeviceTokenInput,
+): Promise<IssuedDeviceToken> {
+  const plaintext = randomBytes(TOKEN_BYTES).toString('base64url');
+  const tokenPrefix = plaintext.slice(0, PREFIX_LEN);
+  const tokenHash = await argon2.hash(plaintext + env.DEVICE_TOKEN_PEPPER, ARGON2_OPTIONS);
+
+  const [existing] = await db
+    .select()
+    .from(devices)
+    .where(
+      and(
+        eq(devices.ownerId, input.ownerId),
+        eq(devices.name, input.name),
+        eq(devices.platform, input.platform),
+        ne(devices.status, 'revoked'),
+      ),
+    )
+    .limit(1);
+
+  if (existing) {
+    const [rotated] = await db
+      .update(devices)
+      .set({
+        tokenHash,
+        tokenPrefix,
+        ...(input.agentVersion !== undefined ? { agentVersion: input.agentVersion } : {}),
+        ...(input.capabilities !== undefined ? { capabilities: input.capabilities } : {}),
+      })
+      .where(eq(devices.id, existing.id))
+      .returning();
+    if (!rotated) throw new Error('issueOrRotateDeviceToken: rotate returned no row');
+    return { device: rotated, plaintext };
+  }
+
+  const [device] = await db
+    .insert(devices)
+    .values({
+      ownerId: input.ownerId,
+      name: input.name,
+      platform: input.platform,
+      agentVersion: input.agentVersion ?? null,
+      tokenHash,
+      tokenPrefix,
+      capabilities: input.capabilities ?? null,
+    })
+    .returning();
+  if (!device) throw new Error('issueOrRotateDeviceToken: insert returned no row');
   return { device, plaintext };
 }
 

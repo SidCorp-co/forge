@@ -18,6 +18,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+## [0.2.5] - 2026-05-25
+
+ISS-200 sign-in now also registers the desktop as a device. Previously the user was authenticated but the desktop didn't appear in `/me/devices`, so project Settings → Devices stayed empty and the desktop kept showing the legacy "Pair Device" card — forcing a second manual pairing step just to use the machine as a runner.
+
+### Added
+
+### Changed
+
+- **Signing in via the pairing code now also registers the desktop as a runner-capable device.** Before v0.2.5 the user had to run the sign-in pairing AND a second project-scoped device pairing from `/settings/devices` just to see the desktop in project Settings → Devices. Now the device row + device token are minted at sign-in time and surfaced in `/me/devices`; project owners can toggle "Use" on it without any extra step on the desktop.
+  *Technical: `GET /api/auth/desktop/poll` now calls `issueOrRotateDeviceToken` after consuming a pairing code and returns `{ token, user, device: { id, token } }`. The helper dedupes by `(ownerId, name, platform)` and rotates the token in place when an existing non-revoked device matches — same-machine re-sign-in doesn't clone rows. Desktop `LoginPage.tsx` stores the device token via a new `store_device_token` Tauri command and passes `device.id` into `auth.login`, which flips Settings from `UnpairedDeviceCard` to `PairedDeviceCard`. Auto-pair failure is logged but does not block sign-in.*
+
+### Removed
+
+### Fixed
+
+### Security
+
 ## [0.2.4] - 2026-05-25
 
 Hotfix for v0.2.2/v0.2.3: after signing in via the new pairing flow, the desktop's WebSocket bar stayed "Disconnected" because the upgrade went out without any Authorization header.

@@ -31,6 +31,22 @@ export interface PairingUser {
   email: string;
 }
 
+/**
+ * Auto-paired device payload from the poll endpoint. Optional because older
+ * servers (pre-v0.2.5) don't include it — desktop falls back to the legacy
+ * project pair-device flow in that case.
+ */
+export interface PairingDevice {
+  id: string;
+  token: string;
+}
+
+export interface PairingResult {
+  token: string;
+  user: PairingUser;
+  device?: PairingDevice;
+}
+
 export interface PairingHandle {
   /** Formatted pairing code (`XXX-XXXX`) for display. */
   pairingCode: string;
@@ -41,7 +57,7 @@ export interface PairingHandle {
   /** Cancel the in-flight pairing, rejecting `done`. */
   cancel(): void;
   /** Resolves on successful exchange; rejects on cancel / expiry / 410. */
-  done: Promise<{ token: string; user: PairingUser }>;
+  done: Promise<PairingResult>;
 }
 
 export interface StartPairingOptions {
@@ -59,6 +75,7 @@ interface PairInitResponse {
 interface PollSuccess {
   token: string;
   user: PairingUser;
+  device?: PairingDevice;
 }
 
 const FAST_POLL_MS = 2_000;
@@ -159,9 +176,9 @@ export async function startPairing(opts: StartPairingOptions): Promise<PairingHa
   const expiresAt = new Date(init.expires_at);
 
   let cancelled = false;
-  let resolveDone: (v: { token: string; user: PairingUser }) => void = () => {};
+  let resolveDone: (v: PairingResult) => void = () => {};
   let rejectDone: (err: Error) => void = () => {};
-  const done = new Promise<{ token: string; user: PairingUser }>((res, rej) => {
+  const done = new Promise<PairingResult>((res, rej) => {
     resolveDone = res;
     rejectDone = rej;
   });

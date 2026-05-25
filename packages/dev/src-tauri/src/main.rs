@@ -77,6 +77,11 @@ fn load_device_token() -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
+fn store_device_token(token: String) -> Result<(), String> {
+    keychain::store(&token)
+}
+
+#[tauri::command]
 fn clear_device_token() -> Result<(), String> {
     keychain::clear()
 }
@@ -590,6 +595,7 @@ fn main() {
             connect_ws,
             ws_send,
             load_device_token,
+            store_device_token,
             clear_device_token,
             store_user_jwt,
             load_user_jwt,

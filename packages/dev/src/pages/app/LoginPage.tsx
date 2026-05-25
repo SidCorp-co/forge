@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { invoke } from "@tauri-apps/api/core";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { useAuth } from "@/hooks/useAuth";
 import { FormInput } from "@/components/ui/form-input";
@@ -82,9 +83,26 @@ export function LoginPage() {
       // the URL is still copyable from the UI.
       void openUrl(handle.connectUrl).catch(() => undefined);
       try {
-        const { token, user } = await handle.done;
+        const { token, user, device } = await handle.done;
         const apiUrl = await resolveApiBase(userUrl);
-        await auth.login({ coreUrl: apiUrl, token, deviceId: auth.deviceId ?? "" });
+        // ISS-200 auto-pair (v0.2.5+): if the server returned a `device`
+        // payload, persist the device token to the OS keychain and adopt the
+        // returned device id. Without this the desktop stays "unpaired"
+        // post sign-in and project Settings shows an empty device list until
+        // the user runs the legacy /devices/pair flow by hand. Keychain
+        // failure (e.g. libsecret unavailable on Linux) must not block login.
+        if (device) {
+          try {
+            await invoke("store_device_token", { token: device.token });
+          } catch (err) {
+            console.warn("[pairing] store_device_token failed", err);
+          }
+        }
+        await auth.login({
+          coreUrl: apiUrl,
+          token,
+          deviceId: device?.id ?? auth.deviceId ?? "",
+        });
         navigate(from, { replace: true });
         void user;
       } catch (err) {
