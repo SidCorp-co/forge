@@ -18,3 +18,20 @@ export type JobType =
   | 'release';
 
 export type ModelTier = 'fast' | 'smart' | 'deep';
+
+/**
+ * Row shape returned by `GET /api/issues/:id/job-history?step=<type>`.
+ * Backend roll-up of `usage_records` is via the
+ * `usage_records.session_id::uuid = jobs.id` cast — queued/unstarted jobs
+ * still appear with `tokens: 0`, `cost: 0`, `startedAt: null`.
+ */
+export interface JobHistoryRow {
+  jobId: string;
+  status: string;
+  model: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  estTokens: number | null;
+  tokens: number;
+  cost: number;
+}

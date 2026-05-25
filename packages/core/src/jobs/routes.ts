@@ -323,6 +323,7 @@ jobRoutes.get(
     const envelope: PromptEnvelope = {
       jobId: job.id,
       systemPrompt,
+      systemPromptHash: job.systemPromptHash ?? null,
       userPrompt: job.userPromptSnapshot,
       blocks: Array.isArray(job.promptBlocks) ? (job.promptBlocks as unknown[]) : [],
       estTokens: { input: job.promptInputTokenEst ?? null },

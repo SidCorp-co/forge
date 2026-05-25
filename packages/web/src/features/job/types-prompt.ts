@@ -34,6 +34,7 @@ export interface PromptBlock {
 export interface PromptEnvelope {
   jobId: string;
   systemPrompt: string | null;
+  systemPromptHash: string | null;
   userPrompt: string | null;
   blocks: PromptBlock[];
   estTokens: { input: number | null };

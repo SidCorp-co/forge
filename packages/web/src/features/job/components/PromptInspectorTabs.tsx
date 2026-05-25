@@ -158,7 +158,15 @@ function Body({ tab, promptQuery, jobQuery }: BodyProps) {
       return <TimingTab job={jobQuery.data} />;
     case 'mcp':
       return <McpTab mcpConfig={envelope.mcpConfig} />;
-    case 'history':
-      return <HistoryTab />;
+    case 'history': {
+      const job = jobQuery.data;
+      return (
+        <HistoryTab
+          jobId={envelope.jobId}
+          issueId={job?.issueId ?? null}
+          step={job?.type ?? null}
+        />
+      );
+    }
   }
 }
