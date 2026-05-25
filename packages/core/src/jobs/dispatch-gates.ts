@@ -50,8 +50,14 @@ export type GateResult =
 
 const PASS: GateResult = { pass: true };
 
-/** Default per-project cap when `agent_config.pipelineConfig.maxConcurrentIssues` is unset. */
-export const DEFAULT_MAX_CONCURRENT_ISSUES = 3;
+/** Default per-project cap when `agent_config.pipelineConfig.maxConcurrentIssues`
+ *  is unset. Set to 1 so multiple in-flight code/fix sessions on the same repo
+ *  cannot race each other into merge conflicts — the dominant failure mode
+ *  observed when the cap defaulted to 3 (forge-code + forge-fix branching off
+ *  the same base, then colliding on the same files at release time). Operators
+ *  with isolated worktrees per session can opt back into higher parallelism by
+ *  setting `pipelineConfig.maxConcurrentIssues` explicitly on the project. */
+export const DEFAULT_MAX_CONCURRENT_ISSUES = 1;
 
 /** Default per-runner cap when `runners.capabilities.maxConcurrent` is unset. */
 const RUNNER_DEFAULT_CONCURRENCY: Record<string, number> = {

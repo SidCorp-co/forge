@@ -140,7 +140,9 @@ describe('pickNextDispatchableJobForProject', () => {
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
     // The cap is passed as a parameter, so the literal won't appear in the SQL
     // string itself — but the default is exposed as a constant for callers.
-    expect(DEFAULT_MAX_CONCURRENT_ISSUES).toBe(3);
+    // Default is 1 so unconfigured projects serialize jobs by default and
+    // can't race two in-flight code sessions into merge conflicts.
+    expect(DEFAULT_MAX_CONCURRENT_ISSUES).toBe(1);
     expect(text).toMatch(/SELECT\s+j\.\*/);
   });
 
