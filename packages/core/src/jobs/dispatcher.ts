@@ -23,7 +23,7 @@ import { ensureAgentSessionForJob } from './agent-session-link.js';
 import { recordRunnerDeathDetection } from '../observability/hold-metrics.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { checkMonthlyBudget, postBudgetExhaustedComment, shouldEmitWarn } from './budget-check.js';
-import { runnerSupportsJobType } from './dispatch-gates.js';
+import { hasNonTerminalPriorSession, runnerSupportsJobType } from './dispatch-gates.js';
 import { persistPromptSnapshot } from './prompt-snapshot.js';
 import { JOB_QUEUE_NAME, PM_QUEUE_NAME } from './queue-name.js';
 import { findPriorSessionInGroup } from './session-resume.js';
@@ -63,6 +63,22 @@ export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched'
   }
   if (job.status !== 'queued') {
     logger.debug({ jobId, status: job.status }, 'dispatcher: non-queued job, skipping');
+    return 'skipped';
+  }
+
+  // ISS-226 — prior-session terminal barrier. Mirrors the picker's L1
+  // issue_busy gate so the pg-boss-direct delivery path enforces the same
+  // invariant as `pickNextDispatchableJobForProject`. Without this, a job
+  // enqueued while the prior stage's agent_session is still `running` would
+  // dispatch immediately and `findPriorSessionInGroup` would miss the
+  // resume. The fire-and-forget `dispatchTickForProject` re-picks the job
+  // via the picker once the prior row flips terminal in
+  // `syncAgentSessionLifecycle`.
+  if (job.issueId && (await hasNonTerminalPriorSession(job.issueId, job.agentSessionId))) {
+    logger.debug(
+      { jobId, issueId: job.issueId },
+      'dispatcher: prior session non-terminal, leaving queued',
+    );
     return 'skipped';
   }
 
@@ -165,6 +181,16 @@ export async function handlePmDispatch(msg: DispatchMessage): Promise<'dispatche
     // Defensive: a non-PM job should never land on this queue. Skip rather
     // than dispatch via the PM-only path.
     logger.warn({ jobId, type: job.type }, 'pm-dispatcher: non-pm job on pm queue, skipping');
+    return 'skipped';
+  }
+  // ISS-226 — PM jobs targeted at an issue whose pipeline session is still
+  // running must also wait for that session to reach a terminal state. PM
+  // jobs with `issueId === null` (project-scoped) bypass the check.
+  if (job.issueId && (await hasNonTerminalPriorSession(job.issueId, job.agentSessionId))) {
+    logger.debug(
+      { jobId, issueId: job.issueId },
+      'pm-dispatcher: prior session non-terminal, leaving queued',
+    );
     return 'skipped';
   }
   return dispatchViaRunner(job, { pm: true }, ['claude-code']);

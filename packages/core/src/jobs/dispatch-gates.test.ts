@@ -27,6 +27,7 @@ const {
   checkLayer5RunnerHeartbeat,
   pickNextDispatchableJobForProject,
   countInFlightForRunner,
+  hasNonTerminalPriorSession,
   DEFAULT_MAX_CONCURRENT_ISSUES,
 } = await import('./dispatch-gates.js');
 
@@ -260,6 +261,55 @@ describe('pickNextDispatchableJobForProject', () => {
     // (scoped to the same project as the surrounding picker query) and
     // selects rows whose `retry_after_at` is still in the future.
     expect(text).toMatch(/WITH\s+running_ids\s+AS[\s\S]+UNION[\s\S]+FROM\s+jobs[\s\S]+retry_after_at\s+IS\s+NOT\s+NULL[\s\S]+retry_after_at\s*>\s*now\(\)/i);
+  });
+});
+
+describe('hasNonTerminalPriorSession', () => {
+  it('returns false when no non-terminal sessions match the issue', async () => {
+    dbExecute.mockResolvedValueOnce([]);
+    expect(await hasNonTerminalPriorSession('iss-201')).toBe(false);
+  });
+
+  it('returns true when at least one running session exists for the issue', async () => {
+    dbExecute.mockResolvedValueOnce([{ '?column?': 1 }]);
+    expect(await hasNonTerminalPriorSession('iss-201')).toBe(true);
+  });
+
+  it('returns true when a queued session exists for the issue', async () => {
+    dbExecute.mockResolvedValueOnce([{ '?column?': 1 }]);
+    expect(await hasNonTerminalPriorSession('iss-201')).toBe(true);
+  });
+
+  it('SQL filters on status IN (queued, running) — never widens to terminal statuses', async () => {
+    dbExecute.mockResolvedValueOnce([]);
+    await hasNonTerminalPriorSession('iss-201');
+    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+    expect(text).toMatch(/status\s+IN\s*\(\s*'queued'\s*,\s*'running'\s*\)/);
+    // Lockstep with picker L1 — must not include terminal statuses.
+    expect(text).not.toMatch(/'completed'/);
+    expect(text).not.toMatch(/'failed'/);
+    expect(text).not.toMatch(/'completed_via_recovery'/);
+    expect(text).not.toMatch(/'cancelled_stale'/);
+    expect(text).toMatch(/metadata->>'issueId'/);
+  });
+
+  it('emits AND id <> $1 when excludeSessionId is provided', async () => {
+    dbExecute.mockResolvedValueOnce([]);
+    await hasNonTerminalPriorSession('iss-201', 'sess-self');
+    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+    expect(text).toMatch(/AND\s+id\s*<>/);
+  });
+
+  it('omits AND id <> when excludeSessionId is null/undefined', async () => {
+    dbExecute.mockResolvedValueOnce([]);
+    await hasNonTerminalPriorSession('iss-201');
+    const text1 = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+    expect(text1).not.toMatch(/AND\s+id\s*<>/);
+
+    dbExecute.mockResolvedValueOnce([]);
+    await hasNonTerminalPriorSession('iss-201', null);
+    const text2 = collectSqlFragments(dbExecute.mock.calls[1]?.[0]);
+    expect(text2).not.toMatch(/AND\s+id\s*<>/);
   });
 });
 

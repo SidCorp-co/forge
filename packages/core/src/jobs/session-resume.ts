@@ -15,6 +15,15 @@
  *
  * Returns the prior session's claudeSessionId + the deviceId that hosts
  * its session file, so the dispatcher can pin selection to the same host.
+ *
+ * ISS-226 — invariant: by the time the dispatcher calls
+ * `findPriorSessionInGroup`, every prior `(issueId, sessionGroup)` session
+ * is guaranteed terminal. The barrier lives in `handleDispatch` and is
+ * implemented by `dispatch-gates.ts#hasNonTerminalPriorSession`. Do NOT
+ * relax the strict `status='completed'` filter below to widen the lookup —
+ * the issue body of ISS-226 forbids it (a still-`running` row may not have
+ * its final claudeSessionId flushed; a row that later fails would poison
+ * the resume). Fix lifecycle ordering, not the filter.
  */
 
 import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
