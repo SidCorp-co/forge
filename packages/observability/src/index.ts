@@ -29,6 +29,8 @@ export const SCRUB_BODY_KEYS: ReadonlySet<string> = new Set([
   'sessionToken',
   'session_token',
   'bearerToken',
+  // ISS-225 — previewDeploy.testCredentials[] carries QA login pairs.
+  'testCredentials',
 ]);
 
 /** Matches `?token=...` / `?jwt=...` / `?access_token=...` / `?api_key=...` query params. */
@@ -73,13 +75,26 @@ export function scrubPatInString(s: string): string {
   return s.replace(PAT_STRING_PATTERN, FILTERED);
 }
 
-/** Mutates `obj` in place, replacing values whose keys appear in SCRUB_BODY_KEYS. Shallow only. */
-export function scrubBodyKeys(obj: unknown): void {
-  if (!obj || typeof obj !== 'object') return;
-  for (const key of Object.keys(obj as Record<string, unknown>)) {
+/**
+ * Mutates `obj` in place, replacing values whose keys appear in
+ * SCRUB_BODY_KEYS. Walks nested objects and arrays depth-limited (≤ 8) so
+ * deeply-nested secrets like `previewDeploy.testCredentials[]` get redacted
+ * too. Matched subtrees are replaced with `[Filtered]` outright — we do not
+ * recurse INTO a redacted subtree.
+ */
+export function scrubBodyKeys(obj: unknown, depth = 0): void {
+  if (depth > 8 || !obj || typeof obj !== 'object') return;
+  if (Array.isArray(obj)) {
+    for (const item of obj) scrubBodyKeys(item, depth + 1);
+    return;
+  }
+  const rec = obj as Record<string, unknown>;
+  for (const key of Object.keys(rec)) {
     if (SCRUB_BODY_KEYS.has(key) || SCRUB_BODY_KEYS.has(key.toLowerCase())) {
-      (obj as Record<string, unknown>)[key] = FILTERED;
+      rec[key] = FILTERED;
+      continue;
     }
+    scrubBodyKeys(rec[key], depth + 1);
   }
 }
 

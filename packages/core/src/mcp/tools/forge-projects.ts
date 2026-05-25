@@ -277,7 +277,9 @@ const updateInputSchema = z
  * Update a project's settings (name/description/repoPath/baseBranch/
  * productionBranch) — the subset of `updateProjectSchema` that's safe to
  * expose to MCP. Sensitive fields (webhookSecret, apiKey, agentConfig,
- * previewDeploy, defaultDeviceId) intentionally stay on the REST handler.
+ * defaultDeviceId) intentionally stay on the REST handler. `previewDeploy`
+ * is exposed READ-ONLY through `forge_projects.get` (ISS-225); writes stay
+ * on REST.
  *
  * Authorization is OWNER-ONLY, matching REST PATCH /api/projects/:id
  * (projects/routes.ts:349-351 — `project.ownerId === userId || role === 'owner'`).
@@ -289,7 +291,7 @@ const updateInputSchema = z
 export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.update',
   description:
-    'Update project settings (name, description, repoPath, baseBranch, productionBranch). Caller must be the project owner (members with role=admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. Sensitive fields (webhookSecret, apiKey, agentConfig, previewDeploy, defaultDeviceId) stay on REST.',
+    'Update project settings (name, description, repoPath, baseBranch, productionBranch). Caller must be the project owner (members with role=admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. Sensitive fields (webhookSecret, apiKey, agentConfig, defaultDeviceId) stay on REST; previewDeploy is read-only via forge_projects.get.',
   inputSchema: zodToMcpSchema(updateInputSchema),
   handler: async (args) => {
     const input = updateInputSchema.parse(args);
@@ -365,5 +367,124 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
     const project = updated[0];
     if (!project) throw new Error('NOT_FOUND: project not found');
     return { project };
+  },
+});
+
+const getInputSchema = z.object({ projectId: z.uuid() }).strict();
+
+/**
+ * ISS-225 — read project detail for worker-agent runtime context (repo paths,
+ * branches, staging URLs, test credentials). Companion to
+ * `forge_projects.list` which intentionally stays slim. The response shape
+ * is locked: `agentConfig`, `webhookSecret`, `apiKey` stay on REST
+ * (sensitive / not needed by agents).
+ *
+ * Authorization: any project member (owner/admin/member) can read. CEO
+ * (`users.isCeo=true`) bypasses membership. PAT principals must carry the
+ * `read` scope and a matching `projectIds` allowlist (mismatch → NOT_FOUND
+ * so the project namespace stays non-enumerable — mirrors update tool).
+ */
+export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
+  name: 'forge_projects.get',
+  description:
+    'Fetch project detail visible to the principal — id, slug, name, description, ownerId, role, repoPath, baseBranch, productionBranch, defaultDeviceId, previewDeploy.{stagingUrl,stagingApiUrl,testingUrls,testCredentials}, createdAt. Any project member (owner/admin/member) can read; CEO bypasses membership. PAT principals must carry the `read` scope. Sensitive fields (agentConfig, webhookSecret, apiKey) stay on REST.',
+  inputSchema: zodToMcpSchema(getInputSchema),
+  handler: async (args) => {
+    const input = getInputSchema.parse(args);
+    const { principal } = ctx;
+
+    if (principal.kind === 'pat' && !principal.scopes.includes('read')) {
+      throw new Error('FORBIDDEN_SCOPE: requires read scope on the PAT');
+    }
+    // PAT allowlist gate first — surface NOT_FOUND on miss so the project
+    // namespace isn't enumerable (mirrors update tool).
+    if (
+      principal.kind === 'pat' &&
+      principal.projectIds !== null &&
+      !principal.projectIds.includes(input.projectId)
+    ) {
+      throw new Error('NOT_FOUND: project not found or not accessible');
+    }
+
+    const userId = principalUserId(principal);
+
+    const [proj] = await db
+      .select({
+        id: projects.id,
+        slug: projects.slug,
+        name: projects.name,
+        description: projects.description,
+        ownerId: projects.ownerId,
+        repoPath: projects.repoPath,
+        baseBranch: projects.baseBranch,
+        productionBranch: projects.productionBranch,
+        defaultDeviceId: projects.defaultDeviceId,
+        previewDeploy: projects.previewDeploy,
+        createdAt: projects.createdAt,
+      })
+      .from(projects)
+      .where(eq(projects.id, input.projectId))
+      .limit(1);
+    if (!proj) throw new Error('NOT_FOUND: project not found or not accessible');
+
+    // Resolve caller role. Owner short-circuit keeps the hot path at one
+    // query; CEO bypass costs one extra SELECT and only fires when caller
+    // is neither owner nor a project_members row.
+    let role: 'owner' | ProjectMemberRole;
+    if (proj.ownerId === userId) {
+      role = 'owner';
+    } else {
+      const [member] = await db
+        .select({ role: projectMembers.role })
+        .from(projectMembers)
+        .where(
+          and(
+            eq(projectMembers.projectId, input.projectId),
+            eq(projectMembers.userId, userId),
+          ),
+        )
+        .limit(1);
+      if (member) {
+        role = member.role;
+      } else {
+        const [me] = await db
+          .select({ isCeo: users.isCeo })
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1);
+        if (!me?.isCeo) {
+          throw new Error('NOT_FOUND: project not found or not accessible');
+        }
+        // CEO bypass surfaces role='admin' (matches forge_projects.list).
+        role = 'admin';
+      }
+    }
+
+    // Normalize previewDeploy: tolerate null + missing inner fields so the
+    // response shape is stable regardless of DB state.
+    const pd = (proj.previewDeploy ?? {}) as Record<string, unknown>;
+    const previewDeploy = {
+      stagingUrl: (pd.stagingUrl as string | null | undefined) ?? null,
+      stagingApiUrl: (pd.stagingApiUrl as string | null | undefined) ?? null,
+      testingUrls: Array.isArray(pd.testingUrls) ? pd.testingUrls : [],
+      testCredentials: Array.isArray(pd.testCredentials) ? pd.testCredentials : [],
+    };
+
+    return {
+      project: {
+        id: proj.id,
+        slug: proj.slug,
+        name: proj.name,
+        description: proj.description,
+        ownerId: proj.ownerId,
+        role,
+        repoPath: proj.repoPath,
+        baseBranch: proj.baseBranch,
+        productionBranch: proj.productionBranch,
+        defaultDeviceId: proj.defaultDeviceId,
+        previewDeploy,
+        createdAt: proj.createdAt,
+      },
+    };
   },
 });
