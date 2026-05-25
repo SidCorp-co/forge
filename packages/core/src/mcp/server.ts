@@ -20,6 +20,7 @@ import {
   forgeMetricsAdminStepDurationsTool,
   forgeMetricsProjectStepDurationsTool,
 } from './tools/forge-metrics.js';
+import { forgeMyDevicesTool } from './tools/forge-my-devices.js';
 import {
   forgePipelineRunsCancelTool,
   forgePipelineRunsGetTool,
@@ -84,6 +85,9 @@ import type { McpContext } from './tools/lib.js';
  *    `forge_admin_projects.create`).
  *  - `forge_health` — server snapshot: db/queue/ws + last seed + active jobs
  *    (ISS-7). Device-token only.
+ *  - `forge_my_devices` — owner-scoped CRUD over the caller's own devices
+ *    (ISS-219). Mirrors GET /me/devices + PATCH/DELETE /devices/:id without
+ *    requiring a browser JWT.
  */
 /**
  * Tools that intrinsically require a paired device — they query `runners`
@@ -161,6 +165,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeAdminProjectsTool(ctx),
     forgeAdminRunnersTool(ctx),
     forgeAdminUsersTool(ctx),
+    forgeMyDevicesTool(ctx),
     forgeAdminHealthTool(ctx),
     forgeIssuesTool(ctx),
     forgeCommentsTool(ctx),
