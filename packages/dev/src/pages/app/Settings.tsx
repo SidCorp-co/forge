@@ -291,10 +291,23 @@ function PmAgentDeeplinkCard({ coreUrl }: { coreUrl: string }) {
 
 function PairDeviceCard() {
   const auth = useAuth();
-  return auth.deviceId ? <PairedDeviceCard /> : <UnpairedDeviceCard />;
+  // `manualOverride` lets the user bypass the auto-paired view and show the
+  // pair-code form even when auth.deviceId is set. Needed when the auto-pair
+  // assigned a device id whose row is not visible on the web (server-side
+  // failure during issueOrRotateDeviceToken silently swallowed), so the
+  // user can recover by minting + redeeming a code without re-signing-in.
+  const [manualOverride, setManualOverride] = useState(false);
+  if (auth.deviceId && !manualOverride) {
+    return <PairedDeviceCard onPairWithCode={() => setManualOverride(true)} />;
+  }
+  return (
+    <UnpairedDeviceCard
+      onCancel={auth.deviceId ? () => setManualOverride(false) : undefined}
+    />
+  );
 }
 
-function UnpairedDeviceCard() {
+function UnpairedDeviceCard({ onCancel }: { onCancel?: () => void } = {}) {
   const auth = useAuth();
   const deviceSettings = useAppStore((s) => s.deviceSettings);
   const [code, setCode] = useState("");
@@ -337,10 +350,23 @@ function UnpairedDeviceCard() {
 
   return (
     <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
-      <h3 className="text-sm font-semibold text-gray-900">Pair Device</h3>
-      <p className="mt-0.5 text-xs text-gray-500">
-        Paste the pairing code from <code className="rounded bg-white px-1 text-[10px]">POST /api/projects/&lt;id&gt;/devices/pairing-codes</code>.
-      </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900">Pair Device</h3>
+          <p className="mt-0.5 text-xs text-gray-500">
+            Paste the pairing code from <code className="rounded bg-white px-1 text-[10px]">POST /api/projects/&lt;id&gt;/devices/pairing-codes</code>.
+          </p>
+        </div>
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="text-xs font-medium text-gray-500 hover:text-gray-700 hover:underline"
+          >
+            Cancel
+          </button>
+        )}
+      </div>
       <div className="mt-2 flex flex-col gap-2">
         <FormInput
           type="text"
@@ -372,7 +398,7 @@ function UnpairedDeviceCard() {
   );
 }
 
-function PairedDeviceCard() {
+function PairedDeviceCard({ onPairWithCode }: { onPairWithCode?: () => void } = {}) {
   const auth = useAuth();
   const logout = useLogout();
   const deviceSettings = useAppStore((s) => s.deviceSettings);
@@ -476,6 +502,21 @@ function PairedDeviceCard() {
           Revoke this device
         </button>
       </div>
+
+      {onPairWithCode && (
+        <div className="mt-3 border-t border-green-200/60 pt-2">
+          <p className="text-[11px] text-gray-600">
+            Device not showing up on the web?{" "}
+            <button
+              type="button"
+              onClick={onPairWithCode}
+              className="font-medium text-blue-600 hover:underline"
+            >
+              Pair with a code instead
+            </button>
+          </p>
+        </div>
+      )}
 
       {confirming && (
         <div className="mt-3 rounded border border-red-200 bg-white p-3">
