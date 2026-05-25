@@ -55,3 +55,39 @@ describe('PAT scrubbing (ISS-150)', () => {
     expect('forge_pat_prd_a'.match(PAT_STRING_PATTERN)).not.toBeNull();
   });
 });
+
+describe('testCredentials scrubbing (ISS-225)', () => {
+  it('redacts nested previewDeploy.testCredentials without touching siblings', () => {
+    const event = {
+      request: {
+        data: {
+          previewDeploy: {
+            stagingUrl: 'https://stg.example.com',
+            testCredentials: [
+              { label: 'qa', username: 'qa@x', password: 'p4ss' },
+            ],
+          },
+        },
+      },
+    };
+    scrubSentryEvent(event);
+    const data = event.request.data as {
+      previewDeploy: { stagingUrl: string; testCredentials: unknown };
+    };
+    expect(data.previewDeploy.testCredentials).toBe(FILTERED);
+    expect(data.previewDeploy.stagingUrl).toBe('https://stg.example.com');
+  });
+
+  it('redacts top-level testCredentials inside a JSON-stringified body', () => {
+    const event = {
+      request: {
+        data: JSON.stringify({ testCredentials: [{ password: 'p' }] }),
+      },
+    };
+    scrubSentryEvent(event);
+    const parsed = JSON.parse(event.request.data as string) as {
+      testCredentials: unknown;
+    };
+    expect(parsed.testCredentials).toBe(FILTERED);
+  });
+});

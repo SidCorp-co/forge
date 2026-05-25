@@ -22,9 +22,12 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
-const { forgeProjectsCreateTool, forgeProjectsListTool, forgeProjectsUpdateTool } = await import(
-  './forge-projects.js'
-);
+const {
+  forgeProjectsCreateTool,
+  forgeProjectsGetTool,
+  forgeProjectsListTool,
+  forgeProjectsUpdateTool,
+} = await import('./forge-projects.js');
 
 const OWNER_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_OWNER_ID = '22222222-2222-4222-8222-222222222222';
@@ -609,5 +612,212 @@ describe('forge_projects.update', () => {
     ).rejects.toThrow(/patch must have at least one defined field/);
     expect(selectImpl).not.toHaveBeenCalled();
     expect(updateImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe('forge_projects.get', () => {
+  /**
+   * Handler issues queries in this fixed order:
+   *   1. SELECT project (always)
+   *   2. SELECT project_members (only when caller is NOT the primary owner)
+   *   3. SELECT users.isCeo (only when no member row was found)
+   *
+   * Each mock helper queues ONE `selectImpl` response, so tests must mirror
+   * that order exactly or the wrong `mockImplementationOnce` will resolve.
+   */
+  const CREATED_AT = new Date('2026-05-25T00:00:00.000Z');
+
+  const FULL_PROJECT_ROW = {
+    id: PROJECT_A,
+    slug: 'a',
+    name: 'A',
+    description: 'desc',
+    ownerId: OWNER_ID,
+    repoPath: '/srv/a',
+    baseBranch: 'main',
+    productionBranch: 'main',
+    defaultDeviceId: DEVICE_ID,
+    previewDeploy: {
+      stagingUrl: 'https://stg.example.com',
+      stagingApiUrl: 'https://api.stg.example.com',
+      testingUrls: ['https://test.example.com'],
+      testCredentials: [{ label: 'qa', username: 'qa@x', password: 'p4ss' }],
+    },
+    createdAt: CREATED_AT,
+  };
+
+  function mockProjectSelect(row: unknown | null) {
+    selectImpl.mockImplementationOnce(() => ({
+      from: () => ({
+        where: () => ({
+          limit: () => Promise.resolve(row === null ? [] : [row]),
+        }),
+      }),
+    }));
+  }
+
+  function mockMemberSelect(role: string | null) {
+    selectImpl.mockImplementationOnce(() => ({
+      from: () => ({
+        where: () => ({
+          limit: () => Promise.resolve(role === null ? [] : [{ role }]),
+        }),
+      }),
+    }));
+  }
+
+  function mockCeoSelect(isCeo: boolean) {
+    selectImpl.mockImplementationOnce(() => ({
+      from: () => ({
+        where: () => ({
+          limit: () => Promise.resolve([{ isCeo }]),
+        }),
+      }),
+    }));
+  }
+
+  it('owner reads own project — role=owner, full shape returned', async () => {
+    mockProjectSelect(FULL_PROJECT_ROW);
+    const tool = forgeProjectsGetTool(deviceCtx());
+    const res = (await tool.handler({ projectId: PROJECT_A })) as {
+      project: Record<string, unknown>;
+    };
+    expect(res.project.role).toBe('owner');
+    expect(res.project.id).toBe(PROJECT_A);
+    expect(res.project.repoPath).toBe('/srv/a');
+    expect(res.project.defaultDeviceId).toBe(DEVICE_ID);
+    // Member + CEO lookups must not fire — owner short-circuit.
+    expect(selectImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('admin-role member reads project', async () => {
+    mockProjectSelect({ ...FULL_PROJECT_ROW, ownerId: OTHER_OWNER_ID });
+    mockMemberSelect('admin');
+    const tool = forgeProjectsGetTool(deviceCtx());
+    const res = (await tool.handler({ projectId: PROJECT_A })) as {
+      project: { role: string };
+    };
+    expect(res.project.role).toBe('admin');
+    expect(selectImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('member-role member reads project', async () => {
+    mockProjectSelect({ ...FULL_PROJECT_ROW, ownerId: OTHER_OWNER_ID });
+    mockMemberSelect('member');
+    const tool = forgeProjectsGetTool(deviceCtx());
+    const res = (await tool.handler({ projectId: PROJECT_A })) as {
+      project: { role: string };
+    };
+    expect(res.project.role).toBe('member');
+  });
+
+  it('non-member non-CEO returns NOT_FOUND (no existence leak)', async () => {
+    mockProjectSelect({ ...FULL_PROJECT_ROW, ownerId: OTHER_OWNER_ID });
+    mockMemberSelect(null);
+    mockCeoSelect(false);
+    const tool = forgeProjectsGetTool(deviceCtx());
+    await expect(tool.handler({ projectId: PROJECT_A })).rejects.toThrow(
+      /NOT_FOUND: project not found or not accessible/,
+    );
+  });
+
+  it('CEO reads any project (non-member, non-owner) and surfaces role=admin', async () => {
+    mockProjectSelect({ ...FULL_PROJECT_ROW, ownerId: OTHER_OWNER_ID });
+    mockMemberSelect(null);
+    mockCeoSelect(true);
+    const tool = forgeProjectsGetTool(deviceCtx());
+    const res = (await tool.handler({ projectId: PROJECT_A })) as {
+      project: { role: string; id: string };
+    };
+    expect(res.project.role).toBe('admin');
+    expect(res.project.id).toBe(PROJECT_A);
+  });
+
+  it('non-existent project returns NOT_FOUND', async () => {
+    mockProjectSelect(null);
+    const tool = forgeProjectsGetTool(deviceCtx());
+    await expect(tool.handler({ projectId: PROJECT_A })).rejects.toThrow(
+      /NOT_FOUND/,
+    );
+  });
+
+  it('PAT without read scope is refused with FORBIDDEN_SCOPE before any DB lookup', async () => {
+    const tool = forgeProjectsGetTool(patCtx({ scopes: ['write'] }));
+    await expect(tool.handler({ projectId: PROJECT_A })).rejects.toThrow(
+      /FORBIDDEN_SCOPE: requires read scope/,
+    );
+    expect(selectImpl).not.toHaveBeenCalled();
+  });
+
+  it('PAT with allowlist miss returns NOT_FOUND without touching DB', async () => {
+    const tool = forgeProjectsGetTool(
+      patCtx({ scopes: ['read'], projectIds: [PROJECT_B] }),
+    );
+    await expect(tool.handler({ projectId: PROJECT_A })).rejects.toThrow(
+      /NOT_FOUND/,
+    );
+    expect(selectImpl).not.toHaveBeenCalled();
+  });
+
+  it('response shape excludes sensitive fields (agentConfig, webhookSecret, apiKey)', async () => {
+    // Simulate a project row where the SELECT happened to leak extra fields
+    // (defense-in-depth — the handler must drop anything not in the locked
+    // shape rather than spreading the row).
+    mockProjectSelect({
+      ...FULL_PROJECT_ROW,
+      agentConfig: { mcpServers: { secret: 'x' } },
+      webhookSecret: 'wh',
+      apiKey: 'fk_secret',
+    });
+    const tool = forgeProjectsGetTool(deviceCtx());
+    const res = (await tool.handler({ projectId: PROJECT_A })) as {
+      project: Record<string, unknown>;
+    };
+    const keys = Object.keys(res.project).sort();
+    expect(keys).toEqual(
+      [
+        'baseBranch',
+        'createdAt',
+        'defaultDeviceId',
+        'description',
+        'id',
+        'name',
+        'ownerId',
+        'previewDeploy',
+        'productionBranch',
+        'repoPath',
+        'role',
+        'slug',
+      ].sort(),
+    );
+    expect(res.project).not.toHaveProperty('agentConfig');
+    expect(res.project).not.toHaveProperty('webhookSecret');
+    expect(res.project).not.toHaveProperty('apiKey');
+  });
+
+  it('previewDeploy=null returns normalized defaults instead of crashing', async () => {
+    mockProjectSelect({ ...FULL_PROJECT_ROW, previewDeploy: null });
+    const tool = forgeProjectsGetTool(deviceCtx());
+    const res = (await tool.handler({ projectId: PROJECT_A })) as {
+      project: { previewDeploy: Record<string, unknown> };
+    };
+    expect(res.project.previewDeploy).toEqual({
+      stagingUrl: null,
+      stagingApiUrl: null,
+      testingUrls: [],
+      testCredentials: [],
+    });
+  });
+
+  it('rejects missing projectId with schema error', async () => {
+    const tool = forgeProjectsGetTool(deviceCtx());
+    await expect(tool.handler({} as never)).rejects.toThrow();
+    expect(selectImpl).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-uuid projectId with schema error', async () => {
+    const tool = forgeProjectsGetTool(deviceCtx());
+    await expect(tool.handler({ projectId: 'not-a-uuid' })).rejects.toThrow();
+    expect(selectImpl).not.toHaveBeenCalled();
   });
 });

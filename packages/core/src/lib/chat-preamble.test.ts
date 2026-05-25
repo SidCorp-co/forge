@@ -35,25 +35,32 @@ describe('buildPipelinePreambleStructured', () => {
     vi.clearAllMocks();
   });
 
-  it('returns rules + tools (2 blocks) when project has no branches', async () => {
+  it('returns rules + tools + project-context (3 blocks) when project has no branches', async () => {
     // loadProjectBranches catches a thrown select chain and returns null,
-    // which is the same path as "project row not found".
+    // which is the same path as "project row not found". The
+    // project-context block (ISS-225) is unconditional and uses only the
+    // projectId arg, so it appears even when branches are unknown.
     mockBranchSelect(new Error('no row'));
-
-    const built = await buildPipelinePreambleStructured('p1');
-    expect(built.blocks).toHaveLength(2);
-    expect(built.blocks.map((b) => b.id)).toEqual(['pipeline-rules', 'tool-reference']);
-  });
-
-  it('adds project-config block (3 blocks) when branches resolve', async () => {
-    mockBranchSelect([{ baseBranch: 'main', productionBranch: 'main' }]);
 
     const built = await buildPipelinePreambleStructured('p1');
     expect(built.blocks).toHaveLength(3);
     expect(built.blocks.map((b) => b.id)).toEqual([
       'pipeline-rules',
       'tool-reference',
+      'project-context',
+    ]);
+  });
+
+  it('adds project-config + project-context (4 blocks) when branches resolve', async () => {
+    mockBranchSelect([{ baseBranch: 'main', productionBranch: 'main' }]);
+
+    const built = await buildPipelinePreambleStructured('p1');
+    expect(built.blocks).toHaveLength(4);
+    expect(built.blocks.map((b) => b.id)).toEqual([
+      'pipeline-rules',
+      'tool-reference',
       'project-config',
+      'project-context',
     ]);
   });
 

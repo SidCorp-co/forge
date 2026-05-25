@@ -7,6 +7,7 @@
  *   1. PIPELINE_RULES        — process discipline (status LAST, branch, etc.)
  *   2. TOOL_REFERENCE        — MCP tool catalogue
  *   3. Project Config block  — baseBranch / productionBranch
+ *   4. Project Context block — projectId + hint to call forge_projects.get
  *
  * Per-state extras (operator-defined in `appConfig.pipeline.states[state].systemPrompt`):
  *   - mode `append` (default) — appended AFTER the static prefix; cache prefix
@@ -24,7 +25,12 @@ import { projects } from '../db/schema.js';
 import { estimateTokens } from '../lib/token-estimator.js';
 import type { SystemPromptOverrideConfig } from '../pipeline/pipeline-config-schema.js';
 
-export type PreambleBlockId = 'pipeline-rules' | 'tool-reference' | 'project-config' | 'state-extras';
+export type PreambleBlockId =
+  | 'pipeline-rules'
+  | 'tool-reference'
+  | 'project-config'
+  | 'project-context'
+  | 'state-extras';
 
 export interface PreambleBlock {
   id: PreambleBlockId;
@@ -83,6 +89,13 @@ const CHAT_NUDGE = `## Project Orientation
 You are working in a Forge-managed project. Forge MCP tools are available for project management — \`forge_issues\`, \`forge_comments\`, \`forge_config\`, \`forge_memory\`, \`forge_pm_*\`. Use them when the request relates to issues, tasks, status, or project memory.
 
 For codebase orientation, call \`forge_config\` with action \`get_knowledge\` before exploring with search tools — it returns pre-indexed context (architecture, key files, conventions).`;
+
+function formatProjectContext(projectId: string): string {
+  return `## Project Context
+- projectId: ${projectId}
+
+Call \`forge_projects.get\` with this id to retrieve repo paths, branches, staging URLs, and test credentials. Do NOT echo passwords in commits, PR descriptions, or tool output beyond the immediate authentication step.`;
+}
 
 function formatProjectConfig(
   baseBranch: string | null,
@@ -168,6 +181,14 @@ export async function buildPipelinePreambleStructured(
       body: formatProjectConfig(project.baseBranch, project.productionBranch),
     });
   }
+  // ISS-225 — inline the projectId so agents can call forge_projects.get
+  // without having to re-discover it. Placed AFTER project-config so the
+  // cache-friendly static prefix is unaffected; BEFORE state-extras so
+  // operator append overrides remain the last word.
+  sections.push({
+    id: 'project-context',
+    body: formatProjectContext(projectId),
+  });
   if (extras.length > 0) {
     sections.push({ id: 'state-extras', body: extras });
   }
