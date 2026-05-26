@@ -1,10 +1,10 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns, projectIntegrations } from '../db/schema.js';
 import { enqueueCoolifyDispatch } from '../integrations/queue.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
-import { setCurrentStep, setCurrentStepForOpenIssueRun } from './runs.js';
+import { setCurrentStepForce } from './runs.js';
 
 /**
  * Substep markers stamped onto pipelineRuns.currentStep so the UI / WS
@@ -46,7 +46,7 @@ export async function tryDispatchCoolifyRelease(args: {
       ),
     );
   if (rows.length === 0) {
-    await setCurrentStep(runId, RELEASE_DEPLOY_SKIPPED);
+    await setCurrentStepForce(runId, RELEASE_DEPLOY_SKIPPED);
     return { dispatched: false, pendingHumanConfirm: false, integrationIds: [], reason: 'no-integration' };
   }
 
@@ -65,8 +65,7 @@ export async function tryDispatchCoolifyRelease(args: {
       }
     }
 
-    await setCurrentStep(runId, RELEASE_DEPLOY_IN_FLIGHT);
-    if (issueId) await setCurrentStepForOpenIssueRun(issueId, RELEASE_DEPLOY_IN_FLIGHT);
+    await setCurrentStepForce(runId, RELEASE_DEPLOY_IN_FLIGHT);
     await enqueueCoolifyDispatch({
       jobKind: 'coolify.dispatch',
       integrationId: row.id,
@@ -138,8 +137,7 @@ async function markPendingHumanConfirm(input: {
     })
     .where(eq(pipelineRuns.id, input.runId));
 
-  await setCurrentStep(input.runId, RELEASE_DEPLOY_PENDING);
-  if (input.issueId) await setCurrentStepForOpenIssueRun(input.issueId, RELEASE_DEPLOY_PENDING);
+  await setCurrentStepForce(input.runId, RELEASE_DEPLOY_PENDING);
 
   logger.info(
     { integrationId: input.integrationId, runId: input.runId },
@@ -148,11 +146,15 @@ async function markPendingHumanConfirm(input: {
 }
 
 async function getProdGateState(integrationId: string): Promise<ProdGateState | null> {
-  // Find the most recent paused/running run that has a gate for this integration.
+  // Find the most recent run (regardless of status) that has a gate for this
+  // integration. The release flow closes the issue-run before the deploy hook
+  // fires, so we must look at completed runs too — otherwise the prod gate
+  // would never be observable post-merge.
   const rows = await db
     .select({ id: pipelineRuns.id, metadata: pipelineRuns.metadata })
     .from(pipelineRuns)
-    .where(inArray(pipelineRuns.status, ['running', 'paused']));
+    .orderBy(desc(pipelineRuns.updatedAt))
+    .limit(100);
   for (const r of rows) {
     const md = (r.metadata ?? {}) as Record<string, unknown>;
     const gates = (md[GATE_METADATA_KEY] as Record<string, ProdGateState>) ?? {};
@@ -201,8 +203,7 @@ export async function confirmPendingProdDeploy(
     .set({ metadata: { ...md, [GATE_METADATA_KEY]: gates }, updatedAt: new Date() })
     .where(eq(pipelineRuns.id, run.id));
 
-  await setCurrentStep(run.id, RELEASE_DEPLOY_IN_FLIGHT);
-  if (gate.issueId) await setCurrentStepForOpenIssueRun(gate.issueId, RELEASE_DEPLOY_IN_FLIGHT);
+  await setCurrentStepForce(run.id, RELEASE_DEPLOY_IN_FLIGHT);
 
   await enqueueCoolifyDispatch({
     jobKind: 'coolify.dispatch',
@@ -231,23 +232,27 @@ export function registerReleaseCompletedSubscriber(
   hooks.on('jobCompleted', async (payload) => {
     if (payload.type !== 'release') return;
 
-    // Locate the open issue-run so we can stamp + dispatch against it.
+    // Locate the most recent issue-run, regardless of status. By the time
+    // jobCompleted fires for a `release` job, the issue state-machine has
+    // already transitioned the issue to a terminal status (`released` /
+    // `closed`) and closed the run (see issues/apply-transition.ts). So
+    // filtering on ['running','paused'] would silently skip every deploy.
+    // The runId is used purely as a tracking key for the deploy_uuid → run
+    // mapping; downstream helpers (setCurrentStep, closeRun) are no-ops on
+    // terminal runs, so taking a closed run here is safe.
     if (!payload.issueId) return;
     const [run] = await db
       .select({ id: pipelineRuns.id })
       .from(pipelineRuns)
       .where(
-        and(
-          eq(pipelineRuns.issueId, payload.issueId),
-          eq(pipelineRuns.kind, 'issue'),
-          inArray(pipelineRuns.status, ['running', 'paused']),
-        ),
+        and(eq(pipelineRuns.issueId, payload.issueId), eq(pipelineRuns.kind, 'issue')),
       )
+      .orderBy(desc(pipelineRuns.createdAt))
       .limit(1);
     if (!run) {
       logger.debug(
         { jobId: payload.jobId, issueId: payload.issueId },
-        'release.deploy hook: no open run — skipping coolify dispatch',
+        'release.deploy hook: no run found for issue — skipping coolify dispatch',
       );
       return;
     }

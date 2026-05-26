@@ -143,8 +143,11 @@ integrationsRoutes.post(
       });
       return c.json({ integration: summarize(created), integrationSecret }, 201);
     } catch (err) {
+      // Postgres unique-violation error code is the durable signal here;
+      // fall back to message scan only when the driver hides the code.
+      const code = (err as { code?: string } | null)?.code;
       const msg = err instanceof Error ? err.message : String(err);
-      if (/duplicate key|unique/.test(msg)) {
+      if (code === '23505' || /duplicate key|unique/.test(msg)) {
         throw new HTTPException(409, {
           message: 'integration already exists for this provider+environment',
           cause: { code: 'ALREADY_EXISTS' },
@@ -263,6 +266,22 @@ integrationsRoutes.post('/:projectId/integrations/:id/rollback', async (c) => {
     });
   }
   return c.json(result);
+});
+
+integrationsRoutes.post('/:projectId/integrations/:id/rotate-secret', async (c) => {
+  const projectId = c.req.param('projectId');
+  const id = c.req.param('id');
+  const userId = c.get('userId');
+  const role = await assertProjectMember(projectId, userId);
+  assertAdmin(role);
+
+  const existing = await findById(id);
+  if (!existing || existing.projectId !== projectId) throw notFound();
+
+  const newSecret = `whsec_${randomBytes(24).toString('hex')}`;
+  const updated = await updateIntegration(id, { integrationSecret: newSecret });
+  if (!updated) throw notFound();
+  return c.json({ integration: summarize(updated), integrationSecret: newSecret });
 });
 
 integrationsRoutes.post('/:projectId/integrations/:id/confirm-prod-deploy', async (c) => {

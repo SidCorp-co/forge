@@ -3,7 +3,7 @@ import { db } from '../../db/client.js';
 import { integrationDeliveries } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { isSentryEnabled, Sentry } from '../../observability/sentry.js';
-import { closeRun, setCurrentStep } from '../../pipeline/runs.js';
+import { closeRun, setCurrentStepForce } from '../../pipeline/runs.js';
 import { verifyHmacSignature } from '../../webhooks/hmac.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
 import { getAdapter, registerAdapter } from '../registry.js';
@@ -226,18 +226,21 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
       return { deliveryId, actions: 0 };
     }
 
+    // The issue state-machine closes the run before this point, so we stamp
+    // currentStep with the forced variant. closeRun is still called for the
+    // edge case where the run is somehow still open (e.g. webhook arrives
+    // before the release skill finalises the issue transition).
     let actions = 0;
     if (payload.status === 'success' || payload.event === 'deploy.succeeded') {
-      await setCurrentStep(runId, 'release.deploy.done');
+      await setCurrentStepForce(runId, 'release.deploy.done');
       await closeRun(runId, 'completed');
       actions++;
     } else if (payload.status === 'failed' || payload.event === 'deploy.failed') {
-      await setCurrentStep(runId, 'release.deploy.failed');
+      await setCurrentStepForce(runId, 'release.deploy.failed');
       await closeRun(runId, 'failed');
       actions++;
     } else {
-      // in_progress / other intermediate events — just stamp the step.
-      await setCurrentStep(runId, `release.deploy.${payload.status ?? 'progress'}`);
+      await setCurrentStepForce(runId, `release.deploy.${payload.status ?? 'progress'}`);
       actions++;
     }
 

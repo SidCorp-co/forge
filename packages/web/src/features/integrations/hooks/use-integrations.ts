@@ -64,3 +64,11 @@ export function useConfirmProdDeploy(projectId: string) {
     onSuccess: () => qc.invalidateQueries({ queryKey: integrationKeys.list(projectId) }),
   });
 }
+
+export function useRotateIntegrationSecret(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => integrationsApi.rotateSecret(projectId, id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: integrationKeys.list(projectId) }),
+  });
+}

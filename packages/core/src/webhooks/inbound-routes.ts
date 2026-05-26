@@ -10,6 +10,15 @@ import { logger } from '../logger.js';
 import { handleGitHubEvent } from './github-adapter.js';
 import { verifyHmacSignature } from './hmac.js';
 
+// Coolify-style provider signature headers, in priority order. The router
+// uses these to disambiguate which integration row (e.g. staging vs prod)
+// a webhook belongs to when multiple rows are active for the same provider.
+const PROVIDER_SIGNATURE_HEADERS = [
+  'x-coolify-signature-256',
+  'x-hub-signature-256',
+  'x-forge-signature-256',
+] as const;
+
 const badRequest = (details: unknown, code = 'BAD_REQUEST') =>
   new HTTPException(400, { message: 'Invalid input', cause: { code, details } });
 const unauthorized = (code: string) =>
@@ -48,13 +57,32 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
     const adapter = getAdapter(map.provider);
     if (!adapter) throw badRequest({ provider: map.provider }, 'ADAPTER_NOT_REGISTERED');
 
-    const integrationRow = await findActiveIntegration(project.id, map.provider);
-    if (!integrationRow) {
+    // Multi-env disambiguation: every active integration row for this
+    // provider is a candidate. We verify the inbound signature against each
+    // row's own integrationSecret and dispatch on the one that matches.
+    // This is the only way to tell e.g. a staging-Coolify webhook apart from
+    // a prod-Coolify webhook when both rows exist for the same project.
+    const candidateRows = await findActiveIntegrations(project.id, map.provider);
+    if (candidateRows.length === 0) {
       throw badRequest({ provider: map.provider }, 'INTEGRATION_NOT_CONFIGURED');
     }
-    if (!integrationRow.integrationSecret) {
-      throw badRequest({ provider: map.provider }, 'INTEGRATION_SECRET_MISSING');
+
+    const signatureHeader = PROVIDER_SIGNATURE_HEADERS.map((h) => c.req.header(h)).find(
+      (v): v is string => typeof v === 'string' && v.length > 0,
+    );
+    if (!signatureHeader) {
+      throw unauthorized('MISSING_SIGNATURE');
     }
+
+    const integrationRow = candidateRows.find(
+      (row) =>
+        row.integrationSecret !== null &&
+        verifyHmacSignature(row.integrationSecret, rawBody, signatureHeader),
+    );
+    if (!integrationRow) {
+      throw unauthorized('INVALID_SIGNATURE');
+    }
+
     let parsed: unknown;
     try {
       parsed = rawBody.length > 0 ? JSON.parse(rawBody) : {};
@@ -71,6 +99,7 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
       return c.json({
         accepted: true,
         handler: map.provider,
+        environment: integrationRow.environment,
         deliveryId: result.deliveryId,
         actions: result.actions,
       });
@@ -78,7 +107,7 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
       const message = err instanceof Error ? err.message : 'unknown error';
       if (/signature/i.test(message)) throw unauthorized('INVALID_SIGNATURE');
       logger.error(
-        { err, slug, provider: map.provider },
+        { err, slug, provider: map.provider, integrationId: integrationRow.id },
         'integration adapter: handler threw',
       );
       throw new HTTPException(500, {
@@ -129,8 +158,8 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
   return c.json({ accepted: true, handler: 'generic', actions: 0 });
 });
 
-async function findActiveIntegration(projectId: string, provider: IntegrationProvider) {
-  const rows = await db
+async function findActiveIntegrations(projectId: string, provider: IntegrationProvider) {
+  return db
     .select()
     .from(projectIntegrations)
     .where(
@@ -139,9 +168,7 @@ async function findActiveIntegration(projectId: string, provider: IntegrationPro
         eq(projectIntegrations.provider, provider),
         eq(projectIntegrations.active, true),
       ),
-    )
-    .limit(1);
-  return rows[0] ?? null;
+    );
 }
 
 function collectHeaders(headers: Headers): Record<string, string | undefined> {

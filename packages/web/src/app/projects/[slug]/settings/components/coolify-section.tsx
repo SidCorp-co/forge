@@ -9,6 +9,7 @@ import {
   useDeleteIntegration,
   useIntegrations,
   useRollbackIntegration,
+  useRotateIntegrationSecret,
   useTestIntegration,
   useUpdateIntegration,
 } from '@/features/integrations/hooks/use-integrations';
@@ -98,6 +99,7 @@ function EnvironmentPanel({ projectId, environment, existing, onSaved }: EnvPane
   const test = useTestIntegration(projectId);
   const rollback = useRollbackIntegration(projectId);
   const confirmProd = useConfirmProdDeploy(projectId);
+  const rotateSecret = useRotateIntegrationSecret(projectId);
 
   const [baseUrl, setBaseUrl] = useState(existing?.config.baseUrl ?? '');
   const [resourceUuid, setResourceUuid] = useState(existing?.config.resourceUuid ?? '');
@@ -105,6 +107,9 @@ function EnvironmentPanel({ projectId, environment, existing, onSaved }: EnvPane
   const [apiToken, setApiToken] = useState('');
   const [testResult, setTestResult] = useState<{ status: string; message?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Returned exactly once by POST /integrations and POST .../rotate-secret.
+  // The server never re-emits it, so we capture and show it inline.
+  const [revealedSecret, setRevealedSecret] = useState<string | null>(null);
 
   const isProd = environment === 'prod';
   const badge = badgeFor(existing);
@@ -112,6 +117,7 @@ function EnvironmentPanel({ projectId, environment, existing, onSaved }: EnvPane
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setRevealedSecret(null);
     try {
       if (existing) {
         const patch: Parameters<typeof update.mutateAsync>[0]['body'] = {
@@ -126,17 +132,40 @@ function EnvironmentPanel({ projectId, environment, existing, onSaved }: EnvPane
           setError('API token is required for the first save');
           return;
         }
-        await create.mutateAsync({
+        const result = await create.mutateAsync({
           provider: 'coolify',
           environment,
           config: { baseUrl, resourceUuid, branch },
           secrets: { apiToken },
         });
+        // Surface the auto-minted HMAC secret — the operator must paste it
+        // into Coolify's webhook settings or the inbound callback fails sig
+        // verification. Server returns it once at create time only.
+        setRevealedSecret(result.integrationSecret);
       }
       setApiToken('');
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'save failed');
+    }
+  }
+
+  async function handleRotateSecret() {
+    if (!existing) return;
+    if (
+      !confirm(
+        `Rotate the inbound webhook secret for ${environment}? You will need to update Coolify's webhook settings with the new value.`,
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    try {
+      const result = await rotateSecret.mutateAsync(existing.id);
+      setRevealedSecret(result.integrationSecret);
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'rotate failed');
     }
   }
 
@@ -270,6 +299,16 @@ function EnvironmentPanel({ projectId, environment, existing, onSaved }: EnvPane
             <Button
               type="button"
               variant="secondary"
+              onClick={handleRotateSecret}
+              disabled={rotateSecret.isPending}
+            >
+              Rotate webhook secret
+            </Button>
+          )}
+          {existing && (
+            <Button
+              type="button"
+              variant="secondary"
               onClick={handleDelete}
               className="text-danger"
             >
@@ -277,6 +316,17 @@ function EnvironmentPanel({ projectId, environment, existing, onSaved }: EnvPane
             </Button>
           )}
         </div>
+
+        {revealedSecret && (
+          <SecretRevealBanner
+            secret={revealedSecret}
+            onDismiss={() => setRevealedSecret(null)}
+          />
+        )}
+
+        {existing && (
+          <WebhookHint integrationSecretSet={existing.integrationSecretSet} />
+        )}
 
         {testResult && (
           <div
@@ -321,6 +371,74 @@ function ProdConfirmBanner({ integration, onConfirm }: BannerProps) {
         Confirm production deploy
       </Button>
       <div className="font-mono text-[10px] text-outline">integration: {integration.id}</div>
+    </div>
+  );
+}
+
+function SecretRevealBanner({
+  secret,
+  onDismiss,
+}: {
+  secret: string;
+  onDismiss: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(secret);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard may be unavailable (insecure context); leave secret on
+      // screen for manual copy.
+    }
+  }
+  return (
+    <div
+      className="rounded-sm border border-warning/40 bg-warning/10 p-3 text-xs space-y-2"
+      data-testid="coolify-secret-banner"
+    >
+      <div className="font-bold uppercase tracking-wider text-warning">
+        Webhook signing secret — shown once
+      </div>
+      <div className="text-on-surface-variant">
+        Copy this value into Coolify&apos;s webhook settings as the HMAC secret. Forge
+        will not show it again — rotate to issue a new one.
+      </div>
+      <code className="block break-all rounded-sm bg-surface-container p-2 font-mono text-[11px]">
+        {secret}
+      </code>
+      <div className="flex gap-2">
+        <Button type="button" size="sm" onClick={handleCopy}>
+          {copied ? 'Copied' : 'Copy'}
+        </Button>
+        <Button type="button" size="sm" variant="secondary" onClick={onDismiss}>
+          Dismiss
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function WebhookHint({ integrationSecretSet }: { integrationSecretSet: boolean }) {
+  return (
+    <div className="rounded-sm border border-outline-variant/20 bg-surface-container/40 p-3 text-xs space-y-1 text-on-surface-variant">
+      <div className="font-bold uppercase tracking-wider text-outline">
+        Inbound webhook
+      </div>
+      <div>
+        Point Coolify at: <code className="font-mono">/api/webhooks/in/&lt;project-slug&gt;</code>
+      </div>
+      <div>
+        Signature header: <code className="font-mono">X-Coolify-Signature-256</code>{' '}
+        (sha256=…)
+      </div>
+      {!integrationSecretSet && (
+        <div className="text-warning">
+          Signing secret missing — save this integration to mint one, then paste it into
+          Coolify.
+        </div>
+      )}
     </div>
   );
 }

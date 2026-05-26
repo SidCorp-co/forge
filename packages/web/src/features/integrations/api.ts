@@ -45,6 +45,12 @@ export const integrationsApi = {
       { method: 'POST' },
     ),
 
+  rotateSecret: (projectId: string, id: string) =>
+    apiClient<{ integration: IntegrationSummary; integrationSecret: string }>(
+      `/projects/${projectId}/integrations/${id}/rotate-secret`,
+      { method: 'POST' },
+    ),
+
   deliveries: (projectId: string, id: string) =>
     apiClient<{ items: IntegrationDelivery[] }>(
       `/projects/${projectId}/integrations/${id}/deliveries`,
