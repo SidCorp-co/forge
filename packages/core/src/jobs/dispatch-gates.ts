@@ -82,15 +82,14 @@ const PASS: GateResult = { pass: true };
  *  setting `pipelineConfig.maxConcurrentIssues` explicitly on the project. */
 export const DEFAULT_MAX_CONCURRENT_ISSUES = 1;
 
-/** Default per-runner cap when `runners.capabilities.maxConcurrent` is unset. */
-const RUNNER_DEFAULT_CONCURRENCY: Record<string, number> = {
-  // Desktop Tauri runner spawns Claude CLI processes serially in practice;
-  // cap=1 reflects measured throughput. Operators can override via
-  // runners.capabilities.maxConcurrent if their environment supports parallel.
-  'claude-code': 1,
-  antigravity: 5,
-};
-const RUNNER_DEFAULT_FALLBACK = 1;
+/**
+ * ISS-232 Phase 2 — runner cap is unified to 1 across every runner type.
+ * The per-runner `capabilities.maxConcurrent` override is dropped (it was
+ * unused outside synthetic tests and the antigravity-as-load-balancer
+ * path the v2 spec replaces). Keeping the constant exported so telemetry
+ * + tests stay decoupled from the in-CTE literal.
+ */
+export const RUNNER_CAP_PER_RUNNER = 1;
 
 /**
  * Runner ↔ job-type capability gate. Sourced from the pipeline registry
@@ -192,18 +191,13 @@ export async function checkLayer4RunnerFull(
   options?: { excludeJobId?: string },
 ): Promise<GateResult> {
   const [runner] = await db
-    .select({ type: runners.type, capabilities: runners.capabilities })
+    .select({ type: runners.type })
     .from(runners)
     .where(eq(runners.id, runnerId))
     .limit(1);
   if (!runner) return PASS; // Runner vanished; let the dispatcher hit its own no-runner branch.
 
-  const caps = (runner.capabilities ?? {}) as Record<string, unknown>;
-  const cap =
-    typeof caps.maxConcurrent === 'number' && caps.maxConcurrent > 0
-      ? caps.maxConcurrent
-      : (RUNNER_DEFAULT_CONCURRENCY[runner.type] ?? RUNNER_DEFAULT_FALLBACK);
-
+  const cap = RUNNER_CAP_PER_RUNNER;
   const rows = await db.execute<{ count: string }>(sql`
     SELECT COUNT(*)::text AS count
     FROM jobs
@@ -276,28 +270,35 @@ function buildBarrierFragments(args: {
 }): BarrierFragments {
   const { projectIdRef, livenessSeconds } = args;
 
-  // running_ids: every issue currently holding a slot, either via an
-  // in-flight agent_session OR via a queued job sitting in retry cooldown.
-  // Without the cooldown UNION, a worker-wide failure (session/usage limit,
-  // provider 429 with a long Retry-After) would release the slot during the
-  // cooldown window, letting unrelated issues dispatch and burn the same
-  // limit. The L3 cap now treats "issue is retrying" as "issue is busy" —
-  // strict per-cap serialization until the failing issue resolves or the
-  // operator cancels it.
+  // ISS-232 Phase 2 — `running_ids` is sourced exclusively from `jobs`
+  // (queued | dispatched | running). The previous UNION with
+  // `agent_sessions` mixed concerns: agent_session rows lag the job
+  // lifecycle, so an in-flight job whose session row hadn't landed yet
+  // (or whose session had failed-and-rebooted) was double-counted in
+  // one direction, under-counted in the other. The jobs table is the
+  // authoritative ledger — every dispatched job has a row, every retry
+  // burst is captured by `status='queued' AND retry_after_at > now()`.
+  // Issues with a queued retry-cooldown job still hold their slot so a
+  // worker-wide rate-limit can't release it to an unrelated issue.
+  //
+  // `fresh_capable_runners` lost the per-runner `maxConcurrent` override
+  // and the antigravity 5-slot case branch — cap is hardcoded to 1 for
+  // every runner type (claude-code processes Claude CLI serially; the
+  // antigravity exception was load-balance-by-capacity, which the v2
+  // spec replaces with primary-pinned selection).
   const ctes = sql`running_ids AS (
-      SELECT DISTINCT (metadata->>'issueId') AS issue_id
-      FROM agent_sessions
-      WHERE project_id = ${projectIdRef}
-        AND status IN ('queued','running')
-        AND (metadata->>'issueId') IS NOT NULL
-      UNION
-      SELECT DISTINCT issue_id::text
+      SELECT DISTINCT issue_id::text AS issue_id
       FROM jobs
       WHERE project_id = ${projectIdRef}
-        AND status = 'queued'
-        AND retry_after_at IS NOT NULL
-        AND retry_after_at > now()
         AND issue_id IS NOT NULL
+        AND (
+          status IN ('dispatched','running')
+          OR (
+            status = 'queued'
+            AND retry_after_at IS NOT NULL
+            AND retry_after_at > now()
+          )
+        )
     ),
     runner_load AS (
       SELECT runner_id, COUNT(*)::int AS in_flight
@@ -308,10 +309,7 @@ function buildBarrierFragments(args: {
     ),
     fresh_capable_runners AS (
       SELECT r.id,
-             COALESCE(
-               (r.capabilities->>'maxConcurrent')::int,
-               CASE r.type WHEN 'antigravity' THEN 5 ELSE 1 END
-             ) AS cap,
+             1 AS cap,
              COALESCE(rl.in_flight, 0) AS in_flight
       FROM runners r
       LEFT JOIN runner_load rl ON rl.runner_id = r.id

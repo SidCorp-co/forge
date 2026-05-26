@@ -243,9 +243,10 @@ function skillFromSessionMetadata(metadata: Record<string, unknown> | null): str
   return '';
 }
 
-function runnerDefaultConcurrency(runnerType: string): number {
-  if (runnerType === 'claude-code') return 1;
-  if (runnerType === 'antigravity') return 5;
+function runnerDefaultConcurrency(_runnerType: string): number {
+  // ISS-232 Phase 2 — runner cap is unified to 1 across all types. The
+  // antigravity 5-slot branch is gone; antigravity-as-load-balancer is
+  // replaced by primary-pinned selection (see runners/select.ts).
   return 1;
 }
 

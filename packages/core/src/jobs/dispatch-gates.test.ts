@@ -86,25 +86,27 @@ describe('checkLayer4RunnerFull', () => {
     expect(r.pass).toBe(true);
   });
 
-  it('passes when in-flight < cap', async () => {
-    runnerCapsOnce({ type: 'claude-code', capabilities: { maxConcurrent: 3 } });
-    dbExecute.mockResolvedValueOnce([{ count: '1' }]);
+  it('passes when in-flight < cap=1', async () => {
+    runnerCapsOnce({ type: 'claude-code', capabilities: {} });
+    dbExecute.mockResolvedValueOnce([{ count: '0' }]);
     const r = await checkLayer4RunnerFull('r1');
     expect(r.pass).toBe(true);
   });
 
-  it('fails when in-flight reaches cap', async () => {
-    runnerCapsOnce({ type: 'claude-code', capabilities: { maxConcurrent: 2 } });
-    dbExecute.mockResolvedValueOnce([{ count: '2' }]);
+  it('fails when in-flight reaches cap=1', async () => {
+    runnerCapsOnce({ type: 'claude-code', capabilities: {} });
+    dbExecute.mockResolvedValueOnce([{ count: '1' }]);
     const r = await checkLayer4RunnerFull('r1');
     expect(r).toMatchObject({ pass: false, reason: 'runner_full' });
   });
 
-  it('uses antigravity default of 5 when capability missing', async () => {
-    runnerCapsOnce({ type: 'antigravity', capabilities: {} });
-    dbExecute.mockResolvedValueOnce([{ count: '4' }]);
+  // ISS-232 Phase 2 — antigravity cap collapsed to 1 (was 5). The
+  // capabilities.maxConcurrent override was also removed; cap is hardcoded.
+  it('uses cap=1 for antigravity (no longer 5)', async () => {
+    runnerCapsOnce({ type: 'antigravity', capabilities: { maxConcurrent: 9 } });
+    dbExecute.mockResolvedValueOnce([{ count: '1' }]);
     const r = await checkLayer4RunnerFull('r1');
-    expect(r.pass).toBe(true);
+    expect(r).toMatchObject({ pass: false, reason: 'runner_full' });
   });
 });
 
@@ -255,17 +257,44 @@ describe('pickNextDispatchableJobForProject', () => {
   // cooldown window. Without this, a worker-wide failure (session/usage
   // limit, provider 429 with long Retry-After) lets the next queued issue
   // hit the same limit and fail too.
-  it('running_ids CTE includes cooldown-pending retries so other issues are gated', async () => {
+  // ISS-232 Phase 2 — `running_ids` is now sourced exclusively from
+  // `jobs`. Dispatched/running jobs hold the slot directly; queued jobs
+  // with `retry_after_at` in the future also hold it so a worker-wide
+  // failure (session/usage limit, provider 429) can't release the slot
+  // for an unrelated issue during the cooldown window. The prior
+  // `agent_sessions` UNION is dropped — the jobs table is the
+  // authoritative ledger.
+  it('running_ids CTE is sourced from jobs (queued retry-pending + dispatched + running) — no agent_sessions UNION', async () => {
     mockProjectAgentConfigOnce(null);
     dbExecute.mockResolvedValueOnce([]);
     await pickNextDispatchableJobForProject('p1');
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
 
-    // The CTE must UNION cooldown-pending rows alongside the agent_session
-    // membership rows; the cooldown-pending branch reads from `jobs`
-    // (scoped to the same project as the surrounding picker query) and
-    // selects rows whose `retry_after_at` is still in the future.
-    expect(text).toMatch(/WITH\s+running_ids\s+AS[\s\S]+UNION[\s\S]+FROM\s+jobs[\s\S]+retry_after_at\s+IS\s+NOT\s+NULL[\s\S]+retry_after_at\s*>\s*now\(\)/i);
+    // Branch 1: dispatched/running jobs counted.
+    expect(text).toMatch(
+      /running_ids\s+AS\s*\([\s\S]+FROM\s+jobs[\s\S]+status\s+IN\s*\(\s*'dispatched'\s*,\s*'running'\s*\)/,
+    );
+    // Branch 2: queued + retry_after_at in future still counted.
+    expect(text).toMatch(
+      /retry_after_at\s+IS\s+NOT\s+NULL[\s\S]+retry_after_at\s*>\s*now\(\)/,
+    );
+    // No agent_sessions in the CTE — the picker still uses agent_sessions
+    // elsewhere (L1 issueBusySession), but not for running_ids.
+    const cteMatch = text.match(/running_ids\s+AS\s*\(([\s\S]*?)\)\s*,/);
+    expect(cteMatch).not.toBeNull();
+    expect(cteMatch?.[1] ?? '').not.toMatch(/agent_sessions/);
+  });
+
+  // ISS-232 Phase 2 — runner cap unified to 1; `capabilities.maxConcurrent`
+  // override + antigravity 5-slot CASE removed.
+  it('fresh_capable_runners CTE uses cap=1 (no maxConcurrent override, no antigravity CASE)', async () => {
+    mockProjectAgentConfigOnce(null);
+    dbExecute.mockResolvedValueOnce([]);
+    await pickNextDispatchableJobForProject('p1');
+    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+    expect(text).toMatch(/fresh_capable_runners\s+AS\s*\([\s\S]+1\s+AS\s+cap/);
+    expect(text).not.toMatch(/capabilities->>\s*'maxConcurrent'/);
+    expect(text).not.toMatch(/CASE\s+r\.type/);
   });
 });
 
@@ -468,9 +497,11 @@ describe('assertDispatchable', () => {
     await assertDispatchable('j-parity');
     const asserterSql = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
 
+    // ISS-232 Phase 2 — `running_ids` is sourced from `jobs` only; the
+    // prior `agent_sessions metadata->>'issueId'` membership UNION is gone.
     const cteSignatures = [
       /running_ids\s+AS\s*\(/,
-      /SELECT\s+DISTINCT\s+\(metadata->>'issueId'\)\s+AS\s+issue_id/,
+      /SELECT\s+DISTINCT\s+issue_id::text\s+AS\s+issue_id\s+FROM\s+jobs/,
       /retry_after_at\s+IS\s+NOT\s+NULL\s+AND\s+retry_after_at\s*>\s*now\(\)/,
       /runner_load\s+AS\s*\(/,
       /fresh_capable_runners\s+AS\s*\(/,
