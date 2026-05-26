@@ -251,6 +251,9 @@ export async function sweepExpiredHolds(
   const projectClause = scope.projectId
     ? sql`AND issues.project_id = ${scope.projectId}`
     : sql``;
+  // postgres-js driver rejects raw Date params (Buffer.byteLength expects
+  // string/Buffer/ArrayBuffer). Serialise to ISO before binding.
+  const nowIso = now.toISOString();
   const rows = await db.execute<{
     id: string;
     project_id: string;
@@ -261,10 +264,10 @@ export async function sweepExpiredHolds(
       UPDATE issues
       SET manual_hold = false,
           manual_hold_until = NULL,
-          updated_at = ${now}
+          updated_at = ${nowIso}
       WHERE manual_hold = true
         AND manual_hold_until IS NOT NULL
-        AND manual_hold_until < ${now}
+        AND manual_hold_until < ${nowIso}
         AND NOT EXISTS (
           SELECT 1 FROM jobs j
           WHERE j.issue_id = issues.id
