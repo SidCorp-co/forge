@@ -54,13 +54,14 @@ async function parseErrorBody(res: Response): Promise<{
 
 async function fetchRaw(endpoint: string, options: RequestInit = {}): Promise<Response> {
   const hasBody = options.body !== undefined && options.body !== null;
+  const headers = new Headers(options.headers as HeadersInit | undefined);
+  if (hasBody && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
   const res = await fetch(`${API_URL}${endpoint}`, {
     ...options,
     credentials: 'include',
-    headers: {
-      ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
-      ...options.headers,
-    },
+    headers,
   });
 
   if (!res.ok) {
