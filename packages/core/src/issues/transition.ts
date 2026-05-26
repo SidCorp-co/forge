@@ -24,6 +24,7 @@ import {
 } from '../pipeline/state-machine.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import { markMergedIfLeavingBase } from './merged-at.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 
 const transitionBodySchema = z
@@ -271,6 +272,16 @@ transitionRoutes.post(
               reopenCount: issues.reopenCount,
               updatedAt: issues.updatedAt,
             });
+          if (row) {
+            // ISS-232 — stamp `merged_at` inside the same tx so a rollback
+            // drops the column write alongside the status flip.
+            await markMergedIfLeavingBase(t, {
+              issueId: id,
+              projectId: issue.projectId,
+              fromStatus,
+              toStatus,
+            });
+          }
           return row;
         },
       ),

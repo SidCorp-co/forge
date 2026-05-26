@@ -1,8 +1,12 @@
 /**
  * `forge_pm.runner_load` (Epic 3, ISS-19) — per-runner status + in-flight
  * counter so the PM agent can decide where (or whether) to dispatch work.
- * `capacity` surfaces `capabilities.maxConcurrent` when the runner declares
- * it; `null` means "no declared cap, treat as elastic".
+ *
+ * ISS-232 Phase 4 — runner cap is fixed at 1 across all types. The PM
+ * tool surfaces `capacity: 1` for every row regardless of the legacy
+ * `capabilities.maxConcurrent` field (which the dispatcher no longer
+ * consults). Existing rows in the wild keep their stored value untouched
+ * but the field is ignored end-to-end.
  *
  * ISS-145: handler body extracted into `pmRunnerLoadHandler` and consumed
  * by both the legacy shim factory below and the consolidated
@@ -17,6 +21,7 @@ import { z } from 'zod';
 import type { Device } from '../../auth/deviceToken.js';
 import { db } from '../../db/client.js';
 import { jobs, runners } from '../../db/schema.js';
+import { RUNNER_CAP_PER_RUNNER } from '../../jobs/dispatch-gates.js';
 import { deprecationFor } from '../deprecation.js';
 import {
   type ContextScopedMcpToolFactory,
@@ -42,7 +47,6 @@ export async function pmRunnerLoadHandler(
       host: runners.host,
       status: runners.status,
       lastSeenAt: runners.lastSeenAt,
-      capabilities: runners.capabilities,
     })
     .from(runners)
     .where(eq(runners.projectId, input.projectId))
@@ -54,16 +58,14 @@ export async function pmRunnerLoadHandler(
         .select({ n: count() })
         .from(jobs)
         .where(and(eq(jobs.runnerId, r.id), inArray(jobs.status, [...ACTIVE_JOB_STATUSES])));
-      const caps = (r.capabilities ?? {}) as Record<string, unknown>;
-      const rawCap = caps.maxConcurrent;
-      const capacity = typeof rawCap === 'number' && Number.isFinite(rawCap) ? rawCap : null;
       return {
         id: r.id,
         type: r.type,
         host: r.host,
         status: r.status,
         lastSeenAt: r.lastSeenAt,
-        capacity,
+        // ISS-232 Phase 4 — cap is uniform across runner types.
+        capacity: RUNNER_CAP_PER_RUNNER,
         inFlight: Number(row?.n ?? 0),
       };
     }),

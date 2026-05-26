@@ -50,7 +50,19 @@ const updateMock = vi.fn(() => ({ set: updateSet }));
 const txExecute = vi.fn(async () => undefined);
 const txInsertValues = vi.fn(async () => undefined);
 const txInsert = vi.fn(() => ({ values: txInsertValues }));
-const txProxy = { update: updateMock, insert: txInsert, execute: txExecute };
+// ISS-232 — `markMergedIfLeavingBase` issues a `tx.select(...).from
+// (projects)...` to resolve `mergeStates`. Stub it as an empty resolve so
+// the helper short-circuits with defaults under the in-memory db mock.
+const txSelectLimit = vi.fn(async () => [] as unknown[]);
+const txSelectWhere = vi.fn(() => ({ limit: txSelectLimit }));
+const txSelectFrom = vi.fn(() => ({ where: txSelectWhere }));
+const txSelect = vi.fn(() => ({ from: txSelectFrom }));
+const txProxy = {
+  update: updateMock,
+  insert: txInsert,
+  execute: txExecute,
+  select: txSelect,
+};
 const transactionMock = vi.fn(
   async (cb: (tx: typeof txProxy) => Promise<unknown>) => cb(txProxy),
 );

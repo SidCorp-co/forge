@@ -29,7 +29,6 @@ import {
   type IssueStatus,
   issues,
   jobs,
-  projects,
   runners,
 } from '../db/schema.js';
 import {
@@ -243,9 +242,10 @@ function skillFromSessionMetadata(metadata: Record<string, unknown> | null): str
   return '';
 }
 
-function runnerDefaultConcurrency(runnerType: string): number {
-  if (runnerType === 'claude-code') return 1;
-  if (runnerType === 'antigravity') return 5;
+function runnerDefaultConcurrency(_runnerType: string): number {
+  // ISS-232 Phase 2 — runner cap is unified to 1 across all types. The
+  // antigravity 5-slot branch is gone; antigravity-as-load-balancer is
+  // replaced by primary-pinned selection (see runners/select.ts).
   return 1;
 }
 
@@ -356,18 +356,10 @@ export async function hydratePipelineHealthForIssues(
     depsByIssue.set(r.toIssueId, bucket);
   }
 
-  // Q5 — project_full inputs.
-  const [projectRow] = await db
-    .select({ agentConfig: projects.agentConfig })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  const agentConfig = (projectRow?.agentConfig ?? {}) as Record<string, unknown>;
-  const pipelineConfig = (agentConfig.pipelineConfig ?? {}) as Record<string, unknown>;
-  const cap =
-    typeof pipelineConfig.maxConcurrentIssues === 'number' && pipelineConfig.maxConcurrentIssues > 0
-      ? pipelineConfig.maxConcurrentIssues
-      : DEFAULT_MAX_CONCURRENT_ISSUES;
+  // Q5 — project_full inputs. ISS-232 Phase 4 — the per-project cap is
+  // hardcoded at `DEFAULT_MAX_CONCURRENT_ISSUES` (= 1); the
+  // `pipelineConfig.maxConcurrentIssues` knob was removed in Phase 3.
+  const cap = DEFAULT_MAX_CONCURRENT_ISSUES;
   const runningRows = await db.execute<{ issue_id: string }>(sql`
     SELECT DISTINCT (metadata->>'issueId') AS issue_id
     FROM agent_sessions

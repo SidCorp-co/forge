@@ -404,10 +404,13 @@ async function dispatchViaRunner(
     }
   }
 
+  // ISS-232 Phase 2 — `selectRunnerForJob` no longer takes `fallbackChain`.
+  // Runner-type filtering is enforced post-select via `runnerSupportsJobType`
+  // (failure = permanent `runner_unsupported_type:<runner-type>`). The chain
+  // is kept around purely for the L5-skip telemetry breadcrumb below.
   const runner = await selectRunnerForJob({
     projectId: job.projectId,
     requiredCapabilities: required,
-    fallbackChain,
     pinDeviceId,
   });
   if (!runner) {

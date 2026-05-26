@@ -241,6 +241,27 @@ export const sessionGroupsSchema = z.record(
 
 export type SessionGroupsConfig = z.infer<typeof sessionGroupsSchema>;
 
+/**
+ * ISS-232 — per-project mapping of which stage status represents a merge
+ * event. The state-machine stamps `issues.merged_at` when an issue
+ * transitions OUT of `baseBranch`; the picker's L2 dependency gate keys on
+ * the resulting `merged_at IS NULL` predicate.
+ *
+ * Trunk-based projects (jarvis-agents, Anhome) leave both fields at
+ * `"released"` — `productionBranch` collapses into `baseBranch` and the
+ * `releaseDecomposePending` L2 gate shares the column with `blockedBy`.
+ * Multi-base-branch projects will split these in a future v3 with a
+ * dedicated `merged_to_prod_at` column.
+ */
+export const mergeStatesSchema = z
+  .object({
+    baseBranch: z.enum(STAGE_NAMES).optional(),
+    productionBranch: z.enum(STAGE_NAMES).optional(),
+  })
+  .strict();
+
+export type MergeStatesConfigInput = z.infer<typeof mergeStatesSchema>;
+
 export const pipelineConfigSchema = z
   .object({
     enabled: z.boolean().optional(),
@@ -252,10 +273,10 @@ export const pipelineConfigSchema = z
     autoTest: stepToggleSchema.optional(),
     autoFix: stepToggleSchema.optional(),
     autoRelease: stepToggleSchema.optional(),
-    // ISS-40 PR-E — Layer 3 (per-project) dispatcher cap. DISTINCT issue_ids
-    // with running agent_sessions; sessions beyond the cap stay queued with
-    // failure_reason='project_full'. Backfilled to 3 by migration 0044.
-    maxConcurrentIssues: z.number().int().positive().max(50).optional(),
+    // ISS-232 Phase 3 — `maxConcurrentIssues` was removed. The per-project
+    // cap is now hardcoded to 1 (see `dispatch-gates.ts:DEFAULT_MAX_
+    // CONCURRENT_ISSUES`) — operators with isolated worktrees per session
+    // who need higher parallelism must run separate projects.
     // ISS-108 Phase 1 / ISS-110 Phase 3 — per-stage enable/mode toggle. When
     // `states[X].enabled === false`, the orchestrator auto-transitions past
     // `X` (soft-skip) rather than dispatching a job. Cycle/dead-end detection
@@ -264,6 +285,8 @@ export const pipelineConfigSchema = z
     // PR-5 — session-group routing.
     sessionGroups: sessionGroupsSchema.optional(),
     onResumeFail: z.enum(['fresh', 'abort']).optional(),
+    // ISS-232 — git-aware L2 dependency gate config.
+    mergeStates: mergeStatesSchema.optional(),
   })
   // PR-5 — cross-field validation: every `states[x].sessionGroup` must be a
   // declared group in `sessionGroups`. Without this, a typo
@@ -289,24 +312,26 @@ export const pipelineConfigSchema = z
 export type PipelineConfig = z.infer<typeof pipelineConfigSchema>;
 
 /**
- * Patch payload for `PATCH /pipeline-config`. Carries the `pipelineConfig`
- * fields plus a sibling `runnerFallback` so the route can write both with
- * a single atomic jsonb merge — avoiding the clobber race that would
- * otherwise occur if the FE saved `runnerFallback` via the wide-open
- * `PATCH /projects/:id` route concurrently with a `pipelineConfig` write.
+ * Patch payload for `PATCH /pipeline-config`. ISS-232 Phase 3 dropped the
+ * sibling `runnerFallback` field — the deterministic v2 selector picks
+ * primary → standby with no type-chain fallback. Per-stage `runner`
+ * overrides on the step toggles continue to work.
  */
-export const pipelineConfigPatchSchema = pipelineConfigSchema.extend({
-  runnerFallback: z.array(z.string()).optional(),
-});
+export const pipelineConfigPatchSchema = pipelineConfigSchema;
 
 export type PipelineConfigPatchInput = z.infer<typeof pipelineConfigPatchSchema>;
 
 /**
  * Defaults surfaced by `GET /pipeline-config` when a project has no stored
  * document.
+ *
+ * ISS-232 Phase 3 — `enabled` defaults to `true` so a freshly-created
+ * project's pipeline is live as soon as the project has at least one
+ * registered runner. The prior `false` default was a v0 holdover that
+ * silently swallowed dispatch attempts on stock setups.
  */
 export const PIPELINE_CONFIG_DEFAULTS: PipelineConfig = {
-  enabled: false,
+  enabled: true,
   states: defaultStatesConfig(),
 };
 

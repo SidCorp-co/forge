@@ -45,7 +45,6 @@ export interface UpdatePipelineConfigInput {
 
 export interface UpdatePipelineConfigResult {
   pipelineConfig: PipelineConfig;
-  runnerFallback: string[];
 }
 
 /**
@@ -53,19 +52,22 @@ export interface UpdatePipelineConfigResult {
  * `agentConfig` jsonb document. Authorization is the caller's responsibility
  * — both REST (`PATCH /projects/:id/pipeline-config`) and MCP
  * (`forge_config` action=`update`) gate on owner before invoking this.
+ *
+ * ISS-232 Phase 3 — the sibling `runnerFallback` field was removed; the
+ * v2 selector picks primary → standby deterministically with no type-
+ * chain fallback. `agentConfig.runnerFallback` rows that survived from
+ * v1 are left alone (no destructive migration), but they no longer feed
+ * the dispatcher.
  */
 export async function updatePipelineConfig(
   input: UpdatePipelineConfigInput,
 ): Promise<UpdatePipelineConfigResult> {
   const { projectId } = input;
-  const { runnerFallback, ...pipelinePatch } = input.patch;
+  const pipelinePatch = input.patch;
 
   const mergeDoc: Record<string, unknown> = {};
   if (Object.keys(pipelinePatch).length > 0) {
     mergeDoc.pipelineConfig = pipelinePatch;
-  }
-  if (runnerFallback !== undefined) {
-    mergeDoc.runnerFallback = runnerFallback;
   }
 
   if (Object.keys(mergeDoc).length > 0) {
@@ -153,9 +155,6 @@ export async function updatePipelineConfig(
       }
       nextDoc.pipelineConfig = nextPipeline;
     }
-    if (runnerFallback !== undefined) {
-      nextDoc.runnerFallback = runnerFallback;
-    }
     const subkey = JSON.stringify(nextDoc);
     await db.execute(
       sql`UPDATE projects
@@ -174,9 +173,6 @@ export async function updatePipelineConfig(
   const stored = (ac.pipelineConfig ?? {}) as Record<string, unknown>;
   const parsed = pipelineConfigSchema.parse(stored);
   const pipelineConfig: PipelineConfig = { ...PIPELINE_CONFIG_DEFAULTS, ...parsed };
-  const respRunnerFallback = Array.isArray(ac.runnerFallback)
-    ? (ac.runnerFallback as string[])
-    : ['claude-code'];
 
-  return { pipelineConfig, runnerFallback: respRunnerFallback };
+  return { pipelineConfig };
 }

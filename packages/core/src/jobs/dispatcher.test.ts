@@ -504,7 +504,6 @@ describe('jobs/dispatcher PM path', () => {
     expect(selectRunnerForJob).toHaveBeenCalledWith({
       projectId: 'p1',
       requiredCapabilities: { pm: true },
-      fallbackChain: ['claude-code'],
       pinDeviceId: null,
     });
 
@@ -538,7 +537,6 @@ describe('jobs/dispatcher PM path', () => {
     expect(selectRunnerForJob).toHaveBeenCalledWith({
       projectId: 'p1',
       requiredCapabilities: { pm: true },
-      fallbackChain: ['claude-code'],
       pinDeviceId: null,
     });
   });

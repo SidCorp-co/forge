@@ -533,6 +533,13 @@
       "when": 1780531200000,
       "tag": "0076_issues_manual_hold_until",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1780617600000,
+      "tag": "0077_add_issues_merged_at",
+      "breakpoints": true
     }
   ]
 }

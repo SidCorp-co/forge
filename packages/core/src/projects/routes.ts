@@ -580,11 +580,10 @@ projectRoutes.get(
     const parsed = pipelineConfigSchema.parse(stored);
     const pipelineConfig: PipelineConfig = { ...PIPELINE_CONFIG_DEFAULTS, ...parsed };
 
-    const runnerFallback = Array.isArray(ac.runnerFallback)
-      ? (ac.runnerFallback as string[])
-      : ['claude-code'];
-
-    return c.json({ pipelineConfig, runnerFallback });
+    // ISS-232 Phase 3 — `runnerFallback` was removed. The v2 selector picks
+    // primary → standby deterministically with no type-chain fallback; per-
+    // stage `runner` overrides on step toggles continue to work.
+    return c.json({ pipelineConfig });
   },
 );
 

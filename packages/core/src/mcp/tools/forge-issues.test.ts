@@ -53,7 +53,19 @@ const txInsert = vi.fn(() => ({ values: txInsertValues }));
 // ISS-196 — `withActorContext` calls `tx.execute(SELECT set_config(...))`
 // before the UPDATE; stub it so the in-memory db mock doesn't blow up.
 const txExecute = vi.fn(async () => undefined);
-const txProxy = { update: txUpdate, insert: txInsert, execute: txExecute };
+// ISS-232 — `markMergedIfLeavingBase` issues a 2nd `tx.select(...).from
+// (projects)...` to resolve `mergeStates`. Stub it as an empty resolve so
+// the helper short-circuits with defaults under the in-memory db mock.
+const txSelectLimit = vi.fn(async () => [] as unknown[]);
+const txSelectWhere = vi.fn(() => ({ limit: txSelectLimit }));
+const txSelectFrom = vi.fn(() => ({ where: txSelectWhere }));
+const txSelect = vi.fn(() => ({ from: txSelectFrom }));
+const txProxy = {
+  update: txUpdate,
+  insert: txInsert,
+  execute: txExecute,
+  select: txSelect,
+};
 const transactionMock = vi.fn(async (cb: (tx: typeof txProxy) => Promise<unknown>) => cb(txProxy));
 
 const deleteWhere = vi.fn(async () => undefined);

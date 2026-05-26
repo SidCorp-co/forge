@@ -40,7 +40,14 @@ export const PIPELINE_SWEEPER_QUEUE = 'pipeline-sweeper';
 
 // Zombie thresholds clamp at MIN_TIMEOUT_MS so a low env override can't
 // slaughter healthy sessions (a 10s heartbeat threshold would).
-const QUEUE_TIMEOUT_MS_DEFAULT = 5 * 60_000;
+//
+// ISS-232 Phase 3 — queue timeout cut from 5 min to 2 min. Pairs with the
+// v2 selector's deterministic primary-pinned behaviour: a job that hasn't
+// been claimed by its assigned runner within 2 minutes is almost certainly
+// a worker death, and surfacing that faster lets the picker re-tick onto
+// standby (or surface as `queue_timeout`) without leaving the issue
+// invisible for another 3 minutes.
+const QUEUE_TIMEOUT_MS_DEFAULT = 120_000;
 const HEARTBEAT_TIMEOUT_MS_DEFAULT = 3 * 60_000;
 const MIN_TIMEOUT_MS = 30_000;
 

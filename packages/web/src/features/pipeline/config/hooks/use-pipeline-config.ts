@@ -31,6 +31,10 @@ const pipelineConfigKey = (projectId: string | undefined) =>
 // otherwise invalidate the `initial` useMemo every render, refire the
 // hydrate useEffect, and silently reset user edits (e.g. Skills tab
 // stage-enabled checkbox clicks didn't persist).
+//
+// ISS-232 Phase 4 — kept for the `availableRunners` derived output even
+// after the `runnerFallback` field was removed: the per-step `runner`
+// override picker still surfaces the runners registered on the project.
 const DEFAULT_KNOWN_RUNNERS: string[] = ['claude-code'];
 
 interface StepFormValue {
@@ -46,7 +50,6 @@ export interface PipelineConfigFormState {
   recoveryMaxAttempts: number;
   recoveryWindowHours: number;
   recoveryByKind: { transient: number; permanent: number; unknown: number };
-  runnerFallback: string[];
 }
 
 function defaultStatesForForm(): Record<StageName, StageConfig> {
@@ -59,8 +62,11 @@ function defaultStatesForForm(): Record<StageName, StageConfig> {
   );
 }
 
+// ISS-232 Phase 3 flipped the backend default to `enabled: true`; mirror
+// it here so the form's pre-hydrate state agrees with the eventual server
+// response (avoids a flicker that briefly shows "Pipeline off").
 const FALLBACK_DEFAULTS: PipelineConfigFormState = {
-  enabled: false,
+  enabled: true,
   steps: STEP_REGISTRY.reduce(
     (acc, s) => {
       acc[s.toggleKey] = { enabled: false };
@@ -72,7 +78,6 @@ const FALLBACK_DEFAULTS: PipelineConfigFormState = {
   recoveryMaxAttempts: 3,
   recoveryWindowHours: 24,
   recoveryByKind: { transient: 5, permanent: 0, unknown: 2 },
-  runnerFallback: ['claude-code'],
 };
 
 function fromServer(data: PipelineConfigResponse): PipelineConfigFormState {
@@ -103,7 +108,10 @@ function fromServer(data: PipelineConfigResponse): PipelineConfigFormState {
     {} as Record<StageName, StageConfig>,
   );
   return {
-    enabled: cfg.enabled ?? false,
+    // ISS-232 Phase 3 — default flipped to `true` upstream; mirror that
+    // here so a stored doc without an explicit `enabled` agrees with the
+    // backend's `PIPELINE_CONFIG_DEFAULTS`.
+    enabled: cfg.enabled ?? true,
     steps,
     states,
     recoveryMaxAttempts: cfg.recoveryMaxAttempts ?? FALLBACK_DEFAULTS.recoveryMaxAttempts,
@@ -113,10 +121,6 @@ function fromServer(data: PipelineConfigResponse): PipelineConfigFormState {
       permanent: byKind.permanent ?? FALLBACK_DEFAULTS.recoveryByKind.permanent,
       unknown: byKind.unknown ?? FALLBACK_DEFAULTS.recoveryByKind.unknown,
     },
-    runnerFallback:
-      Array.isArray(data.runnerFallback) && data.runnerFallback.length > 0
-        ? data.runnerFallback
-        : FALLBACK_DEFAULTS.runnerFallback,
   };
 }
 
@@ -218,18 +222,8 @@ export function usePipelineConfig(
 
   const initial = useMemo<PipelineConfigFormState>(() => {
     if (!query.data) return FALLBACK_DEFAULTS;
-    const fromServerState = fromServer(query.data);
-    // If the project has registered runners, default the chain to all
-    // known types when none stored.
-    if (
-      knownRunners.length > 0 &&
-      JSON.stringify(fromServerState.runnerFallback) ===
-        JSON.stringify(FALLBACK_DEFAULTS.runnerFallback)
-    ) {
-      return { ...fromServerState, runnerFallback: knownRunners.slice() };
-    }
-    return fromServerState;
-  }, [query.data, knownRunners]);
+    return fromServer(query.data);
+  }, [query.data]);
 
   const [state, setState] = useState<PipelineConfigFormState>(FALLBACK_DEFAULTS);
 
@@ -283,12 +277,6 @@ export function usePipelineConfig(
   const save = async () => {
     if (!projectId) return;
     const pipelinePatch: PipelineConfigPatch = buildPipelinePatch(state, initial);
-    const runnerFallbackChanged =
-      JSON.stringify(state.runnerFallback) !== JSON.stringify(initial.runnerFallback);
-    if (runnerFallbackChanged) {
-      pipelinePatch.runnerFallback = state.runnerFallback;
-    }
-
     if (Object.keys(pipelinePatch).length === 0) return;
     await patchPipeline.mutateAsync(pipelinePatch);
     await Promise.all([

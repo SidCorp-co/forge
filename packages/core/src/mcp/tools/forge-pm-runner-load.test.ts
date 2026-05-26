@@ -64,7 +64,11 @@ describe('forge_pm.runner_load', () => {
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
   });
 
-  it('returns runner list with capacity + inFlight', async () => {
+  // ISS-232 Phase 4 — `capacity` is the uniform `RUNNER_CAP_PER_RUNNER`
+  // (= 1) regardless of any legacy `capabilities.maxConcurrent` field. The
+  // dispatcher no longer reads that override; surfacing the live value
+  // from the PM tool would mislead operators about effective parallelism.
+  it('returns runner list with capacity=1 + inFlight', async () => {
     const tool = forgePmRunnerLoadTool(ctx);
     queue.push(
       [{ ownerId: OWNER_ID }], // assert
@@ -76,7 +80,6 @@ describe('forge_pm.runner_load', () => {
           host: 'device',
           status: 'online',
           lastSeenAt: new Date('2026-05-01T00:00:00Z'),
-          capabilities: { maxConcurrent: 3 },
         },
         {
           id: 'r2',
@@ -84,7 +87,6 @@ describe('forge_pm.runner_load', () => {
           host: 'remote',
           status: 'offline',
           lastSeenAt: null,
-          capabilities: null,
         },
       ],
       [{ n: 1 }], // r1 inFlight
@@ -92,12 +94,12 @@ describe('forge_pm.runner_load', () => {
     );
 
     const result = (await tool.handler({ projectId: PROJECT_ID })) as {
-      runners: Array<{ id: string; capacity: number | null; inFlight: number }>;
+      runners: Array<{ id: string; capacity: number; inFlight: number }>;
     };
     expect(result.runners).toHaveLength(2);
-    expect(result.runners[0]?.capacity).toBe(3);
+    expect(result.runners[0]?.capacity).toBe(1);
     expect(result.runners[0]?.inFlight).toBe(1);
-    expect(result.runners[1]?.capacity).toBeNull();
+    expect(result.runners[1]?.capacity).toBe(1);
     expect(result.runners[1]?.inFlight).toBe(0);
   });
 });

@@ -59,14 +59,11 @@ export interface PipelineConfig {
   states?: StatesConfig;
 }
 
-export type PipelineConfigPatch = Partial<PipelineConfig> & {
-  /**
-   * Optional sibling key written alongside `pipelineConfig` in one atomic
-   * jsonb merge. The dispatcher reads it from `agentConfig.runnerFallback`,
-   * not from inside `pipelineConfig` itself.
-   */
-  runnerFallback?: string[];
-};
+// ISS-232 Phase 3 — the sibling `runnerFallback` field was dropped from
+// the patch shape (the deterministic v2 selector picks primary → standby
+// with no project-wide type-chain). Per-stage `runner` overrides on step
+// toggles continue to work via `StepToggleObject.runner`.
+export type PipelineConfigPatch = Partial<PipelineConfig>;
 
 export function defaultStageConfig(): StageConfig {
   return { enabled: true, mode: 'auto' };
@@ -74,7 +71,6 @@ export function defaultStageConfig(): StageConfig {
 
 export interface PipelineConfigResponse {
   pipelineConfig: PipelineConfig;
-  runnerFallback: string[];
 }
 
 /** Helpers for working with the union step toggle type. */

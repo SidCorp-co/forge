@@ -840,6 +840,7 @@ describe('db/schema — issues', () => {
         'iss_seq',
         'manual_hold',
         'manual_hold_until',
+        'merged_at',
         'metadata',
         'parent_issue_id',
         'plan',
