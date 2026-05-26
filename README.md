@@ -150,15 +150,15 @@ replay, webhook ingestion.
 - [Quickstart](docs/quickstart.md)
 - [Architecture](docs/architecture/system-overview.md)
 - [RFC 0001: Device-runner architecture](docs/rfcs/0001-device-runner-architecture.md)
-- [Decisions (ADRs)](docs/decisions/)
+- [Guides](docs/guides/) — release, trunk-based development
 - [Modules](docs/modules/)
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). The repo follows **Trunk-Based
 Development** — single `main`, no `develop`, branches live <1 day, feature
-flags absorb in-flight work. Rationale + rules:
-[ADR 0014](docs/decisions/0014-trunk-based-development.md).
+flags absorb in-flight work. Full rules + rationale:
+[docs/guides/trunk-based-development.md](docs/guides/trunk-based-development.md).
 
 First-time? Look for
 [`good-first-issue`](https://github.com/SidCorp-co/forge/labels/good-first-issue).

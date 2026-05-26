@@ -7,7 +7,7 @@ Thanks for your interest. The project is in alpha — every piece of feedback is
 - Read the [Code of Conduct](CODE_OF_CONDUCT.md).
 - Search existing issues before opening a new one.
 - For large features: open a **discussion** or a `proposal` issue before writing code.
-- Skim [ADR 0014 — Trunk-Based Development](docs/decisions/0014-trunk-based-development.md). The branching model is non-standard for a reason; the rules below are derived from it.
+- Skim the [Trunk-Based Development guide](docs/guides/trunk-based-development.md). The branching model is non-standard for a reason; the rules below are derived from it.
 
 ## Branching model — Trunk-Based Development
 
@@ -53,7 +53,7 @@ scripts/check-branch-name.sh                  # validates the current branch
 scripts/check-branch-name.sh feat/my-thing    # validates a name
 ```
 
-Full rationale + status-pipeline diagram + staging deploy details: [ADR 0014](docs/decisions/0014-trunk-based-development.md).
+Full rationale + status-pipeline diagram + staging deploy details: [Trunk-Based Development guide](docs/guides/trunk-based-development.md).
 
 ## Contribution workflow
 
