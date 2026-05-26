@@ -92,8 +92,8 @@ describe('PIPELINE_CONFIG_DEFAULTS', () => {
     expect(() => pipelineConfigSchema.parse(PIPELINE_CONFIG_DEFAULTS)).not.toThrow();
   });
 
-  it('exposes states defaults', () => {
-    expect(PIPELINE_CONFIG_DEFAULTS.enabled).toBe(false);
+  it('exposes states defaults with enabled=true (ISS-232 Phase 3 default flip)', () => {
+    expect(PIPELINE_CONFIG_DEFAULTS.enabled).toBe(true);
     expect(PIPELINE_CONFIG_DEFAULTS.states).toBeDefined();
   });
 });
@@ -116,23 +116,35 @@ describe('STEP_TOGGLE_KEYS', () => {
 });
 
 describe('pipelineConfigPatchSchema', () => {
-  it('accepts pipelineConfig fields plus runnerFallback', () => {
+  // ISS-232 Phase 3 — `runnerFallback` was dropped from the patch schema
+  // alongside `maxConcurrentIssues`. The patch is now identical to
+  // `pipelineConfigSchema` (no extension fields).
+  it('accepts pipelineConfig fields', () => {
     const patch = {
       enabled: true,
       autoCode: true,
-      runnerFallback: ['antigravity', 'claude-code'],
     };
     expect(pipelineConfigPatchSchema.parse(patch)).toEqual(patch);
   });
 
-  it('accepts only runnerFallback', () => {
-    expect(pipelineConfigPatchSchema.parse({ runnerFallback: ['claude-code'] })).toEqual({
+  it('silently drops legacy `runnerFallback` field (unknown keys ignored)', () => {
+    // Zod's default `.object()` strips unknown keys rather than throwing.
+    // The behaviour stays "permissive on input, strict on output" so v1
+    // patches replaying via the same endpoint don't 400 — the dropped
+    // field simply has no effect on the merged document.
+    const out = pipelineConfigPatchSchema.parse({
+      enabled: true,
       runnerFallback: ['claude-code'],
     });
+    expect(out).toEqual({ enabled: true });
   });
 
-  it('rejects non-array runnerFallback', () => {
-    expect(() => pipelineConfigPatchSchema.parse({ runnerFallback: 'claude-code' })).toThrow();
+  it('rejects legacy `maxConcurrentIssues` is silently dropped too', () => {
+    const out = pipelineConfigPatchSchema.parse({
+      enabled: true,
+      maxConcurrentIssues: 4,
+    });
+    expect(out).toEqual({ enabled: true });
   });
 });
 

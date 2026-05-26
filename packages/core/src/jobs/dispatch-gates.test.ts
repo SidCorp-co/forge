@@ -71,8 +71,16 @@ function selectChainOnce(rows: unknown[]): void {
   }));
 }
 
-function mockProjectAgentConfigOnce(value: Record<string, unknown> | null): void {
-  selectChainOnce([{ agentConfig: value }]);
+/**
+ * ISS-232 Phase 3 — `pickNextDispatchableJobForProject` and
+ * `assertDispatchable` no longer do a project lookup to resolve the cap
+ * (it's hardcoded). Keeping this helper as a no-op so existing call sites
+ * still compile, but queueing a `selectChainOnce` here would leak past
+ * its test and break subsequent `checkLayer5RunnerHeartbeat` tests that
+ * share the same `dbSelect` mock queue.
+ */
+function mockProjectAgentConfigOnce(_value: Record<string, unknown> | null): void {
+  // No-op since Phase 3 removed `resolveProjectCap`.
 }
 
 describe('checkLayer4RunnerFull', () => {
@@ -391,15 +399,21 @@ describe('checkLayer5RunnerHeartbeat', () => {
 describe('assertDispatchable', () => {
   function mockAssertChain(opts: {
     job: { projectId: string } | null;
+    /** Retained for source-compat with old call sites; ISS-232 Phase 3
+     *  removed `resolveProjectCap`, so no second `db.select` happens
+     *  inside the asserter and this knob is now ignored. */
     cap?: Record<string, unknown> | null;
     caseResult: { reason: string | null } | null | undefined;
   }): void {
     // 1) jobs lookup → returns [job] or []
     selectChainOnce(opts.job ? [opts.job] : []);
-    // 2) projects lookup (only happens when job was found)
     if (opts.job) {
-      mockProjectAgentConfigOnce(opts.cap ?? null);
-      // 3) the CASE-driven SQL — returns 0 or 1 row
+      // ISS-232 Phase 3 — only ONE select call now (the job lookup above).
+      // The previous agentConfig lookup was dropped together with
+      // `resolveProjectCap`; queueing a 2nd selectChainOnce here would
+      // leak past this test and break unrelated checkLayer5RunnerHeartbeat
+      // / parity assertions further down the file.
+      // 2) the CASE-driven SQL — returns 0 or 1 row
       const rows = opts.caseResult === undefined ? [] : opts.caseResult === null ? [] : [opts.caseResult];
       dbExecute.mockResolvedValueOnce(rows);
     }
