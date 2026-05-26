@@ -123,30 +123,21 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
     if (def) return def;
   }
 
-  // 3. Freshest fallback — both branches gate on in-flight capacity so a
-  //    full primary degrades to a standby device instead of stacking jobs.
-  const capacityClause = sql`AND COALESCE(
-        (r.capabilities->>'maxConcurrent')::int,
-        CASE r.type WHEN 'antigravity' THEN 5 ELSE 1 END
-      ) > (
-        SELECT COUNT(*)::int FROM jobs j
-        WHERE j.runner_id = r.id AND j.status IN ('dispatched','running')
-      )`;
+  // 3. Freshest fallback
   if (fallbackChain && fallbackChain.length > 0) {
     for (const type of fallbackChain) {
       const rows = await db.execute<RunnerRow>(
         sql`
-          SELECT r.id, r.project_id, r.type, r.host, r.device_id, r.name, r.labels,
-                 r.capabilities, r.config, r.status, r.last_seen_at, r.last_error
-          FROM runners r
-          WHERE r.project_id = ${projectId}
-            AND r.status = 'online'
-            AND r.type = ${type}
-            AND r.capabilities @> ${required}::jsonb
-            AND r.last_seen_at IS NOT NULL
-            AND r.last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
-            ${capacityClause}
-          ORDER BY r.last_seen_at DESC, RANDOM()
+          SELECT id, project_id, type, host, device_id, name, labels,
+                 capabilities, config, status, last_seen_at, last_error
+          FROM runners
+          WHERE project_id = ${projectId}
+            AND status = 'online'
+            AND type = ${type}
+            AND capabilities @> ${required}::jsonb
+            AND last_seen_at IS NOT NULL
+            AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
+          ORDER BY last_seen_at DESC, RANDOM()
           LIMIT 1
         `,
       );
@@ -160,16 +151,15 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
 
   const rows = await db.execute<RunnerRow>(
     sql`
-      SELECT r.id, r.project_id, r.type, r.host, r.device_id, r.name, r.labels,
-             r.capabilities, r.config, r.status, r.last_seen_at, r.last_error
-      FROM runners r
-      WHERE r.project_id = ${projectId}
-        AND r.status = 'online'
-        AND r.capabilities @> ${required}::jsonb
-        AND r.last_seen_at IS NOT NULL
-        AND r.last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
-        ${capacityClause}
-      ORDER BY r.last_seen_at DESC, RANDOM()
+      SELECT id, project_id, type, host, device_id, name, labels,
+             capabilities, config, status, last_seen_at, last_error
+      FROM runners
+      WHERE project_id = ${projectId}
+        AND status = 'online'
+        AND capabilities @> ${required}::jsonb
+        AND last_seen_at IS NOT NULL
+        AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
+      ORDER BY last_seen_at DESC, RANDOM()
       LIMIT 1
     `,
   );
@@ -199,38 +189,25 @@ async function findByDevice(
 ): Promise<Runner | null> {
   const hasChain = fallbackChain && fallbackChain.length > 0;
   const typeFilter = hasChain
-    ? sql`AND r.type = ANY (
+    ? sql`AND type = ANY (
         SELECT value::text
         FROM jsonb_array_elements_text(${JSON.stringify(fallbackChain)}::jsonb)
       )`
     : sql``;
 
-  // Capacity gate: skip runners already at their in-flight cap so the
-  // primary/standby pattern degrades to standby instead of stacking a 2nd
-  // job onto a defaultDeviceId runner that has no worker capacity. cap
-  // resolves the same way as dispatch-gates.ts buildBarrierFragments
-  // (capabilities.maxConcurrent override → type default → 1 for claude-code,
-  // 5 for antigravity).
   const rows = await db.execute<RunnerRow>(
     sql`
-      SELECT r.id, r.project_id, r.type, r.host, r.device_id, r.name, r.labels,
-             r.capabilities, r.config, r.status, r.last_seen_at, r.last_error
-      FROM runners r
-      WHERE r.project_id = ${projectId}
-        AND r.device_id = ${deviceId}
-        AND r.status = 'online'
-        AND r.capabilities @> ${required}::jsonb
-        AND r.last_seen_at IS NOT NULL
-        AND r.last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
-        AND COALESCE(
-              (r.capabilities->>'maxConcurrent')::int,
-              CASE r.type WHEN 'antigravity' THEN 5 ELSE 1 END
-            ) > (
-              SELECT COUNT(*)::int FROM jobs j
-              WHERE j.runner_id = r.id AND j.status IN ('dispatched','running')
-            )
+      SELECT id, project_id, type, host, device_id, name, labels,
+             capabilities, config, status, last_seen_at, last_error
+      FROM runners
+      WHERE project_id = ${projectId}
+        AND device_id = ${deviceId}
+        AND status = 'online'
+        AND capabilities @> ${required}::jsonb
+        AND last_seen_at IS NOT NULL
+        AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
         ${typeFilter}
-      ORDER BY r.last_seen_at DESC
+      ORDER BY last_seen_at DESC
       LIMIT 1
     `,
   );
