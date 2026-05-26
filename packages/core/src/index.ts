@@ -95,6 +95,8 @@ import {
 import { registerCiFixPatternLearner } from './pipeline/ci-fix-pattern-learn.js';
 import { hooks } from './pipeline/hooks.js';
 import { registerDecompositionSubscribers } from './pipeline/decomposition-subscribers.js';
+import { backfillMissingSkillPauses } from './pipeline/missing-skill-backfill.js';
+import { registerMissingSkillResume } from './pipeline/missing-skill-resume.js';
 import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
 import { registerPipelineSentryBreadcrumbs } from './pipeline/sentry-breadcrumbs.js';
 import { registerActivitySubscribers } from './pipeline/subscribers.js';
@@ -409,6 +411,22 @@ if (isMain) {
   registerWebhookSubscribers(hooks);
   registerPipelineOrchestrator(hooks);
   registerDecompositionSubscribers(hooks);
+  // ISS-238 — resume paused runs whose missing skill was just registered.
+  // Subscriber must register AFTER registerPipelineOrchestrator so the
+  // re-enqueue path it triggers walks through the orchestrator's hooks.
+  registerMissingSkillResume(hooks);
+
+  // ISS-238 — opt-in backfill for projects that already have stuck runs
+  // looping the reconciler rescue path. Runs once at boot; safe to re-run
+  // (the underlying pause helper is idempotent via WHERE status='running').
+  if (process.env.FORGE_BACKFILL_MISSING_SKILL_PAUSES === '1') {
+    try {
+      const result = await backfillMissingSkillPauses();
+      logger.info(result, '@forge/core: missing-skill backfill complete');
+    } catch (err) {
+      logger.error({ err }, '@forge/core: missing-skill backfill failed');
+    }
+  }
 
   // ISS-196 — must run AFTER subscribers are wired so the worker's first
   // drain hits a populated bus. Outbox worker polls the transactional

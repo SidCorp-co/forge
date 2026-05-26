@@ -88,6 +88,23 @@ vi.mock('./runs.js', () => ({
   setCurrentStepForOpenIssueRun: vi.fn(async () => undefined),
 }));
 
+// ISS-238 — guard helpers hit DB paths the orchestrator unit test doesn't
+// model (db.update, db.select + project owner join, comments insert). Stub
+// them so the test asserts orchestration intent (helper called with the
+// right args) without re-deriving the helper's DB shape.
+const pauseMissingSkillMock = vi.fn(async () => ({ paused: true, alreadyPaused: false }));
+const postMissingSkillCommentMock = vi.fn(async () => undefined);
+vi.mock('./missing-skill-guard.js', () => ({
+  PAUSE_REASON_PREFIX: 'missing_skill:',
+  buildMissingSkillReason: (stage: string) => `missing_skill:${stage}`,
+  buildMissingSkillCommentBody: (stage: string) => `body:${stage}`,
+  pausePipelineRunMissingSkill: (
+    ...a: unknown[]
+  ) => pauseMissingSkillMock(...(a as [])),
+  postMissingSkillComment: (...a: unknown[]) =>
+    postMissingSkillCommentMock(...(a as [])),
+}));
+
 const queryPreventiveMock = vi.fn(async () => []);
 vi.mock('./ci-fix-pattern-query.js', () => ({
   queryPreventivePatterns: (...a: unknown[]) => queryPreventiveMock(...(a as [])),
@@ -176,6 +193,9 @@ beforeEach(() => {
   // return [] instead of undefined and TypeError-destructuring.
   nextSelect.mockImplementation(() => [] as unknown[]);
   resolverResolve.mockReset();
+  pauseMissingSkillMock.mockReset();
+  pauseMissingSkillMock.mockResolvedValue({ paused: true, alreadyPaused: false });
+  postMissingSkillCommentMock.mockReset();
 });
 
 describe('pipeline/orchestrator', () => {
@@ -256,15 +276,38 @@ describe('pipeline/orchestrator', () => {
     expect(resolverResolve).not.toHaveBeenCalled();
   });
 
-  it('skips when no skill is registered for the auto stage', async () => {
+  it('refuses + pauses the run when no skill is registered for the auto stage (ISS-238)', async () => {
     cfgResolved({ enabled: true, autoPlan: true });
     noSkillRegistered();
 
     const bus = makeBus();
     await bus.emit('transition', transition() as never);
 
+    // No job enqueued — the guard intercepts before insertAndEnqueueJob.
     expect(dbInsert).not.toHaveBeenCalled();
     expect(enqueueMock).not.toHaveBeenCalled();
+    // Run paused with the right reason; operator-facing comment posted once.
+    expect(pauseMissingSkillMock).toHaveBeenCalledTimes(1);
+    expect(pauseMissingSkillMock.mock.calls[0]?.[0]).toMatchObject({
+      runId: 'mock-run-id',
+      projectId: 'proj-1',
+      issueId: 'iss-1',
+      stage: 'confirmed',
+    });
+    expect(postMissingSkillCommentMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not post a duplicate comment when the run is already paused with the same reason (ISS-238)', async () => {
+    cfgResolved({ enabled: true, autoPlan: true });
+    noSkillRegistered();
+    pauseMissingSkillMock.mockResolvedValueOnce({ paused: false, alreadyPaused: true });
+
+    const bus = makeBus();
+    await bus.emit('transition', transition() as never);
+
+    expect(pauseMissingSkillMock).toHaveBeenCalledTimes(1);
+    expect(postMissingSkillCommentMock).not.toHaveBeenCalled();
+    expect(dbInsert).not.toHaveBeenCalled();
   });
 
   it('skips human-gated target statuses (waiting)', async () => {

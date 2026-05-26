@@ -1,0 +1,116 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Tabular DB mock: each call to `db.select()` consumes one queued response.
+// The service issues:
+//   1. SELECT projects.agentConfig (load current project)
+//   2. SELECT issues (stagesBeingDisabled — only when disabling stages; skipped here)
+//   3. SELECT skillRegistrations (AUTO_STAGE_NEEDS_SKILL — only when per-state mode='auto')
+//   4. SELECT skillRegistrations (MISSING_SKILL_FOR_ENABLED_STAGE — top-level toggles)
+//   5. SELECT projects.agentConfig (re-read for return value, if validation passes)
+const selectQueue: unknown[][] = [];
+function pushSelect(rows: unknown[]) {
+  selectQueue.push(rows);
+}
+
+function buildSelectChain() {
+  const rows = selectQueue.shift() ?? [];
+  const chain: Record<string, unknown> = {};
+  const final = async () => rows;
+  chain.from = () => ({
+    where: () => ({
+      limit: () => final(),
+      then: (onFulfilled: (v: unknown) => unknown) => final().then(onFulfilled),
+    }),
+  });
+  return chain;
+}
+
+const dbExecute = vi.fn(async () => undefined);
+
+vi.mock('../db/client.js', () => ({
+  db: {
+    select: () => buildSelectChain(),
+    execute: dbExecute,
+  },
+}));
+
+const { PipelineConfigError, updatePipelineConfig } = await import(
+  './pipeline-config-service.js'
+);
+
+beforeEach(() => {
+  selectQueue.length = 0;
+  dbExecute.mockClear();
+});
+
+describe('updatePipelineConfig — MISSING_SKILL_FOR_ENABLED_STAGE (ISS-238)', () => {
+  it('rejects when a top-level toggle is enabled but the stage has no skill registration', async () => {
+    // 1. Load current project agentConfig (empty pipelineConfig).
+    pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
+    // 2. AUTO_STAGE_NEEDS_SKILL: no per-state auto-mode entries → skipped.
+    // 3. MISSING_SKILL_FOR_ENABLED_STAGE: skill registrations for stages with
+    //    enabled toggles. Patch enables autoReview → developed must have a row.
+    pushSelect([]); // no registrations for any toggle-enabled stage
+
+    await expect(
+      updatePipelineConfig({
+        projectId: '00000000-0000-0000-0000-000000000001',
+        patch: { enabled: true, autoReview: true },
+      }),
+    ).rejects.toMatchObject({
+      name: 'PipelineConfigError',
+      code: 'MISSING_SKILL_FOR_ENABLED_STAGE',
+      details: { stagesMissingSkill: expect.arrayContaining(['developed']) },
+    });
+  });
+
+  it('accepts the patch when every enabled toggle has a matching skill registration', async () => {
+    pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
+    // toggle-enabled stages query — return a row for `developed`.
+    pushSelect([{ stage: 'developed' }]);
+    // post-update re-read of agentConfig (return value path).
+    pushSelect([
+      { agentConfig: { pipelineConfig: { enabled: true, autoReview: true } } },
+    ]);
+
+    const result = await updatePipelineConfig({
+      projectId: '00000000-0000-0000-0000-000000000001',
+      patch: { autoReview: true },
+    });
+    expect(result.pipelineConfig).toMatchObject({ autoReview: true });
+    // Update SQL ran on the projects row.
+    expect(dbExecute).toHaveBeenCalledTimes(1);
+  });
+
+  it('still flags MISSING_SKILL when the patch only changes unrelated keys but leaves an enabled toggle without a skill', async () => {
+    // The rule reads the *merged* config, so it catches projects already in a
+    // broken state when the operator tries to make any pipelineConfig change.
+    pushSelect([
+      { agentConfig: { pipelineConfig: { enabled: true, autoReview: true } } },
+    ]);
+    pushSelect([]); // still no registrations
+
+    await expect(
+      updatePipelineConfig({
+        projectId: '00000000-0000-0000-0000-000000000001',
+        patch: { autoTriage: false },
+      }),
+    ).rejects.toMatchObject({
+      name: 'PipelineConfigError',
+      code: 'MISSING_SKILL_FOR_ENABLED_STAGE',
+    });
+  });
+});
+
+describe('PipelineConfigError', () => {
+  it('exposes a stable code union including the ISS-238 code', () => {
+    // Compile-time assertion via runtime construction (the union widens on
+    // typo); failing this test means the public error shape regressed.
+    const err = new PipelineConfigError(
+      'MISSING_SKILL_FOR_ENABLED_STAGE',
+      'msg',
+      {},
+    );
+    expect(err.code).toBe('MISSING_SKILL_FOR_ENABLED_STAGE');
+  });
+});

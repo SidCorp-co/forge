@@ -621,6 +621,7 @@ projectRoutes.patch(
             });
           case 'STAGE_HAS_ISSUES':
           case 'AUTO_STAGE_NEEDS_SKILL':
+          case 'MISSING_SKILL_FOR_ENABLED_STAGE':
             throw new HTTPException(409, {
               message: err.message,
               cause: { code: err.code, details: err.details },
