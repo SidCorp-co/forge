@@ -241,6 +241,27 @@ export const sessionGroupsSchema = z.record(
 
 export type SessionGroupsConfig = z.infer<typeof sessionGroupsSchema>;
 
+/**
+ * ISS-232 — per-project mapping of which stage status represents a merge
+ * event. The state-machine stamps `issues.merged_at` when an issue
+ * transitions OUT of `baseBranch`; the picker's L2 dependency gate keys on
+ * the resulting `merged_at IS NULL` predicate.
+ *
+ * Trunk-based projects (jarvis-agents, Anhome) leave both fields at
+ * `"released"` — `productionBranch` collapses into `baseBranch` and the
+ * `releaseDecomposePending` L2 gate shares the column with `blockedBy`.
+ * Multi-base-branch projects will split these in a future v3 with a
+ * dedicated `merged_to_prod_at` column.
+ */
+export const mergeStatesSchema = z
+  .object({
+    baseBranch: z.enum(STAGE_NAMES).optional(),
+    productionBranch: z.enum(STAGE_NAMES).optional(),
+  })
+  .strict();
+
+export type MergeStatesConfigInput = z.infer<typeof mergeStatesSchema>;
+
 export const pipelineConfigSchema = z
   .object({
     enabled: z.boolean().optional(),
@@ -264,6 +285,8 @@ export const pipelineConfigSchema = z
     // PR-5 — session-group routing.
     sessionGroups: sessionGroupsSchema.optional(),
     onResumeFail: z.enum(['fresh', 'abort']).optional(),
+    // ISS-232 — git-aware L2 dependency gate config.
+    mergeStates: mergeStatesSchema.optional(),
   })
   // PR-5 — cross-field validation: every `states[x].sessionGroup` must be a
   // declared group in `sessionGroups`. Without this, a typo

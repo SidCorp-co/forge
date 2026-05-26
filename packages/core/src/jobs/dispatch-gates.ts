@@ -334,13 +334,22 @@ function buildBarrierFragments(args: {
         AND other.id <> j.id
         AND other.status IN ('dispatched','running')
     )`,
+    // ISS-232 — Layer 2 is now git-aware. The previous status-based check
+    // (parent in `released | closed`) treated a manually-closed-but-unmerged
+    // parent as "satisfied" and let dependent children dispatch even though
+    // the parent's branch wasn't on origin. Switching to `parent.merged_at
+    // IS NULL` defers to the state-machine writer (see
+    // `issues/merged-at.ts:markMergedIfLeavingBase`) which stamps
+    // `merged_at` only on transitions out of `pipelineConfig.mergeStates
+    // .baseBranch`. Operator manual override is a direct
+    // `UPDATE issues SET merged_at = now() WHERE id = …`.
     blockedBy: sql`j.type <> 'pm' AND EXISTS (
       SELECT 1 FROM issue_dependencies d
       JOIN issues p ON p.id = d.from_issue_id
       WHERE d.to_issue_id = j.issue_id
         AND d.kind = 'blocks'
         AND (d.valid_until IS NULL OR d.valid_until > now())
-        AND p.status NOT IN ('released','closed')
+        AND p.merged_at IS NULL
     )`,
     releaseDecomposePending: sql`j.type = 'release' AND EXISTS (
       SELECT 1 FROM issue_dependencies d2
@@ -348,7 +357,7 @@ function buildBarrierFragments(args: {
       WHERE d2.to_issue_id = j.issue_id
         AND d2.kind = 'decomposes'
         AND (d2.valid_until IS NULL OR d2.valid_until > now())
-        AND p2.status NOT IN ('released','closed')
+        AND p2.merged_at IS NULL
     )`,
   };
 

@@ -304,10 +304,24 @@ export function buildJobPromptString(args: {
   issueSnapshot?: IssueSnapshot | null;
   policy?: UserPromptPolicyOverride | null;
   turnLevelSystemPrompt?: string | null;
+  /**
+   * ISS-232 — merge-required injection. Caller resolves the text via
+   * `prompt/merge-required.ts:buildMergeRequiredBlock` from the project's
+   * `pipelineConfig.mergeStates` + the job's `stageStatus`; when non-null,
+   * it is spliced in immediately after the `/<skill> <issueId>` line so the
+   * skill reads it before any issue context. Whitespace-only strings are
+   * treated as null.
+   */
+  mergeRequiredText?: string | null;
 }): string {
   const skill =
     args.skillName && args.skillName.length > 0 ? args.skillName : `forge-${args.jobType}`;
   const lines: string[] = [`/${skill} ${args.issueId}`];
+
+  const merge = args.mergeRequiredText?.trim();
+  if (merge && merge.length > 0) {
+    lines.push('', merge);
+  }
 
   const tlSp = args.turnLevelSystemPrompt?.trim();
   if (tlSp && tlSp.length > 0) {

@@ -731,6 +731,14 @@ export const issues = pgTable(
     // the prior 5 minutes). See pipeline/hold-policy.ts for the policy that
     // computes this value.
     manualHoldUntil: timestamp('manual_hold_until', { withTimezone: true }),
+    // ISS-232 — git-aware Layer-2 dependency gate. Set by the state-machine
+    // (see `issues/merged-at.ts`) when an issue transitions OUT of
+    // `pipelineConfig.mergeStates.baseBranch` (default `"released"`). NULL =
+    // parent has not yet merged → downstream `kind=blocks` children stay
+    // gated by the picker. Operator can UPDATE directly to unblock children
+    // of an abandoned issue. Backfilled by migration 0077 for legacy issues
+    // already in `released`/`closed` at deploy time.
+    mergedAt: timestamp('merged_at', { withTimezone: true }),
     // ISS-42 C2 — t-shirt sizing (xs/s/m/l/xl) for scoping. NULL = unsized.
     complexity: text('complexity', { enum: issueComplexities }),
     reopenCount: integer('reopen_count').notNull().default(0),

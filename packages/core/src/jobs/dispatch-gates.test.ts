@@ -162,10 +162,14 @@ describe('pickNextDispatchableJobForProject', () => {
     expect(text).toMatch(/FROM\s+jobs\s+other/);
     expect(text).toMatch(/other\.status\s+IN\s*\(\s*'dispatched'\s*,\s*'running'\s*\)/);
 
-    // L2 — blocks parents non-terminal AND decompose parent non-released
+    // L2 — git-aware (ISS-232). Replaces the prior status-based check with
+    // `merged_at IS NULL` so the gate defers to the state-machine writer
+    // (see `issues/merged-at.ts`).
     expect(text).toMatch(/d\.kind\s*=\s*'blocks'/);
     expect(text).toMatch(/d2\.kind\s*=\s*'decomposes'/);
-    expect(text).toMatch(/p\.status\s+NOT\s+IN\s*\(\s*'released'\s*,\s*'closed'\s*\)/);
+    expect(text).toMatch(/p\.merged_at\s+IS\s+NULL/);
+    expect(text).toMatch(/p2\.merged_at\s+IS\s+NULL/);
+    expect(text).not.toMatch(/p\.status\s+NOT\s+IN\s*\(/);
 
     // L3 — running_ids CTE + cap comparison
     expect(text).toMatch(/WITH\s+running_ids/i);

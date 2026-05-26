@@ -30,6 +30,7 @@ import {
   canTransition,
   isReopenEntry,
 } from '../pipeline/state-machine.js';
+import { markMergedIfLeavingBase } from './merged-at.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import {
   TERMINAL_FOR_DISPATCH,
@@ -248,6 +249,17 @@ issueExtrasRoutes.patch(
                       reopenCount: issues.reopenCount,
                       updatedAt: issues.updatedAt,
                     });
+                  if (u) {
+                    // ISS-232 — stamp `merged_at` inside the same tx so a
+                    // rollback drops the column write alongside the status
+                    // flip. Matches the single-issue `/transition` path.
+                    await markMergedIfLeavingBase(t, {
+                      issueId: row.id,
+                      projectId: row.projectId,
+                      fromStatus,
+                      toStatus,
+                    });
+                  }
                   return u;
                 },
               ),

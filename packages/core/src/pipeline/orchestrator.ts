@@ -8,8 +8,10 @@ import {
   projects,
 } from '../db/schema.js';
 import { applyStatusTransition, type DeviceLite } from '../issues/apply-transition.js';
+import { resolveMergeStates } from '../issues/merged-at.js';
 import { buildJobPromptString } from '../jobs/prompt-string.js';
 import { loadIssueSnapshot } from '../prompt/issue-snapshot.js';
+import { buildMergeRequiredBlock } from '../prompt/merge-required.js';
 import { logger } from '../logger.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import type { Actor } from './activity.js';
@@ -244,6 +246,15 @@ export async function triggerPipelineStepManual(args: {
   const stageCfg = stageConfigFor(cfg, args.status);
   // Operator-supplied per-state skill name wins over the resolver default.
   const effectiveSkillName = stageCfg?.skillName ?? skillRef.skillName;
+  // ISS-232 — inject merge-required block when this stage is configured
+  // as the project's merge point. The state-machine writer keys on the
+  // same `mergeStates.baseBranch`; without the prompt block the skill has
+  // no signal it must merge + push before transitioning.
+  const mergeRequiredText = buildMergeRequiredBlock({
+    stageStatus: args.status,
+    mergeStates: resolveMergeStates(cfg),
+    issueId: args.issueId,
+  });
   const { jobId } = await insertAndEnqueueJob({
     projectId: args.projectId,
     issueId: args.issueId,
@@ -257,6 +268,7 @@ export async function triggerPipelineStepManual(args: {
       issueId: args.issueId,
       issueSnapshot,
       policy: stageCfg?.userPromptPolicy ?? null,
+      mergeRequiredText,
     }),
     payloadExtras: {
       ...args.reason,
@@ -352,6 +364,12 @@ async function considerEnqueue(args: {
       return;
     }
 
+    // ISS-232 — same injection on the auto path; see manual-trigger comment.
+    const mergeRequiredText = buildMergeRequiredBlock({
+      stageStatus: args.status,
+      mergeStates: resolveMergeStates(cfg),
+      issueId: args.issueId,
+    });
     const { jobId } = await insertAndEnqueueJob({
       projectId: args.projectId,
       issueId: args.issueId,
@@ -365,6 +383,7 @@ async function considerEnqueue(args: {
         issueId: args.issueId,
         issueSnapshot,
         policy: stageCfg?.userPromptPolicy ?? null,
+        mergeRequiredText,
       }),
       payloadExtras: {
         ...args.reason,
