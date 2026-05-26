@@ -7,10 +7,14 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
 
-/// Default agent timeout when caller doesn't supply one: 30 minutes.
-/// Per-state `appConfig.pipeline.states[stage].timeoutSeconds` overrides this
-/// via the IPC `timeout_seconds` parameter on `send_chat` / `run_agent`.
-const DEFAULT_AGENT_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+/// No default agent timeout — Claude CLI is allowed to run as long as it
+/// takes when the caller doesn't supply an explicit cap. Per-state
+/// `appConfig.pipeline.states[stage].timeoutSeconds` is still honored via
+/// the IPC `timeout_seconds` parameter on `send_chat` / `run_agent`; when
+/// the caller leaves it unset the spawn waits indefinitely on stdout.
+/// Rationale: the 30-minute global cap killed live sessions doing legitimate
+/// long-running work (large builds, deep test suites, paused on rate-limit
+/// reset). Server-side heartbeat sweeper still flags abandoned sessions.
 
 /// Resolve the claude binary path. Cached in a OnceLock.
 ///
@@ -398,11 +402,12 @@ pub(crate) async fn spawn_and_stream(
     worktree_path: Option<String>,
     timeout_seconds: Option<u64>,
 ) -> Result<(), String> {
-    // Resolve per-call timeout, falling back to the global default.
-    let agent_timeout = timeout_seconds
+    // Resolve per-call timeout. `None` (or 0) means "no timeout" — the
+    // 30-minute global default that used to live here was removed because
+    // it was killing legitimate long-running sessions (see file header).
+    let agent_timeout: Option<Duration> = timeout_seconds
         .filter(|s| *s > 0)
-        .map(Duration::from_secs)
-        .unwrap_or(DEFAULT_AGENT_TIMEOUT);
+        .map(Duration::from_secs);
     // PR-5c — only treat CLI errors as RESUME_FAILED when --resume was actually
     // requested. Prevents false positives where a fresh invocation's stderr
     // happens to mention "session" or "resume" (help text, deprecation notes).
@@ -537,24 +542,29 @@ pub(crate) async fn spawn_and_stream(
     let sid_complete = session_id.clone();
     let sessions2 = sessions.clone();
     tokio::spawn(async move {
-        // Wait for stdout with timeout
-        let timed_result = tokio::time::timeout(agent_timeout, stdout_reader).await;
-
-        let (succeeded, usage_limit_msg) = match timed_result {
-            Ok(Ok((s, ulm))) => (s.unwrap_or(false), ulm),
-            Ok(Err(_)) => (false, None), // join error
-            Err(_) => {
-                // Timeout — kill the agent
-                log(&format!("[timeout] session={sid_complete} exceeded {}s", agent_timeout.as_secs()));
-                let mut s = sessions2.lock().await;
-                if let Some(session) = s.get_mut(&sid_complete) {
-                    if let Some(mut child) = session.child.take() {
-                        graceful_kill(&mut child).await;
+        // Wait for stdout. When `agent_timeout` is Some, apply the cap;
+        // otherwise wait indefinitely (the server-side heartbeat sweeper
+        // catches truly abandoned sessions).
+        let (succeeded, usage_limit_msg) = match agent_timeout {
+            Some(d) => match tokio::time::timeout(d, stdout_reader).await {
+                Ok(Ok((s, ulm))) => (s.unwrap_or(false), ulm),
+                Ok(Err(_)) => (false, None), // join error
+                Err(_) => {
+                    log(&format!("[timeout] session={sid_complete} exceeded {}s", d.as_secs()));
+                    let mut s = sessions2.lock().await;
+                    if let Some(session) = s.get_mut(&sid_complete) {
+                        if let Some(mut child) = session.child.take() {
+                            graceful_kill(&mut child).await;
+                        }
                     }
+                    drop(s);
+                    (false, None)
                 }
-                drop(s);
-                (false, None)
-            }
+            },
+            None => match stdout_reader.await {
+                Ok((s, ulm)) => (s.unwrap_or(false), ulm),
+                Err(_) => (false, None), // join error
+            },
         };
 
         let err_output = stderr_handle.await.unwrap_or_default();

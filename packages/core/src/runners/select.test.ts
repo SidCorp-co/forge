@@ -124,6 +124,88 @@ describe('selectRunnerForJob', () => {
     expect(r?.id).toBe('r-default');
   });
 
+  it('skips primary when excludeDeviceId matches and picks a standby', async () => {
+    const standby = {
+      id: 'r-standby',
+      project_id: PROJECT_A,
+      type: 'claude-code',
+      host: 'device',
+      device_id: 'dev-standby',
+      name: 'standby',
+      labels: [],
+      capabilities: {},
+      config: {},
+      status: 'online',
+      last_seen_at: new Date().toISOString(),
+      last_error: null,
+    };
+    // Project has defaultDeviceId=dev-primary which is the device we want to skip.
+    limit.mockResolvedValueOnce([{ defaultDeviceId: 'dev-primary' }]);
+    // Only the standby query runs — primary is skipped via excludeDeviceId.
+    execute.mockResolvedValueOnce([standby]);
+    const r = await selectRunnerForJob({
+      projectId: PROJECT_A,
+      excludeDeviceId: 'dev-primary',
+    });
+    expect(r?.id).toBe('r-standby');
+  });
+
+  it('falls back without excludeDeviceId when no alternative runner is online', async () => {
+    const onlyDevice = {
+      id: 'r-only',
+      project_id: PROJECT_A,
+      type: 'claude-code',
+      host: 'device',
+      device_id: 'dev-only',
+      name: 'only',
+      labels: [],
+      capabilities: {},
+      config: {},
+      status: 'online',
+      last_seen_at: new Date().toISOString(),
+      last_error: null,
+    };
+    // First pass: project lookup → defaultDeviceId=dev-only (which is excluded).
+    limit.mockResolvedValueOnce([{ defaultDeviceId: 'dev-only' }]);
+    // Standby search with exclusion finds nothing.
+    execute.mockResolvedValueOnce([]);
+    // Second pass (fallback without exclusion): project lookup again.
+    limit.mockResolvedValueOnce([{ defaultDeviceId: 'dev-only' }]);
+    // Primary lookup → returns the only device.
+    execute.mockResolvedValueOnce([onlyDevice]);
+    const r = await selectRunnerForJob({
+      projectId: PROJECT_A,
+      excludeDeviceId: 'dev-only',
+    });
+    expect(r?.id).toBe('r-only');
+  });
+
+  it('drops the session-group pin when it matches excludeDeviceId', async () => {
+    const standby = {
+      id: 'r-standby-2',
+      project_id: PROJECT_A,
+      type: 'claude-code',
+      host: 'device',
+      device_id: 'dev-standby-2',
+      name: 'standby-2',
+      labels: [],
+      capabilities: {},
+      config: {},
+      status: 'online',
+      last_seen_at: new Date().toISOString(),
+      last_error: null,
+    };
+    // No defaultDeviceId so primary step is a no-op after pin is dropped.
+    // Standby query runs and returns the alternate runner.
+    execute.mockResolvedValueOnce([standby]);
+    const r = await selectRunnerForJob({
+      projectId: PROJECT_A,
+      pinDeviceId: DEVICE_X,
+      excludeDeviceId: DEVICE_X,
+    });
+    expect(r?.id).toBe('r-standby-2');
+  });
+
   it('falls back to freshest when neither pin nor default are available', async () => {
     const fresh = {
       id: 'r-fresh',

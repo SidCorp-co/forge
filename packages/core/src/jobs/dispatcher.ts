@@ -29,6 +29,7 @@ import { checkMonthlyBudget, postBudgetExhaustedComment, shouldEmitWarn } from '
 import { assertDispatchable, runnerSupportsJobType } from './dispatch-gates.js';
 import { persistPromptSnapshot } from './prompt-snapshot.js';
 import { JOB_QUEUE_NAME, PM_QUEUE_NAME } from './queue-name.js';
+import { readAutoRetryPayload } from './retry.js';
 import { findPriorSessionInGroup } from './session-resume.js';
 import { type StageOverrides, resolveStageOverrides } from './stage-overrides.js';
 
@@ -404,6 +405,16 @@ async function dispatchViaRunner(
     }
   }
 
+  // Auto-retry device rotation — when retry.ts wrote a payload hint with the
+  // just-failed deviceId, drop any session-group pin that resolves to the
+  // same device so the selector can pick a standby. Single-device projects
+  // still fall through (selector retries without the exclusion).
+  const autoRetry = readAutoRetryPayload(job.payload);
+  if (autoRetry.excludeDeviceId && pinDeviceId === autoRetry.excludeDeviceId) {
+    pinDeviceId = null;
+    priorClaudeSessionId = null;
+  }
+
   // ISS-232 Phase 2 — `selectRunnerForJob` no longer takes `fallbackChain`.
   // Runner-type filtering is enforced post-select via `runnerSupportsJobType`
   // (failure = permanent `runner_unsupported_type:<runner-type>`). The chain
@@ -412,6 +423,7 @@ async function dispatchViaRunner(
     projectId: job.projectId,
     requiredCapabilities: required,
     pinDeviceId,
+    excludeDeviceId: autoRetry.excludeDeviceId ?? null,
   });
   if (!runner) {
     // ISS-198 — selectRunnerForJob filters runners with stale heartbeats

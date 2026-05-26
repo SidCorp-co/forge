@@ -202,9 +202,9 @@ describe('scheduleAutoRetryWithVerify', () => {
     expect(result.newJobId).toBe('j-unknown-retry');
   });
 
-  it('exhausts the unknown budget after a single retry (attempts=2)', async () => {
+  it('exhausts the phased budget after 40 retries (attempts=41)', async () => {
     const result = await scheduleAutoRetryWithVerify(
-      { ...baseJob, error: 'mystery glitch', attempts: 2 } as never,
+      { ...baseJob, error: 'mystery glitch', attempts: 41 } as never,
       'crashed',
     );
     expect(result.scheduled).toBe(false);
@@ -212,19 +212,43 @@ describe('scheduleAutoRetryWithVerify', () => {
     expect(dbInsert).not.toHaveBeenCalled();
   });
 
-  it('DOES retry past 3 attempts for transient (unbounded budget)', async () => {
-    // Transient/timeout kinds carry no count cap — the per-retry cooldown +
-    // verify-first gate are the safety. Operator can still cancel via
-    // cancellationRequested. Pre this change attempts >= 4 returned
-    // retry_budget_exhausted; now it keeps retrying as long as the issue
-    // hasn't moved on.
-    insertReturning.mockResolvedValueOnce([{ id: 'j-retry-100' }]);
+  it('uses the 5-minute phase-2 cooldown once past 30 retries', async () => {
+    // attempts=31 → upcoming retry is the 31st, which falls in phase 2.
+    insertReturning.mockResolvedValueOnce([{ id: 'j-phase-2' }]);
+    await scheduleAutoRetryWithVerify(
+      { ...baseJob, attempts: 31 } as never,
+      'crashed',
+    );
+    const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(inserted.retryAfterAt).toEqual(new Date(FIXED_NOW + 5 * 60_000));
+    expect(enqueueMock).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 'j-phase-2' }),
+      { startAfterSeconds: 300 },
+    );
+  });
+
+  it('still uses the 1-minute phase-1 cooldown for the 30th retry', async () => {
+    // attempts=30 → upcoming retry is the 30th, last slot in phase 1.
+    insertReturning.mockResolvedValueOnce([{ id: 'j-phase-1-edge' }]);
+    await scheduleAutoRetryWithVerify(
+      { ...baseJob, attempts: 30 } as never,
+      'crashed',
+    );
+    const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(inserted.retryAfterAt).toEqual(new Date(FIXED_NOW + 60_000));
+  });
+
+  it('DOES retry well past 3 attempts while phased budget remains', async () => {
+    // Transient/timeout/unknown share the 40-retry phased budget. Pre this
+    // change attempts >= 4 returned retry_budget_exhausted on transient; now
+    // it keeps retrying until attempts >= 41 (assuming the issue hasn't moved on).
+    insertReturning.mockResolvedValueOnce([{ id: 'j-retry-20' }]);
     const result = await scheduleAutoRetryWithVerify(
-      { ...baseJob, attempts: 100 } as never,
+      { ...baseJob, attempts: 20 } as never,
       'crashed',
     );
     expect(result.scheduled).toBe(true);
-    expect(result.newJobId).toBe('j-retry-100');
+    expect(result.newJobId).toBe('j-retry-20');
   });
 
   it('does NOT retry a cancelled job', async () => {
@@ -277,6 +301,48 @@ describe('scheduleAutoRetryWithVerify', () => {
     expect(updateSet).toHaveBeenCalled();
     const setArg = updateSet.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
     expect(setArg?.failureKind).toBe('transient');
+  });
+
+  it('writes the failed deviceId as the auto-retry exclude hint on the new job', async () => {
+    insertReturning.mockResolvedValueOnce([{ id: 'j-retry-rotate' }]);
+    await scheduleAutoRetryWithVerify(
+      { ...baseJob, deviceId: 'device-A' } as never,
+      'crashed',
+    );
+    const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(inserted.payload).toEqual(
+      expect.objectContaining({
+        _autoRetry: { excludeDeviceId: 'device-A' },
+      }),
+    );
+  });
+
+  it('preserves prior payload keys when injecting the auto-retry hint', async () => {
+    insertReturning.mockResolvedValueOnce([{ id: 'j-retry-payload-merge' }]);
+    await scheduleAutoRetryWithVerify(
+      {
+        ...baseJob,
+        deviceId: 'device-A',
+        payload: { skill: 'forge-plan', custom: 'keep-me' },
+      } as never,
+      'crashed',
+    );
+    const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(inserted.payload).toEqual({
+      skill: 'forge-plan',
+      custom: 'keep-me',
+      _autoRetry: { excludeDeviceId: 'device-A' },
+    });
+  });
+
+  it('skips the exclude hint when the failed job has no deviceId', async () => {
+    insertReturning.mockResolvedValueOnce([{ id: 'j-retry-no-device' }]);
+    await scheduleAutoRetryWithVerify(
+      { ...baseJob, deviceId: null } as never,
+      'crashed',
+    );
+    const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(inserted.payload).not.toHaveProperty('_autoRetry');
   });
 
   it('swallows enqueue errors so the retry row is still created', async () => {

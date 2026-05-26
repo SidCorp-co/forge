@@ -11,8 +11,9 @@
  *      permanent | timeout | unknown — and an optional Retry-After hint).
  *   2. ALWAYS increment recoveryStats on the linked agent_session, even
  *      for non-retryable kinds; broadcast `session.recoveryChanged`.
- *   3. Skip retry if the classifier says permanent / permission / unknown.
- *   4. Skip retry if the auto-retry budget (3) is exhausted.
+ *   3. Skip retry if the classifier says permanent / permission.
+ *   4. Skip retry if the phased auto-retry budget (30×1m + 10×5m = 40)
+ *      is exhausted; the caller then routes to setManualHoldBlock.
  *   5. Verify-first: if `verifyRecovery` says the issue already advanced
  *      past the failed job's expected exit → mark agent_session as
  *      `completed_via_recovery` and stop. If the issue moved to a
@@ -50,34 +51,56 @@ export interface RetryOutcome {
   reason?: string;
 }
 
-/** Cap for `unknown` failures. The classifier returns `unknown` when no
- *  pattern matches — usually a transient runner-side death (Tauri's "Agent
- *  completed with errors" fallback) but possibly a genuinely permanent
- *  failure lacking patterns. A single retry is the "give it one more shot"
- *  compromise — recovers genuine transient blips, contains blast radius if
- *  the failure is actually permanent. */
-export const MAX_AUTO_RETRIES_UNKNOWN = 1;
+/** Phased retry schedule shared by all retryable kinds (transient / timeout /
+ *  unknown):
+ *
+ *    Phase 1 — 30 retries with a 1-minute cooldown (covers ~30 min of
+ *              transient blips and short rate-limit windows).
+ *    Phase 2 — 10 retries with a 5-minute cooldown (additional ~50 min for
+ *              slower recovery, e.g. extended outages or quota resets).
+ *
+ *  After 40 total retries (job.attempts ≥ 41) the budget is exhausted; the
+ *  caller routes the job through `setManualHoldBlock` for operator review.
+ *
+ *  Provider `Retry-After` hints still win when they exceed the phase
+ *  cooldown — the schedule is a floor, not a ceiling.
+ *
+ *  `permission` / `permanent` are hard-stops upstream and never reach this
+ *  helper. */
+export const AUTO_RETRY_PHASE_1_COUNT = 30;
+export const AUTO_RETRY_PHASE_2_COUNT = 10;
+export const AUTO_RETRY_PHASE_2_COOLDOWN_MS = 5 * 60_000;
+export const AUTO_RETRY_MAX_TOTAL = AUTO_RETRY_PHASE_1_COUNT + AUTO_RETRY_PHASE_2_COUNT;
 
-/** Budget per classified failure kind.
- *
- * `transient` and `timeout` return `null` = unbounded retries. The classifier
- * already gave evidence the failure is recoverable (network blip, 5xx, 429,
- * runner offline, ETIMEDOUT, heartbeat stale, etc.); a count-based cap would
- * force manualHold the operator must clear, which adds latency without
- * removing the underlying flake. Token spend is bounded by the per-retry
- * cooldown (60s minimum, capped at 24h per provider Retry-After) and by the
- * verify-first gate that aborts retry if the issue advanced. Operator can
- * still cancel by setting `cancellationRequested` on the job.
- *
- * `unknown` keeps the 1-retry cap so a permanent failure masquerading as
- * unknown can't burn unbounded tokens.
- *
- * `permission` / `permanent` are hard-stops upstream and never reach this
- * helper.
+function autoRetryBudgetFor(kind: FailureKind): number | null {
+  if (kind === 'permission' || kind === 'permanent') return 0;
+  return AUTO_RETRY_MAX_TOTAL;
+}
+
+/** Phase-aware cooldown for the upcoming retry. `nextAttempt` is the
+ *  attempt# of the retry being scheduled (2 = first retry, 3 = second, ...).
  */
-function retryBudgetFor(kind: FailureKind): number | null {
-  if (kind === 'unknown') return MAX_AUTO_RETRIES_UNKNOWN;
-  return null;
+function autoRetryPhasedCooldownMs(nextAttempt: number): number {
+  const retryNum = nextAttempt - 1;
+  if (retryNum <= AUTO_RETRY_PHASE_1_COUNT) return MIN_RETRY_COOLDOWN_MS;
+  return AUTO_RETRY_PHASE_2_COOLDOWN_MS;
+}
+
+/** Payload key the dispatcher reads to skip the just-failed device on the
+ *  next attempt. See `dispatcher.ts` — when the value matches the project's
+ *  primary device, primary selection is skipped so the runner pool rotates
+ *  to a standby; single-device projects fall through to the failed device
+ *  again (selector retries without exclusion when no alternative exists). */
+export const AUTO_RETRY_PAYLOAD_KEY = '_autoRetry';
+
+export interface AutoRetryPayload {
+  excludeDeviceId?: string;
+}
+
+export function readAutoRetryPayload(payload: unknown): AutoRetryPayload {
+  if (!payload || typeof payload !== 'object') return {};
+  const raw = (payload as Record<string, unknown>)[AUTO_RETRY_PAYLOAD_KEY];
+  return raw && typeof raw === 'object' ? (raw as AutoRetryPayload) : {};
 }
 
 /**
@@ -146,9 +169,10 @@ export async function scheduleAutoRetryWithVerify(
 
   // Step 3 — non-retryable kinds. Only `permission` and `permanent` are
   // hard-stops; classification gave us evidence the failure won't recover.
-  // `unknown` is retryable with a tighter budget (see MAX_AUTO_RETRIES_UNKNOWN)
-  // — silent runner deaths are usually transient even when the error string
-  // matches no pattern. `transient` and `timeout` keep the full budget.
+  // `transient`, `timeout`, and `unknown` share the phased budget — silent
+  // runner deaths classified as `unknown` (e.g. Tauri's "Agent completed
+  // with errors" fallback) are usually transient and deserve the same
+  // recovery window as classified blips.
   if (classified.kind === 'permission' || classified.kind === 'permanent') {
     if (isSentryEnabled()) {
       Sentry.addBreadcrumb({
@@ -167,10 +191,9 @@ export async function scheduleAutoRetryWithVerify(
     return { scheduled: false, reason: `classifier:${classified.kind}` };
   }
 
-  // Step 4 — budget. `null` budget = unbounded (transient + timeout); the
-  // per-retry cooldown + verify-first gate are the real safety. attempts
-  // starts at 1 for the original; capped kinds burn at most `budget` retries.
-  const budget = retryBudgetFor(classified.kind);
+  // Step 4 — budget. attempts starts at 1 for the original job; with the
+  // phased budget the cap kicks in at attempts >= AUTO_RETRY_MAX_TOTAL + 1.
+  const budget = autoRetryBudgetFor(classified.kind);
   if (budget !== null && job.attempts >= budget + 1) {
     logger.info(
       { jobId: job.id, attempts: job.attempts, reason },
@@ -220,13 +243,30 @@ export async function scheduleAutoRetryWithVerify(
     }
   }
 
-  // Step 6 — schedule with Retry-After respect. Floor at MIN_RETRY_COOLDOWN_MS
-  // so a runaway provider responding `Retry-After: 0` still gets a small
-  // breathing room before re-dispatch.
-  const minCooldown = new Date(Date.now() + MIN_RETRY_COOLDOWN_MS);
+  // Step 6 — schedule with phase-aware cooldown + Retry-After respect.
+  // The phase cooldown grows from 60s (retries 1..30) to 300s (retries 31..40)
+  // so we don't burn provider quota with tight retries on slower recoveries.
+  // Provider Retry-After still wins when larger than the phase floor.
+  const phaseCooldownMs = autoRetryPhasedCooldownMs(job.attempts + 1);
+  const phaseFloor = new Date(Date.now() + phaseCooldownMs);
   const retryAfterHint = classified.retryAfter;
   const retryAfterAt =
-    retryAfterHint && retryAfterHint > minCooldown ? retryAfterHint : minCooldown;
+    retryAfterHint && retryAfterHint > phaseFloor ? retryAfterHint : phaseFloor;
+
+  // Rotate device on each retry when the project has more than one online
+  // runner. The dispatcher reads `payload[AUTO_RETRY_PAYLOAD_KEY]` and skips
+  // primary selection if the failed device matches; single-device projects
+  // still retry on the same device because the selector falls back without
+  // the exclusion when no alternative is online.
+  const basePayload = (job.payload ?? {}) as Record<string, unknown>;
+  const nextPayload: Record<string, unknown> = { ...basePayload };
+  if (job.deviceId) {
+    const prior = readAutoRetryPayload(basePayload);
+    nextPayload[AUTO_RETRY_PAYLOAD_KEY] = {
+      ...prior,
+      excludeDeviceId: job.deviceId,
+    } satisfies AutoRetryPayload;
+  }
 
   const [created] = await db
     .insert(jobs)
@@ -236,7 +276,7 @@ export async function scheduleAutoRetryWithVerify(
       pipelineRunId: job.pipelineRunId,
       createdBy: job.createdBy,
       type: job.type,
-      payload: job.payload,
+      payload: nextPayload,
       modelTier: job.modelTier,
       status: 'queued',
       attempts: job.attempts + 1,

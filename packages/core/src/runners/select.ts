@@ -38,6 +38,14 @@ interface SelectInput {
    * selection logic (with the session-group resume aborted by the caller).
    */
   pinDeviceId?: string | null;
+  /**
+   * Auto-retry device rotation — when set, primary + standby selection
+   * skip this deviceId so the retry lands on a different runner. If no
+   * other runner is online, selection re-runs WITHOUT the exclusion so
+   * single-device projects still get a runner (the retry will hit the
+   * same device, accepted as the cost of avoiding a manual hold).
+   */
+  excludeDeviceId?: string | null;
 }
 
 type RunnerRow = {
@@ -99,13 +107,43 @@ function rowToRunner(r: RunnerRow): Runner {
  * antigravity were already 1, then 5; both collapse to 1 here).
  */
 export async function selectRunnerForJob(input: SelectInput): Promise<Runner | null> {
-  const { projectId, requiredCapabilities, pinDeviceId } = input;
+  const { projectId, requiredCapabilities, pinDeviceId, excludeDeviceId } = input;
   const required = JSON.stringify(requiredCapabilities ?? {});
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
 
-  // Step 1 — pin (session-group resume)
-  if (pinDeviceId) {
-    const pinned = await findHealthyByDevice(projectId, pinDeviceId, required, livenessSeconds);
+  // Try once with the auto-retry exclusion honored; if nothing matches and
+  // the project only has the excluded device online, retry without it so
+  // the job still lands somewhere.
+  const primary = await pickRunner(projectId, required, livenessSeconds, {
+    pinDeviceId: pinDeviceId ?? null,
+    excludeDeviceId: excludeDeviceId ?? null,
+  });
+  if (primary) return primary;
+  if (excludeDeviceId) {
+    return pickRunner(projectId, required, livenessSeconds, {
+      pinDeviceId: pinDeviceId ?? null,
+      excludeDeviceId: null,
+    });
+  }
+  return null;
+}
+
+async function pickRunner(
+  projectId: string,
+  required: string,
+  livenessSeconds: number,
+  opts: { pinDeviceId: string | null; excludeDeviceId: string | null },
+): Promise<Runner | null> {
+  // Step 1 — pin (session-group resume). The exclusion overrides the pin so
+  // retries actually rotate; the caller drops `priorClaudeSessionId` when the
+  // pin is skipped (see dispatcher.ts).
+  if (opts.pinDeviceId && opts.pinDeviceId !== opts.excludeDeviceId) {
+    const pinned = await findHealthyByDevice(
+      projectId,
+      opts.pinDeviceId,
+      required,
+      livenessSeconds,
+    );
     if (pinned) return pinned;
     // Pin stale → caller will downgrade to fresh dispatch.
   }
@@ -117,7 +155,7 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
     .where(eq(projects.id, projectId))
     .limit(1);
   const defaultDeviceId = project?.defaultDeviceId ?? null;
-  if (defaultDeviceId) {
+  if (defaultDeviceId && defaultDeviceId !== opts.excludeDeviceId) {
     const primary = await findHealthyByDevice(
       projectId,
       defaultDeviceId,
@@ -130,8 +168,11 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
 
   // Step 3 — standby. Excludes the primary device so a one-device project
   // doesn't double-pick its own primary; if defaultDeviceId is null the
-  // exclusion clause collapses to a no-op.
-  const standby = await findStandby(projectId, defaultDeviceId, required, livenessSeconds);
+  // exclusion clause collapses to a no-op. Also excludes the auto-retry
+  // device when set.
+  const standby = await findStandby(projectId, defaultDeviceId, required, livenessSeconds, {
+    excludeDeviceId: opts.excludeDeviceId,
+  });
   return standby;
 }
 
@@ -180,6 +221,7 @@ async function findStandby(
   excludeDeviceId: string | null,
   required: string,
   livenessSeconds: number,
+  extra: { excludeDeviceId: string | null } = { excludeDeviceId: null },
 ): Promise<Runner | null> {
   // Exclusion uses `IS DISTINCT FROM` so NULL device_ids (remote/server
   // runners) participate correctly: `NULL <> 'd1'` is NULL, which fails
@@ -189,6 +231,10 @@ async function findStandby(
   const exclusionClause = excludeDeviceId
     ? sql`AND device_id IS DISTINCT FROM ${excludeDeviceId}`
     : sql``;
+  const retryExclusionClause =
+    extra.excludeDeviceId && extra.excludeDeviceId !== excludeDeviceId
+      ? sql`AND device_id IS DISTINCT FROM ${extra.excludeDeviceId}`
+      : sql``;
   const rows = await db.execute<RunnerRow>(
     sql`
       SELECT id, project_id, type, host, device_id, name, labels,
@@ -200,6 +246,7 @@ async function findStandby(
         AND last_seen_at IS NOT NULL
         AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
         ${exclusionClause}
+        ${retryExclusionClause}
       ORDER BY last_seen_at DESC, id ASC
       LIMIT 1
     `,
