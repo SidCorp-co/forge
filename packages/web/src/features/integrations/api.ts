@@ -14,13 +14,13 @@ export const integrationsApi = {
   create: (projectId: string, body: CreateIntegrationInput) =>
     apiClient<{ integration: IntegrationSummary; integrationSecret: string }>(
       `/projects/${projectId}/integrations`,
-      { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' } },
+      { method: 'POST', body: JSON.stringify(body) },
     ),
 
   update: (projectId: string, id: string, body: UpdateIntegrationInput) =>
     apiClient<{ integration: IntegrationSummary }>(
       `/projects/${projectId}/integrations/${id}`,
-      { method: 'PATCH', body: JSON.stringify(body), headers: { 'content-type': 'application/json' } },
+      { method: 'PATCH', body: JSON.stringify(body) },
     ),
 
   delete: (projectId: string, id: string) =>

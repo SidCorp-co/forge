@@ -23,15 +23,10 @@ describe('apiClient', () => {
 
     await apiClient('/test', { method: 'POST', body: JSON.stringify({ a: 1 }) });
 
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('/test'),
-      expect.objectContaining({
-        credentials: 'include',
-        headers: expect.objectContaining({
-          'Content-Type': 'application/json',
-        }),
-      }),
-    );
+    const [, init] = mockFetch.mock.calls[0];
+    expect(init.credentials).toBe('include');
+    expect(init.headers).toBeInstanceOf(Headers);
+    expect((init.headers as Headers).get('Content-Type')).toBe('application/json');
   });
 
   it('omits Content-Type for GET requests (no body)', async () => {
@@ -44,8 +39,31 @@ describe('apiClient', () => {
 
     await apiClient('/test');
 
-    const headers = mockFetch.mock.calls[0][1].headers;
-    expect(headers).not.toHaveProperty('Content-Type');
+    const headers = mockFetch.mock.calls[0][1].headers as Headers;
+    expect(headers.has('Content-Type')).toBe(false);
+  });
+
+  it('collapses caller-provided content-type to a single value (no duplicates)', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: () => Promise.resolve({}),
+    });
+
+    await apiClient('/test', {
+      method: 'POST',
+      body: JSON.stringify({ a: 1 }),
+      headers: { 'content-type': 'application/json' },
+    });
+
+    const headers = mockFetch.mock.calls[0][1].headers as Headers;
+    expect(headers.get('Content-Type')).toBe('application/json');
+    let count = 0;
+    headers.forEach((_, name) => {
+      if (name.toLowerCase() === 'content-type') count += 1;
+    });
+    expect(count).toBe(1);
   });
 
   it('returns undefined on 204 No Content', async () => {
