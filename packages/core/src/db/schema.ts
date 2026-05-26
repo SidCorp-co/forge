@@ -1898,3 +1898,109 @@ export const pipelineOutbox = pgTable('pipeline_outbox', {
   attempts: integer('attempts').notNull().default(0),
   lastError: text('last_error'),
 });
+
+// ISS-234 — Integration Framework foundation. project_integrations stores
+// one row per (project, provider, environment); secrets_enc holds the
+// AES-256-GCM ciphertext produced by src/integrations/vault.ts.
+//
+// integration_secret is the HMAC key adapters use to verify inbound
+// webhook callbacks — kept separate from projects.webhookSecret so each
+// adapter has scoped credentials.
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return 'bytea';
+  },
+});
+
+export const integrationEnvironments = ['staging', 'prod'] as const;
+export type IntegrationEnvironment = (typeof integrationEnvironments)[number];
+
+export const projectIntegrations = pgTable(
+  'project_integrations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull(),
+    environment: text('environment', { enum: integrationEnvironments }).notNull(),
+    config: jsonb('config').notNull().default({}),
+    secretsEnc: bytea('secrets_enc'),
+    integrationSecret: text('integration_secret'),
+    active: boolean('active').notNull().default(true),
+    breakerOpenedAt: timestamp('breaker_opened_at', { withTimezone: true }),
+    lastHealthStatus: text('last_health_status'),
+    lastHealthAt: timestamp('last_health_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectProviderIdx: index('project_integrations_project_provider_idx').on(
+      t.projectId,
+      t.provider,
+    ),
+    activeProviderIdx: index('project_integrations_active_provider_idx')
+      .on(t.provider, t.active)
+      .where(sql`active = true`),
+    projectProviderEnvUq: uniqueIndex('project_integrations_project_provider_env_uq').on(
+      t.projectId,
+      t.provider,
+      t.environment,
+    ),
+  }),
+);
+
+export const integrationDeliveryDirections = ['outbound', 'inbound'] as const;
+export type IntegrationDeliveryDirection = (typeof integrationDeliveryDirections)[number];
+
+export const integrationDeliveryStatuses = ['pending', 'ok', 'failed'] as const;
+export type IntegrationDeliveryStatus = (typeof integrationDeliveryStatuses)[number];
+
+export const integrationDeliveries = pgTable(
+  'integration_deliveries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectIntegrationId: uuid('project_integration_id')
+      .notNull()
+      .references(() => projectIntegrations.id, { onDelete: 'cascade' }),
+    direction: text('direction', { enum: integrationDeliveryDirections }).notNull(),
+    eventName: text('event_name').notNull(),
+    requestId: text('request_id'),
+    status: text('status', { enum: integrationDeliveryStatuses }).notNull().default('pending'),
+    payload: jsonb('payload').notNull().default({}),
+    response: jsonb('response'),
+    errorMessage: text('error_message'),
+    durationMs: integer('duration_ms'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+  },
+  (t) => ({
+    integrationCreatedIdx: index('integration_deliveries_integration_created_idx').on(
+      t.projectIntegrationId,
+      sql`${t.createdAt} DESC`,
+    ),
+    integrationStatusCreatedIdx: index(
+      'integration_deliveries_integration_status_created_idx',
+    )
+      .on(t.projectIntegrationId, t.status, sql`${t.createdAt} DESC`)
+      .where(sql`direction = 'outbound'`),
+    requestIdUq: uniqueIndex('integration_deliveries_request_id_uq')
+      .on(t.projectIntegrationId, t.requestId)
+      .where(sql`request_id IS NOT NULL`),
+  }),
+);
+
+export const projectIntegrationsRelations = relations(projectIntegrations, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [projectIntegrations.projectId],
+    references: [projects.id],
+  }),
+  deliveries: many(integrationDeliveries),
+}));
+
+export const integrationDeliveriesRelations = relations(integrationDeliveries, ({ one }) => ({
+  integration: one(projectIntegrations, {
+    fields: [integrationDeliveries.projectIntegrationId],
+    references: [projectIntegrations.id],
+  }),
+}));

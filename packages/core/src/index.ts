@@ -111,6 +111,11 @@ import { projectHealthRoutes } from './projects/health-routes.js';
 import { invitationRoutes } from './projects/invitations-routes.js';
 import { memberRoutes } from './projects/members-routes.js';
 import { projectRoutes } from './projects/routes.js';
+import { registerCoolifyAdapter } from './integrations/coolify/adapter.js';
+import { registerIntegrationsWorker } from './integrations/queue.js';
+import { integrationsRoutes } from './integrations/routes.js';
+import { assertVaultBootSafety } from './integrations/vault.js';
+import { registerReleaseCompletedSubscriber } from './pipeline/release-coolify.js';
 import { isBossStarted, startBoss, stopBoss } from './queue/boss.js';
 import { bootstrapRunnerAdapters } from './runners/bootstrap.js';
 import { runnerCallbackRoutes, runnerRoutes } from './runners/routes.js';
@@ -281,6 +286,7 @@ app.route('/api/auth', pairingRoutes);
 // 400-reject the literal "health" segment.
 app.route('/api/projects', projectHealthRoutes);
 app.route('/api/projects', projectRoutes);
+app.route('/api/projects', integrationsRoutes);
 app.route('/api/projects', memberRoutes);
 app.route('/api/projects', skillSyncRoutes);
 app.route('/api/projects', skillRegisterRoutes);
@@ -365,6 +371,10 @@ if (isMain) {
   const port = env.PORT;
 
   await startBoss();
+  await assertVaultBootSafety();
+  registerCoolifyAdapter();
+  await registerIntegrationsWorker();
+  registerReleaseCompletedSubscriber(hooks);
   const skillSeed = await seedBuiltinSkills(db);
   for (const change of skillSeed.changes) {
     await hooks.emit('globalSkillUpdated', {

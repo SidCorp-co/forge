@@ -135,6 +135,19 @@ export async function setCurrentStep(runId: string, step: string): Promise<void>
 }
 
 /**
+ * Stamp current_step on a run regardless of status. Used by post-terminal
+ * substeps like Coolify release.deploy.* — the issue state-machine has
+ * already closed the run by the time the deploy outcome arrives, but the UI
+ * still needs to render the deploy result on the existing run row.
+ */
+export async function setCurrentStepForce(runId: string, step: string): Promise<void> {
+  await db
+    .update(pipelineRuns)
+    .set({ currentStep: step, updatedAt: new Date() })
+    .where(eq(pipelineRuns.id, runId));
+}
+
+/**
  * Mark a run terminal. No-op when the run is already terminal so callers
  * can call this from both the issue state-machine (issue-runs) and the
  * session/job lifecycle (pm/interactive runs) without coordinating.

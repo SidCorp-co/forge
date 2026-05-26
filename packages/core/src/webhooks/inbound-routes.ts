@@ -1,11 +1,23 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
-import { projects } from '../db/schema.js';
+import { projectIntegrations, projects } from '../db/schema.js';
+import { buildContext } from '../integrations/store.js';
+import { getAdapter } from '../integrations/registry.js';
+import type { IntegrationProvider } from '../integrations/types.js';
 import { logger } from '../logger.js';
 import { handleGitHubEvent } from './github-adapter.js';
 import { verifyHmacSignature } from './hmac.js';
+
+// Coolify-style provider signature headers, in priority order. The router
+// uses these to disambiguate which integration row (e.g. staging vs prod)
+// a webhook belongs to when multiple rows are active for the same provider.
+const PROVIDER_SIGNATURE_HEADERS = [
+  'x-coolify-signature-256',
+  'x-hub-signature-256',
+  'x-forge-signature-256',
+] as const;
 
 const badRequest = (details: unknown, code = 'BAD_REQUEST') =>
   new HTTPException(400, { message: 'Invalid input', cause: { code, details } });
@@ -13,6 +25,12 @@ const unauthorized = (code: string) =>
   new HTTPException(401, { message: 'invalid signature', cause: { code } });
 const notFound = () =>
   new HTTPException(404, { message: 'project not found', cause: { code: 'NOT_FOUND' } });
+
+// Header → adapter provider lookup. Order matters only when a request
+// carries multiple provider headers — first match wins.
+const PROVIDER_HEADER_MAP: Array<{ header: string; provider: IntegrationProvider }> = [
+  { header: 'x-coolify-event', provider: 'coolify' },
+];
 
 export const webhookInboundRoutes = new Hono();
 
@@ -29,6 +47,78 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
     .where(eq(projects.slug, slug))
     .limit(1);
   if (!project) throw notFound();
+
+  // Adapter dispatch happens BEFORE the legacy GitHub path so registered
+  // providers get their scoped integrationSecret (not projects.webhookSecret).
+  // Only triggers when a provider header is present, so the legacy
+  // GitHub/generic test cases are untouched.
+  for (const map of PROVIDER_HEADER_MAP) {
+    if (!c.req.header(map.header)) continue;
+    const adapter = getAdapter(map.provider);
+    if (!adapter) throw badRequest({ provider: map.provider }, 'ADAPTER_NOT_REGISTERED');
+
+    // Multi-env disambiguation: every active integration row for this
+    // provider is a candidate. We verify the inbound signature against each
+    // row's own integrationSecret and dispatch on the one that matches.
+    // This is the only way to tell e.g. a staging-Coolify webhook apart from
+    // a prod-Coolify webhook when both rows exist for the same project.
+    const candidateRows = await findActiveIntegrations(project.id, map.provider);
+    if (candidateRows.length === 0) {
+      throw badRequest({ provider: map.provider }, 'INTEGRATION_NOT_CONFIGURED');
+    }
+
+    const signatureHeader = PROVIDER_SIGNATURE_HEADERS.map((h) => c.req.header(h)).find(
+      (v): v is string => typeof v === 'string' && v.length > 0,
+    );
+    if (!signatureHeader) {
+      throw unauthorized('MISSING_SIGNATURE');
+    }
+
+    const integrationRow = candidateRows.find(
+      (row) =>
+        row.integrationSecret !== null &&
+        verifyHmacSignature(row.integrationSecret, rawBody, signatureHeader),
+    );
+    if (!integrationRow) {
+      throw unauthorized('INVALID_SIGNATURE');
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = rawBody.length > 0 ? JSON.parse(rawBody) : {};
+    } catch {
+      throw badRequest({ body: 'invalid json' });
+    }
+    const ctx = buildContext(integrationRow);
+    try {
+      const result = await adapter.handleInbound(ctx, {
+        headers: collectHeaders(c.req.raw.headers),
+        rawBody,
+        payload: parsed,
+      });
+      return c.json({
+        accepted: true,
+        handler: map.provider,
+        environment: integrationRow.environment,
+        deliveryId: result.deliveryId,
+        actions: result.actions,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown error';
+      if (/signature/i.test(message)) throw unauthorized('INVALID_SIGNATURE');
+      logger.error(
+        { err, slug, provider: map.provider, integrationId: integrationRow.id },
+        'integration adapter: handler threw',
+      );
+      throw new HTTPException(500, {
+        message: 'handler failed',
+        cause: { code: 'HANDLER_FAILED' },
+      });
+    }
+  }
+
+  // Legacy GitHub + generic path, preserved verbatim so the existing
+  // inbound-routes.test.ts regression test continues to pass.
   if (!project.secret) {
     throw badRequest({ slug: 'webhook not enabled' }, 'WEBHOOK_DISABLED');
   }
@@ -67,3 +157,24 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
   logger.info({ slug, bytes: rawBody.length }, 'webhook: generic receive');
   return c.json({ accepted: true, handler: 'generic', actions: 0 });
 });
+
+async function findActiveIntegrations(projectId: string, provider: IntegrationProvider) {
+  return db
+    .select()
+    .from(projectIntegrations)
+    .where(
+      and(
+        eq(projectIntegrations.projectId, projectId),
+        eq(projectIntegrations.provider, provider),
+        eq(projectIntegrations.active, true),
+      ),
+    );
+}
+
+function collectHeaders(headers: Headers): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = {};
+  headers.forEach((v, k) => {
+    out[k.toLowerCase()] = v;
+  });
+  return out;
+}

@@ -110,6 +110,12 @@ const EnvSchema = z.object({
   OIDC_SCOPES: z.string().min(1).default('openid email profile'),
 });
 
+// ISS-234 — INTEGRATION_MASTER_KEY is intentionally NOT validated through
+// this schema. The vault module reads process.env directly so unit tests that
+// mock the DB but never exercise the vault don't trip env validation. The
+// vault's boot-time guard (assertVaultBootSafety) catches missing keys when
+// any active integration row exists.
+
 export type Env = z.infer<typeof EnvSchema>;
 
 const parsed = EnvSchema.safeParse(cleanedEnv);

@@ -71,7 +71,7 @@ export default function ProjectSettingsPage() {
       label: 'Integrations',
       items: [
         { id: 'int.antigravity', label: 'Antigravity', tag: 'INT_ATG', render: () => <AntigravitySection previewMode /> },
-        { id: 'int.coolify', label: 'Coolify', tag: 'INT_CLF', render: () => <CoolifySection previewMode /> },
+        { id: 'int.coolify', label: 'Coolify', tag: 'INT_CLF', render: () => <CoolifySection projectId={projectId} /> },
         { id: 'int.sentry', label: 'Sentry', tag: 'INT_SNT', render: () => <SentrySection previewMode /> },
         { id: 'int.gitlab', label: 'GitLab Webhook', tag: 'INT_GLB', render: () => <GitlabWebhookSection previewMode /> },
         { id: 'int.channels', label: 'Channels', tag: 'INT_CHN', render: () => <ChannelsSection previewMode /> },
