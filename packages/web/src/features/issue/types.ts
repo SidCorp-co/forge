@@ -17,7 +17,8 @@ export type IssueStatus =
   | 'closed'
   | 'reopen'
   | 'on_hold'
-  | 'needs_info';
+  | 'needs_info'
+  | 'draft';
 
 export type IssuePriority = 'critical' | 'high' | 'medium' | 'low' | 'none';
 

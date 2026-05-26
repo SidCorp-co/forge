@@ -19,6 +19,9 @@ export const STATUS_COLORS: Record<IssueStatus, string> = {
   reopen: 'bg-red-500/15 text-red-400',
   on_hold: 'bg-stone-500/20 text-stone-400',
   needs_info: 'bg-pink-500/15 text-pink-400',
+  // ISS-236 — dashed muted border conveys "proposal, not yet accepted".
+  draft:
+    'border border-dashed border-on-surface-variant/40 bg-transparent text-on-surface-variant',
 };
 
 export const PRIORITY_COLORS: Record<IssuePriority, string> = {
@@ -63,6 +66,7 @@ export const ALL_STATUSES: { value: IssueStatus; label: string }[] = [
   { value: 'reopen', label: 'Reopen' },
   { value: 'on_hold', label: 'On Hold' },
   { value: 'needs_info', label: 'Needs Info' },
+  { value: 'draft', label: 'Draft' },
 ];
 
 export const ALL_PRIORITIES: { value: IssuePriority; label: string }[] = [

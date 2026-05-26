@@ -54,9 +54,29 @@ describe('state machine', () => {
     expect(transitions.closed).toEqual(['reopen']);
   });
 
-  it('on_hold can resume to any non-on_hold status', () => {
-    const resumable = issueStatuses.filter((s) => s !== 'on_hold');
+  it('on_hold can resume to any non-on_hold, non-draft status', () => {
+    // ISS-236 — draft is excluded from on_hold's resume list because drafts
+    // are pre-pipeline proposals; nothing should be demoted INTO draft.
+    const resumable = issueStatuses.filter((s) => s !== 'on_hold' && s !== 'draft');
     expect([...transitions.on_hold]).toEqual(resumable);
+  });
+
+  it('draft promotes to open or discards to closed (ISS-236)', () => {
+    expect([...transitions.draft].sort()).toEqual(['closed', 'open']);
+  });
+
+  it('no status maps INTO draft (ISS-236)', () => {
+    for (const from of issueStatuses) {
+      if (from === 'draft') continue;
+      expect(canTransition(from, 'draft')).toBe(false);
+    }
+  });
+
+  it('draft rejects every transition target except open and closed (ISS-236)', () => {
+    for (const to of issueStatuses) {
+      const expected = to === 'open' || to === 'closed';
+      expect(canTransition('draft', to)).toBe(expected);
+    }
   });
 
   it('released can only move to closed or on_hold', () => {

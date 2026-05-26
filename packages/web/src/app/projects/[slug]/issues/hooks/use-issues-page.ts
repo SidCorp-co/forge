@@ -83,10 +83,16 @@ export function useIssuesPage() {
   // supports `q` (ILIKE on title + description).
   const isUuidAssignee =
     assigneeFilter !== 'all' && assigneeFilter !== 'unassigned';
+  // ISS-236 — drafts are AI-generated proposals waiting for human review.
+  // Exclude them from the default view; they show up only when the user
+  // explicitly selects the Draft chip.
+  const statusFilterIncludesDraft = statusFilter.includes('draft');
+  const effectiveStatusNot = statusFilterIncludesDraft ? undefined : ['draft'];
   const { data: paginatedData, isLoading } = useIssueSearch({
     projectId: projectId ?? '',
     ...(searchQuery ? { q: searchQuery } : {}),
     ...(statusFilter.length > 0 ? { status: statusFilter } : {}),
+    ...(effectiveStatusNot ? { statusNot: effectiveStatusNot } : {}),
     ...(priorityFilter.length > 0 ? { priority: priorityFilter } : {}),
     ...(categoryFilter !== 'all' ? { category: categoryFilter } : {}),
     ...(isUuidAssignee ? { assignee: assigneeFilter } : {}),

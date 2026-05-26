@@ -18,6 +18,9 @@ export const ALL_ISSUE_COLS: { status: IssueStatus; label: string; color: string
   { status: 'reopen', label: 'Reopen', color: 'border-warning', bg: 'bg-warning-dim/10' },
   { status: 'on_hold', label: 'On Hold', color: 'border-warning', bg: 'bg-warning-dim/10' },
   { status: 'needs_info', label: 'Needs Info', color: 'border-tertiary-container', bg: 'bg-surface-variant' },
+  // ISS-236 — drafts are AI-generated proposals; they appear as a board
+  // column but are hidden by default (see DEFAULT_VISIBLE below).
+  { status: 'draft', label: 'Draft', color: 'border-outline-variant', bg: 'bg-surface-container-low' },
 ];
 
 export const TASK_COLS: { status: TaskStatus; label: string; color: string; bg: string }[] = [
@@ -45,6 +48,9 @@ export const DEFAULT_VISIBLE: Record<IssueStatus, boolean> = {
   reopen: false,
   on_hold: false,
   needs_info: false,
+  // ISS-236 — drafts default-hidden; the user opens the column from the
+  // board toolbar's column-picker when they want to triage proposals.
+  draft: false,
 };
 
 export const BOARD_VIEW_OPTIONS: { value: 'issues' | 'tasks'; label: string }[] = [

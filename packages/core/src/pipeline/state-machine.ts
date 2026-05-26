@@ -22,8 +22,11 @@ export const transitions: Record<IssueStatus, readonly IssueStatus[]> = {
   released: ['closed', 'on_hold'],
   closed: ['reopen'],
   reopen: ['developed', 'deploying', 'in_progress', 'on_hold'],
-  on_hold: issueStatuses.filter((s) => s !== 'on_hold'),
+  on_hold: issueStatuses.filter((s) => s !== 'on_hold' && s !== 'draft'),
   needs_info: ['open', 'confirmed', 'on_hold'],
+  // ISS-236 — drafts are AI-generated proposals; user either promotes them
+  // into the normal pipeline or discards them. No other status maps INTO draft.
+  draft: ['open', 'closed'],
 };
 
 export function getAllowedTransitions(from: IssueStatus): readonly IssueStatus[] {

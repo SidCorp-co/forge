@@ -392,6 +392,19 @@ describe('pipeline/orchestrator', () => {
     expect(resolverResolve).not.toHaveBeenCalled();
     expect(enqueueMock).not.toHaveBeenCalled();
   });
+
+  // ISS-236 — drafts are AI-generated proposals waiting for human review.
+  // The orchestrator must not auto-enqueue any pipeline job for them; the
+  // user has to explicitly promote draft → open first.
+  it('does not enqueue when issueCreated payload.status is draft', async () => {
+    const bus = makeBus();
+    await bus.emit('issueCreated', issueCreated({ status: 'draft' }) as never);
+
+    expect(dbInsert).not.toHaveBeenCalled();
+    expect(nextSelect).not.toHaveBeenCalled();
+    expect(resolverResolve).not.toHaveBeenCalled();
+    expect(enqueueMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('pipeline/orchestrator soft-skip (ISS-110)', () => {

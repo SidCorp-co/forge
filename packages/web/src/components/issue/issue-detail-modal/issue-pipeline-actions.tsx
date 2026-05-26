@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { PIPELINE_STAGES, type PipelineStage } from '@/features/issue/api/issue-api';
-import { useRunPipelineStep } from '@/features/issue/hooks/use-issues';
+import { useRunPipelineStep, useTransitionIssue } from '@/features/issue/hooks/use-issues';
 import { useEnrichIssue } from '@/features/issue/hooks/use-enrich';
 import { usePipelineRegistry } from '@/features/pipeline/use-pipeline-registry';
 import { ApiError } from '@/lib/api/client';
@@ -32,6 +32,15 @@ const TERMINAL_STATUSES = new Set(['released', 'closed', 'staging', 'pass']);
 const RATE_LIMIT_MS = 2000;
 
 export function IssuePipelineActions({ issueId, status }: Props) {
+  // ISS-236 — drafts are pre-pipeline proposals. Hide the normal stage
+  // buttons and render Promote / Discard instead.
+  if (status === 'draft') {
+    return <DraftActions issueId={issueId} />;
+  }
+  return <PipelineActions issueId={issueId} status={status} />;
+}
+
+function PipelineActions({ issueId, status }: Props) {
   const [open, setOpen] = useState(false);
   const [feedback, setFeedback] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
   const lastFireRef = useRef<number>(0);
@@ -183,6 +192,60 @@ export function IssuePipelineActions({ issueId, status }: Props) {
           }`}
         >
           {feedback.text}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function DraftActions({ issueId }: { issueId: string }) {
+  const transition = useTransitionIssue();
+  const [error, setError] = useState<string | null>(null);
+
+  async function run(toStatus: 'open' | 'closed', reason?: string) {
+    setError(null);
+    try {
+      await transition.mutateAsync({ id: issueId, toStatus, ...(reason ? { reason } : {}) });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to transition');
+    }
+  }
+
+  function promote() {
+    void run('open');
+  }
+
+  function discard() {
+    if (typeof window !== 'undefined') {
+      const ok = window.confirm(
+        'Discard this draft proposal? This archives the issue.',
+      );
+      if (!ok) return;
+    }
+    void run('closed', 'draft discarded');
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        onClick={promote}
+        disabled={transition.isPending}
+        className="rounded-sm border border-primary bg-primary/10 px-3 py-1.5 text-xs font-mono uppercase tracking-widest text-primary hover:bg-primary/20 disabled:opacity-50"
+      >
+        {transition.isPending ? 'Promoting…' : 'Promote to open'}
+      </button>
+      <button
+        type="button"
+        onClick={discard}
+        disabled={transition.isPending}
+        className="rounded-sm border border-outline bg-surface-container px-3 py-1.5 text-xs font-mono uppercase tracking-widest text-on-surface-variant hover:bg-surface-container-high disabled:opacity-50"
+      >
+        Discard
+      </button>
+      {error && (
+        <span className="text-[10px] font-mono uppercase tracking-widest text-error">
+          {error}
         </span>
       )}
     </div>

@@ -678,6 +678,7 @@ export const issueStatuses = [
   'reopen',
   'on_hold',
   'needs_info',
+  'draft',
 ] as const;
 export type IssueStatus = (typeof issueStatuses)[number];
 

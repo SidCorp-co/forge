@@ -308,7 +308,7 @@ describe('forge_issues tool', () => {
     );
   });
 
-  it('create rejects status outside the {open, on_hold} allow-list (ISS-130)', async () => {
+  it('create rejects status outside the {open, on_hold, draft} allow-list (ISS-130, ISS-236)', async () => {
     const tool = forgeIssuesTool({
       principal: { kind: 'device', device: fakeDevice },
       device: fakeDevice,
@@ -324,6 +324,33 @@ describe('forge_issues tool', () => {
       }),
     ).rejects.toThrow(/BAD_REQUEST/);
     expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  // ISS-236 — drafts are AI-generated proposals; the create allow-list
+  // accepts them so Dream / Doc-Sync schedules can deposit findings.
+  it('create accepts status: draft and emits issueCreated with that status (ISS-236)', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    insertReturning.mockResolvedValueOnce([{ ...baseIssueRow, status: 'draft' }]);
+
+    const { hooks } = await import('../../pipeline/hooks.js');
+
+    const result = (await tool.handler({
+      action: 'create',
+      data: { title: 'AI proposal', status: 'draft' },
+    })) as { status: string };
+
+    expect(result.status).toBe('draft');
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ status: 'draft' }));
+    expect(hooks.emit).toHaveBeenCalledWith(
+      'issueCreated',
+      expect.objectContaining({ status: 'draft' }),
+    );
   });
 
   it('create defaults status to open when omitted and emits issueCreated accordingly', async () => {

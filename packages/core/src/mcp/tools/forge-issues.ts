@@ -336,14 +336,15 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         const projectId = await resolveProjectId(input, projectSlug);
         await assertPrincipalIsMember(principal, projectId);
 
-        // ISS-130 — narrow allow-list for entry status. Only `open` (the
-        // normal triage entry) and `on_hold` (the decomposition parking
-        // state) may be set at create. Anything else must go through the
-        // transition action so the state machine + activity log run.
+        // ISS-130 — narrow allow-list for entry status. `open` is the normal
+        // triage entry, `on_hold` is the decomposition parking state, and
+        // ISS-236 adds `draft` for AI-generated proposals that wait for human
+        // promote/discard before entering the pipeline. Anything else must go
+        // through the transition action so the state machine + activity log run.
         const createStatus: IssueStatus = input.data.status ?? 'open';
-        if (createStatus !== 'open' && createStatus !== 'on_hold') {
+        if (createStatus !== 'open' && createStatus !== 'on_hold' && createStatus !== 'draft') {
           throw new Error(
-            `BAD_REQUEST: status at create must be 'open' or 'on_hold' (got '${createStatus}'); use the transition action for other statuses`,
+            `BAD_REQUEST: status at create must be 'open', 'on_hold', or 'draft' (got '${createStatus}'); use the transition action for other statuses`,
           );
         }
 

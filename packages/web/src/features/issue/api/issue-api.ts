@@ -28,6 +28,7 @@ export interface IssueSearchParams {
   projectId: string;
   q?: string;
   status?: string[];
+  statusNot?: string[];
   priority?: string[];
   label?: string[];
   assignee?: string;
@@ -68,6 +69,7 @@ function buildSearchQs(q: Omit<IssueSearchParams, 'projectId'>): string {
   const qs = new URLSearchParams();
   if (q.q) qs.set('q', q.q);
   q.status?.forEach((s) => qs.append('status', s));
+  q.statusNot?.forEach((s) => qs.append('statusNot', s));
   q.priority?.forEach((s) => qs.append('priority', s));
   q.label?.forEach((s) => qs.append('label', s));
   if (q.assignee) qs.set('assignee', q.assignee);

@@ -291,6 +291,45 @@ describe('POST /api/issues/:id/transition', () => {
     expect(cascadeCalls).toHaveLength(0);
   });
 
+  // ISS-236 — draft is a pre-pipeline lane for AI-generated proposals.
+  it('200 draft → open promotes the proposal and publishes statusChanged', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'draft' });
+    updateReturning.mockResolvedValueOnce([
+      { id: ISSUE_ID, status: 'open', reopenCount: 0, updatedAt: new Date() },
+    ]);
+    const res = await req({ toStatus: 'open' }, token);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: string };
+    expect(body.status).toBe('open');
+    expect(publish).toHaveBeenCalledOnce();
+    const [, envelope] = publish.mock.calls[0] as [string, { event: string }];
+    expect(envelope.event).toBe('issue.statusChanged');
+  });
+
+  it('200 draft → closed discards the proposal', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'draft' });
+    updateReturning.mockResolvedValueOnce([
+      { id: ISSUE_ID, status: 'closed', reopenCount: 0, updatedAt: new Date() },
+    ]);
+    const res = await req({ toStatus: 'closed', reason: 'draft discarded' }, token);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: string };
+    expect(body.status).toBe('closed');
+  });
+
+  it('409 ILLEGAL_TRANSITION when draft attempts to skip into the pipeline', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'draft' });
+    const res = await req({ toStatus: 'in_progress' }, token);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string; details: { allowed: string[] } };
+    expect(body.code).toBe('ILLEGAL_TRANSITION');
+    expect([...body.details.allowed].sort()).toEqual(['closed', 'open']);
+    expect(dbUpdate).not.toHaveBeenCalled();
+  });
+
   it('409 STALE_TRANSITION when conditional UPDATE finds no matching row', async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'open' });

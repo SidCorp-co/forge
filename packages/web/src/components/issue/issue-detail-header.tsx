@@ -28,6 +28,9 @@ export const STATUS_TAB_MAP: Record<IssueStatus, IssueDetailTabKey> = {
   closed: 'activity',
   reopen: 'activity',
   on_hold: 'activity',
+  // ISS-236 — drafts open at the overview tab; the Promote/Discard CTAs live
+  // in the pipeline-actions slot, not in any pipeline stage.
+  draft: 'overview',
 };
 
 export interface IssueDetailHeaderProps {
