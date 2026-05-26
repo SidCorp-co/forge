@@ -13,25 +13,6 @@ ADRs are **never edited after acceptance**. If a decision is reversed, write a n
 
 | # | Title | Status | Date |
 |---|-------|--------|------|
-| [0001](0001-device-runner-architecture.md) | Adopt device-runner architecture | Accepted | 2026-04-19 |
-| [0002](0002-replace-strapi-with-hono-drizzle.md) | Replace Strapi backbone with Hono + Drizzle service (full rewrite, no migration) | Proposed | 2026-04-20 |
-| [0003](0003-claude-code-cli-as-primary-runner.md) | Claude Code CLI as primary runner (not Anthropic API) | Accepted | 2026-04-19 |
-| [0004](0004-no-claude-credentials-on-server.md) | Server never holds Claude credentials | Accepted | 2026-04-19 |
-| [0005](0005-dual-principal-auth.md) | Dual-principal authorization (user + device) | Accepted | 2026-04-19 |
-| [0006](0006-pg-boss-for-job-queue.md) | pg-boss for job queue (no Redis dependency) | Accepted | 2026-04-19 |
-| [0007](0007-apache-2-license.md) | Apache-2.0 license for the project | Accepted | 2026-04-18 |
-| [0008](0008-english-as-primary-language.md) | English as the primary language for public docs | Accepted | 2026-04-19 |
-| [0009](0009-mobile-app-paused-for-v0x.md) | Mobile app paused for v0.x | Accepted | 2026-04-19 |
-| [0010](0010-clean-break-from-strapi.md) | Clean break from Strapi to `packages/core` (no parity, no dual-run) | Accepted | 2026-04-23 |
-| [0011](0011-pgvector-replaces-qdrant.md) | Postgres `pgvector` replaces Qdrant for vector storage | Accepted | 2026-04-23 |
-| [0012](0012-web-api-client-shape.md) | Web API client shape | Accepted | — |
-| [0013](0013-widget-api-key-storage.md) | Widget API key storage | Accepted | — |
-| [0014](0014-trunk-based-development.md) | Trunk-Based Development (single trunk, no `develop`/release branches) | Accepted | 2026-04-26 |
-| [0015](0015-rebrand-to-forge.md) | Rebrand to Forge | Accepted | 2026-04-28 |
-| [0016](0016-defer-glib-upgrade.md) | Defer glib 0.20 upgrade; transitive 0.18 dismissed with zero-exposure evidence | Accepted | 2026-04-29 |
-| [0017](0017-desktop-oauth-pkce.md) | Desktop OAuth via PKCE handoff | Superseded by 0019 | 2026-04-29 |
-| [0018](0018-parent-issue-edge-vs-column.md) | Parent issue edge vs column | Accepted | — |
-| [0019](0019-desktop-device-pairing.md) | Desktop sign-in via pairing code (supersedes 0017) | Accepted | 2026-05-24 |
 
 ## Status values
 
