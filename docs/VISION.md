@@ -86,7 +86,6 @@ shipped:
   separately if proven valuable.
 - No enterprise RBAC in `v0.x`. No team/org model in `v0.x` — separate RFC.
 - No Linux headless agent in `v0.x` — follow-up RFC.
-- No mobile in `v0.x` — `packages/app/` is paused, returns in `v0.2+`.
 - No agent framework abstractions — we orchestrate, not reimplement
   LangGraph/CrewAI.
 - Idea, Spec, Design stages not yet implemented — roadmap items.
