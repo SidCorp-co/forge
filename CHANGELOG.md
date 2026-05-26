@@ -12,6 +12,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+### Removed
+
+### Fixed
+
+### Security
+
+## [0.2.8] - 2026-05-26
+
+Pipeline self-heals through quota caps, runner blips, and long-running sessions
+
+### Added
+
+### Changed
+
 - **Pipeline now keeps retrying through quota caps and runner blips instead of giving up after one attempt.** Previously when an agent session hit Claude's hourly usage limit (e.g. "You've hit your session limit · resets 7:30pm") or any runner-side blip that produced the generic "Agent completed with errors" message, the pipeline tried exactly once more after a 60-second cooldown and then halted with the issue stuck mid-pipeline — operators had to clear the manual hold by hand and could lose hours waiting until they noticed. The retry budget now expands to 40 attempts across two phases (30 retries spaced 1 minute apart, then 10 retries spaced 5 minutes apart), covering ~80 minutes of provider/runner recovery before the issue falls to manualHold. Multi-device projects also rotate runners on each retry, so a single misbehaving device no longer locks the issue. Long-running sessions are no longer cut at 30 minutes — the global agent timeout has been removed, with the server-side heartbeat sweeper (3-minute default) and per-state `timeoutSeconds` overrides remaining as the only watchdogs.
   *Technical: `packages/core/src/jobs/retry.ts` replaces `MAX_AUTO_RETRIES_UNKNOWN=1` + null-budget transient/timeout kinds with a single phased schedule (`AUTO_RETRY_PHASE_1_COUNT=30`, `AUTO_RETRY_PHASE_2_COUNT=10`, `AUTO_RETRY_PHASE_2_COOLDOWN_MS=300_000`, `AUTO_RETRY_MAX_TOTAL=40`). Provider `Retry-After` hints still override the phase floor. Retries write `payload._autoRetry.excludeDeviceId = job.deviceId`; `packages/core/src/jobs/dispatcher.ts` reads it and drops the session-group pin when it matches; `packages/core/src/runners/select.ts` adds an optional `excludeDeviceId` to `selectRunnerForJob` that skips primary + standby picks, then falls back without the exclusion when no alternative is online so single-device projects still dispatch. `packages/dev/src-tauri/src/claude_cli/spawn.rs` drops `DEFAULT_AGENT_TIMEOUT: Duration::from_secs(30 * 60)` and makes `timeout_seconds=None` mean "no cap" instead of falling back to 30 minutes.*
 
