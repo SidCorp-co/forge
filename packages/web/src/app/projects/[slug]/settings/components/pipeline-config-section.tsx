@@ -4,7 +4,9 @@ import { UnimplementedBanner } from '@/components/common/unimplemented-banner';
 import { Spinner } from '@/components/ui';
 import { PipelineMasterToggle } from '@/features/pipeline/config/components/pipeline-master-toggle';
 import { RecoveryPolicyCard } from '@/features/pipeline/config/components/recovery-policy-card';
-import { RunnerDefaultsCard } from '@/features/pipeline/config/components/runner-defaults-card';
+// ISS-232 Phase 4 — RunnerDefaultsCard removed. The v2 selector picks
+// primary → standby with no project-wide type-chain; per-step `runner`
+// overrides on the StepToggleList still work.
 import { StepToggleList } from '@/features/pipeline/config/components/step-toggle-list';
 import { usePipelineConfig } from '@/features/pipeline/config/hooks/use-pipeline-config';
 import { useFocusOnMount } from '../hooks/use-focus-on-mount';
@@ -72,12 +74,6 @@ export function PipelineConfigSection({ projectId }: Props) {
         onMaxAttemptsChange={(n) => cfg.setField('recoveryMaxAttempts', n)}
         onWindowHoursChange={(n) => cfg.setField('recoveryWindowHours', n)}
         onByKindChange={cfg.setRecoveryByKind}
-      />
-
-      <RunnerDefaultsCard
-        chain={cfg.state.runnerFallback}
-        availableTypes={cfg.availableRunners}
-        onChange={(v) => cfg.setField('runnerFallback', v)}
       />
 
       {cfg.isError && !cfg.flagDisabled && (
