@@ -540,6 +540,13 @@
       "when": 1780617600000,
       "tag": "0077_add_issues_merged_at",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1780704000000,
+      "tag": "0078_integrations",
+      "breakpoints": true
     }
   ]
 }
