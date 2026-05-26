@@ -109,6 +109,16 @@ describe('GET /api/projects/:id/issues/search', () => {
     expect(res.status).toBe(400);
   });
 
+  // ISS-236 — statusNot mirrors the status enum and supports array form so the
+  // web list page can hide drafts by default while a Draft chip can still
+  // include them on demand.
+  it('400 on invalid statusNot enum', async () => {
+    queueAuthSelect();
+    const t = await token();
+    const res = await req('?statusNot=not_a_status', t);
+    expect(res.status).toBe(400);
+  });
+
   it('400 when category exceeds 100 chars', async () => {
     queueAuthSelect();
     const t = await token();

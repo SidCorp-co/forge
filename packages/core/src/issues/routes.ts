@@ -95,8 +95,9 @@ export const issueCreateSchema = z
     // ISS-130 — narrow allow-list for entry status. The F4 transition
     // endpoint still owns post-creation status changes; this only exists so
     // decomposition children can land at `on_hold` (parked, no auto-triage)
-    // atomically with the insert.
-    status: z.enum(['open', 'on_hold']).optional(),
+    // atomically with the insert. ISS-236 — also `draft` for AI-generated
+    // proposals (Dream / Doc-Sync) that wait for human promote/discard.
+    status: z.enum(['open', 'on_hold', 'draft']).optional(),
   })
   .strict();
 

@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **New `draft` issue status — AI-generated proposals (from Dream / Doc-Sync schedules) land here for human review before entering the normal pipeline. Promote to open or discard with one click.**
+  *Technical: Extended issueStatuses enum + issues_status_chk constraint. State machine allows draft→open and draft→closed only. All dispatchers updated to skip drafts.*
+
 ### Changed
 
 ### Removed

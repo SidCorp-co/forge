@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, count, eq, exists, inArray, or, sql } from 'drizzle-orm';
+import { and, count, eq, exists, inArray, notInArray, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -21,6 +21,12 @@ const searchQuerySchema = z
   .object({
     q: z.string().trim().min(1).max(200).optional(),
     status: z
+      .union([z.enum(issueStatuses), z.array(z.enum(issueStatuses))])
+      .optional()
+      .transform(coerceArray),
+    // ISS-236 — exclude one or more statuses (used by the web list page to
+    // hide drafts from the default "all open" view).
+    statusNot: z
       .union([z.enum(issueStatuses), z.array(z.enum(issueStatuses))])
       .optional()
       .transform(coerceArray),
@@ -92,6 +98,9 @@ searchRoutes.get(
     }
     if (q.status && q.status.length > 0) {
       conditions.push(inArray(issues.status, q.status));
+    }
+    if (q.statusNot && q.statusNot.length > 0) {
+      conditions.push(notInArray(issues.status, q.statusNot));
     }
     if (q.priority && q.priority.length > 0) {
       conditions.push(inArray(issues.priority, q.priority));
