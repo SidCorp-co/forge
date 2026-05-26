@@ -21,6 +21,10 @@ import {
 } from './ci-fix-pattern-query.js';
 import { ActiveJobConflictError, insertAndEnqueueJob } from './enqueue-helper.js';
 import type { HookPayloads, HooksBus } from './hooks.js';
+import {
+  pausePipelineRunMissingSkill,
+  postMissingSkillComment,
+} from './missing-skill-guard.js';
 import { PIPELINE_STEPS } from './registry.js';
 import { openIssueRun } from './runs.js';
 import {
@@ -316,9 +320,35 @@ async function considerEnqueue(args: {
   const resolver = createProjectSkillResolver(args.projectId);
   const skill = await resolver.resolve(args.status);
   if (!skill) {
+    // ISS-238 — refuse + pause + comment instead of silently skipping. Loops
+    // through the reconciler rescue path (`reEnqueueForIssue → considerEnqueue`)
+    // previously re-entered here on every minute-cadence tick, burning runner
+    // cycles without surfacing the operator-fixable misconfiguration.
+    const run = await openIssueRun({ projectId: args.projectId, issueId: args.issueId });
+    const { paused, alreadyPaused } = await pausePipelineRunMissingSkill({
+      runId: run.id,
+      projectId: args.projectId,
+      issueId: args.issueId,
+      stage: args.status,
+      currentStep: args.status,
+    });
+    if (paused) {
+      await postMissingSkillComment({
+        projectId: args.projectId,
+        issueId: args.issueId,
+        stage: args.status,
+      });
+    }
     logger.warn(
-      { projectId: args.projectId, status: args.status },
-      'orchestrator: no skill_registration for auto stage — skipping enqueue',
+      {
+        projectId: args.projectId,
+        issueId: args.issueId,
+        status: args.status,
+        runId: run.id,
+        paused,
+        alreadyPaused,
+      },
+      'orchestrator: refused enqueue — missing skill_registration, run paused',
     );
     return;
   }

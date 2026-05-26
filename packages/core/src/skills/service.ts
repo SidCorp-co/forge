@@ -8,6 +8,7 @@ import {
   skills,
 } from '../db/schema.js';
 import { hooks } from '../pipeline/hooks.js';
+import { PIPELINE_STEPS } from '../pipeline/registry.js';
 
 /**
  * Pure-ish helpers shared between the F2 REST routes and the F4 MCP tools.
@@ -106,12 +107,57 @@ export interface RegisterSkillResult {
   stage: IssueStatus | null;
 }
 
+export class SkillDeleteBlockedError extends Error {
+  readonly code = 'SKILL_DELETE_BLOCKED_BY_AUTO_TOGGLE';
+  readonly stage: IssueStatus;
+  readonly toggle: string;
+  constructor(stage: IssueStatus, toggle: string) {
+    super(`SKILL_DELETE_BLOCKED_BY_AUTO_TOGGLE: stage '${stage}' has '${toggle}=true'`);
+    this.name = 'SkillDeleteBlockedError';
+    this.stage = stage;
+    this.toggle = toggle;
+  }
+}
+
 export async function registerSkillForProject(
   input: RegisterSkillInput,
 ): Promise<RegisterSkillResult> {
   const { projectId, skillId, stage, actorUserId } = input;
 
   if (stage === null) {
+    // ISS-238 — block deletion when the corresponding `auto<Stage>` toggle is
+    // on. Silently unbinding would create the exact "enabled without skill"
+    // state the orchestrator guard pauses on; rejecting at the API surface
+    // forces the operator to flip the toggle first.
+    const [reg] = await db
+      .select({ stage: skillRegistrations.stage })
+      .from(skillRegistrations)
+      .where(
+        and(eq(skillRegistrations.projectId, projectId), eq(skillRegistrations.skillId, skillId)),
+      )
+      .limit(1);
+    if (reg) {
+      const step = PIPELINE_STEPS.find((s) => s.status === reg.stage);
+      if (step) {
+        const [project] = await db
+          .select({ agentConfig: projects.agentConfig })
+          .from(projects)
+          .where(eq(projects.id, projectId))
+          .limit(1);
+        const ac = (project?.agentConfig ?? {}) as { pipelineConfig?: Record<string, unknown> };
+        const pipeline = ac.pipelineConfig ?? {};
+        const v = (pipeline as Record<string, unknown>)[step.toggle];
+        const on =
+          v === true ||
+          (typeof v === 'object' &&
+            v !== null &&
+            (v as { enabled?: boolean }).enabled !== false);
+        if (on) {
+          throw new SkillDeleteBlockedError(reg.stage as IssueStatus, step.toggle);
+        }
+      }
+    }
+
     await db
       .delete(skillRegistrations)
       .where(

@@ -8,7 +8,11 @@ import { issueStatuses, projectMembers, projects, skillRegistrations, skills } f
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { hooks } from '../pipeline/hooks.js';
-import { getSkillForProject, registerSkillForProject } from './service.js';
+import {
+  SkillDeleteBlockedError,
+  getSkillForProject,
+  registerSkillForProject,
+} from './service.js';
 import { computeSkillDiff } from './sync.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
@@ -221,13 +225,26 @@ skillRegisterRoutes.post(
     const skill = await getSkillForProject(skillId, projectId);
     if (!skill) throw notFound('NOT_FOUND', 'skill not found');
 
-    const result = await registerSkillForProject({
-      projectId,
-      skillId,
-      stage,
-      actorUserId: userId,
-    });
-    return c.json(result);
+    try {
+      const result = await registerSkillForProject({
+        projectId,
+        skillId,
+        stage,
+        actorUserId: userId,
+      });
+      return c.json(result);
+    } catch (err) {
+      if (err instanceof SkillDeleteBlockedError) {
+        throw new HTTPException(409, {
+          message: err.message,
+          cause: {
+            code: err.code,
+            details: { stage: err.stage, toggle: err.toggle },
+          },
+        });
+      }
+      throw err;
+    }
   },
 );
 
@@ -303,12 +320,25 @@ skillRegisterRoutes.delete(
       .limit(1);
     if (!row) return c.json({ deleted: false, stage });
 
-    await registerSkillForProject({
-      projectId,
-      skillId: row.skillId,
-      stage: null,
-      actorUserId: userId,
-    });
+    try {
+      await registerSkillForProject({
+        projectId,
+        skillId: row.skillId,
+        stage: null,
+        actorUserId: userId,
+      });
+    } catch (err) {
+      if (err instanceof SkillDeleteBlockedError) {
+        throw new HTTPException(409, {
+          message: err.message,
+          cause: {
+            code: err.code,
+            details: { stage: err.stage, toggle: err.toggle },
+          },
+        });
+      }
+      throw err;
+    }
     return c.json({ deleted: true, stage });
   },
 );

@@ -14,6 +14,7 @@ import {
   type PipelineConfigPatchInput,
   pipelineConfigSchema,
 } from './pipeline-config-schema.js';
+import { PIPELINE_STEPS } from './registry.js';
 
 /**
  * Typed errors thrown by {@link updatePipelineConfig}. REST and MCP callers
@@ -24,6 +25,7 @@ export type PipelineConfigErrorCode =
   | 'OPEN_LOCKED_ON'
   | 'STAGE_HAS_ISSUES'
   | 'AUTO_STAGE_NEEDS_SKILL'
+  | 'MISSING_SKILL_FOR_ENABLED_STAGE'
   | 'DEAD_END_CONFIG'
   | 'PROJECT_NOT_FOUND';
 
@@ -144,6 +146,44 @@ export async function updatePipelineConfig(
           }
         }
       }
+
+      // ISS-238 — symmetric rule for the top-level `auto<Stage>` toggles. The
+      // per-state `mode==='auto'` check above only catches stages an operator
+      // explicitly switched to auto mode. The actual production failure mode
+      // (Anhome, 2026-05-26) was a project with `autoReview=true` and no
+      // `developed` skill — the toggle defaults to checking against any
+      // skill registration for the matching stage, regardless of mode config.
+      const toggleEnabledStages: IssueStatus[] = [];
+      for (const step of PIPELINE_STEPS) {
+        const v = (nextPipeline as Record<string, unknown>)[step.toggle];
+        const on =
+          v === true ||
+          (typeof v === 'object' &&
+            v !== null &&
+            (v as { enabled?: boolean }).enabled !== false);
+        if (on) toggleEnabledStages.push(step.status);
+      }
+      if (toggleEnabledStages.length > 0) {
+        const regs = await db
+          .select({ stage: skillRegistrations.stage })
+          .from(skillRegistrations)
+          .where(
+            and(
+              eq(skillRegistrations.projectId, projectId),
+              inArray(skillRegistrations.stage, toggleEnabledStages),
+            ),
+          );
+        const have = new Set(regs.map((r) => r.stage));
+        const missing = toggleEnabledStages.filter((s) => !have.has(s));
+        if (missing.length > 0) {
+          throw new PipelineConfigError(
+            'MISSING_SKILL_FOR_ENABLED_STAGE',
+            'enabled auto-stage toggles require a registered skill for the corresponding stage',
+            { stagesMissingSkill: missing },
+          );
+        }
+      }
+
       const mergedStates = (nextPipeline as { states?: StagesConfig }).states;
       const dead = validateStatesConfig(mergedStates);
       if (dead) {

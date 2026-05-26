@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { issueStatuses } from '../../db/schema.js';
 import {
+  SkillDeleteBlockedError,
   getSkillForProject,
   listProjectSkills,
   listSkillRegistrations,
@@ -61,7 +62,16 @@ export const forgeSkillsRegisterTool: DeviceScopedMcpToolFactory = (device) => (
     if (!skill) {
       throw new Error('NOT_FOUND: skill not found');
     }
-    return registerSkillForProject({ ...input, actorUserId: device.ownerId });
+    try {
+      return await registerSkillForProject({ ...input, actorUserId: device.ownerId });
+    } catch (err) {
+      if (err instanceof SkillDeleteBlockedError) {
+        throw new Error(
+          `BAD_REQUEST: ${err.code}: stage '${err.stage}' has '${err.toggle}=true'. Disable the toggle in pipelineConfig before clearing the registration.`,
+        );
+      }
+      throw err;
+    }
   },
 });
 
