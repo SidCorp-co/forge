@@ -74,7 +74,7 @@ Full rationale + status-pipeline diagram + staging deploy details: [Trunk-Based 
 - Lint + format must pass in CI.
 - Test coverage should not regress.
 - Breaking changes: document them in the PR description and update CHANGELOG.
-- Long-running migrations: split into schema-first + code-second + drop-third so a feature flag can toggle without locking the trunk (see ADR 0014 §Cons).
+- Long-running migrations: split into schema-first + code-second + drop-third so a feature flag can toggle without locking the trunk.
 
 ## Reporting bugs
 

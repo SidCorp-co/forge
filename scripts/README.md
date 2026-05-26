@@ -4,7 +4,7 @@ Project-level utilities. Each script is standalone (no shared lib) and has a com
 
 ## check-branch-name.sh
 
-Validates a branch name against the ADR 0014 convention. Wired into `.githooks/pre-push`.
+Validates a branch name against the [Trunk-Based Development](../docs/guides/trunk-based-development.md) naming convention. Wired into `.githooks/pre-push`.
 
 ## check-source-language.mjs — English-only source policy
 

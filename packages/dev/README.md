@@ -2,7 +2,7 @@
 
 Tauri desktop app — the **device runner**. Pairs with a Forge cloud server, receives jobs over WebSocket, and spawns the local Claude CLI to do the work. Your Claude Pro/Max credentials never leave the machine.
 
-→ See [ADR 0001](../../docs/decisions/0001-device-runner-architecture.md) (device-runner architecture) and [ADR 0003](../../docs/decisions/0003-claude-code-cli-as-primary-runner.md) (Claude CLI as runner). Credential boundary: [ADR 0004](../../docs/decisions/0004-no-claude-credentials-on-server.md).
+→ See [docs/architecture/system-overview.md](../../docs/architecture/system-overview.md) for the control plane ↔ runtime split and the credential boundary.
 
 ## Prerequisites
 

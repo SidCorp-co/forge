@@ -96,8 +96,7 @@ Two key boundaries:
    token) are two separate principals. Shared policy layer enforces every
    access.
 
-See [docs/architecture/system-overview.md](docs/architecture/system-overview.md)
-and [RFC 0001](docs/rfcs/0001-device-runner-architecture.md).
+See [docs/architecture/system-overview.md](docs/architecture/system-overview.md).
 
 ## Packages
 
@@ -149,9 +148,10 @@ replay, webhook ingestion.
 - [Vision](docs/VISION.md) — concept, audience, non-goals, horizons
 - [Quickstart](docs/quickstart.md)
 - [Architecture](docs/architecture/system-overview.md)
-- [RFC 0001: Device-runner architecture](docs/rfcs/0001-device-runner-architecture.md)
 - [Guides](docs/guides/) — release, trunk-based development
 - [Modules](docs/modules/)
+- [RFCs](docs/rfcs/) — proposals through Final Comment Period
+- [Proposals](docs/proposals/) — in-flight design sketches
 
 ## Contributing
 

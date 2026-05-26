@@ -1,6 +1,6 @@
 # @forge/core
 
-Forge core API — Hono + Drizzle backend replacing Strapi per [RFC 0002](../../docs/rfcs/0002-replace-strapi-with-hono-drizzle.md). A single Node process serves REST, WebSocket, and MCP; a single Postgres holds data, jobs (pg-boss), and vectors (pgvector, from Phase 2.5).
+Forge core API — Hono + Drizzle backend. A single Node process serves REST, WebSocket, and MCP; a single Postgres holds data, jobs (pg-boss), and vectors (pgvector).
 
 ## Prerequisites
 

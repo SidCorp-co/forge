@@ -86,7 +86,7 @@ shipped:
   separately if proven valuable.
 - No enterprise RBAC in `v0.x`. No team/org model in `v0.x` — separate RFC.
 - No Linux headless agent in `v0.x` — follow-up RFC.
-- No mobile in `v0.x` — paused per ADR 0009, returns in `v0.2+`.
+- No mobile in `v0.x` — `packages/app/` is paused, returns in `v0.2+`.
 - No agent framework abstractions — we orchestrate, not reimplement
   LangGraph/CrewAI.
 - Idea, Spec, Design stages not yet implemented — roadmap items.
@@ -150,14 +150,13 @@ Versions ship when ready. No dates.
 
 - Every contributor reads this first. ~10 minutes.
 - Quarterly review of §3, §5, §8.
-- Every major decision = ADR in `docs/decisions/` or RFC in `docs/rfcs/`.
+- Every major design proposal lands as an RFC in `docs/rfcs/` before code.
 - When this doc contradicts code, this doc wins — update the other.
 
 ## 10. Related
 
 - [README](../README.md) — onboarding, quickstart, packages
 - [docs/architecture/](architecture/) — system design
-- [docs/decisions/](decisions/) — binding ADRs (append-only)
 - [docs/rfcs/](rfcs/) — accepted RFCs
 - [docs/modules/](modules/) — per-feature docs
 - [docs/proposals/](proposals/) — in-flight proposals

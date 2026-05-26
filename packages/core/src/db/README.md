@@ -41,9 +41,7 @@ clear reason and a note in the owning issue.
 ## Vector storage (`pgvector`)
 
 The `pgvector` extension is enabled in the migration that introduces the
-`memories` table (Phase 2.5-A, ISS-194), per
-[ADR 0011](../../../../docs/decisions/0011-pgvector-replaces-qdrant.md). Do
-not enable it from earlier migrations.
+`memories` table. Do not enable it from earlier migrations.
 
 ## Generating a migration
 

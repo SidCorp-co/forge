@@ -86,7 +86,7 @@ Cert vendors: Certum (~$150/yr OV), Sectigo (~$300/yr OV, ~$400/yr EV), DigiCert
 
 ## Versioning
 
-The repo uses pre-`1.0` semver per [ADR](../decisions/) precedent — `v0.X.Y` while in alpha. Tags must match `v*.*.*` exactly (workflow trigger pattern). Pre-release suffix (`v0.1.16-rc.1`) marks GitHub Release as pre-release automatically.
+The repo uses pre-`1.0` semver — `v0.X.Y` while in alpha. Tags must match `v*.*.*` exactly (workflow trigger pattern). Pre-release suffix (`v0.1.16-rc.1`) marks GitHub Release as pre-release automatically.
 
 Bump these in lockstep:
 

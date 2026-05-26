@@ -152,5 +152,5 @@ Status transitions:
 
 ## Related decisions
 
-- [ADR 0001 — Device-runner architecture](../../decisions/0001-device-runner-architecture.md)
-- [ADR 0005 — Dual-principal auth](../../decisions/0005-dual-principal-auth.md)
+- ADR 0001 — Device-runner architecture
+- ADR 0005 — Dual-principal auth

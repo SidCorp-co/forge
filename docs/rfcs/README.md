@@ -4,14 +4,11 @@ Request for Comments — long-form design proposals for significant changes. Eac
 
 ## Index
 
-| # | Title | Status | Date |
-|---|-------|--------|------|
-| [0001](0001-device-runner-architecture.md) | Device-runner architecture | Accepted | 2026-04-19 |
-| [0002](0002-replace-strapi-with-hono-drizzle.md) | Replace Strapi backbone with Hono + Drizzle service | Draft | 2026-04-20 |
+_No active RFCs._ Write the next one as `0001-kebab-case-title.md` (numbering restarts at 0001 — the previous archive was retired as outdated).
 
 ## When an RFC is required
 
-Per [../CONTRIBUTING.md](../../CONTRIBUTING.md) (and the future `ROADMAP.md § feature process`, TBD), an RFC is required for:
+Per [../../CONTRIBUTING.md](../../CONTRIBUTING.md), an RFC is required for:
 
 - New public API surface (REST endpoint, MCP tool, WebSocket event)
 - Architecture changes (new service, schema migration, new client form factor)
@@ -28,11 +25,11 @@ Per [../CONTRIBUTING.md](../../CONTRIBUTING.md) (and the future `ROADMAP.md § f
 4. Respond to feedback; keep revising
 5. When ≥5 business days of open discussion have elapsed AND all owning-team members have commented, post the Motion-for-FCP comment
 6. Final Comment Period is 10 calendar days
-7. At FCP end: disposition is merge / close / postpone. Record in [../decisions/](../decisions/) as an ADR summary.
+7. At FCP end: disposition is merge / close / postpone.
 
 ## Template
 
-Use [Rust RFC template](https://github.com/rust-lang/rfcs/blob/master/0000-template.md) or adapt from [RFC 0001](0001-device-runner-architecture.md).
+Use the [Rust RFC template](https://github.com/rust-lang/rfcs/blob/master/0000-template.md).
 
 Required sections:
 
@@ -47,6 +44,5 @@ Required sections:
 
 ## After acceptance
 
-- Summarize the RFC as a short ADR in [../decisions/](../decisions/)
 - The RFC remains in this folder as the canonical long-form design
 - Implementation work tracks in a separate issue

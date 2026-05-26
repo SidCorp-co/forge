@@ -148,5 +148,5 @@ Retention: **30 days after the parent Job reaches a terminal state.** Daily cron
 
 ## Related decisions
 
-- [ADR 0001 — Device-runner architecture](../../decisions/0001-device-runner-architecture.md)
-- [ADR 0006 — pg-boss for job queue](../../decisions/0006-pg-boss-for-job-queue.md)
+- ADR 0001 — Device-runner architecture
+- ADR 0006 — pg-boss for job queue

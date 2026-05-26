@@ -7,11 +7,9 @@ Planned features that are not yet implemented. When a proposal ships, its doc mo
 | Proposal | Status | Target |
 |----------|--------|--------|
 | [cost-aware-model-routing.md](cost-aware-model-routing.md) | Draft | v0.2 (manual hint) → v0.3 (auto-classify) → v1.0 (budget) |
-| [dispatch-load-balance-v2.md](dispatch-load-balance-v2.md) | Draft (resolved, ready for code) | Serial primary + failover-only standby; config-driven L2 merge gate (mergeStates); replaces ad-hoc selectRunnerForJob logic |
-| [core-strapi-decoupling.md](core-strapi-decoupling.md) | Resolved (pending acceptance) | Clean break — no Strapi parity, single flip PR at Phase 2.5 |
-| `permission-model-v2.md` (not yet committed) | Draft (candidate for RFC promotion) | Phase 1–2 side-by-side + backfill → Phase 3 cut → Phase 4 cleanup |
-| [pipeline-wave-2.md](pipeline-wave-2.md) | Draft | Post-v0.1.34 backlog: prompt observability + cost analytics + budgets + Phase 2 optimizations |
-| [integration-framework.md](integration-framework.md) | Draft | One polymorphic framework for Coolify (deploy) + Sentry (errors) + Human-Task (PM tool) external integrations; replaces three independent modules |
+| [pipeline-prompt-ssot.md](pipeline-prompt-ssot.md) | Draft | One prompt builder + per-state systemPrompt/model/tools/mcp surfaced from project settings + session groups |
+| [pipeline-wave-2.md](pipeline-wave-2.md) | Draft | Prompt observability + cost analytics + budgets + Phase 2 optimizations |
+| [integration-framework.md](integration-framework.md) | Draft | One polymorphic framework for Coolify (deploy) + Sentry (errors) + Human-Task (PM tool) external integrations |
 
 ## Naming convention
 

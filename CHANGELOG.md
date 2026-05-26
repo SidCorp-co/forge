@@ -346,7 +346,7 @@ Patch release: macOS auto-updater payload + Next.js DoS hardening.
 
 ## [0.1.17] - 2026-04-28
 
-Rebrand to `Forge` under the `SidCorp-co` org **and** the first release to actually attach desktop installers to the GitHub Release. Every prior tag from `v0.1.9` onward built only the raw `forge-beta` binary because `bundle.active` was missing from `tauri.conf.json`; this release restores the bundler pipeline end-to-end. See [ADR 0015](docs/decisions/0015-rebrand-to-forge.md) for the rebrand rationale.
+Rebrand to `Forge` under the `SidCorp-co` org **and** the first release to actually attach desktop installers to the GitHub Release. Every prior tag from `v0.1.9` onward built only the raw `forge-beta` binary because `bundle.active` was missing from `tauri.conf.json`; this release restores the bundler pipeline end-to-end. See ADR 0015 for the rebrand rationale.
 
 ### Changed
 
@@ -357,7 +357,7 @@ Rebrand to `Forge` under the `SidCorp-co` org **and** the first release to actua
 - **Icons:** regenerated the icon set with `pnpm tauri icon`. macOS DMG now has the required `.icns`; Linux desktop entries get the proper 32/128/128@2x PNGs.
 - **CI:** workflow declares `permissions: contents:read, pull-requests:read` so Dependabot PRs no longer fail at the changes job. New `dev-bundle-smoke` job runs `pnpm tauri build --bundles deb` (with a throwaway updater key) on PRs that touch `packages/dev/src-tauri/**` or `release.yml`, so a future `bundle.active=false` regression fails in CI rather than at tag time.
 - **Docs:** trimmed `architecture/websocket.md` (678 → 167 lines), `modules/issues-pipeline/status-pipeline.md` (367 → 177 lines); maintainer-only artifacts (release tests, migration audits, ops runbooks) moved to gitignored `.internal-docs/`.
-- **Dependabot:** `npm` ecosystem now scans only the active workspace members (`packages/app/` excluded per [ADR 0009](docs/decisions/0009-mobile-app-paused-for-v0x.md)); `cargo` ecosystem added for `packages/dev/src-tauri/`.
+- **Dependabot:** `npm` ecosystem now scans only the active workspace members (`packages/app/` excluded per ADR 0009); `cargo` ecosystem added for `packages/dev/src-tauri/`.
 - Internal hostnames + emails scrubbed from tracked sources (test fixtures, code comments, deployment defaults).
 
 ### Fixed
@@ -598,7 +598,7 @@ verified the 19 ported product surfaces. Landing-page GSAP animation issue
 - SMTP env vars now optional: when `SMTP_HOST` is empty, email send is skipped (logged instead). Email verification still enforced server-side
 - `APP_BASE_URL` and `CORS_ORIGINS` default to `http://localhost:3000` when unset
 - Broken `[ROADMAP.md](ROADMAP.md)` link in `docs/architecture/system-overview.md` (resolved to `../ROADMAP.md`)
-- Added `docs/rfcs/0001-device-runner-architecture.md` stub (canonical content remains in [ADR 0001](docs/decisions/0001-device-runner-architecture.md))
+- Added `docs/rfcs/0001-device-runner-architecture.md` stub (canonical content remains in ADR 0001)
 - Test mocks updated for pg-boss `createQueue` API
 - `pipeline-e2e.test.ts` multi-line `typeof import(...)` syntax (TS 5.7 strict)
 
@@ -616,8 +616,8 @@ verified the 19 ported product surfaces. Landing-page GSAP animation issue
 - Four clients: Next.js web, Tauri desktop, React Native (Expo) mobile (paused), and `packages/core` API
 
 ### Changed
-- Control plane rebuilt on Hono + Drizzle, replacing the former Strapi backend ([ADR 0002](docs/decisions/0002-replace-strapi-with-hono-drizzle.md), [ADR 0010](docs/decisions/0010-clean-break-from-strapi.md))
-- Vector storage moved from Qdrant to Postgres `pgvector` ([ADR 0011](docs/decisions/0011-pgvector-replaces-qdrant.md))
+- Control plane rebuilt on Hono + Drizzle, replacing the former Strapi backend (ADR 0002, ADR 0010)
+- Vector storage moved from Qdrant to Postgres `pgvector` (ADR 0011)
 - Postgres image upgraded to `pgvector/pgvector:pg17` in both dev and prod compose, and in the CI e2e-web service
 - WebSocket broadcasts changed from global fan-out to room-scoped (`user:<id>`, `project:<id>`, `device:<id>`)
 - All clients (web, dev, app) repointed from `http://localhost:1337` to `http://localhost:8080`
@@ -636,7 +636,7 @@ verified the 19 ported product surfaces. Landing-page GSAP animation issue
 ### Fixed
 
 ### Security
-- All five findings from the 2026-04-19 architecture audit closed by construction in `packages/core` (see [ADR 0001 §Context](docs/decisions/0001-device-runner-architecture.md) and the release-specific audit closure doc at `docs/security/audit-v0.1.0-rc.1.md`): row-level access checks via shared policy layer, room-scoped WebSocket broadcasts, `crossProjectAccess` flag removed, JWT TTL reduced to 7 days with `httpOnly` refresh-token rotation, Claude credentials never held on the server (device-runner split)
+- All five findings from the 2026-04-19 architecture audit closed by construction in `packages/core` (see ADR 0001 §Context and the release-specific audit closure doc at `docs/security/audit-v0.1.0-rc.1.md`): row-level access checks via shared policy layer, room-scoped WebSocket broadcasts, `crossProjectAccess` flag removed, JWT TTL reduced to 7 days with `httpOnly` refresh-token rotation, Claude credentials never held on the server (device-runner split)
 
 ---
 

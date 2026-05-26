@@ -2,7 +2,7 @@
 
 How Forge is put together, and why.
 
-The architectural foundation is [RFC 0001: Device-runner architecture](../rfcs/0001-device-runner-architecture.md). This doc summarizes and explains; the RFC is authoritative.
+This is the canonical map of how Forge is laid out today: control plane vs runtime, the device-runner split, and where each module fits.
 
 ## One-paragraph summary
 
@@ -187,6 +187,4 @@ Per-project config decides which transitions auto-trigger vs wait for human appr
 
 ## Evolution
 
-Significant changes (new service, schema migration, new client form factor, new principal class) go through the RFC process. See [RFC 0001](../rfcs/0001-device-runner-architecture.md) as the template.
-
-A `ROADMAP.md` is planned but not yet authored — for now, in-flight work lives in the issue tracker.
+Significant changes (new service, schema migration, new client form factor, new principal class) go through the [RFC process](../rfcs/README.md). In-flight work lives in the issue tracker.

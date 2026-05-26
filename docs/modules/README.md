@@ -17,7 +17,7 @@ Feature documentation organized by business domain. Each module answers "where d
 
 | Topic | Where it lives |
 |-------|----------------|
-| Authentication & authorization | [../architecture/system-overview.md § Security boundaries](../architecture/system-overview.md) + [../decisions/0005-dual-principal-auth.md](../decisions/0005-dual-principal-auth.md) |
+| Authentication & authorization | [../architecture/system-overview.md § Security boundaries](../architecture/system-overview.md) |
 | WebSocket broadcasts | [../architecture/websocket.md](../architecture/websocket.md) |
 | MCP server | [../architecture/system-overview.md § MCP](../architecture/system-overview.md) |
 

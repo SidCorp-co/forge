@@ -78,7 +78,7 @@ Claude Code has no memory between sessions by default. Forge adds persistent mem
 
 - Single table for all projects, partitioned by `project_id` filter on every query (project scope enforced in the policy layer)
 - `vector vector(N)` column — N matches the embedding model dimension (default 1536)
-- Index: HNSW on `vector` (`USING hnsw (vector vector_cosine_ops)`) per [ADR 0011](../../decisions/0011-pgvector-replaces-qdrant.md)
+- Index: HNSW on `vector` (`USING hnsw (vector vector_cosine_ops)`) per ADR 0011
 - Indexed columns: `(project_id, source)`, `(project_id, source_ref)`
 - Payload columns: `source`, `source_ref`, `project_id`, `metadata jsonb`, `embedded_at`
 
