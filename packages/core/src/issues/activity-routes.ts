@@ -1,10 +1,10 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, desc, eq, like, lt } from 'drizzle-orm';
+import { and, desc, eq, inArray, like, lt } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { activityLog, issues } from '../db/schema.js';
+import { activityLog, comments, issues } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
@@ -46,6 +46,39 @@ function envelope(rows: ActivityRow[], limit: number) {
     items: rows,
     nextBefore: rows.length === limit && last ? last.createdAt.toISOString() : null,
   };
+}
+
+/**
+ * Comment activity payloads only store a 240-char snippet of the body (see
+ * pipeline/subscribers.ts) to keep the activity log lean. The issue timeline,
+ * however, IS the comment thread and must show the full text — so we re-hydrate
+ * `payload.body` (and `after`, for edits) from the live `comments` table at read
+ * time, keyed by `payload.commentId`. This fixes historical rows too (no
+ * backfill) and falls back to the stored snippet when the comment was deleted.
+ */
+async function withFullCommentBodies(rows: ActivityRow[]): Promise<ActivityRow[]> {
+  const ids = new Set<string>();
+  for (const r of rows) {
+    const p = r.payload as Record<string, unknown> | null;
+    if (p && typeof p.commentId === 'string') ids.add(p.commentId);
+  }
+  if (ids.size === 0) return rows;
+
+  const full = await db
+    .select({ id: comments.id, body: comments.body })
+    .from(comments)
+    .where(inArray(comments.id, [...ids]));
+  const bodyById = new Map(full.map((c) => [c.id, c.body]));
+
+  return rows.map((r) => {
+    const p = r.payload as Record<string, unknown> | null;
+    if (!p || typeof p.commentId !== 'string') return r;
+    const body = bodyById.get(p.commentId);
+    if (body == null) return r; // comment deleted — keep the snippet
+    const payload: Record<string, unknown> = { ...p, body };
+    if ('after' in p) payload.after = body;
+    return { ...r, payload };
+  });
 }
 
 export const issueActivityRoutes = new Hono<{ Variables: AuthVars }>();
@@ -93,7 +126,8 @@ issueActivityRoutes.get(
       .orderBy(desc(activityLog.createdAt))
       .limit(limit);
 
-    return c.json(envelope(rows as ActivityRow[], limit));
+    const items = await withFullCommentBodies(rows as ActivityRow[]);
+    return c.json(envelope(items, limit));
   },
 );
 
@@ -231,6 +265,7 @@ projectActivityRoutes.get(
       .orderBy(desc(activityLog.createdAt))
       .limit(limit);
 
-    return c.json(envelope(rows as ActivityRow[], limit));
+    const items = await withFullCommentBodies(rows as ActivityRow[]);
+    return c.json(envelope(items, limit));
   },
 );
