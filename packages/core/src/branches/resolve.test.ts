@@ -10,13 +10,13 @@ describe('resolveIssueBranches', () => {
     name: string;
     issue: IssueLike;
     project: ProjectLike;
-    expected: { baseBranch: string; targetBranch: string; prodBranch: string };
+    expected: { baseBranch: string | null; targetBranch: string | null; prodBranch: string | null };
   }> = [
     {
-      name: 'no override, no project defaults → hard default main',
+      name: 'no override, no project defaults → null (no hard fallback to main)',
       issue: {},
       project: { baseBranch: null, productionBranch: null },
-      expected: { baseBranch: 'main', targetBranch: 'main', prodBranch: 'main' },
+      expected: { baseBranch: null, targetBranch: null, prodBranch: null },
     },
     {
       name: 'no override, project defaults present → project wins, target follows base',
@@ -47,10 +47,10 @@ describe('resolveIssueBranches', () => {
       expected: { baseBranch: 'develop', targetBranch: 'develop', prodBranch: 'hotfix' },
     },
     {
-      name: 'partial override (targetBranch) — prod falls to hard default when project missing',
+      name: 'partial override (targetBranch) — prod returns null when project column missing',
       issue: { metadata: { branchConfig: { targetBranch: 'integration' } } },
       project: { baseBranch: 'develop', productionBranch: null },
-      expected: { baseBranch: 'develop', targetBranch: 'integration', prodBranch: 'main' },
+      expected: { baseBranch: 'develop', targetBranch: 'integration', prodBranch: null },
     },
     {
       name: 'empty-string override is treated as absent',

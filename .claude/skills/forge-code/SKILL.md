@@ -15,15 +15,18 @@ Project-local override. This repo runs **Trunk-Based Development**: single trunk
 
 ### Resolved branch config (mandatory preamble)
 
-Before any git command, call `forge_config` to resolve which branches to use. Avoids hard-coding `main` so issues with non-default base (decomposed-epic integration branches, hotfix bases) work:
+Before any git command, call `forge_config` to resolve which branches to use. Never hard-code `main` — issues with non-default base (decomposed-epic integration branches, hotfix bases) would break, and a misconfigured project would silently merge to the wrong trunk.
 
 ```ts
 const cfg = await forge_config({ action: 'get', projectId, issueId: documentId });
-const BASE = cfg.config.branchConfig.baseBranch;       // checkout source
+const BASE = cfg.config.branchConfig.baseBranch;       // checkout source (string | null)
 const TARGET = cfg.config.branchConfig.targetBranch;   // merge destination (forge-release uses)
+if (!BASE || !TARGET) {
+  throw new Error('forge-code: project missing baseBranch/targetBranch. Configure projects.base_branch before coding.');
+}
 ```
 
-If `branchConfig` is absent (PR-A not yet rolled out for the project), fall back to `cfg.config.baseBranch` then to the literal `'main'`. Never write the literal `'main'` into a git command below — always interpolate `$BASE`.
+`forge_config` returns `null` for unconfigured branches — abort and ask the user/admin to set the project's `base_branch` column. **Never default to `'main'`** as a fallback; that's exactly the bug this guard prevents. Always interpolate `$BASE` / `$TARGET` into git commands below.
 
 ### Git remote
 

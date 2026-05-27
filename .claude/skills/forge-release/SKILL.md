@@ -45,9 +45,12 @@ If status is not `released`, abort with comment `forge-release invoked at status
 ```ts
 const cfg = await forge_config({ action: 'get', projectId, issueId: documentId });
 const TARGET = cfg.config.branchConfig.targetBranch;
+if (!TARGET) {
+  throw new Error('forge-release: project has no targetBranch configured. Aborting to avoid merging to the wrong trunk.');
+}
 ```
 
-Fallback if `branchConfig` is absent: `cfg.config.baseBranch ?? 'main'`. Use `$TARGET` throughout.
+`forge_config` returns `null` when the project's `base_branch` / target is unset. **Never default to `'main'`** — abort and ask the admin to configure `projects.base_branch` first. Use `$TARGET` throughout.
 
 ### 1. Fetch issue + verdict check
 

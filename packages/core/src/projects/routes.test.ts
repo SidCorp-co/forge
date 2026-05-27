@@ -1202,7 +1202,7 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
     });
   });
 
-  it('200 falls back to hard default main when project defaults are null and no override', async () => {
+  it('200 returns null branches (no hard fallback) when project defaults are null and no override — surfaces misconfig', async () => {
     const token = await signUserToken('uuid-user');
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
@@ -1214,11 +1214,11 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
     const res = await req(`/${PID}/issues/${IID}/branch-config`, { token });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      baseBranch: string;
-      targetBranch: string;
-      prodBranch: string;
+      baseBranch: string | null;
+      targetBranch: string | null;
+      prodBranch: string | null;
     };
-    expect(body).toEqual({ baseBranch: 'main', targetBranch: 'main', prodBranch: 'main' });
+    expect(body).toEqual({ baseBranch: null, targetBranch: null, prodBranch: null });
   });
 });
 

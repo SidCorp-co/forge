@@ -113,9 +113,9 @@ export function BranchConfigCard({ issue, projectSlug, onPatch }: BranchConfigCa
       </button>
       {!expanded && (
         <div className="px-4 py-2 text-xs text-on-surface-variant">
-          <span className="font-mono">base: {resolved.baseBranch}</span>
+          <span className="font-mono">base: {resolved.baseBranch ?? '(not configured)'}</span>
           <span className="mx-2 text-outline">·</span>
-          <span className="font-mono">prod: {resolved.prodBranch}</span>
+          <span className="font-mono">prod: {resolved.prodBranch ?? '(not configured)'}</span>
           <span className="ml-2 inline-flex items-center rounded-sm border border-outline-variant/30 bg-surface-container-high px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest">
             {summaryBadge}
           </span>
@@ -138,19 +138,19 @@ export function BranchConfigCard({ issue, projectSlug, onPatch }: BranchConfigCa
               <BranchInputRow
                 label="Base branch"
                 value={draft.baseBranch}
-                placeholder={resolved.baseBranch}
+                placeholder={resolved.baseBranch ?? '(not configured)'}
                 onChange={(v) => setDraft((d) => ({ ...d, baseBranch: v }))}
               />
               <BranchInputRow
                 label="Target branch"
                 value={draft.targetBranch}
-                placeholder={resolved.targetBranch}
+                placeholder={resolved.targetBranch ?? '(not configured)'}
                 onChange={(v) => setDraft((d) => ({ ...d, targetBranch: v }))}
               />
               <BranchInputRow
                 label="Prod branch"
                 value={draft.prodBranch}
-                placeholder={resolved.prodBranch}
+                placeholder={resolved.prodBranch ?? '(not configured)'}
                 onChange={(v) => setDraft((d) => ({ ...d, prodBranch: v }))}
               />
               <p className="text-[10px] text-outline">
@@ -186,16 +186,21 @@ export function BranchConfigCard({ issue, projectSlug, onPatch }: BranchConfigCa
   );
 }
 
-function ReadonlyRow({ label, value }: { label: string; value: string }) {
+function ReadonlyRow({ label, value }: { label: string; value: string | null }) {
+  const isConfigured = value !== null;
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
         {label}
       </span>
       <div className="flex items-center gap-2 min-w-0">
-        <span className="truncate font-mono text-xs">{value}</span>
+        <span
+          className={`truncate font-mono text-xs ${isConfigured ? '' : 'italic text-error'}`}
+        >
+          {value ?? '(not configured)'}
+        </span>
         <span className="inline-flex items-center rounded-sm border border-outline-variant/30 bg-surface-container-high px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest">
-          from project
+          {isConfigured ? 'from project' : 'missing'}
         </span>
       </div>
     </div>

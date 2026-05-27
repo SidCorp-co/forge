@@ -54,13 +54,17 @@ Verify status is `confirmed`. Find the triage comment and extract complexity.
 
 ```bash
 BASE=$(forge_config get --projectId "$PROJECT_ID" --issueId "$DOCUMENT_ID" \
-  | jq -r '.config.branchConfig.baseBranch // .config.baseBranch // "main"')
+  | jq -r '.config.branchConfig.baseBranch // empty')
+if [ -z "$BASE" ]; then
+  echo "forge-plan: project has no baseBranch configured. Set projects.base_branch (or an issue branchConfig override) before planning. Aborting." >&2
+  exit 1
+fi
 REMOTE=$(git remote | head -1)
 git fetch "$REMOTE" "$BASE"
 git checkout "$BASE" && git pull "$REMOTE" "$BASE"
 ```
 
-The `// .config.baseBranch // "main"` chain is the fallback ladder: PR-A's resolver, then the legacy project default, then the hard default. Same precedence as the resolver itself.
+**Never default to `main` here** — the resolver returns null when the project's `base_branch` column is unset, and a silent default would merge code into the wrong trunk. Fix the project config and re-run.
 
 > Background reading for branch resolution: prose in `CLAUDE.md` § Branching strategy at the repo root; structured data in `packages/.forge/knowledge.json → branchStrategy`. Read either when an issue carries a non-default `branchConfig`.
 
