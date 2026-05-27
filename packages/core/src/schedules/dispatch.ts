@@ -158,7 +158,7 @@ export async function dispatchScheduleRun(
 
   let inserted: typeof agentSessions.$inferSelect;
   try {
-    const tx = await db.transaction(async (tx) => {
+    const txResult = await db.transaction(async (tx) => {
       const [row] = await tx
         .insert(agentSessions)
         .values({
@@ -181,8 +181,8 @@ export async function dispatchScheduleRun(
       const sync = await syncTurnsWithMessages(row.id, [], [userMessage], tx);
       return { inserted: row, startSync: sync };
     });
-    inserted = tx.inserted;
-    for (const t of tx.startSync.appended) {
+    inserted = txResult.inserted;
+    for (const t of txResult.startSync.appended) {
       broadcastTurnAppended(inserted, t);
     }
   } catch (err) {
