@@ -141,32 +141,24 @@ MCP clients (Claude Code itself, Cline, custom tools) reach the same data via `/
 
 ## Pipeline state machine
 
-Issues move through 14 statuses:
+Issues move through 17 statuses defined in `packages/core/src/db/schema.ts` (`issueStatuses`). The canonical lifecycle, transitions, and skill mapping live in [`docs/modules/issues-pipeline/status-pipeline.md`](../modules/issues-pipeline/status-pipeline.md) — this section is a high-level overview only.
+
+Happy-path sequence:
 
 ```
-draft → open → confirmed → clarified → waiting → approved →
-in_progress → developed → deploying → testing → staging →
-released → closed
-
-with branches:
-  reopen (max 5 cycles) → fix → back to developed
-  on_hold, needs_info (manual)
+open → confirmed → approved → in_progress → developed →
+deploying → testing → tested → pass → staging → released → closed
 ```
 
-Each transition can map to a skill:
+Branches off the happy path:
 
-| From → To | Triggering skill |
-|-----------|------------------|
-| `open → confirmed` | `forge-triage` — validate, classify, set priority |
-| `confirmed → clarified` | `forge-clarify` — reproduce bugs, verify UX |
-| `clarified → approved` | `forge-plan` — write implementation plan |
-| `approved → deploying` | `forge-code` — implement, build, review, push |
-| `deploying → testing` | `forge-review` — independent code review |
-| `testing → staging` | `forge-test` — QA against preview deployment |
-| `staging → released` | `forge-release` — merge to production |
-| `reopen → deploying` | `forge-fix` — address rejection feedback |
+- `waiting` — complex issues pause here for human plan approval (between `confirmed` and `approved`).
+- `reopen` — rejection at any review/test gate; `forge-fix` resumes on the same ISS-* branch.
+- `on_hold` — paused / blocked by infra or manual intervention.
+- `needs_info` — triage cannot proceed; awaiting reporter clarification.
+- `draft` — pre-`open` working state for issues authored incrementally.
 
-Per-project config decides which transitions auto-trigger vs wait for human approval. User-authored skills can also register to stages.
+Skill→status mapping (which agent fires on which entry status) is the single table in [`status-pipeline.md` §Skill mapping](../modules/issues-pipeline/status-pipeline.md#skill-mapping). Per-project `pipelineConfig.auto*` toggles decide whether each step auto-runs or waits for human approval.
 
 ## Security boundaries
 
