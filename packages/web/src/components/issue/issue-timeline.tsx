@@ -259,7 +259,9 @@ function ActivityItem({ activity, issueDocumentId }: { activity: Activity; issue
             <span className="font-mono text-[10px] uppercase">commented {time}</span>
             <DeleteButton activity={activity} issueDocumentId={issueDocumentId} />
           </div>
-          <Markdown className={`text-sm ${activity.isAI ? "text-tertiary" : "text-on-surface-variant"} prose prose-invert max-w-none`}>{activity.body ?? ''}</Markdown>
+          {/* Body intentionally omitted — the full comment renders in the
+              CommentsSection above; the timeline only marks that a comment
+              happened (plus any attachments, which CommentsSection does not show). */}
           {attachments.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2 pt-3 border-t border-outline-variant/30">
               {attachments.map((a) => {
