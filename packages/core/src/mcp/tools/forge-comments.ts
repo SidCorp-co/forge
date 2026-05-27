@@ -120,9 +120,16 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
     'List, create, or delete issue comments. List requires filters.issue (issue UUID). ' +
     'Create requires data.issue + data.body. Delete requires documentId. All actions ' +
     'enforce project membership via the device principal. ' +
-    'Create also accepts data.attachments[] (base64-inline files; up to 10 entries, ' +
-    'total size ≤ UPLOADS_MAX_BYTES). On partial-failure the response includes both ' +
-    '`attachments` (succeeded) and `attachmentErrors` (failed entries with code/message).',
+    'Attachments: prefer the mcp-media-upload.sh helper over base64 for anything ' +
+    'bigger than a tiny snippet — base64 in data.attachments[] is slow and burns ' +
+    'context tokens. Workflow: (1) create the comment WITHOUT attachments to get its ' +
+    'id; (2) run, with FORGE_URL + FORGE_TOKEN (the same bearer this MCP client ' +
+    'uses) in env: `curl -fsSL "$FORGE_URL/mcp-media-upload.sh" | bash -s -- ' +
+    '--comment <commentId> <localPath...>` — it streams each file to ' +
+    'POST /api/comments/:commentId/attachments and prints {id,name,mime,size,url} per ' +
+    'file. data.attachments[] (base64-inline; up to 10, total ≤ UPLOADS_MAX_BYTES) ' +
+    'still works for tiny inline files and on partial-failure returns `attachments` ' +
+    '(succeeded) + `attachmentErrors` (failed entries with code/message).',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);

@@ -30,6 +30,7 @@ import { chatSessionRoutes } from './chat/sessions-routes.js';
 import { commentRoutes } from './comments/routes.js';
 import { commentUploadRoutes } from './comments/upload.js';
 import { attachmentRoutes, issueAttachmentRoutes } from './issues/attachment-routes.js';
+import { mcpMediaUploadRoutes } from './media/mcp-media-upload.js';
 import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
 import {
@@ -260,6 +261,8 @@ registerPmSubscribers(hooks);
 // with no client-side change.
 app.use('/mcp', requirePatOrDevice());
 app.post('/mcp', mcpHandler);
+app.route('/', mcpMediaUploadRoutes);
+
 app.get('/mcp', mcpHandler);
 app.delete('/mcp', mcpHandler);
 
