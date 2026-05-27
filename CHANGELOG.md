@@ -10,14 +10,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **New `forge_coolify_deploy` MCP tool (list / deploy / status) — the stock release/staging skills can now drive Coolify deploys without hitting "tool-not-found", and manual + automatic deploy paths share the same idempotency key so a release cannot accidentally deploy twice.**
+  *Technical: Action-dispatcher tool in packages/core/src/mcp/tools/forge-coolify-deploy.ts (membership-gated). deploy reuses tryDispatchCoolifyRelease with requestId=${runId}:${integrationId}; new findDeliveryByRequestId guard in release-coolify.ts dedupes manual + auto paths. Prod integrations return pendingHumanConfirm:true without dispatch. resolveLatestIssueRunId helper extracted from the release subscriber. Stock skill call sites updated to pass { issueId } since MCP context carries no run id.*
 - **New `draft` issue status — AI-generated proposals (from Dream / Doc-Sync schedules) land here for human review before entering the normal pipeline. Promote to open or discard with one click.**
   *Technical: Extended issueStatuses enum + issues_status_chk constraint. State machine allows draft→open and draft→closed only. All dispatchers updated to skip drafts.*
 
 ### Changed
 
+- **Pipeline now auto-advances past stages that have no skill registered for them instead of stalling — projects can run with a partial skill set (e.g. only triage/plan/code/review/test) and issues still walk to closed without manual config tweaks.**
+  *Technical: Extended resolveSkipTarget with a hasSkill predicate sourced from ProjectSkillResolver.stages(); orchestrator's autoSkipDisabledStages now consults it before the ISS-238 missing-skill guard. Each hop appends to pipeline_runs.metadata.skipChain with a typed reason (stage_disabled | missing_skill). Pipeline-config service surfaces non-blocking warnings[] for enabled-default stages without a skill outside PIPELINE_STEPS.*
+
 ### Removed
 
 ### Fixed
+
+- **Coolify integration healthcheck and deploy now hit real Coolify v4 endpoints — the "Test connection" button stops returning 404, deploys actually reach Coolify, and the dead Rollback action that always 404'd has been removed.**
+  *Technical: client.getResource() now lists /api/v1/resources and resolves the uuid client-side (no get-one-by-uuid route exists in v4). client.deploy() switched to GET /api/v1/deploy?uuid=&force=, parses the deployments[] array. Removed client.rollback() + POST /api/projects/:id/integrations/:id/rollback route + the matching web hooks (no such API exists in v4). Live-token verification deferred to operator.*
+- **Saving a Coolify integration on a server missing INTEGRATION_MASTER_KEY now shows an actionable remediation banner instead of a bare "Internal Server Error" — operators see exactly what env var to set.**
+  *Technical: Added isVaultConfigured() guard in integrations/routes.ts (POST always, PATCH only when patch.secrets.apiToken is present) returning HTTPException 503 with code VAULT_NOT_CONFIGURED. coolify-section.tsx narrows ApiError on that code to a fixed remediation string; happy path untouched.*
 
 ### Security
 
