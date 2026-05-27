@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Button, Input, Label } from '@/components/ui';
 import { SegmentedControl } from '@/components/ui/segmented-control';
+import { ApiError } from '@/lib/api/client';
 import {
   useConfirmProdDeploy,
   useCreateIntegration,
@@ -146,6 +147,12 @@ function EnvironmentPanel({ projectId, environment, existing, onSaved }: EnvPane
       setApiToken('');
       onSaved();
     } catch (err) {
+      if (err instanceof ApiError && err.code === 'VAULT_NOT_CONFIGURED') {
+        setError(
+          'Server vault is not configured. Ask the operator to set INTEGRATION_MASTER_KEY on the core service and restart it, then try again.',
+        );
+        return;
+      }
       setError(err instanceof Error ? err.message : 'save failed');
     }
   }

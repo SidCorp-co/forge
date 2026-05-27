@@ -26,6 +26,21 @@ import {
   updateIntegration,
 } from './store.js';
 import type { IntegrationProvider } from './types.js';
+import { isVaultConfigured } from './vault.js';
+
+// `assertVaultBootSafety` lets core boot when project_integrations is empty,
+// so the first create/update attempt is the moment the missing-key
+// misconfiguration surfaces. Convert it into a structured 503 so operators see
+// a remediation message instead of a bare "Internal Server Error".
+function assertVaultConfigured(): void {
+  if (!isVaultConfigured()) {
+    throw new HTTPException(503, {
+      message:
+        'integration vault is not configured — set INTEGRATION_MASTER_KEY on the core server (openssl rand -base64 32) and restart',
+      cause: { code: 'VAULT_NOT_CONFIGURED' },
+    });
+  }
+}
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -128,6 +143,8 @@ integrationsRoutes.post(
     const role = await assertProjectMember(projectId, userId);
     assertAdmin(role);
 
+    assertVaultConfigured();
+
     const body = c.req.valid('json');
     // Auto-mint an HMAC secret for inbound webhook verification.
     const integrationSecret = `whsec_${randomBytes(24).toString('hex')}`;
@@ -180,6 +197,9 @@ integrationsRoutes.patch(
     // when the operator updates the token still authenticate.
     let mergedSecrets: Record<string, unknown> | null | undefined = undefined;
     if (patch.secrets?.apiToken) {
+      // Only guard the vault when this PATCH touches encrypted material —
+      // config-only patches must keep working even if the key is missing.
+      assertVaultConfigured();
       const currentSecrets = existing.secretsEnc
         ? (await import('./vault.js')).decryptJson<CoolifySecrets>(existing.secretsEnc)
         : null;
