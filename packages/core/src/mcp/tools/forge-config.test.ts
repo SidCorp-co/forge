@@ -65,9 +65,10 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
           id: PROJECT_ID,
           slug: 'my-proj',
           name: 'My Project',
+          repoPath: '/repo',
           baseBranch: 'develop',
           productionBranch: 'release',
-          agentConfig: { repoPath: '/repo', categories: ['bug', 'feature'] },
+          agentConfig: { categories: ['bug', 'feature'] },
         },
       ]);
 
@@ -79,7 +80,35 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
     expect(result.project.id).toBe(PROJECT_ID);
     expect(result.config).not.toHaveProperty('branchConfig');
     expect(result.config.repoPath).toBe('/repo');
+    expect(result.config.baseBranch).toBe('develop');
+    expect(result.config.productionBranch).toBe('release');
     expect(result.config.categories).toEqual(['bug', 'feature']);
+  });
+
+  it('returns null branches (no fallback to main) when project columns are unset — surfaces misconfig instead of silently merging to main', async () => {
+    const tool = forgeConfigTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
+
+    selectLimit
+      .mockResolvedValueOnce([{ ownerId: OWNER_ID }])
+      .mockResolvedValueOnce([
+        {
+          id: PROJECT_ID,
+          slug: 'my-proj',
+          name: 'My Project',
+          repoPath: null,
+          baseBranch: null,
+          productionBranch: null,
+          agentConfig: null,
+        },
+      ]);
+
+    const result = (await tool.handler({ action: 'get', projectId: PROJECT_ID })) as {
+      config: { baseBranch: string | null; productionBranch: string | null; repoPath: string | null };
+    };
+
+    expect(result.config.repoPath).toBeNull();
+    expect(result.config.baseBranch).toBeNull();
+    expect(result.config.productionBranch).toBeNull();
   });
 
   it('includes resolved branchConfig (project defaults) when issueId is supplied and the issue has no override', async () => {

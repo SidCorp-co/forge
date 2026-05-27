@@ -39,6 +39,7 @@ async function readProjectConfig(projectId: string) {
       id: projects.id,
       slug: projects.slug,
       name: projects.name,
+      repoPath: projects.repoPath,
       baseBranch: projects.baseBranch,
       productionBranch: projects.productionBranch,
       agentConfig: projects.agentConfig,
@@ -59,9 +60,9 @@ function formatBaseResponse(row: Awaited<ReturnType<typeof readProjectConfig>>) 
       name: row.name,
     },
     config: {
-      repoPath: (ac.repoPath as string | undefined) ?? null,
-      baseBranch: (ac.baseBranch as string | undefined) ?? 'main',
-      productionBranch: (ac.productionBranch as string | undefined) ?? 'main',
+      repoPath: row.repoPath,
+      baseBranch: row.baseBranch,
+      productionBranch: row.productionBranch,
       categories: (ac.categories as string[] | undefined) ?? [],
       pipelineConfig: (ac.pipelineConfig as Record<string, unknown> | undefined) ?? null,
       stateContext: (ac.stateContext as Record<string, unknown> | undefined) ?? null,
@@ -73,7 +74,7 @@ function formatBaseResponse(row: Awaited<ReturnType<typeof readProjectConfig>>) 
 export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_config',
   description:
-    "Read or write project configuration. Action `get` returns `agentConfig` (repoPath, baseBranch, productionBranch, categories, pipelineConfig, stateContext); when `issueId` is supplied, also returns a resolved `branchConfig` layering the issue override on top of the project default. Action `update` (admin-gated) merges a `pipelineConfig` patch with the same invariants as `PATCH /projects/:id/pipeline-config` and a `stateContext` patch (per-state merge — passing `{ code: {...} }` replaces only the `code` entry, other states untouched; pass `null` to wipe stateContext, or `{ code: null }` to remove one state). Errors surface as `BAD_REQUEST: <code>: <message>`.",
+    "Read or write project configuration. Action `get` returns `config` with `repoPath`, `baseBranch`, `productionBranch` read DIRECTLY from the `projects` table columns (may be `null` when not configured — callers MUST NOT silently default to 'main'); plus `categories`, `pipelineConfig`, `stateContext`, `activeDeviceId` from `agent_config` JSON. When `issueId` is supplied, also returns a resolved `branchConfig` layering the issue override on top of the project defaults. Action `update` (admin-gated) merges a `pipelineConfig` patch with the same invariants as `PATCH /projects/:id/pipeline-config` and a `stateContext` patch (per-state merge — passing `{ code: {...} }` replaces only the `code` entry, other states untouched; pass `null` to wipe stateContext, or `{ code: null }` to remove one state). Errors surface as `BAD_REQUEST: <code>: <message>`.",
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
