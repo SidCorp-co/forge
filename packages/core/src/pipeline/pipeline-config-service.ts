@@ -12,9 +12,12 @@ import {
   PIPELINE_CONFIG_DEFAULTS,
   type PipelineConfig,
   type PipelineConfigPatchInput,
+  STAGE_NAMES,
   pipelineConfigSchema,
 } from './pipeline-config-schema.js';
+import { logger } from '../logger.js';
 import { PIPELINE_STEPS } from './registry.js';
+import { STAGE_FORWARD } from './state-machine.js';
 
 /**
  * Typed errors thrown by {@link updatePipelineConfig}. REST and MCP callers
@@ -47,6 +50,16 @@ export interface UpdatePipelineConfigInput {
 
 export interface UpdatePipelineConfigResult {
   pipelineConfig: PipelineConfig;
+  /**
+   * Non-blocking advisories surfaced after a successful update. ISS-239 —
+   * populated when a stage is enabled in `states` but has no skill
+   * registration AND is not gated by `MISSING_SKILL_FOR_ENABLED_STAGE`
+   * (i.e. stages outside the PIPELINE_STEPS auto-toggle set, like
+   * `deploying`, `pass`, `staging`, `tested`). Issues at those stages will
+   * auto-skip past them via STAGE_FORWARD at runtime; the warning lets the
+   * operator know without rejecting the patch.
+   */
+  warnings: string[];
 }
 
 /**
@@ -214,5 +227,48 @@ export async function updatePipelineConfig(
   const parsed = pipelineConfigSchema.parse(stored);
   const pipelineConfig: PipelineConfig = { ...PIPELINE_CONFIG_DEFAULTS, ...parsed };
 
-  return { pipelineConfig };
+  // ISS-239 — non-blocking advisory for stages that the operator left
+  // enabled (default) but for which no skill is registered AND which are
+  // NOT covered by the ISS-238 hard rule (PIPELINE_STEPS-mapped stages).
+  // Those stages auto-skip cleanly at runtime via STAGE_FORWARD; surface
+  // the behaviour so operators aren't surprised when issues breeze past.
+  const warnings = await computeStageWithoutSkillWarnings(projectId, pipelineConfig);
+
+  return { pipelineConfig, warnings };
+}
+
+const PIPELINE_STEPS_STAGES = new Set<string>(PIPELINE_STEPS.map((s) => s.status));
+
+async function computeStageWithoutSkillWarnings(
+  projectId: string,
+  cfg: PipelineConfig,
+): Promise<string[]> {
+  const stagesToCheck: IssueStatus[] = [];
+  for (const stage of STAGE_NAMES) {
+    if (PIPELINE_STEPS_STAGES.has(stage)) continue; // gated by ISS-238 instead
+    if (!(stage in STAGE_FORWARD)) continue; // no forward path → no auto-skip
+    const sc = cfg.states?.[stage];
+    if (sc && sc.enabled === false) continue;
+    stagesToCheck.push(stage as IssueStatus);
+  }
+  if (stagesToCheck.length === 0) return [];
+
+  const regs = await db
+    .select({ stage: skillRegistrations.stage })
+    .from(skillRegistrations)
+    .where(
+      and(
+        eq(skillRegistrations.projectId, projectId),
+        inArray(skillRegistrations.stage, stagesToCheck),
+      ),
+    );
+  const have = new Set(regs.map((r) => r.stage));
+  const warnings: string[] = [];
+  for (const stage of stagesToCheck) {
+    if (have.has(stage)) continue;
+    const msg = `Stage '${stage}' enabled but no skill registered. Issues will auto-skip past this stage via STAGE_FORWARD.`;
+    warnings.push(msg);
+    logger.warn({ projectId, stage }, msg);
+  }
+  return warnings;
 }

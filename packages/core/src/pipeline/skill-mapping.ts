@@ -27,6 +27,14 @@ export function inverseJobTypeToStatus(jobType: JobType): IssueStatus | null {
 
 export interface ProjectSkillResolver {
   resolve(status: IssueStatus): Promise<ResolvedSkill | null>;
+  /**
+   * Stages with a skill_registration row for this project. ISS-239 — the
+   * soft-skip resolver uses this snapshot to decide whether a stage should
+   * be auto-skipped because no skill exists. Shares the same memoized DB
+   * read as `resolve()`, so calling both costs one query per resolver
+   * instance.
+   */
+  stages(): Promise<ReadonlySet<IssueStatus>>;
 }
 
 /**
@@ -66,6 +74,10 @@ export function createProjectSkillResolver(projectId: string): ProjectSkillResol
       const skillName = stageMap.get(status);
       if (!skillName) return null;
       return { type: jobMap.type, toggle: jobMap.toggle, skillName };
+    },
+    async stages(): Promise<ReadonlySet<IssueStatus>> {
+      const stageMap = await load();
+      return new Set(stageMap.keys() as Iterable<IssueStatus>);
     },
   };
 }

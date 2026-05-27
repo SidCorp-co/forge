@@ -115,7 +115,31 @@ vi.mock('./ci-fix-pattern-query.js', () => ({
 // test pure (no skill_registrations rows needed) and lets each case control
 // whether a registration exists for the target stage.
 const resolverResolve = vi.fn();
-const createProjectSkillResolverMock = vi.fn((_projectId: string) => ({ resolve: resolverResolve }));
+// ISS-239 — autoSkipDisabledStages calls resolver.stages() to build the
+// `hasSkill` predicate. Default to a set containing every stage so existing
+// ISS-110 tests (which don't set up stage registrations) keep their original
+// expectations — the skip predicate then degrades to the original
+// `enabled === false` behaviour. Individual ISS-239 tests override this.
+const resolverStagesMock = vi.fn<() => Promise<ReadonlySet<string>>>(async () =>
+  new Set<string>([
+    'open',
+    'needs_info',
+    'confirmed',
+    'approved',
+    'developed',
+    'testing',
+    'tested',
+    'pass',
+    'staging',
+    'deploying',
+    'reopen',
+    'released',
+  ]),
+);
+const createProjectSkillResolverMock = vi.fn((_projectId: string) => ({
+  resolve: resolverResolve,
+  stages: resolverStagesMock,
+}));
 vi.mock('./skill-mapping.js', async () => {
   const actual = await vi.importActual<typeof import('./skill-mapping.js')>('./skill-mapping.js');
   return {
@@ -123,6 +147,36 @@ vi.mock('./skill-mapping.js', async () => {
     createProjectSkillResolver: (projectId: string) => createProjectSkillResolverMock(projectId),
   };
 });
+
+// ISS-239 — stub skip-chain logging so unit tests don't model the
+// pipeline_runs UPDATE / comments INSERT side effects.
+const appendSkipChainEntryMock = vi.fn<
+  (
+    runId: string,
+    entry: { from: string; to: string; reason: string; at: string },
+  ) => Promise<void>
+>(async () => undefined);
+const postSkipChainCappedCommentMock = vi.fn<
+  (args: {
+    projectId: string;
+    issueId: string;
+    from: string;
+    visited: string[];
+  }) => Promise<void>
+>(async () => undefined);
+vi.mock('./skip-chain-log.js', () => ({
+  appendSkipChainEntry: (
+    runId: string,
+    entry: { from: string; to: string; reason: string; at: string },
+  ) => appendSkipChainEntryMock(runId, entry),
+  postSkipChainCappedComment: (args: {
+    projectId: string;
+    issueId: string;
+    from: string;
+    visited: string[];
+  }) => postSkipChainCappedCommentMock(args),
+  buildSkipChainCappedCommentBody: () => 'body',
+}));
 
 const { HooksBus } = await import('./hooks.js');
 const { registerPipelineOrchestrator } = await import('./orchestrator.js');
@@ -193,9 +247,33 @@ beforeEach(() => {
   // return [] instead of undefined and TypeError-destructuring.
   nextSelect.mockImplementation(() => [] as unknown[]);
   resolverResolve.mockReset();
+  resolverStagesMock.mockReset();
+  // Default: hasSkill returns true for every stage so the ISS-110 tests
+  // continue to rely solely on `states[stage].enabled === false` as the
+  // skip trigger.
+  resolverStagesMock.mockResolvedValue(
+    new Set<string>([
+      'open',
+      'needs_info',
+      'confirmed',
+      'approved',
+      'developed',
+      'testing',
+      'tested',
+      'pass',
+      'staging',
+      'deploying',
+      'reopen',
+      'released',
+    ]),
+  );
   pauseMissingSkillMock.mockReset();
   pauseMissingSkillMock.mockResolvedValue({ paused: true, alreadyPaused: false });
   postMissingSkillCommentMock.mockReset();
+  appendSkipChainEntryMock.mockReset();
+  appendSkipChainEntryMock.mockResolvedValue(undefined);
+  postSkipChainCappedCommentMock.mockReset();
+  postSkipChainCappedCommentMock.mockResolvedValue(undefined);
 });
 
 describe('pipeline/orchestrator', () => {
@@ -475,10 +553,23 @@ describe('pipeline/orchestrator soft-skip (ISS-110)', () => {
     // throws ILLEGAL_TRANSITION for developed → testing and the issue is
     // stranded forever at `developed`.
     expect(applyTransitionMock.mock.calls[0]?.[3]).toEqual({ skip: true });
-    expect(sentryAddBreadcrumb).toHaveBeenCalledTimes(1);
-    expect(sentryAddBreadcrumb.mock.calls[0]?.[0]).toMatchObject({
-      category: 'pipeline_run.status_changed',
-      data: { reason: 'skipped-disabled', fromStatus: 'developed', toStatus: 'testing' },
+    // ISS-239 — two breadcrumbs per hop: the compat `pipeline_run.status_changed`
+    // and the new `pipeline_run.auto_skip` carrying the typed reason.
+    const categories = sentryAddBreadcrumb.mock.calls.map((c) => c[0]?.category);
+    expect(categories).toContain('pipeline_run.status_changed');
+    expect(categories).toContain('pipeline_run.auto_skip');
+    const autoSkip = sentryAddBreadcrumb.mock.calls.find(
+      (c) => c[0]?.category === 'pipeline_run.auto_skip',
+    );
+    expect(autoSkip?.[0]).toMatchObject({
+      data: { reason: 'stage_disabled', fromStatus: 'developed', toStatus: 'testing' },
+    });
+    // ISS-239 — per-hop metadata writes for the skipChain.
+    expect(appendSkipChainEntryMock).toHaveBeenCalledTimes(1);
+    expect(appendSkipChainEntryMock.mock.calls[0]?.[1]).toMatchObject({
+      from: 'developed',
+      to: 'testing',
+      reason: 'stage_disabled',
     });
     // considerEnqueue runs second; the disabled-stage guard short-circuits it.
     expect(dbInsert).not.toHaveBeenCalled();
@@ -507,12 +598,19 @@ describe('pipeline/orchestrator soft-skip (ISS-110)', () => {
     expect(applyTransitionMock).toHaveBeenCalledTimes(2);
     expect(applyTransitionMock.mock.calls[0]?.[1]).toBe('testing');
     expect(applyTransitionMock.mock.calls[1]?.[1]).toBe('pass');
-    expect(sentryAddBreadcrumb).toHaveBeenCalledTimes(2);
-    expect(sentryAddBreadcrumb.mock.calls[0]?.[0]).toMatchObject({
-      data: { reason: 'skipped-disabled', fromStatus: 'developed', toStatus: 'testing' },
+    // ISS-239 — two categories per hop, so 4 breadcrumbs total for a 2-hop chain.
+    expect(sentryAddBreadcrumb).toHaveBeenCalledTimes(4);
+    // ISS-239 — per-hop skipChain entries.
+    expect(appendSkipChainEntryMock).toHaveBeenCalledTimes(2);
+    expect(appendSkipChainEntryMock.mock.calls[0]?.[1]).toMatchObject({
+      from: 'developed',
+      to: 'testing',
+      reason: 'stage_disabled',
     });
-    expect(sentryAddBreadcrumb.mock.calls[1]?.[0]).toMatchObject({
-      data: { reason: 'skipped-disabled', fromStatus: 'testing', toStatus: 'pass' },
+    expect(appendSkipChainEntryMock.mock.calls[1]?.[1]).toMatchObject({
+      from: 'testing',
+      to: 'pass',
+      reason: 'stage_disabled',
     });
     expect(dbInsert).not.toHaveBeenCalled();
   });
@@ -581,5 +679,93 @@ describe('pipeline/orchestrator soft-skip (ISS-110)', () => {
 
     expect(applyTransitionMock).not.toHaveBeenCalled();
     expect(dbInsert).not.toHaveBeenCalled();
+  });
+});
+
+describe('pipeline/orchestrator auto-skip missing skill (ISS-239)', () => {
+  it('auto-skips past a stage with no registered skill even when states is undefined', async () => {
+    cfgResolved({ enabled: true, autoTest: true });
+    // Only `testing` has a registered skill — `deploying` does not.
+    resolverStagesMock.mockResolvedValueOnce(new Set<string>(['testing']));
+    // autoSkipDisabledStages reads the current issue row to confirm status.
+    nextSelect.mockResolvedValueOnce([
+      { id: 'iss-1', projectId: 'proj-1', status: 'deploying', reopenCount: 0 },
+    ]);
+    // After the skip lands on `testing`, considerEnqueue resolves the test skill.
+    skillRegistered('forge-test', 'test', 'autoTest');
+    nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+    insertReturning.mockResolvedValueOnce([{ id: 'test-job' }]);
+
+    const bus = makeBus();
+    await bus.emit(
+      'transition',
+      transition({ from: 'developed', to: 'deploying' }) as never,
+    );
+
+    expect(applyTransitionMock).toHaveBeenCalledTimes(1);
+    expect(applyTransitionMock.mock.calls[0]?.[1]).toBe('testing');
+    expect(applyTransitionMock.mock.calls[0]?.[3]).toEqual({ skip: true });
+    const autoSkipCrumb = sentryAddBreadcrumb.mock.calls.find(
+      (c) => c[0]?.category === 'pipeline_run.auto_skip',
+    );
+    expect(autoSkipCrumb?.[0]).toMatchObject({
+      data: { reason: 'missing_skill', fromStatus: 'deploying', toStatus: 'testing' },
+    });
+    expect(appendSkipChainEntryMock).toHaveBeenCalledTimes(1);
+    expect(appendSkipChainEntryMock.mock.calls[0]?.[1]).toMatchObject({
+      from: 'deploying',
+      to: 'testing',
+      reason: 'missing_skill',
+    });
+    // ISS-238 pause guard MUST NOT fire — auto-skip intercepted before considerEnqueue
+    // would have refused the missing-skill `deploying` stage.
+    expect(pauseMissingSkillMock).not.toHaveBeenCalled();
+  });
+
+  it('does not pause via ISS-238 guard when the landing stage has its own missing skill (cap path)', async () => {
+    // No skills at all. autoSkip walks the chain to the first non-skippable
+    // anchor (`closed` for the released chain, `approved` for the open chain).
+    // For payload.to = 'pass', the chain is pass → staging → released → closed.
+    // `closed` is non-skippable → anchors there. No cap fires.
+    cfgResolved({ enabled: true });
+    resolverStagesMock.mockResolvedValueOnce(new Set<string>());
+    nextSelect.mockResolvedValueOnce([
+      { id: 'iss-1', projectId: 'proj-1', status: 'pass', reopenCount: 0 },
+    ]);
+
+    const bus = makeBus();
+    await bus.emit(
+      'transition',
+      transition({ from: 'testing', to: 'pass' }) as never,
+    );
+
+    expect(applyTransitionMock).toHaveBeenCalledTimes(3);
+    expect(applyTransitionMock.mock.calls.map((c) => c[1])).toEqual([
+      'staging',
+      'released',
+      'closed',
+    ]);
+    expect(appendSkipChainEntryMock).toHaveBeenCalledTimes(3);
+    expect(postSkipChainCappedCommentMock).not.toHaveBeenCalled();
+  });
+
+  it('does not skip when payload.to has a registered skill (forge-test pickup)', async () => {
+    cfgResolved({ enabled: true, autoTest: true });
+    // testing has a skill — autoSkip should bail and considerEnqueue should
+    // dispatch normally.
+    resolverStagesMock.mockResolvedValueOnce(new Set<string>(['testing']));
+    skillRegistered('forge-test', 'test', 'autoTest');
+    nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+    insertReturning.mockResolvedValueOnce([{ id: 'test-job' }]);
+
+    const bus = makeBus();
+    await bus.emit(
+      'transition',
+      transition({ from: 'deploying', to: 'testing' }) as never,
+    );
+
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+    expect(appendSkipChainEntryMock).not.toHaveBeenCalled();
+    expect(dbInsert).toHaveBeenCalledTimes(1);
   });
 });
