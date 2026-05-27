@@ -150,7 +150,7 @@ git checkout ISS-XX-short-title
 ```
 
 ```
-forge_coolify_deploy → deploy → {}
+forge_coolify_deploy → deploy → { issueId: <current issue documentId> }
 ```
 
 **Simple / Medium:** Push the ISS-* branch, merge to baseBranch. Staging deploys from baseBranch — no per-issue preview. Trigger Coolify deploy after merge. If staging URL is configured (read from `forge_config → get`, `previewDeploy` object), set previewUrl to staging URL.
@@ -164,7 +164,7 @@ git checkout ISS-XX-short-title
 ```
 
 ```
-forge_coolify_deploy → deploy → {}
+forge_coolify_deploy → deploy → { issueId: <current issue documentId> }
 ```
 
 **Complex:** Push feature branch only — do NOT merge to baseBranch. No deploy at this stage — review comes first, then preview deploy is triggered by the review step.

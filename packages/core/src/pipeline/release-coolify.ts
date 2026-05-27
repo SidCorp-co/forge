@@ -1,6 +1,7 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns, projectIntegrations } from '../db/schema.js';
+import { findDeliveryByRequestId } from '../integrations/deliveries.js';
 import { enqueueCoolifyDispatch } from '../integrations/queue.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
@@ -65,6 +66,20 @@ export async function tryDispatchCoolifyRelease(args: {
       }
     }
 
+    // Idempotency guard (ISS-242). The agent-driven `forge_coolify_deploy →
+    // deploy` path and this auto-subscriber both dispatch with the same
+    // `requestId = ${runId}:${integrationId}` scheme. A delivery row already
+    // existing for that requestId means the deploy was already enqueued — skip
+    // re-enqueueing so manual + auto never double-deploy. (recordDelivery does
+    // a plain insert, so without this a second dispatch would hit the
+    // `integration_deliveries_request_id_uq` violation inside the worker.)
+    const requestId = `${runId}:${row.id}`;
+    const existing = await findDeliveryByRequestId(row.id, requestId);
+    if (existing) {
+      dispatched.push(row.id);
+      continue;
+    }
+
     await setCurrentStepForce(runId, RELEASE_DEPLOY_IN_FLIGHT);
     await enqueueCoolifyDispatch({
       jobKind: 'coolify.dispatch',
@@ -72,7 +87,7 @@ export async function tryDispatchCoolifyRelease(args: {
       runId,
       issueId,
       eventName: 'release.requested',
-      requestId: `${runId}:${row.id}`,
+      requestId,
     });
     dispatched.push(row.id);
 
@@ -205,16 +220,45 @@ export async function confirmPendingProdDeploy(
 
   await setCurrentStepForce(run.id, RELEASE_DEPLOY_IN_FLIGHT);
 
-  await enqueueCoolifyDispatch({
-    jobKind: 'coolify.dispatch',
-    integrationId,
-    runId: run.id,
-    issueId: gate.issueId,
-    eventName: 'release.requested',
-    requestId: `${run.id}:${integrationId}:confirmed`,
-  });
+  // Same idempotency guard as the staging loop (ISS-242): a confirmed prod
+  // deploy already enqueued for this `:confirmed` requestId must not fire
+  // twice if the confirm endpoint is hit again.
+  const confirmedRequestId = `${run.id}:${integrationId}:confirmed`;
+  const existing = await findDeliveryByRequestId(integrationId, confirmedRequestId);
+  if (!existing) {
+    await enqueueCoolifyDispatch({
+      jobKind: 'coolify.dispatch',
+      integrationId,
+      runId: run.id,
+      issueId: gate.issueId,
+      eventName: 'release.requested',
+      requestId: confirmedRequestId,
+    });
+  }
 
   return { confirmed: true, runId: run.id, integrationId };
+}
+
+/**
+ * Resolve the most recent issue-run id for an issue, regardless of status.
+ *
+ * Both the auto-subscriber (below) and the agent-driven `forge_coolify_deploy
+ * → deploy` MCP tool need to map an `issueId` to its pipeline run before
+ * dispatching, and neither has the runId in hand: by the time a deploy is
+ * triggered the issue state-machine has already transitioned to a terminal
+ * status (`released` / `closed`) and closed the run, so a status filter would
+ * silently skip every deploy. The runId is used purely as a tracking key for
+ * the deploy_uuid → run mapping; downstream helpers (setCurrentStep, closeRun)
+ * are no-ops on terminal runs, so taking a closed run here is safe.
+ */
+export async function resolveLatestIssueRunId(issueId: string): Promise<string | null> {
+  const [run] = await db
+    .select({ id: pipelineRuns.id })
+    .from(pipelineRuns)
+    .where(and(eq(pipelineRuns.issueId, issueId), eq(pipelineRuns.kind, 'issue')))
+    .orderBy(desc(pipelineRuns.createdAt))
+    .limit(1);
+  return run?.id ?? null;
 }
 
 /**
@@ -232,24 +276,11 @@ export function registerReleaseCompletedSubscriber(
   hooks.on('jobCompleted', async (payload) => {
     if (payload.type !== 'release') return;
 
-    // Locate the most recent issue-run, regardless of status. By the time
-    // jobCompleted fires for a `release` job, the issue state-machine has
-    // already transitioned the issue to a terminal status (`released` /
-    // `closed`) and closed the run (see issues/apply-transition.ts). So
-    // filtering on ['running','paused'] would silently skip every deploy.
-    // The runId is used purely as a tracking key for the deploy_uuid → run
-    // mapping; downstream helpers (setCurrentStep, closeRun) are no-ops on
-    // terminal runs, so taking a closed run here is safe.
+    // Map the issue to its latest run (see resolveLatestIssueRunId for why
+    // we take the most recent run regardless of status).
     if (!payload.issueId) return;
-    const [run] = await db
-      .select({ id: pipelineRuns.id })
-      .from(pipelineRuns)
-      .where(
-        and(eq(pipelineRuns.issueId, payload.issueId), eq(pipelineRuns.kind, 'issue')),
-      )
-      .orderBy(desc(pipelineRuns.createdAt))
-      .limit(1);
-    if (!run) {
+    const runId = await resolveLatestIssueRunId(payload.issueId);
+    if (!runId) {
       logger.debug(
         { jobId: payload.jobId, issueId: payload.issueId },
         'release.deploy hook: no run found for issue — skipping coolify dispatch',
@@ -260,7 +291,7 @@ export function registerReleaseCompletedSubscriber(
       await tryDispatchCoolifyRelease({
         projectId: payload.projectId,
         issueId: payload.issueId,
-        runId: run.id,
+        runId,
       });
     } catch (err) {
       logger.error(

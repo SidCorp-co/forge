@@ -85,7 +85,7 @@ If merge conflicts occur, stop and post a comment describing the conflicts. Set 
 Trigger Coolify deployment after the merge so the staging environment is updated before the pipeline advances:
 
 ```
-forge_coolify_deploy → deploy → {}
+forge_coolify_deploy → deploy → { issueId: <current issue documentId> }
 ```
 
 If no Coolify resources are configured, skip — deployment may be handled by external CI.

@@ -12,6 +12,7 @@ import {
 } from './tools/forge-agent-sessions.js';
 import { forgeCommentsTool } from './tools/forge-comments.js';
 import { forgeConfigTool } from './tools/forge-config.js';
+import { forgeCoolifyDeployTool } from './tools/forge-coolify-deploy.js';
 import { forgeHealthTool } from './tools/forge-health.js';
 import { forgeIssuesTool } from './tools/forge-issues.js';
 import { forgeJobsEventsTool, forgeJobsGetTool, forgeJobsListTool } from './tools/forge-jobs.js';
@@ -82,6 +83,15 @@ import type { McpContext } from './tools/lib.js';
  *  - `forge_projects.create` / `.update` — user-facing project provisioning
  *    over MCP for non-CEO PAT principals (cross-tenant create stays on
  *    `forge_admin_projects.create`).
+ *  - `forge_coolify_deploy` — action dispatcher (list/deploy/status) for the
+ *    Coolify deploy step the stock pipeline skills invoke (ISS-242). Input:
+ *    `{ action: 'list'|'deploy'|'status', projectId?, issueId?, integrationId? }`.
+ *    `list`/`status` are project-scoped (slug header or projectId); `deploy`
+ *    additionally requires `issueId` (MCP has no run context) and delegates to
+ *    the release auto-subscriber's exact dispatch path so manual + auto deploys
+ *    dedupe on `requestId = runId:integrationId`. Prod integrations return
+ *    `pendingHumanConfirm:true` without dispatching until the confirm-prod gate
+ *    is released. Membership-gated; no device requirement.
  *  - `forge_health` — server snapshot: db/queue/ws + last seed + active jobs
  *    (ISS-7). Device-token only.
  */
@@ -165,6 +175,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeIssuesTool(ctx),
     forgeCommentsTool(ctx),
     forgeConfigTool(ctx),
+    forgeCoolifyDeployTool(ctx),
     forgeJobsListTool(ctx.device),
     forgeJobsGetTool(ctx),
     forgeJobsEventsTool(ctx),

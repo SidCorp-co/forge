@@ -123,7 +123,7 @@ forge_coolify_deploy → list → {}
 
 If resources exist:
 ```
-forge_coolify_deploy → deploy → {}
+forge_coolify_deploy → deploy → { issueId: <current issue documentId> }
 ```
 
 If no Coolify: skip — CI/CD may auto-deploy from production branch, or deployment is manual.

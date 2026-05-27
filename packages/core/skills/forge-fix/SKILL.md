@@ -124,7 +124,7 @@ git push origin ISS-XX-short-title
 **Deploy mode** — trigger Coolify deployment after push so the environment is updated before the pipeline advances:
 
 ```
-forge_coolify_deploy → deploy → {}
+forge_coolify_deploy → deploy → { issueId: <current issue documentId> }
 ```
 
 If no Coolify resources are configured within deploy mode, skip.

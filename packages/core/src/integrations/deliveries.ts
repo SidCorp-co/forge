@@ -120,3 +120,52 @@ export async function findLastSuccessfulOutbound(
     .limit(1);
   return rows[0] ?? null;
 }
+
+/**
+ * Returns the most recent outbound delivery for an integration regardless of
+ * status — used by `forge_coolify_deploy → status` to surface the latest
+ * deployment attempt (including a still-`pending` or `failed` one) alongside
+ * its `response.deployment_uuid`.
+ */
+export async function findLastOutbound(
+  projectIntegrationId: string,
+): Promise<typeof integrationDeliveries.$inferSelect | null> {
+  const rows = await db
+    .select()
+    .from(integrationDeliveries)
+    .where(
+      and(
+        eq(integrationDeliveries.projectIntegrationId, projectIntegrationId),
+        eq(integrationDeliveries.direction, 'outbound'),
+      ),
+    )
+    .orderBy(desc(integrationDeliveries.createdAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * Looks up an outbound delivery by its `(project_integration_id, request_id)`
+ * pair — the same tuple the `integration_deliveries_request_id_uq` partial
+ * unique index covers. Returns the row or null. Used as the application-level
+ * idempotency guard in the Coolify dispatch loop so a duplicate dispatch with
+ * the same `requestId` (e.g. agent-driven + auto-subscriber) is skipped
+ * instead of hitting a unique-violation inside the worker.
+ */
+export async function findDeliveryByRequestId(
+  projectIntegrationId: string,
+  requestId: string,
+): Promise<typeof integrationDeliveries.$inferSelect | null> {
+  const rows = await db
+    .select()
+    .from(integrationDeliveries)
+    .where(
+      and(
+        eq(integrationDeliveries.projectIntegrationId, projectIntegrationId),
+        eq(integrationDeliveries.direction, 'outbound'),
+        eq(integrationDeliveries.requestId, requestId),
+      ),
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
