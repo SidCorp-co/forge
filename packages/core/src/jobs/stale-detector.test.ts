@@ -74,14 +74,15 @@ afterEach(() => {
 });
 
 describe('runStaleSweep', () => {
-  it('SELECT covers both dispatched and running, with 5-minute threshold against dispatched_at', async () => {
+  it('SELECT covers both dispatched and running, with 60-minute threshold and skips jobs that already emitted a result event', async () => {
     executeMock.mockResolvedValueOnce([]); // empty result → no per-row UPDATEs
     await runStaleSweep();
     const text = lastSqlText(0);
     expect(text).toMatch(/j\.status\s+IN\s*\(\s*'dispatched'\s*,\s*'running'\s*\)/);
-    expect(text).toMatch(/interval\s+'5 minutes'/);
+    expect(text).toMatch(/interval\s+'60 minutes'/);
     expect(text).toMatch(/COALESCE\(le\.max_ts,\s*j\.dispatched_at\)/);
-    expect(text).toMatch(/now\(\)\s*-\s*interval\s+'5 minutes'/);
+    expect(text).toMatch(/now\(\)\s*-\s*interval\s+'60 minutes'/);
+    expect(text).toMatch(/NOT\s+EXISTS[\s\S]*job_events[\s\S]*kind\s*=\s*'result'/);
   });
 
   it('per-row UPDATE flips dispatched rows (not just running)', async () => {
@@ -94,7 +95,7 @@ describe('runStaleSweep', () => {
         type: 'triage',
         issue_id: null,
         agent_session_id: null,
-        dispatched_at: new Date(Date.now() - 10 * 60_000),
+        dispatched_at: new Date(Date.now() - 65 * 60_000),
       },
     ]);
     executeMock.mockResolvedValueOnce([
@@ -130,7 +131,7 @@ describe('runStaleSweep', () => {
         type: 'custom',
         issue_id: null,
         agent_session_id: null,
-        dispatched_at: new Date(Date.now() - 10 * 60_000),
+        dispatched_at: new Date(Date.now() - 65 * 60_000),
       },
     ]);
     executeMock.mockResolvedValueOnce([

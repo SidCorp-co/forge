@@ -8,7 +8,7 @@ import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 
 export const STALE_DETECTOR_QUEUE = 'stale-job-detector';
-const STALE_THRESHOLD = "interval '5 minutes'";
+const STALE_THRESHOLD = "interval '60 minutes'";
 
 type StaleJobRow = {
   id: string;
@@ -23,7 +23,7 @@ type StaleJobRow = {
 };
 
 /**
- * Find `dispatched`/`running` jobs whose latest job_event is older than 5
+ * Find `dispatched`/`running` jobs whose latest job_event is older than 60
  * minutes (or whose dispatched_at is, if no events). Mark them failed and
  * surface the failure to the operator via setManualHoldBlock — no progress
  * is strong evidence the worker is wedged; auto-retry would just spawn
@@ -37,6 +37,15 @@ type StaleJobRow = {
  *
  * `dispatched` jobs have no `job_events` rows yet, so the GREATEST clause
  * collapses to `j.dispatched_at` for them.
+ *
+ * Skip jobs that already emitted a `result` event — the runner reported
+ * completion but the finalize path failed to flip `jobs.status='done'`.
+ * That is a finalize-recovery problem, not a stale-runner problem; marking
+ * it failed here is a false positive (Forge Dev 2026-05-27, release job of
+ * ISS-258 itself — runner merged the PR, emitted result, then WS dropped
+ * mid-finalize). Threshold also bumped from 5min → 60min because legitimate
+ * forge-release/forge-code work can run >5min between event emissions on
+ * heavy merges + test runs.
  */
 export async function runStaleSweep(): Promise<{
   failed: number;
@@ -55,6 +64,10 @@ export async function runStaleSweep(): Promise<{
     FROM jobs j
     LEFT JOIN last_event le ON le.job_id = j.id
     WHERE j.status IN ('dispatched', 'running')
+      AND NOT EXISTS (
+        SELECT 1 FROM job_events
+        WHERE job_id = j.id AND kind = 'result'
+      )
       AND GREATEST(COALESCE(le.max_ts, j.dispatched_at), j.dispatched_at) <
           now() - ${STALE_THRESHOLD}
   `),
@@ -71,7 +84,7 @@ export async function runStaleSweep(): Promise<{
           error = 'stale',
           finished_at = now(),
           failure_kind = 'transient',
-          failure_reason = 'runner stale (no progress / no started event for >5min)',
+          failure_reason = 'runner stale (no progress / no started event for >60min)',
           classifier_version = 1
       WHERE id = '${row.id}' AND status IN ('dispatched', 'running')
       RETURNING *
@@ -95,7 +108,7 @@ export async function runStaleSweep(): Promise<{
           trigger: 'session_lost',
           classification: {
             kind: 'unknown',
-            reason: 'runner stale (no progress for >5min)',
+            reason: 'runner stale (no progress for >60min)',
             evidence: {
               jobId: updatedRow.id,
               sessionId: updatedRow.agent_session_id,
