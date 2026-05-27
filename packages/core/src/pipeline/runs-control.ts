@@ -24,10 +24,10 @@
 
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions, jobs, pipelineRuns } from '../db/schema.js';
-import { logger } from '../logger.js';
-import { deviceRoom, projectRoom } from '../ws/rooms.js';
+import { pipelineRuns } from '../db/schema.js';
+import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import { broadcastAbortEvents, cascadeCancelChildJobs } from './runs-cascade.js';
 
 export type PipelineRunRow = typeof pipelineRuns.$inferSelect;
 
@@ -125,12 +125,7 @@ export async function cancelPipelineRun(runId: string): Promise<CancelPipelineRu
     const [updatedRun] = await tx
       .update(pipelineRuns)
       .set({ status: 'cancelled', finishedAt: cancelNow, updatedAt: cancelNow })
-      .where(
-        and(
-          eq(pipelineRuns.id, runId),
-          inArray(pipelineRuns.status, ['running', 'paused']),
-        ),
-      )
+      .where(and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])))
       .returning();
 
     if (!updatedRun) {
@@ -152,75 +147,22 @@ export async function cancelPipelineRun(runId: string): Promise<CancelPipelineRu
       throw conflict(current.status);
     }
 
-    const cancelledJobs = await tx
-      .update(jobs)
-      .set({ status: 'cancelled', finishedAt: cancelNow })
-      .where(
-        and(
-          eq(jobs.pipelineRunId, runId),
-          inArray(jobs.status, ['queued', 'dispatched']),
-        ),
-      )
-      .returning({
-        id: jobs.id,
-        agentSessionId: jobs.agentSessionId,
-        deviceId: jobs.deviceId,
-      });
-
-    const cancelledJobIds = cancelledJobs.map((j) => j.id);
-    const abortedSessionIds = cancelledJobs
-      .map((j) => j.agentSessionId)
-      .filter((id): id is string => typeof id === 'string');
-    const deviceBySession = new Map<string, string>();
-    for (const j of cancelledJobs) {
-      if (j.agentSessionId && j.deviceId) deviceBySession.set(j.agentSessionId, j.deviceId);
-    }
-    const deviceIdsNotified = Array.from(new Set([...deviceBySession.values()]));
-
-    if (abortedSessionIds.length > 0) {
-      await tx
-        .update(agentSessions)
-        .set({
-          status: 'failed',
-          failureReason: FAILURE_REASON_PIPELINE_CANCELLED,
-          updatedAt: cancelNow,
-        })
-        .where(
-          and(
-            inArray(agentSessions.id, abortedSessionIds),
-            inArray(agentSessions.status, ['queued', 'running', 'idle']),
-          ),
-        );
-    }
+    const cascade = await cascadeCancelChildJobs(tx, runId, FAILURE_REASON_PIPELINE_CANCELLED);
 
     return {
       run: updatedRun,
-      cancelledJobIds,
-      abortedSessionIds,
-      deviceIdsNotified,
+      cancelledJobIds: cascade.cancelledJobIds,
+      abortedSessionIds: cascade.abortedSessionIds,
+      deviceIdsNotified: Array.from(new Set([...cascade.deviceBySession.values()])),
       broadcast: true,
-      deviceBySession,
+      deviceBySession: cascade.deviceBySession,
     };
   });
 
   if (result.broadcast) {
     broadcastRunStatus(result.run);
     if (result.deviceBySession) {
-      for (const [sessionId, deviceId] of result.deviceBySession.entries()) {
-        try {
-          roomManager.publish(deviceRoom(deviceId), {
-            event: 'agent:abort',
-            data: { sessionId, reason: FAILURE_REASON_PIPELINE_CANCELLED },
-          });
-        } catch (err) {
-          // Defensive: a single device fan-out should not fail the whole
-          // cancel after the DB has already committed.
-          logger.error(
-            { err, runId, sessionId, deviceId },
-            'cancelPipelineRun: agent:abort publish failed',
-          );
-        }
-      }
+      await broadcastAbortEvents(result.deviceBySession, FAILURE_REASON_PIPELINE_CANCELLED, runId);
     }
   }
 

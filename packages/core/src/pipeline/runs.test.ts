@@ -35,6 +35,28 @@ vi.mock('./hooks.js', () => ({
   },
 }));
 
+const cascadeMock = vi.fn(async (_tx: unknown, _runId: string, _reason: string) => ({
+  cancelledJobIds: [] as string[],
+  abortedSessionIds: [] as string[],
+  deviceBySession: new Map<string, string>(),
+}));
+const broadcastMock = vi.fn(
+  async (_map: unknown, _reason: string, _runId: string) => [] as string[],
+);
+
+vi.mock('./runs-cascade.js', () => ({
+  cascadeCancelChildJobs: (...args: unknown[]) =>
+    (cascadeMock as unknown as (...a: unknown[]) => unknown)(...args),
+  broadcastAbortEvents: (...args: unknown[]) =>
+    (broadcastMock as unknown as (...a: unknown[]) => unknown)(...args),
+  reasonForOutcome: (outcome: string) =>
+    outcome === 'completed'
+      ? 'pipeline_completed'
+      : outcome === 'failed'
+        ? 'pipeline_failed'
+        : 'pipeline_cancelled',
+}));
+
 vi.mock('../db/schema.js', () => ({
   pipelineRuns: {
     name: 'pipeline_runs',
@@ -57,8 +79,9 @@ vi.mock('drizzle-orm', () => ({
   })) as never,
 }));
 
-vi.mock('../db/client.js', () => ({
-  db: {
+vi.mock('../db/client.js', () => {
+  const mockDb: Record<string, unknown> = {};
+  Object.assign(mockDb, {
     insert: () => {
       const call: InsertCall = { values: {}, returningRows: [] };
       const captured: InsertCall = call;
@@ -124,8 +147,15 @@ vi.mock('../db/client.js', () => ({
         }),
       }),
     }),
-  },
-}));
+    // ISS-258 — close paths now wrap their UPDATE pipelineRuns in
+    // db.transaction so the cascade UPDATE on jobs/agent_sessions rides
+    // on the same tx. The mock simply invokes the callback with the same
+    // db handle — drizzle's tx surface is structurally identical to db
+    // for the calls these helpers issue (update/select/execute).
+    transaction: async <T>(cb: (tx: unknown) => Promise<T>): Promise<T> => cb(mockDb),
+  });
+  return { db: mockDb };
+});
 
 const {
   openIssueRun,
@@ -144,6 +174,8 @@ beforeEach(() => {
   nextUpdateReturning.length = 0;
   nextInsertReturnsEmpty = false;
   emitMock.mockClear();
+  cascadeMock.mockClear();
+  broadcastMock.mockClear();
 });
 
 describe('openIssueRun', () => {
@@ -181,9 +213,7 @@ describe('openIssueRun', () => {
 
   it('re-selects on ON CONFLICT loss and returns the winner (race-safe, no emit)', async () => {
     selectResponses.push([]);
-    selectResponses.push([
-      { id: 'run-winner', startedAt: new Date('2026-05-12T07:00:00Z') },
-    ]);
+    selectResponses.push([{ id: 'run-winner', startedAt: new Date('2026-05-12T07:00:00Z') }]);
     nextInsertReturnsEmpty = true;
     const r = await openIssueRun({ projectId: 'p-1', issueId: 'i-1' });
     expect(r.id).toBe('run-winner');
@@ -269,6 +299,7 @@ describe('closeRun / closeRunIfOneShot / closeOpenRunForIssue', () => {
     expect(closeCall?.set).toMatchObject({ status: 'completed' });
     expect(closeCall?.set.finishedAt).toBeInstanceOf(Date);
     expect(closeCall?.set.updatedAt).toBeInstanceOf(Date);
+    expect(cascadeMock).toHaveBeenCalledWith(expect.anything(), 'run-1', 'pipeline_completed');
     expect(emitMock).toHaveBeenCalledTimes(1);
     expect(emitMock).toHaveBeenCalledWith('pipelineRunStatusChanged', {
       runId: 'run-1',
@@ -278,7 +309,49 @@ describe('closeRun / closeRunIfOneShot / closeOpenRunForIssue', () => {
       fromStatus: 'running',
       toStatus: 'completed',
       currentStep: 'code',
+      cascadedJobIds: [],
     });
+  });
+
+  it('closeRun cascade-cancels orphan child jobs and broadcasts agent:abort', async () => {
+    nextUpdateReturning.push([
+      {
+        id: 'run-1',
+        projectId: 'p-1',
+        issueId: 'i-1',
+        kind: 'issue',
+        currentStep: 'triage',
+      },
+    ]);
+    cascadeMock.mockResolvedValueOnce({
+      cancelledJobIds: ['job-orphan'],
+      abortedSessionIds: ['sess-orphan'],
+      deviceBySession: new Map([['sess-orphan', 'dev-1']]),
+    });
+    await closeRun('run-1', 'completed');
+    expect(cascadeMock).toHaveBeenCalledTimes(1);
+    expect(broadcastMock).toHaveBeenCalledTimes(1);
+    const [deviceMap, reason, runId] = broadcastMock.mock.calls[0] ?? [];
+    expect(reason).toBe('pipeline_completed');
+    expect(runId).toBe('run-1');
+    expect(deviceMap).toBeInstanceOf(Map);
+    expect(emitMock).toHaveBeenCalledWith('pipelineRunStatusChanged', {
+      runId: 'run-1',
+      projectId: 'p-1',
+      issueId: 'i-1',
+      kind: 'issue',
+      fromStatus: 'running',
+      toStatus: 'completed',
+      currentStep: 'triage',
+      cascadedJobIds: ['job-orphan'],
+    });
+  });
+
+  it('closeRun skips cascade + broadcast when the UPDATE was a no-op (already terminal)', async () => {
+    nextUpdateReturning.push([]);
+    await closeRun('run-1', 'completed');
+    expect(cascadeMock).not.toHaveBeenCalled();
+    expect(broadcastMock).not.toHaveBeenCalled();
   });
 
   it('closeRun emits zero hooks when the UPDATE was a no-op (already-terminal row)', async () => {
@@ -318,6 +391,25 @@ describe('closeRun / closeRunIfOneShot / closeOpenRunForIssue', () => {
     await closeOpenRunForIssue('i-1', 'completed');
     const closeCall = updateCalls.find((c) => c.returnedRows.length > 0);
     expect(closeCall?.set.status).toBe('completed');
+    expect(cascadeMock).toHaveBeenCalledWith(expect.anything(), 'run-1', 'pipeline_completed');
     expect(emitMock).toHaveBeenCalledTimes(1);
+    expect(emitMock).toHaveBeenLastCalledWith('pipelineRunStatusChanged', {
+      runId: 'run-1',
+      projectId: 'p-1',
+      issueId: 'i-1',
+      kind: 'issue',
+      fromStatus: 'running',
+      toStatus: 'completed',
+      currentStep: null,
+      cascadedJobIds: [],
+    });
+  });
+
+  it('closeOpenRunForIssue is idempotent — repeat call with no UPDATE rows does not re-cascade', async () => {
+    nextUpdateReturning.push([]);
+    await closeOpenRunForIssue('i-1', 'completed');
+    expect(cascadeMock).not.toHaveBeenCalled();
+    expect(broadcastMock).not.toHaveBeenCalled();
+    expect(emitMock).not.toHaveBeenCalled();
   });
 });

@@ -27,6 +27,9 @@ export function registerPipelineSentryBreadcrumbs(bus: HooksBus): void {
         fromStatus: p.fromStatus,
         toStatus: p.toStatus,
         currentStep: p.currentStep,
+        // ISS-258 — surface orphan-cascade counts on the same breadcrumb so
+        // the close event is not double-emitted just to carry this signal.
+        cascadedJobIds: p.cascadedJobIds ?? [],
       },
     });
   });

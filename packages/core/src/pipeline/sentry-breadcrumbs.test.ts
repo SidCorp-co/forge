@@ -57,7 +57,18 @@ describe('registerPipelineSentryBreadcrumbs', () => {
       fromStatus: 'running',
       toStatus: 'completed',
       currentStep: 'code',
+      cascadedJobIds: [],
     });
+  });
+
+  // ISS-258 — cascadedJobIds surface on the same breadcrumb (no duplicate
+  // status_changed emit when the close cascade cleaned up orphan jobs).
+  it('surfaces cascadedJobIds on the breadcrumb data when present', async () => {
+    const bus = new HooksBus();
+    registerPipelineSentryBreadcrumbs(bus);
+    await bus.emit('pipelineRunStatusChanged', basePayload({ cascadedJobIds: ['j-1', 'j-2'] }));
+    const arg = addBreadcrumbMock.mock.calls[0]?.[0];
+    expect(arg.data.cascadedJobIds).toEqual(['j-1', 'j-2']);
   });
 
   it('renders null fromStatus as "null" in the breadcrumb message', async () => {
