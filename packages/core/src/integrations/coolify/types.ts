@@ -23,8 +23,21 @@ export interface CoolifySecrets extends Record<string, unknown> {
   previousTokenExpiresAt?: string;
 }
 
-export interface CoolifyDeployResponse {
+/** One entry of Coolify v4's `deployments[]` deploy response. */
+export interface CoolifyDeployItem {
   deployment_uuid: string;
+  resource_uuid?: string;
+  message?: string;
+}
+
+/**
+ * Coolify v4 deploy response. The documented shape is `{ deployments: [...] }`;
+ * some versions surface a top-level `deployment_uuid` instead, so both are
+ * optional and the adapter resolves the uuid defensively.
+ */
+export interface CoolifyDeployResponse {
+  deployments?: CoolifyDeployItem[];
+  deployment_uuid?: string;
   message?: string;
 }
 
@@ -32,11 +45,6 @@ export interface CoolifyResourceResponse {
   uuid: string;
   name?: string;
   status?: string;
-}
-
-export interface CoolifyRollbackResponse {
-  deployment_uuid: string;
-  message?: string;
 }
 
 /**

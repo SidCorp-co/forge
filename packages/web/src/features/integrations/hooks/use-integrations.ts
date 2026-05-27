@@ -51,12 +51,6 @@ export function useTestIntegration(projectId: string) {
   });
 }
 
-export function useRollbackIntegration(projectId: string) {
-  return useMutation({
-    mutationFn: (id: string) => integrationsApi.rollback(projectId, id),
-  });
-}
-
 export function useConfirmProdDeploy(projectId: string) {
   const qc = useQueryClient();
   return useMutation({

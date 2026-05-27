@@ -9,7 +9,6 @@ import {
   useCreateIntegration,
   useDeleteIntegration,
   useIntegrations,
-  useRollbackIntegration,
   useRotateIntegrationSecret,
   useTestIntegration,
   useUpdateIntegration,
@@ -98,7 +97,6 @@ function EnvironmentPanel({ projectId, environment, existing, onSaved }: EnvPane
   const update = useUpdateIntegration(projectId);
   const del = useDeleteIntegration(projectId);
   const test = useTestIntegration(projectId);
-  const rollback = useRollbackIntegration(projectId);
   const confirmProd = useConfirmProdDeploy(projectId);
   const rotateSecret = useRotateIntegrationSecret(projectId);
 
@@ -186,17 +184,6 @@ function EnvironmentPanel({ projectId, environment, existing, onSaved }: EnvPane
       setTestResult({ status: res.status, message: res.message });
     } catch (err) {
       setTestResult({ status: 'error', message: err instanceof Error ? err.message : 'test failed' });
-    }
-  }
-
-  async function handleRollback() {
-    if (!existing) return;
-    if (!confirm(`Roll back last deploy for ${environment}? This is irreversible.`)) return;
-    try {
-      await rollback.mutateAsync(existing.id);
-      onSaved();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'rollback failed');
     }
   }
 
@@ -293,14 +280,6 @@ function EnvironmentPanel({ projectId, environment, existing, onSaved }: EnvPane
             disabled={!existing || test.isPending}
           >
             Test connection
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={handleRollback}
-            disabled={!existing || rollback.isPending}
-          >
-            Rollback last deploy
           </Button>
           {existing && (
             <Button

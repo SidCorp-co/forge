@@ -33,12 +33,6 @@ export const integrationsApi = {
       method: 'POST',
     }),
 
-  rollback: (projectId: string, id: string) =>
-    apiClient<{ rolledBack: boolean; deploymentUuid: string | null }>(
-      `/projects/${projectId}/integrations/${id}/rollback`,
-      { method: 'POST' },
-    ),
-
   confirmProdDeploy: (projectId: string, id: string) =>
     apiClient<{ confirmed: boolean; runId: string | null; integrationId: string }>(
       `/projects/${projectId}/integrations/${id}/confirm-prod-deploy`,

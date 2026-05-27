@@ -1,8 +1,4 @@
-import type {
-  CoolifyDeployResponse,
-  CoolifyResourceResponse,
-  CoolifyRollbackResponse,
-} from './types.js';
+import type { CoolifyDeployResponse, CoolifyResourceResponse } from './types.js';
 
 export class CoolifyApiError extends Error {
   readonly status: number;
@@ -81,7 +77,7 @@ export class CoolifyClient {
         if (!res.ok) {
           throw new CoolifyApiError(res.status, await safeText(res));
         }
-        // 204 — Coolify uses this for rollback in some versions.
+        // Some Coolify endpoints answer success with an empty 204 body.
         if (res.status === 204) return undefined as unknown as T;
         return (await res.json()) as T;
       } catch (err) {
@@ -93,28 +89,36 @@ export class CoolifyClient {
     throw lastErr ?? new Error('Coolify request failed');
   }
 
-  /** Trigger a deploy. Returns the deployment_uuid Coolify mints for tracking. */
+  /**
+   * Trigger a deploy. Coolify v4 deploy is `GET /api/v1/deploy?uuid=&force=`
+   * (query params, GET — NOT a POST with a JSON body).
+   * Docs: https://coolify.io/docs/api-reference/api/operations/deploy-by-tag-or-uuid
+   * Response is a `deployments[]` array; some versions also surface a
+   * top-level `deployment_uuid`, so callers parse defensively.
+   */
   async deploy(input: { resourceUuid: string; force?: boolean }): Promise<CoolifyDeployResponse> {
-    return this.request<CoolifyDeployResponse>('POST', '/api/v1/deploy', {
+    const qs = new URLSearchParams({
       uuid: input.resourceUuid,
-      force: input.force ?? false,
+      force: String(input.force ?? false),
     });
+    return this.request<CoolifyDeployResponse>('GET', `/api/v1/deploy?${qs.toString()}`);
   }
 
-  /** Healthcheck: GET the resource. 2xx = "API reachable + token valid + resource exists". */
+  /**
+   * Healthcheck. Coolify v4 `/api/v1/resources` is LIST-ONLY — there is no
+   * get-one-by-uuid under it (that path 404s for any uuid + any token).
+   * Docs: https://coolify.io/docs/api-reference/api/operations/list-resources
+   * A 2xx on the list proves the API is reachable + the token is valid; we
+   * then resolve the uuid client-side and surface a clear not-found instead of
+   * a bare 404.
+   */
   async getResource(resourceUuid: string): Promise<CoolifyResourceResponse> {
-    return this.request<CoolifyResourceResponse>(
-      'GET',
-      `/api/v1/resources/${encodeURIComponent(resourceUuid)}`,
-    );
-  }
-
-  /** Roll back the named deployment. */
-  async rollback(deploymentUuid: string): Promise<CoolifyRollbackResponse> {
-    return this.request<CoolifyRollbackResponse>(
-      'POST',
-      `/api/v1/deployments/${encodeURIComponent(deploymentUuid)}/rollback`,
-    );
+    const list = await this.request<CoolifyResourceResponse[]>('GET', '/api/v1/resources');
+    const match = Array.isArray(list) ? list.find((r) => r.uuid === resourceUuid) : undefined;
+    if (!match) {
+      throw new CoolifyApiError(404, '', `resource ${resourceUuid} not found in Coolify resource list`);
+    }
+    return match;
   }
 }
 
