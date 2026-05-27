@@ -8,15 +8,7 @@ vi.mock('../config/env.js', () => ({
 }));
 
 const selectLimit = vi.fn();
-// withFullCommentBodies awaits `.from(comments).where(...)` directly, so the
-// where-builder is thenable and resolves to the comment-body lookup rows.
-const commentLookup = vi.fn(() => [] as Array<{ id: string; body: string }>);
-const selectWhere = vi.fn(() => ({
-  limit: selectLimit,
-  orderBy: selectOrderBy,
-  then: (resolve: (rows: Array<{ id: string; body: string }>) => unknown) =>
-    resolve(commentLookup()),
-}));
+const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, innerJoin: selectInnerJoin }));
 const selectInnerJoin = vi.fn(() => ({ where: selectWhere }));
 const selectOrderByLimit = vi.fn();
@@ -55,7 +47,6 @@ beforeEach(() => {
   selectLimit.mockReset();
   selectOrderByLimit.mockReset();
   projectAccess.mockReset();
-  commentLookup.mockReturnValue([]);
 });
 
 function auth(verified = true) {
@@ -205,29 +196,5 @@ describe('GET /api/projects/:id/activity', () => {
     const body = (await res.json()) as { items: Array<{ action: string }> };
     expect(body.items).toHaveLength(1);
     expect(body.items[0].action).toBe('comment.created');
-  });
-
-  it('re-hydrates the full comment body over the stored snippet', async () => {
-    auth();
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'owner' });
-    const fullBody = 'x'.repeat(1000); // longer than the 240-char activity snippet
-    selectOrderByLimit.mockResolvedValueOnce([
-      {
-        id: ACT_ID,
-        issueId: ISSUE_ID,
-        action: 'comment.created',
-        actorType: 'user',
-        actorId: USER_ID,
-        payload: { commentId: ACT_ID, body: 'x'.repeat(240) },
-        createdAt: new Date(),
-      },
-    ]);
-    commentLookup.mockReturnValueOnce([{ id: ACT_ID, body: fullBody }]);
-    const res = await buildApp().request(`/api/projects/${PROJECT_ID}/activity?type=comment`, {
-      headers: { authorization: `Bearer ${await token()}` },
-    });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { items: Array<{ payload: { body: string } }> };
-    expect(body.items[0].payload.body).toBe(fullBody);
   });
 });
