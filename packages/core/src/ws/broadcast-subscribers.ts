@@ -81,7 +81,7 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
       data: {
         scheduleId: p.scheduleId,
         projectId: p.projectId,
-        jobId: p.jobId,
+        sessionId: p.sessionId,
         actorId: p.actorUserId,
       },
     });

@@ -7,15 +7,17 @@ vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
 }));
 
+// Typed `(_payload: unknown)` parameters keep `mock.calls[i]` as `[unknown]`
+// for strict tsconfig — see ISS-244 dispatch.test.ts for the same pattern.
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn();
-const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
-const selectFrom = vi.fn(() => ({ where: selectWhere }));
+const selectWhere = vi.fn((_p: unknown) => ({ limit: selectLimit, orderBy: selectOrderBy }));
+const selectFrom = vi.fn((_p: unknown) => ({ where: selectWhere }));
 const insertReturning = vi.fn();
-const insertValues = vi.fn(() => ({ returning: insertReturning }));
+const insertValues = vi.fn((_payload: unknown) => ({ returning: insertReturning }));
 const updateReturning = vi.fn();
-const updateWhere = vi.fn(() => ({ returning: updateReturning }));
-const updateSet = vi.fn(() => ({ where: updateWhere }));
+const updateWhere = vi.fn((_p: unknown) => ({ returning: updateReturning }));
+const updateSet = vi.fn((_payload: unknown) => ({ where: updateWhere }));
 const deleteWhere = vi.fn();
 
 vi.mock('../db/client.js', () => ({
@@ -32,27 +34,18 @@ vi.mock('../lib/project-access.js', () => ({
   loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
 }));
 
-vi.mock('../jobs/enqueue.js', () => ({
-  enqueueJob: vi.fn(async () => undefined),
-}));
-
-// ISS-101 — stub run lifecycle helpers so schedule.run insert tests keep
-// using their existing single-insert mock plumbing.
-vi.mock('../pipeline/runs.js', () => ({
-  openIssueRun: vi.fn(async () => ({ id: 'run-1', startedAt: new Date() })),
-  openOneShotRun: vi.fn(async () => ({ id: 'run-1' })),
-  closeRun: vi.fn(async () => undefined),
-  closeRunIfOneShot: vi.fn(async () => undefined),
-  closeOpenRunForIssue: vi.fn(async () => undefined),
-  setCurrentStep: vi.fn(async () => undefined),
-  setCurrentStepForOpenIssueRun: vi.fn(async () => undefined),
+// ISS-244 — route tests exercise only the route layer. The dispatcher itself
+// has dedicated coverage in `dispatch.test.ts`, so we mock it here to keep
+// these tests focused on auth + request/response shape + lastStatus writes.
+const dispatchMock = vi.fn();
+vi.mock('./dispatch.js', () => ({
+  dispatchScheduleRun: (...args: unknown[]) => dispatchMock(...args),
 }));
 
 const { scheduleRoutes } = await import('./routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
-const hooksModule = await import('../pipeline/hooks.js');
 
 function buildApp() {
   const app = new Hono<{ Variables: import('../middleware/request-id.js').RequestIdVars }>();
@@ -65,7 +58,7 @@ function buildApp() {
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
 const SCHEDULE_ID = '33333333-3333-4333-8333-333333333333';
-const JOB_ID = '44444444-4444-4444-8444-444444444444';
+const SESSION_ID = '44444444-4444-4444-8444-444444444444';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -75,7 +68,7 @@ beforeEach(() => {
   updateReturning.mockReset();
   deleteWhere.mockReset();
   projectAccess.mockReset();
-  hooksModule.hooks.reset();
+  dispatchMock.mockReset();
 });
 
 function authVerified() {
@@ -121,6 +114,24 @@ describe('POST /api/schedules', () => {
     expect(body.message).toMatch(/1 hour/);
   });
 
+  it('400 runner:antigravity rejected (ISS-244 — desktop-only on interactive path)', async () => {
+    authVerified();
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'owner' });
+    const res = await buildApp().request('/api/schedules', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        projectId: PROJECT_ID,
+        name: 'daily',
+        cron: '0 9 * * *',
+        prompt: 'p',
+        runner: 'antigravity',
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(insertReturning).not.toHaveBeenCalled();
+  });
+
   it('403 non-owner', async () => {
     authVerified();
     projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: 'x', role: 'member' });
@@ -137,7 +148,7 @@ describe('POST /api/schedules', () => {
     expect(res.status).toBe(403);
   });
 
-  it('201 inserts schedule with nextRunAt', async () => {
+  it('201 inserts schedule with desktop runner default + nextRunAt', async () => {
     authVerified();
     projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'owner' });
     insertReturning.mockResolvedValueOnce([
@@ -147,7 +158,7 @@ describe('POST /api/schedules', () => {
         name: 'daily',
         cron: '0 9 * * *',
         prompt: 'p',
-        runner: 'antigravity',
+        runner: 'desktop',
         enabled: true,
         nextRunAt: new Date('2026-04-26T09:00:00Z'),
       },
@@ -164,11 +175,29 @@ describe('POST /api/schedules', () => {
       }),
     });
     expect(res.status).toBe(201);
-    const body = (await res.json()) as { id: string; nextRunAt: string };
+    const body = (await res.json()) as { id: string; nextRunAt: string; runner: string };
     expect(body.id).toBe(SCHEDULE_ID);
     expect(body.nextRunAt).toBeDefined();
-    const insertCall = insertValues.mock.calls[0]?.[0] as { nextRunAt?: Date | null };
+    const insertCall = insertValues.mock.calls[0]?.[0] as unknown as { nextRunAt?: Date | null; runner?: string };
     expect(insertCall?.nextRunAt).toBeInstanceOf(Date);
+    expect(insertCall?.runner).toBe('desktop');
+  });
+});
+
+describe('PUT /api/schedules/:id', () => {
+  it('400 runner:antigravity rejected on update (ISS-244)', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      { id: SCHEDULE_ID, projectId: PROJECT_ID, cron: '0 9 * * *', enabled: true },
+    ]);
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'owner' });
+    const res = await buildApp().request(`/api/schedules/${SCHEDULE_ID}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ runner: 'antigravity' }),
+    });
+    expect(res.status).toBe(400);
+    expect(updateReturning).not.toHaveBeenCalled();
   });
 });
 
@@ -200,7 +229,7 @@ describe('GET /api/schedules', () => {
 describe('POST /api/schedules/:id/run', () => {
   const TARGET_PROJECT_ID = '55555555-5555-4555-8555-555555555555';
 
-  it('202 enqueues job + emits scheduleRun', async () => {
+  it('202 dispatches and returns { sessionId } (no jobId alias)', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([
       {
@@ -209,16 +238,16 @@ describe('POST /api/schedules/:id/run', () => {
         name: 'daily',
         cron: '0 9 * * *',
         prompt: 'p',
-        runner: 'antigravity',
+        runner: 'desktop',
         targetProjectSlug: null,
       },
     ]);
     projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'member' });
-    insertReturning.mockResolvedValueOnce([{ id: JOB_ID }]);
-
-    let emitted: unknown = null;
-    hooksModule.hooks.on('scheduleRun', (p) => {
-      emitted = p;
+    dispatchMock.mockResolvedValueOnce({
+      ok: true,
+      sessionId: SESSION_ID,
+      status: 'success',
+      resolvedProjectId: PROJECT_ID,
     });
 
     const res = await buildApp().request(`/api/schedules/${SCHEDULE_ID}/run`, {
@@ -226,39 +255,64 @@ describe('POST /api/schedules/:id/run', () => {
       headers: { authorization: `Bearer ${await token()}` },
     });
     expect(res.status).toBe(202);
-    const body = (await res.json()) as { sessionId: string };
-    expect(body.sessionId).toBe(JOB_ID);
-    expect(emitted).toMatchObject({ scheduleId: SCHEDULE_ID, jobId: JOB_ID });
+    const body = (await res.json()) as { sessionId: string; jobId?: string };
+    expect(body.sessionId).toBe(SESSION_ID);
+    expect(body.jobId).toBeUndefined();
+    // lastStatus written from dispatch result
+    const statusWrites = updateSet.mock.calls.map((c) => c[0] as { lastStatus?: string });
+    expect(statusWrites.some((p) => p?.lastStatus === 'success')).toBe(true);
   });
 
-  it('202 cross-project: resolves targetProjectSlug + dispatches against target', async () => {
+  it('409 no-device → SCHEDULE_DISPATCH_FAILED', async () => {
     authVerified();
-    // 1. select schedule
     selectLimit.mockResolvedValueOnce([
       {
         id: SCHEDULE_ID,
         projectId: PROJECT_ID,
         prompt: 'p',
-        runner: 'antigravity',
+        runner: 'desktop',
+        targetProjectSlug: null,
+      },
+    ]);
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'member' });
+    dispatchMock.mockResolvedValueOnce({
+      ok: false,
+      reason: 'no-device',
+      status: 'skipped',
+    });
+
+    const res = await buildApp().request(`/api/schedules/${SCHEDULE_ID}/run`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { message?: string };
+    expect(body.message).toBe('no-device');
+  });
+
+  it('202 cross-project: resolves targetProjectSlug + passes resolvedTarget to dispatch', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SCHEDULE_ID,
+        projectId: PROJECT_ID,
+        prompt: 'p',
+        runner: 'desktop',
         targetProjectSlug: 'marketing',
       },
     ]);
-    // 2. source-project access
     projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'owner' });
-    // 3. assertTargetProjectAccess: project lookup by slug
     selectLimit.mockResolvedValueOnce([{ id: TARGET_PROJECT_ID }]);
-    // 4. assertTargetProjectAccess: target-project access
     projectAccess.mockResolvedValueOnce({
       projectId: TARGET_PROJECT_ID,
       ownerId: 'someone-else',
       role: 'member',
     });
-    // Dispatcher reuses the route's `resolvedTarget`, so no second slug lookup.
-    insertReturning.mockResolvedValueOnce([{ id: JOB_ID }]);
-
-    let emitted: { projectId?: string } | null = null;
-    hooksModule.hooks.on('scheduleRun', (p) => {
-      emitted = p as { projectId: string };
+    dispatchMock.mockResolvedValueOnce({
+      ok: true,
+      sessionId: SESSION_ID,
+      status: 'success',
+      resolvedProjectId: TARGET_PROJECT_ID,
     });
 
     const res = await buildApp().request(`/api/schedules/${SCHEDULE_ID}/run`, {
@@ -266,10 +320,10 @@ describe('POST /api/schedules/:id/run', () => {
       headers: { authorization: `Bearer ${await token()}` },
     });
     expect(res.status).toBe(202);
-    expect(emitted).not.toBeNull();
-    expect(emitted!.projectId).toBe(TARGET_PROJECT_ID);
-    const insertCall = insertValues.mock.calls[0]?.[0] as { projectId?: string };
-    expect(insertCall?.projectId).toBe(TARGET_PROJECT_ID);
+    const dispatchArg = dispatchMock.mock.calls[0]?.[0] as unknown as {
+      resolvedTarget?: { id: string };
+    };
+    expect(dispatchArg?.resolvedTarget?.id).toBe(TARGET_PROJECT_ID);
   });
 
   it('400 when targetProjectSlug points to a non-existent project', async () => {
@@ -279,12 +333,11 @@ describe('POST /api/schedules/:id/run', () => {
         id: SCHEDULE_ID,
         projectId: PROJECT_ID,
         prompt: 'p',
-        runner: 'antigravity',
+        runner: 'desktop',
         targetProjectSlug: 'nope',
       },
     ]);
     projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'owner' });
-    // assertTargetProjectAccess: slug lookup → empty
     selectLimit.mockResolvedValueOnce([]);
 
     const res = await buildApp().request(`/api/schedules/${SCHEDULE_ID}/run`, {
@@ -292,7 +345,7 @@ describe('POST /api/schedules/:id/run', () => {
       headers: { authorization: `Bearer ${await token()}` },
     });
     expect(res.status).toBe(400);
-    expect(insertReturning).not.toHaveBeenCalled();
+    expect(dispatchMock).not.toHaveBeenCalled();
   });
 
   it('403 when actor is not a member of the target project', async () => {
@@ -302,14 +355,12 @@ describe('POST /api/schedules/:id/run', () => {
         id: SCHEDULE_ID,
         projectId: PROJECT_ID,
         prompt: 'p',
-        runner: 'antigravity',
+        runner: 'desktop',
         targetProjectSlug: 'marketing',
       },
     ]);
     projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'owner' });
-    // assertTargetProjectAccess: slug lookup → found
     selectLimit.mockResolvedValueOnce([{ id: TARGET_PROJECT_ID }]);
-    // target-project access: not a member, not the owner
     projectAccess.mockResolvedValueOnce({
       projectId: TARGET_PROJECT_ID,
       ownerId: 'someone-else',
@@ -321,7 +372,7 @@ describe('POST /api/schedules/:id/run', () => {
       headers: { authorization: `Bearer ${await token()}` },
     });
     expect(res.status).toBe(403);
-    expect(insertReturning).not.toHaveBeenCalled();
+    expect(dispatchMock).not.toHaveBeenCalled();
   });
 });
 
@@ -331,7 +382,6 @@ describe('POST /api/schedules — targetProjectSlug auth gate', () => {
   it('403 when actor is not a member of the target project', async () => {
     authVerified();
     projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'owner' });
-    // assertTargetProjectAccess: slug → found
     selectLimit.mockResolvedValueOnce([{ id: TARGET_PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({
       projectId: TARGET_PROJECT_ID,
@@ -357,7 +407,6 @@ describe('POST /api/schedules — targetProjectSlug auth gate', () => {
   it('400 when targetProjectSlug points to a non-existent project', async () => {
     authVerified();
     projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'owner' });
-    // assertTargetProjectAccess: slug → not found
     selectLimit.mockResolvedValueOnce([]);
 
     const res = await buildApp().request('/api/schedules', {

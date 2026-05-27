@@ -164,7 +164,10 @@ export interface HookPayloads {
   scheduleRun: {
     scheduleId: string;
     projectId: string;
-    jobId: string;
+    // ISS-244 — was `jobId` when schedules rode the jobs/dispatcher path;
+    // now points at the agent_sessions row created via the interactive WS
+    // entry point.
+    sessionId: string;
     actorUserId: string;
   };
   notificationCreated: {

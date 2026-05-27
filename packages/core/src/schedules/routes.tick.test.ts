@@ -60,12 +60,21 @@ const { runScheduleTickOnce } = await import('./routes.js');
 const SCHEDULE_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 
-function dueScheduleRow(overrides: Partial<{ runner: 'desktop' | 'antigravity'; targetProjectSlug: string | null }> = {}) {
+function dueScheduleRow(
+  overrides: Partial<{
+    runner: 'desktop' | 'antigravity';
+    targetProjectSlug: string | null;
+  }> = {},
+) {
   return {
     id: SCHEDULE_ID,
+    name: 'tick-test',
     projectId: PROJECT_ID,
     prompt: 'do thing',
-    runner: overrides.runner ?? 'antigravity',
+    // ISS-244 — desktop is the only runner supported on the interactive
+    // dispatch path; tick tests default to it so happy paths exercise the
+    // real flow.
+    runner: overrides.runner ?? 'desktop',
     targetProjectSlug: overrides.targetProjectSlug ?? null,
     cron: '0 9 * * *',
     nextRunAt: new Date('2026-04-25T09:00:00Z'),
@@ -88,7 +97,7 @@ describe('runScheduleTickOnce', () => {
     updateReturningMock.mockResolvedValueOnce([{ id: SCHEDULE_ID }]); // atomic claim wins
     dispatchMock.mockResolvedValueOnce({
       ok: true,
-      jobId: 'job-1',
+      sessionId: 'sess-1',
       status: 'success',
       resolvedProjectId: 'proj-target',
     });
@@ -110,12 +119,12 @@ describe('runScheduleTickOnce', () => {
     expect(setPayloads[1]?.lastStatus).toBe('success');
   });
 
-  it("desktop schedule with no online runner → lastStatus='skipped' (no dispatched id)", async () => {
+  it("desktop schedule with no online device → lastStatus='skipped' (no dispatched id)", async () => {
     selectFromMock.mockResolvedValueOnce([dueScheduleRow({ runner: 'desktop' })]);
     updateReturningMock.mockResolvedValueOnce([{ id: SCHEDULE_ID }]);
     dispatchMock.mockResolvedValueOnce({
       ok: false,
-      reason: 'no-runner',
+      reason: 'no-device',
       status: 'skipped',
     });
 

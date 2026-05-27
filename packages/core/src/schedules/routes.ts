@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { projects, schedules, scheduleRunners } from '../db/schema.js';
+import { projects, schedules } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -20,13 +20,20 @@ const listQuerySchema = z
   })
   .strict();
 
+// ISS-244 — `runner: 'antigravity'` is rejected on this surface until the
+// antigravity adapter gains an interactive WS entry point. Schedule dispatch
+// now rides the same rails as `/api/agent-sessions/start`, which is desktop
+// (claude-code) only. Keep the enum narrow at the API boundary; the DB-level
+// enum (`scheduleRunners`) stays wide so existing rows don't fail at read.
+const apiScheduleRunner = z.enum(['desktop']);
+
 const createSchema = z
   .object({
     projectId: z.uuid(),
     name: z.string().trim().min(1).max(200),
     cron: z.string().trim().min(1).max(200),
     prompt: z.string().trim().min(1).max(20_000),
-    runner: z.enum(scheduleRunners).optional(),
+    runner: apiScheduleRunner.optional(),
     enabled: z.boolean().optional(),
     targetProjectSlug: z.string().trim().min(1).max(200).nullable().optional(),
     metadata: z.record(z.string(), z.unknown()).nullable().optional(),
@@ -38,7 +45,7 @@ const updateSchema = z
     name: z.string().trim().min(1).max(200).optional(),
     cron: z.string().trim().min(1).max(200).optional(),
     prompt: z.string().trim().min(1).max(20_000).optional(),
-    runner: z.enum(scheduleRunners).optional(),
+    runner: apiScheduleRunner.optional(),
     enabled: z.boolean().optional(),
     targetProjectSlug: z.string().trim().min(1).max(200).nullable().optional(),
     metadata: z.record(z.string(), z.unknown()).nullable().optional(),
@@ -169,6 +176,9 @@ scheduleRoutes.post(
     const enabled = input.enabled ?? true;
     const nextRunAt = enabled ? nextRunFor(input.cron) : null;
 
+    // ISS-244 — desktop is the only runner supported on the new interactive
+    // dispatch path. The DB column default ('antigravity') predates this;
+    // pin to 'desktop' here so newly-created schedules are dispatchable.
     const [inserted] = await db
       .insert(schedules)
       .values({
@@ -176,7 +186,7 @@ scheduleRoutes.post(
         name: input.name,
         cron: input.cron,
         prompt: input.prompt,
-        runner: input.runner ?? 'antigravity',
+        runner: input.runner ?? 'desktop',
         enabled,
         targetProjectSlug: input.targetProjectSlug ?? null,
         metadata: (input.metadata as never) ?? null,
@@ -300,6 +310,7 @@ scheduleRoutes.post(
       result = await dispatchScheduleRun({
         schedule: {
           id: schedule.id,
+          name: schedule.name,
           projectId: schedule.projectId,
           prompt: schedule.prompt,
           runner: schedule.runner,
@@ -320,13 +331,16 @@ scheduleRoutes.post(
       .where(eq(schedules.id, schedule.id));
 
     if (!result.ok) {
+      // ISS-244 — manual /run no longer queues; surface "no device online"
+      // synchronously so the user knows nothing was started. `unsupported-runner`
+      // is only reachable for pre-existing antigravity rows.
       throw new HTTPException(409, {
         message: result.reason,
         cause: { code: 'SCHEDULE_DISPATCH_FAILED', reason: result.reason },
       });
     }
 
-    return c.json({ sessionId: result.jobId, jobId: result.jobId, message: 'Schedule triggered' }, 202);
+    return c.json({ sessionId: result.sessionId, message: 'Schedule triggered' }, 202);
   },
 );
 
@@ -371,16 +385,18 @@ export async function runScheduleTickOnce(now: Date = new Date()): Promise<strin
         result = await dispatchScheduleRun({
           schedule: {
             id: schedule.id,
+            name: schedule.name,
             projectId: schedule.projectId,
             prompt: schedule.prompt,
             runner: schedule.runner,
             targetProjectSlug: schedule.targetProjectSlug ?? null,
           },
-          // FIXME(iss-257): system-initiated jobs attribute to the project owner
-          // because jobs.created_by is NOT NULL. A sentinel system user
-          // requires a separate migration — tracked for follow-up. Consumers
-          // can detect tick-driven jobs by payload.kind === 'schedule.run'
-          // && payload.tick === true.
+          // FIXME(iss-257): system-initiated sessions attribute to the
+          // project owner because activity-feed expectations want a real
+          // user. A sentinel system user requires a separate migration —
+          // tracked for follow-up. Consumers can detect tick-driven
+          // sessions by `metadata.source === 'schedule.run'` &&
+          // `metadata.tick === true`.
           tick: true,
         });
       } catch (dispatchErr) {
