@@ -554,6 +554,13 @@
       "when": 1780790400000,
       "tag": "0079_issues_status_chk",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1780876800000,
+      "tag": "0080_upload_tickets",
+      "breakpoints": true
     }
   ]
 }

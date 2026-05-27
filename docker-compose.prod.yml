@@ -69,6 +69,11 @@ services:
       SMTP_FROM: ${SMTP_FROM}
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      # Public origin of THIS API (e.g. https://forge-beta-api.example.com). Used
+      # by forge_uploads to build absolute presigned upload URLs. Distinct from
+      # APP_BASE_URL (the web frontend). Leave empty to have forge_uploads return
+      # only a relative uploadPath that callers prepend their own API origin to.
+      PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-}
       # When web + api live on different subdomains of the same registrable
       # domain (e.g. forge-beta.example.com + forge-beta-api.example.com),
       # set AUTH_COOKIE_DOMAIN=.example.com so the auth cookie is shared

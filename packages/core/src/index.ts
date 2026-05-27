@@ -10,6 +10,7 @@ initSentry();
 import { pipelineHealthAdminRoutes } from './admin/pipeline-health-routes.js';
 import { adminRoutes } from './admin/routes.js';
 import { agentSessionRoutes } from './agent-sessions/routes.js';
+import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cron.js';
 import { agentRoutes } from './agents/routes.js';
 import { appConfigRoutes } from './app-config/routes.js';
 import { pairingRoutes } from './auth/desktop/pairing-routes.js';
@@ -29,8 +30,6 @@ import { chatRoutes } from './chat/routes.js';
 import { chatSessionRoutes } from './chat/sessions-routes.js';
 import { commentRoutes } from './comments/routes.js';
 import { commentUploadRoutes } from './comments/upload.js';
-import { attachmentRoutes, issueAttachmentRoutes } from './issues/attachment-routes.js';
-import { mcpMediaUploadRoutes } from './media/mcp-media-upload.js';
 import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
 import {
@@ -42,25 +41,28 @@ import {
 import { registerDeviceStaleDetector } from './devices/stale-detector.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { seedDomainTemplates } from './domain-templates/seed.js';
+import { registerCoolifyAdapter } from './integrations/coolify/adapter.js';
+import { registerIntegrationsWorker } from './integrations/queue.js';
+import { integrationsRoutes } from './integrations/routes.js';
+import { assertVaultBootSafety } from './integrations/vault.js';
 import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-routes.js';
+import { attachmentRoutes, issueAttachmentRoutes } from './issues/attachment-routes.js';
 import { issueDependencyRoutes } from './issues/dependency-routes.js';
 import { issueExtrasRoutes } from './issues/extras-routes.js';
 import { issueProjectRoutes, issueRoutes } from './issues/routes.js';
 import { searchRoutes } from './issues/search.js';
 import { transitionRoutes } from './issues/transition.js';
+import { registerDesktopPairingCleanup } from './jobs/desktop-pairing-cleanup.js';
 import {
   registerDispatcher,
   registerPmDispatcher,
   unregisterDispatcher,
   unregisterPmDispatcher,
 } from './jobs/dispatcher.js';
-import { registerOutboxWorker } from './pipeline/outbox-worker.js';
-import { registerReconciler } from './pipeline/reconciler.js';
 import { jobEventsListRoutes, jobEventsRoutes } from './jobs/events-routes.js';
 import { jobLifecycleDeviceRoutes, jobLifecycleUserRoutes } from './jobs/lifecycle-routes.js';
 import { registerPgBossHealthProbe } from './jobs/pgboss-health.js';
 import { registerRetentionSweeper } from './jobs/retention-sweeper.js';
-import { registerDesktopPairingCleanup } from './jobs/desktop-pairing-cleanup.js';
 import { jobProjectRoutes, jobRoutes } from './jobs/routes.js';
 import { registerStaleDetector } from './jobs/stale-detector.js';
 import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
@@ -75,30 +77,28 @@ import { memoryListRoutes } from './memory/list-routes.js';
 import { memorySearchRoutes } from './memory/search-routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
-import { promptRoutes } from './prompt/routes.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
 import { requireDevice } from './middleware/require-device.js';
 import { requirePatOrDevice } from './middleware/require-pat-or-device.js';
-import { patRoutes } from './pat/routes.js';
-import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cron.js';
 import { registerNotifyMentionsSubscriber } from './notifications/notify-mentions.js';
 import { notificationRoutes } from './notifications/routes.js';
+import { patRoutes } from './pat/routes.js';
 import {
   pipelineAnalyticsRoutes,
   projectCostAnalyticsRoutes,
 } from './pipeline/analytics-routes.js';
-import { pipelineRegistryRoutes } from './pipeline/registry-routes.js';
-import { pipelineRunRoutes } from './pipeline/runs-routes.js';
-import {
-  pipelineRunProjectRoutes,
-  pipelineRunReadRoutes,
-} from './pipeline/runs-read-routes.js';
 import { registerCiFixPatternLearner } from './pipeline/ci-fix-pattern-learn.js';
-import { hooks } from './pipeline/hooks.js';
 import { registerDecompositionSubscribers } from './pipeline/decomposition-subscribers.js';
+import { hooks } from './pipeline/hooks.js';
 import { backfillMissingSkillPauses } from './pipeline/missing-skill-backfill.js';
 import { registerMissingSkillResume } from './pipeline/missing-skill-resume.js';
 import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
+import { registerOutboxWorker } from './pipeline/outbox-worker.js';
+import { registerReconciler } from './pipeline/reconciler.js';
+import { pipelineRegistryRoutes } from './pipeline/registry-routes.js';
+import { registerReleaseCompletedSubscriber } from './pipeline/release-coolify.js';
+import { pipelineRunProjectRoutes, pipelineRunReadRoutes } from './pipeline/runs-read-routes.js';
+import { pipelineRunRoutes } from './pipeline/runs-routes.js';
 import { registerPipelineSentryBreadcrumbs } from './pipeline/sentry-breadcrumbs.js';
 import { registerActivitySubscribers } from './pipeline/subscribers.js';
 import { registerPipelineSweeper } from './pipeline/sweeper.js';
@@ -114,11 +114,7 @@ import { projectHealthRoutes } from './projects/health-routes.js';
 import { invitationRoutes } from './projects/invitations-routes.js';
 import { memberRoutes } from './projects/members-routes.js';
 import { projectRoutes } from './projects/routes.js';
-import { registerCoolifyAdapter } from './integrations/coolify/adapter.js';
-import { registerIntegrationsWorker } from './integrations/queue.js';
-import { integrationsRoutes } from './integrations/routes.js';
-import { assertVaultBootSafety } from './integrations/vault.js';
-import { registerReleaseCompletedSubscriber } from './pipeline/release-coolify.js';
+import { promptRoutes } from './prompt/routes.js';
 import { isBossStarted, startBoss, stopBoss } from './queue/boss.js';
 import { bootstrapRunnerAdapters } from './runners/bootstrap.js';
 import { runnerCallbackRoutes, runnerRoutes } from './runners/routes.js';
@@ -130,6 +126,7 @@ import { skillCrudRoutes } from './skills/crud-routes.js';
 import { skillOverrideRoutes } from './skills/override-routes.js';
 import { skillRegisterRoutes, skillSyncRoutes } from './skills/routes.js';
 import { taskIssueRoutes, taskRoutes } from './tasks/routes.js';
+import { uploadRoutes } from './uploads/routes.js';
 import { usageRecordRoutes } from './usage-records/routes.js';
 import { webhookInboundRoutes } from './webhooks/inbound-routes.js';
 import { registerOutboundDeliveryWorker } from './webhooks/outbound.js';
@@ -165,12 +162,7 @@ const CORS_ORIGINS = [
 const corsMiddleware = cors({
   origin: (origin) => (CORS_ORIGINS.includes(origin) ? origin : null),
   credentials: true,
-  allowHeaders: [
-    'Content-Type',
-    'Authorization',
-    'X-Device-Token',
-    'X-Forge-Project-Slug',
-  ],
+  allowHeaders: ['Content-Type', 'Authorization', 'X-Device-Token', 'X-Forge-Project-Slug'],
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   exposeHeaders: ['X-Total-Count'],
 });
@@ -261,8 +253,6 @@ registerPmSubscribers(hooks);
 // with no client-side change.
 app.use('/mcp', requirePatOrDevice());
 app.post('/mcp', mcpHandler);
-app.route('/', mcpMediaUploadRoutes);
-
 app.get('/mcp', mcpHandler);
 app.delete('/mcp', mcpHandler);
 
@@ -311,6 +301,11 @@ app.route('/api/issues', issueExtrasRoutes);
 // issueRoutes' stricter requireAuth + assertEmailVerified. Both routers live
 // under /api/issues but cover disjoint paths, so Hono routes correctly.
 app.route('/api/issues', issueAttachmentRoutes);
+// Capability-authenticated attachment upload (presigned-URL pattern). On its own
+// /api/uploads prefix with NO auth middleware — the ticket id minted by
+// forge_uploads is the bearer-free capability. Kept off /api/issues so it is not
+// shadowed by issueRoutes' requireAuth (see require-any-auth shadowing note).
+app.route('/api/uploads', uploadRoutes);
 app.route('/api/issues', issueRoutes);
 app.route('/api/issues', transitionRoutes);
 app.route('/api/issues', issueActivityRoutes);

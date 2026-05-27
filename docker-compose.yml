@@ -34,6 +34,9 @@ services:
       NODE_ENV: production
       PORT: "8080"
       DATABASE_URL: postgres://forge:${POSTGRES_PASSWORD:-forge_secret}@postgres:5432/forge
+      # Public origin of this API, used by forge_uploads for absolute presigned
+      # upload URLs. Defaults to the local core port.
+      PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://localhost:8080}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 10s

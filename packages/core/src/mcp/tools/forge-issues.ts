@@ -274,16 +274,15 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Avoid setting manualHold:true at create time — combine with confirmed ' +
     'status transitions and the issue stalls. Toggle manualHold after the ' +
     'issue settles, or use status:on_hold for a deliberate pause. ' +
-    'Attachments: prefer the mcp-media-upload.sh helper over base64 for anything ' +
-    'bigger than a tiny snippet — base64 in data.attachments[] is slow and burns ' +
-    'context tokens. Workflow: (1) create the issue WITHOUT attachments to get its ' +
-    'id; (2) run, with FORGE_URL + FORGE_TOKEN (the same bearer this MCP client ' +
-    'uses) in env: `curl -fsSL "$FORGE_URL/mcp-media-upload.sh" | bash -s -- ' +
-    '--issue <issueId> <localPath...>` — it streams each file to ' +
-    'POST /api/issues/:id/attachments and prints {id,name,mime,size,url} per file; ' +
-    'reference the returned url in the body. data.attachments[] (base64-inline; ' +
-    'up to 10, total ≤ UPLOADS_MAX_BYTES) still works for tiny inline files and on ' +
-    'partial-failure returns `attachments` (succeeded) + `attachmentErrors` (code/message). ' +
+    'Attachments: for anything bigger than a tiny snippet use the forge_uploads tool ' +
+    '(presigned-URL pattern) instead of base64 — base64 in data.attachments[] is slow ' +
+    'and burns context tokens. Workflow: (1) create the issue to get its id; (2) call ' +
+    'forge_uploads {action:"request", data:{target:"issue", targetId:<id>, name:"<file>"}} ' +
+    '→ get an uploadUrl; (3) `curl -X PUT -T <localPath> "<uploadUrl>"` (no auth header). ' +
+    'The PUT returns {id,name,mime,size,url}; reference the url in the body. ' +
+    'data.attachments[] (base64-inline; up to 10, total ≤ UPLOADS_MAX_BYTES) still works ' +
+    'for tiny inline files and on partial-failure returns `attachments` (succeeded) + ' +
+    '`attachmentErrors` (code/message). ' +
     'Task sub-actions: createTask requires data.issueId + data.taskTitle; listTasks ' +
     'requires filters.issue and accepts filters.taskStatus; updateTask/deleteTask ' +
     'use documentId as the task UUID. Tasks inherit project membership from the ' +

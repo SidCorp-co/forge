@@ -28,6 +28,11 @@ const EnvSchema = z.object({
   SMTP_FROM: z.string().optional(),
   SMTP_DEBUG: z.coerce.boolean().default(false),
   APP_BASE_URL: z.url().default('http://localhost:3000'),
+  // Public origin of THIS API (e.g. https://forge-beta-api.sidcorp.co), used to
+  // build absolute presigned upload URLs returned by forge_uploads. Distinct
+  // from APP_BASE_URL (the web frontend). When unset, forge_uploads returns only
+  // the relative uploadPath and the caller prepends its own API origin.
+  PUBLIC_API_BASE_URL: z.url().optional(),
   CORS_ORIGINS: z.string().default('http://localhost:3000'),
   // Optional auth-cookie domain. Set to a parent domain like `.example.com`
   // when web + WS live on different subdomains so the cookie is shared.
@@ -67,7 +72,11 @@ const EnvSchema = z.object({
   // path on disk — `comment_attachments.path` is opaque so both layouts
   // resolve through the same adapter `get(path)` call.
   UPLOADS_DIR: z.string().default('./uploads'),
-  UPLOADS_MAX_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
+  UPLOADS_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(10 * 1024 * 1024),
   // Storage backend for comment attachments. `local` writes under UPLOADS_DIR;
   // `s3` is stubbed (calls throw) until the S3 adapter is implemented.
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),

@@ -48,6 +48,7 @@ import {
   forgeSkillsListTool,
   forgeSkillsRegisterTool,
 } from './tools/forge-skills.js';
+import { forgeUploadsTool } from './tools/forge-uploads.js';
 import { type McpTool, forgeVersionTool } from './tools/forge-version.js';
 import type { McpContext } from './tools/lib.js';
 
@@ -114,14 +115,7 @@ const DEVICE_REQUIRED: ReadonlyMap<string, ReadonlySet<string> | true> = new Map
 >([
   [
     'forge_project_pm',
-    new Set([
-      'snapshot',
-      'graph',
-      'runner_load',
-      'dispatch',
-      'set_dependency',
-      'write_decision',
-    ]),
+    new Set(['snapshot', 'graph', 'runner_load', 'dispatch', 'set_dependency', 'write_decision']),
   ],
   // Legacy shims keep the per-tool gate so the deprecation window is
   // byte-identical to the pre-consolidation behaviour.
@@ -174,6 +168,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeAdminHealthTool(ctx),
     forgeIssuesTool(ctx),
     forgeCommentsTool(ctx),
+    forgeUploadsTool(ctx),
     forgeConfigTool(ctx),
     forgeCoolifyDeployTool(ctx),
     forgeJobsListTool(ctx.device),

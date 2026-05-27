@@ -1,6 +1,4 @@
 import { relations, sql } from 'drizzle-orm';
-import type { IssueBranchOverride } from '../branches/resolve.js';
-import type { ReleaseNotes } from '../issues/release-notes.js';
 import {
   type AnyPgColumn,
   boolean,
@@ -18,6 +16,8 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
+import type { IssueBranchOverride } from '../branches/resolve.js';
+import type { ReleaseNotes } from '../issues/release-notes.js';
 
 /**
  * pgvector column type. Dimension is fixed per column — the `memories.embedding`
@@ -171,9 +171,7 @@ export const projects = pgTable(
   },
   (t) => ({
     ownerIdIdx: index('projects_owner_id_idx').on(t.ownerId),
-    apiKeyUq: uniqueIndex('projects_api_key_uq')
-      .on(t.apiKey)
-      .where(sql`api_key IS NOT NULL`),
+    apiKeyUq: uniqueIndex('projects_api_key_uq').on(t.apiKey).where(sql`api_key IS NOT NULL`),
     defaultDeviceIdx: index('projects_default_device_id_idx').on(t.defaultDeviceId),
   }),
 );
@@ -292,10 +290,7 @@ export const personalAccessTokens = pgTable(
     tokenHash: text('token_hash').notNull(),
     // `forge_pat_<env>_<4 hex>` — 18 chars, indexed for fast lookup.
     tokenPrefix: varchar('token_prefix', { length: 18 }).notNull(),
-    scopes: text('scopes')
-      .array()
-      .notNull()
-      .default(sql`ARRAY['read','write']::text[]`),
+    scopes: text('scopes').array().notNull().default(sql`ARRAY['read','write']::text[]`),
     // NULL = inherit user's project memberships (global PAT). Non-null = strict allowlist.
     projectIds: uuid('project_ids').array(),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
@@ -1554,9 +1549,13 @@ export const agentSessions = pgTable(
     usage: jsonb('usage'),
     metadata: jsonb('metadata'),
     diff: jsonb('diff'),
-    pipelineControl: jsonb('pipeline_control').$type<import('../agent-sessions/pipeline-control-types.js').PipelineControl | null>(),
+    pipelineControl: jsonb('pipeline_control').$type<
+      import('../agent-sessions/pipeline-control-types.js').PipelineControl | null
+    >(),
     pipelineTelemetry: jsonb('pipeline_telemetry'),
-    pipelineHealth: jsonb('pipeline_health').$type<import('../agent-sessions/pipeline-control-types.js').PipelineHealth | null>(),
+    pipelineHealth: jsonb('pipeline_health').$type<
+      import('../agent-sessions/pipeline-control-types.js').PipelineHealth | null
+    >(),
     // ISS-34 zombie-fix lifecycle stamps. `dispatchedAt` is set when the
     // pipeline enqueues; `startedAt` when a worker actually claims (CAS from
     // queued → running); `lastHeartbeatAt` is bumped on every worker write
@@ -1575,7 +1574,10 @@ export const agentSessions = pgTable(
     projectStatusIdx: index('agent_sessions_project_status_idx').on(t.projectId, t.status),
     deviceIdx: index('agent_sessions_device_idx').on(t.deviceId),
     userIdx: index('agent_sessions_user_idx').on(t.userId),
-    statusHeartbeatIdx: index('agent_sessions_status_heartbeat_idx').on(t.status, t.lastHeartbeatAt),
+    statusHeartbeatIdx: index('agent_sessions_status_heartbeat_idx').on(
+      t.status,
+      t.lastHeartbeatAt,
+    ),
     statusDispatchedIdx: index('agent_sessions_status_dispatched_idx').on(t.status, t.dispatchedAt),
     pipelineRunIdx: index('agent_sessions_pipeline_run_idx').on(t.pipelineRunId),
   }),
@@ -1827,9 +1829,11 @@ export const pmConfig = pgTable('pm_config', {
   enabled: boolean('enabled').notNull().default(false),
   // null = event-only, no cron tick
   cadenceCron: text('cadence_cron'),
-  eventTriggers: jsonb('event_triggers').notNull().default(
-    sql`'{"jobFailed":true,"pipelineStalled":true,"needsInfo":true,"queuePressure":true,"graphChanged":true}'::jsonb`,
-  ),
+  eventTriggers: jsonb('event_triggers')
+    .notNull()
+    .default(
+      sql`'{"jobFailed":true,"pipelineStalled":true,"needsInfo":true,"queuePressure":true,"graphChanged":true}'::jsonb`,
+    ),
   customInstructions: text('custom_instructions'),
   // null = use app_config default model
   modelOverride: text('model_override'),
@@ -1980,9 +1984,7 @@ export const integrationDeliveries = pgTable(
       t.projectIntegrationId,
       sql`${t.createdAt} DESC`,
     ),
-    integrationStatusCreatedIdx: index(
-      'integration_deliveries_integration_status_created_idx',
-    )
+    integrationStatusCreatedIdx: index('integration_deliveries_integration_status_created_idx')
       .on(t.projectIntegrationId, t.status, sql`${t.createdAt} DESC`)
       .where(sql`direction = 'outbound'`),
     requestIdUq: uniqueIndex('integration_deliveries_request_id_uq')
@@ -2005,3 +2007,35 @@ export const integrationDeliveriesRelations = relations(integrationDeliveries, (
     references: [projectIntegrations.id],
   }),
 }));
+
+/**
+ * Short-lived, single-use capability tickets for out-of-band attachment uploads
+ * (the presigned-URL pattern). `forge_uploads` mints a row; the holder PUTs file
+ * bytes to /api/uploads/:id with no bearer — possession of the unguessable id +
+ * not-expired + not-consumed IS the authorization. All upload params are stored
+ * server-side here so the URL cannot be tampered with.
+ */
+export const uploadTickets = pgTable(
+  'upload_tickets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    targetType: text('target_type').notNull(), // 'issue' | 'comment'
+    targetId: uuid('target_id').notNull(),
+    uploaderId: uuid('uploader_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    uploaderDeviceId: uuid('uploader_device_id').references(() => devices.id, {
+      onDelete: 'set null',
+    }),
+    name: text('name').notNull(),
+    mime: text('mime').notNull(),
+    maxBytes: integer('max_bytes').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    targetIdx: index('upload_tickets_target_idx').on(t.targetType, t.targetId),
+    expiresIdx: index('upload_tickets_expires_at_idx').on(t.expiresAt),
+  }),
+);

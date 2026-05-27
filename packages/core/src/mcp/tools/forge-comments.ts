@@ -120,16 +120,14 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
     'List, create, or delete issue comments. List requires filters.issue (issue UUID). ' +
     'Create requires data.issue + data.body. Delete requires documentId. All actions ' +
     'enforce project membership via the device principal. ' +
-    'Attachments: prefer the mcp-media-upload.sh helper over base64 for anything ' +
-    'bigger than a tiny snippet — base64 in data.attachments[] is slow and burns ' +
-    'context tokens. Workflow: (1) create the comment WITHOUT attachments to get its ' +
-    'id; (2) run, with FORGE_URL + FORGE_TOKEN (the same bearer this MCP client ' +
-    'uses) in env: `curl -fsSL "$FORGE_URL/mcp-media-upload.sh" | bash -s -- ' +
-    '--comment <commentId> <localPath...>` — it streams each file to ' +
-    'POST /api/comments/:commentId/attachments and prints {id,name,mime,size,url} per ' +
-    'file. data.attachments[] (base64-inline; up to 10, total ≤ UPLOADS_MAX_BYTES) ' +
-    'still works for tiny inline files and on partial-failure returns `attachments` ' +
-    '(succeeded) + `attachmentErrors` (failed entries with code/message).',
+    'Attachments: for anything bigger than a tiny snippet use the forge_uploads tool ' +
+    '(presigned-URL pattern) instead of base64 — base64 in data.attachments[] is slow ' +
+    'and burns context tokens. Workflow: (1) create the comment to get its id; (2) call ' +
+    'forge_uploads {action:"request", data:{target:"comment", targetId:<id>, name:"<file>"}} ' +
+    '→ get an uploadUrl; (3) `curl -X PUT -T <localPath> "<uploadUrl>"` (no auth header). ' +
+    'The PUT returns {id,name,mime,size,url}. data.attachments[] (base64-inline; up to 10, ' +
+    'total ≤ UPLOADS_MAX_BYTES) still works for tiny inline files and on partial-failure ' +
+    'returns `attachments` (succeeded) + `attachmentErrors` (failed entries with code/message).',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
