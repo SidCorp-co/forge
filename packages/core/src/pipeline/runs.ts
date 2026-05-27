@@ -9,12 +9,9 @@
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import {
-  type PipelineRunKind,
-  type PipelineRunStatus,
-  pipelineRuns,
-} from '../db/schema.js';
+import { type PipelineRunKind, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
 import { hooks } from './hooks.js';
+import { broadcastAbortEvents, cascadeCancelChildJobs, reasonForOutcome } from './runs-cascade.js';
 
 export type OpenIssueRun = { id: string; startedAt: Date };
 
@@ -129,9 +126,7 @@ export async function setCurrentStep(runId: string, step: string): Promise<void>
   await db
     .update(pipelineRuns)
     .set({ currentStep: step, updatedAt: new Date() })
-    .where(
-      and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])),
-    );
+    .where(and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])));
 }
 
 /**
@@ -156,20 +151,28 @@ export async function closeRun(
   runId: string,
   outcome: 'completed' | 'failed' | 'cancelled',
 ): Promise<void> {
-  const rows = await db
-    .update(pipelineRuns)
-    .set({ status: outcome, finishedAt: new Date(), updatedAt: new Date() })
-    .where(
-      and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])),
-    )
-    .returning({
-      id: pipelineRuns.id,
-      projectId: pipelineRuns.projectId,
-      issueId: pipelineRuns.issueId,
-      kind: pipelineRuns.kind,
-      currentStep: pipelineRuns.currentStep,
-    });
-  await emitCloseHook(rows, outcome);
+  const { rows, cascade } = await db.transaction(async (tx) => {
+    const updated = await tx
+      .update(pipelineRuns)
+      .set({ status: outcome, finishedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])))
+      .returning({
+        id: pipelineRuns.id,
+        projectId: pipelineRuns.projectId,
+        issueId: pipelineRuns.issueId,
+        kind: pipelineRuns.kind,
+        currentStep: pipelineRuns.currentStep,
+      });
+    const updatedRows = updated ?? [];
+    const c =
+      updatedRows.length > 0
+        ? await cascadeCancelChildJobs(tx, runId, reasonForOutcome(outcome))
+        : null;
+    return { rows: updatedRows, cascade: c };
+  });
+  if (cascade)
+    await broadcastAbortEvents(cascade.deviceBySession, reasonForOutcome(outcome), runId);
+  await emitCloseHook(rows, outcome, cascade?.cancelledJobIds ?? []);
 }
 
 /**
@@ -178,10 +181,7 @@ export async function closeRun(
  * queued for this issue). Used by the issue state-machine to keep the run
  * timeline in sync with the issue's `status`.
  */
-export async function setCurrentStepForOpenIssueRun(
-  issueId: string,
-  step: string,
-): Promise<void> {
+export async function setCurrentStepForOpenIssueRun(issueId: string, step: string): Promise<void> {
   await db
     .update(pipelineRuns)
     .set({ currentStep: step, updatedAt: new Date() })
@@ -208,24 +208,34 @@ export async function closeRunIfOneShot(
   runId: string,
   outcome: 'completed' | 'failed' | 'cancelled',
 ): Promise<void> {
-  const rows = await db
-    .update(pipelineRuns)
-    .set({ status: outcome, finishedAt: new Date(), updatedAt: new Date() })
-    .where(
-      and(
-        eq(pipelineRuns.id, runId),
-        inArray(pipelineRuns.kind, ['pm', 'interactive', 'system']),
-        inArray(pipelineRuns.status, ['running', 'paused']),
-      ),
-    )
-    .returning({
-      id: pipelineRuns.id,
-      projectId: pipelineRuns.projectId,
-      issueId: pipelineRuns.issueId,
-      kind: pipelineRuns.kind,
-      currentStep: pipelineRuns.currentStep,
-    });
-  await emitCloseHook(rows, outcome);
+  const { rows, cascade } = await db.transaction(async (tx) => {
+    const updated = await tx
+      .update(pipelineRuns)
+      .set({ status: outcome, finishedAt: new Date(), updatedAt: new Date() })
+      .where(
+        and(
+          eq(pipelineRuns.id, runId),
+          inArray(pipelineRuns.kind, ['pm', 'interactive', 'system']),
+          inArray(pipelineRuns.status, ['running', 'paused']),
+        ),
+      )
+      .returning({
+        id: pipelineRuns.id,
+        projectId: pipelineRuns.projectId,
+        issueId: pipelineRuns.issueId,
+        kind: pipelineRuns.kind,
+        currentStep: pipelineRuns.currentStep,
+      });
+    const updatedRows = updated ?? [];
+    const c =
+      updatedRows.length > 0
+        ? await cascadeCancelChildJobs(tx, runId, reasonForOutcome(outcome))
+        : null;
+    return { rows: updatedRows, cascade: c };
+  });
+  if (cascade)
+    await broadcastAbortEvents(cascade.deviceBySession, reasonForOutcome(outcome), runId);
+  await emitCloseHook(rows, outcome, cascade?.cancelledJobIds ?? []);
 }
 
 /**
@@ -238,24 +248,38 @@ export async function closeOpenRunForIssue(
   issueId: string,
   outcome: 'completed' | 'failed' | 'cancelled',
 ): Promise<void> {
-  const rows = await db
-    .update(pipelineRuns)
-    .set({ status: outcome, finishedAt: new Date(), updatedAt: new Date() })
-    .where(
-      and(
-        eq(pipelineRuns.kind, 'issue'),
-        eq(pipelineRuns.issueId, issueId),
-        inArray(pipelineRuns.status, ['running', 'paused']),
-      ),
-    )
-    .returning({
-      id: pipelineRuns.id,
-      projectId: pipelineRuns.projectId,
-      issueId: pipelineRuns.issueId,
-      kind: pipelineRuns.kind,
-      currentStep: pipelineRuns.currentStep,
-    });
-  await emitCloseHook(rows, outcome);
+  const { rows, cascades } = await db.transaction(async (tx) => {
+    const updated = await tx
+      .update(pipelineRuns)
+      .set({ status: outcome, finishedAt: new Date(), updatedAt: new Date() })
+      .where(
+        and(
+          eq(pipelineRuns.kind, 'issue'),
+          eq(pipelineRuns.issueId, issueId),
+          inArray(pipelineRuns.status, ['running', 'paused']),
+        ),
+      )
+      .returning({
+        id: pipelineRuns.id,
+        projectId: pipelineRuns.projectId,
+        issueId: pipelineRuns.issueId,
+        kind: pipelineRuns.kind,
+        currentStep: pipelineRuns.currentStep,
+      });
+    const updatedRows = updated ?? [];
+    const cs = await Promise.all(
+      updatedRows.map(async (r) => ({
+        runId: r.id,
+        result: await cascadeCancelChildJobs(tx, r.id, reasonForOutcome(outcome)),
+      })),
+    );
+    return { rows: updatedRows, cascades: cs };
+  });
+  for (const c of cascades) {
+    await broadcastAbortEvents(c.result.deviceBySession, reasonForOutcome(outcome), c.runId);
+  }
+  const cascadedByRun = new Map(cascades.map((c) => [c.runId, c.result.cancelledJobIds]));
+  await emitCloseHookPerRow(rows, outcome, cascadedByRun);
 }
 
 type CloseReturning = {
@@ -271,9 +295,14 @@ type CloseReturning = {
 // status IN ('running','paused') and the paused→terminal case is rare
 // enough that recording the precise prior status would require an extra
 // round-trip; the breadcrumb data carries `currentStep` for context.
+//
+// ISS-258 — the optional `cascadedJobIds` rides along on the same hook so
+// the Sentry breadcrumb subscriber surfaces orphan cleanup without emitting
+// a duplicate status_changed event.
 async function emitCloseHook(
   rows: CloseReturning[] | undefined,
   toStatus: PipelineRunStatus,
+  cascadedJobIds: string[] = [],
 ): Promise<void> {
   if (!rows || rows.length === 0) return;
   for (const r of rows) {
@@ -285,6 +314,27 @@ async function emitCloseHook(
       fromStatus: 'running',
       toStatus,
       currentStep: r.currentStep,
+      cascadedJobIds,
+    });
+  }
+}
+
+async function emitCloseHookPerRow(
+  rows: CloseReturning[] | undefined,
+  toStatus: PipelineRunStatus,
+  cascadedByRun: Map<string, string[]>,
+): Promise<void> {
+  if (!rows || rows.length === 0) return;
+  for (const r of rows) {
+    await hooks.emit('pipelineRunStatusChanged', {
+      runId: r.id,
+      projectId: r.projectId,
+      issueId: r.issueId,
+      kind: r.kind,
+      fromStatus: 'running',
+      toStatus,
+      currentStep: r.currentStep,
+      cascadedJobIds: cascadedByRun.get(r.id) ?? [],
     });
   }
 }

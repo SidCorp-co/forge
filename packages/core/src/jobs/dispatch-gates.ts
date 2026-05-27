@@ -37,7 +37,7 @@
  *   - No writes from the picker / asserter. Both are read-only.
  */
 
-import { eq, sql, type SQL } from 'drizzle-orm';
+import { type SQL, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs, runners } from '../db/schema.js';
 import type { JobType, RunnerType } from '../db/schema.js';
@@ -67,9 +67,7 @@ export type GateResult =
  * same precedence order as the picker WHERE clause, so the reported reason
  * is the most specific one.
  */
-export type DispatchBarrier =
-  | { ok: true }
-  | { ok: false; reason: GateSkipReason; hint?: string };
+export type DispatchBarrier = { ok: true } | { ok: false; reason: GateSkipReason; hint?: string };
 
 const PASS: GateResult = { pass: true };
 
@@ -134,13 +132,22 @@ export async function hasNonTerminalPriorSession(
 /**
  * Count jobs currently in-flight (`dispatched|running`) on a runner. Exported
  * so the dispatcher's L4 check and tests can share the same query.
+ *
+ * ISS-258 — joins `pipeline_runs` and filters to non-terminal parents
+ * (`running|paused`). An orphaned job whose parent run is already
+ * `completed|failed|cancelled` no longer holds the runner's cap slot, so a
+ * single missed cascade can't wedge the runner indefinitely (the Forge Dev
+ * 2026-05-27 stall). The cascade in `runs.ts` is the primary defence; this
+ * filter is the safety net for state drift.
  */
 export async function countInFlightForRunner(runnerId: string): Promise<number> {
   const rows = await db.execute<{ count: string }>(sql`
     SELECT COUNT(*)::text AS count
-    FROM jobs
-    WHERE runner_id = ${runnerId}
-      AND status IN ('dispatched', 'running')
+    FROM jobs j
+    LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
+    WHERE j.runner_id = ${runnerId}
+      AND j.status IN ('dispatched', 'running')
+      AND (pr.id IS NULL OR pr.status IN ('running', 'paused'))
   `);
   return Number(rows[0]?.count ?? '0');
 }
@@ -200,12 +207,16 @@ export async function checkLayer4RunnerFull(
   if (!runner) return PASS; // Runner vanished; let the dispatcher hit its own no-runner branch.
 
   const cap = RUNNER_CAP_PER_RUNNER;
+  // ISS-258 — same orphan-aware filter as countInFlightForRunner: jobs
+  // whose parent pipeline_run is terminal must not count toward the cap.
   const rows = await db.execute<{ count: string }>(sql`
     SELECT COUNT(*)::text AS count
-    FROM jobs
-    WHERE runner_id = ${runnerId}
-      AND status IN ('dispatched', 'running')
-      ${options?.excludeJobId ? sql`AND id <> ${options.excludeJobId}` : sql``}
+    FROM jobs j
+    LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
+    WHERE j.runner_id = ${runnerId}
+      AND j.status IN ('dispatched', 'running')
+      AND (pr.id IS NULL OR pr.status IN ('running', 'paused'))
+      ${options?.excludeJobId ? sql`AND j.id <> ${options.excludeJobId}` : sql``}
   `);
   const inFlight = Number(rows[0]?.count ?? '0');
   if (inFlight >= cap) {
@@ -303,11 +314,17 @@ function buildBarrierFragments(args: {
         )
     ),
     runner_load AS (
-      SELECT runner_id, COUNT(*)::int AS in_flight
-      FROM jobs
-      WHERE runner_id IS NOT NULL
-        AND status IN ('dispatched','running')
-      GROUP BY runner_id
+      -- ISS-258 -- exclude jobs whose parent pipeline_run is terminal so an
+      -- orphan (cascade missed, manual SQL fix, partial-outage state drift)
+      -- never burns the runner cap slot. The cascade in pipeline/runs.ts
+      -- is the primary fix; this is defence in depth.
+      SELECT j.runner_id, COUNT(*)::int AS in_flight
+      FROM jobs j
+      LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
+      WHERE j.runner_id IS NOT NULL
+        AND j.status IN ('dispatched','running')
+        AND (pr.id IS NULL OR pr.status IN ('running','paused'))
+      GROUP BY j.runner_id
     ),
     fresh_capable_runners AS (
       SELECT r.id,
@@ -384,9 +401,7 @@ function buildBarrierFragments(args: {
  * in depth on top of the terminal-issue cascade that already moves jobs out
  * of `queued`.
  */
-export async function pickNextDispatchableJobForProject(
-  projectId: string,
-): Promise<JobRow | null> {
+export async function pickNextDispatchableJobForProject(projectId: string): Promise<JobRow | null> {
   const cap = DEFAULT_MAX_CONCURRENT_ISSUES;
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
   const { ctes, predicates } = buildBarrierFragments({

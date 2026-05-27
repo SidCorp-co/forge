@@ -205,6 +205,12 @@ export interface HookPayloads {
     fromStatus: PipelineRunStatus | null;
     toStatus: PipelineRunStatus;
     currentStep: string | null;
+    /**
+     * ISS-258 — IDs of child jobs the close cascade transitioned out of
+     * `queued|dispatched|running`. Empty array when the close was a no-op
+     * (already-terminal row) or when the run had no active children.
+     */
+    cascadedJobIds?: string[];
   };
   // W2.3.2 — monthly budget gate. Fired once per hour per (project, stage)
   // when the dispatcher observes spent ≥ 80% of `perMonthUsd`. Dedup lives

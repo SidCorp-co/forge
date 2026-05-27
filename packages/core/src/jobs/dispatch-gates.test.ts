@@ -84,7 +84,9 @@ function mockProjectAgentConfigOnce(_value: Record<string, unknown> | null): voi
 }
 
 describe('checkLayer4RunnerFull', () => {
-  function runnerCapsOnce(value: { type: string; capabilities: Record<string, unknown> } | null): void {
+  function runnerCapsOnce(
+    value: { type: string; capabilities: Record<string, unknown> } | null,
+  ): void {
     selectChainOnce(value ? [value] : []);
   }
 
@@ -116,6 +118,16 @@ describe('checkLayer4RunnerFull', () => {
     const r = await checkLayer4RunnerFull('r1');
     expect(r).toMatchObject({ pass: false, reason: 'runner_full' });
   });
+
+  // ISS-258 — orphan filter mirrors countInFlightForRunner.
+  it('joins pipeline_runs and filters out terminal-parent jobs (defence in depth)', async () => {
+    runnerCapsOnce({ type: 'claude-code', capabilities: {} });
+    dbExecute.mockResolvedValueOnce([{ count: '0' }]);
+    await checkLayer4RunnerFull('r1');
+    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+    expect(text).toMatch(/LEFT\s+JOIN\s+pipeline_runs\s+pr\s+ON\s+pr\.id\s*=\s*j\.pipeline_run_id/);
+    expect(text).toMatch(/pr\.status\s+IN\s*\(\s*'running'\s*,\s*'paused'\s*\)/);
+  });
 });
 
 describe('countInFlightForRunner', () => {
@@ -126,6 +138,14 @@ describe('countInFlightForRunner', () => {
   it('coerces text count to number', async () => {
     dbExecute.mockResolvedValueOnce([{ count: '7' }]);
     expect(await countInFlightForRunner('r1')).toBe(7);
+  });
+  // ISS-258 — orphans (parent pipeline_run terminal) must not count.
+  it('joins pipeline_runs and filters to running|paused parents', async () => {
+    dbExecute.mockResolvedValueOnce([{ count: '0' }]);
+    await countInFlightForRunner('r1');
+    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+    expect(text).toMatch(/LEFT\s+JOIN\s+pipeline_runs\s+pr\s+ON\s+pr\.id\s*=\s*j\.pipeline_run_id/);
+    expect(text).toMatch(/pr\.status\s+IN\s*\(\s*'running'\s*,\s*'paused'\s*\)/);
   });
 });
 
@@ -184,7 +204,9 @@ describe('pickNextDispatchableJobForProject', () => {
     // L3 — running_ids CTE + cap comparison
     expect(text).toMatch(/WITH\s+running_ids/i);
     expect(text).toMatch(/SELECT\s+COUNT\(\*\)\s+FROM\s+running_ids/);
-    expect(text).toMatch(/j\.issue_id::text\s+IN\s*\(\s*SELECT\s+issue_id\s+FROM\s+running_ids\s*\)/);
+    expect(text).toMatch(
+      /j\.issue_id::text\s+IN\s*\(\s*SELECT\s+issue_id\s+FROM\s+running_ids\s*\)/,
+    );
   });
 
   // Cohesion + ISS-102 defence: pause/resume/cancel ride on `r.status='running'`.
@@ -260,6 +282,20 @@ describe('pickNextDispatchableJobForProject', () => {
     expect(text).toMatch(/fcr\.in_flight\s*<\s*fcr\.cap/);
   });
 
+  // ISS-258 — runner_load CTE must exclude jobs whose parent pipeline_run
+  // is terminal so an orphan does not burn the runner's cap slot.
+  it('runner_load CTE filters out terminal-parent jobs (orphan defence)', async () => {
+    mockProjectAgentConfigOnce(null);
+    dbExecute.mockResolvedValueOnce([]);
+    await pickNextDispatchableJobForProject('p1');
+    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+    const cte = text.match(/runner_load\s+AS\s*\(([\s\S]*?)\)\s*,/);
+    expect(cte).not.toBeNull();
+    const body = cte?.[1] ?? '';
+    expect(body).toMatch(/LEFT\s+JOIN\s+pipeline_runs\s+pr\s+ON\s+pr\.id\s*=\s*j\.pipeline_run_id/);
+    expect(body).toMatch(/pr\.status\s+IN\s*\(\s*'running'\s*,\s*'paused'\s*\)/);
+  });
+
   // Strict per-cap serialization: an issue in retry cooldown must hold its
   // cap slot, so an unrelated issue's queued job can't slip in during the
   // cooldown window. Without this, a worker-wide failure (session/usage
@@ -283,9 +319,7 @@ describe('pickNextDispatchableJobForProject', () => {
       /running_ids\s+AS\s*\([\s\S]+FROM\s+jobs[\s\S]+status\s+IN\s*\(\s*'dispatched'\s*,\s*'running'\s*\)/,
     );
     // Branch 2: queued + retry_after_at in future still counted.
-    expect(text).toMatch(
-      /retry_after_at\s+IS\s+NOT\s+NULL[\s\S]+retry_after_at\s*>\s*now\(\)/,
-    );
+    expect(text).toMatch(/retry_after_at\s+IS\s+NOT\s+NULL[\s\S]+retry_after_at\s*>\s*now\(\)/);
     // No agent_sessions in the CTE — the picker still uses agent_sessions
     // elsewhere (L1 issueBusySession), but not for running_ids.
     const cteMatch = text.match(/running_ids\s+AS\s*\(([\s\S]*?)\)\s*,/);
@@ -387,9 +421,7 @@ describe('checkLayer5RunnerHeartbeat', () => {
     dbExecute.mockResolvedValueOnce([]);
     await pickNextDispatchableJobForProject('p1');
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
-    expect(text).toMatch(
-      /j\.retry_after_at\s+IS\s+NULL\s+OR\s+j\.retry_after_at\s*<=\s*now\(\)/,
-    );
+    expect(text).toMatch(/j\.retry_after_at\s+IS\s+NULL\s+OR\s+j\.retry_after_at\s*<=\s*now\(\)/);
   });
 });
 
@@ -414,7 +446,8 @@ describe('assertDispatchable', () => {
       // leak past this test and break unrelated checkLayer5RunnerHeartbeat
       // / parity assertions further down the file.
       // 2) the CASE-driven SQL — returns 0 or 1 row
-      const rows = opts.caseResult === undefined ? [] : opts.caseResult === null ? [] : [opts.caseResult];
+      const rows =
+        opts.caseResult === undefined ? [] : opts.caseResult === null ? [] : [opts.caseResult];
       dbExecute.mockResolvedValueOnce(rows);
     }
   }

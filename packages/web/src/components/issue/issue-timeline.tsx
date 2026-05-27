@@ -329,6 +329,53 @@ function ActivityItem({ activity, issueDocumentId }: { activity: Activity; issue
     );
   }
 
+  // Attachment uploaded — inline image thumbnail (or filename link for non-images).
+  // The activity payload carries attachmentId/name/mime (no url), so build the
+  // download URL from the id; the browser sends the forge_auth cookie so <img> loads.
+  if (activity.type === 'attachment_added') {
+    const meta = (activity.metadata || {}) as Record<string, any>;
+    const url = coreFileUrl(`/api/attachments/${meta.attachmentId}/download`);
+    const isImage = /^image\//.test(meta.mime ?? '');
+    return (
+      <TimelineRow icon={icon}>
+        <div className="group flex flex-col gap-2 pt-1 text-sm text-on-surface-variant">
+          <div className="flex flex-wrap items-center gap-x-2">
+            <span className="font-bold text-primary">{actor}</span>
+            <span>attached</span>
+            <span className="ml-1 text-[10px] font-mono uppercase text-outline">{time}</span>
+            <DeleteButton activity={activity} issueDocumentId={issueDocumentId} />
+          </div>
+          {isImage ? (
+            <button
+              type="button"
+              onClick={() => setPreviewIndex(0)}
+              className="flex w-fit cursor-zoom-in flex-col gap-1.5 rounded-sm border border-outline-variant/50 bg-surface-container-low p-1.5 hover:bg-surface-container-high transition-colors"
+            >
+              <img src={url} alt={meta.name} className="h-20 w-32 rounded-sm object-cover" />
+              <span className="max-w-[128px] truncate px-1 pb-0.5 font-mono text-[10px]">{meta.name}</span>
+            </button>
+          ) : (
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-fit items-center gap-2 rounded-sm border border-outline-variant/30 bg-surface-container-low px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider hover:bg-surface-container-high hover:text-on-surface transition-colors"
+            >
+              <span className="max-w-[200px] truncate">{meta.name}</span>
+            </a>
+          )}
+        </div>
+        {previewIndex !== null && isImage && (
+          <ImagePreview
+            images={[{ url, name: meta.name }]}
+            initialIndex={0}
+            onClose={() => setPreviewIndex(null)}
+          />
+        )}
+      </TimelineRow>
+    );
+  }
+
   // Generic event — inline with optional from→to values
   return (
     <TimelineRow icon={icon}>

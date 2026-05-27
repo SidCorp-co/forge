@@ -23,11 +23,20 @@ type StaleJobRow = {
 };
 
 /**
- * Find `running` jobs whose latest job_event is older than 5 minutes (or whose
- * dispatched_at is, if no events). Mark them failed and surface the failure to
- * the operator via setManualHoldBlock — running-with-no-progress is strong
- * evidence the worker is wedged; auto-retry would just spawn another wedged
- * worker against the same state.
+ * Find `dispatched`/`running` jobs whose latest job_event is older than 5
+ * minutes (or whose dispatched_at is, if no events). Mark them failed and
+ * surface the failure to the operator via setManualHoldBlock — no progress
+ * is strong evidence the worker is wedged; auto-retry would just spawn
+ * another wedged worker against the same state.
+ *
+ * ISS-258 — `dispatched` is now covered. A runner that crashes between
+ * dispatch and emitting `job_events:started` leaves the row in `dispatched`
+ * with no events; the old sweeper filtered to `status='running'` and so
+ * never reaped these rows. Combined with the cap=1 runner gate this stalled
+ * the project queue indefinitely (Forge Dev 2026-05-27).
+ *
+ * `dispatched` jobs have no `job_events` rows yet, so the GREATEST clause
+ * collapses to `j.dispatched_at` for them.
  */
 export async function runStaleSweep(): Promise<{
   failed: number;
@@ -45,7 +54,7 @@ export async function runStaleSweep(): Promise<{
     SELECT j.*
     FROM jobs j
     LEFT JOIN last_event le ON le.job_id = j.id
-    WHERE j.status = 'running'
+    WHERE j.status IN ('dispatched', 'running')
       AND GREATEST(COALESCE(le.max_ts, j.dispatched_at), j.dispatched_at) <
           now() - ${STALE_THRESHOLD}
   `),
@@ -62,9 +71,9 @@ export async function runStaleSweep(): Promise<{
           error = 'stale',
           finished_at = now(),
           failure_kind = 'transient',
-          failure_reason = 'runner stale (no progress for >5min)',
+          failure_reason = 'runner stale (no progress / no started event for >5min)',
           classifier_version = 1
-      WHERE id = '${row.id}' AND status = 'running'
+      WHERE id = '${row.id}' AND status IN ('dispatched', 'running')
       RETURNING *
     `),
     );

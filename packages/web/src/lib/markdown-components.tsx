@@ -1,4 +1,17 @@
+import { coreFileUrl } from '@/lib/api/client';
+
 export const mdComponents = {
+  // Render markdown images inline. Resolve relative core paths (e.g.
+  // /api/attachments/:id/download) to the API origin, and cap width so a large
+  // image is not clipped by the Markdown wrapper's overflow-hidden.
+  img: ({ src, alt }: any) => (
+    <img
+      src={coreFileUrl(src ?? '')}
+      alt={alt ?? ''}
+      loading="lazy"
+      className="my-2 h-auto max-w-full rounded-sm border border-outline-variant/30"
+    />
+  ),
   ul: ({ children }: any) => <ul className="ml-4 list-disc space-y-0.5">{children}</ul>,
   ol: ({ children }: any) => <ol className="ml-4 list-decimal space-y-0.5">{children}</ol>,
   li: ({ children }: any) => <li>{children}</li>,
