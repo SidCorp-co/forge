@@ -112,9 +112,10 @@ describe('ISS-234 — coolify deploy integration E2E', () => {
   it('outbound dispatch → records delivery with deployment_uuid', async () => {
     const seed = await seedIntegration({ environment: 'staging' });
 
+    // Coolify v4 deploy returns a `deployments[]` array.
     const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(
       new Response(
-        JSON.stringify({ deployment_uuid: 'deploy-uuid-A', message: 'queued' }),
+        JSON.stringify({ deployments: [{ deployment_uuid: 'deploy-uuid-A', message: 'queued' }] }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       ),
     );

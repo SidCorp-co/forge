@@ -9,15 +9,15 @@ function makeFetch(handler: (req: { url: string; init: RequestInit }) => Respons
 }
 
 describe('CoolifyClient', () => {
-  it('sends bearer token and json content-type on deploy', async () => {
+  it('deploys via GET /api/v1/deploy with uuid+force query params (no body)', async () => {
     const fetchImpl = makeFetch(({ url, init }) => {
-      expect(url).toBe('https://coolify.example/api/v1/deploy');
+      expect(url).toBe('https://coolify.example/api/v1/deploy?uuid=res-uuid&force=false');
+      expect(init.method).toBe('GET');
       expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok-abc');
-      expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
-      const body = JSON.parse(String(init.body));
-      expect(body).toEqual({ uuid: 'res-uuid', force: false });
+      expect(init.body).toBeUndefined();
+      // Coolify v4 returns a deployments[] array.
       return new Response(
-        JSON.stringify({ deployment_uuid: 'dep-1', message: 'queued' }),
+        JSON.stringify({ deployments: [{ deployment_uuid: 'dep-1', message: 'queued' }] }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       );
     });
@@ -27,7 +27,7 @@ describe('CoolifyClient', () => {
       fetchImpl,
     });
     const res = await client.deploy({ resourceUuid: 'res-uuid' });
-    expect(res.deployment_uuid).toBe('dep-1');
+    expect(res.deployments?.[0]?.deployment_uuid).toBe('dep-1');
   });
 
   it('falls back to previousApiToken on 401', async () => {
@@ -39,7 +39,7 @@ describe('CoolifyClient', () => {
         return new Response('unauthorized', { status: 401 });
       }
       expect(token).toBe('Bearer previous-tok');
-      return new Response(JSON.stringify({ deployment_uuid: 'd-2' }), {
+      return new Response(JSON.stringify({ deployments: [{ deployment_uuid: 'd-2' }] }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       });
@@ -52,7 +52,7 @@ describe('CoolifyClient', () => {
     });
     const res = await client.deploy({ resourceUuid: 'r' });
     expect(attempt).toBe(2);
-    expect(res.deployment_uuid).toBe('d-2');
+    expect(res.deployments?.[0]?.deployment_uuid).toBe('d-2');
   });
 
   it('throws CoolifyApiError on non-2xx other than 401', async () => {
@@ -65,14 +65,18 @@ describe('CoolifyClient', () => {
     await expect(client.deploy({ resourceUuid: 'r' })).rejects.toBeInstanceOf(CoolifyApiError);
   });
 
-  it('hits /resources/:uuid on healthcheck', async () => {
+  it('lists /api/v1/resources and resolves the uuid on healthcheck', async () => {
     const fetchImpl = makeFetch(({ url, init }) => {
-      expect(url).toBe('https://coolify.example/api/v1/resources/res-uuid');
+      expect(url).toBe('https://coolify.example/api/v1/resources');
       expect(init.method).toBe('GET');
-      return new Response(JSON.stringify({ uuid: 'res-uuid', name: 'web' }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
+      // Coolify v4 /resources is list-only — returns an array.
+      return new Response(
+        JSON.stringify([
+          { uuid: 'other-uuid', name: 'api', status: 'running' },
+          { uuid: 'res-uuid', name: 'web', status: 'running' },
+        ]),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
     });
     const client = new CoolifyClient({
       baseUrl: 'https://coolify.example',
@@ -81,5 +85,24 @@ describe('CoolifyClient', () => {
     });
     const res = await client.getResource('res-uuid');
     expect(res.name).toBe('web');
+    expect(res.status).toBe('running');
+  });
+
+  it('throws a clear not-found (not a bare 404) when the uuid is absent from the list', async () => {
+    const fetchImpl = makeFetch(() =>
+      new Response(JSON.stringify([{ uuid: 'other-uuid', name: 'api' }]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const client = new CoolifyClient({
+      baseUrl: 'https://coolify.example',
+      apiToken: 'tok',
+      fetchImpl,
+    });
+    await expect(client.getResource('res-uuid')).rejects.toMatchObject({
+      status: 404,
+      message: expect.stringContaining('not found'),
+    });
   });
 });

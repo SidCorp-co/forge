@@ -14,8 +14,7 @@ import {
   projects,
 } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { rollbackLastDeployment } from './coolify/adapter.js';
-import type { CoolifyConfig, CoolifySecrets } from './coolify/types.js';
+import type { CoolifySecrets } from './coolify/types.js';
 import { getAdapter } from './registry.js';
 import {
   buildContext,
@@ -254,37 +253,6 @@ integrationsRoutes.post('/:projectId/integrations/:id/test', async (c) => {
   }
   const ctx = buildContext(existing);
   const result = await adapter.healthcheck(ctx);
-  return c.json(result);
-});
-
-integrationsRoutes.post('/:projectId/integrations/:id/rollback', async (c) => {
-  const projectId = c.req.param('projectId');
-  const id = c.req.param('id');
-  const userId = c.get('userId');
-  const role = await assertProjectMember(projectId, userId);
-  assertAdmin(role);
-
-  const existing = await findById(id);
-  if (!existing || existing.projectId !== projectId) throw notFound();
-  if (existing.provider !== 'coolify') {
-    throw new HTTPException(400, {
-      message: 'rollback supported only for coolify',
-      cause: { code: 'UNSUPPORTED_OPERATION' },
-    });
-  }
-
-  const ctx = buildContext<CoolifyConfig, CoolifySecrets>(existing);
-  const result = await rollbackLastDeployment({
-    integrationId: id,
-    config: ctx.config,
-    secrets: ctx.secrets,
-  });
-  if (!result.rolledBack) {
-    throw new HTTPException(409, {
-      message: 'no successful deployment to roll back',
-      cause: { code: 'NO_ROLLBACK_TARGET' },
-    });
-  }
   return c.json(result);
 });
 

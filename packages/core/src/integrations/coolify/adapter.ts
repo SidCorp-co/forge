@@ -130,15 +130,21 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
     const client = buildClient(ctx);
     try {
       const res = await client.deploy({ resourceUuid: ctx.config.resourceUuid });
+      // Coolify v4 returns a `deployments[]` array; older versions a top-level
+      // deployment_uuid. Resolve either and fail loudly if neither is present.
+      const deploymentUuid = res.deployments?.[0]?.deployment_uuid ?? res.deployment_uuid;
+      if (!deploymentUuid) {
+        throw new Error('coolify deploy: response carried no deployment_uuid');
+      }
       const durationMs = Date.now() - started;
       await updateDelivery(deliveryId, {
         status: 'ok',
-        response: { deployment_uuid: res.deployment_uuid, message: res.message ?? null },
+        response: { deployment_uuid: deploymentUuid, message: res.message ?? null },
         durationMs,
         completedAt: new Date(),
       });
       await maybeResetBreaker(ctx.integrationId);
-      return { deliveryId, externalId: res.deployment_uuid, durationMs };
+      return { deliveryId, externalId: deploymentUuid, durationMs };
     } catch (err) {
       const durationMs = Date.now() - started;
       const message = err instanceof Error ? err.message : 'unknown error';
@@ -266,36 +272,6 @@ async function findOutboundByDeploymentUuid(
     .orderBy(desc(integrationDeliveries.createdAt))
     .limit(1);
   return rows[0] ?? null;
-}
-
-/**
- * Roll back the most recent successful deployment for an integration.
- * Used by the /integrations/:id/rollback route.
- */
-export async function rollbackLastDeployment(args: {
-  integrationId: string;
-  config: CoolifyConfig;
-  secrets: CoolifySecrets;
-}): Promise<{ rolledBack: boolean; deploymentUuid: string | null }> {
-  const [last] = await db
-    .select()
-    .from(integrationDeliveries)
-    .where(
-      and(
-        eq(integrationDeliveries.projectIntegrationId, args.integrationId),
-        eq(integrationDeliveries.direction, 'outbound'),
-        eq(integrationDeliveries.status, 'ok'),
-      ),
-    )
-    .orderBy(desc(integrationDeliveries.createdAt))
-    .limit(1);
-  if (!last) return { rolledBack: false, deploymentUuid: null };
-  const response = last.response as { deployment_uuid?: string } | null;
-  if (!response?.deployment_uuid) return { rolledBack: false, deploymentUuid: null };
-
-  const client = buildClient({ config: args.config, secrets: args.secrets });
-  await client.rollback(response.deployment_uuid);
-  return { rolledBack: true, deploymentUuid: response.deployment_uuid };
 }
 
 export function registerCoolifyAdapter(): void {
