@@ -91,31 +91,101 @@ export type StagesConfig = Partial<
 >;
 
 /**
- * Given the current status and the project's states config, return the next
- * status to transition to if the current one is disabled — or null if the
- * current stage is enabled / non-skippable / no forward exists.
+ * Why a stage was skipped. ISS-239 extends the soft-skip resolver from a
+ * boolean ("is the stage disabled?") to a typed predicate so observability
+ * (Sentry breadcrumbs, pipeline_runs.metadata.skipChain) can distinguish
+ * operator-initiated config disablement from runtime "no skill registered"
+ * gaps.
+ */
+export type SkipReason = 'stage_disabled' | 'missing_skill';
+
+export interface SkipHop {
+  /** The destination stage of this hop. */
+  to: IssueStatus;
+  /** Why we left the previous stage to land on `to`. */
+  reason: SkipReason;
+}
+
+export interface ResolveSkipOpts {
+  /**
+   * Returns true if the project has an enabled skill registered for `stage`.
+   * When provided, a stage without a skill is treated as skippable (ISS-239).
+   * When omitted, only `states[stage].enabled === false` qualifies — preserves
+   * the ISS-110 contract used by `validateStatesConfig`.
+   */
+  hasSkill?: (stage: IssueStatus) => boolean;
+}
+
+export interface SkipResolution {
+  /** Anchor stage we land on. Null only when `capped` is true. */
+  to: IssueStatus | null;
+  /** Stages visited during the walk, in order. */
+  chain: IssueStatus[];
+  /** Per-hop transitions with the reason the prior stage was skipped. */
+  hops: SkipHop[];
+  /** True when the walk exhausted MAX_SKIP_CHAIN without finding an anchor. */
+  capped?: boolean;
+}
+
+function classifySkippable(
+  stage: IssueStatus,
+  states: StagesConfig | undefined,
+  hasSkill: ((s: IssueStatus) => boolean) | undefined,
+): SkipReason | null {
+  if (states?.[stage]?.enabled === false) return 'stage_disabled';
+  if (hasSkill && !hasSkill(stage)) return 'missing_skill';
+  return null;
+}
+
+/**
+ * Given the current status, the project's states config, and an optional
+ * `hasSkill` predicate, return the next status to transition to if the
+ * current stage is skippable — or null if the source is enabled /
+ * non-skippable / has no forward path.
  *
  * Walks STAGE_FORWARD transitively up to MAX_SKIP_CHAIN hops, stopping at
- * the first non-skippable stage or the first enabled skippable stage.
+ * the first non-skippable anchor (e.g. `approved`, `closed`) or the first
+ * skippable stage that is both enabled AND has a registered skill (when a
+ * predicate is supplied).
+ *
+ * Backward compat: callers that pass only `(from, states)` get the same
+ * behavior as the original ISS-110 implementation — only `enabled === false`
+ * qualifies a stage as skippable, and the return contains the same
+ * `to` / `chain` fields. The new `hops` array is a superset; `validateStatesConfig`
+ * only checks truthiness of the return.
  */
 export function resolveSkipTarget(
   from: IssueStatus,
   states: StagesConfig | undefined,
-): { to: IssueStatus; chain: IssueStatus[] } | null {
-  if (!states) return null;
+  opts?: ResolveSkipOpts,
+): SkipResolution | null {
   if (!SKIPPABLE_STAGES.has(from)) return null;
-  if (states[from]?.enabled !== false) return null;
+  const hasSkill = opts?.hasSkill;
+  const sourceReason = classifySkippable(from, states, hasSkill);
+  if (!sourceReason) return null;
 
   const chain: IssueStatus[] = [];
+  const hops: SkipHop[] = [];
   let cursor: IssueStatus | undefined = STAGE_FORWARD[from];
+  let prevReason: SkipReason = sourceReason;
+
   for (let hop = 0; hop < MAX_SKIP_CHAIN && cursor; hop++) {
     chain.push(cursor);
-    const isSkippable = SKIPPABLE_STAGES.has(cursor);
-    const disabled = isSkippable && states[cursor]?.enabled === false;
-    if (!disabled) return { to: cursor, chain };
+    hops.push({ to: cursor, reason: prevReason });
+
+    if (!SKIPPABLE_STAGES.has(cursor)) {
+      // Anchor stage (e.g. `approved`, `closed`) — chain terminates here.
+      return { to: cursor, chain, hops };
+    }
+    const cursorReason = classifySkippable(cursor, states, hasSkill);
+    if (!cursorReason) {
+      // Skippable stage that is enabled AND has a skill — chain anchors here.
+      return { to: cursor, chain, hops };
+    }
+    prevReason = cursorReason;
     cursor = STAGE_FORWARD[cursor];
   }
-  return null;
+  return { to: null, chain, hops, capped: true };
 }
 
 export interface StatesValidationError {

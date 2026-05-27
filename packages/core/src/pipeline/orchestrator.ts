@@ -28,6 +28,7 @@ import {
 import { PIPELINE_STEPS } from './registry.js';
 import { openIssueRun } from './runs.js';
 import {
+  type ProjectSkillResolver,
   type ResolvedSkill,
   createProjectSkillResolver,
   inverseJobTypeToStatus,
@@ -44,6 +45,10 @@ import {
   SKIPPABLE_STAGES,
   resolveSkipTarget,
 } from './state-machine.js';
+import {
+  appendSkipChainEntry,
+  postSkipChainCappedComment,
+} from './skip-chain-log.js';
 
 export { ActiveJobConflictError } from './enqueue-helper.js';
 
@@ -301,7 +306,11 @@ async function considerEnqueue(args: {
   status: IssueStatus;
   actor: Actor;
   reason: Record<string, unknown>;
-  preloaded?: { cfg: PipelineConfig | null; ownerId: string | null };
+  preloaded?: {
+    cfg: PipelineConfig | null;
+    ownerId: string | null;
+    resolver?: ProjectSkillResolver;
+  };
 }): Promise<void> {
   const jobMap = resolveJobTypeForStatus(args.status);
   if (!jobMap) return; // human-gated status
@@ -317,7 +326,9 @@ async function considerEnqueue(args: {
   if (stageCfg && stageCfg.mode === 'manual') return;
   if (!isToggleEnabled(cfg, jobMap.toggle)) return;
 
-  const resolver = createProjectSkillResolver(args.projectId);
+  // ISS-239 — reuse the resolver from autoSkipDisabledStages when available
+  // so we don't refetch skill_registrations a second time per hook fire.
+  const resolver = args.preloaded?.resolver ?? createProjectSkillResolver(args.projectId);
   const skill = await resolver.resolve(args.status);
   if (!skill) {
     // ISS-238 — refuse + pause + comment instead of silently skipping. Loops
@@ -431,37 +442,90 @@ async function considerEnqueue(args: {
 }
 
 /**
- * ISS-110 — When a project's `pipelineConfig.states[stage].enabled === false`,
- * the orchestrator must auto-transition issues past `stage` instead of
- * dispatching a job. Chains of disabled stages collapse transitively (capped
- * at `MAX_SKIP_CHAIN`). Each hop emits a Sentry breadcrumb tagged
- * `reason='skipped-disabled'` so traces show why a stage was skipped.
+ * ISS-110 + ISS-239 — When a project's `pipelineConfig.states[stage].enabled
+ * === false` OR no skill is registered for the stage, the orchestrator must
+ * auto-transition issues past `stage` instead of dispatching (or stalling).
+ * Chains of skippable stages collapse transitively (capped at MAX_SKIP_CHAIN).
  *
- * Re-entry: each `applyStatusTransition` call re-emits the `transition` hook,
+ * Each hop:
+ *  - applies the transition with `skip: true`
+ *  - appends to `pipeline_runs.metadata.skipChain`
+ *  - emits a `pipeline_run.status_changed` breadcrumb (compat with ISS-110)
+ *  - emits a `pipeline_run.auto_skip` breadcrumb with the typed skip reason
+ *
+ * Re-entry: each `applyStatusTransition` re-emits the `transition` hook,
  * which re-enters this function. The internal loop is defense in depth — it
  * lets a single emit walk the chain even if the hook dispatcher is awaited
- * sequentially.
+ * sequentially. The race-detection check (`issue.status !== payload.to`)
+ * causes subsequent re-entries to bail once the chain has advanced.
+ *
+ * The resolver instance built here is returned so `considerEnqueue` can
+ * reuse the memoized skill-registrations snapshot (one DB hit per hook fire).
  */
 async function autoSkipDisabledStages(
   payload: HookPayloads['transition'],
-  preloaded: { cfg: PipelineConfig | null; ownerId: string | null },
+  preloaded: {
+    cfg: PipelineConfig | null;
+    ownerId: string | null;
+    resolver: ProjectSkillResolver;
+  },
 ): Promise<void> {
-  const { cfg, ownerId } = preloaded;
+  const { cfg, ownerId, resolver } = preloaded;
   if (!cfg?.enabled) return;
-  const states = cfg.states;
-  if (!states) return;
 
-  // resolveSkipTarget is the SSOT for skip-chain validation: it returns
-  // null when the source isn't skippable, isn't disabled, or has no valid
-  // forward chain. Per-hop iteration below only handles side-effects
-  // (transition + Sentry breadcrumb + WS broadcast).
-  // `states` is `StatesConfig` (schema-inferred, keys narrower than IssueStatus
-   // because `STAGE_NAMES ⊂ issueStatuses`); resolveSkipTarget reads only
-   // `.enabled`. Cast through `unknown` to bridge the
-   // exactOptionalPropertyTypes mismatch — the structural compatibility
-   // (`enabled?: boolean`) is intact.
-  const skipResult = resolveSkipTarget(payload.to, states as unknown as Parameters<typeof resolveSkipTarget>[1]);
+  // ISS-239 — build the hasSkill predicate up-front so the resolver walks
+  // skip stages with no registered skill as well as stages the operator
+  // explicitly disabled. resolver.stages() shares the same memoized load()
+  // as resolver.resolve(); the same instance flows into considerEnqueue.
+  const skillStages = await resolver.stages();
+  const hasSkill = (stage: IssueStatus) => skillStages.has(stage);
+
+  // cfg.states is typed with the schema's narrower StageName keys; the
+  // resolver accepts the wider IssueStatus shape, and reads only `.enabled`.
+  // Cast through unknown to bridge the exactOptionalPropertyTypes mismatch
+  // — structural compatibility (`enabled?: boolean`) is intact.
+  const skipResult = resolveSkipTarget(
+    payload.to,
+    cfg.states as unknown as Parameters<typeof resolveSkipTarget>[1],
+    { hasSkill },
+  );
   if (!skipResult) return;
+
+  if (skipResult.capped) {
+    // Chain exhausted MAX_SKIP_CHAIN without finding an anchor with a skill.
+    // Surface the misconfiguration via comment + breadcrumb; leave the issue
+    // parked at the source stage for operator intervention.
+    if (isSentryEnabled()) {
+      Sentry.addBreadcrumb({
+        category: 'pipeline_run.auto_skip',
+        level: 'warning',
+        message: `auto-skip chain capped at ${payload.to}`,
+        data: {
+          issueId: payload.issueId,
+          projectId: payload.projectId,
+          fromStatus: payload.to,
+          chain: skipResult.chain,
+          reason: 'chain_capped',
+        },
+      });
+    }
+    await postSkipChainCappedComment({
+      projectId: payload.projectId,
+      issueId: payload.issueId,
+      from: payload.to,
+      visited: skipResult.chain,
+    });
+    logger.warn(
+      {
+        issueId: payload.issueId,
+        projectId: payload.projectId,
+        from: payload.to,
+        chain: skipResult.chain,
+      },
+      'orchestrator: auto-skip chain capped without finding a skill anchor',
+    );
+    return;
+  }
 
   const [issue] = await db
     .select({
@@ -485,9 +549,17 @@ async function autoSkipDisabledStages(
     return;
   }
 
+  // Open the run once for the whole chain so per-hop metadata writes share
+  // the same `pipeline_runs.id`. ISS-101 — openIssueRun is idempotent.
+  const run = await openIssueRun({
+    projectId: issue.projectId,
+    issueId: issue.id,
+  });
+
   let current = { ...issue };
-  let hop = 0;
-  for (const nextStatus of skipResult.chain) {
+  let hopIndex = 0;
+  for (const hop of skipResult.hops) {
+    const nextStatus = hop.to;
     try {
       // skip: true — the chain may collapse stages the state-machine matrix
       // doesn't allow as direct one-hop transitions (e.g. `developed →
@@ -496,13 +568,28 @@ async function autoSkipDisabledStages(
       await applyStatusTransition(current, nextStatus, device, { skip: true });
     } catch (err) {
       logger.warn(
-        { err, issueId: current.id, from: current.status, to: nextStatus },
-        'orchestrator: skip-disabled chain failed to advance',
+        { err, issueId: current.id, from: current.status, to: nextStatus, reason: hop.reason },
+        'orchestrator: auto-skip chain failed to advance',
       );
       return;
     }
 
+    try {
+      await appendSkipChainEntry(run.id, {
+        from: current.status,
+        to: nextStatus,
+        reason: hop.reason,
+        at: new Date().toISOString(),
+      });
+    } catch (err) {
+      logger.warn(
+        { err, runId: run.id, from: current.status, to: nextStatus },
+        'orchestrator: failed to append skipChain metadata, continuing',
+      );
+    }
+
     if (isSentryEnabled()) {
+      // Compat with ISS-110: existing dashboards key on this category.
       Sentry.addBreadcrumb({
         category: 'pipeline_run.status_changed',
         level: 'info',
@@ -513,13 +600,28 @@ async function autoSkipDisabledStages(
           fromStatus: current.status,
           toStatus: nextStatus,
           reason: 'skipped-disabled',
-          hop,
+          hop: hopIndex,
+        },
+      });
+      // ISS-239 — typed skip reason for the new auto_skip dashboard.
+      Sentry.addBreadcrumb({
+        category: 'pipeline_run.auto_skip',
+        level: 'info',
+        message: `${current.status} -> ${nextStatus} (${hop.reason})`,
+        data: {
+          runId: run.id,
+          issueId: current.id,
+          projectId: current.projectId,
+          fromStatus: current.status,
+          toStatus: nextStatus,
+          reason: hop.reason,
+          hop: hopIndex,
         },
       });
     }
 
     current = { ...current, status: nextStatus };
-    hop++;
+    hopIndex++;
   }
 }
 
@@ -554,15 +656,18 @@ export function registerPipelineOrchestrator(bus: HooksBus): void {
       // Short-circuit BEFORE loading cfg if the target isn't even mapped to a
       // skill — saves a DB hit on human-gated transitions.
       if (!resolveJobTypeForStatus(payload.to) && !SKIPPABLE_STAGES.has(payload.to)) return;
-      const preloaded = await loadPipelineConfig(payload.projectId);
-      await autoSkipDisabledStages(payload, preloaded);
+      const { cfg, ownerId } = await loadPipelineConfig(payload.projectId);
+      // ISS-239 — build the resolver once and thread it through both phases
+      // so skill_registrations is read exactly once per transition hook.
+      const resolver = createProjectSkillResolver(payload.projectId);
+      await autoSkipDisabledStages(payload, { cfg, ownerId, resolver });
       await considerEnqueue({
         projectId: payload.projectId,
         issueId: payload.issueId,
         status: payload.to,
         actor: payload.actor,
         reason: { transition: { from: payload.from, to: payload.to } },
-        preloaded,
+        preloaded: { cfg, ownerId, resolver },
       });
     } catch (err) {
       logger.error(
