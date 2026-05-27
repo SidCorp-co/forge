@@ -55,6 +55,13 @@ services:
       DATABASE_URL: postgres://forge:${POSTGRES_PASSWORD}@postgres:5432/forge
       JWT_SECRET: ${JWT_SECRET}
       DEVICE_TOKEN_PEPPER: ${DEVICE_TOKEN_PEPPER}
+      # ISS-234 — AES-256-GCM master key for the integration framework's
+      # CredentialVault (openssl rand -base64 32). Optional: the vault stays
+      # bootable without it on fresh installs, but refuses to boot if any
+      # active project_integrations row exists. Read directly from
+      # process.env (not the env schema), so it MUST be declared here for
+      # Coolify-style ${VAR} injection to reach the container.
+      INTEGRATION_MASTER_KEY: ${INTEGRATION_MASTER_KEY:-}
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT}
       SMTP_USER: ${SMTP_USER}
