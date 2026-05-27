@@ -48,6 +48,16 @@ function getKey(): Buffer {
   return cachedKey;
 }
 
+/**
+ * True iff `INTEGRATION_MASTER_KEY` is present in the environment. Pure check
+ * — does not call `getKey()` and never throws. Use from request handlers to
+ * convert the missing-key boot bypass into a structured 503 before invoking
+ * any encrypt/decrypt routine.
+ */
+export function isVaultConfigured(): boolean {
+  return readMasterKey() !== undefined;
+}
+
 /** Encrypts a UTF-8 string to <iv:12><tag:16><ciphertext>. */
 export function encryptSecret(plain: string): Buffer {
   const key = getKey();
