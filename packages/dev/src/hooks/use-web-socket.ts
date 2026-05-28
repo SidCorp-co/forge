@@ -62,6 +62,139 @@ const tracker = new SessionTracker({
     }),
 });
 
+export type AgentCompletePayload = {
+  sessionId: string;
+  claudeSessionId?: string | null;
+  error?: string;
+};
+
+export type HandleAgentCompleteCtx = {
+  jobSessionsRef: { current: Set<string> };
+  cancelledJobsRef: { current: Set<string> };
+  jobAgentSessionsRef: { current: Map<string, string> };
+  tracker: Pick<SessionTracker, "getSnapshot" | "complete">;
+  /** Drains the pending job_event batch; resolves once every queued POST lands. */
+  flushJobEvents: () => Promise<void>;
+  /** Drains the pending agent:message relay batch. */
+  flushRelay: () => Promise<void>;
+};
+
+/**
+ * Handle the job-originated branch of `agent:complete`: drain the job_event
+ * batch, POST /api/jobs/:id/complete (exitCode 0 = done, 1 = failed, -1 =
+ * cancelled), persist the canonical agent_sessions row + accumulated usage, and
+ * relay completion to web chat UIs. Returns `true` when the session was a
+ * pipeline job (the caller should stop here); `false` for a user-facing session
+ * (the caller continues to the diff / knowledge-sync branch).
+ *
+ * Extracted from the inline Tauri `agent:complete` listener so it can be unit
+ * tested without a live Tauri event bus — the listener mock rejects, leaving
+ * the /complete POST path otherwise unexercised (ISS-264).
+ */
+export async function handleAgentComplete(
+  payload: AgentCompletePayload,
+  ctx: HandleAgentCompleteCtx,
+): Promise<boolean> {
+  const { jobSessionsRef, cancelledJobsRef, jobAgentSessionsRef, tracker, flushJobEvents, flushRelay } = ctx;
+  const { sessionId, ...rest } = payload;
+
+  // Job-originated session: drain job_event batch, finalize via
+  // /api/jobs/:id/complete, skip user-facing relay + knowledge sync.
+  //
+  // Keep the jobSessionsRef marker (don't delete) — the Rust spawn layer can
+  // emit late stream chunks after agent:complete, and we don't want those
+  // leaking through enqueueRelay to user chat UIs. jobId is a UUID, so the
+  // bounded growth is acceptable.
+  if (!jobSessionsRef.current.has(sessionId)) return false;
+
+  // Trigger any pending batch and await the in-flight chain so every queued
+  // event POST lands BEFORE /complete moves the job to a terminal status
+  // (which would 409 in-flight POSTs).
+  await flushJobEvents();
+  // Cancellation lands `cancelled` (exitCode -1), normal error lands `failed`
+  // (1), success lands `done` (0). See lifecycle routes mapping in
+  // packages/core/src/jobs/lifecycle-routes.ts.
+  const wasCancelled = cancelledJobsRef.current.delete(sessionId);
+  const exitCode = wasCancelled ? -1 : rest.error ? 1 : 0;
+  try {
+    await completeJob(sessionId, exitCode, { error: rest.error ?? null });
+  } catch (err) {
+    console.error(`[job-events] completeJob failed for ${sessionId}:`, err);
+  }
+
+  // Persist the canonical agent_sessions row so a browser opening the pipeline
+  // session AFTER completion sees the assistant reply, claudeSessionId, and
+  // (eventual) diff. completeJob above only flips the row's status via
+  // syncAgentSessionLifecycle — without this PATCH the row keeps messages=[]
+  // forever. The agentSessionId is surfaced by core in the job.assigned WS
+  // payload (PR-B); absent against older server builds, in which case we
+  // silently skip — the status sync still applied.
+  const agentSessionId = jobAgentSessionsRef.current.get(sessionId);
+  if (agentSessionId) {
+    try {
+      const snap = tracker.getSnapshot(sessionId);
+      if (!snap) {
+        console.warn(
+          `[agent:complete] tracker snapshot missing for job=${sessionId} — PATCH will omit messages, expect persisted history to be incomplete`,
+        );
+      }
+      await patchAgentSession(agentSessionId, {
+        status: wasCancelled ? "completed" : rest.error ? "failed" : "completed",
+        ...(snap ? { messages: snap.messages, claudeSessionId: snap.claudeSessionId } : {}),
+      });
+    } catch (err) {
+      console.warn(`[agent:complete] PATCH session row failed for job ${sessionId}:`, err);
+    }
+
+    // Emit accumulated token usage as a single /usage-records row, keyed by the
+    // forge agent_sessions.id so the pipeline_run_step_durations view JOIN
+    // (ur.session_id = j.agent_session_id::text) actually matches. Without
+    // this, every pipeline step shows totalCostUsd=0 in /metrics.
+    const acc = usageAccByJob.get(sessionId);
+    if (acc && acc.count > 0) {
+      try {
+        await createUsageRecord({
+          source: "desktop",
+          model: acc.model,
+          inputTokens: acc.input,
+          outputTokens: acc.output,
+          cacheReadTokens: acc.cacheRead,
+          cacheCreationTokens: acc.cacheCreation,
+          requestCount: acc.count,
+          sessionId: agentSessionId,
+          recordedAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.warn(`[agent:complete] usage POST failed for job ${sessionId}:`, err);
+      }
+    }
+
+    jobAgentSessionsRef.current.delete(sessionId);
+  }
+  // Always drop the accumulator entry — even if no agentSessionId was surfaced
+  // (older server builds), keeping it would leak memory across hot reloads and
+  // long-running dev sessions.
+  usageAccByJob.delete(sessionId);
+
+  // Mirror the relay that non-job sessions get below, so web chat UIs (which
+  // don't subscribe to job_events) see the session leave the running state.
+  // Diff is NOT computed for pipeline sessions — they run in the main repo,
+  // not a worktree, so there's nothing to diff against HEAD.
+  //
+  // Drain any buffered agent:message batch first so trailing chunks land BEFORE
+  // agent:complete — otherwise the web sees running=false then receives further
+  // messages.
+  await flushRelay();
+  try {
+    await relayAgentEvent(sessionId, "agent:complete", { ...rest });
+  } catch {
+    /* ignore — relay is best-effort, persistence already happened */
+  }
+
+  tracker.complete(sessionId);
+  return true;
+}
+
 export function useWebSocket() {
   const setWsConnected = useAppStore((s) => s.setWsConnected);
   const setDeviceSettings = useAppStore((s) => s.setDeviceSettings);
@@ -632,108 +765,23 @@ export function useWebSocket() {
         const unlisten6 = await listen<{ sessionId: string; claudeSessionId?: string | null; error?: string }>(
           "agent:complete",
           async (event) => {
-            const { sessionId, ...rest } = event.payload;
-
-            // Job-originated session: drain job_event batch, finalize via
-            // /api/jobs/:id/complete, skip user-facing relay + knowledge sync.
-            //
-            // Keep the jobSessionsRef marker (don't delete) — the Rust spawn
-            // layer can emit late stream chunks after agent:complete, and we
-            // don't want those leaking through enqueueRelay to user chat UIs.
-            // jobId is a UUID, so the bounded growth is acceptable.
-            if (jobSessionsRef.current.has(sessionId)) {
-              // Trigger any pending batch and await the in-flight chain so
-              // every queued event POST lands BEFORE /complete moves the job
-              // to a terminal status (which would 409 in-flight POSTs).
-              flushJobEvents();
-              await jobFlushInFlight;
-              // Cancellation lands `cancelled` (exitCode -1), normal error
-              // lands `failed` (1), success lands `done` (0). See lifecycle
-              // routes mapping in packages/core/src/jobs/lifecycle-routes.ts.
-              const wasCancelled = cancelledJobsRef.current.delete(sessionId);
-              const exitCode = wasCancelled ? -1 : rest.error ? 1 : 0;
-              try {
-                await completeJob(sessionId, exitCode, { error: rest.error ?? null });
-              } catch (err) {
-                console.error(`[job-events] completeJob failed for ${sessionId}:`, err);
-              }
-
-              // Persist the canonical agent_sessions row so a browser opening
-              // the pipeline session AFTER completion sees the assistant
-              // reply, claudeSessionId, and (eventual) diff. completeJob
-              // above only flips the row's status via syncAgentSessionLifecycle
-              // — without this PATCH the row keeps messages=[] forever.
-              // The agentSessionId is surfaced by core in the job.assigned WS
-              // payload (PR-B); absent against older server builds, in which
-              // case we silently skip — the status sync still applied.
-              const agentSessionId = jobAgentSessionsRef.current.get(sessionId);
-              if (agentSessionId) {
-                try {
-                  const snap = tracker.getSnapshot(sessionId);
-                  if (!snap) {
-                    console.warn(
-                      `[agent:complete] tracker snapshot missing for job=${sessionId} — PATCH will omit messages, expect persisted history to be incomplete`,
-                    );
-                  }
-                  await patchAgentSession(agentSessionId, {
-                    status: wasCancelled ? "completed" : rest.error ? "failed" : "completed",
-                    ...(snap ? { messages: snap.messages, claudeSessionId: snap.claudeSessionId } : {}),
-                  });
-                } catch (err) {
-                  console.warn(`[agent:complete] PATCH session row failed for job ${sessionId}:`, err);
-                }
-
-                // Emit accumulated token usage as a single /usage-records
-                // row, keyed by the forge agent_sessions.id so the
-                // pipeline_run_step_durations view JOIN
-                // (ur.session_id = j.agent_session_id::text) actually
-                // matches. Without this, every pipeline step shows
-                // totalCostUsd=0 in /metrics.
-                const acc = usageAccByJob.get(sessionId);
-                if (acc && acc.count > 0) {
-                  try {
-                    await createUsageRecord({
-                      source: "desktop",
-                      model: acc.model,
-                      inputTokens: acc.input,
-                      outputTokens: acc.output,
-                      cacheReadTokens: acc.cacheRead,
-                      cacheCreationTokens: acc.cacheCreation,
-                      requestCount: acc.count,
-                      sessionId: agentSessionId,
-                      recordedAt: new Date().toISOString(),
-                    });
-                  } catch (err) {
-                    console.warn(`[agent:complete] usage POST failed for job ${sessionId}:`, err);
-                  }
-                }
-
-                jobAgentSessionsRef.current.delete(sessionId);
-              }
-              // Always drop the accumulator entry — even if no agentSessionId
-              // was surfaced (older server builds), keeping it would leak
-              // memory across hot reloads and long-running dev sessions.
-              usageAccByJob.delete(sessionId);
-
-              // Mirror the relay that non-job sessions get below, so web chat
-              // UIs (which don't subscribe to job_events) see the session
-              // leave the running state. Diff is NOT computed for pipeline
-              // sessions — they run in the main repo, not a worktree, so
-              // there's nothing to diff against HEAD.
-              //
-              // Drain any buffered agent:message batch first so trailing
-              // chunks land BEFORE agent:complete — otherwise the web sees
-              // running=false then receives further messages.
-              await flushRelay();
-              try {
-                await relayAgentEvent(sessionId, "agent:complete", { ...rest });
-              } catch {
-                /* ignore — relay is best-effort, persistence already happened */
-              }
-
-              tracker.complete(sessionId);
+            // Job-originated branch (drain → /complete POST → persist → relay)
+            // lives in the exported `handleAgentComplete` so it's unit-testable
+            // without a live Tauri bus (ISS-264). Returns true when handled.
+            if (
+              await handleAgentComplete(event.payload, {
+                jobSessionsRef,
+                cancelledJobsRef,
+                jobAgentSessionsRef,
+                tracker,
+                flushJobEvents,
+                flushRelay,
+              })
+            ) {
               return;
             }
+
+            const { sessionId, ...rest } = event.payload;
 
             await flushRelay();
 

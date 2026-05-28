@@ -468,6 +468,15 @@ pub(crate) async fn spawn_and_stream(
         Arc::new(TokioMutex::new((None, None)));
     let outcome_reader = outcome.clone();
 
+    // Exit status code of the `claude` child, recorded by the completion task's
+    // exit-poll loop when `try_wait` observes the process gone. Lets completion
+    // treat a clean exit (code 0) as success even when no `type:"result"` line
+    // was parsed — e.g. the result was never emitted, or was still buffered in a
+    // pipe held open by MCP grandchildren when the 2s drain grace elapsed
+    // (ISS-264). Without this, a clean exit with no result line would default to
+    // failure and the job would be marked `failed` instead of `done`.
+    let exit_code: Arc<TokioMutex<Option<i32>>> = Arc::new(TokioMutex::new(None));
+
     let stderr_handle = tokio::spawn(async move {
         let mut err_output = String::new();
         let mut err_reader = BufReader::new(stderr);
@@ -552,6 +561,7 @@ pub(crate) async fn spawn_and_stream(
     let sid_complete = session_id.clone();
     let sessions2 = sessions.clone();
     let outcome_complete = outcome.clone();
+    let exit_code_complete = exit_code.clone();
     tokio::spawn(async move {
         // Wait for the agent to finish. We must NOT rely on stdout EOF alone:
         // MCP server grandchildren spawned by `claude` can keep the stdout (and
@@ -568,6 +578,7 @@ pub(crate) async fn spawn_and_stream(
         let mut reader = stdout_reader;
         let sessions_poll = sessions2.clone();
         let sid_poll = sid_complete.clone();
+        let exit_code_poll = exit_code_complete.clone();
         let exit_poll = async move {
             loop {
                 {
@@ -576,9 +587,14 @@ pub(crate) async fn spawn_and_stream(
                         // try_wait reports exit without blocking or reaping.
                         Some(session) => match session.child.as_mut() {
                             Some(child) => match child.try_wait() {
-                                Ok(Some(_status)) => break, // process exited
-                                Ok(None) => {}              // still running
-                                Err(_) => break,            // treat error as gone
+                                Ok(Some(status)) => {
+                                    // Record the exit code so completion can fall
+                                    // back to it when no result line was parsed.
+                                    *exit_code_poll.lock().await = Some(status.code().unwrap_or(-1));
+                                    break; // process exited
+                                }
+                                Ok(None) => {} // still running
+                                Err(_) => break, // treat error as gone
                             },
                             None => break, // child already taken (aborted)
                         },
@@ -621,7 +637,11 @@ pub(crate) async fn spawn_and_stream(
             let o = outcome_complete.lock().await;
             (o.0, o.1.clone())
         };
-        let succeeded = succeeded_opt.unwrap_or(false);
+        // Fall back to the child's exit status when no `type:"result"` line was
+        // parsed: a clean exit (code 0) is a success, anything else (non-zero,
+        // signal, or never-observed exit) is a failure (ISS-264).
+        let exited_zero = matches!(*exit_code_complete.lock().await, Some(0));
+        let succeeded = succeeded_opt.unwrap_or(exited_zero);
 
         // Reap the child + its process group now, so lingering MCP grandchildren
         // don't pile up and their open pipe FDs are released. The child may
