@@ -522,12 +522,28 @@ pub(crate) async fn spawn_and_stream(
                     }
                 }
 
-                if json.get("type").and_then(|t| t.as_str()) == Some("result") {
+                // The `result` line is the FINAL message claude emits in
+                // stream-json `--print` mode. Treat it as the definitive
+                // completion signal: record the outcome, forward the line, then
+                // STOP reading. We must not wait for stdout EOF or for `claude`
+                // to exit — `claude` frequently lingers after emitting `result`
+                // because its MCP server children keep the process (and the
+                // inherited stdout pipe) alive. Breaking here lets the
+                // completion task proceed immediately and reap the whole process
+                // group (claude + MCP grandchildren) via graceful_kill (ISS-264;
+                // 0.2.9's exit-poll alone hung when claude never exited).
+                let is_result =
+                    json.get("type").and_then(|t| t.as_str()) == Some("result");
+                if is_result {
                     let is_error = json.get("is_error").and_then(|v| v.as_bool()).unwrap_or(true);
                     outcome_reader.lock().await.0 = Some(!is_error);
                 }
                 if tx.send(json).await.is_err() {
                     log("[stdout] event channel closed");
+                    break;
+                }
+                if is_result {
+                    log("[stdout] result line seen — completing");
                     break;
                 }
             }

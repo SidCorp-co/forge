@@ -16,6 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **Pipeline jobs now finish the instant the agent is done, even when the Claude CLI process keeps running in the background — completing the fix shipped in 0.2.9, which still stalled whenever `claude` lingered after its work (it holds its MCP server children open and does not exit). Jobs no longer sit "in progress" for an hour before being falsely failed.**
+  *Technical: claude_cli/spawn.rs — the stdout reader now stops the moment it parses the final `type:"result"` line (the last message in stream-json `--print` mode) instead of waiting for stdout EOF or `child.try_wait()` to report exit. 0.2.9's exit-poll never fired because `claude` stays alive holding stdout via MCP grandchildren, so `agent:complete` was never emitted and `/api/jobs/:id/complete` never POSTed. Breaking on `result` lets the completion task run immediately and reap the whole process group (claude + MCP servers) via graceful_kill. Completes ISS-264.*
+
 ### Security
 
 ## [0.2.9] - 2026-05-28
