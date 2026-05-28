@@ -46,6 +46,11 @@ pub fn active_backend() -> Backend {
     if let Some(b) = forced_backend() {
         return b;
     }
+    // If a file credential already exists, that's what we're using (a prior
+    // store fell back to it).
+    if file_path().map(|p| p.exists()).unwrap_or(false) {
+        return Backend::File;
+    }
     // Probe the keychain cheaply: if constructing + reading an entry errors with
     // a storage-access problem, fall back to the file.
     match keyring::Entry::new(SERVICE, DEVICE_ACCOUNT).and_then(|e| match e.get_password() {
@@ -59,45 +64,43 @@ pub fn active_backend() -> Backend {
 }
 
 pub fn store_device_token(token: &str) -> Result<()> {
-    match active_backend() {
-        Backend::Keychain => {
-            let entry = keyring::Entry::new(SERVICE, DEVICE_ACCOUNT)
-                .map_err(|e| Error::Other(format!("keychain entry: {e}")))?;
-            entry
-                .set_password(token)
-                .map_err(|e| Error::Other(format!("keychain store: {e}")))
+    if matches!(forced_backend(), Some(Backend::File)) {
+        return file_store(token);
+    }
+    // Try the keychain; fall back to the file on ANY failure. A headless box
+    // may have a secret-service whose collection is locked — reads probe as
+    // empty but writes fail ("Cannot create an item in a locked collection").
+    match keyring::Entry::new(SERVICE, DEVICE_ACCOUNT).and_then(|e| e.set_password(token)) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            tracing::warn!("keychain unavailable ({e}); using 0600 file credential store");
+            file_store(token)
         }
-        Backend::File => file_store(token),
     }
 }
 
 pub fn load_device_token() -> Result<Option<String>> {
-    // Prefer the active backend, then opportunistically migrate the legacy
-    // `forge-beta` keychain entry (from the old Tauri app) into ours.
-    let primary = match active_backend() {
-        Backend::Keychain => keychain_load(SERVICE)?,
-        Backend::File => file_load()?,
-    };
-    if primary.is_some() {
-        return Ok(primary);
+    if matches!(forced_backend(), Some(Backend::File)) {
+        return file_load();
     }
-    if matches!(active_backend(), Backend::Keychain) {
-        if let Some(tok) = keychain_load(LEGACY_SERVICE)? {
-            let _ = store_device_token(&tok); // migrate forward, best-effort
-            return Ok(Some(tok));
-        }
+    // Keychain (tolerant of lock/errors) → file → legacy `forge-beta` keychain.
+    if let Some(tok) = keychain_load(SERVICE) {
+        return Ok(Some(tok));
+    }
+    if let Some(tok) = file_load()? {
+        return Ok(Some(tok));
+    }
+    if let Some(tok) = keychain_load(LEGACY_SERVICE) {
+        let _ = store_device_token(&tok); // migrate forward, best-effort
+        return Ok(Some(tok));
     }
     Ok(None)
 }
 
 pub fn clear_device_token() -> Result<()> {
-    if matches!(active_backend(), Backend::Keychain) {
-        if let Ok(entry) = keyring::Entry::new(SERVICE, DEVICE_ACCOUNT) {
-            match entry.delete_credential() {
-                Ok(()) | Err(keyring::Error::NoEntry) => {}
-                Err(e) => return Err(Error::Other(format!("keychain clear: {e}"))),
-            }
-        }
+    // Best-effort on both stores (ignore keychain errors on locked collections).
+    if let Ok(entry) = keyring::Entry::new(SERVICE, DEVICE_ACCOUNT) {
+        let _ = entry.delete_credential();
     }
     let p = file_path()?;
     if p.exists() {
@@ -106,14 +109,12 @@ pub fn clear_device_token() -> Result<()> {
     Ok(())
 }
 
-fn keychain_load(service: &str) -> Result<Option<String>> {
-    let entry = keyring::Entry::new(service, DEVICE_ACCOUNT)
-        .map_err(|e| Error::Other(format!("keychain entry: {e}")))?;
-    match entry.get_password() {
-        Ok(t) => Ok(Some(t)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(Error::Other(format!("keychain load: {e}"))),
-    }
+/// Load from the keychain, treating any error (locked collection, no backend)
+/// as "absent" so the caller can fall through to the file store.
+fn keychain_load(service: &str) -> Option<String> {
+    keyring::Entry::new(service, DEVICE_ACCOUNT)
+        .and_then(|e| e.get_password())
+        .ok()
 }
 
 #[derive(Serialize, Deserialize, Default)]

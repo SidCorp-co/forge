@@ -54,8 +54,13 @@ pub async fn run(
 
     // WebSocket connect loop.
     {
+        // tungstenite needs a ws:// / wss:// scheme, not http(s)://.
+        let ws_base = core_url
+            .trim_end_matches('/')
+            .replacen("https://", "wss://", 1)
+            .replacen("http://", "ws://", 1);
         let ws_cfg = WsConfig {
-            url: format!("{}/ws", core_url.trim_end_matches('/')),
+            url: format!("{ws_base}/ws"),
             device_token: device_token.clone(),
             device_id: device_id.clone(),
             registrations,
