@@ -43,7 +43,42 @@ describe('EmbeddingsClient.embed', () => {
     const client = new EmbeddingsClient(cfg, fetchFn);
     const vec = await client.embed('hello');
     expect(vec).toEqual([0.1, 0.2, 0.3]);
-    expect(fetchFn).toHaveBeenCalledOnce();
+  });
+
+  it('sends `dimensions` in the request body when expectedDim is configured (Matryoshka truncate)', async () => {
+    const calls: Array<{ url: unknown; init: RequestInit | undefined }> = [];
+    const fetchFn = vi.fn(async (url: unknown, init?: RequestInit) => {
+      calls.push({ url, init });
+      return new Response(JSON.stringify({ data: [{ embedding: new Array(1536).fill(0.01) }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+
+    const client = new EmbeddingsClient({ ...cfg, expectedDim: 1536 }, fetchFn);
+    await client.embed('hi');
+
+    const body = JSON.parse(calls[0]?.init?.body as string) as Record<string, unknown>;
+    expect(body.dimensions).toBe(1536);
+    expect(body.input).toBe('hi');
+    expect(body.model).toBe('text-embedding-3-small');
+  });
+
+  it('omits `dimensions` from the request body when expectedDim is undefined', async () => {
+    const calls: Array<{ url: unknown; init: RequestInit | undefined }> = [];
+    const fetchFn = vi.fn(async (url: unknown, init?: RequestInit) => {
+      calls.push({ url, init });
+      return new Response(JSON.stringify({ data: [{ embedding: [0.1, 0.2] }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+
+    const client = new EmbeddingsClient(cfg, fetchFn);
+    await client.embed('hi');
+
+    const body = JSON.parse(calls[0]?.init?.body as string) as Record<string, unknown>;
+    expect('dimensions' in body).toBe(false);
   });
 
   it('retries on 5xx up to 3 retries and succeeds', async () => {

@@ -56,9 +56,10 @@ vi.mock('../db/client.js', () => ({
 }));
 
 const indexMemoryMock = vi.fn(() => Promise.resolve());
-const deleteMemoryMock = vi.fn(() => Promise.resolve());
+const deleteMemoryMock = vi.fn(() => Promise.resolve(0));
 vi.mock('../memory/indexer.js', () => ({
   indexMemory: indexMemoryMock,
+  indexMemoryBestEffort: indexMemoryMock,
   deleteMemory: deleteMemoryMock,
 }));
 

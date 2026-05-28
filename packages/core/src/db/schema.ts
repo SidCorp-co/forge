@@ -1132,6 +1132,7 @@ export const memorySources = [
   'knowledge',
   'decision',
   'policy',
+  'step_handoff',
 ] as const;
 export type MemorySource = (typeof memorySources)[number];
 

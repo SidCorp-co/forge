@@ -1,11 +1,10 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { memorySources, projectMembers, projects } from '../db/schema.js';
+import { memorySources } from '../db/schema.js';
 import { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError } from '../embeddings/index.js';
+import { assertProjectMemberAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { runMemorySearch } from './search-service.js';
 
@@ -22,27 +21,6 @@ const badRequest = (details: unknown) =>
     cause: { code: 'BAD_REQUEST', details },
   });
 
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
-async function assertProjectMember(projectId: string, userId: string): Promise<void> {
-  const [project] = await db
-    .select({ ownerId: projects.ownerId })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project) throw forbidden('not a project member');
-
-  if (project.ownerId === userId) return;
-
-  const [member] = await db
-    .select({ userId: projectMembers.userId })
-    .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
-    .limit(1);
-  if (!member) throw forbidden('not a project member');
-}
-
 export const memorySearchRoutes = new Hono<{ Variables: AuthVars }>();
 memorySearchRoutes.use('/search', requireAuth(), assertEmailVerified());
 memorySearchRoutes.post(
@@ -54,7 +32,7 @@ memorySearchRoutes.post(
     const body = c.req.valid('json');
     const userId = c.get('userId');
 
-    await assertProjectMember(body.projectId, userId);
+    await assertProjectMemberAccess(body.projectId, userId);
 
     let result: Awaited<ReturnType<typeof runMemorySearch>>;
     try {

@@ -15,7 +15,16 @@ export interface EmbeddingsConfig {
   model: string;
   fallbackModel?: string | undefined;
   timeoutMs: number;
-  /** Optional runtime check — rejects vectors whose length != expectedDim. */
+  /**
+   * Optional dimension hint. Acts as BOTH:
+   *   1. Request param `dimensions` in the embeddings call — providers that
+   *      support Matryoshka output (OpenAI text-embedding-3, Gemini
+   *      gemini-embedding-001, Voyage 3) honor it and truncate server-side.
+   *   2. Runtime guard — the response embedding length is asserted to equal
+   *      this value, so a misconfigured proxy that ignores `dimensions` fails
+   *      fast with a clear `dimension mismatch` error instead of corrupting
+   *      the pgvector column.
+   */
   expectedDim?: number | undefined;
 }
 
@@ -138,6 +147,17 @@ export class EmbeddingsClient {
   private async callOnce(texts: string[], model: string): Promise<number[][]> {
     const url = new URL('embeddings', ensureTrailingSlash(this.cfg.baseUrl)).toString();
 
+    const body: Record<string, unknown> = {
+      input: texts.length === 1 ? texts[0] : texts,
+      model,
+    };
+    // Request server-side dimensionality reduction (Matryoshka) for providers
+    // that need it. When the proxy ignores this field, the `expectedDim`
+    // length check below catches the mismatch and surfaces it explicitly.
+    if (this.cfg.expectedDim !== undefined) {
+      body.dimensions = this.cfg.expectedDim;
+    }
+
     let response: Response;
     try {
       response = await this.fetchFn(url, {
@@ -146,7 +166,7 @@ export class EmbeddingsClient {
           'content-type': 'application/json',
           authorization: `Bearer ${this.cfg.apiKey}`,
         },
-        body: JSON.stringify({ input: texts.length === 1 ? texts[0] : texts, model }),
+        body: JSON.stringify(body),
         signal: AbortSignal.timeout(this.cfg.timeoutMs),
       });
     } catch (err) {

@@ -9,11 +9,11 @@ import type { HooksBus } from '../pipeline/hooks.js';
  * Subscribe to issue/comment lifecycle hooks and keep the `memories` table in
  * sync via the embeddings service.
  *
- * Work is detached with `queueMicrotask` so it never adds LiteLLM latency to
- * the request path — `HooksBus.emit` awaits subscribers serially, and a naive
- * `await indexMemory(...)` would block every mutation on a remote embedding
- * call. The trade-off is "memories eventually consistent"; if indexing fails,
- * we log at warn and drop — a subsequent edit will re-attempt.
+ * Hook work is detached with `queueMicrotask` so it never adds LiteLLM
+ * latency to the request path. Hook subscribers use `indexMemoryBestEffort`,
+ * which logs and swallows failures — eventually consistent. Explicit callers
+ * (REST `POST /api/memory`, MCP `forge_memory.write`, knowledge ingest) use
+ * `indexMemory` which throws so the caller can report or retry.
  *
  * If higher durability is required later (bursts, retry-on-process-restart),
  * migrate the detached call to a pg-boss job; the queue is already running.
@@ -29,10 +29,23 @@ export interface IndexInput {
   metadata?: Record<string, unknown>;
 }
 
-export async function indexMemory(input: IndexInput): Promise<void> {
-  const trimmed =
-    input.text.length > MAX_EMBED_CHARS ? input.text.slice(0, MAX_EMBED_CHARS) : input.text;
-  if (trimmed !== input.text) {
+export interface IndexResult {
+  id: string;
+  embeddedAt: Date;
+  /** True when text exceeded MAX_EMBED_CHARS and was cut before embedding. */
+  truncated: boolean;
+}
+
+/**
+ * Strict variant — throws on embedding failure or DB upsert failure. Returns
+ * the upserted row's id + embeddedAt + a `truncated` flag so explicit callers
+ * (REST `POST /api/memory`, MCP `forge_memory.write`, knowledge ingest) can
+ * report it.
+ */
+export async function indexMemory(input: IndexInput): Promise<IndexResult> {
+  const truncated = input.text.length > MAX_EMBED_CHARS;
+  const trimmed = truncated ? input.text.slice(0, MAX_EMBED_CHARS) : input.text;
+  if (truncated) {
     logger.warn(
       {
         projectId: input.projectId,
@@ -44,62 +57,73 @@ export async function indexMemory(input: IndexInput): Promise<void> {
     );
   }
 
-  let vector: number[];
-  try {
-    vector = await embed(trimmed);
-  } catch (err) {
-    logger.warn(
-      {
-        err: (err as Error).message,
-        projectId: input.projectId,
-        source: input.source,
-        sourceRef: input.sourceRef,
-      },
-      'memory.indexer: embed failed, skipping',
-    );
-    return;
-  }
+  const vector = await embed(trimmed);
 
-  try {
-    await db
-      .insert(memories)
-      .values({
-        projectId: input.projectId,
-        source: input.source,
-        sourceRef: input.sourceRef,
-        textContent: trimmed,
-        embedding: vector,
-        metadata: input.metadata ?? {},
-      })
-      .onConflictDoUpdate({
-        target: [memories.projectId, memories.source, memories.sourceRef],
-        set: {
-          textContent: sql`excluded.text_content`,
-          embedding: sql`excluded.embedding`,
-          metadata: sql`excluded.metadata`,
-          embeddedAt: sql`now()`,
-          updatedAt: sql`now()`,
-        },
-      });
-  } catch (err) {
-    logger.error(
-      {
-        err: (err as Error).message,
-        projectId: input.projectId,
-        source: input.source,
-        sourceRef: input.sourceRef,
+  const [row] = await db
+    .insert(memories)
+    .values({
+      projectId: input.projectId,
+      source: input.source,
+      sourceRef: input.sourceRef,
+      textContent: trimmed,
+      embedding: vector,
+      metadata: input.metadata ?? {},
+    })
+    .onConflictDoUpdate({
+      target: [memories.projectId, memories.source, memories.sourceRef],
+      set: {
+        textContent: sql`excluded.text_content`,
+        embedding: sql`excluded.embedding`,
+        metadata: sql`excluded.metadata`,
+        embeddedAt: sql`now()`,
+        updatedAt: sql`now()`,
       },
-      'memory.indexer: upsert failed',
-    );
+    })
+    .returning({ id: memories.id, embeddedAt: memories.embeddedAt });
+
+  if (!row) {
+    // Shouldn't happen — UPSERT with returning always returns a row.
+    throw new Error('memory.indexer: upsert returned no row');
+  }
+  return { id: row.id, embeddedAt: row.embeddedAt, truncated };
+}
+
+/**
+ * Best-effort variant — swallows embedding and DB failures with rich
+ * structured logging. Use from hook subscribers where the request path must
+ * not see indexer errors and a later edit will re-attempt indexing.
+ */
+export async function indexMemoryBestEffort(input: IndexInput): Promise<void> {
+  try {
+    await indexMemory(input);
+  } catch (err) {
+    const meta = {
+      err: (err as Error).message,
+      projectId: input.projectId,
+      source: input.source,
+      sourceRef: input.sourceRef,
+    };
+    // Distinguish embed vs DB by inspecting the error message prefix — both
+    // are logged at warn so a bursty embed outage doesn't flood error counters.
+    if ((err as Error).message?.includes('embed')) {
+      logger.warn(meta, 'memory.indexer: embed failed, skipping');
+    } else {
+      logger.warn(meta, 'memory.indexer: upsert failed');
+    }
   }
 }
 
+/**
+ * Delete a memory row by its natural key. Returns the number of rows removed
+ * (0 or 1 because of the unique constraint on `(projectId, source, sourceRef)`).
+ * Idempotent — never throws on missing row.
+ */
 export async function deleteMemory(
   projectId: string,
   source: MemorySource,
   sourceRef: string,
-): Promise<void> {
-  await db
+): Promise<number> {
+  const result = await db
     .delete(memories)
     .where(
       and(
@@ -107,7 +131,9 @@ export async function deleteMemory(
         eq(memories.source, source),
         eq(memories.sourceRef, sourceRef),
       ),
-    );
+    )
+    .returning({ id: memories.id });
+  return result.length;
 }
 
 /**
@@ -138,7 +164,7 @@ export function registerMemoryIndexer(bus: HooksBus): () => void {
       const text = [p.snapshot.title, p.snapshot.description ?? ''].filter(Boolean).join('\n\n');
       if (!text) return;
       detach(() =>
-        indexMemory({
+        indexMemoryBestEffort({
           projectId: p.projectId,
           source: 'issue',
           sourceRef: p.issueId,
@@ -157,7 +183,7 @@ export function registerMemoryIndexer(bus: HooksBus): () => void {
       const text = [title, description].filter(Boolean).join('\n\n');
       if (!text) return;
       detach(() =>
-        indexMemory({
+        indexMemoryBestEffort({
           projectId: p.projectId,
           source: 'issue',
           sourceRef: p.issueId,
@@ -175,7 +201,7 @@ export function registerMemoryIndexer(bus: HooksBus): () => void {
     bus.on('commentCreated', (p) => {
       if (!p.body) return;
       detach(() =>
-        indexMemory({
+        indexMemoryBestEffort({
           projectId: p.projectId,
           source: 'comment',
           sourceRef: p.commentId,
@@ -189,7 +215,7 @@ export function registerMemoryIndexer(bus: HooksBus): () => void {
   unsubs.push(
     bus.on('commentUpdated', (p) => {
       detach(() =>
-        indexMemory({
+        indexMemoryBestEffort({
           projectId: p.projectId,
           source: 'comment',
           sourceRef: p.commentId,
@@ -202,7 +228,9 @@ export function registerMemoryIndexer(bus: HooksBus): () => void {
 
   unsubs.push(
     bus.on('commentDeleted', (p) => {
-      detach(() => deleteMemory(p.projectId, 'comment', p.commentId));
+      detach(async () => {
+        await deleteMemory(p.projectId, 'comment', p.commentId);
+      });
     }),
   );
 

@@ -1,12 +1,14 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { memories, memorySources, projectMembers, projects } from '../db/schema.js';
+import { memories, memorySources } from '../db/schema.js';
 import { paginationSchema, setTotalCount } from '../lib/pagination.js';
+import { assertProjectMemberAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { runMemoryGet } from './get-service.js';
 
 const listQuerySchema = paginationSchema.extend({
   projectId: z.uuid(),
@@ -22,26 +24,6 @@ const deleteQuerySchema = z.object({
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
-async function assertProjectMember(projectId: string, userId: string): Promise<void> {
-  const [project] = await db
-    .select({ ownerId: projects.ownerId })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project) throw forbidden('not a project member');
-  if (project.ownerId === userId) return;
-
-  const [member] = await db
-    .select({ userId: projectMembers.userId })
-    .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
-    .limit(1);
-  if (!member) throw forbidden('not a project member');
-}
-
 export const memoryListRoutes = new Hono<{ Variables: AuthVars }>();
 memoryListRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -53,36 +35,18 @@ memoryListRoutes.get(
   async (c) => {
     const { projectId, source, limit, offset } = c.req.valid('query');
     const userId = c.get('userId');
-    await assertProjectMember(projectId, userId);
+    await assertProjectMemberAccess(projectId, userId);
 
-    const conditions = [eq(memories.projectId, projectId)];
-    if (source) conditions.push(eq(memories.source, source));
-    const where = conditions.length === 1 ? conditions[0] : and(...conditions);
+    const { rows, total } = await runMemoryGet({
+      projectId,
+      ...(source ? { source } : {}),
+      limit,
+      offset,
+      orderBy: 'createdAt',
+      orderDir: 'desc',
+    });
 
-    const [{ n } = { n: 0 }] = await db
-      .select({ n: sql<number>`count(*)::int` })
-      .from(memories)
-      .where(where);
-
-    const rows = await db
-      .select({
-        id: memories.id,
-        projectId: memories.projectId,
-        source: memories.source,
-        sourceRef: memories.sourceRef,
-        textContent: memories.textContent,
-        metadata: memories.metadata,
-        embeddedAt: memories.embeddedAt,
-        createdAt: memories.createdAt,
-        updatedAt: memories.updatedAt,
-      })
-      .from(memories)
-      .where(where)
-      .orderBy(desc(memories.createdAt))
-      .limit(limit)
-      .offset(offset);
-
-    setTotalCount(c, Number(n));
+    setTotalCount(c, total);
     return c.json(rows);
   },
 );
@@ -95,7 +59,7 @@ memoryListRoutes.delete(
   async (c) => {
     const { projectId, source, sourceRef } = c.req.valid('query');
     const userId = c.get('userId');
-    await assertProjectMember(projectId, userId);
+    await assertProjectMemberAccess(projectId, userId);
 
     const result = await db
       .delete(memories)
@@ -134,7 +98,7 @@ memoryListRoutes.delete(
     if (!row) return c.body(null, 204);
 
     try {
-      await assertProjectMember(row.projectId, userId);
+      await assertProjectMemberAccess(row.projectId, userId);
     } catch {
       return c.body(null, 204);
     }

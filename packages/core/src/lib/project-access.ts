@@ -45,3 +45,29 @@ export function assertOwner(access: ProjectAccess, userId: string): void {
     throw forbidden('not a project owner');
   }
 }
+
+/**
+ * One-shot membership check that does NOT leak existence: any failure mode
+ * (project missing, user not a member) throws the same 403. Use this for
+ * surfaces where exposing project IDs would be a security leak — e.g. memory
+ * routes, where a 404 vs 403 distinction would let callers probe project IDs.
+ */
+export async function assertProjectMemberAccess(
+  projectId: string,
+  userId: string,
+): Promise<void> {
+  const [project] = await db
+    .select({ ownerId: projects.ownerId })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  if (!project) throw forbidden('not a project member');
+  if (project.ownerId === userId) return;
+
+  const [member] = await db
+    .select({ userId: projectMembers.userId })
+    .from(projectMembers)
+    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
+    .limit(1);
+  if (!member) throw forbidden('not a project member');
+}

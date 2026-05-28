@@ -16,7 +16,12 @@ import { forgeCoolifyDeployTool } from './tools/forge-coolify-deploy.js';
 import { forgeHealthTool } from './tools/forge-health.js';
 import { forgeIssuesTool } from './tools/forge-issues.js';
 import { forgeJobsEventsTool, forgeJobsGetTool, forgeJobsListTool } from './tools/forge-jobs.js';
-import { forgeMemorySearchTool } from './tools/forge-memory.js';
+import {
+  forgeMemoryDeleteTool,
+  forgeMemoryGetTool,
+  forgeMemorySearchTool,
+  forgeMemoryWriteTool,
+} from './tools/forge-memory.js';
 import {
   forgeMetricsAdminStepDurationsTool,
   forgeMetricsProjectStepDurationsTool,
@@ -156,6 +161,9 @@ export function createMcpServer(ctx: McpContext): Server {
   const tools: McpTool[] = [
     forgeVersionTool,
     forgeMemorySearchTool(ctx.device),
+    forgeMemoryWriteTool(ctx.device),
+    forgeMemoryGetTool(ctx.device),
+    forgeMemoryDeleteTool(ctx.device),
     forgeSkillsListTool(ctx.device),
     forgeSkillsGetTool(ctx.device),
     forgeSkillsRegisterTool(ctx.device),

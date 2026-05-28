@@ -9,12 +9,13 @@ export interface SearchInput {
   topK?: number | undefined;
   sourceFilter?: MemorySource[] | undefined;
   /**
-   * Optional JSONB metadata filter. Currently supports an exact `kind` match
-   * against `memories.metadata->>'kind'`. Used by the CI-fix pattern learner
-   * (ISS-32) to scope similarity search to `kind:'ci_fix_pattern'` rows; a
-   * richer API will likely arrive with ISS-RAG-1.
+   * Optional JSONB metadata filter. Uses Postgres `@>` containment so every
+   * key/value pair must match (`metadata @> filter::jsonb`). All scalar JSON
+   * types are supported — strings, numbers, booleans — without per-key casts.
+   * Used by the CI-fix pattern learner (`kind:'ci_fix_pattern'`) and step
+   * handoff scope queries (`run_id`/`step`/`attempt`).
    */
-  metadataFilter?: { kind?: string } | undefined;
+  metadataFilter?: Record<string, string | number | boolean> | undefined;
 }
 
 export interface MemoryHit {
@@ -37,8 +38,10 @@ export async function searchMemories(input: SearchInput): Promise<MemoryHit[]> {
   if (input.sourceFilter && input.sourceFilter.length > 0) {
     whereClauses.push(inArray(memories.source, input.sourceFilter));
   }
-  if (input.metadataFilter?.kind) {
-    whereClauses.push(sql`${memories.metadata}->>'kind' = ${input.metadataFilter.kind}`);
+  if (input.metadataFilter && Object.keys(input.metadataFilter).length > 0) {
+    whereClauses.push(
+      sql`${memories.metadata} @> ${JSON.stringify(input.metadataFilter)}::jsonb`,
+    );
   }
 
   const rows = await db

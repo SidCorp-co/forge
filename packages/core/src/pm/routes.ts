@@ -15,7 +15,7 @@ import {
 import { setTotalCount } from '../lib/pagination.js';
 import { type ProjectAccess, loadProjectAccess } from '../lib/project-access.js';
 import { logger } from '../logger.js';
-import { deleteMemory, indexMemory } from '../memory/indexer.js';
+import { deleteMemory, indexMemoryBestEffort } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { type SpawnPmSessionResult, spawnPmSession } from './spawner.js';
@@ -390,7 +390,7 @@ pmRoutes.post(
     if (!inserted) throw new HTTPException(500, { message: 'pm_policy insert failed' });
 
     detachIndex(() =>
-      indexMemory({
+      indexMemoryBestEffort({
         projectId,
         source: 'policy',
         sourceRef: inserted.id,
@@ -438,7 +438,7 @@ pmRoutes.patch(
 
     if (patch.body !== undefined || patch.name !== undefined || patch.priority !== undefined) {
       detachIndex(() =>
-        indexMemory({
+        indexMemoryBestEffort({
           projectId,
           source: 'policy',
           sourceRef: updated.id,
@@ -471,7 +471,9 @@ pmRoutes.delete(
       .returning({ id: pmPolicies.id });
     if (deleted.length === 0) throw notFound('pm_policy not found');
 
-    detachIndex(() => deleteMemory(projectId, 'policy', id));
+    detachIndex(async () => {
+      await deleteMemory(projectId, 'policy', id);
+    });
     return c.body(null, 204);
   },
 );

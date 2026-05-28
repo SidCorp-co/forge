@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { RequestIdVars } from '../../src/middleware/request-id.js';
 import {
   type TestDatabase,
   createTestProject,
@@ -28,7 +29,7 @@ function hotVector(hotIdx: number, mag = 1): number[] {
 
 describe('F3 memory search + indexer integration', () => {
   let harness: TestDatabase;
-  let app: Hono;
+  let app: Hono<{ Variables: RequestIdVars }>;
   let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
   let embeddingsMod: typeof import('../../src/embeddings/index.js');
 
@@ -55,7 +56,7 @@ describe('F3 memory search + indexer integration', () => {
     embeddingsMod = await import('../../src/embeddings/index.js');
     signUserToken = jwtMod.signUserToken;
 
-    app = new Hono();
+    app = new Hono<{ Variables: RequestIdVars }>();
     app.use('*', requestId());
     app.route('/api/memory', memorySearchRoutes);
     app.onError(errorHandler);
@@ -311,11 +312,13 @@ describe('F3 memory search + indexer integration', () => {
       issueId,
       projectId,
       actor: { type: 'user', id: randomUUID() },
+      status: 'open',
       snapshot: {
         title: 'test issue',
         description: 'body',
         priority: 'medium',
         category: null,
+        reportedBy: null,
         assigneeId: null,
         labels: [],
       },
@@ -451,11 +454,13 @@ describe('F3 memory search + indexer integration', () => {
       issueId: randomUUID(),
       projectId,
       actor: { type: 'user', id: randomUUID() },
+      status: 'open',
       snapshot: {
         title: 'idempotent',
         description: null,
         priority: 'medium',
         category: null,
+        reportedBy: null,
         assigneeId: null,
         labels: [],
       },
