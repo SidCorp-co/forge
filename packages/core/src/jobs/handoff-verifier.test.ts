@@ -91,8 +91,12 @@ describe('verifyHandoffOrSkip', () => {
     expect(r.ok).toBe(true);
   });
 
-  it('returns OK when policy.handoffs is missing in project config', async () => {
+  it('FAILS with handoff_not_written when policy is missing (system default-on)', async () => {
+    // System default flipped to enabled=true on 2026-05-29 — projects without
+    // explicit `userPromptPolicy.handoffs` still get verified. To opt out a
+    // project must set `enabled: false` explicitly.
     mockProjectPolicy({ pipelineConfig: { states: { approved: {} } } });
+    mockHandoffRow(false);
     const r = await verifyHandoffOrSkip({
       projectId: PROJECT_ID,
       jobType: 'plan',
@@ -102,7 +106,8 @@ describe('verifyHandoffOrSkip', () => {
       payload: { stageStatus: 'approved' },
       lastAssistantText: 'DONE',
     });
-    expect(r.ok).toBe(true);
+    expect(r.ok).toBe(false);
+    expect(r.failureReason).toMatch(/handoff_not_written/);
   });
 
   it('returns OK when policy.handoffs.enabled is false', async () => {

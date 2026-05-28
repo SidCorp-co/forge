@@ -30,6 +30,7 @@ import {
   isHandoffStep,
   renderTerminationBlock,
 } from '../memory/step-handoff-schema.js';
+import { resolveHandoffsPolicy } from '../pipeline/handoff-policy.js';
 import type { UserPromptPolicyConfig } from '../pipeline/pipeline-config-schema.js';
 
 export interface IssueSnapshot {
@@ -389,8 +390,12 @@ export function buildJobPromptString(args: {
     );
   }
 
-  const handoffsEnabled = args.policy?.handoffs?.enabled === true;
-  const injectFromSteps = new Set(args.policy?.handoffs?.injectFromSteps ?? []);
+  // System-default-on (see pipeline/handoff-policy.ts). Explicit project
+  // config still wins per-field; absent config falls back to enabled=true
+  // with canonical inject lists per step.
+  const resolvedHandoffs = resolveHandoffsPolicy(args.policy ?? null, args.jobType);
+  const handoffsEnabled = resolvedHandoffs.enabled;
+  const injectFromSteps = new Set<HandoffStep>(resolvedHandoffs.injectFromSteps);
   // Filter pre-fetched handoffs to the policy's allow-list so callers can
   // fetch broadly (all handoffs for the run) without leaking ones the
   // current state's policy didn't whitelist.

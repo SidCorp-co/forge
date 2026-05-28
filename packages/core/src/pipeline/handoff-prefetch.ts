@@ -5,6 +5,7 @@ import {
   isHandoffStep,
 } from '../memory/step-handoff-schema.js';
 import type { JobType } from '../db/schema.js';
+import { resolveHandoffsPolicy } from './handoff-policy.js';
 import type { UserPromptPolicyConfig } from './pipeline-config-schema.js';
 import type { PriorHandoff } from '../prompt/user.js';
 import { getIssueContexts } from './issue-context-store.js';
@@ -34,12 +35,14 @@ export async function fetchHandoffPromptInputs(args: {
   priorHandoffs: PriorHandoff[] | null;
   handoffScope: HandoffScope | null;
 }> {
-  const handoffs = args.policy?.handoffs;
-  if (!handoffs?.enabled || !args.issueId) {
+  // System-default-on: explicit config wins per-field, otherwise sensible
+  // defaults apply (see handoff-policy.ts).
+  const handoffs = resolveHandoffsPolicy(args.policy, args.jobType);
+  if (!handoffs.enabled || !args.issueId) {
     return { priorHandoffs: null, handoffScope: null };
   }
 
-  const injectSteps = (handoffs.injectFromSteps ?? []).filter((s): s is HandoffStep =>
+  const injectSteps = handoffs.injectFromSteps.filter((s): s is HandoffStep =>
     isHandoffStep(s as JobType),
   );
 

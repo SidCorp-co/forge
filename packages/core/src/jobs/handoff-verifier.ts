@@ -24,6 +24,11 @@ import { db } from '../db/client.js';
 import { type JobType, issueStepContexts, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { isHandoffStep } from '../memory/step-handoff-schema.js';
+import {
+  type ResolvedHandoffsPolicy,
+  resolveHandoffsPolicy,
+} from '../pipeline/handoff-policy.js';
+import type { UserPromptPolicyConfig } from '../pipeline/pipeline-config-schema.js';
 import { extractStageStatus } from './stage-overrides.js';
 
 export interface HandoffVerifyVerdict {
@@ -34,52 +39,42 @@ export interface HandoffVerifyVerdict {
   breadcrumb?: string;
 }
 
-interface HandoffPolicy {
-  enabled: boolean;
-  requireHandoffWrite: boolean;
-  missingMarkerPolicy: 'fail' | 'warn' | 'silent';
-}
-
 const OK: HandoffVerifyVerdict = { ok: true };
 
+/**
+ * Read the explicit `userPromptPolicy` (may be undefined) for this job's
+ * stage from `projects.agentConfig.pipelineConfig.states[<stage>]`, then
+ * merge with system defaults via `resolveHandoffsPolicy`. Returns the
+ * resolved policy so the caller never has to handle the undefined branch.
+ */
 async function loadHandoffPolicyForJob(args: {
   projectId: string;
   jobType: JobType;
   payload: unknown;
-}): Promise<HandoffPolicy | null> {
+}): Promise<ResolvedHandoffsPolicy> {
   const stageStatus = extractStageStatus(args.payload);
-  if (!stageStatus) return null;
-  try {
-    const [row] = await db
-      .select({ agentConfig: projects.agentConfig })
-      .from(projects)
-      .where(eq(projects.id, args.projectId))
-      .limit(1);
-    if (!row?.agentConfig) return null;
-    const ac = row.agentConfig as Record<string, unknown>;
-    const pc = ac.pipelineConfig as Record<string, unknown> | undefined;
-    const states = (pc?.states ?? {}) as Record<string, unknown>;
-    const stage = states[stageStatus] as Record<string, unknown> | undefined;
-    const upp = stage?.userPromptPolicy as Record<string, unknown> | undefined;
-    const handoffs = upp?.handoffs as
-      | { enabled?: boolean; requireHandoffWrite?: boolean; missingMarkerPolicy?: string }
-      | undefined;
-    if (!handoffs) return null;
-    return {
-      enabled: handoffs.enabled === true,
-      requireHandoffWrite: handoffs.requireHandoffWrite !== false,
-      missingMarkerPolicy:
-        handoffs.missingMarkerPolicy === 'fail' || handoffs.missingMarkerPolicy === 'silent'
-          ? handoffs.missingMarkerPolicy
-          : 'warn',
-    };
-  } catch (err) {
-    logger.warn(
-      { err, projectId: args.projectId, jobType: args.jobType },
-      'handoff-verifier: loadHandoffPolicy failed; defaulting to no enforcement',
-    );
-    return null;
+  let explicit: UserPromptPolicyConfig | null = null;
+  if (stageStatus) {
+    try {
+      const [row] = await db
+        .select({ agentConfig: projects.agentConfig })
+        .from(projects)
+        .where(eq(projects.id, args.projectId))
+        .limit(1);
+      const ac = (row?.agentConfig ?? {}) as Record<string, unknown>;
+      const pc = ac.pipelineConfig as Record<string, unknown> | undefined;
+      const states = (pc?.states ?? {}) as Record<string, unknown>;
+      const stage = states[stageStatus] as Record<string, unknown> | undefined;
+      const upp = stage?.userPromptPolicy as UserPromptPolicyConfig | undefined;
+      if (upp) explicit = upp;
+    } catch (err) {
+      logger.warn(
+        { err, projectId: args.projectId, jobType: args.jobType },
+        'handoff-verifier: loadHandoffPolicy failed; falling back to system defaults',
+      );
+    }
   }
+  return resolveHandoffsPolicy(explicit, args.jobType);
 }
 
 async function findHandoffRow(args: {
@@ -127,7 +122,7 @@ export async function verifyHandoffOrSkip(args: {
     jobType: args.jobType,
     payload: args.payload,
   });
-  if (!policy?.enabled || !policy.requireHandoffWrite) return OK;
+  if (!policy.enabled || !policy.requireHandoffWrite) return OK;
   if (!args.issueId || !args.pipelineRunId) {
     // Handoff scope requires an issue + run. Jobs without either bypassed
     // the issue-bound pipeline pathway entirely — don't enforce.

@@ -82,6 +82,12 @@ vi.mock('../pipeline/skill-mapping.js', async () => {
 
 // ISS-101 — stub run lifecycle helpers so enrich/pipeline-step routes don't
 // need to model the extra pipeline_runs SELECT/INSERT in the db mock.
+// Default-on handoff prefetch — stub to no-op so tests don't have to wire
+// real UUIDs into the pipeline_run mock.
+vi.mock('../pipeline/handoff-prefetch.js', () => ({
+  fetchHandoffPromptInputs: async () => ({ priorHandoffs: null, handoffScope: null }),
+}));
+
 vi.mock('../pipeline/runs.js', () => ({
   openIssueRun: vi.fn(async () => ({ id: 'run-1', startedAt: new Date() })),
   openOneShotRun: vi.fn(async () => ({ id: 'run-1' })),
