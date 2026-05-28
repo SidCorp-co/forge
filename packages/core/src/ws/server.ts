@@ -7,7 +7,6 @@ import { verifyDeviceToken } from '../auth/deviceToken.js';
 import { verifyUserToken } from '../auth/jwt.js';
 import { db } from '../db/client.js';
 import { devices, projectMembers, runners } from '../db/schema.js';
-import { isEnabled } from '../lib/feature-flags.js';
 import {
   handleRunnerRegister,
   handleRunnerUnregister,
@@ -269,8 +268,9 @@ export function attachWs(server: AnyServer): void {
       } else if (type === 'unsubscribe') {
         roomManager.unsubscribe(ws, room);
       } else if (
-        isEnabled('runnerFramework') &&
-        (type === 'runner:register' || type === 'runner:unregister' || type === 'runner:update')
+        type === 'runner:register' ||
+        type === 'runner:unregister' ||
+        type === 'runner:update'
       ) {
         if (ws.principal.type !== 'device') return;
         if (type === 'runner:register') {

@@ -20,7 +20,7 @@ describe('feature-flags', () => {
 
   it('returns true by default (no env set) — flags ship on for v0.1.x alpha', () => {
     expect(isEnabled('chatProvider')).toBe(true);
-    expect(isEnabled('runnerFramework')).toBe(true);
+    expect(isEnabled('pipelineControl')).toBe(true);
   });
 
   it('explicit FEATURE_X=false overrides default-on', () => {
@@ -36,8 +36,8 @@ describe('feature-flags', () => {
   });
 
   it('reads `1` as enabled', () => {
-    process.env.FEATURE_RUNNER_FRAMEWORK = '1';
-    expect(isEnabled('runnerFramework')).toBe(true);
+    process.env.FEATURE_PIPELINE_CONTROL = '1';
+    expect(isEnabled('pipelineControl')).toBe(true);
   });
 
   it('rejects other values (e.g. "on", "yes")', () => {
@@ -51,7 +51,6 @@ describe('feature-flags', () => {
     const snap = snapshotFlags();
     const expectedKeys: FeatureFlag[] = [
       'chatProvider',
-      'runnerFramework',
       'pipelineControl',
       'commentMentions',
       'userPreferences',

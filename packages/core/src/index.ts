@@ -397,9 +397,7 @@ if (isMain) {
   await registerPmDispatcher();
   await registerStaleDetector();
   await registerDeviceStaleDetector();
-  if (isEnabled('runnerFramework')) {
-    await registerRunnerStaleDetector();
-  }
+  await registerRunnerStaleDetector();
   await registerRetentionSweeper();
   await registerDesktopPairingCleanup();
   await registerPipelineSweeper();

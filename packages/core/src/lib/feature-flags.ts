@@ -26,9 +26,6 @@ const flagDefs = {
   // you don't intend to ship chat in your deployment.
   chatProvider: true,
 
-  // v1 EPIC 2 — Runner framework (claude-code + antigravity adapters)
-  runnerFramework: true,
-
   // v1 EPIC 3 — Pipeline control + runner/device fleet observability
   pipelineControl: true,
 

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -9,7 +10,6 @@ import {
   createTestProjectMember,
   createTestUser,
   pairMockDevice,
-  setProjectActiveDevice,
   setupTestDatabase,
   startTestServer,
   startWebObserver,
@@ -24,9 +24,9 @@ import {
 //
 // Gated behind `FORGE_E2E_REAL_PAIR=1` while ISS-214's server endpoints
 // (`POST /api/devices/pairing-codes`, `POST /api/devices/pair`,
-// `POST /api/devices/heartbeat`, WS handshake auth, `PUT /api/projects/:id/runtime/active-device`)
-// are not yet in the tree. The helper falls back to `issueDeviceToken` so the
-// test compiles and is ready to flip once those endpoints land.
+// `POST /api/devices/heartbeat`, WS handshake auth) are not yet in the tree.
+// The helper falls back to `issueDeviceToken` so the test compiles and is
+// ready to flip once those endpoints land.
 const runE2E = process.env.FORGE_E2E_REAL_PAIR === '1';
 
 describe.skipIf(!runE2E)('F2 device-runner E2E', () => {
@@ -91,11 +91,17 @@ describe.skipIf(!runE2E)('F2 device-runner E2E', () => {
     // 2. Device connects WS
     await device.connectWs();
 
-    // 3. Bind project → device. Real flow uses `PUT /api/projects/:id/runtime/active-device`
-    //    (blocked on ISS-214); today we set it directly so the dispatcher can route.
-    await setProjectActiveDevice(harness.db, project.id, device.id);
-    // Device must also be online for the dispatcher to pick it.
+    // 3. Register an online claude-code runner bound to the device so the
+    //    dispatcher's runner path routes the job to it (ISS-267 removed the
+    //    legacy activeDeviceId device-routing path).
     await harness.db.execute(sql`UPDATE devices SET status = 'online' WHERE id = ${device.id}`);
+    await harness.db.execute(sql`
+      INSERT INTO runners (id, project_id, type, host, device_id, name, capabilities, status, last_seen_at)
+      VALUES (
+        ${randomUUID()}, ${project.id}, 'claude-code', 'device', ${device.id},
+        'e2e-runner', '{"pm": true}'::jsonb, 'online', now()
+      )
+    `);
 
     // 4. Open a web observer on the project room
     const observer: WebObserver = await startWebObserver({

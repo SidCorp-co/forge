@@ -12,7 +12,6 @@ export {
   createTestProject,
   createTestProjectMember,
   createTestUser,
-  setProjectActiveDevice,
   type CreateTestDeviceOverrides,
   type CreateTestProjectMemberOverrides,
   type CreateTestProjectOverrides,

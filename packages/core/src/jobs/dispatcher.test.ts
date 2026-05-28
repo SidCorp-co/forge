@@ -25,10 +25,6 @@ vi.mock('../pipeline/resolve-step-runner.js', () => ({
   resolveRunnerChainForJob: vi.fn(() => []),
 }));
 
-vi.mock('./active-device.js', () => ({
-  getActiveDeviceId: vi.fn(),
-}));
-
 vi.mock('../queue/boss.js', () => ({
   boss: {
     createQueue: vi.fn(async () => {}),
@@ -94,7 +90,6 @@ vi.mock('../observability/hold-metrics.js', () => ({
 }));
 
 const { db } = await import('../db/client.js');
-const { getActiveDeviceId } = await import('./active-device.js');
 // ISS-198 — dispatcher no longer imports checkLayer4RunnerFull.
 const { runnerSupportsJobType, assertDispatchable } = await import('./dispatch-gates.js');
 const {
@@ -133,21 +128,30 @@ function mockUpdateReturn(rows: Row[]): void {
   }));
 }
 
+// ISS-267 — the legacy device dispatch path (`dispatchViaDevice` /
+// `getActiveDeviceId`) was removed; `handleDispatch` now always routes
+// through `dispatchViaRunner` → `selectRunnerForJob` → adapter.dispatch.
+// These tests mock the runner selection + adapter so they assert the
+// dispatch envelope without standing up the runner registry. Runner
+// selection itself is covered in `runners/select.test.ts`.
+function mockRunnerDispatch(opts: { deviceId?: string } = {}): ReturnType<typeof vi.fn> {
+  (selectRunnerForJob as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    id: 'r1',
+    type: 'claude-code',
+    deviceId: opts.deviceId ?? 'd1',
+  });
+  const dispatchSpy = vi.fn(async () => ({ status: 'dispatched' }));
+  (getRunnerAdapter as ReturnType<typeof vi.fn>).mockReturnValueOnce({ dispatch: dispatchSpy });
+  return dispatchSpy;
+}
+
 describe('jobs/dispatcher', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Pin to the legacy device dispatch path. After commit 2020bda8 flipped
-    // all v0.1.x alpha flags default-on, runtime now goes through
-    // `dispatchViaRunner` → `selectRunnerForJob` → `db.execute(...)` which
-    // these tests don't mock. The runner path has its own coverage in
-    // `runners/select.test.ts`; this suite specifically asserts the legacy
-    // device path remains correct, so disable runnerFramework explicitly.
-    process.env.FEATURE_RUNNER_FRAMEWORK = 'false';
   });
 
   afterEach(() => {
     vi.clearAllMocks();
-    delete process.env.FEATURE_RUNNER_FRAMEWORK;
   });
 
   it('skips when job is missing', async () => {
@@ -160,40 +164,22 @@ describe('jobs/dispatcher', () => {
     mockSelectOnce([{ id: 'j1', status: 'dispatched', projectId: 'p1' }]);
     const result = await handleDispatch({ jobId: 'j1' });
     expect(result).toBe('skipped');
-    expect(getActiveDeviceId).not.toHaveBeenCalled();
+    expect(selectRunnerForJob).not.toHaveBeenCalled();
   });
 
-  it('leaves queued when no active device configured', async () => {
-    mockSelectOnce([{ id: 'j1', status: 'queued', projectId: 'p1' }]);
-    (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+  it('leaves queued when no runner is online', async () => {
+    mockSelectOnce([{ id: 'j1', status: 'queued', projectId: 'p1', type: 'plan', payload: {} }]);
+    // dispatchViaRunner reads the project agentConfig for the fallback chain.
+    mockSelectOnce([{ agentConfig: null }]);
+    (selectRunnerForJob as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+
     const result = await handleDispatch({ jobId: 'j1' });
     expect(result).toBe('skipped');
     // biome-ignore lint/suspicious/noExplicitAny: test-only mock chain
     expect((db as any).update).not.toHaveBeenCalled();
   });
 
-  it('leaves queued when active device is offline', async () => {
-    mockSelectOnce([{ id: 'j1', status: 'queued', projectId: 'p1' }]);
-    (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
-    mockSelectOnce([{ id: 'd1', status: 'offline' }]);
-    const result = await handleDispatch({ jobId: 'j1' });
-    expect(result).toBe('skipped');
-    // biome-ignore lint/suspicious/noExplicitAny: test-only mock chain
-    expect((db as any).update).not.toHaveBeenCalled();
-  });
-
-  it('leaves queued when active device row is missing', async () => {
-    mockSelectOnce([{ id: 'j1', status: 'queued', projectId: 'p1' }]);
-    (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d-missing');
-    mockSelectOnce([]);
-    const result = await handleDispatch({ jobId: 'j1' });
-    expect(result).toBe('skipped');
-  });
-
-  // Exhaustive `toEqual` (not `objectContaining`) so omitting any field of the
-  // job.assigned envelope fails the test. Subset matchers let the ISS-279
-  // `issueId`-omission regression (fixed in 511c627d) slip through. See ISS-285.
-  it('transitions job to dispatched when device is online and publishes job.assigned with full envelope', async () => {
+  it('dispatches to the runner adapter with the full job envelope', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-27T00:00:00.000Z'));
     try {
@@ -207,11 +193,10 @@ describe('jobs/dispatcher', () => {
           payload: { foo: 'bar' },
         },
       ]);
-      (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
-      // ISS-34: dispatcher requires fresh `lastSeenAt` (within DISPATCH_LIVENESS_MS).
-    mockSelectOnce([{ id: 'd1', status: 'online', lastSeenAt: new Date() }]);
+      mockSelectOnce([{ agentConfig: null }]);
+      const dispatchSpy = mockRunnerDispatch();
       mockUpdateReturn([{ id: 'j1' }]);
-      // After UPDATE, dispatchViaDevice calls loadRepoPath which selects from
+      // After UPDATE, dispatchViaRunner calls loadRepoPath which selects from
       // projects to feed ensureAgentSessionForJob. Mock the row so the chain
       // doesn't fall through to the unmocked .from() and crash.
       mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
@@ -220,69 +205,41 @@ describe('jobs/dispatcher', () => {
       expect(result).toBe('dispatched');
       // biome-ignore lint/suspicious/noExplicitAny: test-only mock chain
       expect((db as any).update).toHaveBeenCalledTimes(1);
-      // biome-ignore lint/suspicious/noExplicitAny: test-only mock
-      expect((roomManager as any).publish).toHaveBeenCalledWith('device:d1', {
-        event: 'job.assigned',
-        data: {
-          jobId: 'j1',
-          projectId: 'p1',
-          issueId: 'i1',
-          type: 'plan',
-          payload: { foo: 'bar' },
-          promptString: null,
-          // P1.1: pipeline preamble is always emitted; loadProjectBranches
-          // swallows mock failures so the static rules + tools ship anyway.
-          systemPrompt: expect.any(String),
-          dispatchedAt: '2026-04-27T00:00:00.000Z',
-          agentSessionId: 'sess-test',
-        },
+      expect(dispatchSpy).toHaveBeenCalledTimes(1);
+      const arg = dispatchSpy.mock.calls[0][0] as {
+        job: Record<string, unknown>;
+        runner: Record<string, unknown>;
+      };
+      // issueId must be a sibling of `payload` on the job envelope, not nested
+      // inside `payload` — ISS-279 regression guard (claude-code adapter keys
+      // off `data.issueId`).
+      expect(arg.job).toMatchObject({
+        id: 'j1',
+        projectId: 'p1',
+        issueId: 'i1',
+        type: 'plan',
+        payload: { foo: 'bar' },
+        promptString: null,
+        agentSessionId: 'sess-test',
+        dispatchedAt: new Date('2026-04-27T00:00:00.000Z'),
       });
+      expect(typeof arg.job.systemPrompt).toBe('string');
+      expect((arg.job.payload as Record<string, unknown>).issueId).toBeUndefined();
+      expect(arg.runner).toMatchObject({ id: 'r1', type: 'claude-code', deviceId: 'd1' });
     } finally {
       vi.useRealTimers();
     }
   });
 
-  // Regression guard for ISS-279: issueId must be a sibling of `payload`
-  // inside `data`, not nested inside `payload`. Device-runner code keys off
-  // `data.issueId` to scope status updates back to the originating issue.
-  it('event includes issueId at top level of data (not nested in payload)', async () => {
-    mockSelectOnce([
-      {
-        id: 'j2',
-        status: 'queued',
-        projectId: 'p1',
-        issueId: 'iss-abc',
-        type: 'code',
-        payload: { instructions: 'do thing' },
-      },
-    ]);
-    (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
-    // ISS-34: dispatcher requires fresh `lastSeenAt` (within DISPATCH_LIVENESS_MS).
-    mockSelectOnce([{ id: 'd1', status: 'online', lastSeenAt: new Date() }]);
-    mockUpdateReturn([{ id: 'j2' }]);
-    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
-
-    await handleDispatch({ jobId: 'j2' });
-
-    // biome-ignore lint/suspicious/noExplicitAny: test-only mock
-    const call = (roomManager as any).publish.mock.calls[0];
-    expect(call).toBeDefined();
-    const envelope = call[1];
-    expect(envelope.data.issueId).toBe('iss-abc');
-    expect(envelope.data.payload).not.toHaveProperty('issueId');
-  });
-
-  it('skips when racing UPDATE returns zero rows and does NOT publish', async () => {
+  it('skips when racing UPDATE returns zero rows and does NOT dispatch to the adapter', async () => {
     mockSelectOnce([{ id: 'j1', status: 'queued', projectId: 'p1', type: 'plan', payload: {} }]);
-    (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
-    // ISS-34: dispatcher requires fresh `lastSeenAt` (within DISPATCH_LIVENESS_MS).
-    mockSelectOnce([{ id: 'd1', status: 'online', lastSeenAt: new Date() }]);
+    mockSelectOnce([{ agentConfig: null }]);
+    const dispatchSpy = mockRunnerDispatch();
     mockUpdateReturn([]);
 
     const result = await handleDispatch({ jobId: 'j1' });
     expect(result).toBe('skipped');
-    // biome-ignore lint/suspicious/noExplicitAny: test-only mock
-    expect((roomManager as any).publish).not.toHaveBeenCalled();
+    expect(dispatchSpy).not.toHaveBeenCalled();
   });
 
   it('register/unregister is idempotent and toggles state', async () => {
@@ -300,9 +257,9 @@ describe('jobs/dispatcher', () => {
   });
 
   // ISS-186 — prompt-snapshot is persisted after the `dispatched` flip and
-  // before roomManager.publish so a snapshot lands on the same row even if
-  // a follow-on consumer (web Inspector) reads quickly after dispatch.
-  it('persists prompt snapshot after dispatched flip and before publish', async () => {
+  // before adapter.dispatch so a snapshot lands on the same row even if a
+  // follow-on consumer (web Inspector) reads quickly after dispatch.
+  it('persists prompt snapshot after dispatched flip and before adapter.dispatch', async () => {
     mockSelectOnce([
       {
         id: 'j-snap',
@@ -314,8 +271,8 @@ describe('jobs/dispatcher', () => {
         modelTier: 'sonnet',
       },
     ]);
-    (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
-    mockSelectOnce([{ id: 'd1', status: 'online', lastSeenAt: new Date() }]);
+    mockSelectOnce([{ agentConfig: null }]);
+    const dispatchSpy = mockRunnerDispatch();
     mockUpdateReturn([{ id: 'j-snap' }]);
     mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
 
@@ -332,18 +289,17 @@ describe('jobs/dispatcher', () => {
     expect(args.systemPrompt.length).toBeGreaterThan(0);
     expect(Array.isArray(args.blocks)).toBe(true);
 
-    // Ordering: snapshot fires before roomManager.publish.
+    // Ordering: snapshot fires before adapter.dispatch.
     const snapInvocation = (persistPromptSnapshot as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0];
-    // biome-ignore lint/suspicious/noExplicitAny: test-only mock
-    const publishInvocation = (roomManager as any).publish.mock.invocationCallOrder[0];
-    expect(snapInvocation).toBeLessThan(publishInvocation);
+    const adapterInvocation = dispatchSpy.mock.invocationCallOrder[0];
+    expect(snapInvocation).toBeLessThan(adapterInvocation);
   });
 
   // ISS-228 — SSOT barrier replaces ISS-226's narrow L1-only check. When
   // ANY gate fails (manual_hold, blocked_by, project_cap, runner_full,
   // retry_cooldown, pipeline_run_running, issue_busy), the dispatcher must
   // leave the job queued — no dispatch flip, no runner selection, no
-  // job.assigned broadcast.
+  // adapter dispatch.
   it('ISS-228: leaves queued when assertDispatchable returns a failing barrier (issue_busy)', async () => {
     mockSelectOnce([
       {
@@ -364,14 +320,10 @@ describe('jobs/dispatcher', () => {
     const result = await handleDispatch({ jobId: 'j-plan' });
     expect(result).toBe('skipped');
     expect(assertDispatchable).toHaveBeenCalledWith('j-plan');
-    // Job must remain queued — no dispatch flip, no runner selection,
-    // no job.assigned broadcast.
+    // Job must remain queued — no dispatch flip, no runner selection.
     // biome-ignore lint/suspicious/noExplicitAny: test-only mock chain
     expect((db as any).update).not.toHaveBeenCalled();
     expect(selectRunnerForJob).not.toHaveBeenCalled();
-    expect(getActiveDeviceId).not.toHaveBeenCalled();
-    // biome-ignore lint/suspicious/noExplicitAny: test-only mock
-    expect((roomManager as any).publish).not.toHaveBeenCalled();
   });
 
   it('ISS-228: leaves queued with reason=project_cap when L3 fails (pg-boss burst protection)', async () => {
@@ -410,16 +362,15 @@ describe('jobs/dispatcher', () => {
       },
     ]);
     // Default mock ({ ok: true }) — barrier passes.
-    (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
-    mockSelectOnce([{ id: 'd1', status: 'online', lastSeenAt: new Date() }]);
+    mockSelectOnce([{ agentConfig: null }]);
+    const dispatchSpy = mockRunnerDispatch();
     mockUpdateReturn([{ id: 'j-plan' }]);
     mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
 
     const result = await handleDispatch({ jobId: 'j-plan' });
     expect(result).toBe('dispatched');
     expect(assertDispatchable).toHaveBeenCalledWith('j-plan');
-    // biome-ignore lint/suspicious/noExplicitAny: test-only mock
-    expect((roomManager as any).publish).toHaveBeenCalledTimes(1);
+    expect(dispatchSpy).toHaveBeenCalledTimes(1);
   });
 
   it('ISS-228: barrier runs even for project-scoped jobs (issueId=null)', async () => {
@@ -433,8 +384,8 @@ describe('jobs/dispatcher', () => {
         payload: {},
       },
     ]);
-    (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
-    mockSelectOnce([{ id: 'd1', status: 'online', lastSeenAt: new Date() }]);
+    mockSelectOnce([{ agentConfig: null }]);
+    const dispatchSpy = mockRunnerDispatch();
     mockUpdateReturn([{ id: 'j-orphan' }]);
     mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
 
@@ -443,6 +394,7 @@ describe('jobs/dispatcher', () => {
     // SSOT barrier always runs — its SQL handles the null issue_id case
     // correctly (project_cap clause uses `j.issue_id IS NOT NULL`).
     expect(assertDispatchable).toHaveBeenCalledWith('j-orphan');
+    expect(dispatchSpy).toHaveBeenCalledTimes(1);
   });
 
   it('defaults model to "default" when modelTier is not set', async () => {
@@ -457,8 +409,8 @@ describe('jobs/dispatcher', () => {
         modelTier: null,
       },
     ]);
-    (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
-    mockSelectOnce([{ id: 'd1', status: 'online', lastSeenAt: new Date() }]);
+    mockSelectOnce([{ agentConfig: null }]);
+    mockRunnerDispatch();
     mockUpdateReturn([{ id: 'j-default-model' }]);
     mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
 
@@ -473,16 +425,10 @@ describe('jobs/dispatcher', () => {
 describe('jobs/dispatcher PM path', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // PM path always runs through dispatchViaRunner regardless of the
-    // runnerFramework flag, but flip it on for parity with prod and to keep
-    // future readers from second-guessing.
-    process.env.FEATURE_RUNNER_FRAMEWORK = 'true';
   });
 
   afterEach(() => {
     vi.clearAllMocks();
-    // biome-ignore lint/performance/noDelete: matches existing teardown pattern at top of file
-    delete process.env.FEATURE_RUNNER_FRAMEWORK;
   });
 
   it('dispatches a pm job to a pm-capable runner with forced {pm:true} filter', async () => {
@@ -600,8 +546,7 @@ describe('jobs/dispatcher PM path', () => {
     expect((roomManager as any).publish).not.toHaveBeenCalled();
   });
 
-  it('ISS-115: forwards payload.promptString as a top-level field on job.assigned (legacy device path)', async () => {
-    process.env.FEATURE_RUNNER_FRAMEWORK = 'false';
+  it('ISS-115: forwards payload.promptString on the runner job envelope', async () => {
     mockSelectOnce([
       {
         id: 'j-prompt',
@@ -612,24 +557,17 @@ describe('jobs/dispatcher PM path', () => {
         payload: { promptString: '/forge-plan iss-1', skillName: 'forge-plan' },
       },
     ]);
-    (getActiveDeviceId as ReturnType<typeof vi.fn>).mockResolvedValueOnce('d1');
-    mockSelectOnce([{ id: 'd1', status: 'online', lastSeenAt: new Date() }]);
+    // fallback-chain lookup (project agentConfig).
+    mockSelectOnce([{ agentConfig: null }]);
+    const dispatchSpy = mockRunnerDispatch();
     mockUpdateReturn([{ id: 'j-prompt' }]);
     mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
 
     const result = await handleDispatch({ jobId: 'j-prompt' });
     expect(result).toBe('dispatched');
-    // biome-ignore lint/suspicious/noExplicitAny: test-only mock
-    expect((roomManager as any).publish).toHaveBeenCalledWith(
-      'device:d1',
-      expect.objectContaining({
-        event: 'job.assigned',
-        data: expect.objectContaining({
-          jobId: 'j-prompt',
-          promptString: '/forge-plan iss-1',
-        }),
-      }),
-    );
+    const arg = dispatchSpy.mock.calls[0][0] as { job: { id: string; promptString: unknown } };
+    expect(arg.job.id).toBe('j-prompt');
+    expect(arg.job.promptString).toBe('/forge-plan iss-1');
   });
 
   it('register/unregister is idempotent and creates the PM_QUEUE_NAME queue', async () => {

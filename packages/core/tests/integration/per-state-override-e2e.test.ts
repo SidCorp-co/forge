@@ -24,14 +24,13 @@ import {
   createTestDevice,
   createTestProject,
   createTestUser,
-  setProjectActiveDevice,
   setupTestDatabase,
   truncateAll,
 } from '../helpers/index.js';
 
 // Mock the WS server so we can assert on the `job.assigned` envelope without
-// standing up a real socket layer. Both the legacy device dispatch path and
-// `publishPipelineHealthChanged` route through this module.
+// standing up a real socket layer. The claude-code adapter (runner path) and
+// `publishPipelineHealthChanged` both route through this module.
 vi.mock('../../src/ws/server.js', () => ({
   roomManager: {
     publish: vi.fn(() => 0),
@@ -58,9 +57,6 @@ describe('ISS-194 per-state override end-to-end', () => {
     process.env.SMTP_FROM ??= 'test@example.com';
     process.env.APP_BASE_URL ??= 'http://localhost:3000';
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
-    // Legacy device dispatch is the cheaper path and exercises the same
-    // `buildOverridesPayload` call as the runner-framework path.
-    process.env.FEATURE_RUNNER_FRAMEWORK = 'false';
     // `pipelineControl` defaults to true; assert explicitly so an env-level
     // override in CI cannot silently disable the PATCH route under test.
     process.env.FEATURE_PIPELINE_CONTROL = 'true';
@@ -76,8 +72,11 @@ describe('ISS-194 per-state override end-to-end', () => {
     const { requestId } = await import('../../src/middleware/request-id.js');
     const jwtMod = await import('../../src/auth/jwt.js');
     const dispatcherMod = await import('../../src/jobs/dispatcher.js');
+    const { bootstrapRunnerAdapters } = await import('../../src/runners/bootstrap.js');
     signUserToken = jwtMod.signUserToken;
     handleDispatch = dispatcherMod.handleDispatch;
+    // Register adapters so the claude-code runner resolves on dispatch.
+    bootstrapRunnerAdapters();
 
     app = new Hono<{ Variables: import('../../src/middleware/request-id.js').RequestIdVars }>();
     app.use('*', requestId());
@@ -87,7 +86,6 @@ describe('ISS-194 per-state override end-to-end', () => {
   }, 120_000);
 
   afterAll(async () => {
-    delete process.env.FEATURE_RUNNER_FRAMEWORK;
     delete process.env.FEATURE_PIPELINE_CONTROL;
     if (harness) await harness.cleanup();
   });
@@ -110,12 +108,26 @@ describe('ISS-194 per-state override end-to-end', () => {
     const project = await createTestProject(harness.db, owner.id);
     const device = await createTestDevice(harness.db, owner.id, { status: 'online' });
     await harness.db.execute(sql`UPDATE devices SET last_seen_at = now() WHERE id = ${device.id}`);
-    // Order matters: `setProjectActiveDevice` overwrites `agent_config`. Run
-    // it BEFORE the pipeline-config PATCH so the PATCH (which merges via
-    // `agent_config || patch::jsonb`) preserves `activeDeviceId`.
-    await setProjectActiveDevice(harness.db, project.id, device.id);
+    // Online claude-code runner bound to the device so `selectRunnerForJob`
+    // resolves it via the standby step (no defaultDeviceId pin needed).
+    const runnerId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO runners (id, project_id, type, host, device_id, name, capabilities, status, last_seen_at)
+      VALUES (
+        ${runnerId}, ${project.id}, 'claude-code', 'device', ${device.id},
+        ${`runner-${runnerId.slice(0, 8)}`}, ${'{"pm": true}'}::jsonb, 'online', now()
+      )
+    `);
     const token = await signUserToken(owner.id);
     return { ownerId: owner.id, projectId: project.id, deviceId: device.id, token };
+  }
+
+  // Runner cap is 1 in-flight; mark a dispatched job terminal so a second
+  // dispatch to the same runner isn't blocked by the runner_full barrier.
+  async function markJobDone(jobId: string): Promise<void> {
+    await harness.db.execute(sql`
+      UPDATE jobs SET status = 'done', finished_at = now() WHERE id = ${jobId}
+    `);
   }
 
   async function patchPipelineConfig(
@@ -278,6 +290,8 @@ describe('ISS-194 per-state override end-to-end', () => {
     const jobId1 = await insertCodeJob({ projectId, issueId: issueId1, ownerId });
     expect(await handleDispatch({ jobId: jobId1 })).toBe('dispatched');
     expect(jobAssignedCall().model).toBe('opus');
+    // Free the single runner's in-flight slot before the second dispatch.
+    await markJobDone(jobId1);
 
     // 2. Revert the override. `updatePipelineConfig` shallow-merges at the
     //    `pipelineConfig` level — sending `states.approved` without `model`

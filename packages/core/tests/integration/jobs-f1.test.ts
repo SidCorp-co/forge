@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -6,7 +7,6 @@ import {
   createTestProject,
   createTestProjectMember,
   createTestUser,
-  setProjectActiveDevice,
   setupTestDatabase,
   truncateAll,
 } from '../helpers/index.js';
@@ -15,6 +15,9 @@ import {
 //
 // Drives the dispatcher's handler function directly (not pg-boss) to keep the
 // test hermetic. pg-boss lifecycle is already covered in queue/boss.test.ts.
+//
+// ISS-267: the legacy device dispatch path was removed; these tests seed an
+// online `claude-code` runner so `selectRunnerForJob` resolves it.
 
 type JobsMods = {
   handleDispatch: typeof import('../../src/jobs/dispatcher.js').handleDispatch;
@@ -39,6 +42,10 @@ describe('F1 jobs integration', () => {
     process.env.NODE_ENV ??= 'test';
 
     const dispatcherMod = await import('../../src/jobs/dispatcher.js');
+    const { bootstrapRunnerAdapters } = await import('../../src/runners/bootstrap.js');
+    // Register adapters so `getRunnerAdapter('claude-code')` resolves on the
+    // dispatch path. Idempotent.
+    bootstrapRunnerAdapters();
     mods = { handleDispatch: dispatcherMod.handleDispatch };
   }, 60_000);
 
@@ -70,10 +77,29 @@ describe('F1 jobs integration', () => {
     return (rows[0] as { id: string }).id;
   }
 
-  it('dispatches a queued job when the project has an online active device', async () => {
+  // Seed a device + a `claude-code` runner bound to it. The runner is what
+  // `selectRunnerForJob` resolves (status='online' + fresh last_seen_at).
+  async function seedRunner(
+    projectId: string,
+    ownerId: string,
+    opts: { status?: 'online' | 'offline' } = {},
+  ): Promise<{ deviceId: string }> {
+    const device = await createTestDevice(harness.db, ownerId, { status: 'online' });
+    const runnerId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO runners (id, project_id, type, host, device_id, name, capabilities, status, last_seen_at)
+      VALUES (
+        ${runnerId}, ${projectId}, 'claude-code', 'device', ${device.id},
+        ${`runner-${runnerId.slice(0, 8)}`}, ${'{"pm": true}'}::jsonb,
+        ${opts.status ?? 'online'}, now()
+      )
+    `);
+    return { deviceId: device.id };
+  }
+
+  it('dispatches a queued job when the project has an online runner', async () => {
     const { owner, project } = await seed();
-    const device = await createTestDevice(harness.db, owner.id, { status: 'online' });
-    await setProjectActiveDevice(harness.db, project.id, device.id);
+    const { deviceId } = await seedRunner(project.id, owner.id);
 
     const jobId = await createJob(project.id, owner.id);
 
@@ -85,13 +111,13 @@ describe('F1 jobs integration', () => {
     `);
     const row = rows[0] as { status: string; device_id: string | null };
     expect(row.status).toBe('dispatched');
-    expect(row.device_id).toBe(device.id);
+    // The dispatcher mirrors the resolved runner's deviceId onto the job row.
+    expect(row.device_id).toBe(deviceId);
   });
 
-  it('leaves the job queued when the active device is offline', async () => {
+  it('leaves the job queued when the runner is offline', async () => {
     const { owner, project } = await seed();
-    const device = await createTestDevice(harness.db, owner.id, { status: 'offline' });
-    await setProjectActiveDevice(harness.db, project.id, device.id);
+    await seedRunner(project.id, owner.id, { status: 'offline' });
 
     const jobId = await createJob(project.id, owner.id);
 
@@ -106,7 +132,7 @@ describe('F1 jobs integration', () => {
     expect(row.device_id).toBeNull();
   });
 
-  it('leaves the job queued when no active device is configured', async () => {
+  it('leaves the job queued when no runner is online', async () => {
     const { owner, project } = await seed();
     const jobId = await createJob(project.id, owner.id);
 
@@ -121,8 +147,7 @@ describe('F1 jobs integration', () => {
 
   it('is a no-op on a non-queued job (idempotent against re-delivery)', async () => {
     const { owner, project } = await seed();
-    const device = await createTestDevice(harness.db, owner.id, { status: 'online' });
-    await setProjectActiveDevice(harness.db, project.id, device.id);
+    await seedRunner(project.id, owner.id);
 
     const jobId = await createJob(project.id, owner.id);
     await harness.db.execute(sql`UPDATE jobs SET status = 'running' WHERE id = ${jobId}`);

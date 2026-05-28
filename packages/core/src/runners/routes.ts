@@ -15,7 +15,6 @@ import {
   runnerTypes,
   runners,
 } from '../db/schema.js';
-import { isEnabled } from '../lib/feature-flags.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -34,9 +33,6 @@ const notFound = () =>
 
 const forbidden = (msg: string) =>
   new HTTPException(403, { message: msg, cause: { code: 'FORBIDDEN' } });
-
-const flagOff = () =>
-  new HTTPException(404, { message: 'runner framework disabled', cause: { code: 'FEATURE_OFF' } });
 
 function rowToRunner(r: typeof runners.$inferSelect): Runner {
   return {
@@ -95,11 +91,6 @@ const listQuery = z.object({
 });
 
 export const runnerRoutes = new Hono<{ Variables: AuthVars }>();
-
-runnerRoutes.use('*', async (c, next) => {
-  if (!isEnabled('runnerFramework')) throw flagOff();
-  await next();
-});
 
 runnerRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -412,7 +403,6 @@ runnerCallbackRoutes.post(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    if (!isEnabled('runnerFramework')) throw flagOff();
     const { id } = c.req.valid('param');
     const sigHeader = c.req.header('x-forge-signature') ?? '';
     const tsHeader = c.req.header('x-forge-timestamp') ?? '';
