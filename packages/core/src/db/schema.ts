@@ -1132,7 +1132,6 @@ export const memorySources = [
   'knowledge',
   'decision',
   'policy',
-  'step_handoff',
 ] as const;
 export type MemorySource = (typeof memorySources)[number];
 
@@ -2038,5 +2037,54 @@ export const uploadTickets = pgTable(
   (t) => ({
     targetIdx: index('upload_tickets_target_idx').on(t.targetType, t.targetId),
     expiresIdx: index('upload_tickets_expires_at_idx').on(t.expiresAt),
+  }),
+);
+
+/**
+ * Per-issue per-pipeline-run structured context (proposal Y).
+ *
+ * Stores the typed payload an agent writes at the end of a pipeline step
+ * (kind='handoff') so the next state's prompt can inject it instead of
+ * re-fetching the raw issue description / plan. Generic `kind` discriminator
+ * leaves room for future per-issue per-run artifacts (blocker notes,
+ * retrospectives, cross-step decisions) without another table.
+ *
+ * Lifecycle is fully derived: cascade delete from issues OR pipeline_runs.
+ * No embedding here — handoffs are queried by natural key
+ * `(issue_id, step, attempt)` in the hot path, not by similarity.
+ *
+ * Partial unique constraint enforces (issue, step, attempt) uniqueness for
+ * `kind='handoff'` rows only; future kinds can have multiple rows per
+ * (issue, step, attempt) without contention.
+ */
+export const issueStepContextKinds = ['handoff'] as const;
+export type IssueStepContextKind = (typeof issueStepContextKinds)[number];
+
+export const issueStepContexts = pgTable(
+  'issue_step_contexts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references((): AnyPgColumn => issues.id, { onDelete: 'cascade' }),
+    pipelineRunId: uuid('pipeline_run_id')
+      .notNull()
+      .references(() => pipelineRuns.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    step: text('step'),
+    attempt: integer('attempt').notNull().default(1),
+    payload: jsonb('payload').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    handoffUq: uniqueIndex('issue_step_contexts_handoff_uq')
+      .on(t.issueId, t.step, t.attempt)
+      .where(sql`${t.kind} = 'handoff'`),
+    issueKindIdx: index('issue_step_contexts_issue_kind_idx').on(t.issueId, t.kind),
+    runIdx: index('issue_step_contexts_run_idx').on(t.pipelineRunId),
   }),
 );

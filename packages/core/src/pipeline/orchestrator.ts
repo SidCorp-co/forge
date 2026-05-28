@@ -10,6 +10,7 @@ import {
 import { applyStatusTransition, type DeviceLite } from '../issues/apply-transition.js';
 import { resolveMergeStates } from '../issues/merged-at.js';
 import { buildJobPromptString } from '../jobs/prompt-string.js';
+import { fetchHandoffPromptInputs } from './handoff-prefetch.js';
 import { loadIssueSnapshot } from '../prompt/issue-snapshot.js';
 import { buildMergeRequiredBlock } from '../prompt/merge-required.js';
 import { logger } from '../logger.js';
@@ -264,6 +265,17 @@ export async function triggerPipelineStepManual(args: {
     mergeStates: resolveMergeStates(cfg),
     issueId: args.issueId,
   });
+  // Proposal Y — pre-fetch step handoffs scoped to this issue's current run
+  // so buildJobPromptString can render `## Prior step handoffs` + the
+  // `## Termination protocol` block with concrete scope literals.
+  const handoffInputs = await fetchHandoffPromptInputs({
+    projectId: args.projectId,
+    issueId: args.issueId,
+    pipelineRunId: run.id,
+    attempt: 1,
+    jobType: skillRef.type,
+    policy: stageCfg?.userPromptPolicy ?? null,
+  });
   const { jobId } = await insertAndEnqueueJob({
     projectId: args.projectId,
     issueId: args.issueId,
@@ -278,6 +290,8 @@ export async function triggerPipelineStepManual(args: {
       issueSnapshot,
       policy: stageCfg?.userPromptPolicy ?? null,
       mergeRequiredText,
+      priorHandoffs: handoffInputs.priorHandoffs,
+      handoffScope: handoffInputs.handoffScope,
     }),
     payloadExtras: {
       ...args.reason,
@@ -411,6 +425,15 @@ async function considerEnqueue(args: {
       mergeStates: resolveMergeStates(cfg),
       issueId: args.issueId,
     });
+    // Proposal Y — see manual-trigger comment.
+    const handoffInputs = await fetchHandoffPromptInputs({
+      projectId: args.projectId,
+      issueId: args.issueId,
+      pipelineRunId: run.id,
+      attempt: 1,
+      jobType: skillRef.type,
+      policy: stageCfg?.userPromptPolicy ?? null,
+    });
     const { jobId } = await insertAndEnqueueJob({
       projectId: args.projectId,
       issueId: args.issueId,
@@ -425,6 +448,8 @@ async function considerEnqueue(args: {
         issueSnapshot,
         policy: stageCfg?.userPromptPolicy ?? null,
         mergeRequiredText,
+        priorHandoffs: handoffInputs.priorHandoffs,
+        handoffScope: handoffInputs.handoffScope,
       }),
       payloadExtras: {
         ...args.reason,

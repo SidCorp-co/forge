@@ -21,6 +21,7 @@ const { verifyHandoffOrSkip } = await import('./handoff-verifier.js');
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const RUN_ID = '22222222-2222-4222-8222-222222222222';
+const ISSUE_ID = '33333333-3333-4333-8333-333333333333';
 
 beforeEach(() => {
   limit.mockReset();
@@ -66,6 +67,7 @@ describe('verifyHandoffOrSkip', () => {
     const r = await verifyHandoffOrSkip({
       projectId: PROJECT_ID,
       jobType: 'clarify',
+      issueId: ISSUE_ID,
       pipelineRunId: RUN_ID,
       attempt: 1,
       payload: { stageStatus: 'whatever' },
@@ -80,6 +82,7 @@ describe('verifyHandoffOrSkip', () => {
     const r = await verifyHandoffOrSkip({
       projectId: PROJECT_ID,
       jobType: 'plan',
+      issueId: ISSUE_ID,
       pipelineRunId: RUN_ID,
       attempt: 1,
       payload: {}, // no stageStatus
@@ -93,6 +96,7 @@ describe('verifyHandoffOrSkip', () => {
     const r = await verifyHandoffOrSkip({
       projectId: PROJECT_ID,
       jobType: 'plan',
+      issueId: ISSUE_ID,
       pipelineRunId: RUN_ID,
       attempt: 1,
       payload: { stageStatus: 'approved' },
@@ -106,6 +110,7 @@ describe('verifyHandoffOrSkip', () => {
     const r = await verifyHandoffOrSkip({
       projectId: PROJECT_ID,
       jobType: 'plan',
+      issueId: ISSUE_ID,
       pipelineRunId: RUN_ID,
       attempt: 1,
       payload: { stageStatus: 'approved' },
@@ -120,13 +125,14 @@ describe('verifyHandoffOrSkip', () => {
     const r = await verifyHandoffOrSkip({
       projectId: PROJECT_ID,
       jobType: 'plan',
+      issueId: ISSUE_ID,
       pipelineRunId: RUN_ID,
       attempt: 1,
       payload: { stageStatus: 'approved' },
       lastAssistantText: '...stuff\n\nDONE',
     });
     expect(r.ok).toBe(true);
-    expect(r.breadcrumb).toBe('memory.handoff_written_ok');
+    expect(r.breadcrumb).toBe('pipeline.handoff_written_ok');
   });
 
   it('FAILS with handoff_not_written when DONE is emitted but no row exists', async () => {
@@ -135,6 +141,7 @@ describe('verifyHandoffOrSkip', () => {
     const r = await verifyHandoffOrSkip({
       projectId: PROJECT_ID,
       jobType: 'plan',
+      issueId: ISSUE_ID,
       pipelineRunId: RUN_ID,
       attempt: 1,
       payload: { stageStatus: 'approved' },
@@ -143,7 +150,7 @@ describe('verifyHandoffOrSkip', () => {
     expect(r.ok).toBe(false);
     expect(r.failureKind).toBe('permanent');
     expect(r.failureReason).toMatch(/handoff_not_written/);
-    expect(r.breadcrumb).toBe('memory.handoff_not_written');
+    expect(r.breadcrumb).toBe('pipeline.handoff_not_written');
   });
 
   it('FAILS with handoff_validation_failed when last text ends with HANDOFF_GIVE_UP', async () => {
@@ -152,6 +159,7 @@ describe('verifyHandoffOrSkip', () => {
     const r = await verifyHandoffOrSkip({
       projectId: PROJECT_ID,
       jobType: 'plan',
+      issueId: ISSUE_ID,
       pipelineRunId: RUN_ID,
       attempt: 1,
       payload: { stageStatus: 'approved' },
@@ -159,7 +167,7 @@ describe('verifyHandoffOrSkip', () => {
     });
     expect(r.ok).toBe(false);
     expect(r.failureReason).toMatch(/handoff_validation_failed/);
-    expect(r.breadcrumb).toBe('memory.handoff_validation_failed');
+    expect(r.breadcrumb).toBe('pipeline.handoff_validation_failed');
   });
 
   it('returns OK with warning breadcrumb when marker is missing and policy=warn', async () => {
@@ -169,13 +177,14 @@ describe('verifyHandoffOrSkip', () => {
     const r = await verifyHandoffOrSkip({
       projectId: PROJECT_ID,
       jobType: 'plan',
+      issueId: ISSUE_ID,
       pipelineRunId: RUN_ID,
       attempt: 1,
       payload: { stageStatus: 'approved' },
       lastAssistantText: 'agent forgot the marker',
     });
     expect(r.ok).toBe(true);
-    expect(r.breadcrumb).toBe('memory.handoff_marker_missing');
+    expect(r.breadcrumb).toBe('pipeline.handoff_marker_missing');
   });
 
   it('FAILS with handoff_no_done_marker when marker is missing and policy=fail', async () => {
@@ -185,6 +194,7 @@ describe('verifyHandoffOrSkip', () => {
     const r = await verifyHandoffOrSkip({
       projectId: PROJECT_ID,
       jobType: 'plan',
+      issueId: ISSUE_ID,
       pipelineRunId: RUN_ID,
       attempt: 1,
       payload: { stageStatus: 'approved' },
@@ -192,7 +202,7 @@ describe('verifyHandoffOrSkip', () => {
     });
     expect(r.ok).toBe(false);
     expect(r.failureReason).toMatch(/handoff_no_done_marker/);
-    expect(r.breadcrumb).toBe('memory.handoff_no_done_marker');
+    expect(r.breadcrumb).toBe('pipeline.handoff_no_done_marker');
   });
 
   it('returns OK silently when marker is missing and policy=silent', async () => {
@@ -202,6 +212,7 @@ describe('verifyHandoffOrSkip', () => {
     const r = await verifyHandoffOrSkip({
       projectId: PROJECT_ID,
       jobType: 'plan',
+      issueId: ISSUE_ID,
       pipelineRunId: RUN_ID,
       attempt: 1,
       payload: { stageStatus: 'approved' },

@@ -23,6 +23,11 @@ import {
   forgeMemoryWriteTool,
 } from './tools/forge-memory.js';
 import {
+  forgeStepHandoffDeleteTool,
+  forgeStepHandoffGetTool,
+  forgeStepHandoffWriteTool,
+} from './tools/forge-step-handoff.js';
+import {
   forgeMetricsAdminStepDurationsTool,
   forgeMetricsProjectStepDurationsTool,
 } from './tools/forge-metrics.js';
@@ -164,6 +169,9 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeMemoryWriteTool(ctx.device),
     forgeMemoryGetTool(ctx.device),
     forgeMemoryDeleteTool(ctx.device),
+    forgeStepHandoffWriteTool(ctx.device),
+    forgeStepHandoffGetTool(ctx.device),
+    forgeStepHandoffDeleteTool(ctx.device),
     forgeSkillsListTool(ctx.device),
     forgeSkillsGetTool(ctx.device),
     forgeSkillsRegisterTool(ctx.device),

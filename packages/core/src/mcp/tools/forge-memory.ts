@@ -30,7 +30,7 @@ const searchInputSchema = z.object({
 export const forgeMemorySearchTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_memory.search',
   description:
-    'Semantic search over project memory (issues, comments, jobs, notes, knowledge, decisions, policies, step handoffs). Requires the authenticated device owner to be a member of the given projectId.',
+    'Semantic search over project memory (issues, comments, jobs, notes, knowledge, decisions, policies). Step handoffs live in their own table — use `forge_step_handoff.get` for those. Requires the authenticated device owner to be a member of the given projectId.',
   inputSchema: zodToMcpSchema(searchInputSchema),
   handler: async (args) => {
     const input = searchInputSchema.parse(args);

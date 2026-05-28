@@ -15,8 +15,8 @@ import {
 // End-to-end coverage for step-handoff (proposal Y).
 // Exercises the full happy + sad paths:
 //   1. Project config opts into handoffs for stage 'approved' / step 'plan'.
-//   2. A plan job runs; agent writes handoff via POST /api/memory, then
-//      reports completion with `summary: "...DONE"` via /api/jobs/:id/complete.
+//   2. A plan job runs; agent writes handoff via POST /api/issue-step-contexts,
+//      then reports completion with `summary: "...DONE"` via /api/jobs/:id/complete.
 //   3. The lifecycle hook (verifyHandoffOrSkip) confirms the row + flips job
 //      to `done`.
 //   4. Variant: agent emits DONE WITHOUT writing the row — job flips to
@@ -55,7 +55,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
     process.env.EMBEDDINGS_BASE_URL ??= 'https://stub.invalid';
     process.env.EMBEDDINGS_API_KEY ??= 'stub-key';
 
-    const { memoryWriteRoutes } = await import('../../src/memory/write-routes.js');
+    const { stepHandoffRoutes } = await import('../../src/pipeline/step-handoff-routes.js');
     const { jobLifecycleDeviceRoutes } = await import('../../src/jobs/lifecycle-routes.js');
     const { errorHandler } = await import('../../src/middleware/error.js');
     const { requestId } = await import('../../src/middleware/request-id.js');
@@ -67,7 +67,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
 
     app = new Hono<{ Variables: RequestIdVars }>();
     app.use('*', requestId());
-    app.route('/api/memory', memoryWriteRoutes);
+    app.route('/api/issue-step-contexts', stepHandoffRoutes);
     app.route('/api/jobs', jobLifecycleDeviceRoutes);
     app.onError(errorHandler);
   }, 120_000);
@@ -78,7 +78,8 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
 
   beforeEach(async () => {
     await truncateAll(harness.db);
-    // Stub embeddings so POST /api/memory works without a live LiteLLM proxy.
+    // Step handoffs no longer route through embeddings; the stub is harmless
+    // but kept for defence-in-depth in case a test pulls in memory paths.
     const fake = {
       embed: vi.fn(async () => hotVector(0)),
       embedBatch: vi.fn(async () => [hotVector(0)]),
@@ -178,28 +179,29 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
 
   it('writes handoff + emits DONE → job finalizes as done', async () => {
     const { projectId, userToken, device, deviceToken } = await seedProjectWithHandoffsEnabled();
-    const { jobId, runId } = await createPipelineRunAndJob({
+    const { jobId, runId, issueId } = await createPipelineRunAndJob({
       projectId,
       deviceId: device.id,
     });
 
-    // Step 1 — agent writes the handoff row.
-    const writeRes = await app.request('/api/memory', {
+    // Step 1 — agent writes the handoff row via the new endpoint.
+    const writeRes = await app.request('/api/issue-step-contexts', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${userToken}` },
       body: JSON.stringify({
         projectId,
-        source: 'step_handoff',
-        sourceRef: `run:${runId}/step:plan/attempt:1`,
-        textContent: JSON.stringify({
+        issueId,
+        pipelineRunId: runId,
+        step: 'plan',
+        attempt: 1,
+        payload: {
           step: 'plan',
           schema_version: 1,
           planSummary: 'Fix Safari ITP cookie handling',
           affectedFiles: ['src/auth/cookie.ts'],
           acceptanceChecklist: ['safari login passes'],
           unknowns: [],
-        }),
-        metadata: { run_id: runId, step: 'plan', attempt: 1 },
+        },
       }),
     });
     expect(writeRes.status).toBe(201);

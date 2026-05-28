@@ -133,6 +133,7 @@ jobLifecycleDeviceRoutes.post(
       const verdict = await verifyHandoffOrSkip({
         projectId: updated.projectId,
         jobType: updated.type,
+        issueId: updated.issueId,
         pipelineRunId: updated.pipelineRunId,
         attempt: updated.attempts,
         payload: updated.payload,

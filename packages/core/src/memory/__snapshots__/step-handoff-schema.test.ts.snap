@@ -89,26 +89,23 @@ exports[`renderTerminationBlock > renders a stable termination block for step=co
 
 When you have finished the work for this state:
 
-1. Call \`forge_memory.write\` with EXACTLY these scope fields (do not change them):
+1. Call \`forge_step_handoff.write\` with EXACTLY these scope fields (do not change them):
 
    \`\`\`json
    {
      "projectId": "p-1",
-     "source": "step_handoff",
-     "sourceRef": "run:r-1/step:code/attempt:1",
-     "textContent": <JSON.stringify(payload)>,
-     "metadata": {
-       "run_id": "r-1",
-       "step": "code",
-       "attempt": 1
-     }
+     "issueId": "i-1",
+     "pipelineRunId": "r-1",
+     "step": "code",
+     "attempt": 1,
+     "payload": <see schema below>
    }
    \`\`\`
 
 2. WAIT for the MCP tool to return success. If it returns a validation
-   error, fix the \`textContent\` payload and retry (max 3 attempts).
+   error, fix the \`payload\` and retry (max 3 attempts).
 
-3. ONLY AFTER \`forge_memory.write\` returns success, respond with exactly
+3. ONLY AFTER \`forge_step_handoff.write\` returns success, respond with exactly
        DONE
    on a new line as your final assistant text.
 
@@ -120,7 +117,7 @@ When you have finished the work for this state:
        HANDOFF_GIVE_UP
    with a one-line reason as your final text.
 
-Required JSON shape for the \`textContent\` payload (step="code"):
+Required JSON shape for the \`payload\` (step="code"):
 
 \`\`\`json
 {
@@ -152,26 +149,23 @@ exports[`renderTerminationBlock > renders a stable termination block for step=fi
 
 When you have finished the work for this state:
 
-1. Call \`forge_memory.write\` with EXACTLY these scope fields (do not change them):
+1. Call \`forge_step_handoff.write\` with EXACTLY these scope fields (do not change them):
 
    \`\`\`json
    {
      "projectId": "p-1",
-     "source": "step_handoff",
-     "sourceRef": "run:r-1/step:fix/attempt:1",
-     "textContent": <JSON.stringify(payload)>,
-     "metadata": {
-       "run_id": "r-1",
-       "step": "fix",
-       "attempt": 1
-     }
+     "issueId": "i-1",
+     "pipelineRunId": "r-1",
+     "step": "fix",
+     "attempt": 1,
+     "payload": <see schema below>
    }
    \`\`\`
 
 2. WAIT for the MCP tool to return success. If it returns a validation
-   error, fix the \`textContent\` payload and retry (max 3 attempts).
+   error, fix the \`payload\` and retry (max 3 attempts).
 
-3. ONLY AFTER \`forge_memory.write\` returns success, respond with exactly
+3. ONLY AFTER \`forge_step_handoff.write\` returns success, respond with exactly
        DONE
    on a new line as your final assistant text.
 
@@ -183,7 +177,7 @@ When you have finished the work for this state:
        HANDOFF_GIVE_UP
    with a one-line reason as your final text.
 
-Required JSON shape for the \`textContent\` payload (step="fix"):
+Required JSON shape for the \`payload\` (step="fix"):
 
 \`\`\`json
 {
@@ -214,26 +208,23 @@ exports[`renderTerminationBlock > renders a stable termination block for step=pl
 
 When you have finished the work for this state:
 
-1. Call \`forge_memory.write\` with EXACTLY these scope fields (do not change them):
+1. Call \`forge_step_handoff.write\` with EXACTLY these scope fields (do not change them):
 
    \`\`\`json
    {
      "projectId": "p-1",
-     "source": "step_handoff",
-     "sourceRef": "run:r-1/step:plan/attempt:1",
-     "textContent": <JSON.stringify(payload)>,
-     "metadata": {
-       "run_id": "r-1",
-       "step": "plan",
-       "attempt": 1
-     }
+     "issueId": "i-1",
+     "pipelineRunId": "r-1",
+     "step": "plan",
+     "attempt": 1,
+     "payload": <see schema below>
    }
    \`\`\`
 
 2. WAIT for the MCP tool to return success. If it returns a validation
-   error, fix the \`textContent\` payload and retry (max 3 attempts).
+   error, fix the \`payload\` and retry (max 3 attempts).
 
-3. ONLY AFTER \`forge_memory.write\` returns success, respond with exactly
+3. ONLY AFTER \`forge_step_handoff.write\` returns success, respond with exactly
        DONE
    on a new line as your final assistant text.
 
@@ -245,7 +236,7 @@ When you have finished the work for this state:
        HANDOFF_GIVE_UP
    with a one-line reason as your final text.
 
-Required JSON shape for the \`textContent\` payload (step="plan"):
+Required JSON shape for the \`payload\` (step="plan"):
 
 \`\`\`json
 {
@@ -270,26 +261,23 @@ exports[`renderTerminationBlock > renders a stable termination block for step=re
 
 When you have finished the work for this state:
 
-1. Call \`forge_memory.write\` with EXACTLY these scope fields (do not change them):
+1. Call \`forge_step_handoff.write\` with EXACTLY these scope fields (do not change them):
 
    \`\`\`json
    {
      "projectId": "p-1",
-     "source": "step_handoff",
-     "sourceRef": "run:r-1/step:review/attempt:1",
-     "textContent": <JSON.stringify(payload)>,
-     "metadata": {
-       "run_id": "r-1",
-       "step": "review",
-       "attempt": 1
-     }
+     "issueId": "i-1",
+     "pipelineRunId": "r-1",
+     "step": "review",
+     "attempt": 1,
+     "payload": <see schema below>
    }
    \`\`\`
 
 2. WAIT for the MCP tool to return success. If it returns a validation
-   error, fix the \`textContent\` payload and retry (max 3 attempts).
+   error, fix the \`payload\` and retry (max 3 attempts).
 
-3. ONLY AFTER \`forge_memory.write\` returns success, respond with exactly
+3. ONLY AFTER \`forge_step_handoff.write\` returns success, respond with exactly
        DONE
    on a new line as your final assistant text.
 
@@ -301,7 +289,7 @@ When you have finished the work for this state:
        HANDOFF_GIVE_UP
    with a one-line reason as your final text.
 
-Required JSON shape for the \`textContent\` payload (step="review"):
+Required JSON shape for the \`payload\` (step="review"):
 
 \`\`\`json
 {
@@ -328,26 +316,23 @@ exports[`renderTerminationBlock > renders a stable termination block for step=te
 
 When you have finished the work for this state:
 
-1. Call \`forge_memory.write\` with EXACTLY these scope fields (do not change them):
+1. Call \`forge_step_handoff.write\` with EXACTLY these scope fields (do not change them):
 
    \`\`\`json
    {
      "projectId": "p-1",
-     "source": "step_handoff",
-     "sourceRef": "run:r-1/step:test/attempt:1",
-     "textContent": <JSON.stringify(payload)>,
-     "metadata": {
-       "run_id": "r-1",
-       "step": "test",
-       "attempt": 1
-     }
+     "issueId": "i-1",
+     "pipelineRunId": "r-1",
+     "step": "test",
+     "attempt": 1,
+     "payload": <see schema below>
    }
    \`\`\`
 
 2. WAIT for the MCP tool to return success. If it returns a validation
-   error, fix the \`textContent\` payload and retry (max 3 attempts).
+   error, fix the \`payload\` and retry (max 3 attempts).
 
-3. ONLY AFTER \`forge_memory.write\` returns success, respond with exactly
+3. ONLY AFTER \`forge_step_handoff.write\` returns success, respond with exactly
        DONE
    on a new line as your final assistant text.
 
@@ -359,7 +344,7 @@ When you have finished the work for this state:
        HANDOFF_GIVE_UP
    with a one-line reason as your final text.
 
-Required JSON shape for the \`textContent\` payload (step="test"):
+Required JSON shape for the \`payload\` (step="test"):
 
 \`\`\`json
 {
@@ -386,26 +371,23 @@ exports[`renderTerminationBlock > renders a stable termination block for step=tr
 
 When you have finished the work for this state:
 
-1. Call \`forge_memory.write\` with EXACTLY these scope fields (do not change them):
+1. Call \`forge_step_handoff.write\` with EXACTLY these scope fields (do not change them):
 
    \`\`\`json
    {
      "projectId": "p-1",
-     "source": "step_handoff",
-     "sourceRef": "run:r-1/step:triage/attempt:1",
-     "textContent": <JSON.stringify(payload)>,
-     "metadata": {
-       "run_id": "r-1",
-       "step": "triage",
-       "attempt": 1
-     }
+     "issueId": "i-1",
+     "pipelineRunId": "r-1",
+     "step": "triage",
+     "attempt": 1,
+     "payload": <see schema below>
    }
    \`\`\`
 
 2. WAIT for the MCP tool to return success. If it returns a validation
-   error, fix the \`textContent\` payload and retry (max 3 attempts).
+   error, fix the \`payload\` and retry (max 3 attempts).
 
-3. ONLY AFTER \`forge_memory.write\` returns success, respond with exactly
+3. ONLY AFTER \`forge_step_handoff.write\` returns success, respond with exactly
        DONE
    on a new line as your final assistant text.
 
@@ -417,7 +399,7 @@ When you have finished the work for this state:
        HANDOFF_GIVE_UP
    with a one-line reason as your final text.
 
-Required JSON shape for the \`textContent\` payload (step="triage"):
+Required JSON shape for the \`payload\` (step="triage"):
 
 \`\`\`json
 {

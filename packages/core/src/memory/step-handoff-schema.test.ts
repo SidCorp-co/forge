@@ -151,6 +151,9 @@ describe('renderTerminationBlock', () => {
     expect(out).toContain('HANDOFF_GIVE_UP');
     // Sanity: scope literals embedded so the agent doesn't guess them.
     expect(out).toContain(`"projectId": "${scope.projectId}"`);
-    expect(out).toContain(`"sourceRef": "run:${scope.runId}/step:${step}/attempt:${scope.attempt}"`);
+    expect(out).toContain(`"issueId": "${scope.issueId}"`);
+    expect(out).toContain(`"pipelineRunId": "${scope.runId}"`);
+    expect(out).toContain(`"step": "${step}"`);
+    expect(out).toContain('forge_step_handoff.write');
   });
 });

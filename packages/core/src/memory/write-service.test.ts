@@ -17,7 +17,7 @@ describe('writeMemoryInputSchema', () => {
   it('accepts a minimal valid payload', () => {
     const r = writeMemoryInputSchema.safeParse({
       projectId: PROJECT_ID,
-      source: 'step_handoff',
+      source: 'note',
       sourceRef: 'run:1/step:plan/attempt:1',
       textContent: 'hello',
     });
@@ -93,7 +93,7 @@ describe('runMemoryWrite', () => {
 
     const r = await runMemoryWrite({
       projectId: PROJECT_ID,
-      source: 'step_handoff',
+      source: 'note',
       sourceRef: 'run:1/step:plan/attempt:1',
       textContent: 'handoff text',
       metadata: { run_id: 'run-1', step: 'plan', attempt: 1 },
@@ -102,7 +102,7 @@ describe('runMemoryWrite', () => {
     expect(r).toBe(fakeResult);
     expect(indexMemoryMock).toHaveBeenCalledWith({
       projectId: PROJECT_ID,
-      source: 'step_handoff',
+      source: 'note',
       sourceRef: 'run:1/step:plan/attempt:1',
       text: 'handoff text',
       metadata: { run_id: 'run-1', step: 'plan', attempt: 1 },

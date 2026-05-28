@@ -309,7 +309,10 @@ describe('buildJobPromptString — step-handoff (proposal Y)', () => {
     });
     expect(out).toContain('## Termination protocol');
     expect(out).toContain('"projectId": "p-1"');
-    expect(out).toContain('"sourceRef": "run:r-1/step:triage/attempt:1"');
+    expect(out).toContain('"issueId": "iss-1"');
+    expect(out).toContain('"pipelineRunId": "r-1"');
+    expect(out).toContain('"step": "triage"');
+    expect(out).toContain('forge_step_handoff.write');
     expect(out).toContain('DONE');
   });
 

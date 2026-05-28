@@ -354,7 +354,7 @@ export function buildJobPromptString(args: {
   mergeRequiredText?: string | null;
   /**
    * Step-handoff injection (proposal Y). Pre-fetched by the caller from
-   * `memories` (source='step_handoff') for the current pipeline_run. When
+   * `issue_step_contexts` (kind='handoff') for the current issue. When
    * `policy.handoffs.enabled`, the prompt renders these under
    * `## Prior step handoffs` and drops overlapping raw fields (triage drops
    * `description`, plan drops `plan`).

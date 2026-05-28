@@ -115,7 +115,7 @@ describe('forge_memory.write tool', () => {
     const tool = forgeMemoryWriteTool(fakeDevice);
     const r = await tool.handler({
       projectId: PROJECT_ID,
-      source: 'step_handoff',
+      source: 'note',
       sourceRef: 'run:1/step:plan/attempt:1',
       textContent: 'plan handoff text',
       metadata: { run_id: 'run-1', step: 'plan', attempt: 1 },
@@ -200,7 +200,7 @@ describe('forge_memory.get tool', () => {
     const tool = forgeMemoryGetTool(fakeDevice);
     const r = await tool.handler({
       projectId: PROJECT_ID,
-      source: 'step_handoff',
+      source: 'note',
       metadataFilter: { run_id: 'r-1', step: 'plan', attempt: 1 },
     });
 
@@ -229,14 +229,14 @@ describe('forge_memory.delete tool', () => {
     const tool = forgeMemoryDeleteTool(fakeDevice);
     const r = await tool.handler({
       projectId: PROJECT_ID,
-      source: 'step_handoff',
+      source: 'note',
       sourceRef: 'run:1/step:plan/attempt:1',
     });
 
     expect(r).toEqual({ deleted: true });
     expect(deleteMemoryMock).toHaveBeenCalledWith(
       PROJECT_ID,
-      'step_handoff',
+      'note',
       'run:1/step:plan/attempt:1',
     );
   });
@@ -272,9 +272,9 @@ describe('forge_memory.delete tool', () => {
 });
 
 describe('forge_memory.search tool (regression after enum + description change)', () => {
-  it('mentions step_handoff in its description so agents know to filter on it', () => {
+  it('points agents at forge_step_handoff.get for handoff lookups', () => {
     const tool = forgeMemorySearchTool(fakeDevice);
-    expect(tool.description.toLowerCase()).toContain('step handoff');
+    expect(tool.description).toContain('forge_step_handoff.get');
   });
 
   it('still routes to runMemorySearch with the parsed input', async () => {
@@ -285,7 +285,7 @@ describe('forge_memory.search tool (regression after enum + description change)'
     const r = await tool.handler({
       projectId: PROJECT_ID,
       query: 'find similar plans',
-      sourceFilter: ['step_handoff'],
+      sourceFilter: ['note'],
     });
 
     expect(r).toMatchObject({ hits: [], took_ms: 1 });

@@ -19,9 +19,9 @@
  * status (keeps the test surface narrow + the side-effect graph explicit).
  */
 
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type JobType, memories, projects } from '../db/schema.js';
+import { type JobType, issueStepContexts, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { isHandoffStep } from '../memory/step-handoff-schema.js';
 import { extractStageStatus } from './stage-overrides.js';
@@ -84,19 +84,20 @@ async function loadHandoffPolicyForJob(args: {
 
 async function findHandoffRow(args: {
   projectId: string;
-  runId: string;
+  issueId: string;
   step: JobType;
   attempt: number;
 }): Promise<{ id: string } | null> {
-  const filter = { run_id: args.runId, step: args.step, attempt: args.attempt };
   const [row] = await db
-    .select({ id: memories.id })
-    .from(memories)
+    .select({ id: issueStepContexts.id })
+    .from(issueStepContexts)
     .where(
       and(
-        eq(memories.projectId, args.projectId),
-        eq(memories.source, 'step_handoff'),
-        sql`${memories.metadata} @> ${JSON.stringify(filter)}::jsonb`,
+        eq(issueStepContexts.projectId, args.projectId),
+        eq(issueStepContexts.issueId, args.issueId),
+        eq(issueStepContexts.kind, 'handoff'),
+        eq(issueStepContexts.step, args.step),
+        eq(issueStepContexts.attempt, args.attempt),
       ),
     )
     .limit(1);
@@ -111,6 +112,7 @@ async function findHandoffRow(args: {
 export async function verifyHandoffOrSkip(args: {
   projectId: string;
   jobType: JobType;
+  issueId: string | null;
   pipelineRunId: string | null;
   attempt: number;
   payload: unknown;
@@ -126,9 +128,9 @@ export async function verifyHandoffOrSkip(args: {
     payload: args.payload,
   });
   if (!policy?.enabled || !policy.requireHandoffWrite) return OK;
-  if (!args.pipelineRunId) {
-    // Handoff scope requires a runId. A job without one bypassed the
-    // pipeline_run pathway entirely — don't enforce.
+  if (!args.issueId || !args.pipelineRunId) {
+    // Handoff scope requires an issue + run. Jobs without either bypassed
+    // the issue-bound pipeline pathway entirely — don't enforce.
     return OK;
   }
 
@@ -141,14 +143,14 @@ export async function verifyHandoffOrSkip(args: {
       ok: false,
       failureKind: 'permanent',
       failureReason: 'handoff_validation_failed: agent emitted HANDOFF_GIVE_UP',
-      breadcrumb: 'memory.handoff_validation_failed',
+      breadcrumb: 'pipeline.handoff_validation_failed',
     };
   }
 
   if (endsDone) {
     const row = await findHandoffRow({
       projectId: args.projectId,
-      runId: args.pipelineRunId,
+      issueId: args.issueId,
       step: args.jobType,
       attempt: args.attempt,
     });
@@ -157,11 +159,11 @@ export async function verifyHandoffOrSkip(args: {
         ok: false,
         failureKind: 'permanent',
         failureReason:
-          'handoff_not_written: agent emitted DONE but no memory_sources row was found',
-        breadcrumb: 'memory.handoff_not_written',
+          'handoff_not_written: agent emitted DONE but no issue_step_contexts row was found',
+        breadcrumb: 'pipeline.handoff_not_written',
       };
     }
-    return { ok: true, breadcrumb: 'memory.handoff_written_ok' };
+    return { ok: true, breadcrumb: 'pipeline.handoff_written_ok' };
   }
 
   // Neither DONE nor HANDOFF_GIVE_UP — branch on policy.
@@ -171,12 +173,13 @@ export async function verifyHandoffOrSkip(args: {
         ok: false,
         failureKind: 'permanent',
         failureReason: `handoff_no_done_marker: last text did not end with DONE or HANDOFF_GIVE_UP (got ${JSON.stringify(lastText.slice(-80))})`,
-        breadcrumb: 'memory.handoff_no_done_marker',
+        breadcrumb: 'pipeline.handoff_no_done_marker',
       };
     case 'warn':
       logger.warn(
         {
           projectId: args.projectId,
+          issueId: args.issueId,
           runId: args.pipelineRunId,
           step: args.jobType,
           attempt: args.attempt,
@@ -184,7 +187,7 @@ export async function verifyHandoffOrSkip(args: {
         },
         'handoff-verifier: missing DONE marker (warn mode — finalizing anyway)',
       );
-      return { ok: true, breadcrumb: 'memory.handoff_marker_missing' };
+      return { ok: true, breadcrumb: 'pipeline.handoff_marker_missing' };
     case 'silent':
       return OK;
   }

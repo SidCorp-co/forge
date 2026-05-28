@@ -39,7 +39,7 @@ describe('getMemoryInputSchema', () => {
   it('accepts a fully-specified payload including metadataFilter', () => {
     const r = getMemoryInputSchema.safeParse({
       projectId: PROJECT_ID,
-      source: 'step_handoff',
+      source: 'note',
       sourceRef: 'run:1/step:plan/attempt:1',
       metadataFilter: { run_id: 'r-1', step: 'plan', attempt: 1, finalized: true },
       limit: 10,
@@ -74,7 +74,7 @@ describe('runMemoryGet', () => {
     // 1st select: count → returns [{n: 3}]
     // 2nd select: rows → returns 3 rows
     const fakeRows = [
-      { id: 'm-1', projectId: PROJECT_ID, source: 'step_handoff', sourceRef: 'r-1',
+      { id: 'm-1', projectId: PROJECT_ID, source: 'note', sourceRef: 'r-1',
         textContent: 't', metadata: {}, embeddedAt: new Date(), createdAt: new Date(),
         updatedAt: new Date() },
     ];
@@ -87,7 +87,7 @@ describe('runMemoryGet', () => {
 
     const r = await runMemoryGet({
       projectId: PROJECT_ID,
-      source: 'step_handoff',
+      source: 'note',
       metadataFilter: { run_id: 'r-1' },
       limit: 50,
       offset: 0,
