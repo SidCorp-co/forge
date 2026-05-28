@@ -11,6 +11,7 @@ Planned features that are not yet implemented. When a proposal ships, its doc mo
 | [pipeline-wave-2.md](pipeline-wave-2.md) | Draft | Prompt observability + cost analytics + budgets + Phase 2 optimizations |
 | [integration-framework.md](integration-framework.md) | Draft | One polymorphic framework for Coolify (deploy) + Sentry (errors) + Human-Task (PM tool) external integrations |
 | [step-handoff-memory.md](step-handoff-memory.md) | Draft | In-session compaction → memory store; replace raw description/plan injection across pipeline states |
+| [forge-runner-cli.md](forge-runner-cli.md) | Draft | Thay `packages/dev` (Tauri) bằng CLI daemon thuần Rust — broker core↔runner, lib tách riêng cho đa-runner |
 
 ## Naming convention
 
