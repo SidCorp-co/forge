@@ -11,16 +11,23 @@ import { formatApiError } from '@/lib/api/error';
 import type { IssueStatus } from '@/features/issue/types';
 import { AttentionQueue } from './attention-queue';
 import { PipelineFeed } from './pipeline-feed';
+import { PipelineActivityPanel } from './pipeline-activity-panel';
 import { usePipelineActivity } from '../hooks/use-pipeline-activity';
 import { CostVelocityPanel } from './cost-velocity-panel';
 import { ContinueSetupBanner } from './continue-setup-banner';
 import { ProjectOnboardingChecklist } from './project-onboarding-checklist';
+import { projectRoom } from '@/lib/ws/rooms';
+import { useRoom } from '@/lib/ws/use-room';
 
 export function ProjectDashboard() {
   const { slug } = useParams<{ slug: string }>();
   const project = useProjectBySlug(slug);
   const { data, isLoading, error } = useProjectsHealth();
   const { running, queued, recentCompleted, isLoading: pipelineLoading } = usePipelineActivity(slug);
+
+  // Live job/pipeline-run updates: the WS router invalidates ['jobs','list'] /
+  // ['pipeline-runs','list'] on job.* and pipeline_run.status_changed events.
+  useRoom(project ? projectRoom(project.id) : null);
 
   const row = data?.find((r) => r.projectSlug === slug);
 
@@ -88,6 +95,8 @@ export function ProjectDashboard() {
           accent={row.pendingEscalations > 0 ? 'text-warning' : undefined}
         />
       </div>
+
+      {project && <PipelineActivityPanel projectId={project.id} slug={slug} />}
 
       {(pipelineLoading || hasPipelineActivity) && (
         <section className="space-y-2">
