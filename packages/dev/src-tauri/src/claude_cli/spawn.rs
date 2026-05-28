@@ -1,8 +1,10 @@
 use super::{log, AgentSession, AgentStatus, Sessions, prune_sessions};
 pub(crate) use super::platform::to_wsl_path;
 use serde_json::Value;
+use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
+use tokio::sync::Mutex as TokioMutex;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
@@ -457,6 +459,15 @@ pub(crate) async fn spawn_and_stream(
     // Bounded channel for backpressure between stdout reader and event emitter
     let (tx, mut rx) = mpsc::channel::<Value>(100);
 
+    // Shared stream outcome — (succeeded, usage_limit_msg) — written by the
+    // stdout reader AS IT PARSES each line, so the completion task can read the
+    // captured result even if the reader is later aborted while still parked on
+    // a stdout pipe that never reaches EOF (ISS-264: MCP server grandchildren
+    // spawned by `claude` keep the pipe open after `claude` itself exits).
+    let outcome: Arc<TokioMutex<(Option<bool>, Option<String>)>> =
+        Arc::new(TokioMutex::new((None, None)));
+    let outcome_reader = outcome.clone();
+
     let stderr_handle = tokio::spawn(async move {
         let mut err_output = String::new();
         let mut err_reader = BufReader::new(stderr);
@@ -467,13 +478,14 @@ pub(crate) async fn spawn_and_stream(
         err_output
     });
 
-    // Stdout reader: parse JSONL and send to channel
+    // Stdout reader: parse JSONL and send to channel. Captured result state is
+    // pushed to `outcome` / the session row incrementally (not returned at EOF)
+    // so it survives an abort of this task — see the completion task below.
     let stdout_reader = tokio::spawn(async move {
         let reader = BufReader::new(stdout);
         let mut lines = reader.lines();
-        let mut succeeded: Option<bool> = None;
-        let mut captured_claude_session_id: Option<String> = None;
-        let mut usage_limit_msg: Option<String> = None;
+        let mut captured_sid = false;
+        let mut captured_usage_limit = false;
 
         while let Ok(Some(line)) = lines.next_line().await {
             log(&format!("[stdout] {}", line.chars().take(200).collect::<String>()));
@@ -488,24 +500,31 @@ pub(crate) async fn spawn_and_stream(
                 ));
             }
             if let Ok(json) = parsed {
-                // Capture claude session ID from the stream
-                if captured_claude_session_id.is_none() {
+                // Capture claude session ID from the stream — persist inline to
+                // the session row so the completion task can read it even if
+                // this reader never observes EOF (ISS-264).
+                if !captured_sid {
                     if let Some(sid) = json.get("session_id").and_then(|v| v.as_str()) {
-                        captured_claude_session_id = Some(sid.to_string());
+                        let mut s = sessions_for_capture.lock().await;
+                        if let Some(session) = s.get_mut(&sid2) {
+                            session.claude_session_id = Some(sid.to_string());
+                        }
+                        captured_sid = true;
                     }
                 }
 
                 // Detect usage limit in message content or system messages
-                if usage_limit_msg.is_none() {
+                if !captured_usage_limit {
                     if let Some(msg) = detect_usage_limit(&json) {
                         log(&format!("[stdout] USAGE LIMIT DETECTED: {msg}"));
-                        usage_limit_msg = Some(msg);
+                        outcome_reader.lock().await.1 = Some(msg);
+                        captured_usage_limit = true;
                     }
                 }
 
                 if json.get("type").and_then(|t| t.as_str()) == Some("result") {
                     let is_error = json.get("is_error").and_then(|v| v.as_bool()).unwrap_or(true);
-                    succeeded = Some(!is_error);
+                    outcome_reader.lock().await.0 = Some(!is_error);
                 }
                 if tx.send(json).await.is_err() {
                     log("[stdout] event channel closed");
@@ -514,16 +533,7 @@ pub(crate) async fn spawn_and_stream(
             }
         }
 
-        // Store captured session ID
-        if let Some(ref cid) = captured_claude_session_id {
-            let mut s = sessions_for_capture.lock().await;
-            if let Some(session) = s.get_mut(&sid2) {
-                session.claude_session_id = Some(cid.clone());
-            }
-        }
-
         log("[stdout] stream ended");
-        (succeeded, usage_limit_msg)
     });
 
     // Event emitter: reads from channel, emits to Tauri frontend
@@ -541,33 +551,98 @@ pub(crate) async fn spawn_and_stream(
 
     let sid_complete = session_id.clone();
     let sessions2 = sessions.clone();
+    let outcome_complete = outcome.clone();
     tokio::spawn(async move {
-        // Wait for stdout. When `agent_timeout` is Some, apply the cap;
-        // otherwise wait indefinitely (the server-side heartbeat sweeper
-        // catches truly abandoned sessions).
-        let (succeeded, usage_limit_msg) = match agent_timeout {
-            Some(d) => match tokio::time::timeout(d, stdout_reader).await {
-                Ok(Ok((s, ulm))) => (s.unwrap_or(false), ulm),
-                Ok(Err(_)) => (false, None), // join error
-                Err(_) => {
-                    log(&format!("[timeout] session={sid_complete} exceeded {}s", d.as_secs()));
-                    let mut s = sessions2.lock().await;
-                    if let Some(session) = s.get_mut(&sid_complete) {
-                        if let Some(mut child) = session.child.take() {
-                            graceful_kill(&mut child).await;
-                        }
+        // Wait for the agent to finish. We must NOT rely on stdout EOF alone:
+        // MCP server grandchildren spawned by `claude` can keep the stdout (and
+        // stderr) pipe open after `claude` itself has exited, so the reader
+        // would block forever on a pipe that never reaches EOF. That hang meant
+        // `agent:complete` was never emitted, the runner never POSTed
+        // /api/jobs/:id/complete, and the job sat at `dispatched` until the
+        // server's heartbeat sweeper falsely reaped it (ISS-264). So we race the
+        // stream end against the child-process exit; once the process is gone we
+        // grant the reader a short grace to drain, then stop waiting and reap
+        // the whole process group. When `agent_timeout` is Some we also cap the
+        // total wait; otherwise we wait for one of the two signals (the
+        // server-side heartbeat sweeper still backstops a truly hung `claude`).
+        let mut reader = stdout_reader;
+        let sessions_poll = sessions2.clone();
+        let sid_poll = sid_complete.clone();
+        let exit_poll = async move {
+            loop {
+                {
+                    let mut s = sessions_poll.lock().await;
+                    match s.get_mut(&sid_poll) {
+                        // try_wait reports exit without blocking or reaping.
+                        Some(session) => match session.child.as_mut() {
+                            Some(child) => match child.try_wait() {
+                                Ok(Some(_status)) => break, // process exited
+                                Ok(None) => {}              // still running
+                                Err(_) => break,            // treat error as gone
+                            },
+                            None => break, // child already taken (aborted)
+                        },
+                        None => break, // session gone
                     }
-                    drop(s);
-                    (false, None)
                 }
-            },
-            None => match stdout_reader.await {
-                Ok((s, ulm)) => (s.unwrap_or(false), ulm),
-                Err(_) => (false, None), // join error
-            },
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
         };
 
-        let err_output = stderr_handle.await.unwrap_or_default();
+        match agent_timeout {
+            Some(d) => {
+                tokio::select! {
+                    _ = &mut reader => {}
+                    _ = exit_poll => {
+                        // process exited; let the reader flush buffered lines.
+                        let _ = tokio::time::timeout(Duration::from_secs(2), &mut reader).await;
+                    }
+                    _ = tokio::time::sleep(d) => {
+                        log(&format!("[timeout] session={sid_complete} exceeded {}s", d.as_secs()));
+                    }
+                }
+            }
+            None => {
+                tokio::select! {
+                    _ = &mut reader => {}
+                    _ = exit_poll => {
+                        let _ = tokio::time::timeout(Duration::from_secs(2), &mut reader).await;
+                    }
+                }
+            }
+        }
+
+        // Stop the reader if it's still parked on a non-EOF pipe.
+        reader.abort();
+
+        // Result captured incrementally by the reader (valid even after abort —
+        // the `result` line is parsed long before the pipe would EOF).
+        let (succeeded_opt, usage_limit_msg) = {
+            let o = outcome_complete.lock().await;
+            (o.0, o.1.clone())
+        };
+        let succeeded = succeeded_opt.unwrap_or(false);
+
+        // Reap the child + its process group now, so lingering MCP grandchildren
+        // don't pile up and their open pipe FDs are released. The child may
+        // already have exited (exit_poll path) — graceful_kill handles that and
+        // still SIGTERMs the group to clean up grandchildren.
+        {
+            let mut s = sessions2.lock().await;
+            if let Some(session) = s.get_mut(&sid_complete) {
+                if let Some(mut child) = session.child.take() {
+                    graceful_kill(&mut child).await;
+                }
+            }
+        }
+
+        // stderr: same leaked-pipe risk as stdout — bound the wait so a held
+        // pipe can't hang completion. Once the process group is gone the FD is
+        // released and this returns immediately.
+        let err_output = match tokio::time::timeout(Duration::from_secs(3), stderr_handle).await {
+            Ok(Ok(s)) => s,
+            _ => String::new(),
+        };
 
         // Also check stderr for usage limit message
         let usage_limit_from_stderr = if usage_limit_msg.is_none() {
@@ -585,18 +660,17 @@ pub(crate) async fn spawn_and_stream(
         // Usage limit forces failure regardless of CLI exit code
         let succeeded = if final_usage_limit.is_some() { false } else { succeeded };
 
-        // Wait for emitter to flush
-        let _ = emitter_handle.await;
+        // Wait for emitter to flush (bounded — aborting the reader drops its tx
+        // which closes the channel, so this normally returns at once).
+        let _ = tokio::time::timeout(Duration::from_secs(2), emitter_handle).await;
         log(&format!("[complete] succeeded={succeeded} usage_limit={}", final_usage_limit.is_some()));
 
+        // Child was already reaped above (graceful_kill). Just record final
+        // status and read back the claude session id for the complete event.
         let captured_cid = {
             let mut s = sessions2.lock().await;
             let cid = s.get(&sid_complete).and_then(|x| x.claude_session_id.clone());
             if let Some(session) = s.get_mut(&sid_complete) {
-                // Reap child process to avoid zombies
-                if let Some(mut child) = session.child.take() {
-                    let _ = child.wait().await;
-                }
                 session.status = if succeeded {
                     AgentStatus::Completed
                 } else {
