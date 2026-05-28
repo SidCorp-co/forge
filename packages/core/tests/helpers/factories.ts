@@ -137,16 +137,3 @@ export async function createTestDevice(
 
   return device;
 }
-
-export async function setProjectActiveDevice(
-  db: TestDb,
-  projectId: string,
-  deviceId: string | null,
-): Promise<void> {
-  const cfg = deviceId === null ? null : { activeDeviceId: deviceId };
-  await db.execute(sql`
-    UPDATE projects
-    SET agent_config = ${cfg === null ? sql`NULL` : sql`${JSON.stringify(cfg)}::jsonb`}
-    WHERE id = ${projectId}
-  `);
-}

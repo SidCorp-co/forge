@@ -451,8 +451,9 @@ export const jobs = pgTable(
       .notNull()
       .references(() => pipelineRuns.id, { onDelete: 'restrict' }),
     deviceId: uuid('device_id').references(() => devices.id, { onDelete: 'set null' }),
-    // EPIC 2 (ISS-271): nullable runner FK. Dispatcher writes both deviceId
-    // and runnerId for runnerFramework=on; only deviceId for legacy path.
+    // EPIC 2 (ISS-271): nullable runner FK. The dispatcher writes both
+    // deviceId and runnerId on dispatch; device-bound runners mirror
+    // runner.deviceId here, remote runners leave it null.
     runnerId: uuid('runner_id').references((): AnyPgColumn => runners.id, { onDelete: 'set null' }),
     createdBy: uuid('created_by')
       .notNull()

@@ -1,11 +1,9 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { devices, jobs, projects, runners } from '../db/schema.js';
+import { jobs, projects, runners } from '../db/schema.js';
 import type { JobType, RunnerType } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
-import { dispatchLivenessMs, isLastSeenFresh } from '../lib/dispatch-liveness.js';
-import { isEnabled } from '../lib/feature-flags.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
 import { computeHoldUntil } from '../pipeline/hold-policy.js';
@@ -16,9 +14,6 @@ import { boss } from '../queue/boss.js';
 import { getRunnerAdapter } from '../runners/registry.js';
 import { selectRunnerForJob } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
-import { deviceRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
-import { getActiveDeviceId } from './active-device.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
 import {
   recordDispatchBarrierSkip,
@@ -99,10 +94,10 @@ export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched'
     return 'skipped';
   }
 
-  // W2.3.2 — pre-dispatch monthly budget gate. Sits ahead of both the
-  // legacy device path and the runner path so the cap binds regardless of
-  // the runnerFramework flag. PM jobs flow through `handlePmDispatch` and
-  // therefore bypass this check by construction — see W2.3.2 PR notes.
+  // W2.3.2 — pre-dispatch monthly budget gate. Sits ahead of runner
+  // selection so the cap binds on every dispatch. PM jobs flow through
+  // `handlePmDispatch` and therefore bypass this check by construction —
+  // see W2.3.2 PR notes.
   const budgetCheck = await checkMonthlyBudget(job);
   if (budgetCheck.action === 'pause') {
     await db
@@ -171,10 +166,7 @@ export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched'
     });
   }
 
-  if (isEnabled('runnerFramework')) {
-    return dispatchViaRunner(job);
-  }
-  return dispatchViaDevice(job);
+  return dispatchViaRunner(job);
 }
 
 /**
@@ -223,123 +215,6 @@ export async function handlePmDispatch(msg: DispatchMessage): Promise<'dispatche
     return 'skipped';
   }
   return dispatchViaRunner(job, { pm: true }, ['claude-code']);
-}
-
-async function dispatchViaDevice(job: typeof jobs.$inferSelect): Promise<'dispatched' | 'skipped'> {
-  const deviceId = await getActiveDeviceId(job.projectId);
-  if (!deviceId) {
-    logger.warn(
-      { jobId: job.id, projectId: job.projectId },
-      'dispatcher: no active device, leaving queued',
-    );
-    return 'skipped';
-  }
-
-  const [device] = await db.select().from(devices).where(eq(devices.id, deviceId)).limit(1);
-  if (!device) {
-    logger.warn({ jobId: job.id, deviceId }, 'dispatcher: active device not found, leaving queued');
-    return 'skipped';
-  }
-  if (device.status !== 'online') {
-    logger.warn(
-      { jobId: job.id, deviceId, status: device.status },
-      'dispatcher: device offline, leaving queued',
-    );
-    return 'skipped';
-  }
-  // Belt-and-braces against a stale `online` flag — stale-detector lags
-  // up to 2min, but a missed liveness window means no worker will claim.
-  if (!isLastSeenFresh(device.lastSeenAt)) {
-    logger.warn(
-      {
-        jobId: job.id,
-        deviceId,
-        lastSeenAt: device.lastSeenAt,
-        livenessMs: dispatchLivenessMs(),
-      },
-      'dispatcher: device heartbeat stale, leaving queued',
-    );
-    return 'skipped';
-  }
-
-  const dispatchedAt = new Date();
-  const updated = await db
-    .update(jobs)
-    .set({ status: 'dispatched', deviceId, dispatchedAt })
-    .where(and(eq(jobs.id, job.id), eq(jobs.status, 'queued')))
-    .returning({ id: jobs.id });
-
-  if (updated.length === 0) {
-    logger.debug({ jobId: job.id }, 'dispatcher: lost race to another dispatcher');
-    return 'skipped';
-  }
-
-  const repoPath = await loadRepoPath(job.projectId);
-  const agentSessionId = await ensureAgentSessionForJob(
-    { ...job, status: 'dispatched', deviceId, dispatchedAt },
-    { repoPath },
-  );
-
-  const legacyPayload = (job.payload ?? {}) as { promptString?: unknown } & Record<string, unknown>;
-  const legacyPromptString =
-    typeof legacyPayload.promptString === 'string' ? legacyPayload.promptString : null;
-  const stageOverrides = await resolveStageOverrides(job.projectId, job.payload);
-  const { content: systemPrompt, blocks } = await buildPipelinePreambleStructured(
-    job.projectId,
-    stageOverrides.systemPrompt,
-  );
-
-  // PR-5 — resume prior CLI session in the same sessionGroup.
-  let legacyPriorClaudeSessionId: string | null = null;
-  if (stageOverrides.sessionGroup && job.issueId) {
-    const prior = await findPriorSessionInGroup({
-      issueId: job.issueId,
-      sessionGroup: stageOverrides.sessionGroup,
-    });
-    if (prior) legacyPriorClaudeSessionId = prior.claudeSessionId;
-  }
-
-  // PR-5 fallback — embed system prompt redundantly in user prompt when
-  // resuming, so the agent sees the state's rules even if CLI ignores
-  // --append-system-prompt on --resume. See dispatchViaRunner for context.
-  const legacyEffectivePromptString =
-    legacyPriorClaudeSessionId && legacyPromptString
-      ? injectTurnLevelRules(legacyPromptString, systemPrompt)
-      : legacyPromptString;
-
-  await persistPromptSnapshot({
-    jobId: job.id,
-    systemPrompt,
-    userPrompt: legacyEffectivePromptString ?? '',
-    blocks,
-    model: stageOverrides.model ?? job.modelTier ?? 'default',
-  });
-  roomManager.publish(deviceRoom(deviceId), {
-    event: 'job.assigned',
-    data: {
-      jobId: job.id,
-      projectId: job.projectId,
-      issueId: job.issueId,
-      type: job.type,
-      payload: job.payload,
-      promptString: legacyEffectivePromptString,
-      systemPrompt,
-      // PR-4 — per-state dispatch overrides forwarded to runner.
-      ...buildOverridesPayload(stageOverrides),
-      // PR-5 — resume the prior session's claudeSessionId when this stage
-      // belongs to a sessionGroup with a completed prior run.
-      ...(legacyPriorClaudeSessionId ? { claudeSessionId: legacyPriorClaudeSessionId } : {}),
-      dispatchedAt: dispatchedAt.toISOString(),
-      agentSessionId,
-    },
-  });
-
-  logger.info({ jobId: job.id, deviceId }, 'dispatcher: dispatched (legacy device path)');
-  // ISS-164 — see runner-path comment below.
-  if (job.issueId) {
-    await publishPipelineHealthChanged(job.projectId, [job.issueId]);
-  }
-  return 'dispatched';
 }
 
 async function loadRepoPath(projectId: string): Promise<string | null> {

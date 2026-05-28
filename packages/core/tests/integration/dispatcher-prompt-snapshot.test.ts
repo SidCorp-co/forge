@@ -1,11 +1,15 @@
 /**
  * ISS-186 — prompt-snapshot write path E2E.
  *
- * Drives the real `handleDispatch` legacy device path against real Postgres
- * to verify that the dispatcher populates the 6 prompt-snapshot columns on
+ * Drives the real `handleDispatch` runner path against real Postgres to
+ * verify that the dispatcher populates the 6 prompt-snapshot columns on
  * `jobs` (added by migration 0068) and UPSERTs into `prompt_blobs` with an
  * atomic `ref_count` increment so two dispatches for the same project
  * dedupe to a single blob row.
+ *
+ * ISS-267: the legacy device path was removed; the suite now seeds an online
+ * `claude-code` runner so `selectRunnerForJob` resolves it. The snapshot
+ * helper is invoked identically regardless of dispatch path.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -16,7 +20,6 @@ import {
   createTestDevice,
   createTestProject,
   createTestUser,
-  setProjectActiveDevice,
   setupTestDatabase,
   truncateAll,
 } from '../helpers/index.js';
@@ -35,17 +38,16 @@ describe('ISS-186 prompt-snapshot write path', () => {
     process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
     process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
     process.env.NODE_ENV ??= 'test';
-    // Legacy device dispatch path is the cheapest one to exercise — no
-    // runner registry needed, just an online active device. The snapshot
-    // helper is invoked identically from the runner path.
-    process.env.FEATURE_RUNNER_FRAMEWORK = 'false';
 
     const dispatcherMod = await import('../../src/jobs/dispatcher.js');
+    const { bootstrapRunnerAdapters } = await import('../../src/runners/bootstrap.js');
+    // Register adapters so `getRunnerAdapter('claude-code')` resolves on the
+    // dispatch path. Idempotent.
+    bootstrapRunnerAdapters();
     mods = { handleDispatch: dispatcherMod.handleDispatch };
   }, 60_000);
 
   afterAll(async () => {
-    delete process.env.FEATURE_RUNNER_FRAMEWORK;
     if (harness) await harness.cleanup();
   });
 
@@ -53,14 +55,31 @@ describe('ISS-186 prompt-snapshot write path', () => {
     await truncateAll(harness.db);
   });
 
-  async function seedActiveDevice() {
+  async function seedRunner() {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
     const device = await createTestDevice(harness.db, owner.id, { status: 'online' });
     // dispatcher requires fresh lastSeenAt within DISPATCH_LIVENESS_MS.
     await harness.db.execute(sql`UPDATE devices SET last_seen_at = now() WHERE id = ${device.id}`);
-    await setProjectActiveDevice(harness.db, project.id, device.id);
-    return { owner, project, device };
+    // Online claude-code runner bound to the device so `selectRunnerForJob`
+    // resolves it via the standby step (no defaultDeviceId pin needed).
+    const runnerId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO runners (id, project_id, type, host, device_id, name, capabilities, status, last_seen_at)
+      VALUES (
+        ${runnerId}, ${project.id}, 'claude-code', 'device', ${device.id},
+        ${`runner-${runnerId.slice(0, 8)}`}, ${'{"pm": true}'}::jsonb, 'online', now()
+      )
+    `);
+    return { owner, project, device, runnerId };
+  }
+
+  // Runner cap is 1 in-flight; mark a dispatched job terminal so a second
+  // dispatch to the same runner isn't blocked by the runner_full barrier.
+  async function markJobDone(jobId: string) {
+    await harness.db.execute(sql`
+      UPDATE jobs SET status = 'done', finished_at = now() WHERE id = ${jobId}
+    `);
   }
 
   async function insertIssue(projectId: string, ownerId: string): Promise<string> {
@@ -95,7 +114,7 @@ describe('ISS-186 prompt-snapshot write path', () => {
   }
 
   it('populates all snapshot columns on the jobs row after dispatch', async () => {
-    const { owner, project } = await seedActiveDevice();
+    const { owner, project } = await seedRunner();
     const issueId = await insertIssue(project.id, owner.id);
     const jobId = await insertJob({
       projectId: project.id,
@@ -142,13 +161,15 @@ describe('ISS-186 prompt-snapshot write path', () => {
   });
 
   it('dedupes prompt_blobs across same-project dispatches with atomic ref_count', async () => {
-    const { owner, project } = await seedActiveDevice();
+    const { owner, project } = await seedRunner();
     const issueA = await insertIssue(project.id, owner.id);
     const issueB = await insertIssue(project.id, owner.id);
     const jobA = await insertJob({ projectId: project.id, issueId: issueA, ownerId: owner.id });
     const jobB = await insertJob({ projectId: project.id, issueId: issueB, ownerId: owner.id });
 
     expect(await mods.handleDispatch({ jobId: jobA })).toBe('dispatched');
+    // Free the single runner's in-flight slot before the second dispatch.
+    await markJobDone(jobA);
     expect(await mods.handleDispatch({ jobId: jobB })).toBe('dispatched');
 
     const blobs = await harness.db.execute<{ hash: string; ref_count: number }>(sql`
@@ -165,7 +186,7 @@ describe('ISS-186 prompt-snapshot write path', () => {
   });
 
   it('writes empty-string userPromptSnapshot when payload omits promptString', async () => {
-    const { owner, project } = await seedActiveDevice();
+    const { owner, project } = await seedRunner();
     const issueId = await insertIssue(project.id, owner.id);
     const jobId = await insertJob({ projectId: project.id, issueId, ownerId: owner.id });
 

@@ -12,6 +12,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Removed the legacy device-routing path (activeDeviceId) and unified all job dispatch on the runner framework; orphaned or stale devices no longer block job dispatch.**
+  *Technical: Deleted active-device.ts and the dispatchViaDevice branch, retired the runnerFramework flag (now always-on), and dropped activeDeviceId from the forge_config response. Orphan/never-connected devices are skipped at select time and swept online→offline by the device stale-detector.*
+
 ### Removed
 
 ### Fixed

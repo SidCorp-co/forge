@@ -20,14 +20,13 @@ import {
   createTestDevice,
   createTestProject,
   createTestUser,
-  setProjectActiveDevice,
   setupTestDatabase,
   truncateAll,
 } from '../helpers/index.js';
 
 // Mock the WS server so we can assert on the `job.assigned` envelope without
-// standing up a real socket layer. Both the legacy device dispatch path and
-// the claude-code adapter (runner-framework path) publish through this module.
+// standing up a real socket layer. The claude-code adapter (runner path)
+// publishes through this module.
 vi.mock('../../src/ws/server.js', () => ({
   roomManager: {
     publish: vi.fn(() => 0),
@@ -63,10 +62,6 @@ describe('ISS-195 session-group resume end-to-end', () => {
     process.env.SMTP_FROM ??= 'test@example.com';
     process.env.APP_BASE_URL ??= 'http://localhost:3000';
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
-    // Default to the legacy device path for the bulk of the suite. Test 2
-    // (device-pin) flips this on locally so `pinDeviceId` exercises through
-    // `selectRunnerForJob` with multiple online runners.
-    process.env.FEATURE_RUNNER_FRAMEWORK = 'false';
     process.env.FEATURE_PIPELINE_CONTROL = 'true';
 
     const wsMod = (await import('../../src/ws/server.js')) as unknown as {
@@ -95,7 +90,6 @@ describe('ISS-195 session-group resume end-to-end', () => {
   }, 120_000);
 
   afterAll(async () => {
-    delete process.env.FEATURE_RUNNER_FRAMEWORK;
     delete process.env.FEATURE_PIPELINE_CONTROL;
     if (harness) await harness.cleanup();
   });
@@ -120,9 +114,19 @@ describe('ISS-195 session-group resume end-to-end', () => {
     const project = await createTestProject(harness.db, owner.id);
     const device = await createTestDevice(harness.db, owner.id, { status: 'online' });
     await harness.db.execute(sql`UPDATE devices SET last_seen_at = now() WHERE id = ${device.id}`);
-    await setProjectActiveDevice(harness.db, project.id, device.id);
+    // Online claude-code runner bound to the device so `selectRunnerForJob`
+    // resolves it (single runner → picked via the standby step).
+    await createTestRunner({ projectId: project.id, deviceId: device.id, lastSeenOffsetSeconds: 1 });
     const token = await signUserToken(owner.id);
     return { ownerId: owner.id, projectId: project.id, deviceId: device.id, token };
+  }
+
+  // Runner cap is 1 in-flight; mark a dispatched job terminal so the next
+  // stage's dispatch to the same runner isn't blocked by runner_full.
+  async function markJobDone(jobId: string): Promise<void> {
+    await harness.db.execute(sql`
+      UPDATE jobs SET status = 'done', finished_at = now() WHERE id = ${jobId}
+    `);
   }
 
   async function patchPipelineConfig(
@@ -337,6 +341,7 @@ describe('ISS-195 session-group resume end-to-end', () => {
 
     // Simulate the runner finishing stage-1 with a stable claudeSessionId.
     await completeAgentSession(jobId1, STAGE1_CLI);
+    await markJobDone(jobId1);
 
     // Stage 2 — same sessionGroup, same issue. Dispatcher should look up the
     // prior session and forward its claudeSessionId on the WS envelope.
@@ -379,12 +384,10 @@ describe('ISS-195 session-group resume end-to-end', () => {
   });
 
   it("pins stage-2 dispatch to stage-1's device when multiple devices are online", async () => {
-    // Exercise the runner-framework path so `pinDeviceId` is actually wired
-    // into `selectRunnerForJob`. The legacy device path single-active-device
-    // selection makes the pin assertion trivially true.
-    const prev = process.env.FEATURE_RUNNER_FRAMEWORK;
-    process.env.FEATURE_RUNNER_FRAMEWORK = 'true';
-    try {
+    // Two runners on two devices verify `pinDeviceId` routing through
+    // `selectRunnerForJob`: stage 2 must land on stage 1's device even after
+    // freshness flips to favor the other device.
+    {
       const owner = await createTestUser(harness.db);
       await harness.db.execute(
         sql`UPDATE users SET email_verified_at = now() WHERE id = ${owner.id}`,
@@ -395,9 +398,6 @@ describe('ISS-195 session-group resume end-to-end', () => {
       await harness.db.execute(
         sql`UPDATE devices SET last_seen_at = now() WHERE id IN (${deviceA.id}, ${deviceB.id})`,
       );
-      // `setProjectActiveDevice` overwrites agent_config; do it before the
-      // pipeline-config PATCH so activeDeviceId is preserved.
-      await setProjectActiveDevice(harness.db, project.id, deviceA.id);
       const token = await signUserToken(owner.id);
 
       // Two runners — device B is freshest, so a fresh dispatch without a pin
@@ -465,9 +465,6 @@ describe('ISS-195 session-group resume end-to-end', () => {
       const md1 = await readAgentSessionMetadata(jobId1);
       const md2 = await readAgentSessionMetadata(jobId2);
       expect(md2.deviceId).toBe(md1.deviceId);
-    } finally {
-      if (prev === undefined) delete process.env.FEATURE_RUNNER_FRAMEWORK;
-      else process.env.FEATURE_RUNNER_FRAMEWORK = prev;
     }
   });
 
@@ -487,6 +484,7 @@ describe('ISS-195 session-group resume end-to-end', () => {
     expect(await handleDispatch({ jobId: jobId1 })).toBe('dispatched');
 
     await failAgentSession(jobId1, 'cli-stage1-broken-uuid');
+    await markJobDone(jobId1);
 
     roomManager.publish.mockClear();
     const jobId2 = await insertStageJob({
@@ -528,6 +526,7 @@ describe('ISS-195 session-group resume end-to-end', () => {
     });
     expect(await handleDispatch({ jobId: jobId1 })).toBe('dispatched');
     await completeAgentSession(jobId1, null);
+    await markJobDone(jobId1);
 
     roomManager.publish.mockClear();
     const jobId2 = await insertStageJob({
@@ -560,6 +559,7 @@ describe('ISS-195 session-group resume end-to-end', () => {
     });
     expect(await handleDispatch({ jobId: jobId1 })).toBe('dispatched');
     await completeAgentSession(jobId1, STAGE1_CLI);
+    await markJobDone(jobId1);
 
     // Wipe the session-group binding. `updatePipelineConfig` shallow-merges
     // at the pipelineConfig level — sending `states.<x>` without
