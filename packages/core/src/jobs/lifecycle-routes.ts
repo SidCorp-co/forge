@@ -20,6 +20,7 @@ import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
+import { verifyHandoffOrSkip } from './handoff-verifier.js';
 import { handleResumeFailed, isResumeFailedError } from './handle-resume-failed.js';
 import { scheduleAutoRetryWithVerify } from './retry.js';
 
@@ -104,20 +105,55 @@ jobLifecycleDeviceRoutes.post(
       throw conflict('job is not in a runnable state', 'INVALID_STATE');
     }
 
-    const status = input.exitCode === 0 ? 'done' : input.exitCode === -1 ? 'cancelled' : 'failed';
+    let status: 'done' | 'cancelled' | 'failed' =
+      input.exitCode === 0 ? 'done' : input.exitCode === -1 ? 'cancelled' : 'failed';
+    // Mutable companion to `input.error` so the handoff verifier can inject
+    // its reason without reassigning the validated input object.
+    let effectiveError: string | null = input.error ?? null;
 
-    const [updated] = await db
+    let [updated] = await db
       .update(jobs)
       .set({
         status,
         exitCode: input.exitCode,
-        error: input.error ?? null,
+        error: effectiveError,
         finishedAt: new Date(),
       })
       .where(and(eq(jobs.id, id), eq(jobs.status, job.status)))
       .returning();
 
     if (!updated) throw conflict('job state changed mid-request', 'INVALID_STATE');
+
+    // Step-handoff verification (proposal Y). When the project's policy
+    // requires a structured handoff for this step, refuse to finalize as
+    // `done` unless the agent actually wrote the `memories` row. Mutates
+    // `status` + the jobs row inline so the existing retry / hold pipeline
+    // below treats this exactly like any other failed job.
+    if (status === 'done') {
+      const verdict = await verifyHandoffOrSkip({
+        projectId: updated.projectId,
+        jobType: updated.type,
+        pipelineRunId: updated.pipelineRunId,
+        attempt: updated.attempts,
+        payload: updated.payload,
+        lastAssistantText: input.summary ?? '',
+      });
+      if (!verdict.ok) {
+        const failure = await db
+          .update(jobs)
+          .set({
+            status: 'failed',
+            failureKind: verdict.failureKind ?? 'permanent',
+            failureReason: verdict.failureReason ?? 'handoff verification failed',
+            classifierVersion: 1,
+          })
+          .where(eq(jobs.id, updated.id))
+          .returning();
+        if (failure[0]) updated = failure[0];
+        status = 'failed';
+        effectiveError = verdict.failureReason ?? effectiveError;
+      }
+    }
 
     let retry: { scheduled: boolean; newJobId?: string } | null = null;
     if (status === 'failed') {
@@ -139,7 +175,7 @@ jobLifecycleDeviceRoutes.post(
           .where(eq(jobs.id, updated.id));
         retry = { scheduled: false };
       } else {
-        retry = await scheduleAutoRetryWithVerify(updated, input.error ?? 'exit nonzero');
+        retry = await scheduleAutoRetryWithVerify(updated, effectiveError ?? 'exit nonzero');
       }
       if (!retry.scheduled && updated.issueId) {
         const classificationKind = mapFailureKindToClassification(updated.failureKind);
@@ -151,7 +187,7 @@ jobLifecycleDeviceRoutes.post(
             trigger: 'job_failed',
             classification: {
               kind: classificationKind,
-              reason: updated.failureReason ?? input.error ?? 'exit nonzero',
+              reason: updated.failureReason ?? effectiveError ?? 'exit nonzero',
               evidence: { jobId: updated.id, exitCode: input.exitCode },
             },
             attempts: updated.attempts,

@@ -1,0 +1,439 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renderHandoffSchemaPrompt > renders a stable prompt fragment for step=code 1`] = `
+"{
+  "step": "code",
+  "schema_version": 1,
+  "filesModified": [                        // max 50
+    { "path": <string>, "op": <"create" | "edit" | "delete"> },
+    ...
+  ],
+  "decisions": [                            // max 10
+    { "what": <string>, "why": <string> },
+    ...
+  ],
+  "verificationCommands": [<string>, ...]   // max 10
+  "knownLimitations": [<string>, ...]       // max 5
+  "commitSha": <string, optional>
+}"
+`;
+
+exports[`renderHandoffSchemaPrompt > renders a stable prompt fragment for step=fix 1`] = `
+"{
+  "step": "fix",
+  "schema_version": 1,
+  "filesModified": [                        // max 50
+    { "path": <string>, "op": <"create" | "edit" | "delete"> },
+    ...
+  ],
+  "decisions": [                            // max 10
+    { "what": <string>, "why": <string> },
+    ...
+  ],
+  "reviewItemsResolved": [<string>, ...]    // max 20
+  "knownLimitations": [<string>, ...]       // max 5
+}"
+`;
+
+exports[`renderHandoffSchemaPrompt > renders a stable prompt fragment for step=plan 1`] = `
+"{
+  "step": "plan",
+  "schema_version": 1,
+  "planSummary": <string, 1-2000 chars>,
+  "affectedFiles": [<path string>, ...]     // max 30
+  "acceptanceChecklist": [<string>, ...]    // max 15
+  "unknowns": [<string>, ...]               // max 10
+}"
+`;
+
+exports[`renderHandoffSchemaPrompt > renders a stable prompt fragment for step=review 1`] = `
+"{
+  "step": "review",
+  "schema_version": 1,
+  "verdict": <"pass" | "needs_fix" | "no_change">,
+  "findings": [                             // max 20
+    { "file": <string>, "severity": <"blocker" | "minor">, "note": <string> },
+    ...
+  ],
+  "reviewedDiffSha": <string, required>
+}"
+`;
+
+exports[`renderHandoffSchemaPrompt > renders a stable prompt fragment for step=test 1`] = `
+"{
+  "step": "test",
+  "schema_version": 1,
+  "result": <"pass" | "fail">,
+  "failures": [                             // max 20
+    { "test": <string>, "trace": <string ≤500 chars> },
+    ...
+  ],
+  "flakyTests": [<string>, ...]             // max 10
+}"
+`;
+
+exports[`renderHandoffSchemaPrompt > renders a stable prompt fragment for step=triage 1`] = `
+"{
+  "step": "triage",
+  "schema_version": 1,
+  "summary": <string, 1-2000 chars — what the issue is about>,
+  "suggestedApproach": <string, 1-2000 chars — how to approach it>,
+  "complexity": <"xs" | "s" | "m" | "l" | "xl">,
+  "risks": [<string>, ...]                  // max 5
+  "affectedAreas": [<string>, ...]          // max 10
+}"
+`;
+
+exports[`renderTerminationBlock > renders a stable termination block for step=code 1`] = `
+"## Termination protocol
+
+When you have finished the work for this state:
+
+1. Call \`forge_memory.write\` with EXACTLY these scope fields (do not change them):
+
+   \`\`\`json
+   {
+     "projectId": "p-1",
+     "source": "step_handoff",
+     "sourceRef": "run:r-1/step:code/attempt:1",
+     "textContent": <JSON.stringify(payload)>,
+     "metadata": {
+       "run_id": "r-1",
+       "step": "code",
+       "attempt": 1
+     }
+   }
+   \`\`\`
+
+2. WAIT for the MCP tool to return success. If it returns a validation
+   error, fix the \`textContent\` payload and retry (max 3 attempts).
+
+3. ONLY AFTER \`forge_memory.write\` returns success, respond with exactly
+       DONE
+   on a new line as your final assistant text.
+
+4. DO NOT respond DONE before the write succeeds. The server checks the
+   database row independently and will fail this job if DONE is sent
+   without a corresponding handoff row.
+
+5. If validation fails 3 times in a row, respond
+       HANDOFF_GIVE_UP
+   with a one-line reason as your final text.
+
+Required JSON shape for the \`textContent\` payload (step="code"):
+
+\`\`\`json
+{
+  "step": "code",
+  "schema_version": 1,
+  "filesModified": [                        // max 50
+    { "path": <string>, "op": <"create" | "edit" | "delete"> },
+    ...
+  ],
+  "decisions": [                            // max 10
+    { "what": <string>, "why": <string> },
+    ...
+  ],
+  "verificationCommands": [<string>, ...]   // max 10
+  "knownLimitations": [<string>, ...]       // max 5
+  "commitSha": <string, optional>
+}
+\`\`\`
+
+Rules:
+- All fields above are REQUIRED unless marked optional.
+- Array fields have a max length; do not exceed it.
+- Enum fields must use one of the listed values exactly.
+- Do NOT invent fields not listed above."
+`;
+
+exports[`renderTerminationBlock > renders a stable termination block for step=fix 1`] = `
+"## Termination protocol
+
+When you have finished the work for this state:
+
+1. Call \`forge_memory.write\` with EXACTLY these scope fields (do not change them):
+
+   \`\`\`json
+   {
+     "projectId": "p-1",
+     "source": "step_handoff",
+     "sourceRef": "run:r-1/step:fix/attempt:1",
+     "textContent": <JSON.stringify(payload)>,
+     "metadata": {
+       "run_id": "r-1",
+       "step": "fix",
+       "attempt": 1
+     }
+   }
+   \`\`\`
+
+2. WAIT for the MCP tool to return success. If it returns a validation
+   error, fix the \`textContent\` payload and retry (max 3 attempts).
+
+3. ONLY AFTER \`forge_memory.write\` returns success, respond with exactly
+       DONE
+   on a new line as your final assistant text.
+
+4. DO NOT respond DONE before the write succeeds. The server checks the
+   database row independently and will fail this job if DONE is sent
+   without a corresponding handoff row.
+
+5. If validation fails 3 times in a row, respond
+       HANDOFF_GIVE_UP
+   with a one-line reason as your final text.
+
+Required JSON shape for the \`textContent\` payload (step="fix"):
+
+\`\`\`json
+{
+  "step": "fix",
+  "schema_version": 1,
+  "filesModified": [                        // max 50
+    { "path": <string>, "op": <"create" | "edit" | "delete"> },
+    ...
+  ],
+  "decisions": [                            // max 10
+    { "what": <string>, "why": <string> },
+    ...
+  ],
+  "reviewItemsResolved": [<string>, ...]    // max 20
+  "knownLimitations": [<string>, ...]       // max 5
+}
+\`\`\`
+
+Rules:
+- All fields above are REQUIRED unless marked optional.
+- Array fields have a max length; do not exceed it.
+- Enum fields must use one of the listed values exactly.
+- Do NOT invent fields not listed above."
+`;
+
+exports[`renderTerminationBlock > renders a stable termination block for step=plan 1`] = `
+"## Termination protocol
+
+When you have finished the work for this state:
+
+1. Call \`forge_memory.write\` with EXACTLY these scope fields (do not change them):
+
+   \`\`\`json
+   {
+     "projectId": "p-1",
+     "source": "step_handoff",
+     "sourceRef": "run:r-1/step:plan/attempt:1",
+     "textContent": <JSON.stringify(payload)>,
+     "metadata": {
+       "run_id": "r-1",
+       "step": "plan",
+       "attempt": 1
+     }
+   }
+   \`\`\`
+
+2. WAIT for the MCP tool to return success. If it returns a validation
+   error, fix the \`textContent\` payload and retry (max 3 attempts).
+
+3. ONLY AFTER \`forge_memory.write\` returns success, respond with exactly
+       DONE
+   on a new line as your final assistant text.
+
+4. DO NOT respond DONE before the write succeeds. The server checks the
+   database row independently and will fail this job if DONE is sent
+   without a corresponding handoff row.
+
+5. If validation fails 3 times in a row, respond
+       HANDOFF_GIVE_UP
+   with a one-line reason as your final text.
+
+Required JSON shape for the \`textContent\` payload (step="plan"):
+
+\`\`\`json
+{
+  "step": "plan",
+  "schema_version": 1,
+  "planSummary": <string, 1-2000 chars>,
+  "affectedFiles": [<path string>, ...]     // max 30
+  "acceptanceChecklist": [<string>, ...]    // max 15
+  "unknowns": [<string>, ...]               // max 10
+}
+\`\`\`
+
+Rules:
+- All fields above are REQUIRED unless marked optional.
+- Array fields have a max length; do not exceed it.
+- Enum fields must use one of the listed values exactly.
+- Do NOT invent fields not listed above."
+`;
+
+exports[`renderTerminationBlock > renders a stable termination block for step=review 1`] = `
+"## Termination protocol
+
+When you have finished the work for this state:
+
+1. Call \`forge_memory.write\` with EXACTLY these scope fields (do not change them):
+
+   \`\`\`json
+   {
+     "projectId": "p-1",
+     "source": "step_handoff",
+     "sourceRef": "run:r-1/step:review/attempt:1",
+     "textContent": <JSON.stringify(payload)>,
+     "metadata": {
+       "run_id": "r-1",
+       "step": "review",
+       "attempt": 1
+     }
+   }
+   \`\`\`
+
+2. WAIT for the MCP tool to return success. If it returns a validation
+   error, fix the \`textContent\` payload and retry (max 3 attempts).
+
+3. ONLY AFTER \`forge_memory.write\` returns success, respond with exactly
+       DONE
+   on a new line as your final assistant text.
+
+4. DO NOT respond DONE before the write succeeds. The server checks the
+   database row independently and will fail this job if DONE is sent
+   without a corresponding handoff row.
+
+5. If validation fails 3 times in a row, respond
+       HANDOFF_GIVE_UP
+   with a one-line reason as your final text.
+
+Required JSON shape for the \`textContent\` payload (step="review"):
+
+\`\`\`json
+{
+  "step": "review",
+  "schema_version": 1,
+  "verdict": <"pass" | "needs_fix" | "no_change">,
+  "findings": [                             // max 20
+    { "file": <string>, "severity": <"blocker" | "minor">, "note": <string> },
+    ...
+  ],
+  "reviewedDiffSha": <string, required>
+}
+\`\`\`
+
+Rules:
+- All fields above are REQUIRED unless marked optional.
+- Array fields have a max length; do not exceed it.
+- Enum fields must use one of the listed values exactly.
+- Do NOT invent fields not listed above."
+`;
+
+exports[`renderTerminationBlock > renders a stable termination block for step=test 1`] = `
+"## Termination protocol
+
+When you have finished the work for this state:
+
+1. Call \`forge_memory.write\` with EXACTLY these scope fields (do not change them):
+
+   \`\`\`json
+   {
+     "projectId": "p-1",
+     "source": "step_handoff",
+     "sourceRef": "run:r-1/step:test/attempt:1",
+     "textContent": <JSON.stringify(payload)>,
+     "metadata": {
+       "run_id": "r-1",
+       "step": "test",
+       "attempt": 1
+     }
+   }
+   \`\`\`
+
+2. WAIT for the MCP tool to return success. If it returns a validation
+   error, fix the \`textContent\` payload and retry (max 3 attempts).
+
+3. ONLY AFTER \`forge_memory.write\` returns success, respond with exactly
+       DONE
+   on a new line as your final assistant text.
+
+4. DO NOT respond DONE before the write succeeds. The server checks the
+   database row independently and will fail this job if DONE is sent
+   without a corresponding handoff row.
+
+5. If validation fails 3 times in a row, respond
+       HANDOFF_GIVE_UP
+   with a one-line reason as your final text.
+
+Required JSON shape for the \`textContent\` payload (step="test"):
+
+\`\`\`json
+{
+  "step": "test",
+  "schema_version": 1,
+  "result": <"pass" | "fail">,
+  "failures": [                             // max 20
+    { "test": <string>, "trace": <string ≤500 chars> },
+    ...
+  ],
+  "flakyTests": [<string>, ...]             // max 10
+}
+\`\`\`
+
+Rules:
+- All fields above are REQUIRED unless marked optional.
+- Array fields have a max length; do not exceed it.
+- Enum fields must use one of the listed values exactly.
+- Do NOT invent fields not listed above."
+`;
+
+exports[`renderTerminationBlock > renders a stable termination block for step=triage 1`] = `
+"## Termination protocol
+
+When you have finished the work for this state:
+
+1. Call \`forge_memory.write\` with EXACTLY these scope fields (do not change them):
+
+   \`\`\`json
+   {
+     "projectId": "p-1",
+     "source": "step_handoff",
+     "sourceRef": "run:r-1/step:triage/attempt:1",
+     "textContent": <JSON.stringify(payload)>,
+     "metadata": {
+       "run_id": "r-1",
+       "step": "triage",
+       "attempt": 1
+     }
+   }
+   \`\`\`
+
+2. WAIT for the MCP tool to return success. If it returns a validation
+   error, fix the \`textContent\` payload and retry (max 3 attempts).
+
+3. ONLY AFTER \`forge_memory.write\` returns success, respond with exactly
+       DONE
+   on a new line as your final assistant text.
+
+4. DO NOT respond DONE before the write succeeds. The server checks the
+   database row independently and will fail this job if DONE is sent
+   without a corresponding handoff row.
+
+5. If validation fails 3 times in a row, respond
+       HANDOFF_GIVE_UP
+   with a one-line reason as your final text.
+
+Required JSON shape for the \`textContent\` payload (step="triage"):
+
+\`\`\`json
+{
+  "step": "triage",
+  "schema_version": 1,
+  "summary": <string, 1-2000 chars — what the issue is about>,
+  "suggestedApproach": <string, 1-2000 chars — how to approach it>,
+  "complexity": <"xs" | "s" | "m" | "l" | "xl">,
+  "risks": [<string>, ...]                  // max 5
+  "affectedAreas": [<string>, ...]          // max 10
+}
+\`\`\`
+
+Rules:
+- All fields above are REQUIRED unless marked optional.
+- Array fields have a max length; do not exceed it.
+- Enum fields must use one of the listed values exactly.
+- Do NOT invent fields not listed above."
+`;

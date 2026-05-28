@@ -267,6 +267,40 @@ describe('stageConfigSchema per-state overrides', () => {
     expect(parsed.states?.developed?.userPromptPolicy?.fieldCaps?.plan).toBe(20_000);
   });
 
+  it('accepts handoffs policy with full knobs', () => {
+    const parsed = pipelineConfigSchema.parse({
+      states: {
+        developed: {
+          userPromptPolicy: {
+            handoffs: {
+              enabled: true,
+              injectFromSteps: ['triage', 'plan'],
+              fallbackToRawIssueFieldIfMissing: true,
+              requireHandoffWrite: true,
+              missingMarkerPolicy: 'warn',
+            },
+          },
+        },
+      },
+    });
+    expect(parsed.states?.developed?.userPromptPolicy?.handoffs?.enabled).toBe(true);
+    expect(parsed.states?.developed?.userPromptPolicy?.handoffs?.injectFromSteps).toEqual([
+      'triage',
+      'plan',
+    ]);
+    expect(parsed.states?.developed?.userPromptPolicy?.handoffs?.missingMarkerPolicy).toBe('warn');
+  });
+
+  it('rejects handoffs.missingMarkerPolicy outside the enum', () => {
+    expect(() =>
+      pipelineConfigSchema.parse({
+        states: {
+          developed: { userPromptPolicy: { handoffs: { missingMarkerPolicy: 'explode' } } },
+        },
+      }),
+    ).toThrow();
+  });
+
   it('does NOT cap fieldCaps server-side (D3: operator owns budget)', () => {
     // 1 million chars — silly but allowed.
     expect(() =>

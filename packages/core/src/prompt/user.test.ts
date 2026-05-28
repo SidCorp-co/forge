@@ -164,3 +164,174 @@ describe('injectTurnLevelRules', () => {
     expect(out).toContain('## Rules');
   });
 });
+
+describe('buildJobPromptString — step-handoff (proposal Y)', () => {
+  const snapshot: IssueSnapshot = {
+    title: 'Login broken on Safari',
+    description: 'Users on iOS Safari cannot complete login',
+    plan: 'Investigate cookie SameSite + ITP',
+    acceptanceCriteria: 'Login succeeds on Safari 17+',
+  };
+
+  it('renders ## Prior step handoffs when policy.handoffs.enabled and priorHandoffs supplied', () => {
+    const out = buildJobPromptString({
+      jobType: 'plan',
+      issueId: 'iss-1',
+      issueSnapshot: snapshot,
+      policy: {
+        handoffs: { enabled: true, injectFromSteps: ['triage'] },
+      },
+      priorHandoffs: [
+        {
+          step: 'triage',
+          payload: {
+            step: 'triage',
+            schema_version: 1,
+            summary: 'Safari ITP blocks JWT cookie',
+            suggestedApproach: 'Add SameSite=None; Secure fallback',
+            complexity: 'm',
+            risks: ['session loss on existing iOS users'],
+            affectedAreas: ['auth/cookie'],
+          },
+        },
+      ],
+    });
+    expect(out).toContain('## Prior step handoffs');
+    expect(out).toContain('### triage');
+    expect(out).toContain('"summary": "Safari ITP blocks JWT cookie"');
+  });
+
+  it('drops raw `description` when a triage handoff is injected (saves prompt tokens)', () => {
+    const out = buildJobPromptString({
+      jobType: 'plan',
+      issueId: 'iss-1',
+      issueSnapshot: snapshot,
+      policy: { handoffs: { enabled: true, injectFromSteps: ['triage'] } },
+      priorHandoffs: [
+        {
+          step: 'triage',
+          payload: {
+            step: 'triage',
+            schema_version: 1,
+            summary: 's',
+            suggestedApproach: 'a',
+            complexity: 'm',
+            risks: [],
+            affectedAreas: [],
+          },
+        },
+      ],
+    });
+    expect(out).not.toContain('Description:');
+    expect(out).not.toContain('Users on iOS Safari');
+  });
+
+  it('drops raw `plan` when a plan handoff is injected', () => {
+    const out = buildJobPromptString({
+      jobType: 'code',
+      issueId: 'iss-1',
+      issueSnapshot: snapshot,
+      policy: { handoffs: { enabled: true, injectFromSteps: ['triage', 'plan'] } },
+      priorHandoffs: [
+        {
+          step: 'plan',
+          payload: {
+            step: 'plan',
+            schema_version: 1,
+            planSummary: 'Add SameSite fallback',
+            affectedFiles: ['src/auth/cookie.ts'],
+            acceptanceChecklist: ['safari login passes'],
+            unknowns: [],
+          },
+        },
+      ],
+    });
+    expect(out).not.toContain('Plan:');
+    expect(out).not.toContain('Investigate cookie SameSite');
+  });
+
+  it('keeps raw fields when priorHandoffs is empty (rollout-safe fallback)', () => {
+    const out = buildJobPromptString({
+      jobType: 'plan',
+      issueId: 'iss-1',
+      issueSnapshot: snapshot,
+      policy: { handoffs: { enabled: true, injectFromSteps: ['triage'] } },
+      priorHandoffs: [],
+    });
+    expect(out).toContain('Description:');
+    expect(out).toContain('Users on iOS Safari');
+  });
+
+  it('filters priorHandoffs to policy.injectFromSteps allow-list', () => {
+    // Caller supplied triage + plan, policy only whitelists triage.
+    const out = buildJobPromptString({
+      jobType: 'code',
+      issueId: 'iss-1',
+      issueSnapshot: snapshot,
+      policy: { handoffs: { enabled: true, injectFromSteps: ['triage'] } },
+      priorHandoffs: [
+        {
+          step: 'triage',
+          payload: {
+            step: 'triage',
+            schema_version: 1,
+            summary: 't',
+            suggestedApproach: 'a',
+            complexity: 's',
+            risks: [],
+            affectedAreas: [],
+          },
+        },
+        {
+          step: 'plan',
+          payload: {
+            step: 'plan',
+            schema_version: 1,
+            planSummary: 'p',
+            affectedFiles: [],
+            acceptanceChecklist: [],
+            unknowns: [],
+          },
+        },
+      ],
+    });
+    expect(out).toContain('### triage');
+    expect(out).not.toContain('### plan');
+  });
+
+  it('appends ## Termination protocol when handoffs.enabled + handoffScope + handoff step', () => {
+    const out = buildJobPromptString({
+      jobType: 'triage',
+      issueId: 'iss-1',
+      issueSnapshot: snapshot,
+      policy: { handoffs: { enabled: true, injectFromSteps: [] } },
+      handoffScope: { projectId: 'p-1', issueId: 'iss-1', runId: 'r-1', attempt: 1 },
+    });
+    expect(out).toContain('## Termination protocol');
+    expect(out).toContain('"projectId": "p-1"');
+    expect(out).toContain('"sourceRef": "run:r-1/step:triage/attempt:1"');
+    expect(out).toContain('DONE');
+  });
+
+  it('omits ## Termination protocol for non-handoff steps (clarify/release/pm)', () => {
+    const out = buildJobPromptString({
+      jobType: 'clarify',
+      issueId: 'iss-1',
+      issueSnapshot: snapshot,
+      policy: { handoffs: { enabled: true, injectFromSteps: [] } },
+      handoffScope: { projectId: 'p-1', issueId: 'iss-1', runId: 'r-1', attempt: 1 },
+    });
+    expect(out).not.toContain('## Termination protocol');
+  });
+
+  it('omits ## Termination protocol when handoffs.enabled=false even for handoff steps', () => {
+    const out = buildJobPromptString({
+      jobType: 'plan',
+      issueId: 'iss-1',
+      issueSnapshot: snapshot,
+      policy: { handoffs: { enabled: false, injectFromSteps: [] } },
+      handoffScope: { projectId: 'p-1', issueId: 'iss-1', runId: 'r-1', attempt: 1 },
+    });
+    expect(out).not.toContain('## Termination protocol');
+  });
+});

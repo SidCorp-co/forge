@@ -23,6 +23,13 @@
  */
 
 import type { JobType } from '../db/schema.js';
+import {
+  type HandoffScope,
+  type HandoffStep,
+  type StepHandoffPayload,
+  isHandoffStep,
+  renderTerminationBlock,
+} from '../memory/step-handoff-schema.js';
 import type { UserPromptPolicyConfig } from '../pipeline/pipeline-config-schema.js';
 
 export interface IssueSnapshot {
@@ -169,10 +176,36 @@ function resolveSessionPolicy(
   return { policy: base, depth: override?.depth ?? DEFAULT_SESSION_DEPTH };
 }
 
+export interface PriorHandoff {
+  step: HandoffStep;
+  payload: StepHandoffPayload;
+}
+
+/**
+ * Render the `## Prior step handoffs` block. Renders each handoff as a
+ * fenced JSON block keyed by step so the agent can scan structured data
+ * rather than re-derive context from raw issue fields.
+ */
+function formatPriorHandoffs(handoffs: PriorHandoff[]): string {
+  const lines: string[] = ['## Prior step handoffs'];
+  for (const h of handoffs) {
+    lines.push('', `### ${h.step}`, '```json', JSON.stringify(h.payload, null, 2), '```');
+  }
+  return lines.join('\n');
+}
+
 function formatIssueSnapshot(
   snapshot: IssueSnapshot,
   jobType: JobType,
   policy?: UserPromptPolicyOverride | null,
+  /**
+   * Set of HandoffSteps whose handoffs are present in this prompt. When a
+   * step's handoff is injected, the overlapping raw field is dropped:
+   *   triage handoff → drop raw `description`
+   *   plan handoff   → drop raw `plan`
+   * Other handoffs (code/review/test/fix) are additive — no overlap.
+   */
+  injectedSteps?: ReadonlySet<HandoffStep>,
 ): string {
   const fields = resolveIssueFields(jobType, policy?.includeFields);
   // Layer policy overrides onto defaults, skipping undefined values so an
@@ -193,10 +226,16 @@ function formatIssueSnapshot(
   if (snapshot.complexity) meta.push(`Complexity: ${snapshot.complexity}`);
   if (meta.length > 0) lines.push(meta.join(' · '));
 
-  if (fields.includes('description') && snapshot.description) {
+  const skipDescription =
+    policy?.handoffs?.fallbackToRawIssueFieldIfMissing === false ||
+    injectedSteps?.has('triage');
+  const skipPlan =
+    policy?.handoffs?.fallbackToRawIssueFieldIfMissing === false || injectedSteps?.has('plan');
+
+  if (fields.includes('description') && snapshot.description && !skipDescription) {
     lines.push('', 'Description:', truncate(snapshot.description, fieldCaps.description, strategy));
   }
-  if (fields.includes('plan') && snapshot.plan) {
+  if (fields.includes('plan') && snapshot.plan && !skipPlan) {
     lines.push('', 'Plan:', truncate(snapshot.plan, fieldCaps.plan, strategy));
   }
   if (fields.includes('acceptanceCriteria') && snapshot.acceptanceCriteria) {
@@ -313,6 +352,22 @@ export function buildJobPromptString(args: {
    * treated as null.
    */
   mergeRequiredText?: string | null;
+  /**
+   * Step-handoff injection (proposal Y). Pre-fetched by the caller from
+   * `memories` (source='step_handoff') for the current pipeline_run. When
+   * `policy.handoffs.enabled`, the prompt renders these under
+   * `## Prior step handoffs` and drops overlapping raw fields (triage drops
+   * `description`, plan drops `plan`).
+   */
+  priorHandoffs?: PriorHandoff[] | null;
+  /**
+   * Step-handoff scope literals for the `## Termination protocol` block.
+   * Required when `policy.handoffs.enabled` AND `jobType` is a handoff step
+   * (triage/plan/code/review/test/fix) — without it the agent can't form
+   * the `forge_memory.write` call. Caller pre-fills these from the job +
+   * pipeline_run row so the agent does NOT have to guess identifiers.
+   */
+  handoffScope?: HandoffScope | null;
 }): string {
   const skill =
     args.skillName && args.skillName.length > 0 ? args.skillName : `forge-${args.jobType}`;
@@ -334,14 +389,41 @@ export function buildJobPromptString(args: {
     );
   }
 
+  const handoffsEnabled = args.policy?.handoffs?.enabled === true;
+  const injectFromSteps = new Set(args.policy?.handoffs?.injectFromSteps ?? []);
+  // Filter pre-fetched handoffs to the policy's allow-list so callers can
+  // fetch broadly (all handoffs for the run) without leaking ones the
+  // current state's policy didn't whitelist.
+  const handoffsToRender =
+    handoffsEnabled && args.priorHandoffs && args.priorHandoffs.length > 0
+      ? args.priorHandoffs.filter((h) => injectFromSteps.has(h.step))
+      : [];
+  const injectedSteps = new Set<HandoffStep>(handoffsToRender.map((h) => h.step));
+
   const snapshot = args.issueSnapshot;
   if (snapshot) {
-    lines.push('', formatIssueSnapshot(snapshot, args.jobType, args.policy ?? null));
+    lines.push(
+      '',
+      formatIssueSnapshot(snapshot, args.jobType, args.policy ?? null, injectedSteps),
+    );
+
+    if (handoffsToRender.length > 0) {
+      lines.push('', formatPriorHandoffs(handoffsToRender));
+    }
 
     const sc = snapshot.sessionContext;
     if (sc && (sc.sessionCount ?? 0) >= 1) {
       lines.push('', formatSessionContext(sc, args.jobType, args.policy?.sessionContext));
     }
+  } else if (handoffsToRender.length > 0) {
+    lines.push('', formatPriorHandoffs(handoffsToRender));
+  }
+
+  // Append `## Termination protocol` last so it sits at the end of the
+  // prompt — agents read top-down; the work body comes first, the
+  // termination contract is the final thing they see before acting.
+  if (handoffsEnabled && isHandoffStep(args.jobType) && args.handoffScope) {
+    lines.push('', renderTerminationBlock({ step: args.jobType, scope: args.handoffScope }));
   }
 
   return lines.join('\n');

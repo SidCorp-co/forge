@@ -136,6 +136,45 @@ export const userPromptPolicySchema = z
       .strict()
       .optional(),
     truncationStrategy: z.enum(['paragraph-boundary', 'byte-cut']).optional(),
+    /**
+     * Step-handoff memory injection + verification (proposal Y).
+     *
+     * When `enabled=true` the prompt builder:
+     *   - Queries `memories` for prior step handoffs scoped to the current
+     *     pipeline_run and renders them under `## Prior step handoffs`.
+     *   - Skips raw `description` / `plan` injection for steps whose
+     *     handoff is present (saves prompt tokens).
+     *   - Appends a `## Termination protocol` block instructing the agent
+     *     to call `forge_memory.write` with the rendered schema and emit
+     *     `DONE` only after the write succeeds.
+     *
+     * The lifecycle hook (`POST /api/jobs/:id/complete`) then verifies:
+     *   - `requireHandoffWrite=true`  → look up the handoff row; fail the
+     *     job with `failureKind='handoff_not_written'` if missing.
+     *   - `missingMarkerPolicy`       → behaviour when the agent's last
+     *     text does not end with `DONE`/`HANDOFF_GIVE_UP`:
+     *       'fail'   — mark FAILED (`handoff_no_done_marker`)
+     *       'warn'   — log breadcrumb, finalize as done (rollout-safe)
+     *       'silent' — finalize as done, no log
+     *
+     * `fallbackToRawIssueFieldIfMissing=true` keeps the raw `description`/
+     * `plan` injection when a predecessor handoff is missing — rollout-safe
+     * during Phase 1a/b before every project has produced handoffs.
+     */
+    handoffs: z
+      .object({
+        enabled: z.boolean().default(false),
+        injectFromSteps: z
+          .array(
+            z.enum(['triage', 'clarify', 'plan', 'code', 'review', 'test', 'release', 'fix']),
+          )
+          .default([]),
+        fallbackToRawIssueFieldIfMissing: z.boolean().default(true),
+        requireHandoffWrite: z.boolean().default(true),
+        missingMarkerPolicy: z.enum(['fail', 'warn', 'silent']).default('warn'),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
