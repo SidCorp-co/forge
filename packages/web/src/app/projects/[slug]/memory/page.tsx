@@ -12,7 +12,7 @@ export default function MemoryPage() {
 
   return (
     <div className="p-6">
-      <MemoryView projectDocumentId={project?.id} />
+      <MemoryView projectDocumentId={project?.id} slug={slug} />
     </div>
   );
 }
