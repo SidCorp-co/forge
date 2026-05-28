@@ -47,12 +47,16 @@ pub async fn handle(
         return Ok(());
     };
 
+    // Only create a worktree when core explicitly hands us a feature branch
+    // (e.g. code/fix stages). Triage/plan/review run in the repo root. Never
+    // fall back to the binding's base branch — that branch is already checked
+    // out in the main worktree, so `git worktree add` would refuse it.
     let worktree_branch = ja
         .payload
         .get("worktreeBranch")
         .and_then(Value::as_str)
-        .map(str::to_string)
-        .or_else(|| binding.branch.clone());
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
 
     let spec = JobSpec {
         job_id: job_id.clone(),
