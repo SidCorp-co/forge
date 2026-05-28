@@ -10,6 +10,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [0.2.9] - 2026-05-28
+
+Pipeline no longer stalls when an agent finishes while an MCP server holds the output stream open
+
+### Added
+
 - **New `forge_coolify_deploy` MCP tool (list / deploy / status) — the stock release/staging skills can now drive Coolify deploys without hitting "tool-not-found", and manual + automatic deploy paths share the same idempotency key so a release cannot accidentally deploy twice.**
   *Technical: Action-dispatcher tool in packages/core/src/mcp/tools/forge-coolify-deploy.ts (membership-gated). deploy reuses tryDispatchCoolifyRelease with requestId=${runId}:${integrationId}; new findDeliveryByRequestId guard in release-coolify.ts dedupes manual + auto paths. Prod integrations return pendingHumanConfirm:true without dispatch. resolveLatestIssueRunId helper extracted from the release subscriber. Stock skill call sites updated to pass { issueId } since MCP context carries no run id.*
 - **New `draft` issue status — AI-generated proposals (from Dream / Doc-Sync schedules) land here for human review before entering the normal pipeline. Promote to open or discard with one click.**
