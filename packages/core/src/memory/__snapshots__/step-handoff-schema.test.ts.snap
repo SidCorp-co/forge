@@ -87,9 +87,11 @@ exports[`renderHandoffSchemaPrompt > renders a stable prompt fragment for step=t
 exports[`renderTerminationBlock > renders a stable termination block for step=code 1`] = `
 "## Termination protocol
 
-When you have finished the work for this state:
+When you finish the work for this state, record a short structured handoff so
+the next step inherits your context. This is best-effort context — NOT a
+completion gate, so it never blocks your real work.
 
-1. Call \`forge_step_handoff.write\` with EXACTLY these scope fields (do not change them):
+1. Call \`forge_step_handoff.write\` with these scope fields (do not change them):
 
    \`\`\`json
    {
@@ -102,20 +104,18 @@ When you have finished the work for this state:
    }
    \`\`\`
 
-2. WAIT for the MCP tool to return success. If it returns a validation
-   error, fix the \`payload\` and retry (max 3 attempts).
+2. Advance the pipeline state (MANDATORY — not best-effort). Call
+   \`forge_issues.update\` to move the issue \`status\` to the next state in the
+   Pipeline Rules ladder, even if your skill instructions did not mention a
+   transition. On success move forward; on a blocking problem branch to
+   \`reopen\` / \`needs_info\` / \`on_hold\` instead. An issue left in its current
+   status stalls the pipeline forever — never skip this step.
 
-3. ONLY AFTER \`forge_step_handoff.write\` returns success, respond with exactly
-       DONE
-   on a new line as your final assistant text.
+3. Then respond with \`DONE\` on a new line as your final assistant text.
 
-4. DO NOT respond DONE before the write succeeds. The server checks the
-   database row independently and will fail this job if DONE is sent
-   without a corresponding handoff row.
-
-5. If validation fails 3 times in a row, respond
-       HANDOFF_GIVE_UP
-   with a one-line reason as your final text.
+The handoff (step 1) is best-effort context: if its payload fails validation,
+fix it and retry, but if you genuinely cannot produce a valid one, still do
+step 2 and respond \`DONE\`. The status advance (step 2) is never optional.
 
 Required JSON shape for the \`payload\` (step="code"):
 
@@ -147,9 +147,11 @@ Rules:
 exports[`renderTerminationBlock > renders a stable termination block for step=fix 1`] = `
 "## Termination protocol
 
-When you have finished the work for this state:
+When you finish the work for this state, record a short structured handoff so
+the next step inherits your context. This is best-effort context — NOT a
+completion gate, so it never blocks your real work.
 
-1. Call \`forge_step_handoff.write\` with EXACTLY these scope fields (do not change them):
+1. Call \`forge_step_handoff.write\` with these scope fields (do not change them):
 
    \`\`\`json
    {
@@ -162,20 +164,18 @@ When you have finished the work for this state:
    }
    \`\`\`
 
-2. WAIT for the MCP tool to return success. If it returns a validation
-   error, fix the \`payload\` and retry (max 3 attempts).
+2. Advance the pipeline state (MANDATORY — not best-effort). Call
+   \`forge_issues.update\` to move the issue \`status\` to the next state in the
+   Pipeline Rules ladder, even if your skill instructions did not mention a
+   transition. On success move forward; on a blocking problem branch to
+   \`reopen\` / \`needs_info\` / \`on_hold\` instead. An issue left in its current
+   status stalls the pipeline forever — never skip this step.
 
-3. ONLY AFTER \`forge_step_handoff.write\` returns success, respond with exactly
-       DONE
-   on a new line as your final assistant text.
+3. Then respond with \`DONE\` on a new line as your final assistant text.
 
-4. DO NOT respond DONE before the write succeeds. The server checks the
-   database row independently and will fail this job if DONE is sent
-   without a corresponding handoff row.
-
-5. If validation fails 3 times in a row, respond
-       HANDOFF_GIVE_UP
-   with a one-line reason as your final text.
+The handoff (step 1) is best-effort context: if its payload fails validation,
+fix it and retry, but if you genuinely cannot produce a valid one, still do
+step 2 and respond \`DONE\`. The status advance (step 2) is never optional.
 
 Required JSON shape for the \`payload\` (step="fix"):
 
@@ -206,9 +206,11 @@ Rules:
 exports[`renderTerminationBlock > renders a stable termination block for step=plan 1`] = `
 "## Termination protocol
 
-When you have finished the work for this state:
+When you finish the work for this state, record a short structured handoff so
+the next step inherits your context. This is best-effort context — NOT a
+completion gate, so it never blocks your real work.
 
-1. Call \`forge_step_handoff.write\` with EXACTLY these scope fields (do not change them):
+1. Call \`forge_step_handoff.write\` with these scope fields (do not change them):
 
    \`\`\`json
    {
@@ -221,20 +223,18 @@ When you have finished the work for this state:
    }
    \`\`\`
 
-2. WAIT for the MCP tool to return success. If it returns a validation
-   error, fix the \`payload\` and retry (max 3 attempts).
+2. Advance the pipeline state (MANDATORY — not best-effort). Call
+   \`forge_issues.update\` to move the issue \`status\` to the next state in the
+   Pipeline Rules ladder, even if your skill instructions did not mention a
+   transition. On success move forward; on a blocking problem branch to
+   \`reopen\` / \`needs_info\` / \`on_hold\` instead. An issue left in its current
+   status stalls the pipeline forever — never skip this step.
 
-3. ONLY AFTER \`forge_step_handoff.write\` returns success, respond with exactly
-       DONE
-   on a new line as your final assistant text.
+3. Then respond with \`DONE\` on a new line as your final assistant text.
 
-4. DO NOT respond DONE before the write succeeds. The server checks the
-   database row independently and will fail this job if DONE is sent
-   without a corresponding handoff row.
-
-5. If validation fails 3 times in a row, respond
-       HANDOFF_GIVE_UP
-   with a one-line reason as your final text.
+The handoff (step 1) is best-effort context: if its payload fails validation,
+fix it and retry, but if you genuinely cannot produce a valid one, still do
+step 2 and respond \`DONE\`. The status advance (step 2) is never optional.
 
 Required JSON shape for the \`payload\` (step="plan"):
 
@@ -259,9 +259,11 @@ Rules:
 exports[`renderTerminationBlock > renders a stable termination block for step=review 1`] = `
 "## Termination protocol
 
-When you have finished the work for this state:
+When you finish the work for this state, record a short structured handoff so
+the next step inherits your context. This is best-effort context — NOT a
+completion gate, so it never blocks your real work.
 
-1. Call \`forge_step_handoff.write\` with EXACTLY these scope fields (do not change them):
+1. Call \`forge_step_handoff.write\` with these scope fields (do not change them):
 
    \`\`\`json
    {
@@ -274,20 +276,18 @@ When you have finished the work for this state:
    }
    \`\`\`
 
-2. WAIT for the MCP tool to return success. If it returns a validation
-   error, fix the \`payload\` and retry (max 3 attempts).
+2. Advance the pipeline state (MANDATORY — not best-effort). Call
+   \`forge_issues.update\` to move the issue \`status\` to the next state in the
+   Pipeline Rules ladder, even if your skill instructions did not mention a
+   transition. On success move forward; on a blocking problem branch to
+   \`reopen\` / \`needs_info\` / \`on_hold\` instead. An issue left in its current
+   status stalls the pipeline forever — never skip this step.
 
-3. ONLY AFTER \`forge_step_handoff.write\` returns success, respond with exactly
-       DONE
-   on a new line as your final assistant text.
+3. Then respond with \`DONE\` on a new line as your final assistant text.
 
-4. DO NOT respond DONE before the write succeeds. The server checks the
-   database row independently and will fail this job if DONE is sent
-   without a corresponding handoff row.
-
-5. If validation fails 3 times in a row, respond
-       HANDOFF_GIVE_UP
-   with a one-line reason as your final text.
+The handoff (step 1) is best-effort context: if its payload fails validation,
+fix it and retry, but if you genuinely cannot produce a valid one, still do
+step 2 and respond \`DONE\`. The status advance (step 2) is never optional.
 
 Required JSON shape for the \`payload\` (step="review"):
 
@@ -314,9 +314,11 @@ Rules:
 exports[`renderTerminationBlock > renders a stable termination block for step=test 1`] = `
 "## Termination protocol
 
-When you have finished the work for this state:
+When you finish the work for this state, record a short structured handoff so
+the next step inherits your context. This is best-effort context — NOT a
+completion gate, so it never blocks your real work.
 
-1. Call \`forge_step_handoff.write\` with EXACTLY these scope fields (do not change them):
+1. Call \`forge_step_handoff.write\` with these scope fields (do not change them):
 
    \`\`\`json
    {
@@ -329,20 +331,18 @@ When you have finished the work for this state:
    }
    \`\`\`
 
-2. WAIT for the MCP tool to return success. If it returns a validation
-   error, fix the \`payload\` and retry (max 3 attempts).
+2. Advance the pipeline state (MANDATORY — not best-effort). Call
+   \`forge_issues.update\` to move the issue \`status\` to the next state in the
+   Pipeline Rules ladder, even if your skill instructions did not mention a
+   transition. On success move forward; on a blocking problem branch to
+   \`reopen\` / \`needs_info\` / \`on_hold\` instead. An issue left in its current
+   status stalls the pipeline forever — never skip this step.
 
-3. ONLY AFTER \`forge_step_handoff.write\` returns success, respond with exactly
-       DONE
-   on a new line as your final assistant text.
+3. Then respond with \`DONE\` on a new line as your final assistant text.
 
-4. DO NOT respond DONE before the write succeeds. The server checks the
-   database row independently and will fail this job if DONE is sent
-   without a corresponding handoff row.
-
-5. If validation fails 3 times in a row, respond
-       HANDOFF_GIVE_UP
-   with a one-line reason as your final text.
+The handoff (step 1) is best-effort context: if its payload fails validation,
+fix it and retry, but if you genuinely cannot produce a valid one, still do
+step 2 and respond \`DONE\`. The status advance (step 2) is never optional.
 
 Required JSON shape for the \`payload\` (step="test"):
 
@@ -369,9 +369,11 @@ Rules:
 exports[`renderTerminationBlock > renders a stable termination block for step=triage 1`] = `
 "## Termination protocol
 
-When you have finished the work for this state:
+When you finish the work for this state, record a short structured handoff so
+the next step inherits your context. This is best-effort context — NOT a
+completion gate, so it never blocks your real work.
 
-1. Call \`forge_step_handoff.write\` with EXACTLY these scope fields (do not change them):
+1. Call \`forge_step_handoff.write\` with these scope fields (do not change them):
 
    \`\`\`json
    {
@@ -384,20 +386,18 @@ When you have finished the work for this state:
    }
    \`\`\`
 
-2. WAIT for the MCP tool to return success. If it returns a validation
-   error, fix the \`payload\` and retry (max 3 attempts).
+2. Advance the pipeline state (MANDATORY — not best-effort). Call
+   \`forge_issues.update\` to move the issue \`status\` to the next state in the
+   Pipeline Rules ladder, even if your skill instructions did not mention a
+   transition. On success move forward; on a blocking problem branch to
+   \`reopen\` / \`needs_info\` / \`on_hold\` instead. An issue left in its current
+   status stalls the pipeline forever — never skip this step.
 
-3. ONLY AFTER \`forge_step_handoff.write\` returns success, respond with exactly
-       DONE
-   on a new line as your final assistant text.
+3. Then respond with \`DONE\` on a new line as your final assistant text.
 
-4. DO NOT respond DONE before the write succeeds. The server checks the
-   database row independently and will fail this job if DONE is sent
-   without a corresponding handoff row.
-
-5. If validation fails 3 times in a row, respond
-       HANDOFF_GIVE_UP
-   with a one-line reason as your final text.
+The handoff (step 1) is best-effort context: if its payload fails validation,
+fix it and retry, but if you genuinely cannot produce a valid one, still do
+step 2 and respond \`DONE\`. The status advance (step 2) is never optional.
 
 Required JSON shape for the \`payload\` (step="triage"):
 

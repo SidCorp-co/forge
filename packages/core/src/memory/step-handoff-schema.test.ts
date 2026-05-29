@@ -146,9 +146,10 @@ describe('renderTerminationBlock', () => {
   it.each(HANDOFF_STEPS)('renders a stable termination block for step=%s', (step) => {
     const out = renderTerminationBlock({ step: step as HandoffStep, scope });
     expect(out).toMatchSnapshot();
-    // Sanity: must instruct the agent to emit DONE last + cite the marker.
+    // Sanity: must instruct the agent to emit DONE last, framed as best-effort
+    // context (no hard completion gate — see ISS handoff-gate removal).
     expect(out).toContain('DONE');
-    expect(out).toContain('HANDOFF_GIVE_UP');
+    expect(out).toContain('best-effort');
     // Sanity: scope literals embedded so the agent doesn't guess them.
     expect(out).toContain(`"projectId": "${scope.projectId}"`);
     expect(out).toContain(`"issueId": "${scope.issueId}"`);

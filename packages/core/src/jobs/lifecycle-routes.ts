@@ -20,7 +20,6 @@ import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
-import { verifyHandoffOrSkip } from './handoff-verifier.js';
 import { handleResumeFailed, isResumeFailedError } from './handle-resume-failed.js';
 import { scheduleAutoRetryWithVerify } from './retry.js';
 
@@ -107,8 +106,9 @@ jobLifecycleDeviceRoutes.post(
 
     let status: 'done' | 'cancelled' | 'failed' =
       input.exitCode === 0 ? 'done' : input.exitCode === -1 ? 'cancelled' : 'failed';
-    // Mutable companion to `input.error` so the handoff verifier can inject
-    // its reason without reassigning the validated input object.
+    // Mutable companion to `input.error` for the failure paths below
+    // (resume-fail / retry) that refine the reason without reassigning the
+    // validated input object.
     let effectiveError: string | null = input.error ?? null;
 
     let [updated] = await db
@@ -124,37 +124,11 @@ jobLifecycleDeviceRoutes.post(
 
     if (!updated) throw conflict('job state changed mid-request', 'INVALID_STATE');
 
-    // Step-handoff verification (proposal Y). When the project's policy
-    // requires a structured handoff for this step, refuse to finalize as
-    // `done` unless the agent actually wrote the `memories` row. Mutates
-    // `status` + the jobs row inline so the existing retry / hold pipeline
-    // below treats this exactly like any other failed job.
-    if (status === 'done') {
-      const verdict = await verifyHandoffOrSkip({
-        projectId: updated.projectId,
-        jobType: updated.type,
-        issueId: updated.issueId,
-        pipelineRunId: updated.pipelineRunId,
-        attempt: updated.attempts,
-        payload: updated.payload,
-        lastAssistantText: input.summary ?? '',
-      });
-      if (!verdict.ok) {
-        const failure = await db
-          .update(jobs)
-          .set({
-            status: 'failed',
-            failureKind: verdict.failureKind ?? 'permanent',
-            failureReason: verdict.failureReason ?? 'handoff verification failed',
-            classifierVersion: 1,
-          })
-          .where(eq(jobs.id, updated.id))
-          .returning();
-        if (failure[0]) updated = failure[0];
-        status = 'failed';
-        effectiveError = verdict.failureReason ?? effectiveError;
-      }
-    }
+    // Step-handoff is best-effort context for the next step — NOT a completion
+    // gate. A `done` job stays `done` whether or not the agent wrote its
+    // handoff row; the next step falls back to raw issue fields when a prior
+    // handoff is missing (see handoff-prefetch / handoff-policy
+    // fallbackToRawIssueFieldIfMissing).
 
     let retry: { scheduled: boolean; newJobId?: string } | null = null;
     if (status === 'failed') {
