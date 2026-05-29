@@ -391,7 +391,10 @@ async function dispatchViaRunner(
   // matches the sessionGroup we forward to the runner.
   const runnerStageOverrides = preDispatchOverrides;
   const { content: runnerSystemPrompt, blocks: runnerBlocks } =
-    await buildPipelinePreambleStructured(job.projectId, runnerStageOverrides.systemPrompt);
+    await buildPipelinePreambleStructured(job.projectId, {
+      step: job.type,
+      override: runnerStageOverrides.systemPrompt,
+    });
 
   // PR-5 fallback — when resuming a prior CLI session via --resume, the CLI
   // may ignore --append-system-prompt (undocumented). Embed the state's

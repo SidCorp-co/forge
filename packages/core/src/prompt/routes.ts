@@ -82,7 +82,7 @@ promptRoutes.post(
 
     const { content: systemPrompt, blocks } = await buildPipelinePreambleStructured(
       body.projectId,
-      systemPromptOverride,
+      { step: body.state as JobType, override: systemPromptOverride },
     );
 
     const issueSnapshot =

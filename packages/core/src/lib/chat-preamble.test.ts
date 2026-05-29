@@ -82,6 +82,60 @@ describe('buildPipelinePreambleStructured', () => {
     expect(built.content.length).toBe(totalChars + 2 * (built.blocks.length - 1));
   });
 
+  it('inserts a state-block (after project-context) when a step is supplied', async () => {
+    mockBranchSelect([{ baseBranch: 'main', productionBranch: 'main' }]);
+
+    const built = await buildPipelinePreambleStructured('p1', { step: 'review' });
+    expect(built.blocks.map((b) => b.id)).toEqual([
+      'pipeline-rules',
+      'tool-reference',
+      'project-config',
+      'project-context',
+      'state-block',
+    ]);
+    expect(built.content).toContain('## This State — Review');
+  });
+
+  it('omits the state-block for steps with no default (custom/pm) and when no step given', async () => {
+    mockBranchSelect([{ baseBranch: 'main', productionBranch: 'main' }]);
+
+    const noStep = await buildPipelinePreambleStructured('p1');
+    expect(noStep.blocks.some((b) => b.id === 'state-block')).toBe(false);
+
+    const custom = await buildPipelinePreambleStructured('p1', { step: 'custom' });
+    expect(custom.blocks.some((b) => b.id === 'state-block')).toBe(false);
+  });
+
+  it('replace-mode override drops the shared prefix AND the state block', async () => {
+    mockBranchSelect([{ baseBranch: 'main', productionBranch: 'main' }]);
+
+    const built = await buildPipelinePreambleStructured('p1', {
+      step: 'review',
+      override: { mode: 'replace', extras: 'ONLY THIS.' },
+    });
+    expect(built.content).toBe('ONLY THIS.');
+    expect(built.blocks.map((b) => b.id)).toEqual(['state-extras']);
+  });
+
+  it('append-mode override lands after the state block', async () => {
+    mockBranchSelect([{ baseBranch: 'main', productionBranch: 'main' }]);
+
+    const built = await buildPipelinePreambleStructured('p1', {
+      step: 'review',
+      override: { mode: 'append', extras: 'EXTRA RULE.' },
+    });
+    expect(built.blocks.map((b) => b.id)).toEqual([
+      'pipeline-rules',
+      'tool-reference',
+      'project-config',
+      'project-context',
+      'state-block',
+      'state-extras',
+    ]);
+    expect(built.content).toContain('## This State — Review');
+    expect(built.content.trimEnd().endsWith('EXTRA RULE.')).toBe(true);
+  });
+
   it('content matches the unstructured buildPipelinePreamble for the same project', async () => {
     // Both functions independently call loadProjectBranches; give both calls
     // the same row so they take the same code path.

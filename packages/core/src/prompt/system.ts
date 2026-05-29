@@ -21,15 +21,17 @@
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { projects } from '../db/schema.js';
+import { type JobType, projects } from '../db/schema.js';
 import { estimateTokens } from '../lib/token-estimator.js';
 import type { SystemPromptOverrideConfig } from '../pipeline/pipeline-config-schema.js';
+import { getStatePrompt } from './state-prompts/index.js';
 
 export type PreambleBlockId =
   | 'pipeline-rules'
   | 'tool-reference'
   | 'project-config'
   | 'project-context'
+  | 'state-block'
   | 'state-extras';
 
 export interface PreambleBlock {
@@ -56,16 +58,7 @@ const BRANCH_SENTINEL = '<detect-from-git>';
 
 export const PIPELINE_RULES = `## Pipeline Rules
 - **Always advance the state — never leave an issue parked.** The FINAL action of every step MUST be a \`forge_issues.update\` that moves \`status\`. Setting status is what triggers the next step; an issue left in its current status stalls the pipeline forever. Do this even if your skill instructions don't mention a transition.
-- **Where to move next (happy path):**
-  - \`open\` (triage) → \`confirmed\`
-  - \`needs_info\` (clarify) → \`confirmed\`
-  - \`confirmed\` (plan) → \`approved\`
-  - \`approved\` (code) → \`developed\`
-  - \`developed\` (review) → \`deploying\`  (or \`reopen\` if changes are needed)
-  - \`testing\` (test) → \`pass\`  (or \`reopen\` on failure)
-  - \`pass\` / \`staging\` → \`released\`; \`released\` (release) → \`closed\`
-  - \`reopen\` (fix) → \`developed\`
-  Intermediate states you don't own (\`deploying\`, \`tested\`, \`staging\`) auto-advance — you normally won't be dispatched onto them.
+- **Where to move next.** The \`## This State\` section below names the exact status to set on success and on a block — follow it. If that section is absent, default forward along: \`open → confirmed → approved → developed → deploying → testing → pass → staging → released → closed\` (intermediate states you don't own auto-advance).
 - **Deviate freely when warranted.** Transitions are NOT restricted to the happy path. From ANY state you may set \`needs_info\` (requirements missing/unclear), \`reopen\` (regression or failed check), or \`on_hold\` (deliberate pause) the moment you hit that condition — don't force the ladder. Only \`draft\` is never a valid target.
 - **Status LAST**, after all other work (commits, comments, handoff). Do NOT set \`merged_at\` or other derived fields by hand — \`merged_at\` is stamped automatically when you leave \`released\`.
 - **Branch discipline.** Run \`git branch --show-current\` + \`git status\` before any checkout. Branch from \`baseBranch\`: \`git checkout <baseBranch> && git pull && git checkout -b ISS-XX-short-title\`. Never switch branches mid-work.
@@ -161,17 +154,36 @@ export async function buildChatPreamble(projectId: string): Promise<string> {
   return `${sections.join('\n\n')}\n\n---\n\n`;
 }
 
+/** Options for the pipeline preamble builders. */
+export interface BuildPreambleOptions {
+  /**
+   * The step (jobType) this preamble is for. Drives the built-in per-state
+   * `state-block` (see `prompt/state-prompts`). Omit for non-pipeline callers
+   * (chat / generic preview) — no state block is added.
+   */
+  step?: JobType | null;
+  /** Project per-state override (`states[state].systemPrompt`). */
+  override?: SystemPromptOverride | null;
+}
+
 /**
- * Build the structured pipeline preamble + apply per-state override.
+ * Build the structured pipeline preamble. Layer order:
+ *   1-4. shared prefix (Pipeline Rules / Tool Reference / Project Config /
+ *        Project Context) — identical across every job, so the Anthropic prompt
+ *        cache hits broadly.
+ *   5.   `state-block` — the built-in default for `opts.step` (depth per state;
+ *        shared across jobs of the same step).
+ *   6.   `state-extras` — the project's per-state override, layered last.
  *
- * - `override.mode === 'replace'` and `override.extras` is non-empty: the
- *   operator-supplied text REPLACES the static prefix entirely (cache miss).
- * - Otherwise the override is appended after the static prefix (cache-friendly).
+ * - `override.mode === 'replace'` with non-empty extras: the operator text
+ *   REPLACES everything (no shared prefix, no state block; full cache miss).
+ * - Otherwise extras are appended after the state block (cache-friendly).
  */
 export async function buildPipelinePreambleStructured(
   projectId: string,
-  override?: SystemPromptOverride | null,
+  opts?: BuildPreambleOptions,
 ): Promise<BuiltPreamble> {
+  const override = opts?.override ?? null;
   const extras = override?.extras?.trim() ?? '';
   const mode = override?.mode ?? 'append';
 
@@ -195,12 +207,19 @@ export async function buildPipelinePreambleStructured(
   }
   // ISS-225 — inline the projectId so agents can call forge_projects.get
   // without having to re-discover it. Placed AFTER project-config so the
-  // cache-friendly static prefix is unaffected; BEFORE state-extras so
-  // operator append overrides remain the last word.
+  // cache-friendly static prefix is unaffected; BEFORE the state block so the
+  // shared prefix stays the longest common cacheable span.
   sections.push({
     id: 'project-context',
     body: formatProjectContext(projectId),
   });
+  // Built-in per-state depth. After the shared prefix (so cross-state cache on
+  // the prefix is preserved) and before any operator override (so the override
+  // remains the last word).
+  const stateBlock = getStatePrompt(opts?.step);
+  if (stateBlock) {
+    sections.push({ id: 'state-block', body: stateBlock });
+  }
   if (extras.length > 0) {
     sections.push({ id: 'state-extras', body: extras });
   }
@@ -218,8 +237,8 @@ export async function buildPipelinePreambleStructured(
 /** Joined string form of buildPipelinePreambleStructured. */
 export async function buildPipelinePreamble(
   projectId: string,
-  override?: SystemPromptOverride | null,
+  opts?: BuildPreambleOptions,
 ): Promise<string> {
-  const { content } = await buildPipelinePreambleStructured(projectId, override);
+  const { content } = await buildPipelinePreambleStructured(projectId, opts);
   return content;
 }
