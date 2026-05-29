@@ -10,6 +10,14 @@ interface PipelineFeedProps {
   recentCompleted: AgentSessionSummary[];
 }
 
+// Colored status badge — semantic tokens so dark mode is automatic.
+const STATUS_BADGE: Record<string, string> = {
+  running: 'bg-primary/15 text-primary',
+  queued: 'bg-outline-variant/40 text-on-surface-variant',
+  completed: 'bg-success/15 text-success',
+  failed: 'bg-error/15 text-error',
+};
+
 function formatElapsed(dateStr: string): string {
   const ms = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(ms / 60_000);
@@ -41,6 +49,11 @@ export function PipelineFeed({ running, queued, recentCompleted }: PipelineFeedP
               {skill && <span className="text-[10px] font-mono text-outline uppercase tracking-wider">{skill} </span>}
               <span className="text-xs text-on-surface-variant truncate">{s.title}</span>
             </div>
+            <span
+              className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-widest ${STATUS_BADGE[s.status] ?? 'bg-outline-variant/40 text-on-surface-variant'}`}
+            >
+              {s.status}
+            </span>
             <span className="text-[10px] font-mono text-outline tabular-nums shrink-0">
               {formatElapsed(s.updatedAt)}
             </span>

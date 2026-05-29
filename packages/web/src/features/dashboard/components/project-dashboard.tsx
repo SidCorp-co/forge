@@ -3,14 +3,16 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { AlertTriangle, Workflow } from 'lucide-react';
-import { useProjectBySlug, useProjectsHealth } from '@/features/project/hooks/use-projects';
+import { useProject, useProjectBySlug, useProjectsHealth } from '@/features/project/hooks/use-projects';
 import { StatCard } from '@/components/ui/stat-card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ALL_STATUSES, STATUS_COLORS } from '@/lib/constants';
+import { STATUS_COLORS } from '@/lib/constants';
 import { formatApiError } from '@/lib/api/error';
 import type { IssueStatus } from '@/features/issue/types';
 import { AttentionQueue } from './attention-queue';
 import { PipelineFeed } from './pipeline-feed';
+import { ProjectOverviewHeader } from './project-overview-header';
+import { PipelineHealthCards } from './pipeline-health-cards';
 import { PipelineActivityPanel } from './pipeline-activity-panel';
 import { usePipelineActivity } from '../hooks/use-pipeline-activity';
 import { CostVelocityPanel } from './cost-velocity-panel';
@@ -22,6 +24,10 @@ import { useRoom } from '@/lib/ws/use-room';
 export function ProjectDashboard() {
   const { slug } = useParams<{ slug: string }>();
   const project = useProjectBySlug(slug);
+  // The list-derived `project` (GET /projects) omits repoPath/baseBranch/
+  // productionBranch; only the detail endpoint (GET /projects/:id) returns them,
+  // so fetch it for the header's branch/repo pills.
+  const { data: projectDetail } = useProject(project?.id);
   const { data, isLoading, error } = useProjectsHealth();
   const { running, queued, recentCompleted, isLoading: pipelineLoading } = usePipelineActivity(slug);
 
@@ -76,15 +82,20 @@ export function ProjectDashboard() {
     );
   }
 
-  const distEntries = ALL_STATUSES
-    .map((s) => ({ status: s.value, label: s.label, count: row.statusDistribution[s.value] ?? 0 }))
-    .filter((e) => e.count > 0);
-
   const hasPipelineActivity =
     running.length + queued.length + recentCompleted.length > 0;
 
   return (
     <div className="space-y-6">
+      {project && (
+        <ProjectOverviewHeader
+          project={project}
+          slug={slug}
+          baseBranch={projectDetail?.baseBranch}
+          productionBranch={projectDetail?.productionBranch}
+          repoPath={projectDetail?.repoPath}
+        />
+      )}
       <ContinueSetupBanner slug={slug} projectId={project?.id} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <StatCard label="Active issues" value={row.totalActive} />
@@ -127,33 +138,7 @@ export function ProjectDashboard() {
             {totalIssues} total
           </span>
         </div>
-        {totalIssues === 0 ? (
-          <p className="text-xs text-outline">No issues yet.</p>
-        ) : (
-          <>
-            <div className="flex h-2 w-full overflow-hidden rounded-sm bg-surface-container-high">
-              {distEntries.map((e) => (
-                <div
-                  key={e.status}
-                  className={STATUS_COLORS[e.status as IssueStatus] ?? 'bg-outline-variant'}
-                  style={{ width: `${(e.count / totalIssues) * 100}%` }}
-                  title={`${e.label}: ${e.count}`}
-                />
-              ))}
-            </div>
-            <ul className="flex flex-wrap gap-2 text-[10px] uppercase tracking-widest">
-              {distEntries.map((e) => (
-                <li
-                  key={e.status}
-                  className={`inline-flex items-center gap-1.5 rounded-sm px-2 py-0.5 ${STATUS_COLORS[e.status as IssueStatus] ?? 'bg-outline-variant text-outline'}`}
-                >
-                  <span>{e.label}</span>
-                  <span className="font-bold tabular-nums">{e.count}</span>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
+        <PipelineHealthCards statusDistribution={row.statusDistribution} totalIssues={totalIssues} />
       </section>
 
       <section className="space-y-2">
