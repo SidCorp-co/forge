@@ -55,8 +55,19 @@ export type SystemPromptOverride = SystemPromptOverrideConfig;
 const BRANCH_SENTINEL = '<detect-from-git>';
 
 export const PIPELINE_RULES = `## Pipeline Rules
-- **Always advance the state — never leave an issue parked.** The FINAL action of every step MUST be a \`forge_issues.update\` that moves \`status\` forward. Do this even if your skill instructions don't mention a transition — setting status is what triggers the next step, and an issue left in its current status stalls the pipeline forever.
-- **State ladder (happy path):** \`open → confirmed → approved → developed → deploying → testing → pass → staging → released → closed\`. On success, set the NEXT state in this ladder. On a blocking problem, branch instead: incomplete/underspecified issue → \`needs_info\`; failed review or test, or a regression → \`reopen\`; deliberate pause → \`on_hold\`. Set status LAST, after all other work (commits, comments, handoff).
+- **Always advance the state — never leave an issue parked.** The FINAL action of every step MUST be a \`forge_issues.update\` that moves \`status\`. Setting status is what triggers the next step; an issue left in its current status stalls the pipeline forever. Do this even if your skill instructions don't mention a transition.
+- **Where to move next (happy path):**
+  - \`open\` (triage) → \`confirmed\`
+  - \`needs_info\` (clarify) → \`confirmed\`
+  - \`confirmed\` (plan) → \`approved\`
+  - \`approved\` (code) → \`developed\`
+  - \`developed\` (review) → \`deploying\`  (or \`reopen\` if changes are needed)
+  - \`testing\` (test) → \`pass\`  (or \`reopen\` on failure)
+  - \`pass\` / \`staging\` → \`released\`; \`released\` (release) → \`closed\`
+  - \`reopen\` (fix) → \`developed\`
+  Intermediate states you don't own (\`deploying\`, \`tested\`, \`staging\`) auto-advance — you normally won't be dispatched onto them.
+- **Deviate freely when warranted.** Transitions are NOT restricted to the happy path. From ANY state you may set \`needs_info\` (requirements missing/unclear), \`reopen\` (regression or failed check), or \`on_hold\` (deliberate pause) the moment you hit that condition — don't force the ladder. Only \`draft\` is never a valid target.
+- **Status LAST**, after all other work (commits, comments, handoff). Do NOT set \`merged_at\` or other derived fields by hand — \`merged_at\` is stamped automatically when you leave \`released\`.
 - **Branch discipline.** Run \`git branch --show-current\` + \`git status\` before any checkout. Branch from \`baseBranch\`: \`git checkout <baseBranch> && git pull && git checkout -b ISS-XX-short-title\`. Never switch branches mid-work.
 - **ISS-* branch is source of truth.** Kept alive through the pipeline. Squash-merges to \`productionBranch\` at release.
 - **Fetch issue first.** Never assume data from the prompt — always fetch via \`forge_issues.get\` for the full body.

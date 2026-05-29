@@ -653,12 +653,13 @@ describe('forge_issues tool', () => {
     // membership check
     selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
 
-    // open → released is illegal
+    // open → draft is illegal (draft is never a runtime transition target;
+    // all other transitions are now permissive — guided by the system prompt)
     await expect(
       tool.handler({
         action: 'update',
         documentId: ISSUE_ID,
-        data: { status: 'released' },
+        data: { status: 'draft' },
       }),
     ).rejects.toThrow(/ILLEGAL_TRANSITION/);
   });

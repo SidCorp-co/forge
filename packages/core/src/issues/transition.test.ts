@@ -169,14 +169,13 @@ describe('POST /api/issues/:id/transition', () => {
     expect(body.code).toBe('NO_OP');
   });
 
-  it('409 ILLEGAL_TRANSITION includes allowed list', async () => {
+  it('409 ILLEGAL_TRANSITION when target is draft (never a runtime target)', async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'open' });
-    const res = await req({ toStatus: 'released' }, token);
+    const res = await req({ toStatus: 'draft' }, token);
     expect(res.status).toBe(409);
-    const body = (await res.json()) as { code: string; details: { allowed: string[] } };
+    const body = (await res.json()) as { code: string };
     expect(body.code).toBe('ILLEGAL_TRANSITION');
-    expect(body.details.allowed).toEqual(['confirmed', 'needs_info', 'on_hold']);
     expect(dbUpdate).not.toHaveBeenCalled();
   });
 
@@ -324,9 +323,8 @@ describe('POST /api/issues/:id/transition', () => {
     queueAuthAndIssue({ status: 'draft' });
     const res = await req({ toStatus: 'in_progress' }, token);
     expect(res.status).toBe(409);
-    const body = (await res.json()) as { code: string; details: { allowed: string[] } };
+    const body = (await res.json()) as { code: string };
     expect(body.code).toBe('ILLEGAL_TRANSITION');
-    expect([...body.details.allowed].sort()).toEqual(['closed', 'open']);
     expect(dbUpdate).not.toHaveBeenCalled();
   });
 

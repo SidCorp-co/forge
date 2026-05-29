@@ -37,6 +37,40 @@ export function canTransition(from: IssueStatus, to: IssueStatus): boolean {
   return transitions[from].includes(to);
 }
 
+/**
+ * Statuses that may never be a transition TARGET at runtime. `draft` is an
+ * AI-proposal ingress state (issues are created as draft, then promoted to
+ * open/closed) — nothing in the live lifecycle transitions INTO draft.
+ */
+export const NON_TARGETABLE_STATUSES: ReadonlySet<IssueStatus> = new Set([
+  'draft',
+]);
+
+/**
+ * Permissive runtime transition guard. The strict `transitions` matrix above
+ * is retained as the recommended happy-path — it drives system-prompt
+ * generation, UI next-state suggestions, and the soft-skip resolver — but
+ * agent- and operator-initiated status updates are deliberately NOT gated by
+ * it. The pipeline is guided by the system prompt, not locked by a rigid
+ * matrix, so an agent may branch to `needs_info` / `on_hold` / `reopen` from
+ * any state, take a shortcut, or recover an edge case. The only hard rules:
+ * no no-op (enforced by callers) and `draft` is never a runtime target.
+ *
+ * `merged_at` stays a side-effect of leaving the merge state (see
+ * `markMergedIfLeavingBase`) — freeing transitions does NOT expose it to
+ * direct writes, so the cross-issue blocked_by signal remains trustworthy.
+ *
+ * Two guardrails survive (the "moderate" in moderately-strict):
+ *   1. `draft` is never a target (issues only enter draft at creation).
+ *   2. A `draft` may only be promoted to `open` or discarded to `closed` —
+ *      an unaccepted AI proposal cannot teleport mid-pipeline.
+ */
+export function canTransitionFree(from: IssueStatus, to: IssueStatus): boolean {
+  if (NON_TARGETABLE_STATUSES.has(to)) return false;
+  if (from === 'draft') return to === 'open' || to === 'closed';
+  return true;
+}
+
 export const REOPEN_CAP = 5;
 
 export function isReopenEntry(from: IssueStatus, to: IssueStatus): boolean {

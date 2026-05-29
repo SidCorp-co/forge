@@ -7,6 +7,7 @@ import {
   STAGE_FORWARD,
   type StagesConfig,
   canTransition,
+  canTransitionFree,
   getAllowedTransitions,
   isReopenEntry,
   resolveSkipTarget,
@@ -91,6 +92,29 @@ describe('state machine', () => {
 
   it('REOPEN_CAP is 5', () => {
     expect(REOPEN_CAP).toBe(5);
+  });
+
+  describe('canTransitionFree (permissive runtime guard)', () => {
+    it('allows any non-draft target from any runtime state', () => {
+      // Transitions the strict matrix would reject are now permitted.
+      expect(canTransitionFree('open', 'released')).toBe(true);
+      expect(canTransitionFree('approved', 'needs_info')).toBe(true);
+      expect(canTransitionFree('developed', 'reopen')).toBe(true);
+      expect(canTransitionFree('pass', 'on_hold')).toBe(true);
+    });
+
+    it('never allows draft as a target', () => {
+      for (const from of issueStatuses) {
+        expect(canTransitionFree(from, 'draft')).toBe(false);
+      }
+    });
+
+    it('restricts a draft source to open or closed only', () => {
+      expect(canTransitionFree('draft', 'open')).toBe(true);
+      expect(canTransitionFree('draft', 'closed')).toBe(true);
+      expect(canTransitionFree('draft', 'in_progress')).toBe(false);
+      expect(canTransitionFree('draft', 'developed')).toBe(false);
+    });
   });
 });
 

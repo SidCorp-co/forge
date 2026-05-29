@@ -18,8 +18,7 @@ import { withActorContext } from '../pipeline/outbox-session.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
 import {
   REOPEN_CAP,
-  canTransition,
-  getAllowedTransitions,
+  canTransitionFree,
   isReopenEntry,
 } from '../pipeline/state-machine.js';
 import { projectRoom } from '../ws/rooms.js';
@@ -206,16 +205,12 @@ transitionRoutes.post(
       });
     }
 
-    if (!canTransition(fromStatus, toStatus)) {
+    if (!canTransitionFree(fromStatus, toStatus)) {
       throw new HTTPException(409, {
-        message: `illegal transition from ${fromStatus} to ${toStatus}`,
+        message: `'${toStatus}' is not a valid runtime status target`,
         cause: {
           code: 'ILLEGAL_TRANSITION',
-          details: {
-            from: fromStatus,
-            to: toStatus,
-            allowed: getAllowedTransitions(fromStatus),
-          },
+          details: { from: fromStatus, to: toStatus },
         },
       });
     }

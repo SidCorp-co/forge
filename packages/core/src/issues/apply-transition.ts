@@ -5,8 +5,7 @@ import { withActorContext } from '../pipeline/outbox-session.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
 import {
   REOPEN_CAP,
-  canTransition,
-  getAllowedTransitions,
+  canTransitionFree,
   isReopenEntry,
 } from '../pipeline/state-machine.js';
 import { projectRoom } from '../ws/rooms.js';
@@ -57,11 +56,12 @@ export async function applyStatusTransition(
     throw new Error(`NO_OP: issue already in status ${toStatus}`);
   }
 
-  if (!options.skip && !canTransition(fromStatus, toStatus)) {
+  // Transitions are intentionally permissive (the system prompt guides the
+  // happy path); only `draft` is a forbidden target. `skip` still bypasses
+  // even that for the orchestrator's curated soft-skip chain.
+  if (!options.skip && !canTransitionFree(fromStatus, toStatus)) {
     throw new Error(
-      `ILLEGAL_TRANSITION: cannot transition ${fromStatus} → ${toStatus}; allowed: ${getAllowedTransitions(
-        fromStatus,
-      ).join(', ')}`,
+      `ILLEGAL_TRANSITION: '${toStatus}' is not a valid runtime status target`,
     );
   }
 

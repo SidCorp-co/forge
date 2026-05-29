@@ -27,7 +27,7 @@ import { withActorContext } from '../pipeline/outbox-session.js';
 import { openIssueRun } from '../pipeline/runs.js';
 import {
   REOPEN_CAP,
-  canTransition,
+  canTransitionFree,
   isReopenEntry,
 } from '../pipeline/state-machine.js';
 import { markMergedIfLeavingBase } from './merged-at.js';
@@ -214,7 +214,7 @@ issueExtrasRoutes.patch(
             // it via skipReason instead so callers can see that the status
             // request was a no-op even when other fields succeeded.
             skipReason = 'no_op';
-          } else if (!canTransition(fromStatus, toStatus)) {
+          } else if (!canTransitionFree(fromStatus, toStatus)) {
             skipReason = 'illegal_transition';
           } else if (
             isReopenEntry(fromStatus, toStatus) &&

@@ -266,8 +266,9 @@ describe('PATCH /api/issues/batch', () => {
   it('mixed status + priority — illegal transition surfaces as skipReason on the partially-applied row', async () => {
     authVerified();
     selectAwait.mockResolvedValueOnce([
-      // ISS1 in `closed` cannot transition to `in_progress` directly
-      { id: ISS1, issSeq: 1, projectId: PROJECT_A, status: 'closed', priority: 'medium', category: null, complexity: null, manualHold: false, reopenCount: 0 },
+      // ISS1 in `draft` cannot skip mid-pipeline to `in_progress` (drafts may
+      // only be promoted to open or discarded to closed)
+      { id: ISS1, issSeq: 1, projectId: PROJECT_A, status: 'draft', priority: 'medium', category: null, complexity: null, manualHold: false, reopenCount: 0 },
       // ISS2 in `approved` can transition to `in_progress`
       { id: ISS2, issSeq: 2, projectId: PROJECT_A, status: 'approved', priority: 'medium', category: null, complexity: null, manualHold: false, reopenCount: 0 },
     ]);
