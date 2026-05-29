@@ -1,0 +1,27 @@
+[package]
+name = "forge-runner-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+dirs-next = { workspace = true }
+toml = { workspace = true }
+tracing = { workspace = true }
+reqwest = { workspace = true }
+tokio-tungstenite = { version = "0.29", features = ["rustls-tls-native-roots"] }
+futures-util = { workspace = true }
+keyring = { workspace = true }
+uuid = { workspace = true }
+hostname = { workspace = true }
+which = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31", features = ["signal", "process"] }
