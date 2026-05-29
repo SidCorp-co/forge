@@ -44,6 +44,7 @@ import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { seedDomainTemplates } from './domain-templates/seed.js';
 import { registerCoolifyAdapter } from './integrations/coolify/adapter.js';
 import { registerIntegrationsWorker } from './integrations/queue.js';
+import { installRoutes } from './install/routes.js';
 import { integrationsRoutes } from './integrations/routes.js';
 import { assertVaultBootSafety } from './integrations/vault.js';
 import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-routes.js';
@@ -258,6 +259,9 @@ app.use('/mcp', requirePatOrDevice());
 app.post('/mcp', mcpHandler);
 app.get('/mcp', mcpHandler);
 app.delete('/mcp', mcpHandler);
+
+// Public runner distribution: GET /install.sh, /install/latest.json, /install/bin/:target
+app.route('/', installRoutes);
 
 app.route('/api/auth', authRoutes);
 app.route('/api/auth', loginRoutes);

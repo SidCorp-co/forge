@@ -1,0 +1,68 @@
+name: runner-release
+
+# Build + publish forge-runner binaries on a `runner-vX.Y.Z` tag.
+# Assets are named `forge-runner-<target>` so core can serve them from
+# RUNNER_RELEASE_DIR (deploy copies the release assets into that dir).
+on:
+  push:
+    tags:
+      - "runner-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-14
+            target: aarch64-apple-darwin
+          - os: macos-13
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/runner
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }} --manifest-path packages/runner/Cargo.toml
+      - name: Stage asset
+        run: |
+          cp "packages/runner/target/${{ matrix.target }}/release/forge-runner" "forge-runner-${{ matrix.target }}"
+          sha256sum "forge-runner-${{ matrix.target }}" || shasum -a 256 "forge-runner-${{ matrix.target }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: forge-runner-${{ matrix.target }}
+          path: forge-runner-${{ matrix.target }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: dist
+      - name: Write VERSION
+        run: echo "${GITHUB_REF_NAME#runner-v}" > dist/VERSION
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            dist/forge-runner-*
+            dist/VERSION
+          body: |
+            forge-runner ${{ github.ref_name }}
+
+            Deploy: copy these assets into the core host's `RUNNER_RELEASE_DIR`
+            (keep the `forge-runner-<target>` names + `VERSION`). Core then serves
+            `/install.sh`, `/install/latest.json`, `/install/bin/<target>`.
