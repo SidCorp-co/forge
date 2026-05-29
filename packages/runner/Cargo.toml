@@ -2,8 +2,10 @@
 resolver = "2"
 members = ["crates/forge-runner-core", "crates/forge-runner"]
 
+# Version is kept in lockstep with the monorepo (one version across
+# web/core/dev/runner). Bumped by .claude/skills/forge-cut-release.
 [workspace.package]
-version = "0.1.0"
+version = "0.2.10"
 edition = "2021"
 license = "MIT"
 
