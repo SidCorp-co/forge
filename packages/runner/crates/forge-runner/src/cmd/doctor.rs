@@ -1,5 +1,6 @@
 use clap::Args as ClapArgs;
 use forge_runner_core::config::Config;
+use forge_runner_core::update;
 
 use super::Ctx;
 
@@ -8,6 +9,11 @@ pub struct Args {}
 
 pub async fn run(ctx: Ctx, _args: Args) -> anyhow::Result<()> {
     println!("Forge Runner — doctor\n");
+    println!(
+        "✔ version      {} ({})",
+        update::CURRENT_VERSION,
+        update::BUILD_TARGET
+    );
 
     check_bin("claude", "Claude Code CLI");
     check_bin("git", "git");
@@ -49,6 +55,26 @@ pub async fn run(ctx: Ctx, _args: Args) -> anyhow::Result<()> {
 
     // Implemented in M1.
     println!("• cred store   keychain + file fallback (M1)");
+
+    // Best-effort update check (3s budget — never blocks doctor).
+    if let Some(url) = update::manifest_url(
+        cfg.update.manifest_url.as_deref(),
+        ctx.resolve_core_url(&cfg).as_deref(),
+    ) {
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            update::fetch_manifest(&url),
+        )
+        .await
+        {
+            Ok(Ok(m)) if update::is_newer(&m.version, update::CURRENT_VERSION) => println!(
+                "⬆ update       {} available (run `forge-runner update`)",
+                m.version
+            ),
+            Ok(Ok(_)) => println!("✔ update       trên bản mới nhất"),
+            _ => println!("• update       không kiểm tra được (manifest chưa có/không tới được)"),
+        }
+    }
 
     Ok(())
 }

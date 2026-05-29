@@ -30,9 +30,22 @@ pub struct Config {
     #[serde(default)]
     pub runner: RunnerSettings,
 
+    #[serde(default)]
+    pub update: UpdateSettings,
+
     /// project-slug -> local repo binding. One runner is registered per binding.
     #[serde(default)]
     pub bindings: HashMap<String, Binding>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UpdateSettings {
+    /// Release manifest URL. Defaults to `{core_url}/install/latest.json`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest_url: Option<String>,
+    /// When true, the daemon downloads + applies updates and restarts itself.
+    #[serde(default)]
+    pub auto: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

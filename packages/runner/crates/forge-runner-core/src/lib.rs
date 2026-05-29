@@ -11,6 +11,7 @@ pub mod mcp;
 pub mod observability;
 pub mod runner;
 pub mod transport;
+pub mod update;
 pub mod workspace;
 
 pub use error::{Error, Result};

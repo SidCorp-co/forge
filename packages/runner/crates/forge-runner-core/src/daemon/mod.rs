@@ -70,6 +70,54 @@ pub async fn run(
         tokio::spawn(async move { ws::connect(ws_cfg, frame_tx, cancel_rx).await });
     }
 
+    // Update check loop: warn when a newer release exists; auto-apply +
+    // restart when `update.auto` is set. Checks ~30s after start, then every 6h.
+    if let Some(url) =
+        crate::update::manifest_url(cfg.update.manifest_url.as_deref(), Some(&core_url))
+    {
+        let auto = cfg.update.auto;
+        let mut cancel_rx = cancel_rx.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(6 * 3600));
+            loop {
+                match crate::update::fetch_manifest(&url).await {
+                    Ok(m)
+                        if crate::update::is_newer(&m.version, crate::update::CURRENT_VERSION) =>
+                    {
+                        tracing::warn!(
+                            "[update] available: {} → {}",
+                            crate::update::CURRENT_VERSION,
+                            m.version
+                        );
+                        if auto {
+                            match crate::update::apply(&m).await {
+                                Ok(Some(o)) => {
+                                    tracing::warn!(
+                                        "[update] applied {} → {} — restarting service",
+                                        o.from,
+                                        o.to
+                                    );
+                                    let _ = std::process::Command::new("systemctl")
+                                        .args(["--user", "restart", "forge-runner"])
+                                        .status();
+                                }
+                                Ok(None) => {}
+                                Err(e) => tracing::warn!("[update] apply failed: {e}"),
+                            }
+                        }
+                    }
+                    Ok(_) => tracing::debug!("[update] up to date"),
+                    Err(e) => tracing::debug!("[update] check failed: {e}"),
+                }
+                tokio::select! {
+                    _ = tick.tick() => {}
+                    _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } }
+                }
+            }
+        });
+    }
+
     // Heartbeat loop.
     {
         let client = client.clone();
