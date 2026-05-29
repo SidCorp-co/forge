@@ -16,7 +16,6 @@ tracing = { workspace = true }
 reqwest = { workspace = true }
 tokio-tungstenite = { version = "0.29", features = ["rustls-tls-native-roots"] }
 futures-util = { workspace = true }
-keyring = { workspace = true }
 uuid = { workspace = true }
 hostname = { workspace = true }
 which = { workspace = true }
@@ -25,3 +24,11 @@ hex = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", features = ["signal", "process"] }
+
+# Keychain only on macOS/Windows — Linux uses the file store to avoid pulling
+# libdbus-sys (system dbus-1) via secret-service, keeping the binary portable.
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { workspace = true }

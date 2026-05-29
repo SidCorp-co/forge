@@ -14,8 +14,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 
+// Keychain consts — only referenced on macOS/Windows (Linux uses the file store
+// to avoid a libdbus/secret-service dependency).
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const SERVICE: &str = "forge-runner";
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const LEGACY_SERVICE: &str = "forge-beta";
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const DEVICE_ACCOUNT: &str = "device-token";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,56 +56,71 @@ pub fn active_backend() -> Backend {
     if file_path().map(|p| p.exists()).unwrap_or(false) {
         return Backend::File;
     }
-    // Probe the keychain cheaply: if constructing + reading an entry errors with
-    // a storage-access problem, fall back to the file.
-    match keyring::Entry::new(SERVICE, DEVICE_ACCOUNT).and_then(|e| match e.get_password() {
-        Ok(_) => Ok(()),
-        Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(e),
-    }) {
-        Ok(()) => Backend::Keychain,
-        Err(_) => Backend::File,
+    // Probe the keychain cheaply (macOS/Windows only).
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        if keyring::Entry::new(SERVICE, DEVICE_ACCOUNT)
+            .and_then(|e| match e.get_password() {
+                Ok(_) | Err(keyring::Error::NoEntry) => Ok(()),
+                Err(e) => Err(e),
+            })
+            .is_ok()
+        {
+            return Backend::Keychain;
+        }
     }
+    Backend::File
 }
 
 pub fn store_device_token(token: &str) -> Result<()> {
     if matches!(forced_backend(), Some(Backend::File)) {
         return file_store(token);
     }
-    // Try the keychain; fall back to the file on ANY failure. A headless box
-    // may have a secret-service whose collection is locked — reads probe as
-    // empty but writes fail ("Cannot create an item in a locked collection").
-    match keyring::Entry::new(SERVICE, DEVICE_ACCOUNT).and_then(|e| e.set_password(token)) {
-        Ok(()) => Ok(()),
-        Err(e) => {
-            tracing::warn!("keychain unavailable ({e}); using 0600 file credential store");
-            file_store(token)
+    // Try the keychain (macOS/Windows); fall back to the file on ANY failure
+    // (e.g. a locked secret-service collection). Linux always uses the file
+    // store — no libdbus dependency.
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        match keyring::Entry::new(SERVICE, DEVICE_ACCOUNT).and_then(|e| e.set_password(token)) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                tracing::warn!("keychain unavailable ({e}); using 0600 file credential store")
+            }
         }
     }
+    file_store(token)
 }
 
 pub fn load_device_token() -> Result<Option<String>> {
     if matches!(forced_backend(), Some(Backend::File)) {
         return file_load();
     }
-    // Keychain (tolerant of lock/errors) → file → legacy `forge-beta` keychain.
-    if let Some(tok) = keychain_load(SERVICE) {
-        return Ok(Some(tok));
+    // Keychain (macOS/Windows, tolerant of errors) → file → legacy keychain.
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        if let Some(tok) = keychain_load(SERVICE) {
+            return Ok(Some(tok));
+        }
     }
     if let Some(tok) = file_load()? {
         return Ok(Some(tok));
     }
-    if let Some(tok) = keychain_load(LEGACY_SERVICE) {
-        let _ = store_device_token(&tok); // migrate forward, best-effort
-        return Ok(Some(tok));
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        if let Some(tok) = keychain_load(LEGACY_SERVICE) {
+            let _ = store_device_token(&tok); // migrate forward, best-effort
+            return Ok(Some(tok));
+        }
     }
     Ok(None)
 }
 
 pub fn clear_device_token() -> Result<()> {
-    // Best-effort on both stores (ignore keychain errors on locked collections).
-    if let Ok(entry) = keyring::Entry::new(SERVICE, DEVICE_ACCOUNT) {
-        let _ = entry.delete_credential();
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        if let Ok(entry) = keyring::Entry::new(SERVICE, DEVICE_ACCOUNT) {
+            let _ = entry.delete_credential();
+        }
     }
     let p = file_path()?;
     if p.exists() {
@@ -109,8 +129,9 @@ pub fn clear_device_token() -> Result<()> {
     Ok(())
 }
 
-/// Load from the keychain, treating any error (locked collection, no backend)
-/// as "absent" so the caller can fall through to the file store.
+/// Load from the keychain, treating any error as "absent" so the caller falls
+/// through to the file store. (macOS/Windows only.)
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn keychain_load(service: &str) -> Option<String> {
     keyring::Entry::new(service, DEVICE_ACCOUNT)
         .and_then(|e| e.get_password())
