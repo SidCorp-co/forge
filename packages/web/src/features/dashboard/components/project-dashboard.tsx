@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { AlertTriangle, Workflow } from 'lucide-react';
-import { useProjectBySlug, useProjectsHealth } from '@/features/project/hooks/use-projects';
+import { useProject, useProjectBySlug, useProjectsHealth } from '@/features/project/hooks/use-projects';
 import { StatCard } from '@/components/ui/stat-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { STATUS_COLORS } from '@/lib/constants';
@@ -24,6 +24,10 @@ import { useRoom } from '@/lib/ws/use-room';
 export function ProjectDashboard() {
   const { slug } = useParams<{ slug: string }>();
   const project = useProjectBySlug(slug);
+  // The list-derived `project` (GET /projects) omits repoPath/baseBranch/
+  // productionBranch; only the detail endpoint (GET /projects/:id) returns them,
+  // so fetch it for the header's branch/repo pills.
+  const { data: projectDetail } = useProject(project?.id);
   const { data, isLoading, error } = useProjectsHealth();
   const { running, queued, recentCompleted, isLoading: pipelineLoading } = usePipelineActivity(slug);
 
@@ -83,7 +87,15 @@ export function ProjectDashboard() {
 
   return (
     <div className="space-y-6">
-      {project && <ProjectOverviewHeader project={project} slug={slug} />}
+      {project && (
+        <ProjectOverviewHeader
+          project={project}
+          slug={slug}
+          baseBranch={projectDetail?.baseBranch}
+          productionBranch={projectDetail?.productionBranch}
+          repoPath={projectDetail?.repoPath}
+        />
+      )}
       <ContinueSetupBanner slug={slug} projectId={project?.id} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <StatCard label="Active issues" value={row.totalActive} />

@@ -8,6 +8,13 @@ import { Button } from '@/components/ui/button';
 interface ProjectOverviewHeaderProps {
   project: Project;
   slug: string;
+  // Branch/repo fields come from the project DETAIL endpoint (GET /projects/:id),
+  // not the list (GET /projects) that `project` is derived from — the list
+  // projection omits them, so they must be passed in explicitly. Nullable +
+  // undefined while the detail query is in flight.
+  baseBranch?: string | null;
+  productionBranch?: string | null;
+  repoPath?: string | null;
 }
 
 function BranchPill({ label, branch }: { label: string; branch: string }) {
@@ -20,7 +27,13 @@ function BranchPill({ label, branch }: { label: string; branch: string }) {
   );
 }
 
-export function ProjectOverviewHeader({ project, slug }: ProjectOverviewHeaderProps) {
+export function ProjectOverviewHeader({
+  project,
+  slug,
+  baseBranch,
+  productionBranch,
+  repoPath,
+}: ProjectOverviewHeaderProps) {
   return (
     <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0 space-y-1.5">
@@ -28,13 +41,13 @@ export function ProjectOverviewHeader({ project, slug }: ProjectOverviewHeaderPr
           <h1 className="truncate text-xl font-semibold text-on-surface">{project.name}</h1>
           <span className="font-mono text-xs text-on-surface-variant">/{slug}</span>
         </div>
-        {(project.baseBranch || project.productionBranch || project.repoPath) && (
+        {(baseBranch || productionBranch || repoPath) && (
           <div className="flex flex-wrap items-center gap-1.5">
-            {project.baseBranch && <BranchPill label="base" branch={project.baseBranch} />}
-            {project.productionBranch && <BranchPill label="prod" branch={project.productionBranch} />}
-            {project.repoPath && (
-              <span className="max-w-[16rem] truncate font-mono text-[10px] text-outline" title={project.repoPath}>
-                {project.repoPath}
+            {baseBranch && <BranchPill label="base" branch={baseBranch} />}
+            {productionBranch && <BranchPill label="prod" branch={productionBranch} />}
+            {repoPath && (
+              <span className="max-w-[16rem] truncate font-mono text-[10px] text-outline" title={repoPath}>
+                {repoPath}
               </span>
             )}
           </div>
