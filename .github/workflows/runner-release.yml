@@ -21,8 +21,9 @@ jobs:
             target: x86_64-unknown-linux-gnu
           - os: macos-14
             target: aarch64-apple-darwin
-          - os: macos-13
-            target: x86_64-apple-darwin
+          # macOS Intel (x86_64-apple-darwin) dropped — GitHub Intel runners
+          # queue for ages and Intel Macs are rare. Re-add an include line here
+          # if needed.
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
