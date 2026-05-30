@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { hashSkillBody } from './hash.js';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
@@ -139,6 +140,84 @@ describe('POST /api/skills', () => {
     expect(res.status).toBe(201);
     const body = (await res.json()) as { id: string };
     expect(body.id).toBe(SKILL_ID);
+  });
+});
+
+describe('files round-trip (AC #4)', () => {
+  const FILES = [
+    { path: 'references/guide.md', content: '# Guide\nline two\n', encoding: 'utf8' as const },
+    {
+      path: 'assets/logo.png',
+      content: Buffer.from([0x89, 0x50, 0x00, 0xff]).toString('base64'),
+      encoding: 'base64' as const,
+    },
+  ];
+
+  it('create stores files[] byte-identical and hashes over skillMd + files', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([{ ownerId: USER_ID }]); // project
+    selectLimit.mockResolvedValueOnce([{ role: 'owner' }]); // member
+    // Echo back exactly what the handler inserted so the response reflects storage.
+    insertReturning.mockImplementationOnce(async () => {
+      const v = insertValues.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+      return [{ id: SKILL_ID, ...v }];
+    });
+
+    const res = await buildApp().request('/api/skills', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        name: 's',
+        description: 'd',
+        skillMd: 'md',
+        isGlobal: false,
+        projectId: PROJECT_ID,
+        files: FILES,
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { files: typeof FILES };
+    expect(body.files).toEqual(FILES);
+
+    const values = insertValues.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(values.files).toEqual(FILES);
+    expect(values.contentHash).toBe(hashSkillBody('md', FILES));
+  });
+
+  it('update returns files[] byte-identical and bumps version', async () => {
+    authVerified();
+    // Existing project-scoped skill row.
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SKILL_ID,
+        projectId: PROJECT_ID,
+        scope: 'project',
+        skillMd: 'md',
+        prompt: 'md',
+        files: [],
+        version: 1,
+      },
+    ]);
+    selectLimit.mockResolvedValueOnce([{ ownerId: USER_ID }]); // project
+    selectLimit.mockResolvedValueOnce([{ role: 'owner' }]); // member
+    updateReturning.mockImplementationOnce(async () => {
+      const v = updateSet.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+      return [{ id: SKILL_ID, ...v }];
+    });
+
+    const res = await buildApp().request(`/api/skills/${SKILL_ID}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ files: FILES }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { files: typeof FILES };
+    expect(body.files).toEqual(FILES);
+
+    const values = updateSet.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(values.files).toEqual(FILES);
+    expect(values.contentHash).toBe(hashSkillBody('md', FILES));
+    expect(values.version).toBe(2);
   });
 });
 
