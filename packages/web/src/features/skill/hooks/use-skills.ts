@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { skillApi, skillRegistrationApi } from '../api';
-import type { Skill } from '../types';
+import type { Skill, SkillFile } from '../types';
 
 export function useSkills(projectDocumentId?: string) {
   return useQuery({
@@ -97,11 +97,12 @@ export function useEffectiveSkills(projectId?: string) {
 export function useUpsertSkillOverride() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ projectId, skillId, skillMdOverride }: {
+    mutationFn: ({ projectId, skillId, skillMdOverride, files }: {
       projectId: string;
       skillId: string;
       skillMdOverride: string;
-    }) => skillApi.upsertOverride(projectId, skillId, skillMdOverride),
+      files?: SkillFile[];
+    }) => skillApi.upsertOverride(projectId, skillId, skillMdOverride, files),
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['skills-effective', vars.projectId] });
     },
