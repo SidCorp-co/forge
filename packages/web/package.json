@@ -16,6 +16,7 @@
     "@codemirror/lang-python": "^6.2.1",
     "@codemirror/language": "^6.12.3",
     "@codemirror/legacy-modes": "^6.5.3",
+    "@codemirror/state": "^6.6.0",
     "@forge/contracts": "workspace:*",
     "@forge/observability": "workspace:*",
     "@react-three/drei": "^10.7.7",
