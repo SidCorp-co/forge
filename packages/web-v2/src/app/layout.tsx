@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { QueryProvider } from "@/providers/query-provider";
+import { AuthProvider } from "@/providers/auth-provider";
+import { WsMount } from "@/providers/ws-mount";
 import { ToastProvider } from "@/providers/toast-provider";
 import { RouteProgress } from "@/design/patterns/route-progress";
 import "./globals.css";
@@ -31,10 +33,15 @@ export default function RootLayout({
       <body className={`${hanken.variable} ${jetbrainsMono.variable}`}>
         <ThemeProvider>
           <QueryProvider>
-            <ToastProvider>
-              <RouteProgress />
-              {children}
-            </ToastProvider>
+            <AuthProvider>
+              {/* WsMount lives inside Auth + Query so the hook sees both the
+                  current user and the QueryClient it invalidates against. */}
+              <WsMount />
+              <ToastProvider>
+                <RouteProgress />
+                {children}
+              </ToastProvider>
+            </AuthProvider>
           </QueryProvider>
         </ThemeProvider>
       </body>

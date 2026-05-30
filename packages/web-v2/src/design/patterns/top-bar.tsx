@@ -10,6 +10,13 @@ export interface TopBarProps {
   onCommandPalette?: () => void;
   onNotifications?: () => void;
   onNewIssue?: () => void;
+  /**
+   * When set, renders a subtle "Back to classic" link to the v1 UI. This MUST
+   * resolve as a raw `<a href>` (not `next/link`), because the app runs under
+   * the `/v2` basePath and `next/link` would prefix it — turning `/` into
+   * `/v2/`. A plain anchor to `"/"` escapes the basePath and lands on v1.
+   */
+  backToClassicHref?: string;
 }
 
 export function TopBar({
@@ -18,6 +25,7 @@ export function TopBar({
   onCommandPalette,
   onNotifications,
   onNewIssue,
+  backToClassicHref,
 }: TopBarProps) {
   return (
     <header className="flex h-14 flex-none items-center gap-3 border-b border-line bg-surface px-5">
@@ -34,6 +42,16 @@ export function TopBar({
       </button>
 
       <div className="ml-auto flex items-center gap-2">
+        {backToClassicHref && (
+          // Raw anchor (NOT next/link) — must escape the /v2 basePath to reach v1.
+          <a
+            href={backToClassicHref}
+            className="fg-body-sm inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-muted transition-colors hover:bg-hover hover:text-fg"
+          >
+            <Icon name="arrowRight" size={15} className="rotate-180" />
+            Back to classic
+          </a>
+        )}
         <button
           type="button"
           onClick={onNotifications}
