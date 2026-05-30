@@ -16,6 +16,9 @@ export interface NavRailProps {
   projectItems: NavItem[];
   activeKey: string;
   onNavigate?: (key: string) => void;
+  /** Opens the searchable project switcher (the command palette, seeded with
+   *  per-project jump commands). Wired to the project header button. */
+  onProjectSwitch?: () => void;
   project?: { name: string; initials: string; tint: string; ink: string };
   user?: { initials: string };
 }
@@ -37,7 +40,7 @@ function NavRow({ item, active, onClick }: { item: NavItem; active: boolean; onC
 }
 
 /** Two-tier left nav: Workspace links + a project switcher + project sub-nav. */
-export function NavRail({ workspaceItems, projectItems, activeKey, onNavigate, project, user }: NavRailProps) {
+export function NavRail({ workspaceItems, projectItems, activeKey, onNavigate, onProjectSwitch, project, user }: NavRailProps) {
   return (
     <nav className="flex h-full w-[232px] flex-none flex-col gap-5 border-r border-line bg-surface px-3 py-4">
       <div className="flex items-center gap-2 px-1.5">
@@ -64,6 +67,8 @@ export function NavRail({ workspaceItems, projectItems, activeKey, onNavigate, p
           <Kicker className="px-2.5 pb-1">Project</Kicker>
           <button
             type="button"
+            onClick={onProjectSwitch}
+            aria-label="Switch project"
             className="mb-1 flex items-center gap-2.5 rounded-md border border-line bg-sunken px-2.5 py-2 text-left transition-colors hover:bg-hover"
           >
             <ProjectMark tint={project.tint} ink={project.ink} initials={project.initials} size={26} radius="var(--r-sm)" />

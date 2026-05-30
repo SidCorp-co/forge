@@ -9,7 +9,11 @@
 // the template every later web-v2 feature follows: pick a key the event-router
 // already touches, or live updates silently no-op.
 import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { projectApi } from './api';
+import { mergeProjects, workspaceTotals } from './derive';
+import { usePinnedProjects } from './pins';
+import type { ProjectConsoleItem, WorkspaceTotals } from './types';
 
 /** Project console list. Keyed `['projects']` — see the WS contract above. */
 export function useProjects() {
@@ -28,6 +32,49 @@ export function useProjectHealth() {
     queryKey: ['projects', 'health'],
     queryFn: () => projectApi.health(),
   });
+}
+
+export interface ProjectsConsole {
+  items: ProjectConsoleItem[];
+  totals: WorkspaceTotals;
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+  refetch: () => void;
+  toggle: (id: string) => void;
+}
+
+/**
+ * Compose the projects console: the `['projects']` list + `['projects','health']`
+ * rollup + client-only pins → fully-hydrated `ProjectConsoleItem[]` + workspace
+ * totals. Query keys are unchanged, so the WS event-router invalidations drive
+ * live updates with no extra wiring.
+ */
+export function useProjectsConsole(): ProjectsConsole {
+  const projects = useProjects();
+  const health = useProjectHealth();
+  const { pinnedIds, toggle } = usePinnedProjects();
+
+  const items = useMemo(
+    () => mergeProjects(projects.data ?? [], health.data, pinnedIds),
+    [projects.data, health.data, pinnedIds],
+  );
+  const totals = useMemo(() => workspaceTotals(items), [items]);
+
+  return {
+    items,
+    totals,
+    // Cold load = the list is still loading. Health hydrates the metrics a beat
+    // later but the cards/rows can render from the list alone.
+    isLoading: projects.isLoading,
+    isError: projects.isError,
+    error: projects.error,
+    refetch: () => {
+      projects.refetch();
+      health.refetch();
+    },
+    toggle,
+  };
 }
 
 /** Full detail for one project. Keyed `['project', id]`. */

@@ -122,6 +122,15 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
       icon: it.icon,
       onRun: () => router.push(it.href),
     }));
+    // Searchable project switcher: one jump command per project the caller can
+    // reach. Opened from the NavRail project button (or ⌘K directly).
+    for (const p of projects ?? []) {
+      base.push({
+        label: `Switch to ${p.name}`,
+        icon: "folder",
+        onRun: () => router.push(`/projects/${p.slug}`),
+      });
+    }
     if (slug) {
       for (const it of PROJECT_ITEMS) {
         base.push({
@@ -132,7 +141,7 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
       }
     }
     return base;
-  }, [router, slug, activeProject]);
+  }, [router, slug, activeProject, projects]);
 
   return (
     <div className="flex h-dvh overflow-hidden bg-app">
@@ -141,6 +150,7 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
         projectItems={navProject ? PROJECT_ITEMS : []}
         activeKey={activeKey}
         onNavigate={navigate}
+        onProjectSwitch={() => setPaletteOpen(true)}
         project={navProject}
         user={userInitials ? { initials: userInitials } : undefined}
       />

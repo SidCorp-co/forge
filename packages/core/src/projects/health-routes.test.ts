@@ -43,6 +43,9 @@ vi.mock('../db/client.js', () => ({
     insert: () => makeChain(),
     update: () => makeChain(),
     delete: () => makeChain(),
+    // `db.execute(sql`...`)` (the trailing-24h spend view query) is awaited
+    // directly; it shifts the same queue as the chained selects.
+    execute: () => makeChain(),
   },
 }));
 
@@ -153,6 +156,79 @@ describe('GET /api/projects/health', () => {
     const body = (await res.json()) as Array<{ throughput: number }>;
     expect(body).toHaveLength(1);
     expect(body[0]?.throughput).toBe(0);
+  });
+
+  it('200 with additive rollups (liveRuns / runners / spend24h / members / lastActivityAt)', async () => {
+    authVerified();
+    queryQueue.push([{ id: USER_ID, isCeo: false }]); // me
+    queryQueue.push([
+      {
+        id: PROJECT_A_ID,
+        slug: 'alpha',
+        name: 'Alpha',
+        agentConfig: null,
+        description: 'Alpha project',
+        repoPath: 'org/alpha',
+      },
+      {
+        id: PROJECT_B_ID,
+        slug: 'beta',
+        name: 'Beta',
+        agentConfig: null,
+        description: null,
+        repoPath: null,
+      },
+    ]); // visibleProjects
+    queryQueue.push([{ projectId: PROJECT_A_ID, status: 'open', n: 2 }]); // statusRows
+    queryQueue.push([]); // blockerRowsAll
+    queryQueue.push([]); // throughputRows
+    queryQueue.push([{ projectId: PROJECT_A_ID, n: 3 }]); // liveRunRows
+    queryQueue.push([{ projectId: PROJECT_A_ID, n: 2 }]); // runnerRows
+    queryQueue.push([{ project_id: PROJECT_A_ID, spend: 13.38 }]); // spendRows (db.execute)
+    queryQueue.push([
+      { projectId: PROJECT_A_ID, email: 'ada@x.io', joinedAt: new Date() },
+      { projectId: PROJECT_A_ID, email: 'bob@x.io', joinedAt: new Date() },
+    ]); // memberRows
+    queryQueue.push([{ projectId: PROJECT_A_ID, lastAt: '2026-05-30T10:00:00.000Z' }]); // issueActivityRows
+    queryQueue.push([{ projectId: PROJECT_A_ID, lastAt: '2026-05-31T12:00:00.000Z' }]); // runActivityRows
+
+    const res = await buildApp().request('/api/projects/health', {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{
+      id: string;
+      projectSlug: string;
+      description: string | null;
+      repoPath: string | null;
+      liveRuns: number;
+      runnerCount: number;
+      spend24hUsd: number;
+      memberCount: number;
+      members: string[];
+      lastActivityAt: string | null;
+    }>;
+
+    const alpha = body.find((p) => p.projectSlug === 'alpha');
+    const beta = body.find((p) => p.projectSlug === 'beta');
+    expect(alpha?.id).toBe(PROJECT_A_ID);
+    expect(alpha?.description).toBe('Alpha project');
+    expect(alpha?.repoPath).toBe('org/alpha');
+    expect(alpha?.liveRuns).toBe(3);
+    expect(alpha?.runnerCount).toBe(2);
+    expect(alpha?.spend24hUsd).toBeCloseTo(13.38);
+    expect(alpha?.memberCount).toBe(2);
+    expect(alpha?.members).toEqual(['AD', 'BO']); // email-derived initials
+    expect(alpha?.lastActivityAt).toBe('2026-05-31T12:00:00.000Z'); // max(issue, run)
+    // Project with no rollup rows falls back to safe defaults.
+    expect(beta?.liveRuns).toBe(0);
+    expect(beta?.runnerCount).toBe(0);
+    expect(beta?.spend24hUsd).toBe(0);
+    expect(beta?.memberCount).toBe(0);
+    expect(beta?.members).toEqual([]);
+    expect(beta?.lastActivityAt).toBeNull();
+    expect(beta?.description).toBeNull();
   });
 
   it('CEO branch: skips project-membership filter', async () => {

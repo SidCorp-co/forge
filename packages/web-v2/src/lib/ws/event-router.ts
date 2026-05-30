@@ -37,6 +37,9 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
     case 'issue.statusChanged': {
       qc.invalidateQueries({ queryKey: ['issues', 'list'] });
       qc.invalidateQueries({ queryKey: ['issues', 'search'] });
+      // Projects console (ISS-290): open-issue counts / health derive from
+      // issue status, so refresh the batch health rollup.
+      qc.invalidateQueries({ queryKey: ['projects', 'health'] });
       if (data?.issueId) {
         qc.invalidateQueries({ queryKey: ['issue', data.issueId] });
         qc.invalidateQueries({ queryKey: ['activities', data.issueId] });
@@ -95,6 +98,8 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
     }
     case 'pipeline_run.status_changed': {
       qc.invalidateQueries({ queryKey: ['pipeline-runs', 'list'] });
+      // Projects console (ISS-290): liveRuns / spend roll up from pipeline_runs.
+      qc.invalidateQueries({ queryKey: ['projects', 'health'] });
       if (data?.runId) {
         qc.invalidateQueries({ queryKey: ['pipeline-run', data.runId] });
       }
@@ -107,6 +112,8 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
     }
     case 'device.statusChanged': {
       qc.invalidateQueries({ queryKey: ['admin', 'devices'] });
+      // Projects console (ISS-290): online-runner counts feed per-project health.
+      qc.invalidateQueries({ queryKey: ['projects', 'health'] });
       return;
     }
     case 'user.preferencesChanged': {
