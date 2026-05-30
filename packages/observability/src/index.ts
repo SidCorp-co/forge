@@ -112,6 +112,56 @@ export function scrubUrl(url: string): string {
   return url.replace(URL_TOKEN_PATTERN, `$1${FILTERED}`);
 }
 
+/** Escape a string for safe interpolation into a `RegExp` source. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Line-oriented secret scrubbing for free-form log text (e.g. a Coolify
+ * build/deploy log surfaced over MCP). Unlike {@link scrubSentryEvent}, which
+ * walks structured event objects, this redacts secret-SHAPED tokens inside
+ * arbitrary text while preserving the surrounding diagnostic signal.
+ *
+ * Reuses the same canonical key sets as the rest of this module:
+ *  - {@link PAT_STRING_PATTERN} (Forge PAT plaintext) and {@link URL_TOKEN_PATTERN}
+ *    (tokenized URL query params).
+ *  - {@link SCRUB_HEADER_KEYS}: `Authorization: Bearer xxx`, `Cookie: ...`, etc.
+ *  - {@link SCRUB_BODY_KEYS}: `token=...`, `"apiKey":"..."`, `password=...`, ...
+ *  - `extraSecrets`: literal secret VALUES known to the caller (e.g. the
+ *    integration's own `apiToken` / `previousApiToken`), redacted wholesale.
+ *
+ * CRITICAL: redaction is token-scoped — we replace only the secret value, never
+ * the whole line. Whole-line masking of `ENV`/`ARG`/stderr would swallow the
+ * very diagnostic the log is being read for (ISS-277: `Cannot find module
+ * '@codemirror/state'`). Short `extraSecrets` (< 6 chars) are ignored to avoid
+ * shredding the log with spurious matches.
+ */
+export function scrubLogText(text: string, extraSecrets: string[] = []): string {
+  // Header value is the REST of the line (we scrub per line), so `Authorization:
+  // Bearer <token>` redacts the whole credential, not just the `Bearer` word.
+  const headerKeys = Array.from(SCRUB_HEADER_KEYS).map(escapeRegExp).join('|');
+  const headerRe = new RegExp(`\\b(${headerKeys})(\\s*[:=]\\s*).+`, 'gi');
+  // Value stops at whitespace, quote, comma, brace, or `&` — the `&` guard
+  // keeps a key=value match from swallowing the rest of a URL query string
+  // (e.g. `access_token=...&id=7` must not lose the `&id=7`).
+  const bodyRes = Array.from(SCRUB_BODY_KEYS).map(
+    (k) => new RegExp(`(\\b${escapeRegExp(k)}\\b\\s*[:=]\\s*"?)([^\\s",}&]+)`, 'gi'),
+  );
+  return text
+    .split('\n')
+    .map((line) => {
+      let out = scrubPatInString(scrubUrl(line));
+      out = out.replace(headerRe, `$1$2${FILTERED}`);
+      for (const re of bodyRes) out = out.replace(re, `$1${FILTERED}`);
+      for (const s of extraSecrets) {
+        if (s && s.length >= 6) out = out.split(s).join(FILTERED);
+      }
+      return out;
+    })
+    .join('\n');
+}
+
 /**
  * Scrub a Sentry event in place. Covers request headers, request URL,
  * request body (string-JSON or object), and breadcrumb fetch URLs.

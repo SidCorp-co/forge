@@ -88,12 +88,57 @@ describe('CoolifyClient', () => {
     expect(res.status).toBe('running');
   });
 
-  it('throws a clear not-found (not a bare 404) when the uuid is absent from the list', async () => {
-    const fetchImpl = makeFetch(() =>
-      new Response(JSON.stringify([{ uuid: 'other-uuid', name: 'api' }]), {
+  it('getDeployment hits GET /api/v1/deployments/<uuid> (Bearer) and returns status + logs', async () => {
+    const fetchImpl = makeFetch(({ url, init }) => {
+      expect(url).toBe('https://coolify.example/api/v1/deployments/dep-9');
+      expect(init.method).toBe('GET');
+      expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok');
+      expect(init.body).toBeUndefined();
+      return new Response(
+        JSON.stringify({
+          deployment_uuid: 'dep-9',
+          status: 'failed',
+          logs: JSON.stringify([
+            { output: "Cannot find module '@codemirror/state'", type: 'stderr' },
+          ]),
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    const client = new CoolifyClient({
+      baseUrl: 'https://coolify.example',
+      apiToken: 'tok',
+      fetchImpl,
+    });
+    const res = await client.getDeployment('dep-9');
+    expect(res.status).toBe('failed');
+    expect(typeof res.logs).toBe('string');
+  });
+
+  it('getDeployment url-encodes the deployment uuid', async () => {
+    const fetchImpl = makeFetch(({ url }) => {
+      expect(url).toBe('https://coolify.example/api/v1/deployments/a%2Fb');
+      return new Response(JSON.stringify({ status: 'finished' }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
-      }),
+      });
+    });
+    const client = new CoolifyClient({
+      baseUrl: 'https://coolify.example',
+      apiToken: 'tok',
+      fetchImpl,
+    });
+    const res = await client.getDeployment('a/b');
+    expect(res.status).toBe('finished');
+  });
+
+  it('throws a clear not-found (not a bare 404) when the uuid is absent from the list', async () => {
+    const fetchImpl = makeFetch(
+      () =>
+        new Response(JSON.stringify([{ uuid: 'other-uuid', name: 'api' }]), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
     );
     const client = new CoolifyClient({
       baseUrl: 'https://coolify.example',

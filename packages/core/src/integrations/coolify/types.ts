@@ -47,6 +47,26 @@ export interface CoolifyResourceResponse {
   status?: string;
 }
 
+/** One line of a Coolify deployment log (when `logs` is decoded to an array). */
+export interface CoolifyDeploymentLogLine {
+  output?: string;
+  type?: string;
+  timestamp?: string;
+}
+
+/**
+ * Coolify v4 `GET /api/v1/deployments/{uuid}`. The shape varies across Coolify
+ * versions, so every field is optional and callers parse defensively. `logs`
+ * is most commonly a JSON-encoded array of `{ output, type, timestamp }`
+ * objects, but some versions surface a raw string — `flattenLogs` handles both.
+ */
+export interface CoolifyDeploymentResponse {
+  deployment_uuid?: string;
+  status?: string; // 'queued' | 'in_progress' | 'finished' | 'failed' | 'cancelled' | ...
+  logs?: string | CoolifyDeploymentLogLine[];
+  id?: number;
+}
+
 /**
  * Shape Coolify posts to /in/:slug. Fields beyond status + deployment_uuid
  * are best-effort — Coolify's payload evolves across versions; the adapter

@@ -1,13 +1,14 @@
+import { scrubLogText } from '@forge/observability';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { integrationDeliveries } from '../../db/schema.js';
 import { logger } from '../../logger.js';
-import { isSentryEnabled, Sentry } from '../../observability/sentry.js';
+import { Sentry, isSentryEnabled } from '../../observability/sentry.js';
 import { closeRun, setCurrentStepForce } from '../../pipeline/runs.js';
 import { verifyHmacSignature } from '../../webhooks/hmac.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
 import { getAdapter, registerAdapter } from '../registry.js';
-import { findById, updateIntegration } from '../store.js';
+import { type ProjectIntegrationRow, buildContext, findById, updateIntegration } from '../store.js';
 import type {
   HealthCheckResult,
   InboundDispatchInput,
@@ -16,8 +17,9 @@ import type {
   OutboundDispatchInput,
   OutboundDispatchResult,
 } from '../types.js';
-import { CoolifyApiError, CoolifyClient } from './client.js';
 import { maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
+import { CoolifyApiError, CoolifyClient } from './client.js';
+import { flattenLogs, tailLog } from './logs.js';
 import type { CoolifyConfig, CoolifySecrets, CoolifyWebhookPayload } from './types.js';
 
 const BREADCRUMB_OUT = 'integration.coolify.dispatch';
@@ -107,7 +109,12 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
       projectIntegrationId: ctx.integrationId,
       direction: 'outbound',
       eventName: input.eventName,
-      payload: { ...payload, runId, environment: ctx.environment, resourceUuid: ctx.config.resourceUuid },
+      payload: {
+        ...payload,
+        runId,
+        environment: ctx.environment,
+        resourceUuid: ctx.config.resourceUuid,
+      },
       ...(input.requestId ? { requestId: input.requestId } : {}),
       status: 'pending',
     });
@@ -272,6 +279,38 @@ async function findOutboundByDeploymentUuid(
     .orderBy(desc(integrationDeliveries.createdAt))
     .limit(1);
   return rows[0] ?? null;
+}
+
+export interface CoolifyDeploymentLogsResult {
+  deploymentUuid: string;
+  status: string | null;
+  logs: string;
+  /** True when the log was tailed (older lines or leading bytes dropped). */
+  truncated: boolean;
+}
+
+/**
+ * Fetch a Coolify deployment's build/deploy log, scrub secrets line-by-line,
+ * and tail it. Exported standalone (not a method on `coolifyAdapter`) because
+ * the `IntegrationAdapter` interface is fixed; the MCP `forge_coolify_deploy`
+ * `logs` action calls this directly. Secret VALUES of the integration itself
+ * (apiToken / previousApiToken) are passed to the scrubber so a token echoed
+ * into the build log is redacted alongside the generic secret-shaped patterns.
+ */
+export async function fetchCoolifyDeploymentLogs(
+  row: ProjectIntegrationRow,
+  deploymentUuid: string,
+): Promise<CoolifyDeploymentLogsResult> {
+  const ctx = buildContext<CoolifyConfig, CoolifySecrets>(row);
+  const client = buildClient(ctx);
+  const dep = await client.getDeployment(deploymentUuid);
+  const raw = flattenLogs(dep.logs);
+  const extraSecrets = [ctx.secrets.apiToken, ctx.secrets.previousApiToken].filter(
+    (s): s is string => typeof s === 'string' && s.length > 0,
+  );
+  const scrubbed = scrubLogText(raw, extraSecrets);
+  const { text, truncated } = tailLog(scrubbed);
+  return { deploymentUuid, status: dep.status ?? null, logs: text, truncated };
 }
 
 export function registerCoolifyAdapter(): void {
