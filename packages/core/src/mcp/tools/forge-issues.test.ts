@@ -41,8 +41,7 @@ const updateSet = vi.fn(() => ({ where: updateWhere }));
 const txUpdateWhere = vi.fn(() => {
   const thenable: PromiseLike<unknown> & { returning: typeof updateReturning } = {
     returning: updateReturning,
-    then: (resolve, reject) =>
-      Promise.resolve(undefined).then(resolve as never, reject as never),
+    then: (resolve, reject) => Promise.resolve(undefined).then(resolve as never, reject as never),
   };
   return thenable;
 });
@@ -141,6 +140,7 @@ const baseIssueRow = {
   aiAcceptanceCriteria: null,
   aiConfidence: null,
   releaseNotes: null,
+  mergedAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -958,6 +958,187 @@ describe('forge_issues tool', () => {
         documentId: string;
       };
       expect(result.documentId).toBe(ISSUE_ID);
+    });
+  });
+
+  // ISS-286 — explicit merge-marker actions.
+  describe('mark_merged / unmark (ISS-286)', () => {
+    const auditCommentRow = {
+      id: '77777777-7777-4777-8777-777777777777',
+      body: 'mark_merged target=feature',
+      parentId: null,
+    };
+    const STAMPED = new Date('2026-05-30T00:00:00.000Z');
+
+    it('mark_merged stamps merged_at via COALESCE, writes audit comment, broadcasts, and ticks', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      // loadIssue (merged_at currently null)
+      selectLimit.mockResolvedValueOnce([baseIssueRow]);
+      // membership
+      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      // audit comment insert
+      insertReturning.mockResolvedValueOnce([auditCommentRow]);
+      // re-load fresh (now stamped)
+      selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, mergedAt: STAMPED }]);
+
+      const { hooks } = await import('../../pipeline/hooks.js');
+
+      const result = (await tool.handler({
+        action: 'mark_merged',
+        data: { issueId: ISSUE_ID, target: 'feature', note: 'merged @abc123' },
+      })) as { mergedAt: Date | null; status: string };
+
+      expect(result.status).toBe('merged');
+      expect(result.mergedAt).toEqual(STAMPED);
+
+      // Idempotency rests on COALESCE — assert the SQL shape (mock can't run
+      // SQL), confirming the write is not an unconditional overwrite. The SQL
+      // object embeds the column (circular), so read the literal StringChunks
+      // out of queryChunks rather than JSON.stringify-ing the whole object.
+      const setArg = updateSet.mock.calls[0]?.[0] as {
+        mergedAt: { queryChunks?: Array<{ value?: unknown }> };
+      };
+      const literal = (setArg.mergedAt.queryChunks ?? [])
+        .map((c) => (Array.isArray(c?.value) ? c.value.join('') : ''))
+        .join('');
+      expect(literal).toMatch(/coalesce/i);
+
+      // audit comment on the issue
+      expect(insertValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          issueId: ISSUE_ID,
+          authorId: OWNER_ID,
+          body: expect.stringContaining('mark_merged target=feature'),
+        }),
+      );
+      expect(hooks.emit).toHaveBeenCalledWith(
+        'commentCreated',
+        expect.objectContaining({ issueId: ISSUE_ID, commentId: auditCommentRow.id }),
+      );
+      // WS issue broadcast with mergedAt field
+      expect(hooks.emit).toHaveBeenCalledWith(
+        'issueUpdated',
+        expect.objectContaining({
+          issueId: ISSUE_ID,
+          fields: ['mergedAt'],
+          before: { mergedAt: null },
+          after: { mergedAt: STAMPED },
+        }),
+      );
+      // dispatcher wake so the now-unblocked parent dispatches promptly
+      expect(dispatchTick).toHaveBeenCalledWith(PROJECT_ID);
+    });
+
+    it('mark_merged requires data.target', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      await expect(
+        tool.handler({ action: 'mark_merged', data: { issueId: ISSUE_ID } }),
+      ).rejects.toThrow(/BAD_REQUEST/);
+    });
+
+    it('mark_merged requires data.issueId', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      await expect(
+        tool.handler({ action: 'mark_merged', data: { target: 'base' } }),
+      ).rejects.toThrow(/BAD_REQUEST/);
+    });
+
+    it('unmark clears merged_at to NULL, writes audit comment, broadcasts, and does NOT tick', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      // loadIssue (merged_at currently set)
+      selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, mergedAt: STAMPED }]);
+      // membership
+      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      // audit comment insert
+      insertReturning.mockResolvedValueOnce([{ ...auditCommentRow, body: 'unmark' }]);
+      // re-load fresh (cleared)
+      selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, mergedAt: null }]);
+
+      const { hooks } = await import('../../pipeline/hooks.js');
+
+      const result = (await tool.handler({
+        action: 'unmark',
+        data: { issueId: ISSUE_ID, note: 'epic rolled back' },
+      })) as { mergedAt: Date | null; status: string };
+
+      expect(result.status).toBe('unmarked');
+      expect(result.mergedAt).toBeNull();
+      expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ mergedAt: null }));
+      expect(insertValues).toHaveBeenCalledWith(
+        expect.objectContaining({ issueId: ISSUE_ID, body: expect.stringContaining('unmark') }),
+      );
+      expect(hooks.emit).toHaveBeenCalledWith(
+        'issueUpdated',
+        expect.objectContaining({
+          fields: ['mergedAt'],
+          before: { mergedAt: STAMPED },
+          after: { mergedAt: null },
+        }),
+      );
+      // clearing only adds a block — no dispatcher wake.
+      expect(dispatchTick).not.toHaveBeenCalled();
+    });
+
+    it('unmark requires data.issueId', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      await expect(tool.handler({ action: 'unmark', data: {} })).rejects.toThrow(/BAD_REQUEST/);
+    });
+
+    it('mark_merged rejects a non-member device with FORBIDDEN', async () => {
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      // loadIssue
+      selectLimit.mockResolvedValueOnce([baseIssueRow]);
+      // project owned by someone else
+      selectLimit.mockResolvedValueOnce([{ ownerId: 'someone-else' }]);
+      // no member row
+      selectLimit.mockResolvedValueOnce([]);
+
+      await expect(
+        tool.handler({ action: 'mark_merged', data: { issueId: ISSUE_ID, target: 'base' } }),
+      ).rejects.toThrow(/FORBIDDEN/);
+    });
+
+    it("unmark rejects with NOT_FOUND when the issue's project is outside the PAT allowlist", async () => {
+      const tool = forgeIssuesTool({
+        principal: {
+          kind: 'pat',
+          userId: OWNER_ID,
+          tokenId: '55555555-5555-4555-8555-555555555555',
+          scopes: ['read', 'write'],
+          projectIds: ['66666666-6666-4666-8666-666666666666'],
+        },
+        device: fakeDevice,
+        projectSlug: null,
+      });
+      // loadIssue resolves a row whose project is NOT in the allowlist
+      selectLimit.mockResolvedValueOnce([baseIssueRow]);
+      await expect(tool.handler({ action: 'unmark', data: { issueId: ISSUE_ID } })).rejects.toThrow(
+        /NOT_FOUND/,
+      );
     });
   });
 
