@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useState, useEffect, useRef } from 'react';
-import { Play, Loader2, SlidersHorizontal } from 'lucide-react';
+import { SlidersHorizontal } from 'lucide-react';
 import { Button, Input, Select, SegmentedControl } from '@/components/ui';
 import { cn } from '@/lib/utils/cn';
 import { ALL_PRIORITIES } from '@/lib/constants';
@@ -80,11 +80,7 @@ interface IssuesToolbarProps extends FilterDropdownsProps {
   searchQuery: string;
   activeFilterCount: number;
   filtersOpen: boolean;
-  checkedCount: number;
-  desktopConnected: boolean;
-  isBuildingPrompt: boolean;
   onToggleFilters: () => void;
-  onStartSession: () => void;
 }
 
 export function IssuesToolbar({
@@ -99,11 +95,7 @@ export function IssuesToolbar({
   setParam,
   activeFilterCount,
   filtersOpen,
-  checkedCount,
-  desktopConnected,
-  isBuildingPrompt,
   onToggleFilters,
-  onStartSession,
 }: IssuesToolbarProps) {
   const [localSearch, setLocalSearch] = useState(searchQuery);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -161,20 +153,6 @@ export function IssuesToolbar({
         </div>
 
         <div className="flex items-center gap-2">
-          {desktopConnected && checkedCount > 0 && (
-            <button
-              onClick={onStartSession}
-              disabled={isBuildingPrompt}
-              className="flex items-center gap-1.5 rounded-sm bg-primary px-3 py-2 text-sm font-medium text-on-primary hover:bg-tertiary disabled:opacity-50 transition-colors"
-            >
-              {isBuildingPrompt ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Play className="h-3.5 w-3.5" />
-              )}
-              Start Session ({checkedCount})
-            </button>
-          )}
           <Link href={`/projects/${slug}/issues/new`}>
             <Button>New Issue</Button>
           </Link>

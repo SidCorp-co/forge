@@ -339,12 +339,6 @@ export const agentApi = {
       data: { ...(row as object), documentId: row['id'] as string } as unknown as AgentSession,
     })),
 
-  triggerPipeline: (issueDocumentId: string) =>
-    apiClient<{ data: { ok: boolean; status: string; sessionDocumentId: string | null } }>('/agent-sessions/trigger-pipeline', {
-      method: 'POST',
-      body: JSON.stringify({ issueDocumentId }),
-    }),
-
   cancelSession: (sessionId: string) =>
     apiClient<AgentSession>(`/agent-sessions/${sessionId}/cancel`, { method: 'POST' }),
 

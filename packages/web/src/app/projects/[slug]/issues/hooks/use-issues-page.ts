@@ -382,13 +382,6 @@ export function useIssuesPage() {
     });
   }
 
-  async function handleStartSession() {
-    // No-op: the old agentApi.triggerPipeline has no core equivalent.
-    // Server-side pipeline/orchestrator dispatches jobs on transitions,
-    // so this action is covered automatically once transitions happen.
-    setChecked(new Set());
-  }
-
   return {
     slug,
     issues,
@@ -421,9 +414,6 @@ export function useIssuesPage() {
     total,
     handleUpdate,
     handleBulkUpdate,
-    handleStartSession,
-    desktopConnected: false,
-    isBuildingPrompt: false,
     groupBy,
     density,
     setDensity,
