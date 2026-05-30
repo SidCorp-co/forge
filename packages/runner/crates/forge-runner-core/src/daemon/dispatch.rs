@@ -60,6 +60,13 @@ pub(crate) fn resolve_repo(
 }
 
 const FLUSH_INTERVAL: Duration = Duration::from_millis(500);
+/// Cadence for the per-job session heartbeat. A `POST /api/jobs/:id/events`
+/// bumps `agent_sessions.lastHeartbeatAt` server-side, so emitting a tiny
+/// `progress` event while the agent is silent keeps the session alive. 25s is
+/// comfortably under the server's 180s session stale threshold
+/// (`PIPELINE_HEARTBEAT_TIMEOUT_MS`, min 30s) and matches desktop parity
+/// (`packages/dev/src/hooks/use-web-socket.ts`). See ISS-285.
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(25);
 
 pub async fn handle(
     client: &CoreClient,
@@ -152,6 +159,15 @@ async fn consume(client: &CoreClient, job_id: &str, mut rx: mpsc::Receiver<Runne
     let mut flush = tokio::time::interval(FLUSH_INTERVAL);
     flush.tick().await;
 
+    // Independent per-job session heartbeat (ISS-285). Posts a tiny `progress`
+    // event every 25s only when no real batch was posted in the window, so the
+    // server keeps `lastHeartbeatAt` fresh through long silent steps (docker
+    // build / E2E) without false `heartbeat_timeout`, yet active jobs emit no
+    // extra rows.
+    let mut heartbeat = tokio::time::interval(HEARTBEAT_INTERVAL);
+    heartbeat.tick().await;
+    let mut posted_since_beat = false;
+
     enum Terminal {
         Done(i32),
         Failed(String),
@@ -171,8 +187,19 @@ async fn consume(client: &CoreClient, job_id: &str, mut rx: mpsc::Receiver<Runne
                     let batch = std::mem::take(&mut buf);
                     if let Err(e) = post_job_events(client, job_id, &batch).await {
                         tracing::warn!("[job {job_id}] post events: {e}");
+                    } else {
+                        posted_since_beat = true;
                     }
                 }
+            }
+            _ = heartbeat.tick() => {
+                if !posted_since_beat {
+                    let beat = [JobEventInput::new("progress", serde_json::json!({ "heartbeat": true }))];
+                    if let Err(e) = post_job_events(client, job_id, &beat).await {
+                        tracing::debug!("[job {job_id}] heartbeat: {e}");
+                    }
+                }
+                posted_since_beat = false;
             }
         }
     }
