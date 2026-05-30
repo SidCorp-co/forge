@@ -1,8 +1,9 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { mkdirSync } from 'node:fs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { hashSkillBody } from './hash.js';
 
 // Mock the logger so test output stays quiet and we can assert calls.
 vi.mock('../logger.js', () => ({
@@ -125,6 +126,18 @@ async function makeSkillsRoot(skills: Array<{ name: string; body: string; descri
   return root;
 }
 
+/** Write a file (text or binary Buffer) at a relative path inside a skill dir. */
+async function writeSkillFile(
+  root: string,
+  skillName: string,
+  relPath: string,
+  data: string | Buffer,
+) {
+  const abs = path.join(root, skillName, relPath);
+  mkdirSync(path.dirname(abs), { recursive: true });
+  await writeFile(abs, data);
+}
+
 let cleanupRoots: string[] = [];
 
 beforeEach(() => {
@@ -142,9 +155,7 @@ async function track(root: string) {
 
 describe('seedBuiltinSkills', () => {
   it('inserts a fresh row, populates skillMd, and emits an "inserted" change record', async () => {
-    const root = await track(
-      await makeSkillsRoot([{ name: 'forge-alpha', body: '# Alpha body' }]),
-    );
+    const root = await track(await makeSkillsRoot([{ name: 'forge-alpha', body: '# Alpha body' }]));
     const harness = makeDb(new Map());
     harness.setCurrentName('forge-alpha');
 
@@ -171,9 +182,7 @@ describe('seedBuiltinSkills', () => {
   });
 
   it('treats matching contentHash + non-null skillMd as unchanged (no change record)', async () => {
-    const root = await track(
-      await makeSkillsRoot([{ name: 'forge-beta', body: '# Beta body' }]),
-    );
+    const root = await track(await makeSkillsRoot([{ name: 'forge-beta', body: '# Beta body' }]));
     // First seed gets the hash; reuse it for the unchanged case.
     const seedHarness = makeDb(new Map());
     seedHarness.setCurrentName('forge-beta');
@@ -183,10 +192,7 @@ describe('seedBuiltinSkills', () => {
 
     const harness = makeDb(
       new Map([
-        [
-          'forge-beta',
-          { contentHash: expectedHash!, version: 3, skillMd: 'previously-stored' },
-        ],
+        ['forge-beta', { contentHash: expectedHash!, version: 3, skillMd: 'previously-stored' }],
       ]),
     );
     harness.setCurrentName('forge-beta');
@@ -202,9 +208,7 @@ describe('seedBuiltinSkills', () => {
   });
 
   it('backfills stale skillMd without bumping version and without emitting a change', async () => {
-    const root = await track(
-      await makeSkillsRoot([{ name: 'forge-gamma', body: '# Gamma body' }]),
-    );
+    const root = await track(await makeSkillsRoot([{ name: 'forge-gamma', body: '# Gamma body' }]));
     const seedHarness = makeDb(new Map());
     seedHarness.setCurrentName('forge-gamma');
     const first = await seedBuiltinSkills(seedHarness.db as never, { skillsRoot: root });
@@ -212,9 +216,7 @@ describe('seedBuiltinSkills', () => {
 
     // Stale row: hash matches but skillMd is empty/null (older builds).
     const harness = makeDb(
-      new Map([
-        ['forge-gamma', { contentHash: expectedHash!, version: 5, skillMd: null }],
-      ]),
+      new Map([['forge-gamma', { contentHash: expectedHash!, version: 5, skillMd: null }]]),
     );
     harness.setCurrentName('forge-gamma');
 
@@ -234,12 +236,7 @@ describe('seedBuiltinSkills', () => {
       await makeSkillsRoot([{ name: 'forge-delta', body: '# Delta v2 body' }]),
     );
     const harness = makeDb(
-      new Map([
-        [
-          'forge-delta',
-          { contentHash: 'old-stale-hash', version: 7, skillMd: 'old md' },
-        ],
-      ]),
+      new Map([['forge-delta', { contentHash: 'old-stale-hash', version: 7, skillMd: 'old md' }]]),
     );
     harness.setCurrentName('forge-delta');
 
@@ -272,5 +269,110 @@ describe('seedBuiltinSkills', () => {
     expect(result.inserted).toBe(1);
     expect(harness.inserts).toHaveLength(1);
     expect(harness.inserts[0]?.name).toBe('forge-epsilon');
+  });
+
+  it('walks references/ + scripts/ into files[] with POSIX-relative paths and utf8 content', async () => {
+    const root = await track(await makeSkillsRoot([{ name: 'forge-zeta', body: '# Zeta' }]));
+    await writeSkillFile(root, 'forge-zeta', 'references/guide.md', '# Guide\nline two\n');
+    await writeSkillFile(root, 'forge-zeta', 'scripts/run.sh', '#!/bin/sh\necho hi\n');
+    const harness = makeDb(new Map());
+    harness.setCurrentName('forge-zeta');
+
+    await seedBuiltinSkills(harness.db as never, { skillsRoot: root });
+
+    const files = harness.inserts[0]?.files as Array<{
+      path: string;
+      content: string;
+      encoding: string;
+    }>;
+    expect(files).toBeDefined();
+    // Sorted by path for hash stability.
+    expect(files.map((f) => f.path)).toEqual(['references/guide.md', 'scripts/run.sh']);
+    expect(files.every((f) => f.encoding === 'utf8')).toBe(true);
+    expect(files[0]?.content).toBe('# Guide\nline two\n');
+    // SKILL.md itself is never duplicated into files[].
+    expect(files.some((f) => f.path === 'SKILL.md')).toBe(false);
+  });
+
+  it('encodes binary files (NUL byte) as base64', async () => {
+    const root = await track(await makeSkillsRoot([{ name: 'forge-eta', body: '# Eta' }]));
+    const bin = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01, 0x02, 0xff]);
+    await writeSkillFile(root, 'forge-eta', 'assets/logo.png', bin);
+    const harness = makeDb(new Map());
+    harness.setCurrentName('forge-eta');
+
+    await seedBuiltinSkills(harness.db as never, { skillsRoot: root });
+
+    const files = harness.inserts[0]?.files as Array<{
+      path: string;
+      content: string;
+      encoding: string;
+    }>;
+    expect(files).toHaveLength(1);
+    expect(files[0]?.encoding).toBe('base64');
+    expect(Buffer.from(files[0]!.content, 'base64').equals(bin)).toBe(true);
+  });
+
+  it('computes contentHash via hashSkillBody(rawText, files)', async () => {
+    const root = await track(await makeSkillsRoot([{ name: 'forge-theta', body: '# Theta' }]));
+    await writeSkillFile(root, 'forge-theta', 'references/r.md', 'ref body\n');
+    const harness = makeDb(new Map());
+    harness.setCurrentName('forge-theta');
+
+    const result = await seedBuiltinSkills(harness.db as never, { skillsRoot: root });
+
+    const inserted = harness.inserts[0]!;
+    const expected = hashSkillBody(inserted.skillMd as string, inserted.files);
+    expect(inserted.contentHash).toBe(expected);
+    expect(result.changes[0]?.contentHash).toBe(expected);
+  });
+
+  it('is idempotent: a second seed over an unchanged folder leaves the row unchanged', async () => {
+    const root = await track(await makeSkillsRoot([{ name: 'forge-iota', body: '# Iota' }]));
+    await writeSkillFile(root, 'forge-iota', 'references/r.md', 'ref body\n');
+
+    const first = makeDb(new Map());
+    first.setCurrentName('forge-iota');
+    const firstResult = await seedBuiltinSkills(first.db as never, { skillsRoot: root });
+    const hash = firstResult.changes[0]!.contentHash;
+    const skillMd = first.inserts[0]!.skillMd as string;
+
+    // Second run with the row already persisted (hash matches, skillMd present).
+    const second = makeDb(new Map([['forge-iota', { contentHash: hash, version: 4, skillMd }]]));
+    second.setCurrentName('forge-iota');
+    const secondResult = await seedBuiltinSkills(second.db as never, { skillsRoot: root });
+
+    expect(secondResult.unchanged).toBe(1);
+    expect(secondResult.updated).toBe(0);
+    expect(secondResult.changes).toHaveLength(0);
+    expect(second.updates).toHaveLength(0);
+  });
+
+  it('bumps version when a folder file is added/edited (hash changes)', async () => {
+    const root = await track(await makeSkillsRoot([{ name: 'forge-kappa', body: '# Kappa' }]));
+    await writeSkillFile(root, 'forge-kappa', 'references/r.md', 'ref body\n');
+
+    const first = makeDb(new Map());
+    first.setCurrentName('forge-kappa');
+    const firstResult = await seedBuiltinSkills(first.db as never, { skillsRoot: root });
+    const oldHash = firstResult.changes[0]!.contentHash;
+    const skillMd = first.inserts[0]!.skillMd as string;
+
+    // Add a second reference file between runs → folder content changes → hash differs.
+    await writeSkillFile(root, 'forge-kappa', 'references/extra.md', 'new file\n');
+
+    const second = makeDb(
+      new Map([['forge-kappa', { contentHash: oldHash, version: 4, skillMd }]]),
+    );
+    second.setCurrentName('forge-kappa');
+    const secondResult = await seedBuiltinSkills(second.db as never, { skillsRoot: root });
+
+    expect(secondResult.updated).toBe(1);
+    expect(secondResult.changes).toHaveLength(1);
+    expect(secondResult.changes[0]?.newVersion).toBe(5);
+    expect(secondResult.changes[0]?.contentHash).not.toBe(oldHash);
+    expect(second.updates[0]?.set.version).toBe(5);
+    const updatedFiles = second.updates[0]?.set.files as Array<{ path: string }>;
+    expect(updatedFiles.map((f) => f.path)).toEqual(['references/extra.md', 'references/r.md']);
   });
 });

@@ -7,6 +7,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { skills } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { hashSkillBody } from './hash.js';
 import { parseManifest } from './parse-manifest.js';
 
 export interface SeedChange {
@@ -72,6 +73,78 @@ function sha256(buf: Buffer | string): string {
     .digest('hex');
 }
 
+/**
+ * Shape of a single entry persisted into `skills.files` (jsonb). Mirrors the
+ * `fileSchema` accepted by the CRUD routes so seeded global skills and
+ * user-created project skills share one on-disk representation.
+ */
+interface SkillFile {
+  path: string;
+  content: string;
+  encoding: 'utf8' | 'base64';
+}
+
+/** Skip files larger than this so an accidental large binary cannot bloat the row/hash. */
+const MAX_SKILL_FILE_BYTES = 1024 * 1024; // 1 MB
+
+/**
+ * Recursively walk a skill folder and load every file except the root
+ * `SKILL.md` manifest (which lives in `skill_md`/`prompt`, not `files`) into
+ * the `skills.files` shape. Text files are stored utf8 with CRLF normalised so
+ * a cross-platform checkout hashes identically; binary files (NUL-byte
+ * heuristic) are base64-encoded. The result is sorted by `path` so
+ * `hashSkillBody` — which `JSON.stringify`s the array — is order-stable and the
+ * seed stays idempotent across boots.
+ */
+async function collectSkillFiles(skillDir: string): Promise<SkillFile[]> {
+  const files: SkillFile[] = [];
+
+  async function walk(dir: string): Promise<void> {
+    const entries = (await readdir(dir, { withFileTypes: true })) as Dirent[];
+    for (const entry of entries) {
+      // Skip OS cruft / dotfiles (.DS_Store, .gitkeep, …) so they never pollute
+      // the content hash.
+      if (entry.name.startsWith('.')) continue;
+
+      const absPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(absPath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+
+      // The root manifest is stored separately; never duplicate it into files[].
+      if (dir === skillDir && entry.name === 'SKILL.md') continue;
+
+      const buf = await readFile(absPath);
+      const relPath = path.relative(skillDir, absPath).split(path.sep).join('/');
+
+      if (buf.byteLength > MAX_SKILL_FILE_BYTES) {
+        logger.warn(
+          { skillDir, file: relPath, bytes: buf.byteLength, cap: MAX_SKILL_FILE_BYTES },
+          'collectSkillFiles: skipping oversized skill file',
+        );
+        continue;
+      }
+
+      const isBinary = buf.includes(0);
+      if (isBinary) {
+        files.push({ path: relPath, content: buf.toString('base64'), encoding: 'base64' });
+      } else {
+        files.push({
+          path: relPath,
+          content: buf.toString('utf8').replace(/\r\n/g, '\n'),
+          encoding: 'utf8',
+        });
+      }
+    }
+  }
+
+  await walk(skillDir);
+  files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  return files;
+}
+
 export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Promise<SeedResult> {
   const root = options.skillsRoot ?? defaultSkillsRoot();
 
@@ -118,7 +191,12 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
     const toolsRaw = frontmatter.tools;
     const tools = Array.isArray(toolsRaw) ? toolsRaw : [];
 
-    const contentHash = sha256(rawText);
+    // Walk references/, scripts/, … into files[] and hash over the full folder
+    // (skillMd + files) using the SAME function the CRUD routes use, so seeded
+    // global skills and user-edited skills compute identical hashes for
+    // identical content.
+    const files = await collectSkillFiles(path.join(root, entry.name));
+    const contentHash = hashSkillBody(rawText, files);
     const prompt = body;
 
     // Look up the current row (if any) and decide insert / update / unchanged.
@@ -150,6 +228,7 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
         version: 1,
         contentHash,
         skillMd: rawText,
+        files: files as never,
       });
       result.inserted += 1;
       result.changes.push({
@@ -172,8 +251,7 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
     // the natural or the salted hash as "current content").
     const saltedHash = sha256(`backfill-iss2a:${rawText}`);
     const skillMdMissing = !current.skillMd;
-    const hashMatches =
-      current.contentHash === contentHash || current.contentHash === saltedHash;
+    const hashMatches = current.contentHash === contentHash || current.contentHash === saltedHash;
     if (hashMatches && !skillMdMissing) {
       result.unchanged += 1;
       continue;
@@ -194,6 +272,7 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
         manifest: frontmatter,
         contentHash: writeContentHash,
         skillMd: rawText,
+        files: files as never,
         version: newVersion,
         updatedAt: sql`now()`,
       })
