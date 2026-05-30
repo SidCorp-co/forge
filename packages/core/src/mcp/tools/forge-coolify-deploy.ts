@@ -49,7 +49,6 @@ const inputSchema = z
     issueId: z.uuid().optional(),
     integrationId: z.uuid().optional(),
     deploymentUuid: z.string().optional(),
-    force: z.boolean().optional(),
   })
   .strict();
 
@@ -84,13 +83,11 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = ({
     'list: active Coolify integrations for the project (id, environment, resourceUuid, ' +
     'lastHealthStatus, breakerOpen); empty array => project is local-only (no Coolify). ' +
     "deploy: requires issueId — resolves the issue's latest pipeline run and enqueues a " +
-    'deploy via the SAME idempotent path as the release auto-subscriber (requestId = ' +
-    'runId:integrationId), so a second deploy for the same run is a no-op (no double-deploy) ' +
-    'and returns dispatched:false, reason:"already-dispatched". Pass force:true to RE-DEPLOY the ' +
-    'same run after a branch fix: a per-attempt requestId bypasses the dedup and Coolify rebuilds ' +
-    '(deploy?force=). ' +
+    'deploy via the SAME path as the release auto-subscriber. Each call is its own dispatch ' +
+    '(per-attempt requestId) and Coolify force-rebuilds, so re-deploying the same run after a ' +
+    'branch fix actually fires a fresh build. ' +
     'prod integrations honor the human-confirm gate: returns pendingHumanConfirm:true and does ' +
-    'NOT dispatch until confirmed via the confirm-prod-deploy endpoint (force does NOT bypass it). ' +
+    'NOT dispatch until confirmed via the confirm-prod-deploy endpoint. ' +
     'status: latest outbound delivery per integration (or a specific integrationId): ' +
     'deploymentUuid, status, breakerOpen, createdAt. ' +
     'logs: fetch the Coolify build/deploy log for a deployment and return it scrubbed + tailed. ' +
@@ -144,7 +141,6 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = ({
           projectId,
           issueId: input.issueId,
           runId,
-          ...(input.force ? { force: true } : {}),
         });
         return {
           dispatched: outcome.dispatched,

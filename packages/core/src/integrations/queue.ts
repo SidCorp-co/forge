@@ -12,8 +12,6 @@ export interface CoolifyDispatchJob {
   issueId: string | null;
   eventName: string;
   requestId?: string;
-  /** Explicit re-deploy — forwarded to Coolify's `deploy?force=` (ISS-290). */
-  force?: boolean;
 }
 
 let workerId: string | null = null;
@@ -65,12 +63,7 @@ async function runCoolifyDispatch(data: CoolifyDispatchJob): Promise<void> {
   const ctx = buildContext<CoolifyConfig, CoolifySecrets>(row);
   await coolifyAdapter.dispatchOutbound(ctx, {
     eventName: data.eventName,
-    payload: {
-      runId: data.runId,
-      issueId: data.issueId,
-      environment: ctx.environment,
-      ...(data.force ? { force: true } : {}),
-    },
+    payload: { runId: data.runId, issueId: data.issueId, environment: ctx.environment },
     ...(data.requestId ? { requestId: data.requestId } : {}),
     runId: data.runId,
   });

@@ -30,8 +30,6 @@ interface DeployPayload extends Record<string, unknown> {
   issueId: string | null;
   environment: 'staging' | 'prod';
   resourceUuid: string;
-  /** Explicit re-deploy — forwarded to Coolify's `deploy?force=` (ISS-290). */
-  force?: boolean;
 }
 
 function buildClient(ctx: {
@@ -138,10 +136,9 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
     const started = Date.now();
     const client = buildClient(ctx);
     try {
-      const res = await client.deploy({
-        resourceUuid: ctx.config.resourceUuid,
-        ...(payload.force ? { force: true } : {}),
-      });
+      // Always force-rebuild: a release/re-deploy should produce a fresh build
+      // even when Coolify thinks the commit is unchanged (ISS-290).
+      const res = await client.deploy({ resourceUuid: ctx.config.resourceUuid, force: true });
       // Coolify v4 returns a `deployments[]` array; older versions a top-level
       // deployment_uuid. Resolve either and fail loudly if neither is present.
       const deploymentUuid = res.deployments?.[0]?.deployment_uuid ?? res.deployment_uuid;

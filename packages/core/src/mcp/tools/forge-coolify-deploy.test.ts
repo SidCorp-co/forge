@@ -195,47 +195,6 @@ describe('forge_coolify_deploy → deploy', () => {
     expect(result.integrationIds).toEqual([STAGING_INT]);
   });
 
-  it('passes force:true through to tryDispatchCoolifyRelease for a re-deploy', async () => {
-    const tool = forgeCoolifyDeployTool(makeDeviceCtx());
-    pushMemberOk();
-    resolveRunSpy.mockResolvedValueOnce('run-1');
-    tryDispatchSpy.mockResolvedValueOnce({
-      dispatched: true,
-      pendingHumanConfirm: false,
-      integrationIds: [STAGING_INT],
-    });
-
-    await tool.handler({ action: 'deploy', projectId: PROJECT_ID, issueId: ISSUE_ID, force: true });
-
-    expect(tryDispatchSpy).toHaveBeenCalledWith({
-      projectId: PROJECT_ID,
-      issueId: ISSUE_ID,
-      runId: 'run-1',
-      force: true,
-    });
-  });
-
-  it('surfaces reason:already-dispatched from a deduped (non-force) deploy', async () => {
-    const tool = forgeCoolifyDeployTool(makeDeviceCtx());
-    pushMemberOk();
-    resolveRunSpy.mockResolvedValueOnce('run-1');
-    tryDispatchSpy.mockResolvedValueOnce({
-      dispatched: false,
-      pendingHumanConfirm: false,
-      integrationIds: [STAGING_INT],
-      reason: 'already-dispatched',
-    });
-
-    const result = (await tool.handler({
-      action: 'deploy',
-      projectId: PROJECT_ID,
-      issueId: ISSUE_ID,
-    })) as { dispatched: boolean; reason: string };
-
-    expect(result.dispatched).toBe(false);
-    expect(result.reason).toBe('already-dispatched');
-  });
-
   it('returns reason:no-run without dispatching when the issue has no run', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     pushMemberOk();

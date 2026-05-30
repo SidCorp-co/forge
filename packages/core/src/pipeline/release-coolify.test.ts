@@ -87,10 +87,9 @@ beforeEach(() => {
   findDeliverySpy.mockReset();
 });
 
-describe('tryDispatchCoolifyRelease — staging idempotency', () => {
-  it('enqueues exactly one dispatch with requestId=runId:integrationId', async () => {
+describe('tryDispatchCoolifyRelease — staging dispatch', () => {
+  it('always enqueues a fresh dispatch with a per-attempt requestId (no dedup block)', async () => {
     selectQueue.push([stagingRow]); // active coolify integrations
-    findDeliverySpy.mockResolvedValueOnce(null); // no prior delivery
 
     const outcome = await tryDispatchCoolifyRelease({
       projectId: PROJECT_ID,
@@ -98,50 +97,26 @@ describe('tryDispatchCoolifyRelease — staging idempotency', () => {
       runId: RUN_ID,
     });
 
-    expect(enqueueSpy).toHaveBeenCalledTimes(1);
-    expect(enqueueSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ integrationId: STAGING_INT, requestId: `${RUN_ID}:${STAGING_INT}` }),
-    );
-    expect(outcome.dispatched).toBe(true);
-    expect(outcome.integrationIds).toEqual([STAGING_INT]);
-  });
-
-  it('skips re-enqueue when a delivery already exists for the requestId', async () => {
-    selectQueue.push([stagingRow]);
-    findDeliverySpy.mockResolvedValueOnce({ id: 'delivery-1' }); // already dispatched
-
-    const outcome = await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: ISSUE_ID,
-      runId: RUN_ID,
-    });
-
-    expect(enqueueSpy).not.toHaveBeenCalled();
-    // No fresh build: report it honestly as a no-op so the caller (e.g. the
-    // MCP deploy action) can distinguish a dedup from a real re-deploy (ISS-290).
-    expect(outcome.dispatched).toBe(false);
-    expect(outcome.reason).toBe('already-dispatched');
-    expect(outcome.integrationIds).toEqual([STAGING_INT]);
-  });
-
-  it('force re-deploys the same run: bypasses the dedup with a per-attempt requestId and force flag', async () => {
-    selectQueue.push([stagingRow]);
-
-    const outcome = await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: ISSUE_ID,
-      runId: RUN_ID,
-      force: true,
-    });
-
-    // force must NOT consult the idempotency guard at all.
+    // No idempotency lookup — re-deploys are never silently no-op'd (ISS-290).
     expect(findDeliverySpy).not.toHaveBeenCalled();
     expect(enqueueSpy).toHaveBeenCalledTimes(1);
-    const job = enqueueSpy.mock.calls[0]?.[0] as { requestId: string; force?: boolean };
-    expect(job.force).toBe(true);
-    expect(job.requestId).toMatch(new RegExp(`^${RUN_ID}:${STAGING_INT}:redeploy-\\d+$`));
+    const job = enqueueSpy.mock.calls[0]?.[0] as { integrationId: string; requestId: string };
+    expect(job.integrationId).toBe(STAGING_INT);
+    expect(job.requestId).toMatch(new RegExp(`^${RUN_ID}:${STAGING_INT}:\\d+-[0-9a-f]{8}$`));
     expect(outcome.dispatched).toBe(true);
     expect(outcome.integrationIds).toEqual([STAGING_INT]);
+  });
+
+  it('re-deploying the same run enqueues again with a distinct requestId', async () => {
+    selectQueue.push([stagingRow]);
+    await tryDispatchCoolifyRelease({ projectId: PROJECT_ID, issueId: ISSUE_ID, runId: RUN_ID });
+    selectQueue.push([stagingRow]);
+    await tryDispatchCoolifyRelease({ projectId: PROJECT_ID, issueId: ISSUE_ID, runId: RUN_ID });
+
+    expect(enqueueSpy).toHaveBeenCalledTimes(2);
+    const r1 = (enqueueSpy.mock.calls[0]?.[0] as { requestId: string }).requestId;
+    const r2 = (enqueueSpy.mock.calls[1]?.[0] as { requestId: string }).requestId;
+    expect(r1).not.toBe(r2);
   });
 });
 

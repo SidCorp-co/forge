@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns, projectIntegrations } from '../db/schema.js';
@@ -34,19 +35,8 @@ export async function tryDispatchCoolifyRelease(args: {
   projectId: string;
   issueId: string | null;
   runId: string;
-  /**
-   * Explicit re-deploy. The auto-subscriber dedupes on the per-run requestId
-   * (`runId:integrationId`) so a single release event never double-deploys —
-   * but that also permanently no-ops a LEGITIMATE re-deploy of the same run
-   * after a fix is merged to the branch (ISS-290). When `force` is set the
-   * dispatch uses a per-attempt requestId so it bypasses both the delivery-row
-   * dedup and pg-boss's `singletonKey`, and passes `force` down so Coolify
-   * rebuilds. Only the agent-driven `forge_coolify_deploy → deploy` path sets
-   * this; the auto-subscriber never does, so it stays idempotent.
-   */
-  force?: boolean;
 }): Promise<DispatchOutcome> {
-  const { projectId, issueId, runId, force } = args;
+  const { projectId, issueId, runId } = args;
   const rows = await db
     .select()
     .from(projectIntegrations)
@@ -63,11 +53,6 @@ export async function tryDispatchCoolifyRelease(args: {
   }
 
   const dispatched: string[] = [];
-  // Integrations whose deploy was already enqueued for this run (dedup hit).
-  // Tracked separately from `dispatched` so the caller can tell a fresh
-  // dispatch from a no-op — the old code reported both as `dispatched:true`,
-  // which made an idempotency skip look like a successful re-deploy (ISS-290).
-  const alreadyDispatched: string[] = [];
   let pendingHumanConfirm = false;
 
   for (const row of rows) {
@@ -82,25 +67,13 @@ export async function tryDispatchCoolifyRelease(args: {
       }
     }
 
-    // Idempotency guard (ISS-242). The agent-driven `forge_coolify_deploy →
-    // deploy` path and this auto-subscriber both dispatch with the same
-    // `requestId = ${runId}:${integrationId}` scheme. A delivery row already
-    // existing for that requestId means the deploy was already enqueued — skip
-    // re-enqueueing so manual + auto never double-deploy. (recordDelivery does
-    // a plain insert, so without this a second dispatch would hit the
-    // `integration_deliveries_request_id_uq` violation inside the worker.)
-    //
-    // `force` (ISS-290) opts OUT of this guard for an explicit re-deploy: a
-    // per-attempt requestId sidesteps both the row dedup and pg-boss's
-    // singletonKey so the same run can deploy again after a branch fix.
-    const requestId = force ? `${runId}:${row.id}:redeploy-${Date.now()}` : `${runId}:${row.id}`;
-    if (!force) {
-      const existing = await findDeliveryByRequestId(row.id, requestId);
-      if (existing) {
-        alreadyDispatched.push(row.id);
-        continue;
-      }
-    }
+    // Per-attempt requestId (ISS-290). Every deploy call is its own request, so
+    // a re-deploy of the same run after a branch fix actually fires instead of
+    // being silently no-op'd. The timestamp + random suffix keep the
+    // `integration_deliveries` unique constraint + pg-boss singletonKey
+    // collision-free (even for two dispatches in the same ms) without a dedup
+    // lookup. (Coolify-side, the adapter force-rebuilds so the build is fresh.)
+    const requestId = `${runId}:${row.id}:${Date.now()}-${randomUUID().slice(0, 8)}`;
 
     await setCurrentStepForce(runId, RELEASE_DEPLOY_IN_FLIGHT);
     await enqueueCoolifyDispatch({
@@ -110,7 +83,6 @@ export async function tryDispatchCoolifyRelease(args: {
       issueId,
       eventName: 'release.requested',
       requestId,
-      ...(force ? { force: true } : {}),
     });
     dispatched.push(row.id);
 
@@ -130,16 +102,6 @@ export async function tryDispatchCoolifyRelease(args: {
       pendingHumanConfirm: true,
       integrationIds: rows.filter((r) => r.environment === 'prod').map((r) => r.id),
       reason: 'awaiting-prod-confirm',
-    };
-  }
-  // Nothing fresh enqueued, but a prior delivery already covered every active
-  // integration — surface that instead of a misleading `dispatched:true`.
-  if (dispatched.length === 0 && alreadyDispatched.length > 0) {
-    return {
-      dispatched: false,
-      pendingHumanConfirm,
-      integrationIds: alreadyDispatched,
-      reason: 'already-dispatched',
     };
   }
   return { dispatched: dispatched.length > 0, pendingHumanConfirm, integrationIds: dispatched };
