@@ -27,17 +27,10 @@ Thumbs.db
 *Zone.Identifier
 __pycache__
 *.pyc
-# `.claude/` is local-only working state. The 3 canonical skill overrides
-# (forge-code/plan/release) ARE tracked so CI link-check resolves the
-# referenced `references/*.md` + `scripts/*.sh` files; everything else
-# (worktrees, agents, state, etc.) stays local.
-.claude/*
-!.claude/skills/
-.claude/skills/*
-!.claude/skills/README.md
-!.claude/skills/forge-code/
-!.claude/skills/forge-plan/
-!.claude/skills/forge-release/
+# `.claude/` is local-only working state — skills are distributed via the
+# server (Skill Studio / device skill sync), not committed here. Ignore the
+# whole directory (skills, worktrees, agents, settings, state, screenshots).
+.claude/
 
 # IDE
 .idea
