@@ -11,6 +11,7 @@ import { useMeProfile } from '@/features/me/hooks/use-me';
 import {
   useBindRunner,
   usePatchRunner,
+  useProject,
   useProjects,
 } from '@/features/project/hooks/use-projects';
 import { useSetPageTitle } from '@/hooks/use-page-title';
@@ -201,25 +202,29 @@ function AssignProject({
     () => new Set(assigned.map((a) => a.projectId)),
     [assigned],
   );
+  // Mirror the POST /:id/runners authz: owner OR project admin may bind. The
+  // list route returns `role` per project (typed loosely on the row), so admins
+  // who aren't owners can still assign from here.
   const available = useMemo(
     () =>
-      (projects ?? []).filter(
-        (p) => me.data && p.ownerId === me.data.id && !assignedIds.has(p.id),
-      ),
+      (projects ?? []).filter((p) => {
+        if (!me.data || assignedIds.has(p.id)) return false;
+        const role = (p as { role?: string | null }).role;
+        return p.ownerId === me.data.id || role === 'owner' || role === 'admin';
+      }),
     [projects, me.data, assignedIds],
   );
 
   const [projectId, setProjectId] = useState('');
   const [repoPath, setRepoPath] = useState('');
-  const selected = useMemo(
-    () => (projects ?? []).find((p) => p.id === projectId),
-    [projects, projectId],
-  );
+  // The /projects list projection omits repoPath, so read it from the selected
+  // project's detail (GET /projects/:id returns repoPath) to prefill the path.
+  const { data: selectedDetail } = useProject(projectId || undefined);
 
-  // Prefill the path from the project's default repoPath when one is picked.
+  // Prefill the path from the project's default repoPath once its detail loads.
   const [seededFor, setSeededFor] = useState<string | null>(null);
-  if (projectId && seededFor !== projectId) {
-    setRepoPath(selected?.repoPath ?? '');
+  if (projectId && selectedDetail && seededFor !== projectId) {
+    setRepoPath(selectedDetail.repoPath ?? '');
     setSeededFor(projectId);
   }
 
@@ -233,6 +238,10 @@ function AssignProject({
     setRepoPath('');
     setSeededFor(null);
   };
+
+  // Wait for the profile before deciding there's nothing to assign — otherwise
+  // `available` is momentarily [] and the empty state flashes on first paint.
+  if (!me.data) return null;
 
   if (available.length === 0) {
     return (
@@ -268,7 +277,7 @@ function AssignProject({
             id="assign-path"
             value={repoPath}
             onChange={(e) => setRepoPath(e.target.value)}
-            placeholder={selected?.repoPath ?? '/absolute/path/on/this/device'}
+            placeholder={selectedDetail?.repoPath ?? '/absolute/path/on/this/device'}
             disabled={!projectId}
             spellCheck={false}
           />
