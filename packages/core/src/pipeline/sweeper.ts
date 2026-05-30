@@ -23,11 +23,12 @@
  *     monitors the schedule and alerts when this tick stops firing.
  */
 
-import { and, eq, isNotNull, lt, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
 import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
 import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
+import { finalizeFailedJob } from '../jobs/finalize-failure.js';
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
 import { logger } from '../logger.js';
 import { recordHoldAutoClear } from '../observability/hold-metrics.js';
@@ -76,9 +77,14 @@ export interface ExpiredHoldsSweepResult {
   cleared: number;
 }
 
+export interface OrphanReconcileResult {
+  reconciled: number;
+}
+
 export interface SweepResult {
   durationMs: number;
   zombieSessions: ZombieSweepResult;
+  orphanedJobs: OrphanReconcileResult;
   expiredHolds: ExpiredHoldsSweepResult;
   backstopProjects: number;
 }
@@ -86,6 +92,10 @@ export interface SweepResult {
 export async function runPipelineSweep(now: Date = new Date()): Promise<SweepResult> {
   const t0 = Date.now();
   const zombieSessions = await sweepZombieSessions(now);
+  // ISS-280 — run reconcile AFTER the zombie pass so a session this very tick
+  // flipped to `failed` (heartbeat_timeout) immediately propagates to its
+  // still-`dispatched`/`running` job, freeing the runner slot in one tick.
+  const orphanedJobs = await reconcileOrphanedJobs(now);
   const expiredHolds = await sweepExpiredHolds(now);
   const backstopProjects = await runDispatcherBackstop();
   // Record the heartbeat ONLY after every pass succeeded. Recording at the
@@ -93,7 +103,13 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   // (lastTickAt fresh, dispatcher.tick_missing never fires). Letting either
   // pass throw lets pg-boss retry and pgboss-health alert.
   recordPipelineSweeperTick(t0);
-  return { durationMs: Date.now() - t0, zombieSessions, expiredHolds, backstopProjects };
+  return {
+    durationMs: Date.now() - t0,
+    zombieSessions,
+    orphanedJobs,
+    expiredHolds,
+    backstopProjects,
+  };
 }
 
 /**
@@ -223,6 +239,92 @@ export async function sweepZombieSessions(
   }
 
   return { queueTimedOut, heartbeatTimedOut };
+}
+
+/**
+ * ISS-280 — reverse session→job reconciliation (the missing FAST propagation).
+ *
+ * `sweepZombieSessions` flips an abandoned `agent_session` to `failed`
+ * (`heartbeat_timeout`, ~3min) but never touches the linked `jobs` row. So a
+ * runner/agent that dies silently — without calling `POST /jobs/:id/complete`
+ * — leaves the job stuck in `dispatched`/`running` forever: it keeps counting
+ * toward the cap=1 runner gate (`dispatch-gates` runner_load CTE, parent run
+ * still `running`) and wedges the whole project queue (ISS-268: a `fix` job
+ * sat `dispatched` ~2h40m after its session went `failed`). The job-level
+ * `runStaleSweep` only reaps after a 60-min threshold, so it is too slow.
+ *
+ * This pass closes the gap: when a linked session is terminal but its job is
+ * still active, CAS-flip the job to `failed` and route it through the SAME
+ * `finalizeFailedJob` path as `/complete` + `/fail` — so it gets verify-first
+ * auto-retry (or a manual-hold block when budget is exhausted), the
+ * agent_session sync, the `job.failed` broadcast, and a `dispatchTickForProject`
+ * that refills the freed slot.
+ *
+ * The `result`-event guard keeps lockstep with `runStaleSweep` (ISS-258): a
+ * job that emitted a `result` event reported completion and is a
+ * finalize-drop, NOT a silent death — reaping it as `failed` would be a false
+ * positive (a separate finalize-as-done recovery is future work).
+ *
+ * Best-effort: each row is wrapped in try/catch so one failure never aborts
+ * the pass; a CAS-loser (a late `/complete` won the race) is skipped.
+ */
+export async function reconcileOrphanedJobs(
+  _now: Date = new Date(),
+  scope: SweepScope = {},
+): Promise<OrphanReconcileResult> {
+  const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
+  // Candidate selection is runner-heartbeat-independent — it keys off the
+  // SESSION's terminal status (driven by per-job event heartbeats), so it
+  // fires even while the RUNNER stays online (ISS-268 had `inFlight=1` on a
+  // live runner). Fetch ids only; the CAS UPDATE below returns the typed row.
+  const candidates = await db.execute<{ id: string }>(sql`
+    SELECT j.id
+    FROM jobs j
+    JOIN agent_sessions s ON s.id = j.agent_session_id
+    WHERE j.status IN ('dispatched', 'running')
+      AND s.status IN ('failed', 'cancelled_stale')
+      AND NOT EXISTS (
+        SELECT 1 FROM job_events e
+        WHERE e.job_id = j.id AND e.kind = 'result'
+      )
+      ${projectClause}
+  `);
+
+  let reconciled = 0;
+  for (const row of candidates) {
+    try {
+      // CAS on status so a concurrent late `/complete` / `/fail` wins instead
+      // of being double-finalized. RETURNING gives the typed JobRow that
+      // finalizeFailedJob expects (camelCase, with failureKind/reason set).
+      const [updated] = await db
+        .update(jobs)
+        .set({
+          status: 'failed',
+          error: 'session_lost',
+          finishedAt: new Date(),
+          failureKind: 'transient',
+          failureReason:
+            'agent session terminated without job completion (silent runner/agent death)',
+          classifierVersion: 1,
+        })
+        .where(and(eq(jobs.id, row.id), inArray(jobs.status, ['dispatched', 'running'])))
+        .returning();
+      if (!updated) continue; // lost the CAS race — a lifecycle call finalized it
+      reconciled++;
+      await finalizeFailedJob(updated, { error: 'session_lost' });
+    } catch (err) {
+      logger.error(
+        { err, jobId: row.id },
+        'pipeline-sweeper: orphan job reconcile failed (row skipped)',
+      );
+    }
+  }
+
+  if (reconciled > 0) {
+    logger.info({ reconciled }, 'pipeline-sweeper: orphaned jobs reconciled to failed');
+  }
+
+  return { reconciled };
 }
 
 function broadcastZombieTransition(

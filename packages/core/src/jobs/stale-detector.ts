@@ -53,6 +53,11 @@ export async function runStaleSweep(): Promise<{
   durationMs: number;
 }> {
   const t0 = Date.now();
+  // ISS-280 — emit a sweep-start trace so a silently-unscheduled detector
+  // (the registration is wired at index.ts, but a pg-boss schedule failure
+  // would otherwise be invisible) is detectable from logs alone. This is the
+  // slow 60-min backstop; the fast path is reconcileOrphanedJobs (sweeper.ts).
+  logger.debug('stale-job-detector: sweep start');
   const stale = await db.execute<StaleJobRow>(
     sql.raw(`
     WITH last_event AS (

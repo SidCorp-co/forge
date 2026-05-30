@@ -9,19 +9,14 @@ import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { computeHoldUntil } from '../pipeline/hold-policy.js';
 import { hooks } from '../pipeline/hooks.js';
-import {
-  type FailureClassificationKind,
-  setManualHoldBlock,
-} from '../pipeline/manual-hold.js';
-import { loadRecoveryStats } from '../pipeline/recovery-stats.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
+import { finalizeFailedJob } from './finalize-failure.js';
 import { handleResumeFailed, isResumeFailedError } from './handle-resume-failed.js';
-import { scheduleAutoRetryWithVerify } from './retry.js';
+import type { RetryOutcome } from './retry.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -31,28 +26,6 @@ const notFound = (message: string) =>
 
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
-/**
- * Map classifier v2 failure kinds onto the narrower manual-hold UI enum.
- * Permission errors join `permanent_invalid` (operator must fix credentials,
- * no auto-retry possible). Timeout errors join `transient_network` (the
- * retry engine already eligibilised them; this branch is only reached when
- * the retry budget is exhausted or verification cancelled retry).
- */
-function mapFailureKindToClassification(
-  failureKind: string | null | undefined,
-): FailureClassificationKind {
-  switch (failureKind) {
-    case 'transient':
-    case 'timeout':
-      return 'transient_network';
-    case 'permanent':
-    case 'permission':
-      return 'permanent_invalid';
-    default:
-      return 'unknown';
-  }
-}
 
 const conflict = (message: string, code: string) =>
   new HTTPException(409, { message, cause: { code } });
@@ -130,7 +103,6 @@ jobLifecycleDeviceRoutes.post(
     // handoff is missing (see handoff-prefetch / handoff-policy
     // fallbackToRawIssueFieldIfMissing).
 
-    let retry: { scheduled: boolean; newJobId?: string } | null = null;
     if (status === 'failed') {
       // PR-5c — resume failure takes precedence: invalidate prior session
       // and branch by `onResumeFail` policy (fresh → retry; abort → no retry).
@@ -143,71 +115,42 @@ jobLifecycleDeviceRoutes.post(
           payload: updated.payload,
         });
       }
+      let precomputedRetry: RetryOutcome | undefined;
       if (resumePolicy === 'abort') {
-        await db
+        const [reclassified] = await db
           .update(jobs)
           .set({ failureReason: 'resume_failed', failureKind: 'permanent', classifierVersion: 1 })
-          .where(eq(jobs.id, updated.id));
-        retry = { scheduled: false };
-      } else {
-        retry = await scheduleAutoRetryWithVerify(updated, effectiveError ?? 'exit nonzero');
+          .where(eq(jobs.id, updated.id))
+          .returning();
+        if (reclassified) updated = reclassified;
+        precomputedRetry = { scheduled: false };
       }
-      if (!retry.scheduled && updated.issueId) {
-        const classificationKind = mapFailureKindToClassification(updated.failureKind);
-        const recoveryStats = await loadRecoveryStats(updated.issueId);
-        await setManualHoldBlock({
-          issueId: updated.issueId,
-          context: {
-            step: updated.type,
-            trigger: 'job_failed',
-            classification: {
-              kind: classificationKind,
-              reason: updated.failureReason ?? effectiveError ?? 'exit nonzero',
-              evidence: { jobId: updated.id, exitCode: input.exitCode },
-            },
-            attempts: updated.attempts,
-            lastFailureAt: new Date().toISOString(),
-            suggestedActions: ['resume', 'skip-step', 'close'],
-            holdUntil: computeHoldUntil({
-              classificationKind,
-              trigger: 'job_failed',
-              recoveryStats,
-            }),
-          },
-        });
-      }
+      // ISS-280 — shared finalize path: auto-retry → manual-hold fallback →
+      // session sync → broadcast → hooks → dispatch re-tick → health refresh.
+      const retry = await finalizeFailedJob(updated, {
+        error: effectiveError ?? 'exit nonzero',
+        exitCode: input.exitCode,
+        precomputedRetry,
+      });
+      return c.json({
+        jobId: updated.id,
+        status: updated.status,
+        exitCode: updated.exitCode,
+        retry,
+      });
     }
 
-    // Mirror lifecycle to the linked agent_session row so /pipeline + issue
-    // detail tab reflect completion. Best-effort.
-    // ISS-101 — pass retryPending so we leave the parent pipeline_run open
-    // when a retry has just been scheduled; the retry shares the same run.
-    await syncAgentSessionLifecycle(updated, status, {
-      retryPending: retry?.scheduled === true,
-    });
+    // done / cancelled — mirror lifecycle to the linked agent_session row so
+    // /pipeline + issue detail tab reflect completion. Best-effort.
+    await syncAgentSessionLifecycle(updated, status);
 
     roomManager.publish(projectRoom(updated.projectId), {
-      event:
-        status === 'done'
-          ? 'job.completed'
-          : status === 'cancelled'
-            ? 'job.cancelled'
-            : 'job.failed',
+      event: status === 'done' ? 'job.completed' : 'job.cancelled',
       data: { jobId: updated.id, status, exitCode: updated.exitCode },
     });
 
-    // ISS-20 — emit hooks AFTER scheduleRetry so PM subscribers see the
-    // populated `failureKind`. Cancelled jobs do not emit either event.
-    if (status === 'failed') {
-      await hooks.emit('jobFailed', {
-        jobId: updated.id,
-        projectId: updated.projectId,
-        issueId: updated.issueId,
-        type: updated.type,
-        failureKind: updated.failureKind ?? null,
-        failureReason: updated.failureReason ?? null,
-      });
-    } else if (status === 'done') {
+    // Cancelled jobs do not emit a completion hook.
+    if (status === 'done') {
       await hooks.emit('jobCompleted', {
         jobId: updated.id,
         projectId: updated.projectId,
@@ -230,7 +173,7 @@ jobLifecycleDeviceRoutes.post(
       jobId: updated.id,
       status: updated.status,
       exitCode: updated.exitCode,
-      retry,
+      retry: null,
     });
   },
 );
@@ -255,7 +198,7 @@ jobLifecycleDeviceRoutes.post(
       throw conflict('job is not in a runnable state', 'INVALID_STATE');
     }
 
-    const [updated] = await db
+    let [updated] = await db
       .update(jobs)
       .set({
         status: 'failed',
@@ -277,65 +220,22 @@ jobLifecycleDeviceRoutes.post(
         payload: updated.payload,
       });
     }
-    let retry: { scheduled: boolean; newJobId?: string };
+    let precomputedRetry: RetryOutcome | undefined;
     if (resumePolicy === 'abort') {
-      await db
+      const [reclassified] = await db
         .update(jobs)
         .set({ failureReason: 'resume_failed', failureKind: 'permanent', classifierVersion: 1 })
-        .where(eq(jobs.id, updated.id));
-      retry = { scheduled: false };
-    } else {
-      retry = await scheduleAutoRetryWithVerify(updated, input.error);
-    }
-    if (!retry.scheduled && updated.issueId) {
-      const classificationKind = mapFailureKindToClassification(updated.failureKind);
-      const recoveryStats = await loadRecoveryStats(updated.issueId);
-      await setManualHoldBlock({
-        issueId: updated.issueId,
-        context: {
-          step: updated.type,
-          trigger: 'job_failed',
-          classification: {
-            kind: classificationKind,
-            reason: updated.failureReason ?? input.error,
-            evidence: { jobId: updated.id },
-          },
-          attempts: updated.attempts,
-          lastFailureAt: new Date().toISOString(),
-          suggestedActions: ['resume', 'skip-step', 'close'],
-          holdUntil: computeHoldUntil({
-            classificationKind,
-            trigger: 'job_failed',
-            recoveryStats,
-          }),
-        },
-      });
+        .where(eq(jobs.id, updated.id))
+        .returning();
+      if (reclassified) updated = reclassified;
+      precomputedRetry = { scheduled: false };
     }
 
-    await syncAgentSessionLifecycle(updated, 'failed', {
-      retryPending: retry?.scheduled === true,
+    // ISS-280 — shared finalize path (see /complete).
+    const retry = await finalizeFailedJob(updated, {
+      error: input.error,
+      precomputedRetry,
     });
-
-    roomManager.publish(projectRoom(updated.projectId), {
-      event: 'job.failed',
-      data: { jobId: updated.id, status: 'failed', error: updated.error },
-    });
-
-    await hooks.emit('jobFailed', {
-      jobId: updated.id,
-      projectId: updated.projectId,
-      issueId: updated.issueId,
-      type: updated.type,
-      failureKind: updated.failureKind ?? null,
-      failureReason: updated.failureReason ?? null,
-    });
-
-    void dispatchTickForProject(updated.projectId);
-
-    // ISS-164 — see /complete comment.
-    if (updated.issueId) {
-      await publishPipelineHealthChanged(updated.projectId, [updated.issueId]);
-    }
 
     return c.json({
       jobId: updated.id,
