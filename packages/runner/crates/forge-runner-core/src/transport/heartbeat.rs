@@ -32,7 +32,7 @@ pub async fn beat_verbose(client: &CoreClient) -> Result<String> {
         .await
         .map_err(|e| Error::Other(format!("heartbeat request: {e}")))?;
     if resp.status().as_u16() == 401 {
-        return Err(Error::Other("UNAUTHORIZED".into()));
+        return Err(Error::Unauthorized);
     }
     if !resp.status().is_success() {
         return Err(Error::Other(format!("heartbeat failed: {}", resp.status())));

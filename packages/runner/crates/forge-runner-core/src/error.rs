@@ -12,6 +12,12 @@ pub enum Error {
     #[error("not implemented yet: {0}")]
     NotImplemented(&'static str),
 
+    /// A `401` from core (bad/expired device token or wrong core_url). Callers
+    /// match this variant to prompt a re-login — keep it typed rather than
+    /// string-matching `Other` so the intent can't drift.
+    #[error("UNAUTHORIZED")]
+    Unauthorized,
+
     #[error("{0}")]
     Other(String),
 }

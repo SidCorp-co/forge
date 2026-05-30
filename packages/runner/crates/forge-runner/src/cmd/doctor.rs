@@ -3,6 +3,7 @@ use std::time::Duration;
 use clap::Args as ClapArgs;
 use forge_runner_core::auth::cred_store;
 use forge_runner_core::config::Config;
+use forge_runner_core::error::Error;
 use forge_runner_core::transport::{heartbeat, runners, CoreClient};
 use forge_runner_core::update;
 
@@ -135,9 +136,13 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
     // Heartbeat: 200 => token valid + core reachable; 401 => bad token/core_url.
     match tokio::time::timeout(ONLINE_TIMEOUT, heartbeat::beat_verbose(&client)).await {
         Ok(Ok(server_time)) => {
-            println!("✔ heartbeat    core reachable, token hợp lệ (serverTime {server_time})");
+            if server_time.is_empty() {
+                println!("✔ heartbeat    core reachable, token hợp lệ");
+            } else {
+                println!("✔ heartbeat    core reachable, token hợp lệ (serverTime {server_time})");
+            }
         }
-        Ok(Err(e)) if e.to_string() == "UNAUTHORIZED" => {
+        Ok(Err(Error::Unauthorized)) => {
             println!("✖ heartbeat    401 — token/core_url sai, chạy `forge-runner login`");
             failed = true;
         }
@@ -169,6 +174,9 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
                     .filter(|p| !p.trim().is_empty())
                     .map(std::path::PathBuf::from);
 
+                // Prefer the server's repo_path (the source of truth web + CLI
+                // both write via PATCH /me/runners) over the local binding;
+                // matches the precedence in `cmd/runners.rs`.
                 match server_path.or(local_path) {
                     None => {
                         println!(
@@ -190,7 +198,7 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
                 }
             }
         }
-        Ok(Err(e)) if e.to_string() == "UNAUTHORIZED" => {
+        Ok(Err(Error::Unauthorized)) => {
             println!("✖ runners      401 — token/core_url sai, chạy `forge-runner login`");
             failed = true;
         }

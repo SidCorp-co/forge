@@ -37,7 +37,7 @@ pub async fn list_me(client: &CoreClient) -> Result<Vec<MeRunner>> {
         .await
         .map_err(|e| Error::Other(format!("me/runners request: {e}")))?;
     if resp.status().as_u16() == 401 {
-        return Err(Error::Other("UNAUTHORIZED".into()));
+        return Err(Error::Unauthorized);
     }
     if !resp.status().is_success() {
         let status = resp.status();
@@ -74,7 +74,7 @@ pub async fn patch_runner(
         .await
         .map_err(|e| Error::Other(format!("patch runner request: {e}")))?;
     if resp.status().as_u16() == 401 {
-        return Err(Error::Other("UNAUTHORIZED".into()));
+        return Err(Error::Unauthorized);
     }
     if !resp.status().is_success() {
         let status = resp.status();
