@@ -6,7 +6,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
-import { devicePlatforms, devices, pairingCodes, runners } from '../db/schema.js';
+import { devicePlatforms, devices, pairingCodes, projects, runners } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
@@ -142,18 +142,14 @@ deviceOwnerRoutes.patch(
     }
     if (device.ownerId !== userId) throw forbidden('not the device owner');
 
-    const [updated] = await db
-      .update(devices)
-      .set({ name })
-      .where(eq(devices.id, id))
-      .returning({
-        id: devices.id,
-        name: devices.name,
-        platform: devices.platform,
-        status: devices.status,
-        lastSeenAt: devices.lastSeenAt,
-        pairedAt: devices.pairedAt,
-      });
+    const [updated] = await db.update(devices).set({ name }).where(eq(devices.id, id)).returning({
+      id: devices.id,
+      name: devices.name,
+      platform: devices.platform,
+      status: devices.status,
+      lastSeenAt: devices.lastSeenAt,
+      pairedAt: devices.pairedAt,
+    });
     if (!updated) {
       throw new HTTPException(404, { message: 'device not found', cause: { code: 'NOT_FOUND' } });
     }
@@ -186,10 +182,7 @@ deviceOwnerRoutes.delete(
     if (device.ownerId !== userId) throw forbidden('not the device owner');
 
     await db.transaction(async (tx) => {
-      await tx
-        .update(devices)
-        .set({ status: 'revoked' })
-        .where(eq(devices.id, id));
+      await tx.update(devices).set({ status: 'revoked' }).where(eq(devices.id, id));
       await tx.delete(runners).where(eq(runners.deviceId, id));
     });
 
@@ -292,5 +285,86 @@ deviceAuthRoutes.post(
     }
 
     return c.json({ ok: true, serverTime: new Date().toISOString() });
+  },
+);
+
+// ISS-271 — assignment discovery. The runner daemon and CLI use this to learn
+// which projects this device is bound to and the server-side repo path/branch,
+// so the path no longer has to be hand-typed into config.toml. `requireDevice`
+// already 401s on a missing/invalid/revoked token, so no extra auth handling.
+deviceAuthRoutes.get('/me/runners', requireDevice(), async (c) => {
+  const device = c.get('device');
+  if (device.status === 'revoked') throw unauth();
+
+  const rows = await db
+    .select({
+      projectId: runners.projectId,
+      runnerId: runners.id,
+      slug: projects.slug,
+      baseBranch: projects.baseBranch,
+      repoPath: runners.repoPath,
+      branch: runners.branch,
+      status: runners.status,
+    })
+    .from(runners)
+    .innerJoin(projects, eq(projects.id, runners.projectId))
+    .where(and(eq(runners.deviceId, device.id), eq(runners.type, 'claude-code')));
+
+  return c.json(rows);
+});
+
+// ISS-271 — device self-service PATCH of its own runner repo path/branch.
+// The runner CLI (`forge-runner bind`) holds a device token, not a user JWT,
+// so it cannot use the owner/admin PATCH on `projectRoutes`. This endpoint lets
+// a device write the SAME `runners.repoPath`/`branch` field web writes, scoped
+// to runners that belong to the calling device. 404 if the runner isn't this
+// device's.
+const meRunnerPatchSchema = z
+  .object({
+    repoPath: z.string().trim().max(500).nullable().optional(),
+    branch: z.string().trim().max(100).nullable().optional(),
+  })
+  .strict();
+
+deviceAuthRoutes.patch(
+  '/me/runners/:runnerId',
+  requireDevice(),
+  zValidator('param', z.object({ runnerId: z.uuid() }), (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('json', meRunnerPatchSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const device = c.get('device');
+    if (device.status === 'revoked') throw unauth();
+    const { runnerId } = c.req.valid('param');
+    const { repoPath, branch } = c.req.valid('json');
+
+    const [runner] = await db
+      .update(runners)
+      .set({
+        updatedAt: new Date(),
+        ...(repoPath !== undefined ? { repoPath } : {}),
+        ...(branch !== undefined ? { branch } : {}),
+      })
+      .where(and(eq(runners.id, runnerId), eq(runners.deviceId, device.id)))
+      .returning({
+        id: runners.id,
+        projectId: runners.projectId,
+        deviceId: runners.deviceId,
+        repoPath: runners.repoPath,
+        branch: runners.branch,
+        status: runners.status,
+      });
+
+    if (!runner) {
+      throw new HTTPException(404, {
+        message: 'runner not found',
+        cause: { code: 'RUNNER_NOT_FOUND' },
+      });
+    }
+
+    return c.json(runner);
   },
 );

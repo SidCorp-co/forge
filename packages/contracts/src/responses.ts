@@ -33,3 +33,32 @@ export interface RegisterResponse {
 export interface RefreshResponse {
   token: string;
 }
+
+// ISS-271 — one entry per (device × project) runner assignment, returned by
+// `GET /api/devices/me/runners` (device-token auth). The runner daemon uses
+// `repoPath`/`branch` as the source of truth for the working dir, falling back
+// to local config.toml only when the server has no path yet. `slug` lets the
+// CLI resolve a project from its slug without hand-typing the project id.
+export interface MeRunnerAssignment {
+  projectId: string;
+  runnerId: string;
+  slug: string;
+  baseBranch: string | null;
+  repoPath: string | null;
+  branch: string | null;
+  status: string;
+}
+
+export type MeRunnersResponse = MeRunnerAssignment[];
+
+// Returned by `POST /api/projects/:id/runners` and
+// `PATCH /api/projects/:id/runners/:runnerId`. Mirrors the runner row
+// projection both endpoints return.
+export interface BindRunnerResponse {
+  id: string;
+  projectId: string;
+  deviceId: string | null;
+  repoPath: string | null;
+  branch: string | null;
+  status: 'online' | 'offline' | 'draining' | 'disabled';
+}

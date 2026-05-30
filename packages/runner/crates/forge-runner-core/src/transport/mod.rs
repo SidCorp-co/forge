@@ -5,11 +5,13 @@
 //! - `events`    — POST `/api/jobs/:id/events` (batch + retry) (M3)
 //! - `lifecycle` — POST `/complete`, `/fail` (M3)
 //! - `heartbeat` — POST `/api/devices/heartbeat` every 30s (M1)
+//! - `runners`   — GET `/api/devices/me/runners` discovery + self PATCH (ISS-271)
 
 pub mod events;
 pub mod frames;
 pub mod heartbeat;
 pub mod lifecycle;
+pub mod runners;
 pub mod ws;
 
 /// Shared HTTP client + auth context for the REST surface.

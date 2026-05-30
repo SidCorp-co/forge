@@ -39,7 +39,8 @@ const dbUpdate = vi.fn(() => ({ set: updateSet }));
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
-const selectFrom = vi.fn(() => ({ where: selectWhere }));
+const selectInnerJoin = vi.fn(() => ({ where: selectWhere }));
+const selectFrom = vi.fn(() => ({ where: selectWhere, innerJoin: selectInnerJoin }));
 const dbSelect = vi.fn(() => ({ from: selectFrom }));
 
 const deleteWhere = vi.fn(async () => undefined);
@@ -232,6 +233,106 @@ describe('POST /api/devices/heartbeat', () => {
     expect(body.ok).toBe(true);
     expect(typeof body.serverTime).toBe('string');
     expect(updateSet).toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/devices/me/runners (ISS-271)', () => {
+  it('401 without a device token', async () => {
+    const app = buildApp();
+    const res = await app.fetch(req('/api/devices/me/runners'));
+    expect(res.status).toBe(401);
+  });
+
+  it('401 with an invalid device token', async () => {
+    const app = buildApp();
+    const res = await app.fetch(req('/api/devices/me/runners', { token: 'bad' }));
+    expect(res.status).toBe(401);
+  });
+
+  it('returns the calling device assignments with repoPath/branch/baseBranch/slug', async () => {
+    selectWhere.mockReturnValueOnce(
+      Promise.resolve([
+        {
+          projectId: 'proj-1',
+          runnerId: 'run-1',
+          slug: 'my-app',
+          baseBranch: 'main',
+          repoPath: '/home/u/code/my-app',
+          branch: 'dev',
+          status: 'online',
+        },
+      ]),
+    );
+
+    const app = buildApp();
+    const res = await app.fetch(req('/api/devices/me/runners', { token: 'good' }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ slug: string; repoPath: string }>;
+    expect(body).toHaveLength(1);
+    expect(body[0]?.slug).toBe('my-app');
+    expect(body[0]?.repoPath).toBe('/home/u/code/my-app');
+    // Scoped to the authed device + claude-code runners.
+    expect(selectInnerJoin).toHaveBeenCalled();
+  });
+});
+
+describe('PATCH /api/devices/me/runners/:runnerId (ISS-271)', () => {
+  const RID = '33333333-3333-4333-8333-333333333333';
+
+  it('401 without a device token', async () => {
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/devices/me/runners/${RID}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ repoPath: '/x' }),
+      }),
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('200 updates the calling device runner repoPath/branch', async () => {
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: RID,
+        projectId: 'proj-1',
+        deviceId: 'dev-1',
+        repoPath: '/home/u/code/app',
+        branch: 'main',
+        status: 'online',
+      },
+    ]);
+
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/devices/me/runners/${RID}`, {
+        method: 'PATCH',
+        token: 'good',
+        body: JSON.stringify({ repoPath: '/home/u/code/app', branch: 'main' }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { repoPath: string; branch: string };
+    expect(body.repoPath).toBe('/home/u/code/app');
+    expect(body.branch).toBe('main');
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ repoPath: '/home/u/code/app', branch: 'main' }),
+    );
+  });
+
+  it('404 RUNNER_NOT_FOUND when the runner is not this device', async () => {
+    updateReturning.mockResolvedValueOnce([]);
+
+    const app = buildApp();
+    const res = await app.fetch(
+      req(`/api/devices/me/runners/${RID}`, {
+        method: 'PATCH',
+        token: 'good',
+        body: JSON.stringify({ repoPath: '/home/u/code/app' }),
+      }),
+    );
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('RUNNER_NOT_FOUND');
   });
 });
 

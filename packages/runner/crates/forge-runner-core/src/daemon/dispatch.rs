@@ -1,6 +1,7 @@
 //! Handle one `job.assigned`: resolve the repo, run it via the runner, and map
 //! the normalized [`RunnerEvent`] stream onto core's job-event + lifecycle API.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -13,7 +14,50 @@ use crate::runner::claude_code::ClaudeCodeRunner;
 use crate::runner::{JobSpec, Runner, RunnerEvent, ToolPhase};
 use crate::transport::events::{post_job_events, JobEventInput};
 use crate::transport::frames::JobAssigned;
+use crate::transport::runners::{self, MeRunner};
 use crate::transport::{lifecycle, CoreClient};
+
+/// Resolved working dir for one assigned project. The server (`/me/runners`)
+/// is the source of truth for `repo_path`; `config.toml` is only a local
+/// fallback/cache when the server has no path set yet (ISS-271).
+#[derive(Debug)]
+pub(crate) struct Resolved {
+    pub slug: String,
+    pub repo_path: PathBuf,
+}
+
+/// Merge server assignments with local config bindings for one project id.
+/// Returns `Ok(None)` when the project is assigned but has no usable path on
+/// either side (caller emits a `bind` hint), and `Err` only never (kept simple).
+pub(crate) fn resolve_repo(
+    server: &[MeRunner],
+    cfg: &Config,
+    project_id: &str,
+) -> std::result::Result<Resolved, String> {
+    let server_match = server.iter().find(|r| r.project_id == project_id);
+    let config_match = cfg
+        .bindings
+        .iter()
+        .find(|(_, b)| b.project_id.as_deref() == Some(project_id));
+
+    // Slug: prefer the server's authoritative slug, else the local config key.
+    let slug = server_match
+        .map(|r| r.slug.clone())
+        .or_else(|| config_match.map(|(slug, _)| slug.clone()))
+        .unwrap_or_else(|| project_id.to_string());
+
+    // Repo path: server first (non-empty), then local config binding.
+    let server_path = server_match
+        .and_then(|r| r.repo_path.as_deref())
+        .filter(|p| !p.trim().is_empty())
+        .map(PathBuf::from);
+    let repo_path = server_path.or_else(|| config_match.map(|(_, b)| b.repo_path.clone()));
+
+    match repo_path {
+        Some(repo_path) => Ok(Resolved { slug, repo_path }),
+        None => Err(slug),
+    }
+}
 
 const FLUSH_INTERVAL: Duration = Duration::from_millis(500);
 
@@ -32,20 +76,32 @@ pub async fn handle(
         ja.project_id
     );
 
-    // Resolve the local binding by project id.
-    let Some((slug, binding)) = cfg
-        .bindings
-        .iter()
-        .find(|(_, b)| b.project_id.as_deref() == Some(ja.project_id.as_str()))
-    else {
-        let msg = format!(
-            "no local binding for project {} — run `forge-runner bind <slug> --path <dir> --project-id {}`",
-            ja.project_id, ja.project_id
-        );
-        tracing::error!("[job {job_id}] {msg}");
-        let _ = lifecycle::fail(client, &job_id, &msg).await;
-        return Ok(());
+    // Resolve the working dir. The server (`/me/runners`) is the source of
+    // truth for the repo path; the local config.toml binding is only a
+    // fallback when the server has no path yet. Fetch per-dispatch so a
+    // freshly web-set path is picked up without a daemon restart (ISS-271).
+    let server = match runners::list_me(client).await {
+        Ok(rows) => rows,
+        Err(e) => {
+            // Stay functional on a transient/old-server failure: fall back to
+            // the local config bindings only.
+            tracing::warn!("[job {job_id}] /me/runners unavailable ({e}) — using local config");
+            Vec::new()
+        }
     };
+
+    let resolved = match resolve_repo(&server, cfg, &ja.project_id) {
+        Ok(r) => r,
+        Err(slug) => {
+            let msg = format!(
+                "project '{slug}' is assigned to this device but has no repo path — run `forge-runner bind {slug} --path <dir>`"
+            );
+            tracing::error!("[job {job_id}] {msg}");
+            let _ = lifecycle::fail(client, &job_id, &msg).await;
+            return Ok(());
+        }
+    };
+    let slug = resolved.slug;
 
     // Only create a worktree when core explicitly hands us a feature branch
     // (e.g. code/fix stages). Triage/plan/review run in the repo root. Never
@@ -64,7 +120,7 @@ pub async fn handle(
         project_slug: Some(slug.clone()),
         issue_id: ja.issue_id.clone(),
         step: ja.job_type.clone(),
-        repo_path: binding.repo_path.clone(),
+        repo_path: resolved.repo_path.clone(),
         prompt: ja.prompt_string.clone(),
         system_prompt: ja.system_prompt.clone(),
         model: ja.model.clone(),
@@ -182,5 +238,69 @@ fn map_event(ev: RunnerEvent) -> Option<JobEventInput> {
             serde_json::json!({ "claudeSessionId": sid }),
         )),
         RunnerEvent::Done { .. } | RunnerEvent::Failed { .. } => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Binding;
+
+    fn me(project_id: &str, slug: &str, repo_path: Option<&str>) -> MeRunner {
+        MeRunner {
+            project_id: project_id.into(),
+            runner_id: "run-1".into(),
+            slug: slug.into(),
+            base_branch: Some("main".into()),
+            repo_path: repo_path.map(str::to_string),
+            branch: None,
+            status: "online".into(),
+        }
+    }
+
+    fn cfg_with_binding(slug: &str, project_id: Option<&str>, repo_path: &str) -> Config {
+        let mut cfg = Config::default();
+        cfg.bindings.insert(
+            slug.into(),
+            Binding {
+                repo_path: PathBuf::from(repo_path),
+                branch: None,
+                project_id: project_id.map(str::to_string),
+            },
+        );
+        cfg
+    }
+
+    #[test]
+    fn prefers_server_path_over_config() {
+        let server = vec![me("p-1", "app", Some("/srv/app"))];
+        let cfg = cfg_with_binding("app", Some("p-1"), "/local/app");
+        let r = resolve_repo(&server, &cfg, "p-1").expect("resolves");
+        assert_eq!(r.repo_path, PathBuf::from("/srv/app"));
+        assert_eq!(r.slug, "app");
+    }
+
+    #[test]
+    fn falls_back_to_config_when_server_path_empty() {
+        let server = vec![me("p-1", "app", Some("   "))];
+        let cfg = cfg_with_binding("app", Some("p-1"), "/local/app");
+        let r = resolve_repo(&server, &cfg, "p-1").expect("resolves");
+        assert_eq!(r.repo_path, PathBuf::from("/local/app"));
+    }
+
+    #[test]
+    fn falls_back_to_config_when_not_on_server() {
+        let server = vec![];
+        let cfg = cfg_with_binding("app", Some("p-1"), "/local/app");
+        let r = resolve_repo(&server, &cfg, "p-1").expect("resolves");
+        assert_eq!(r.repo_path, PathBuf::from("/local/app"));
+    }
+
+    #[test]
+    fn errs_with_slug_when_no_path_anywhere() {
+        let server = vec![me("p-1", "app", None)];
+        let cfg = Config::default();
+        let err = resolve_repo(&server, &cfg, "p-1").unwrap_err();
+        assert_eq!(err, "app");
     }
 }
