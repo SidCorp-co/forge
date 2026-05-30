@@ -12,6 +12,7 @@ import { type DeviceVars, requireDevice } from '../middleware/require-device.js'
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
+import { maybeDeriveIncremental } from './session-transcript.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -220,6 +221,15 @@ jobEventsRoutes.post(
           'events-routes: agent_sessions heartbeat sync failed',
         );
       }
+    }
+
+    // ISS-283 — derive the canonical agent_sessions transcript from the stdout
+    // lines the runner streams (CLI-run jobs never PATCH the session row
+    // themselves). Throttled + fire-and-forget so it never blocks event ingest;
+    // the final authoritative derive runs on job /complete | /fail.
+    if (job.agentSessionId) {
+      const stdoutCount = events.reduce((n, e) => (e.kind === 'stdout' ? n + 1 : n), 0);
+      maybeDeriveIncremental(jobId, job.agentSessionId, stdoutCount);
     }
 
     const first = inserted[0];
