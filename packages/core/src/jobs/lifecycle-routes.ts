@@ -17,6 +17,7 @@ import { dispatchTickForProject } from './dispatch-tick.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import { handleResumeFailed, isResumeFailedError } from './handle-resume-failed.js';
 import type { RetryOutcome } from './retry.js';
+import { deriveSessionFinal } from './session-transcript.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -96,6 +97,14 @@ jobLifecycleDeviceRoutes.post(
       .returning();
 
     if (!updated) throw conflict('job state changed mid-request', 'INVALID_STATE');
+
+    // ISS-283 — final authoritative derive of the agent_sessions transcript
+    // from the streamed job_events (CLI runner never PATCHes the session row).
+    // Fire-and-forget + best-effort so it can never block or hang /complete;
+    // it never writes status, so it can't fight syncAgentSessionLifecycle below.
+    if (updated.agentSessionId) {
+      void deriveSessionFinal(updated.id, updated.agentSessionId);
+    }
 
     // Step-handoff is best-effort context for the next step — NOT a completion
     // gate. A `done` job stays `done` whether or not the agent wrote its
@@ -209,6 +218,11 @@ jobLifecycleDeviceRoutes.post(
       .returning();
 
     if (!updated) throw conflict('job state changed mid-request', 'INVALID_STATE');
+
+    // ISS-283 — final transcript derive (see /complete). Fire-and-forget.
+    if (updated.agentSessionId) {
+      void deriveSessionFinal(updated.id, updated.agentSessionId);
+    }
 
     // PR-5c — same resume-failed branching as the user-lifecycle path.
     let resumePolicy: 'fresh' | 'abort' | null = null;
