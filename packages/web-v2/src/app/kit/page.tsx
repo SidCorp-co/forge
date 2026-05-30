@@ -15,6 +15,9 @@ import {
   TopBar, useAnimatedNumber, useElapsed,
   type Command, type NotificationItem, type StageKey, type StatusKey,
 } from "@/design";
+import {
+  ForgeMascot, ProjectLoader, ColdBoot, AgentWorking, ReconnectingBanner,
+} from "@/design";
 import { useToast } from "@/providers/toast-provider";
 
 function Section({ id, title, hint, children }: { id: string; title: string; hint?: string; children: React.ReactNode }) {
@@ -80,9 +83,42 @@ const TRACKER_CASES: { stage: StageKey; status: "running" | "done" | "failed" | 
 const NAV_ANCHORS = [
   "tokens", "type", "buttons", "status", "avatars", "tags", "forms", "cards",
   "pipeline", "kanban", "navrail", "topbar", "overlays", "states",
-  "skeletons", "progress", "feedback", "realtime",
+  "mascot", "skeletons", "progress", "feedback", "realtime",
   "formcontrols", "display", "disclosure", "data", "overlays2", "pageload",
 ];
+
+function MascotProgressDemo() {
+  const [p, setP] = useState(0.35);
+  return (
+    <div className="flex flex-col items-center gap-4">
+      <ForgeMascot size={150} mode="both" ring progress={p} flicker />
+      <input
+        type="range" min={0} max={100} value={p * 100}
+        onChange={(e) => setP(Number(e.target.value) / 100)}
+        className="w-56 accent-[var(--accent)]" aria-label="Pipeline progress"
+      />
+      <span className="fg-caption font-mono">progress {Math.round(p * 100)}% · eyes track + ring follows</span>
+    </div>
+  );
+}
+
+function ProjectLoaderDemo() {
+  const phases = ["connecting to runners…", "syncing pipeline state…", "loading 142 issues…", "4 / 4 streams live"];
+  const [p, setP] = useState(0);
+  useEffect(() => {
+    if (p >= phases.length - 1) return;
+    const t = setTimeout(() => setP(p + 1), 1300);
+    return () => clearTimeout(t);
+  }, [p, phases.length]);
+  const done = p === phases.length - 1;
+  return <ProjectLoader label={phases[p]} progress={(p + 0.5) / phases.length} done={done} />;
+}
+
+function AgentWorkingDemo() {
+  const [start] = useState(() => Date.now());
+  const elapsed = useElapsed(start, true);
+  return <AgentWorking label={<><b>Code agent</b> is working…</>} elapsed={elapsed} />;
+}
 
 /* ── interactive demos for the loading & motion sections ── */
 
@@ -569,10 +605,26 @@ export default function KitPage() {
           <Section id="states" title="Empty & loading states">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="rounded-md border border-line">
-                <EmptyState message="No issues yet. Create one to start the pipeline." action={{ label: "New issue" }} />
+                <EmptyState title="No issues yet" message="Create one and the triage agent takes it from here." action={{ label: "New issue" }} />
               </div>
               <div className="flex items-center justify-center gap-3 rounded-md border border-line p-10">
                 <Spinner /> <span className="fg-body-sm">Loading runs…</span>
+              </div>
+            </div>
+          </Section>
+
+          <Section id="mascot" title="Mascot" hint="The living Forge mark — blinks, tracks the pipeline progress, flames flicker, breathes. The face of every empty/loading state.">
+            <div className="grid items-center gap-8 sm:grid-cols-3">
+              <div className="flex flex-col items-center gap-2">
+                <ForgeMascot size={120} mode="blink" ring={false} />
+                <span className="fg-caption">blink · no ring</span>
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                <MascotProgressDemo />
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                <ForgeMascot size={120} mode="blink" ring={false} flicker={false} progress={0.4} />
+                <span className="fg-caption">flame stilled (error)</span>
               </div>
             </div>
           </Section>
@@ -638,6 +690,11 @@ export default function KitPage() {
                 <LiveDot state="connecting" withLabel />
                 <LiveDot state="offline" withLabel />
               </Row>
+              <div className="flex flex-col gap-3 sm:max-w-md">
+                <span className="fg-caption block">Agent working (mascot) · reconnecting</span>
+                <AgentWorkingDemo />
+                <ReconnectingBanner />
+              </div>
               <div>
                 <span className="fg-caption mb-2 block">Streaming agent output</span>
                 <StreamingDemo />
@@ -759,6 +816,14 @@ export default function KitPage() {
                 </Link>
                 <span className="fg-caption">then use “Back to kit” there</span>
               </Row>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex items-center justify-center rounded-md border border-line bg-sunken py-10">
+                  <ColdBoot />
+                </div>
+                <div className="flex items-center justify-center rounded-md border border-line bg-sunken py-10">
+                  <ProjectLoaderDemo />
+                </div>
+              </div>
             </div>
           </Section>
 

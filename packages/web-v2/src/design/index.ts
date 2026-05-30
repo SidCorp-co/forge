@@ -64,6 +64,8 @@ export { Highlight, type HighlightProps } from "./patterns/highlight";
 export { SlideOver, type SlideOverProps } from "./patterns/slide-over";
 export { Menu, type MenuProps, type MenuItem } from "./patterns/menu";
 export { RouteProgress } from "./patterns/route-progress";
+export { ForgeMascot, type ForgeMascotProps, STAGE_RING } from "./patterns/forge-mascot";
+export { ProjectLoader, ColdBoot, AgentWorking, ReconnectingBanner } from "./patterns/mascot-loaders";
 
 // skeleton compositions
 export {

@@ -126,6 +126,17 @@
 @keyframes forge-rise { from { transform: translateY(6px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 .forge-rise { animation: forge-rise var(--dur-base) var(--ease-out); }
 
+/* ── Mascot rig (ForgeMascot) — breathing, warm glow, flame flicker ── */
+@keyframes fm-glow { 0%,100% { opacity: .5; transform: scale(.92); } 50% { opacity: 1; transform: scale(1.06); } }
+.fm-breathe { animation: fm-breathe 2.8s var(--ease-in-out) infinite; transform-origin: center 62%; }
+@keyframes fm-breathe { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-2px) scale(.984); } }
+.fm-flameA { animation: fm-flickA 0.85s ease-in-out infinite; transform-origin: 30% 100%; }
+.fm-flameB { animation: fm-flickB 1.05s ease-in-out infinite; transform-origin: 70% 100%; }
+@keyframes fm-flickA { 0%{opacity:.16;filter:brightness(1.05)}22%{opacity:.5;filter:brightness(1.42)}41%{opacity:.22;filter:brightness(1.12)}63%{opacity:.46;filter:brightness(1.36)}80%{opacity:.2;filter:brightness(1.1)}100%{opacity:.16;filter:brightness(1.05)} }
+@keyframes fm-flickB { 0%{opacity:.18;filter:brightness(1.08)}30%{opacity:.34;filter:brightness(1.24)}52%{opacity:.5;filter:brightness(1.44)}71%{opacity:.24;filter:brightness(1.12)}100%{opacity:.18;filter:brightness(1.08)} }
+@keyframes fm-ringpulse { 0%{transform:scale(.7);opacity:.9} 100%{transform:scale(1.25);opacity:0} }
+.fm-ringpulse { animation: fm-ringpulse 1.8s var(--ease-out) infinite; }
+
 /* ── Loading & live effects ────────────────────────────────── */
 
 /* Skeleton — warm paper shimmer (not cold gray). */
@@ -151,7 +162,8 @@
 
 /* ── Accessibility: respect reduced-motion ─────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  .forge-pulse, .skeleton::after, .forge-indeterminate, .forge-highlight, .forge-caret { animation: none !important; }
+  .forge-pulse, .skeleton::after, .forge-indeterminate, .forge-highlight, .forge-caret,
+  .fm-breathe, .fm-flameA, .fm-flameB, .fm-ringpulse { animation: none !important; }
   .skeleton::after { display: none; }
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
 }
