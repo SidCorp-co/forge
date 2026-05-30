@@ -1,10 +1,10 @@
 'use client';
 
 // Ported from `packages/web/src/providers/auth-provider.tsx` (ISS-288).
-// Divergence: web-v2 has NO login page yet (deferred to a later phase), so
-// `logout()` navigates to the workspace root `/` instead of `/login`, and an
-// unauthenticated mount is the expected first-load case — `user` stays `null`
-// and pages render an `EmptyState`/`ErrorState` rather than redirect-looping.
+// `logout()` navigates to `/login` (the (auth) route group, added in ISS-289).
+// An unauthenticated mount is still tolerated: `user` stays `null` while
+// `/auth/me` resolves, and the (workspace) layout owns the redirect-to-login
+// guard so this provider never redirect-loops on first load.
 import type { LoginInput, RegisterInput, User as CoreUser } from '@forge/contracts';
 
 /**
@@ -88,8 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Server-side logout is best-effort; always clear client state.
     }
     setUser(null);
-    // No /login route in web-v2 yet — return to the workspace root.
-    router.push('/');
+    router.push('/login');
   }, [router]);
 
   return (
