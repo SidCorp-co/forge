@@ -57,24 +57,34 @@ export function SkillFolderEditor({
 
   const parsed = useMemo(() => parseFrontmatter(skill?.skillMd ?? ''), [skill]);
 
-  const [fields, setFields] = useState<FrontmatterFields>(() =>
-    fieldsFromFrontmatter(parsed.frontmatter, {
-      name: skill?.name ?? '',
-      description: skill?.description ?? '',
-      target: skill?.target ?? 'dev',
-      allowedTools: skill?.tools ?? [],
-    }),
+  const initialFields = useMemo(
+    () =>
+      fieldsFromFrontmatter(parsed.frontmatter, {
+        name: skill?.name ?? '',
+        description: skill?.description ?? '',
+        target: skill?.target ?? 'dev',
+        allowedTools: skill?.tools ?? [],
+      }),
+    [parsed, skill],
   );
+
+  const [fields, setFields] = useState<FrontmatterFields>(() => initialFields);
   const [body, setBody] = useState(parsed.body);
   const [files, setFiles] = useState<SkillFile[]>(skill?.files ?? []);
   const [isGlobal, setIsGlobal] = useState(skill?.isGlobal ?? false);
   const [selectedPath, setSelectedPath] = useState<string>(SKILL_MD_PATH);
   const [diffMode, setDiffMode] = useState<DiffMode>('none');
 
-  // Snapshot of the server-loaded SKILL.md, for the "diff vs last saved" view.
-  // Captured once via the useState initializer — the parent remounts this on
-  // skill change (React `key`), so the baseline is stable for the lifetime.
-  const [baseline] = useState(skill?.skillMd ?? '');
+  // Canonical "no user edits" serialization + files snapshot, captured once
+  // (the parent remounts this on skill change via React `key`). Re-serialization
+  // is NOT byte-identical to hand-authored YAML (known keys hoisted, quotes
+  // stripped), so dirtiness is measured against this re-serialized baseline —
+  // not the raw skill.skillMd — to avoid a spurious version-bump / diff on a
+  // no-op save (review finding #1).
+  const [baseline] = useState(() =>
+    serializeFrontmatter(initialFields, parsed.body, parsed.frontmatter),
+  );
+  const [filesBaseline] = useState(() => JSON.stringify(skill?.files ?? []));
 
   const currentSkillMd = useMemo(
     () => serializeFrontmatter(fields, body, parsed.frontmatter),
@@ -86,9 +96,14 @@ export function SkillFolderEditor({
   // Selected path may dangle after a delete — fall back to SKILL.md.
   const effectivePath = selectedPath !== SKILL_MD_PATH && !selectedFile ? SKILL_MD_PATH : selectedPath;
 
-  const canSave = fields.name.trim() && fields.description.trim() && body.trim();
+  const isDirty =
+    currentSkillMd !== baseline || JSON.stringify(files) !== filesBaseline;
+  // On edit, block save when nothing changed vs baseline — a no-op PUT would
+  // otherwise version-bump + write a changelog entry for an identical body.
+  const canSave =
+    !!fields.name.trim() && !!fields.description.trim() && !!body.trim() && (!isEdit || isDirty);
   const canDiffGlobal = !!globalSkillMd && globalSkillMd !== currentSkillMd;
-  const canDiffSaved = isEdit && baseline !== currentSkillMd;
+  const canDiffSaved = isEdit && currentSkillMd !== baseline;
 
   function updateFileContent(content: string) {
     if (!selectedFile) return;
