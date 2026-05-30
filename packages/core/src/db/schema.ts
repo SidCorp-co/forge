@@ -1130,6 +1130,40 @@ export const projectSkillOverrides = pgTable(
   }),
 );
 
+// Skill Studio 4 (ISS-278) — tracks which skill version each device holds for
+// each project. The server is the source of truth (`skills` + overrides +
+// registrations); a row here records the `installedHash` the runner last
+// reported after seeding `.claude/skills/<name>/` onto disk. `outdated` is
+// derived by comparing `installedHash` against the project's effective hash
+// (`hashSkillBody(effectiveMd, files)`) — never stored, always recomputed.
+export const deviceSkills = pgTable(
+  'device_skills',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    deviceId: uuid('device_id')
+      .notNull()
+      .references(() => devices.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    skillId: uuid('skill_id')
+      .notNull()
+      .references(() => skills.id, { onDelete: 'cascade' }),
+    installedHash: text('installed_hash').notNull(),
+    installedVersion: integer('installed_version'),
+    syncedAt: timestamp('synced_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    deviceProjectSkillUq: uniqueIndex('device_skills_device_project_skill_uq').on(
+      t.deviceId,
+      t.projectId,
+      t.skillId,
+    ),
+    deviceProjectIdx: index('device_skills_device_project_idx').on(t.deviceId, t.projectId),
+  }),
+);
+
 export const memorySources = [
   'issue',
   'comment',
