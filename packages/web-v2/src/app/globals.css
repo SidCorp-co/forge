@@ -1,0 +1,169 @@
+@import "tailwindcss";
+@import "../styles/tokens.css";
+
+/* ============================================================
+   Tailwind v4 theme mapping — utilities reference the SEMANTIC
+   layer via var() (note `inline`), so a future [data-theme="dark"]
+   override of the semantic tokens re-skins every utility for free.
+   No tailwind.config.ts; this block is the config.
+   ============================================================ */
+@theme inline {
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  /* surfaces */
+  --color-app: var(--bg-app);
+  --color-surface: var(--bg-surface);
+  --color-sunken: var(--bg-sunken);
+  --color-hover: var(--bg-hover);
+  --color-active: var(--bg-active);
+
+  /* foreground */
+  --color-fg: var(--fg-default);
+  --color-muted: var(--fg-muted);
+  --color-subtle: var(--fg-subtle);
+  --color-disabled: var(--fg-disabled);
+  --color-on-accent: var(--fg-on-accent);
+
+  /* borders (utilities: border-line / border-line-subtle / border-line-strong) */
+  --color-line-subtle: var(--border-subtle);
+  --color-line: var(--border-default);
+  --color-line-strong: var(--border-strong);
+
+  /* accent + link */
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-press: var(--accent-press);
+  --color-accent-tint: var(--accent-tint);
+  --color-accent-text: var(--accent-text);
+  --color-link: var(--link);
+
+  /* brand + semantic hues (for the rare utility need; data-driven
+     chips use the meta maps in design/status.ts instead) */
+  --color-flame: var(--flame-500);
+  --color-cobalt: var(--cobalt-500);
+  --color-amber: var(--amber-500);
+  --color-green: var(--green-500);
+  --color-red: var(--red-500);
+
+  /* pipeline stage hues */
+  --color-stage-triage: var(--stage-triage);
+  --color-stage-clarify: var(--stage-clarify);
+  --color-stage-plan: var(--stage-plan);
+  --color-stage-code: var(--stage-code);
+  --color-stage-review: var(--stage-review);
+  --color-stage-test: var(--stage-test);
+  --color-stage-release: var(--stage-release);
+
+  /* radii (utilities: rounded-sm/md/lg/xl/pill) */
+  --radius-xs: var(--r-xs);
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-xl: var(--r-xl);
+  --radius-pill: var(--r-pill);
+
+  /* shadows (utilities: shadow-xs/sm/md/lg) */
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+}
+
+/* ============================================================
+   Base element styles — MUST live in @layer base. Tailwind v4 wraps
+   utilities in cascade layers, and an UNLAYERED rule beats any layered
+   utility regardless of specificity. If `:focus-visible` were unlayered it
+   would override every per-component `focus-visible:*` ring (flame accent
+   ring, bare-input no-ring, …). Layering base fixes that.
+   ============================================================ */
+@layer base {
+  * { box-sizing: border-box; }
+
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg-app);
+    color: var(--fg-default);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::-webkit-scrollbar { width: 11px; height: 11px; }
+  ::-webkit-scrollbar-thumb { background: var(--paper-300); border-radius: 999px; border: 3px solid var(--bg-app); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--paper-400); }
+
+  /* Default keyboard-focus ring: soft cobalt box-shadow that follows the
+     element's OWN radius (no radius mutation). Accent controls + inputs +
+     bare inputs override per-component via `focus-visible:*` utilities. */
+  :focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+
+  /* Engineering UI: monospace figures are tabular so IDs, costs, durations
+     and ticking timers don't shift width digit-to-digit. */
+  .font-mono, .fg-mono, .fg-code { font-variant-numeric: tabular-nums; }
+}
+
+/* ============================================================
+   Motion — calm & quick (120–200ms ease-out). The one flourish is
+   the live/active pulse on pipeline beads and attention dots.
+   ============================================================ */
+@keyframes forge-pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.55; transform: scale(0.82); } }
+@keyframes forge-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes forge-drop { from { transform: translateY(-8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes forge-pop { from { transform: translate(-50%,-50%) scale(0.97); opacity: 0; } to { transform: translate(-50%,-50%) scale(1); opacity: 1; } }
+@keyframes forge-slide { from { transform: translateX(24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+.forge-pulse { animation: forge-pulse 1.8s var(--ease-in-out) infinite; }
+.forge-fade { animation: forge-fade var(--dur-base) var(--ease-out); }
+.forge-drop { animation: forge-drop var(--dur-base) var(--ease-out); }
+.forge-slide { animation: forge-slide var(--dur-base) var(--ease-out); }
+.forge-pop { animation: forge-pop var(--dur-base) var(--ease-out); }
+
+/* Page enter — content rises + fades on each route change (app/template.tsx). */
+@keyframes forge-rise { from { transform: translateY(6px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.forge-rise { animation: forge-rise var(--dur-base) var(--ease-out); }
+
+/* ── Mascot rig (ForgeMascot) — breathing, warm glow, flame flicker ── */
+@keyframes fm-glow { 0%,100% { opacity: .5; transform: scale(.92); } 50% { opacity: 1; transform: scale(1.06); } }
+.fm-breathe { animation: fm-breathe 2.8s var(--ease-in-out) infinite; transform-origin: center 62%; }
+@keyframes fm-breathe { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-2px) scale(.984); } }
+.fm-flameA { animation: fm-flickA 0.85s ease-in-out infinite; transform-origin: 30% 100%; }
+.fm-flameB { animation: fm-flickB 1.05s ease-in-out infinite; transform-origin: 70% 100%; }
+@keyframes fm-flickA { 0%{opacity:.16;filter:brightness(1.05)}22%{opacity:.5;filter:brightness(1.42)}41%{opacity:.22;filter:brightness(1.12)}63%{opacity:.46;filter:brightness(1.36)}80%{opacity:.2;filter:brightness(1.1)}100%{opacity:.16;filter:brightness(1.05)} }
+@keyframes fm-flickB { 0%{opacity:.18;filter:brightness(1.08)}30%{opacity:.34;filter:brightness(1.24)}52%{opacity:.5;filter:brightness(1.44)}71%{opacity:.24;filter:brightness(1.12)}100%{opacity:.18;filter:brightness(1.08)} }
+@keyframes fm-ringpulse { 0%{transform:scale(.7);opacity:.9} 100%{transform:scale(1.25);opacity:0} }
+.fm-ringpulse { animation: fm-ringpulse 1.8s var(--ease-out) infinite; }
+
+/* ── Loading & live effects ────────────────────────────────── */
+
+/* Skeleton — warm paper shimmer (not cold gray). */
+@keyframes forge-shimmer { 100% { transform: translateX(100%); } }
+.skeleton { position: relative; overflow: hidden; background: var(--paper-100); }
+.skeleton::after {
+  content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent);
+  animation: forge-shimmer 1.4s var(--ease-in-out) infinite;
+}
+
+/* Indeterminate progress — a flame sliver sweeping the track. */
+@keyframes forge-indeterminate { 0% { left: -40%; } 100% { left: 100%; } }
+.forge-indeterminate { position: absolute; top: 0; bottom: 0; width: 40%; border-radius: 999px; animation: forge-indeterminate 1.2s var(--ease-in-out) infinite; }
+
+/* Highlight-fade — flash a row when its data changes (WS update). */
+@keyframes forge-highlight { 0% { background: var(--accent-tint); } 100% { background: transparent; } }
+.forge-highlight { animation: forge-highlight 1.2s var(--ease-out); }
+
+/* Streaming caret — blinks at the end of a token-streaming message. */
+@keyframes forge-caret { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+.forge-caret { display: inline-block; width: 2px; height: 1em; margin-left: 1px; vertical-align: text-bottom; background: var(--accent); animation: forge-caret 1s steps(1) infinite; }
+
+/* ── Accessibility: respect reduced-motion ─────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .forge-pulse, .skeleton::after, .forge-indeterminate, .forge-highlight, .forge-caret,
+  .fm-breathe, .fm-flameA, .fm-flameB, .fm-ringpulse { animation: none !important; }
+  .skeleton::after { display: none; }
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}
