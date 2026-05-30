@@ -27,9 +27,14 @@ import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { projectIntegrations } from '../../db/schema.js';
-import { findLastOutbound } from '../../integrations/deliveries.js';
+import { fetchCoolifyDeploymentLogs } from '../../integrations/coolify/adapter.js';
+import { CoolifyApiError } from '../../integrations/coolify/client.js';
 import type { CoolifyConfig } from '../../integrations/coolify/types.js';
-import { resolveLatestIssueRunId, tryDispatchCoolifyRelease } from '../../pipeline/release-coolify.js';
+import { findLastOutbound } from '../../integrations/deliveries.js';
+import {
+  resolveLatestIssueRunId,
+  tryDispatchCoolifyRelease,
+} from '../../pipeline/release-coolify.js';
 import {
   type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
@@ -39,10 +44,11 @@ import {
 
 const inputSchema = z
   .object({
-    action: z.enum(['list', 'deploy', 'status']),
+    action: z.enum(['list', 'deploy', 'status', 'logs']),
     projectId: z.uuid().optional(),
     issueId: z.uuid().optional(),
     integrationId: z.uuid().optional(),
+    deploymentUuid: z.string().optional(),
   })
   .strict();
 
@@ -67,19 +73,30 @@ async function activeCoolifyIntegrations(projectId: string) {
     );
 }
 
-export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = ({ principal, projectSlug }) => ({
+export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = ({
+  principal,
+  projectSlug,
+}) => ({
   name: 'forge_coolify_deploy',
   description:
-    'Coolify deploy controls for the pipeline skills. Actions: list | deploy | status. ' +
+    'Coolify deploy controls for the pipeline skills. Actions: list | deploy | status | logs. ' +
     'list: active Coolify integrations for the project (id, environment, resourceUuid, ' +
     'lastHealthStatus, breakerOpen); empty array => project is local-only (no Coolify). ' +
-    'deploy: requires issueId — resolves the issue\'s latest pipeline run and enqueues a ' +
+    "deploy: requires issueId — resolves the issue's latest pipeline run and enqueues a " +
     'deploy via the SAME idempotent path as the release auto-subscriber (requestId = ' +
     'runId:integrationId), so a second deploy for the same run is a no-op (no double-deploy). ' +
     'prod integrations honor the human-confirm gate: returns pendingHumanConfirm:true and does ' +
     'NOT dispatch until confirmed via the confirm-prod-deploy endpoint. ' +
     'status: latest outbound delivery per integration (or a specific integrationId): ' +
     'deploymentUuid, status, breakerOpen, createdAt. ' +
+    'logs: fetch the Coolify build/deploy log for a deployment and return it scrubbed + tailed. ' +
+    "Resolves deploymentUuid from the explicit deploymentUuid param, else the integration's last " +
+    'outbound delivery. Requires integrationId when multiple active Coolify integrations exist. ' +
+    'Secrets (Authorization/Cookie/X-Api-Key headers, token/apiKey/password/jwt fields, tokenized ' +
+    "URLs, and the integration's own apiToken) are redacted line-by-line; build-stage stderr is " +
+    'preserved. Returns { integrationId, deploymentUuid, status, logs, truncated }; on a Coolify API ' +
+    'error returns { error, httpStatus } with no raw body. Tailed to last ~100 lines / ~16KB ' +
+    '(truncated:true when cut). ' +
     'Project scope comes from the X-Forge-Project-Slug header (or an explicit projectId). ' +
     'Authorization: project membership.',
   inputSchema: zodToMcpSchema(inputSchema),
@@ -111,7 +128,12 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = ({ principal,
 
         const runId = await resolveLatestIssueRunId(input.issueId);
         if (!runId) {
-          return { dispatched: false, pendingHumanConfirm: false, integrationIds: [], reason: 'no-run' };
+          return {
+            dispatched: false,
+            pendingHumanConfirm: false,
+            integrationIds: [],
+            reason: 'no-run',
+          };
         }
 
         const outcome = await tryDispatchCoolifyRelease({
@@ -149,6 +171,68 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = ({ principal,
           }),
         );
         return { deliveries };
+      }
+
+      case 'logs': {
+        const projectId = await resolveProjectId(input, projectSlug);
+        await assertPrincipalIsMember(principal, projectId);
+
+        // Resolve the integration row. Explicit integrationId wins; otherwise
+        // require exactly one active Coolify integration (multiple is ambiguous).
+        const rows = await activeCoolifyIntegrations(projectId);
+        const row = input.integrationId
+          ? rows.find((r) => r.id === input.integrationId)
+          : rows.length === 1
+            ? rows[0]
+            : undefined;
+        if (!row) {
+          if (input.integrationId) {
+            throw new Error('BAD_REQUEST: no active Coolify integration with that integrationId');
+          }
+          if (rows.length === 0) {
+            return {
+              integrationId: null,
+              deploymentUuid: null,
+              logs: null,
+              reason: 'no-integration',
+            };
+          }
+          throw new Error('BAD_REQUEST: multiple active Coolify integrations — pass integrationId');
+        }
+
+        // Resolve the deploymentUuid: explicit param, else the integration's
+        // last outbound delivery (its Coolify response carries deployment_uuid).
+        let deploymentUuid = input.deploymentUuid ?? null;
+        if (!deploymentUuid) {
+          const last = await findLastOutbound(row.id);
+          const response = (last?.response ?? null) as { deployment_uuid?: string } | null;
+          deploymentUuid = response?.deployment_uuid ?? null;
+        }
+        if (!deploymentUuid) {
+          return {
+            integrationId: row.id,
+            deploymentUuid: null,
+            logs: null,
+            reason: 'no-deployment',
+          };
+        }
+
+        try {
+          const result = await fetchCoolifyDeploymentLogs(row, deploymentUuid);
+          return { integrationId: row.id, ...result };
+        } catch (err) {
+          // Surface a clear message; NEVER echo the raw Coolify body (may leak).
+          if (err instanceof CoolifyApiError) {
+            return {
+              integrationId: row.id,
+              deploymentUuid,
+              logs: null,
+              error: 'coolify API error',
+              httpStatus: err.status,
+            };
+          }
+          throw err;
+        }
       }
     }
   },

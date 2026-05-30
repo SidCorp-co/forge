@@ -1,11 +1,12 @@
-import { describe, expect, it } from 'vitest';
 import {
   FILTERED,
   PAT_STRING_PATTERN,
+  scrubLogText,
   scrubPatInString,
   scrubSentryEvent,
   scrubStringValues,
 } from '@forge/observability';
+import { describe, expect, it } from 'vitest';
 
 const PAT = 'forge_pat_prd_abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234';
 
@@ -56,6 +57,52 @@ describe('PAT scrubbing (ISS-150)', () => {
   });
 });
 
+describe('scrubLogText (ISS-284 — Coolify build/deploy log)', () => {
+  it('redacts secret-shaped tokens but preserves diagnostic stderr', () => {
+    const log = [
+      'ENV NODE_ENV=production',
+      'ARG BUILD_ID=12345',
+      "error: Cannot find module '@codemirror/state'",
+      'Authorization: Bearer abcdef123456',
+      'token=supersecretvalue',
+      'apiKey: my-api-key-xyz',
+      'password=hunter2pass',
+      'fetching https://coolify.example/cb?access_token=leaked12345&id=7',
+      `leaked PAT ${PAT} here`,
+    ].join('\n');
+
+    const out = scrubLogText(log, ['integration-secret-token-abc']);
+    const lines = out.split('\n');
+
+    // Preserved: build-stage env + the diagnostic the feature exists to surface.
+    expect(lines[0]).toBe('ENV NODE_ENV=production');
+    expect(lines[1]).toBe('ARG BUILD_ID=12345');
+    expect(lines[2]).toBe("error: Cannot find module '@codemirror/state'");
+
+    // Redacted: header / body-key / URL token / PAT.
+    expect(out).not.toContain('abcdef123456');
+    expect(out).not.toContain('supersecretvalue');
+    expect(out).not.toContain('my-api-key-xyz');
+    expect(out).not.toContain('hunter2pass');
+    expect(out).not.toContain('leaked12345');
+    expect(out).not.toContain(PAT);
+    expect(out).toContain(FILTERED);
+    // URL structure preserved (only the token value is masked).
+    expect(out).toContain('https://coolify.example/cb?access_token=[Filtered]&id=7');
+  });
+
+  it('redacts literal extraSecrets values (the integration apiToken)', () => {
+    const secret = 'cf_pat_9f8e7d6c5b4a';
+    const out = scrubLogText(`echo deploying with ${secret} now`, [secret]);
+    expect(out).toBe(`echo deploying with ${FILTERED} now`);
+  });
+
+  it('ignores too-short extraSecrets to avoid shredding the log', () => {
+    const out = scrubLogText('a build a step a done', ['a']);
+    expect(out).toBe('a build a step a done');
+  });
+});
+
 describe('testCredentials scrubbing (ISS-225)', () => {
   it('redacts nested previewDeploy.testCredentials without touching siblings', () => {
     const event = {
@@ -63,9 +110,7 @@ describe('testCredentials scrubbing (ISS-225)', () => {
         data: {
           previewDeploy: {
             stagingUrl: 'https://stg.example.com',
-            testCredentials: [
-              { label: 'qa', username: 'qa@x', password: 'p4ss' },
-            ],
+            testCredentials: [{ label: 'qa', username: 'qa@x', password: 'p4ss' }],
           },
         },
       },

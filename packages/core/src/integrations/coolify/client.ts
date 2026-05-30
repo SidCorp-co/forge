@@ -1,4 +1,8 @@
-import type { CoolifyDeployResponse, CoolifyResourceResponse } from './types.js';
+import type {
+  CoolifyDeployResponse,
+  CoolifyDeploymentResponse,
+  CoolifyResourceResponse,
+} from './types.js';
 
 export class CoolifyApiError extends Error {
   readonly status: number;
@@ -43,11 +47,7 @@ export class CoolifyClient {
     this.fetchImpl = opts.fetchImpl ?? fetch;
   }
 
-  private async request<T>(
-    method: 'GET' | 'POST',
-    path: string,
-    body?: unknown,
-  ): Promise<T> {
+  private async request<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
     const url = joinUrl(this.baseUrl, path);
     const tokens = [this.apiToken];
     if (this.previousApiToken) tokens.push(this.previousApiToken);
@@ -71,7 +71,11 @@ export class CoolifyClient {
         clearTimeout(timer);
         if (res.status === 401 && this.previousApiToken && token === this.apiToken) {
           // Try the rotation-window fallback before giving up.
-          lastErr = new CoolifyApiError(401, await safeText(res), 'unauthorized (will retry with previous token)');
+          lastErr = new CoolifyApiError(
+            401,
+            await safeText(res),
+            'unauthorized (will retry with previous token)',
+          );
           continue;
         }
         if (!res.ok) {
@@ -116,9 +120,28 @@ export class CoolifyClient {
     const list = await this.request<CoolifyResourceResponse[]>('GET', '/api/v1/resources');
     const match = Array.isArray(list) ? list.find((r) => r.uuid === resourceUuid) : undefined;
     if (!match) {
-      throw new CoolifyApiError(404, '', `resource ${resourceUuid} not found in Coolify resource list`);
+      throw new CoolifyApiError(
+        404,
+        '',
+        `resource ${resourceUuid} not found in Coolify resource list`,
+      );
     }
     return match;
+  }
+
+  /**
+   * Fetch a single deployment (status + build/deploy log). Unlike
+   * `/api/v1/resources` (list-only), `deployments/{uuid}` is a get-one
+   * endpoint, so a direct path is correct. A non-2xx surfaces as
+   * `CoolifyApiError`; the response shape varies across Coolify versions, so
+   * callers parse `logs`/`status` defensively (see `CoolifyDeploymentResponse`).
+   * Docs: https://coolify.io/docs/api-reference/api/operations/get-deployment-by-uuid
+   */
+  async getDeployment(deploymentUuid: string): Promise<CoolifyDeploymentResponse> {
+    return this.request<CoolifyDeploymentResponse>(
+      'GET',
+      `/api/v1/deployments/${encodeURIComponent(deploymentUuid)}`,
+    );
   }
 }
 
