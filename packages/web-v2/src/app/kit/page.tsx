@@ -6,7 +6,7 @@ import {
   Avatar, Badge, Banner, BoardRowSkeleton, Breadcrumb, Button, Card, CardContent,
   CardHeader, CardTitle, Checkbox, Collapsible, CommandPalette, Divider, EmptyState,
   ErrorState, Field, Highlight, HealthDot, Icon, IconButton, Input,
-  KanbanCardSkeleton, KanbanColumnSkeleton, Kicker, KanbanCard, LiveDot, Menu,
+  KanbanBoard, KanbanCardSkeleton, KanbanColumn, KanbanColumnSkeleton, Kicker, KanbanCard, LiveDot, Menu,
   MonoTag, NavRail, NotificationsMenu, Pagination, PipelineTracker, ProgressBar,
   NativeSelect, ProjectCardSkeleton, ProjectMark, Radio, RadioGroup,
   SegmentedControl, Select, SessionRowSkeleton, Skeleton, SlideOver, Spinner,
@@ -566,6 +566,23 @@ export default function KitPage() {
               <KanbanCard id="FRG-241" title="Sweep orphaned runner jobs on reconnect" stage="code" status="running" cost="$0.42" assignee={{ initials: "SK", hue: "cobalt" }} />
               <KanbanCard id="FRG-229" title="Retry policy for failed test stage handoff" stage="code" status="blocked" cost="$0.39" assignee={{ initials: "MJ", hue: "green" }} />
               <KanbanCard id="FRG-230" title="Per-step cost analytics on the run timeline" stage="release" status="done" cost="$2.14" assignee={{ initials: "AR", hue: "flame" }} />
+            </div>
+          </Section>
+
+          <Section id="kanban-board" title="Kanban board" hint="7 stage columns; the pipeline as a board. Horizontal snap-scroll when narrow.">
+            <div className="flex h-[320px]">
+              <KanbanBoard>
+                {STAGES.map((s) => (
+                  <KanbanColumn key={s.key} stage={s.key} count={s.key === "code" ? 2 : 0}>
+                    {s.key === "code" && (
+                      <>
+                        <KanbanCard id="FRG-241" title="Sweep orphaned runner jobs on reconnect" stage="code" status="running" cost="$0.42" assignee={{ initials: "SK", hue: "cobalt" }} />
+                        <KanbanCard id="FRG-229" title="Retry policy for failed test stage handoff" stage="code" status="blocked" cost="$0.39" assignee={{ initials: "MJ", hue: "green" }} />
+                      </>
+                    )}
+                  </KanbanColumn>
+                ))}
+              </KanbanBoard>
             </div>
           </Section>
 
