@@ -32,7 +32,7 @@ const PROJECT_ITEMS: Array<NavItem & { sub: string }> = [
   { key: "proj-issues", label: "Issues", icon: "list", sub: "/issues" },
   { key: "proj-pipeline", label: "Pipeline", icon: "pipeline", sub: "/pipeline" },
   { key: "proj-sessions", label: "Sessions", icon: "agent", sub: "/sessions" },
-  { key: "proj-chat", label: "Chat", icon: "mail", sub: "/chat" },
+  { key: "proj-chat", label: "Chat", icon: "mail", sub: "/agent" },
   { key: "proj-skills", label: "Skills", icon: "star", sub: "/skills" },
   { key: "proj-schedules", label: "Schedules", icon: "calendar", sub: "/schedules" },
   { key: "proj-context", label: "Context", icon: "inbox", sub: "/context" },
