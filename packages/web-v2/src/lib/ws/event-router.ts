@@ -63,7 +63,15 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
       return;
     }
     case 'agent-session.created':
-    case 'agent-session.updated': {
+    case 'agent-session.updated':
+    case 'agent-session.status':
+    case 'agent-session.deleted': {
+      // ISS-291 — the sessions index (`features/sessions`) keys its queries
+      // under ['agent-sessions']; without this the live list never refreshes.
+      qc.invalidateQueries({ queryKey: ['agent-sessions'] });
+      if (data?.sessionId) {
+        qc.invalidateQueries({ queryKey: ['agent-session', data.sessionId] });
+      }
       if (data?.issueId) {
         qc.invalidateQueries({ queryKey: ['activities', data.issueId] });
       }
@@ -180,4 +188,6 @@ export function replayOnReconnect(qc: QueryClient): void {
   qc.invalidateQueries({ queryKey: ['issues'] });
   qc.invalidateQueries({ queryKey: ['jobs'] });
   qc.invalidateQueries({ queryKey: ['projects'] });
+  // ISS-291 — refresh the sessions index after a dropped connection.
+  qc.invalidateQueries({ queryKey: ['agent-sessions'] });
 }
