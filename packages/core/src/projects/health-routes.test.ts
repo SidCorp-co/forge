@@ -241,13 +241,15 @@ describe('GET /api/projects/health', () => {
     expect(beta?.description).toBeNull();
   });
 
-  it('spend query casts the project-id array to ::uuid[] (regression: ANY(text[]) 500s on live)', async () => {
-    // The trailing-24h spend query binds projectIds (a JS string[] → text[]),
-    // but pipeline_run_step_durations.project_id is uuid. Postgres has no
-    // implicit uuid = text operator for the ANY() element type, so without the
-    // `::uuid[]` cast the live query throws PostgresError and 500s the whole
-    // endpoint (regressing the shared v1 dashboard too). The db mock can't
-    // exercise real type binding, so assert the literal SQL carries the cast.
+  it('spend query uses IN (...) not ANY(::uuid[]) (regression: array binding 500s on live twice)', async () => {
+    // The trailing-24h spend query must filter project ids with `IN (...)` over a
+    // sql.join parameter list — NOT `= ANY(${projectIds})` / `ANY(...::uuid[])`.
+    // Embedding a JS array directly in the drizzle template expands it as a
+    // record tuple ($1,$2,...), so ANY(tuple) / tuple::uuid[] is a malformed
+    // array literal and 500s the whole endpoint (regressing the shared v1
+    // dashboard). Two prior live FAILs (ANY, then ANY+::uuid[]) confirm this.
+    // The db mock can't bind real Postgres, so assert the literal SQL shape:
+    // it must say `IN (` and must NOT carry `ANY(` or `::uuid[]`.
     authVerified();
     queryQueue.push([{ id: USER_ID, isCeo: false }]); // me
     queryQueue.push([
@@ -265,10 +267,12 @@ describe('GET /api/projects/health', () => {
     });
 
     expect(res.status).toBe(200);
-    // The captured sql template serializes its literal chunks (incl. `::uuid[]`).
+    // The captured sql template serializes its literal chunks.
     const serialized = JSON.stringify(executedSql);
     expect(serialized).toContain('pipeline_run_step_durations');
-    expect(serialized).toContain('::uuid[]');
+    expect(serialized).toContain('IN (');
+    expect(serialized).not.toContain('ANY(');
+    expect(serialized).not.toContain('::uuid[]');
   });
 
   it('CEO branch: skips project-membership filter', async () => {

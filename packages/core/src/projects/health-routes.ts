@@ -185,16 +185,24 @@ projectHealthRoutes.get('/health', async (c) => {
     .groupBy(runners.projectId);
 
   // Trailing-24h spend from the pipeline_run_step_durations view (same source as
-  // the per-project cost-summary route). `= ANY(...)` keeps it a single batch
-  // query over all visible project ids — no per-project N+1. The array binding
-  // MUST be cast to `::uuid[]`: projectIds is a JS string[] (bound as text[]),
-  // but `pipeline_run_step_durations.project_id` is uuid, and Postgres has no
-  // implicit uuid = text operator for the ANY() element type (unlike a scalar
-  // `= ${id}`, which does get the cast) — without the cast the query 500s.
+  // the per-project cost-summary route). One batch query over all visible
+  // project ids — no per-project N+1; projectIds is non-empty here (the
+  // visibleProjects.length === 0 early-return guards it).
+  //
+  // Build the id list as a parenthesised parameter list via `sql.join` and use
+  // `IN (...)`, NOT `= ANY(${projectIds})`. Embedding a JS array directly in the
+  // drizzle template expands it as a record tuple ($1, $2, ...), so `ANY(tuple)`
+  // / `ANY(tuple::uuid[])` is a malformed array literal and 500s (two prior live
+  // FAILs). `IN ($1, $2, ...)` makes each comparison a scalar `uuid = text`,
+  // which Postgres casts implicitly — same idiom as reconciler.ts.
+  const projectIdList = sql.join(
+    projectIds.map((id) => sql`${id}`),
+    sql`, `,
+  );
   const spendRows = (await db.execute(sql`
     SELECT project_id, COALESCE(SUM(cost_usd), 0)::float AS spend
     FROM pipeline_run_step_durations
-    WHERE project_id = ANY(${projectIds}::uuid[])
+    WHERE project_id IN (${projectIdList})
       AND started_at >= now() - interval '24 hours'
     GROUP BY project_id
   `)) as unknown as Array<{ project_id: string; spend: number }>;
