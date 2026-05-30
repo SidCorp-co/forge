@@ -186,11 +186,15 @@ projectHealthRoutes.get('/health', async (c) => {
 
   // Trailing-24h spend from the pipeline_run_step_durations view (same source as
   // the per-project cost-summary route). `= ANY(...)` keeps it a single batch
-  // query over all visible project ids — no per-project N+1.
+  // query over all visible project ids — no per-project N+1. The array binding
+  // MUST be cast to `::uuid[]`: projectIds is a JS string[] (bound as text[]),
+  // but `pipeline_run_step_durations.project_id` is uuid, and Postgres has no
+  // implicit uuid = text operator for the ANY() element type (unlike a scalar
+  // `= ${id}`, which does get the cast) — without the cast the query 500s.
   const spendRows = (await db.execute(sql`
     SELECT project_id, COALESCE(SUM(cost_usd), 0)::float AS spend
     FROM pipeline_run_step_durations
-    WHERE project_id = ANY(${projectIds})
+    WHERE project_id = ANY(${projectIds}::uuid[])
       AND started_at >= now() - interval '24 hours'
     GROUP BY project_id
   `)) as unknown as Array<{ project_id: string; spend: number }>;
