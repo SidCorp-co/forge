@@ -6,7 +6,8 @@ type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md";
 
 const VARIANTS: Record<Variant, string> = {
-  primary: "bg-accent text-on-accent shadow-xs hover:bg-accent-hover active:bg-accent-press border-transparent",
+  // accent button → flame focus ring (overrides the global cobalt ring)
+  primary: "bg-accent text-on-accent shadow-xs hover:bg-accent-hover active:bg-accent-press border-transparent focus-visible:shadow-[var(--shadow-focus-accent)] focus-visible:outline-none",
   secondary: "bg-surface text-fg border-line-strong hover:bg-hover",
   ghost: "bg-transparent text-muted border-transparent hover:bg-hover hover:text-fg",
   danger: "bg-surface text-[color:var(--red-600)] border-[color:var(--red-500)] hover:bg-[var(--red-50)]",

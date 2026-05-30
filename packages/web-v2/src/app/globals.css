@@ -71,27 +71,36 @@
 }
 
 /* ============================================================
-   Base element styles
+   Base element styles — MUST live in @layer base. Tailwind v4 wraps
+   utilities in cascade layers, and an UNLAYERED rule beats any layered
+   utility regardless of specificity. If `:focus-visible` were unlayered it
+   would override every per-component `focus-visible:*` ring (flame accent
+   ring, bare-input no-ring, …). Layering base fixes that.
    ============================================================ */
-* { box-sizing: border-box; }
+@layer base {
+  * { box-sizing: border-box; }
 
-html, body { margin: 0; padding: 0; }
+  html, body { margin: 0; padding: 0; }
 
-body {
-  background: var(--bg-app);
-  color: var(--fg-default);
-  font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.55;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+  body {
+    background: var(--bg-app);
+    color: var(--fg-default);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::-webkit-scrollbar { width: 11px; height: 11px; }
+  ::-webkit-scrollbar-thumb { background: var(--paper-300); border-radius: 999px; border: 3px solid var(--bg-app); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--paper-400); }
+
+  /* Default keyboard-focus ring: soft cobalt box-shadow that follows the
+     element's OWN radius (no radius mutation). Accent controls + inputs +
+     bare inputs override per-component via `focus-visible:*` utilities. */
+  :focus-visible { outline: none; box-shadow: var(--shadow-focus); }
 }
-
-::-webkit-scrollbar { width: 11px; height: 11px; }
-::-webkit-scrollbar-thumb { background: var(--paper-300); border-radius: 999px; border: 3px solid var(--bg-app); }
-::-webkit-scrollbar-thumb:hover { background: var(--paper-400); }
-
-:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--r-sm); }
 
 /* ============================================================
    Motion — calm & quick (120–200ms ease-out). The one flourish is

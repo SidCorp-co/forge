@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 import { Icon, type IconName } from "@/design/icons/icon";
+import { Input } from "@/design/primitives/input";
+import { Kbd } from "@/design/primitives/kbd";
 
 export interface Command {
   label: string;
@@ -72,7 +74,9 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
       >
         <div className="flex items-center gap-2.5 border-b border-line-subtle px-4 py-3">
           <Icon name="search" size={18} className="text-subtle" />
-          <input
+          <Input
+            variant="bare"
+            className="flex-1"
             autoFocus
             value={query}
             onChange={(e) => {
@@ -80,9 +84,8 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
               setActive(0);
             }}
             placeholder="Search or run a command…"
-            className="flex-1 bg-transparent text-[15px] text-fg outline-none placeholder:text-disabled"
           />
-          <kbd className="rounded-sm border border-line px-1.5 py-0.5 font-mono text-[11px] text-muted">esc</kbd>
+          <Kbd>esc</Kbd>
         </div>
         <ul className="max-h-[340px] overflow-y-auto p-1.5">
           {filtered.length === 0 && <li className="fg-body-sm px-3 py-6 text-center">No matches.</li>}
@@ -102,7 +105,7 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
               >
                 <Icon name={cmd.icon} size={17} style={i === active ? { color: "var(--accent)" } : { color: "var(--fg-subtle)" }} />
                 <span className="flex-1">{cmd.label}</span>
-                {cmd.kbd && <kbd className="font-mono text-[11px] text-subtle">{cmd.kbd}</kbd>}
+                {cmd.kbd && <Kbd>{cmd.kbd}</Kbd>}
               </button>
             </li>
           ))}

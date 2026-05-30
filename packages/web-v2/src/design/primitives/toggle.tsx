@@ -19,8 +19,10 @@ export function Toggle({ checked, onChange, disabled, ...rest }: ToggleProps) {
       onClick={() => onChange?.(!checked)}
       className={cn(
         "relative inline-flex h-[22px] w-[38px] flex-none items-center rounded-pill border transition-colors duration-[120ms]",
-        "disabled:cursor-not-allowed disabled:opacity-50",
-        checked ? "border-transparent bg-accent" : "border-line-strong bg-sunken",
+        "disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none",
+        checked
+          ? "border-transparent bg-accent focus-visible:shadow-[var(--shadow-focus-accent)]"
+          : "border-line-strong bg-sunken",
       )}
       {...rest}
     >

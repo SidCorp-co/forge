@@ -208,11 +208,11 @@ export default function KitPage() {
 
           <Section id="forms" title="Forms">
             <div className="grid max-w-xl gap-5">
-              <Field label="Project name" hint="Sentence case, never New Project.">
-                <Input placeholder="forge-core" />
+              <Field label="Project name" htmlFor="kit-project" hint="Sentence case, never New Project.">
+                <Input id="kit-project" placeholder="forge-core" />
               </Field>
-              <Field label="Search">
-                <Input icon="search" placeholder="Search or jump to…" />
+              <Field label="Search" htmlFor="kit-search">
+                <Input id="kit-search" icon="search" placeholder="Search or jump to…" />
               </Field>
               <div className="flex items-center gap-8">
                 <label className="flex items-center gap-3">

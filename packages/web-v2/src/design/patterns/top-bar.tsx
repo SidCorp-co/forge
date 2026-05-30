@@ -2,6 +2,7 @@
 
 import { Icon } from "@/design/icons/icon";
 import { Button } from "@/design/primitives/button";
+import { Kbd } from "@/design/primitives/kbd";
 
 export interface TopBarProps {
   title?: string;
@@ -25,11 +26,11 @@ export function TopBar({
       <button
         type="button"
         onClick={onCommandPalette}
-        className="flex h-9 max-w-md flex-1 items-center gap-2.5 rounded-md border border-line-strong bg-sunken px-3 text-subtle transition-colors hover:bg-hover"
+        className="flex h-9 max-w-md flex-1 items-center gap-2.5 rounded-md border border-line-strong bg-surface px-3 text-subtle transition-colors hover:border-[color:var(--link)] hover:bg-hover"
       >
         <Icon name="search" size={16} />
         <span className="fg-body-sm flex-1 text-left">Search or jump to…</span>
-        <kbd className="rounded-sm border border-line px-1.5 py-0.5 font-mono text-[11px] text-muted">⌘K</kbd>
+        <Kbd>⌘K</Kbd>
       </button>
 
       <div className="ml-auto flex items-center gap-2">

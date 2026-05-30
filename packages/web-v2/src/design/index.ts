@@ -19,6 +19,7 @@ export { HealthDot, type HealthDotProps } from "./primitives/health-dot";
 export { Stat, type StatProps } from "./primitives/stat";
 export { Card, CardHeader, CardTitle, CardContent } from "./primitives/card";
 export { Kicker } from "./primitives/kicker";
+export { Kbd } from "./primitives/kbd";
 export { Spinner, type SpinnerProps } from "./primitives/spinner";
 export { EmptyState, type EmptyStateProps } from "./primitives/empty-state";
 export { Input, type InputProps } from "./primitives/input";
