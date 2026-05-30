@@ -1,13 +1,26 @@
+use std::time::Duration;
+
 use clap::Args as ClapArgs;
+use forge_runner_core::auth::cred_store;
 use forge_runner_core::config::Config;
+use forge_runner_core::error::Error;
+use forge_runner_core::transport::{heartbeat, runners, CoreClient};
 use forge_runner_core::update;
 
 use super::Ctx;
 
-#[derive(ClapArgs)]
-pub struct Args {}
+/// Budget for each online call so doctor never hangs when core is unreachable
+/// (reqwest has no default timeout). Mirrors the update-check posture above.
+const ONLINE_TIMEOUT: Duration = Duration::from_secs(5);
 
-pub async fn run(ctx: Ctx, _args: Args) -> anyhow::Result<()> {
+#[derive(ClapArgs)]
+pub struct Args {
+    /// Skip network checks (heartbeat + /me/runners); run local checks only.
+    #[arg(long)]
+    pub offline: bool,
+}
+
+pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     println!("Forge Runner — doctor\n");
     println!(
         "✔ version      {} ({})",
@@ -15,8 +28,10 @@ pub async fn run(ctx: Ctx, _args: Args) -> anyhow::Result<()> {
         update::BUILD_TARGET
     );
 
-    check_bin("claude", "Claude Code CLI");
-    check_bin("git", "git");
+    let mut failed = false;
+
+    failed |= !check_bin("claude", "Claude Code CLI");
+    failed |= !check_bin("git", "git");
 
     let cfg_path = Config::path()?;
     if cfg_path.exists() {
@@ -32,7 +47,10 @@ pub async fn run(ctx: Ctx, _args: Args) -> anyhow::Result<()> {
 
     match ctx.resolve_core_url(&cfg) {
         Some(url) => println!("✔ core_url     {url}"),
-        None => println!("✖ core_url     chưa cấu hình (login hoặc --core-url)"),
+        None => {
+            println!("✖ core_url     chưa cấu hình (login hoặc --core-url)");
+            failed = true;
+        }
     }
 
     match &cfg.device_id {
@@ -45,6 +63,9 @@ pub async fn run(ctx: Ctx, _args: Args) -> anyhow::Result<()> {
     } else {
         for (slug, b) in &cfg.bindings {
             let is_repo = b.repo_path.join(".git").exists();
+            if !is_repo {
+                failed = true;
+            }
             println!(
                 "{} bind        {slug} → {}",
                 if is_repo { "✔" } else { "✖" },
@@ -76,12 +97,134 @@ pub async fn run(ctx: Ctx, _args: Args) -> anyhow::Result<()> {
         }
     }
 
+    // End-to-end online checks: heartbeat (token + reachability) and the
+    // server-side assignment reconciliation. Gated behind `--offline`.
+    if args.offline {
+        println!("• online       bỏ qua (--offline)");
+    } else {
+        failed |= online_checks(&ctx, &cfg).await;
+    }
+
+    if failed {
+        println!("\n✖ VERDICT      FAIL — sửa các mục ✖ phía trên");
+        // Exit non-zero (not an anyhow::Err) so the checklist prints cleanly
+        // without an `Error:` trace while CI/install scripts see the failure.
+        std::process::exit(1);
+    }
+    println!("\n✔ VERDICT      PASS");
     Ok(())
 }
 
-fn check_bin(bin: &str, label: &str) {
+/// Run the network section. Returns `true` if any check failed. Missing
+/// core_url/token is non-fatal (mirrors `cmd/runners.rs`) — we skip online
+/// checks and let the local verdict stand.
+async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
+    let (core_url, token) = match (
+        ctx.resolve_core_url(cfg),
+        cred_store::load_device_token().unwrap_or_default(),
+    ) {
+        (Some(url), Some(tok)) => (url, tok),
+        _ => {
+            println!("• online       chưa đăng nhập — bỏ qua check mạng (chạy `forge-runner login`)");
+            return false;
+        }
+    };
+
+    let client = CoreClient::new(core_url.clone(), token);
+    let mut failed = false;
+
+    // Heartbeat: 200 => token valid + core reachable; 401 => bad token/core_url.
+    match tokio::time::timeout(ONLINE_TIMEOUT, heartbeat::beat_verbose(&client)).await {
+        Ok(Ok(server_time)) => {
+            if server_time.is_empty() {
+                println!("✔ heartbeat    core reachable, token hợp lệ");
+            } else {
+                println!("✔ heartbeat    core reachable, token hợp lệ (serverTime {server_time})");
+            }
+        }
+        Ok(Err(Error::Unauthorized)) => {
+            println!("✖ heartbeat    401 — token/core_url sai, chạy `forge-runner login`");
+            failed = true;
+        }
+        Ok(Err(e)) => {
+            println!("✖ heartbeat    không tới được core — kiểm tra core_url ({core_url}): {e}");
+            failed = true;
+        }
+        Err(_) => {
+            println!("✖ heartbeat    timeout sau {}s — kiểm tra core_url ({core_url})", ONLINE_TIMEOUT.as_secs());
+            failed = true;
+        }
+    }
+
+    // Assignment reconciliation: server view vs local bindings/paths.
+    match tokio::time::timeout(ONLINE_TIMEOUT, runners::list_me(&client)).await {
+        Ok(Ok(rows)) => {
+            if rows.is_empty() {
+                println!("• runners      chưa được gán project nào trên server");
+            }
+            for r in &rows {
+                let local_path = cfg
+                    .bindings
+                    .iter()
+                    .find(|(_, b)| b.project_id.as_deref() == Some(r.project_id.as_str()))
+                    .map(|(_, b)| b.repo_path.clone());
+                let server_path = r
+                    .repo_path
+                    .as_deref()
+                    .filter(|p| !p.trim().is_empty())
+                    .map(std::path::PathBuf::from);
+
+                // Prefer the server's repo_path (the source of truth web + CLI
+                // both write via PATCH /me/runners) over the local binding;
+                // matches the precedence in `cmd/runners.rs`.
+                match server_path.or(local_path) {
+                    None => {
+                        println!(
+                            "✖ runner       {} gán trên server nhưng thiếu repo_path local (chạy `forge-runner bind {} --path <dir>`)",
+                            r.slug, r.slug
+                        );
+                        failed = true;
+                    }
+                    Some(p) => {
+                        let has_git = p.join(".git").exists();
+                        if has_git {
+                            println!("✔ runner       {} → {}", r.slug, p.display());
+                        } else {
+                            let why = if p.exists() { "không có .git" } else { "thư mục không tồn tại" };
+                            println!("✖ runner       {} → {} ({why})", r.slug, p.display());
+                            failed = true;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(Err(Error::Unauthorized)) => {
+            println!("✖ runners      401 — token/core_url sai, chạy `forge-runner login`");
+            failed = true;
+        }
+        Ok(Err(e)) => {
+            println!("✖ runners      không lấy được assignment từ server: {e}");
+            failed = true;
+        }
+        Err(_) => {
+            println!("✖ runners      timeout sau {}s", ONLINE_TIMEOUT.as_secs());
+            failed = true;
+        }
+    }
+
+    failed
+}
+
+/// Returns `true` when the binary is on PATH.
+fn check_bin(bin: &str, label: &str) -> bool {
     match which::which(bin) {
-        Ok(p) => println!("✔ {label:<12} {}", p.display()),
-        Err(_) => println!("✖ {label:<12} không tìm thấy `{bin}` trên PATH"),
+        Ok(p) => {
+            println!("✔ {label:<12} {}", p.display());
+            true
+        }
+        Err(_) => {
+            println!("✖ {label:<12} không tìm thấy `{bin}` trên PATH");
+            false
+        }
     }
 }
