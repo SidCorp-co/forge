@@ -165,6 +165,11 @@ async fn consume(client: &CoreClient, job_id: &str, mut rx: mpsc::Receiver<Runne
     // build / E2E) without false `heartbeat_timeout`, yet active jobs emit no
     // extra rows.
     let mut heartbeat = tokio::time::interval(HEARTBEAT_INTERVAL);
+    // Skip (don't burst-catch-up) missed ticks: if a slow `post_job_events`
+    // retry/backoff stalls the loop past a tick, fire once on the next tick
+    // rather than back-to-back. The heartbeat only needs to land within the
+    // 180s window, not recover every elapsed interval.
+    heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     heartbeat.tick().await;
     let mut posted_since_beat = false;
 
