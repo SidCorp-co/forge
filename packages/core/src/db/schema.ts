@@ -1100,7 +1100,12 @@ export const skillRegistrations = pgTable(
   }),
 );
 
-// v1 EPIC 6 — per-project override of a global skill's `skill_md`. The CRUD
+// v1 EPIC 6 / Skill Studio 2 (ISS-276) — per-project **fork** of a global
+// skill's whole folder. The override row stores `skill_md_override` + `files`
+// (the editable copy of the global folder) + its own `content_hash`
+// (`hashSkillBody(skillMd, files)`), and snapshots the parent global's
+// effective hash as `global_content_hash` at fork time so the effective view
+// can flag *drift vs global* once the global is updated afterwards. The CRUD
 // surface is `/api/projects/:projectId/skills/:skillId/override`; the merged
 // view is exposed via `/api/projects/:projectId/skills/effective`. The unique
 // (project_id, skill_id) constraint enforces "at most one override per
@@ -1116,7 +1121,13 @@ export const projectSkillOverrides = pgTable(
       .notNull()
       .references(() => skills.id, { onDelete: 'cascade' }),
     skillMdOverride: text('skill_md_override').notNull(),
+    // Forked copy of the global folder's files (SkillFile[]). Empty for legacy
+    // markdown-only rows; the resolver falls back to the base global files.
+    files: jsonb('files').notNull().default([]),
     contentHash: text('content_hash').notNull(),
+    // Fork-time snapshot of the global's effective hash. NULL for legacy rows
+    // (no drift baseline until re-forked). Drives the drift-vs-global badge.
+    globalContentHash: text('global_content_hash'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
