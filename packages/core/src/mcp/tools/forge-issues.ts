@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '../../db/client.js';
 import {
   type IssueStatus,
+  comments,
   issueComplexities,
   issuePriorities,
   issueStatuses,
@@ -11,13 +12,13 @@ import {
   tasks,
 } from '../../db/schema.js';
 import { applyStatusTransition } from '../../issues/apply-transition.js';
-import { type ReleaseNotes, ReleaseNotesSchema } from '../../issues/release-notes.js';
 import {
   AttachmentError,
   type DecodedAttachment,
   decodeAndValidateAttachments,
   persistDecodedIssueAttachments,
 } from '../../issues/attachment-service.js';
+import { type ReleaseNotes, ReleaseNotesSchema } from '../../issues/release-notes.js';
 import { dispatchTickForProject } from '../../jobs/dispatch-tick.js';
 import { recordActivityTx } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
@@ -99,6 +100,14 @@ const dataSchema = z
     // shape is validated by `ReleaseNotesSchema` so an invalid section enum
     // is rejected at the MCP boundary.
     releaseNotes: ReleaseNotesSchema.nullable().optional(),
+    // ISS-286 — mark_merged / unmark fields. `issueId` (below) identifies the
+    // target issue. `target` is an audit label only — trunk-based v2 has a
+    // single `merged_at` column (no `merged_to_prod_at` until v3), so all
+    // three values stamp the same column. `mergedAt` overrides the default
+    // `now()` stamp; `note` is appended to the audit comment.
+    target: z.enum(['feature', 'base', 'prod']).optional(),
+    mergedAt: z.string().optional(),
+    note: z.string().max(10_000).optional(),
     // Task fields — only consumed by the createTask/updateTask actions. Kept
     // on the same `data` block to avoid splitting the input schema for what
     // is conceptually one tool.
@@ -125,6 +134,8 @@ const inputSchema = z
       'listTasks',
       'updateTask',
       'deleteTask',
+      'mark_merged',
+      'unmark',
     ]),
     projectId: z.uuid().optional(),
     documentId: z.uuid().optional(),
@@ -163,6 +174,7 @@ type IssueRow = {
   aiAcceptanceCriteria: string[] | null;
   aiConfidence: number | null;
   releaseNotes: ReleaseNotes | null;
+  mergedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -190,6 +202,7 @@ function serialize(row: IssueRow): Record<string, unknown> {
     aiAcceptanceCriteria: row.aiAcceptanceCriteria,
     aiConfidence: row.aiConfidence,
     releaseNotes: row.releaseNotes,
+    mergedAt: row.mergedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -268,7 +281,15 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_issues',
   description:
     'CRUD for project issues. Actions: list, get, create, update, transition, ' +
-    'createTask, listTasks, updateTask, deleteTask. ' +
+    'createTask, listTasks, updateTask, deleteTask, mark_merged, unmark. ' +
+    'mark_merged (data.issueId + data.target<feature|base|prod> + optional ' +
+    'data.mergedAt ISO + data.note) idempotently stamps issues.merged_at via ' +
+    'COALESCE (a repeat call keeps the first timestamp), writes an audit ' +
+    'comment, broadcasts the issue update, and wakes the dispatcher so a ' +
+    'now-unblocked parent (blocks-gate) dispatches promptly. target is an ' +
+    'audit label only — all values stamp the same merged_at column. unmark ' +
+    '(data.issueId + optional data.note) clears merged_at back to NULL to ' +
+    're-block children when an epic merge is rolled back. ' +
     'Project scope is derived from the X-Forge-Project-Slug header (or an ' +
     'explicit projectId). Status changes route through the issue state machine. ' +
     'Avoid setting manualHold:true at create time — combine with confirmed ' +
@@ -528,6 +549,113 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         await applyStatusTransition(issue, target, device);
         const fresh = await loadIssue(issue.id);
         return serialize(fresh);
+      }
+
+      // ISS-286 — explicit, idempotent, auditable merge-marker. Decouples
+      // `merged_at` from the implicit `markMergedIfLeavingBase` side-effect so
+      // a skill can stamp the merge directly after verifying a push (epic /
+      // feature-branch barrier: a `blocks` parent is gated on every child's
+      // `merged_at IS NOT NULL` — see jobs/dispatch-gates.ts blockedBy).
+      case 'mark_merged': {
+        const issueId = input.data?.issueId;
+        if (!issueId) {
+          throw new Error('BAD_REQUEST: data.issueId is required for mark_merged');
+        }
+        const target = input.data?.target;
+        if (!target) {
+          throw new Error('BAD_REQUEST: data.target is required for mark_merged');
+        }
+        const issue = await loadIssue(issueId);
+        await assertPrincipalIsMember(principal, issue.projectId);
+
+        // COALESCE keeps the first stamp: a second mark_merged call is a no-op
+        // on the timestamp (AC2 idempotency). `mergedAt` overrides the default
+        // server `now()`. `target` is an audit label only — trunk-based v2 has
+        // a single merge column (no `merged_to_prod_at` until v3).
+        const stamp = input.data?.mergedAt ? parseDate(input.data.mergedAt, 'mergedAt') : null;
+        const stampExpr = stamp ? sql`${stamp}` : sql`now()`;
+        await db
+          .update(issues)
+          .set({ mergedAt: sql`COALESCE(${issues.mergedAt}, ${stampExpr})`, updatedAt: sql`now()` })
+          .where(eq(issues.id, issueId));
+
+        const note = input.data?.note;
+        const body = `mark_merged target=${target}${note ? ` — ${note}` : ''}`;
+        const [auditComment] = await db
+          .insert(comments)
+          .values({ issueId, authorId: device.ownerId, body, parentId: null })
+          .returning({ id: comments.id, body: comments.body, parentId: comments.parentId });
+        if (auditComment) {
+          await hooks.emit('commentCreated', {
+            issueId,
+            projectId: issue.projectId,
+            actor: { type: 'device', id: device.id },
+            commentId: auditComment.id,
+            body: auditComment.body,
+            parentId: auditComment.parentId,
+          });
+        }
+
+        const fresh = await loadIssue(issueId);
+        await hooks.emit('issueUpdated', {
+          issueId,
+          projectId: issue.projectId,
+          actor: { type: 'device', id: device.id },
+          fields: ['mergedAt'],
+          before: { mergedAt: issue.mergedAt },
+          after: { mergedAt: fresh.mergedAt },
+        });
+        // Wake the dispatcher so a now-unblocked parent dispatches within ~1s
+        // instead of waiting for the 60s pg-boss backstop (AC3).
+        void dispatchTickForProject(issue.projectId);
+
+        return { ...serialize(fresh), status: 'merged' };
+      }
+
+      case 'unmark': {
+        const issueId = input.data?.issueId;
+        if (!issueId) {
+          throw new Error('BAD_REQUEST: data.issueId is required for unmark');
+        }
+        const issue = await loadIssue(issueId);
+        await assertPrincipalIsMember(principal, issue.projectId);
+
+        // Clearing `merged_at` re-blocks downstream children (AC4 — supports
+        // rolling back an epic whose merge was reverted).
+        await db
+          .update(issues)
+          .set({ mergedAt: null, updatedAt: sql`now()` })
+          .where(eq(issues.id, issueId));
+
+        const note = input.data?.note;
+        const body = `unmark${note ? ` — ${note}` : ''}`;
+        const [auditComment] = await db
+          .insert(comments)
+          .values({ issueId, authorId: device.ownerId, body, parentId: null })
+          .returning({ id: comments.id, body: comments.body, parentId: comments.parentId });
+        if (auditComment) {
+          await hooks.emit('commentCreated', {
+            issueId,
+            projectId: issue.projectId,
+            actor: { type: 'device', id: device.id },
+            commentId: auditComment.id,
+            body: auditComment.body,
+            parentId: auditComment.parentId,
+          });
+        }
+
+        const fresh = await loadIssue(issueId);
+        await hooks.emit('issueUpdated', {
+          issueId,
+          projectId: issue.projectId,
+          actor: { type: 'device', id: device.id },
+          fields: ['mergedAt'],
+          before: { mergedAt: issue.mergedAt },
+          after: { mergedAt: null },
+        });
+        // No dispatcher tick: clearing only adds a block, never unblocks.
+
+        return { ...serialize(fresh), status: 'unmarked' };
       }
 
       case 'listTasks': {
