@@ -8,8 +8,9 @@ import {
   ErrorState, Field, Highlight, HealthDot, Icon, IconButton, Input,
   KanbanCardSkeleton, KanbanColumnSkeleton, Kicker, KanbanCard, LiveDot, Menu,
   MonoTag, NavRail, NotificationsMenu, Pagination, PipelineTracker, ProgressBar,
-  ProjectCardSkeleton, ProjectMark, Radio, RadioGroup, SegmentedControl, Select,
-  SessionRowSkeleton, Skeleton, SlideOver, Spinner, STAGES, Stat, StatusChip,
+  NativeSelect, ProjectCardSkeleton, ProjectMark, Radio, RadioGroup,
+  SegmentedControl, Select, SessionRowSkeleton, Skeleton, SlideOver, Spinner,
+  STAGES, Stat, StatusChip,
   StreamingText, Table, TBody, TD, TH, THead, TR, Tabs, Textarea, Toggle, Tooltip,
   TopBar, useAnimatedNumber, useElapsed,
   type Command, type NotificationItem, type StageKey, type StatusKey,
@@ -229,31 +230,43 @@ function ToastButtons() {
   );
 }
 
+const MODEL_OPTS = [
+  { value: "haiku", label: "claude-haiku", icon: "cpu" as const },
+  { value: "sonnet", label: "claude-sonnet", icon: "agent" as const },
+  { value: "opus", label: "claude-opus", icon: "star" as const },
+  { value: "legacy", label: "claude-2 (retired)", icon: "archive" as const, disabled: true },
+];
+
 function FormControlsDemo() {
   const [check, setCheck] = useState(true);
-  const [radio, setRadio] = useState("sonnet");
-  const [sel, setSel] = useState("recent");
+  const [model, setModel] = useState("sonnet");
+  const [nativeModel, setNativeModel] = useState("sonnet");
+  const [sort, setSort] = useState("recent");
+  const [title, setTitle] = useState("");
+  const titleError = title.trim().length > 0 && title.trim().length < 4 ? "Title needs at least 4 characters." : undefined;
+
   return (
     <div className="grid max-w-xl gap-5">
+      <Field label="Issue title" required error={titleError} hint="A short, action-first summary.">
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Sweep orphaned runner jobs" />
+      </Field>
+      <Field label="Model" hint="Custom accessible listbox — ↑/↓, type-ahead, Enter.">
+        <Select options={MODEL_OPTS} value={model} onChange={setModel} />
+      </Field>
+      <Field label="Model (native)" hint="OS-native picker fallback.">
+        <NativeSelect
+          options={MODEL_OPTS}
+          value={nativeModel}
+          onChange={(e) => setNativeModel(e.target.value)}
+        />
+      </Field>
       <Field label="Notes" htmlFor="kit-notes">
         <Textarea id="kit-notes" placeholder="Anything the agent should know…" />
-      </Field>
-      <Field label="Model" htmlFor="kit-model">
-        <Select
-          options={[
-            { value: "haiku", label: "claude-haiku" },
-            { value: "sonnet", label: "claude-sonnet" },
-            { value: "opus", label: "claude-opus" },
-          ]}
-          value={radio}
-          onChange={(e) => setRadio(e.target.value)}
-          id="kit-model"
-        />
       </Field>
       <Checkbox checked={check} onChange={setCheck} label="Auto-advance on pass" />
       <div>
         <span className="fg-label mb-2 block">Sort</span>
-        <RadioGroup name="kit-sort" value={sel} onChange={setSel}>
+        <RadioGroup name="kit-sort" value={sort} onChange={setSort}>
           <Radio value="recent" label="Most recent" />
           <Radio value="name" label="Name" />
           <Radio value="health" label="Health" />

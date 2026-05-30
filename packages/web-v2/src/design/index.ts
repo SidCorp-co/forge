@@ -36,7 +36,9 @@ export {
 export { Textarea, type TextareaProps } from "./primitives/textarea";
 export { Checkbox, type CheckboxProps } from "./primitives/checkbox";
 export { Radio, RadioGroup, type RadioProps, type RadioGroupProps } from "./primitives/radio";
-export { Select, type SelectProps, type SelectOption } from "./primitives/select";
+export {
+  Select, NativeSelect, type SelectProps, type SelectOption, type NativeSelectProps,
+} from "./primitives/select";
 export { IconButton, type IconButtonProps } from "./primitives/icon-button";
 export { Badge, type BadgeProps } from "./primitives/badge";
 export { Divider, type DividerProps } from "./primitives/divider";

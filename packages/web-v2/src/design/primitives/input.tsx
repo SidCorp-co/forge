@@ -34,10 +34,12 @@ export function Input({ icon, variant = "default", className, ...props }: InputP
       <input
         className={cn(
           "w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-fg",
-          "placeholder:text-disabled",
+          "placeholder:text-disabled disabled:cursor-not-allowed disabled:opacity-50",
           icon && "pl-9",
           // own ring: cobalt + border tint; overrides the global focus ring
           "transition-shadow focus-visible:border-[color:var(--link)] focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none",
+          // error state (driven by Field via aria-invalid)
+          "aria-[invalid=true]:border-[color:var(--red-500)] aria-[invalid=true]:focus-visible:border-[color:var(--red-500)]",
         )}
         {...props}
       />

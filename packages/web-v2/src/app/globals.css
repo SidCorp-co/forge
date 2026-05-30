@@ -100,6 +100,10 @@
      element's OWN radius (no radius mutation). Accent controls + inputs +
      bare inputs override per-component via `focus-visible:*` utilities. */
   :focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+
+  /* Engineering UI: monospace figures are tabular so IDs, costs, durations
+     and ticking timers don't shift width digit-to-digit. */
+  .font-mono, .fg-mono, .fg-code { font-variant-numeric: tabular-nums; }
 }
 
 /* ============================================================
