@@ -64,15 +64,6 @@ export const projectApi = {
   remove: (id: string) =>
     apiClient<void>(`/projects/${id}`, { method: 'DELETE' }),
 
-  addMember: (
-    projectId: string,
-    body: { userId: string; role?: 'member' | 'owner' },
-  ) =>
-    apiClient<ProjectMember>(`/projects/${projectId}/members`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-
   removeMember: (projectId: string, userId: string) =>
     apiClient<void>(`/projects/${projectId}/members/${userId}`, {
       method: 'DELETE',

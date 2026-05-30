@@ -68,24 +68,6 @@ export function useUpdateProject() {
   });
 }
 
-export function useAddProjectMember() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({
-      projectId,
-      userId,
-      role,
-    }: {
-      projectId: string;
-      userId: string;
-      role?: 'member' | 'owner';
-    }) => projectApi.addMember(projectId, { userId, ...(role ? { role } : {}) }),
-    onSuccess: (_data, { projectId }) => {
-      qc.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
-    },
-  });
-}
-
 export function useRemoveProjectMember() {
   const qc = useQueryClient();
   return useMutation({
