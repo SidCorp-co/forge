@@ -102,7 +102,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
   return (
     <div className="flex min-h-dvh flex-col">
       {/* Header */}
-      <header className="sticky top-0 z-20 border-b border-line bg-bg/95 px-4 py-3 backdrop-blur sm:px-6">
+      <header className="sticky top-0 z-20 border-b border-line bg-app/95 px-4 py-3 backdrop-blur sm:px-6">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           {projectSlug && (
             <Button

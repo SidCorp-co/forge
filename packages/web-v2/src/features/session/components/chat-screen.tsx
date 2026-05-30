@@ -98,7 +98,7 @@ export function ChatScreen({ projectId }: { projectId: string }) {
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-line bg-bg/95 px-4 py-3 backdrop-blur sm:px-6">
+      <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-line bg-app/95 px-4 py-3 backdrop-blur sm:px-6">
         <h1 className="fg-h3">Agent chat</h1>
         {session && display && (
           <StatusChip status={statusToChip(display)} stage={deriveStage(session.metadata)} size="sm" />
