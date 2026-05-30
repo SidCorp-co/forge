@@ -28,7 +28,7 @@ impl Ctx {
 
 /// Print a friendly placeholder for a not-yet-implemented command.
 pub fn stub(command: &str, milestone: &str) -> anyhow::Result<()> {
-    println!("⏳ `{command}` chưa triển khai — kế hoạch {milestone}.");
-    println!("   Xem docs/proposals/forge-runner-cli.md");
+    println!("⏳ `{command}` is not implemented yet — planned for {milestone}.");
+    println!("   See docs/proposals/forge-runner-cli.md");
     Ok(())
 }

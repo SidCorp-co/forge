@@ -148,6 +148,13 @@ projectRoutes.post(
             name,
             ownerId: userId,
             apiKey: generateApiKey(),
+            // ISS-274 — default the branch columns at create time so a new
+            // project never resolves a null base/prod branch at pipeline time
+            // (resolveIssueBranches deliberately has no 'main' fallback — see
+            // branches/resolve.ts). createProjectSchema doesn't accept these
+            // fields, so there is no explicit value to preserve here.
+            baseBranch: 'main',
+            productionBranch: 'main',
             ...(description !== undefined ? { description } : {}),
           })
           .returning({

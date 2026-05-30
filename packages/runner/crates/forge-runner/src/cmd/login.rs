@@ -22,7 +22,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
 
     let Some(code) = args.code else {
         anyhow::bail!(
-            "browser approve chưa sẵn sàng (C1). Hiện hãy mint code trên web rồi: \
+            "browser approval is not available yet (C1). For now, mint a code on the web, then run: \
              forge-runner login --code <CODE>"
         );
     };

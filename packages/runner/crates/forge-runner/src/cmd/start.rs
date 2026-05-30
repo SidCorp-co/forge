@@ -13,7 +13,7 @@ pub struct Args {
 
 pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     if args.detach {
-        println!("⏳ --detach chưa hỗ trợ (M4) — dùng `forge-runner service install` để chạy nền.");
+        println!("⏳ --detach is not supported yet (M4) — use `forge-runner service install` to run in the background.");
     }
     let cfg = Config::load()?;
     let core_url = ctx

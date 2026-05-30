@@ -150,6 +150,10 @@ describe('POST /api/projects', () => {
         name: 'My Project',
         ownerId: 'uuid-owner',
         apiKey: expect.stringMatching(/^fk_[0-9a-f]{48}$/),
+        // ISS-274 — branch columns are defaulted at create time so the
+        // resolver never surfaces a null-base misconfig for new projects.
+        baseBranch: 'main',
+        productionBranch: 'main',
       }),
     );
     expect(txInsertMembersValues).toHaveBeenCalledWith({

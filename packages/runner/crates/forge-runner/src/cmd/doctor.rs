@@ -38,7 +38,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         println!("✔ config       {}", cfg_path.display());
     } else {
         println!(
-            "• config       chưa có ({}) — chạy `forge-runner login`",
+            "• config       not found ({}) — run `forge-runner login`",
             cfg_path.display()
         );
     }
@@ -48,18 +48,18 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     match ctx.resolve_core_url(&cfg) {
         Some(url) => println!("✔ core_url     {url}"),
         None => {
-            println!("✖ core_url     chưa cấu hình (login hoặc --core-url)");
+            println!("✖ core_url     not configured (run `forge-runner login` or pass --core-url)");
             failed = true;
         }
     }
 
     match &cfg.device_id {
         Some(id) => println!("✔ paired       device {id}"),
-        None => println!("• paired       chưa — chạy `forge-runner login`"),
+        None => println!("• paired       not yet — run `forge-runner login`"),
     }
 
     if cfg.bindings.is_empty() {
-        println!("• bindings     chưa có — `forge-runner bind <slug> --path <dir>`");
+        println!("• bindings     none — `forge-runner bind <slug> --path <dir>`");
     } else {
         for (slug, b) in &cfg.bindings {
             let is_repo = b.repo_path.join(".git").exists();
@@ -92,21 +92,21 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
                 "⬆ update       {} available (run `forge-runner update`)",
                 m.version
             ),
-            Ok(Ok(_)) => println!("✔ update       trên bản mới nhất"),
-            _ => println!("• update       không kiểm tra được (manifest chưa có/không tới được)"),
+            Ok(Ok(_)) => println!("✔ update       on the latest version"),
+            _ => println!("• update       could not check (manifest missing/unreachable)"),
         }
     }
 
     // End-to-end online checks: heartbeat (token + reachability) and the
     // server-side assignment reconciliation. Gated behind `--offline`.
     if args.offline {
-        println!("• online       bỏ qua (--offline)");
+        println!("• online       skipped (--offline)");
     } else {
         failed |= online_checks(&ctx, &cfg).await;
     }
 
     if failed {
-        println!("\n✖ VERDICT      FAIL — sửa các mục ✖ phía trên");
+        println!("\n✖ VERDICT      FAIL — fix the ✖ items above");
         // Exit non-zero (not an anyhow::Err) so the checklist prints cleanly
         // without an `Error:` trace while CI/install scripts see the failure.
         std::process::exit(1);
@@ -125,7 +125,7 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
     ) {
         (Some(url), Some(tok)) => (url, tok),
         _ => {
-            println!("• online       chưa đăng nhập — bỏ qua check mạng (chạy `forge-runner login`)");
+            println!("• online       not logged in — skipping network checks (run `forge-runner login`)");
             return false;
         }
     };
@@ -137,21 +137,21 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
     match tokio::time::timeout(ONLINE_TIMEOUT, heartbeat::beat_verbose(&client)).await {
         Ok(Ok(server_time)) => {
             if server_time.is_empty() {
-                println!("✔ heartbeat    core reachable, token hợp lệ");
+                println!("✔ heartbeat    core reachable, token valid");
             } else {
-                println!("✔ heartbeat    core reachable, token hợp lệ (serverTime {server_time})");
+                println!("✔ heartbeat    core reachable, token valid (serverTime {server_time})");
             }
         }
         Ok(Err(Error::Unauthorized)) => {
-            println!("✖ heartbeat    401 — token/core_url sai, chạy `forge-runner login`");
+            println!("✖ heartbeat    401 — bad token/core_url, run `forge-runner login`");
             failed = true;
         }
         Ok(Err(e)) => {
-            println!("✖ heartbeat    không tới được core — kiểm tra core_url ({core_url}): {e}");
+            println!("✖ heartbeat    core unreachable — check core_url ({core_url}): {e}");
             failed = true;
         }
         Err(_) => {
-            println!("✖ heartbeat    timeout sau {}s — kiểm tra core_url ({core_url})", ONLINE_TIMEOUT.as_secs());
+            println!("✖ heartbeat    timeout after {}s — check core_url ({core_url})", ONLINE_TIMEOUT.as_secs());
             failed = true;
         }
     }
@@ -160,7 +160,7 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
     match tokio::time::timeout(ONLINE_TIMEOUT, runners::list_me(&client)).await {
         Ok(Ok(rows)) => {
             if rows.is_empty() {
-                println!("• runners      chưa được gán project nào trên server");
+                println!("• runners      not assigned to any project on the server");
             }
             for r in &rows {
                 let local_path = cfg
@@ -180,7 +180,7 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
                 match server_path.or(local_path) {
                     None => {
                         println!(
-                            "✖ runner       {} gán trên server nhưng thiếu repo_path local (chạy `forge-runner bind {} --path <dir>`)",
+                            "✖ runner       {} assigned on the server but missing local repo_path (run `forge-runner bind {} --path <dir>`)",
                             r.slug, r.slug
                         );
                         failed = true;
@@ -190,7 +190,7 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
                         if has_git {
                             println!("✔ runner       {} → {}", r.slug, p.display());
                         } else {
-                            let why = if p.exists() { "không có .git" } else { "thư mục không tồn tại" };
+                            let why = if p.exists() { "no .git" } else { "directory does not exist" };
                             println!("✖ runner       {} → {} ({why})", r.slug, p.display());
                             failed = true;
                         }
@@ -199,15 +199,15 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
             }
         }
         Ok(Err(Error::Unauthorized)) => {
-            println!("✖ runners      401 — token/core_url sai, chạy `forge-runner login`");
+            println!("✖ runners      401 — bad token/core_url, run `forge-runner login`");
             failed = true;
         }
         Ok(Err(e)) => {
-            println!("✖ runners      không lấy được assignment từ server: {e}");
+            println!("✖ runners      could not fetch assignments from server: {e}");
             failed = true;
         }
         Err(_) => {
-            println!("✖ runners      timeout sau {}s", ONLINE_TIMEOUT.as_secs());
+            println!("✖ runners      timeout after {}s", ONLINE_TIMEOUT.as_secs());
             failed = true;
         }
     }
@@ -223,7 +223,7 @@ fn check_bin(bin: &str, label: &str) -> bool {
             true
         }
         Err(_) => {
-            println!("✖ {label:<12} không tìm thấy `{bin}` trên PATH");
+            println!("✖ {label:<12} `{bin}` not found on PATH");
             false
         }
     }

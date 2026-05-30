@@ -2,18 +2,9 @@ import { randomBytes } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
-import {
-  type ProjectMemberRole,
-  projectMembers,
-  projects,
-  users,
-} from '../../db/schema.js';
+import { type ProjectMemberRole, projectMembers, projects, users } from '../../db/schema.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../../lib/db-errors.js';
-import {
-  type ContextScopedMcpToolFactory,
-  principalUserId,
-  zodToMcpSchema,
-} from './lib.js';
+import { type ContextScopedMcpToolFactory, principalUserId, zodToMcpSchema } from './lib.js';
 
 /**
  * MCP Phase 1 (ISS-7) — enumerate projects visible to the device's owner.
@@ -40,13 +31,12 @@ type ListedProject = {
 export const forgeProjectsListTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.list',
   description:
-    'List projects visible to the principal (owned + member; CEO sees all). For PAT principals, results are additionally narrowed to the token\'s projectIds allowlist when set. Returns id, slug, name, ownerId, role.',
+    "List projects visible to the principal (owned + member; CEO sees all). For PAT principals, results are additionally narrowed to the token's projectIds allowlist when set. Returns id, slug, name, ownerId, role.",
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     inputSchema.parse(args);
     const { principal } = ctx;
-    const userId =
-      principal.kind === 'device' ? principal.device.ownerId : principal.userId;
+    const userId = principal.kind === 'device' ? principal.device.ownerId : principal.userId;
     const patAllowlist =
       principal.kind === 'pat' && principal.projectIds !== null
         ? new Set(principal.projectIds)
@@ -182,7 +172,7 @@ const createInputSchema = z
 export const forgeProjectsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.create',
   description:
-    "Create a new project owned by the calling principal. Accepts slug+name plus optional initial description/repoPath/baseBranch/productionBranch (superset of REST POST /api/projects, which forces these through a follow-up PATCH). PAT principals must carry the `write` scope and have a null `projectIds` allowlist (scoped PATs are refused). Returns id/slug/name/ownerId/apiKey/createdAt — the apiKey is needed for widget install and device pairing.",
+    'Create a new project owned by the calling principal. Accepts slug+name plus optional initial description/repoPath/baseBranch/productionBranch (superset of REST POST /api/projects, which forces these through a follow-up PATCH). PAT principals must carry the `write` scope and have a null `projectIds` allowlist (scoped PATs are refused). Returns id/slug/name/ownerId/apiKey/createdAt — the apiKey is needed for widget install and device pairing.',
   inputSchema: zodToMcpSchema(createInputSchema),
   handler: async (args) => {
     const input = createInputSchema.parse(args);
@@ -210,8 +200,12 @@ export const forgeProjectsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
             ownerId,
             description: input.description ?? null,
             repoPath: input.repoPath ?? null,
-            baseBranch: input.baseBranch ?? null,
-            productionBranch: input.productionBranch ?? null,
+            // ISS-274 — default to 'main' when the caller omits the branch so a
+            // new project never surfaces a null-base misconfig at pipeline time
+            // (resolveIssueBranches has no 'main' fallback). An explicitly
+            // provided value is preserved (the `?? 'main'` only fires on omit).
+            baseBranch: input.baseBranch ?? 'main',
+            productionBranch: input.productionBranch ?? 'main',
             apiKey: generateApiKey(),
           })
           .returning({
@@ -326,10 +320,7 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
         .select({ role: projectMembers.role })
         .from(projectMembers)
         .where(
-          and(
-            eq(projectMembers.projectId, input.projectId),
-            eq(projectMembers.userId, userId),
-          ),
+          and(eq(projectMembers.projectId, input.projectId), eq(projectMembers.userId, userId)),
         )
         .limit(1);
       // Non-member returns NOT_FOUND (not FORBIDDEN) to avoid leaking
@@ -438,10 +429,7 @@ export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
         .select({ role: projectMembers.role })
         .from(projectMembers)
         .where(
-          and(
-            eq(projectMembers.projectId, input.projectId),
-            eq(projectMembers.userId, userId),
-          ),
+          and(eq(projectMembers.projectId, input.projectId), eq(projectMembers.userId, userId)),
         )
         .limit(1);
       if (member) {
