@@ -146,6 +146,30 @@ services:
       NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN_WEB:-}
       SENTRY_DSN: ${SENTRY_DSN_WEB:-}
 
+  # web-v2 — the redesigned UI, served at /v2 (runs side-by-side with v1).
+  # next.config defaults basePath/assetPrefix to "/v2" (no env needed), so the
+  # app serves under /v2. In Coolify, give THIS service the domain
+  # "https://<host>/v2" (path-based) → Traefik routes /v2/* here WITHOUT
+  # stripping the prefix. Reuses the SAME NEXT_PUBLIC_API_URL as v1 (the core
+  # API subdomain) — web-v2 calls the API by absolute origin, not via /v2.
+  web-v2:
+    build:
+      context: .
+      dockerfile: packages/web-v2/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api}
+        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-}
+        NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN_WEB:-}
+    restart: unless-stopped
+    depends_on:
+      - core
+    ports:
+      - "127.0.0.1:19452:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api}
+      NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN_WEB:-}
+      SENTRY_DSN: ${SENTRY_DSN_WEB:-}
+
 volumes:
   postgres_data:
   core_uploads:
