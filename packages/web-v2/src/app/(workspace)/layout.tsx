@@ -49,9 +49,16 @@ function activeSlug(pathname: string): string | null {
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname() || "/";
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const { toast } = useToast();
   const { data: projects } = useProjects();
+
+  // Auth gate: once /auth/me has resolved, an unauthenticated visitor is sent
+  // to /login (which also makes logout() "return here" effective). While the
+  // session is still hydrating we render the shell rather than flash a redirect.
+  useEffect(() => {
+    if (!isLoading && !user) router.replace("/login");
+  }, [isLoading, user, router]);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
