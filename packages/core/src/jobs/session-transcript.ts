@@ -68,7 +68,7 @@ function getState(sessionId: string): FlushState {
 async function runDerive(jobId: string, agentSessionId: string): Promise<void> {
   try {
     const events = await db
-      .select({ kind: jobEvents.kind, data: jobEvents.data })
+      .select({ kind: jobEvents.kind, data: jobEvents.data, ts: jobEvents.ts })
       .from(jobEvents)
       .where(eq(jobEvents.jobId, jobId))
       .orderBy(asc(jobEvents.seq));

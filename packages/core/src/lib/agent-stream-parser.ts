@@ -184,13 +184,22 @@ function processToolCall(
  * AgentMessages. Tool use/result are attached to the preceding assistant
  * message as toolCalls. Also builds interleaved ContentBlock[] for CLI-style
  * rendering. `makeId` supplies session-scoped ids (see createIdFactory).
+ *
+ * `timestamp` is the stamp applied to every emitted message. Callers that
+ * re-derive a transcript (buildSessionFromEvents) MUST pass the originating
+ * job_event's `ts` so output is deterministic across re-derives — otherwise a
+ * default `Date.now()` would drift settled messages to re-parse time on every
+ * flush (breaks idempotency + desktop parity).
  */
-export function parseStreamMessages(raw: unknown, makeId: () => string): ParseResult {
+export function parseStreamMessages(
+  raw: unknown,
+  makeId: () => string,
+  timestamp: number = Date.now(),
+): ParseResult {
   const data = raw as Record<string, unknown>;
   if (!data || typeof data !== 'object' || !data.type) return { messages: [] };
 
   const type = data.type as string;
-  const timestamp = Date.now();
 
   if (type === 'system') {
     return parseSystemMessage(data, timestamp, makeId);
@@ -303,11 +312,24 @@ export function mergeMessages(messages: AgentMessage[], parsed: AgentMessage[]):
 export interface JobEventLike {
   kind: string;
   data: unknown;
+  /** Persisted event time (job_events.ts). Used as the message timestamp so
+   *  re-derives are deterministic; absent → falls back to Date.now(). */
+  ts?: Date | string | number | null;
 }
 
 export interface DerivedSession {
   messages: AgentMessage[];
   claudeSessionId: string | null;
+}
+
+/** Coerce a job_event `ts` (Date | ISO string | epoch ms) to epoch ms, or
+ *  undefined when absent/unparseable so parseStreamMessages keeps its default. */
+function toEventTimestamp(ts: Date | string | number | null | undefined): number | undefined {
+  if (ts == null) return undefined;
+  if (ts instanceof Date) return ts.getTime();
+  if (typeof ts === 'number') return ts;
+  const ms = new Date(ts).getTime();
+  return Number.isNaN(ms) ? undefined : ms;
 }
 
 /**
@@ -331,7 +353,11 @@ export function buildSessionFromEvents(events: JobEventLike[]): DerivedSession {
     if (ev.kind === 'stdout') {
       const line = (ev.data as { line?: unknown } | null | undefined)?.line;
       if (line == null) continue;
-      const { messages: parsed, sessionId } = parseStreamMessages(line, makeId);
+      const { messages: parsed, sessionId } = parseStreamMessages(
+        line,
+        makeId,
+        toEventTimestamp(ev.ts),
+      );
       if (sessionId) claudeSessionId = sessionId;
       if (parsed.length > 0) mergeMessages(messages, parsed);
     } else if (ev.kind === 'progress') {

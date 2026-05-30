@@ -204,23 +204,29 @@ describe('buildSessionFromEvents', () => {
     expect(claudeSessionId).toBeNull();
   });
 
-  it('is idempotent — re-deriving the same events yields identical output', () => {
-    // Freeze time so the only thing that could differ between derives (the
-    // per-line Date.now() timestamp) is held constant — proving id/shape
-    // stability, which is what keeps syncTurnsWithMessages from churning.
-    const now = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
-    try {
-      const events = [
-        { kind: 'stdout', data: { line: initLine } },
-        { kind: 'stdout', data: { line: assistantLine } },
-        { kind: 'stdout', data: { line: toolResultLine } },
-      ];
-      const a = buildSessionFromEvents(events);
-      const b = buildSessionFromEvents(events);
-      expect(JSON.stringify(b.messages)).toBe(JSON.stringify(a.messages));
-    } finally {
-      now.mockRestore();
-    }
+  it('stamps each message from the originating event ts (not parse time)', () => {
+    const t1 = new Date('2026-05-30T10:00:00.000Z');
+    const t2 = new Date('2026-05-30T10:00:05.000Z');
+    const { messages } = buildSessionFromEvents([
+      { kind: 'stdout', data: { line: initLine }, ts: t1 },
+      { kind: 'stdout', data: { line: assistantLine }, ts: t2 },
+    ]);
+    expect(messages[0]?.timestamp).toBe(t1.getTime());
+    expect(messages[1]?.timestamp).toBe(t2.getTime());
+  });
+
+  it('is idempotent across real-time re-derives when events carry ts', () => {
+    // With per-event ts threaded through, re-derive is deterministic WITHOUT
+    // freezing the clock — settled messages keep their event timestamp, so
+    // entriesEqual stays true and syncTurnsWithMessages breaks on first-equal.
+    const events = [
+      { kind: 'stdout', data: { line: initLine }, ts: '2026-05-30T10:00:00.000Z' },
+      { kind: 'stdout', data: { line: assistantLine }, ts: '2026-05-30T10:00:05.000Z' },
+      { kind: 'stdout', data: { line: toolResultLine }, ts: '2026-05-30T10:00:06.000Z' },
+    ];
+    const a = buildSessionFromEvents(events);
+    const b = buildSessionFromEvents(events);
+    expect(JSON.stringify(b.messages)).toBe(JSON.stringify(a.messages));
   });
 });
 
