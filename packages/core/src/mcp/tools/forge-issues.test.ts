@@ -1033,6 +1033,58 @@ describe('forge_issues tool', () => {
       expect(dispatchTick).toHaveBeenCalledWith(PROJECT_ID);
     });
 
+    it('mark_merged with explicit mergedAt binds an ISO string with a ::timestamptz cast', async () => {
+      // Regression: a bare `sql`${date}`` binds an untyped param that Postgres
+      // cannot type inside COALESCE (live 500 on forge-beta). The stamp must
+      // be an ISO string carrying an explicit ::timestamptz cast.
+      const tool = forgeIssuesTool({
+        principal: { kind: 'device', device: fakeDevice },
+        device: fakeDevice,
+        projectSlug: PROJECT_SLUG,
+      });
+      selectLimit.mockResolvedValueOnce([baseIssueRow]); // loadIssue
+      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]); // membership
+      insertReturning.mockResolvedValueOnce([auditCommentRow]); // audit comment
+      selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, mergedAt: STAMPED }]); // fresh
+
+      await tool.handler({
+        action: 'mark_merged',
+        data: { issueId: ISSUE_ID, target: 'prod', mergedAt: '2026-05-30T00:00:00.000Z' },
+      });
+
+      // The COALESCE wraps the stamp SQL as a NESTED sql object, so walk
+      // queryChunks recursively: StringChunks (value:string[]) form the
+      // literal, Params (value:scalar) are the bound values.
+      // drizzle chunks are: StringChunk (value:string[] → SQL literal), nested
+      // SQL (queryChunks), or a raw interpolated value (the bound param, stored
+      // directly — a string/Date/Param, not wrapped).
+      type Chunk = { value?: unknown; queryChunks?: Chunk[] };
+      const walk = (node: Chunk | undefined): { literal: string; params: unknown[] } => {
+        const out = { literal: '', params: [] as unknown[] };
+        for (const c of (node?.queryChunks ?? []) as Array<Chunk | string>) {
+          if (typeof c === 'string') {
+            out.params.push(c);
+          } else if (c?.queryChunks) {
+            const inner = walk(c);
+            out.literal += inner.literal;
+            out.params.push(...inner.params);
+          } else if (Array.isArray(c?.value)) {
+            out.literal += c.value.join('');
+          } else if (c?.value !== undefined) {
+            out.params.push(c.value);
+          }
+        }
+        return out;
+      };
+      const setArg = updateSet.mock.calls[0]?.[0] as { mergedAt: Chunk };
+      const { literal, params } = walk(setArg.mergedAt);
+      expect(literal).toMatch(/::timestamptz/i);
+      // The bound param must be the ISO string, NOT a Date object — an untyped
+      // Date param is exactly what failed type inference on real Postgres.
+      expect(params).toContain('2026-05-30T00:00:00.000Z');
+      expect(params.every((p) => !(p instanceof Date))).toBe(true);
+    });
+
     it('mark_merged requires data.target', async () => {
       const tool = forgeIssuesTool({
         principal: { kind: 'device', device: fakeDevice },
