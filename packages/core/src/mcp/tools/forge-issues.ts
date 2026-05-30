@@ -573,7 +573,12 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         // server `now()`. `target` is an audit label only — trunk-based v2 has
         // a single merge column (no `merged_to_prod_at` until v3).
         const stamp = input.data?.mergedAt ? parseDate(input.data.mergedAt, 'mergedAt') : null;
-        const stampExpr = stamp ? sql`${stamp}` : sql`now()`;
+        // Bind the explicit stamp as an ISO string with a `::timestamptz`
+        // cast. A bare `sql`${date}`` binds an untyped parameter, and Postgres
+        // cannot infer its type inside COALESCE("merged_at", $1) — it errors
+        // "could not determine data type of parameter" (live 500 on forge-beta
+        // for the mergedAt-supplied path). The cast pins the type.
+        const stampExpr = stamp ? sql`${stamp.toISOString()}::timestamptz` : sql`now()`;
         await db
           .update(issues)
           .set({ mergedAt: sql`COALESCE(${issues.mergedAt}, ${stampExpr})`, updatedAt: sql`now()` })
