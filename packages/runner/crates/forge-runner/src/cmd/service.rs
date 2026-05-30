@@ -36,10 +36,15 @@ pub async fn run(_ctx: Ctx, args: Args) -> anyhow::Result<()> {
     #[cfg(not(target_os = "linux"))]
     {
         let _ = args;
-        super::stub(
-            "service (launchd/Windows)",
-            "M4 — hiện chỉ hỗ trợ Linux/systemd",
-        )
+        // `service install/uninstall` manages a systemd user unit and is
+        // Linux-only. On macOS/Windows there is no equivalent here yet — be
+        // explicit about the limitation instead of printing a vague stub.
+        println!(
+            "• `forge-runner service` is Linux/systemd-only.\n\
+             On macOS/Windows, start the runner manually with `forge-runner start`\n\
+             (or wrap it in your OS service manager, e.g. launchd / Windows Services)."
+        );
+        Ok(())
     }
 }
 

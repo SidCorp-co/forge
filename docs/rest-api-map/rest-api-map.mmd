@@ -1,0 +1,488 @@
+flowchart LR
+  %% orphan = no client (red); single-client endpoints carry coverage signal. Full set in JSON.
+  CL_web(["web"]):::client
+  CL_dev(["dev"]):::client
+  CL_runner(["runner"]):::client
+  subgraph D_admin["admin"]
+    direction TB
+    E_GET_api_admin_audit["GET /api/admin/audit"]
+    E_GET_api_admin_devices["GET /api/admin/devices"]
+    E_POST_api_admin_pipeline_clear_hold__issueId["POST /api/admin/pipeline/clear-hold/:issueId"]:::orphan
+    E_GET_api_admin_pipeline_health["GET /api/admin/pipeline/health"]:::orphan
+    E_GET_api_admin_projects["GET /api/admin/projects"]
+    E_GET_api_admin_users["GET /api/admin/users"]
+    E_GET_api_admin_whoami["GET /api/admin/whoami"]
+  end
+  subgraph D_agent_sessions["agent-sessions"]
+    direction TB
+    E_GET_api_agent_sessions["GET /api/agent-sessions"]
+    E_POST_api_agent_sessions["POST /api/agent-sessions"]:::orphan
+    E_DELETE_api_agent_sessions__id["DELETE /api/agent-sessions/:id"]
+    E_GET_api_agent_sessions__id["GET /api/agent-sessions/:id"]
+    E_POST_api_agent_sessions__id_cancel["POST /api/agent-sessions/:id/cancel"]
+    E_POST_api_agent_sessions__id_fork["POST /api/agent-sessions/:id/fork"]
+    E_GET_api_agent_sessions__id_pipeline_control["GET /api/agent-sessions/:id/pipeline-control"]:::orphan
+    E_POST_api_agent_sessions__id_pipeline_control["POST /api/agent-sessions/:id/pipeline-control"]:::orphan
+    E_GET_api_agent_sessions__id_pipeline_health["GET /api/agent-sessions/:id/pipeline-health"]:::orphan
+    E_POST_api_agent_sessions__id_pipeline_health["POST /api/agent-sessions/:id/pipeline-health"]:::orphan
+    E_GET_api_agent_sessions__id_pipeline_telemetry["GET /api/agent-sessions/:id/pipeline-telemetry"]:::orphan
+    E_POST_api_agent_sessions__id_pipeline_telemetry["POST /api/agent-sessions/:id/pipeline-telemetry"]:::orphan
+    E_POST_api_agent_sessions__id_relay["POST /api/agent-sessions/:id/relay"]
+    E_POST_api_agent_sessions__id_rerun["POST /api/agent-sessions/:id/rerun"]
+    E_POST_api_agent_sessions__id_retry["POST /api/agent-sessions/:id/retry"]
+    E_GET_api_agent_sessions__id_turns["GET /api/agent-sessions/:id/turns"]
+    E_PATCH_api_agent_sessions__id_turns__turnId["PATCH /api/agent-sessions/:id/turns/:turnId"]
+    E_POST_api_agent_sessions__id_turns__turnId_regenerate["POST /api/agent-sessions/:id/turns/:turnId/regenerate"]
+    E_POST_api_agent_sessions_abort["POST /api/agent-sessions/abort"]
+    E_POST_api_agent_sessions_build_prompt["POST /api/agent-sessions/build-prompt"]
+    E_GET_api_agent_sessions_desktop_status["GET /api/agent-sessions/desktop/status"]
+    E_POST_api_agent_sessions_desktop_status["POST /api/agent-sessions/desktop/status"]:::orphan
+    E_POST_api_agent_sessions_prompt_built["POST /api/agent-sessions/prompt-built"]
+    E_GET_api_agent_sessions_queue_stats["GET /api/agent-sessions/queue-stats"]
+    E_POST_api_agent_sessions_sweep_zombies["POST /api/agent-sessions/sweep-zombies"]
+  end
+  subgraph D_agents["agents"]
+    direction TB
+    E_POST_api_agents["POST /api/agents"]
+    E_DELETE_api_agents__id["DELETE /api/agents/:id"]
+    E_GET_api_agents__id["GET /api/agents/:id"]
+  end
+  subgraph D_app_config["app-config"]
+    direction TB
+    E_GET_api_app_config__projectId["GET /api/app-config/:projectId"]
+    E_PUT_api_app_config__projectId["PUT /api/app-config/:projectId"]
+  end
+  subgraph D_issues["issues"]
+    direction TB
+    E_DELETE_api_attachments__id["DELETE /api/attachments/:id"]
+    E_GET_api_attachments__id_download["GET /api/attachments/:id/download"]:::orphan
+    E_DELETE_api_issues__id["DELETE /api/issues/:id"]
+    E_GET_api_issues__id_activity["GET /api/issues/:id/activity"]
+    E_DELETE_api_issues__id_activity__activityId["DELETE /api/issues/:id/activity/:activityId"]
+    E_PATCH_api_issues__id_activity__activityId_evaluate["PATCH /api/issues/:id/activity/:activityId/evaluate"]
+    E_GET_api_issues__id_attachments["GET /api/issues/:id/attachments"]
+    E_POST_api_issues__id_attachments["POST /api/issues/:id/attachments"]
+    E_POST_api_issues__id_decompose["POST /api/issues/:id/decompose"]
+    E_GET_api_issues__id_dependencies["GET /api/issues/:id/dependencies"]
+    E_POST_api_issues__id_dependencies["POST /api/issues/:id/dependencies"]
+    E_DELETE_api_issues__id_dependencies__edgeId["DELETE /api/issues/:id/dependencies/:edgeId"]
+    E_GET_api_issues__id_job_history["GET /api/issues/:id/job-history"]
+    E_PATCH_api_issues__id_manual_hold["PATCH /api/issues/:id/manual-hold"]
+    E_POST_api_issues__id_run_pipeline_step["POST /api/issues/:id/run-pipeline-step"]
+    E_PATCH_api_issues_batch["PATCH /api/issues/batch"]
+    E_GET_api_issues_pipeline_timing["GET /api/issues/pipeline-timing"]
+    E_GET_api_projects__id_activity["GET /api/projects/:id/activity"]:::orphan
+    E_GET_api_projects__id_issues_by_display__displayId["GET /api/projects/:id/issues/by-display/:displayId"]
+    E_GET_api_projects__id_issues_search["GET /api/projects/:id/issues/search"]
+  end
+  subgraph D_auth["auth"]
+    direction TB
+    E_POST_api_auth_desktop_approve["POST /api/auth/desktop/approve"]:::orphan
+    E_POST_api_auth_desktop_pair_init["POST /api/auth/desktop/pair-init"]:::orphan
+    E_GET_api_auth_desktop_poll["GET /api/auth/desktop/poll"]:::orphan
+    E_POST_api_auth_dev_force_verify["POST /api/auth/dev/force-verify"]:::orphan
+    E_POST_api_auth_local["POST /api/auth/local"]
+    E_POST_api_auth_logout["POST /api/auth/logout"]
+    E_GET_api_auth_me["GET /api/auth/me"]
+    E_GET_api_auth_me_preferences["GET /api/auth/me/preferences"]
+    E_PATCH_api_auth_me_preferences["PATCH /api/auth/me/preferences"]
+    E_GET_api_auth_oauth__provider_callback["GET /api/auth/oauth/:provider/callback"]:::orphan
+    E_GET_api_auth_oauth__provider_reauth_start["GET /api/auth/oauth/:provider/reauth-start"]:::orphan
+    E_GET_api_auth_oauth__provider_start["GET /api/auth/oauth/:provider/start"]:::orphan
+    E_GET_api_auth_oauth_providers["GET /api/auth/oauth/providers"]
+    E_GET_api_auth_preferences["GET /api/auth/preferences"]
+    E_PATCH_api_auth_preferences["PATCH /api/auth/preferences"]
+    E_POST_api_auth_reauth["POST /api/auth/reauth"]
+    E_POST_api_auth_refresh["POST /api/auth/refresh"]
+    E_POST_api_auth_register["POST /api/auth/register"]
+    E_GET_api_auth_verify["GET /api/auth/verify"]:::orphan
+    E_POST_api_auth_verify["POST /api/auth/verify"]:::orphan
+  end
+  subgraph D_chat["chat"]
+    direction TB
+    E_POST_api_chat["POST /api/chat"]:::orphan
+    E_GET_api_chat_sessions["GET /api/chat/sessions"]:::orphan
+    E_POST_api_chat_sessions["POST /api/chat/sessions"]:::orphan
+    E_DELETE_api_chat_sessions__id["DELETE /api/chat/sessions/:id"]:::orphan
+    E_GET_api_chat_sessions__id["GET /api/chat/sessions/:id"]:::orphan
+    E_PATCH_api_chat_sessions__id["PATCH /api/chat/sessions/:id"]:::orphan
+  end
+  subgraph D_chat_logs["chat-logs"]
+    direction TB
+    E_GET_api_chat_logs["GET /api/chat-logs"]
+    E_GET_api_chat_logs__id["GET /api/chat-logs/:id"]
+    E_PATCH_api_chat_logs__id["PATCH /api/chat-logs/:id"]
+    E_GET_api_chat_logs_flagged["GET /api/chat-logs/flagged"]:::orphan
+    E_GET_api_chat_logs_recent["GET /api/chat-logs/recent"]:::orphan
+  end
+  subgraph D_comments["comments"]
+    direction TB
+    E_POST_api_comments__commentId_attachments["POST /api/comments/:commentId/attachments"]
+    E_GET_api_comments__id_replies["GET /api/comments/:id/replies"]:::orphan
+    E_GET_api_comments_attachments__id["GET /api/comments/attachments/:id"]:::orphan
+  end
+  subgraph D_devices["devices"]
+    direction TB
+    E_PATCH_api_devices__id["PATCH /api/devices/:id"]
+    E_GET_api_devices__id_runners["GET /api/devices/:id/runners"]
+    E_POST_api_devices_heartbeat["POST /api/devices/heartbeat"]
+    E_GET_api_devices_me_runners["GET /api/devices/me/runners"]
+    E_PATCH_api_devices_me_runners__runnerId["PATCH /api/devices/me/runners/:runnerId"]
+    E_POST_api_devices_pair["POST /api/devices/pair"]
+    E_GET_api_me_devices["GET /api/me/devices"]
+    E_POST_api_projects__id_devices_pairing_codes["POST /api/projects/:id/devices/pairing-codes"]
+  end
+  subgraph D_domain_templates["domain-templates"]
+    direction TB
+    E_GET_api_domain_templates["GET /api/domain-templates"]:::orphan
+    E_GET_api_domain_templates__key["GET /api/domain-templates/:key"]:::orphan
+    E_POST_api_domain_templates_apply["POST /api/domain-templates/apply"]:::orphan
+  end
+  subgraph D_projects["projects"]
+    direction TB
+    E_GET_api_invitations__token["GET /api/invitations/:token"]:::orphan
+    E_POST_api_invitations__token_accept["POST /api/invitations/:token/accept"]:::orphan
+    E_POST_api_projects["POST /api/projects"]
+    E_DELETE_api_projects__id["DELETE /api/projects/:id"]
+    E_POST_api_projects__id_api_key_rotate["POST /api/projects/:id/api-key/rotate"]:::orphan
+    E_GET_api_projects__id_issues__issueId_branch_config["GET /api/projects/:id/issues/:issueId/branch-config"]:::orphan
+    E_GET_api_projects__id_pipeline_config["GET /api/projects/:id/pipeline-config"]
+    E_PATCH_api_projects__id_pipeline_config["PATCH /api/projects/:id/pipeline-config"]
+    E_POST_api_projects__id_runners["POST /api/projects/:id/runners"]
+    E_DELETE_api_projects__id_runners__runnerId["DELETE /api/projects/:id/runners/:runnerId"]
+    E_PATCH_api_projects__id_runners__runnerId["PATCH /api/projects/:id/runners/:runnerId"]
+    E_POST_api_projects__id_skills_bootstrap["POST /api/projects/:id/skills/bootstrap"]:::orphan
+    E_GET_api_projects__projectId_members["GET /api/projects/:projectId/members"]
+    E_DELETE_api_projects__projectId_members__userId["DELETE /api/projects/:projectId/members/:userId"]
+    E_PATCH_api_projects__projectId_members__userId["PATCH /api/projects/:projectId/members/:userId"]:::orphan
+    E_POST_api_projects__projectId_members_invite["POST /api/projects/:projectId/members/invite"]
+    E_GET_api_projects_health["GET /api/projects/health"]
+  end
+  subgraph D_pipeline["pipeline"]
+    direction TB
+    E_DELETE_api_issue_step_contexts["DELETE /api/issue-step-contexts"]:::orphan
+    E_GET_api_issue_step_contexts["GET /api/issue-step-contexts"]:::orphan
+    E_POST_api_issue_step_contexts["POST /api/issue-step-contexts"]:::orphan
+    E_GET_api_pipeline_runs__id["GET /api/pipeline-runs/:id"]
+    E_POST_api_pipeline_runs__id_cancel["POST /api/pipeline-runs/:id/cancel"]
+    E_POST_api_pipeline_runs__id_pause["POST /api/pipeline-runs/:id/pause"]
+    E_POST_api_pipeline_runs__id_resume["POST /api/pipeline-runs/:id/resume"]
+    E_GET_api_pipeline_cycle_time["GET /api/pipeline/cycle-time"]
+    E_GET_api_pipeline_registry["GET /api/pipeline/registry"]
+    E_GET_api_pipeline_step_durations["GET /api/pipeline/step-durations"]
+    E_GET_api_pipeline_throughput["GET /api/pipeline/throughput"]
+    E_GET_api_projects__id_analytics_cost_summary["GET /api/projects/:id/analytics/cost-summary"]:::orphan
+    E_GET_api_projects__id_analytics_cost_trend["GET /api/projects/:id/analytics/cost-trend"]:::orphan
+    E_GET_api_projects__id_analytics_outliers["GET /api/projects/:id/analytics/outliers"]:::orphan
+    E_GET_api_projects__id_pipeline_runs["GET /api/projects/:id/pipeline-runs"]
+  end
+  subgraph D_tasks["tasks"]
+    direction TB
+    E_POST_api_issues__id_tasks["POST /api/issues/:id/tasks"]
+    E_POST_api_issues__id_tasks_reorder["POST /api/issues/:id/tasks/reorder"]
+    E_DELETE_api_tasks__taskId["DELETE /api/tasks/:taskId"]
+    E_GET_api_tasks__taskId["GET /api/tasks/:taskId"]
+  end
+  subgraph D_jobs["jobs"]
+    direction TB
+    E_GET_api_jobs__id["GET /api/jobs/:id"]
+    E_PATCH_api_jobs__id["PATCH /api/jobs/:id"]:::orphan
+    E_POST_api_jobs__id_cancel["POST /api/jobs/:id/cancel"]
+    E_POST_api_jobs__id_complete["POST /api/jobs/:id/complete"]
+    E_POST_api_jobs__id_events["POST /api/jobs/:id/events"]:::orphan
+    E_POST_api_jobs__id_fail["POST /api/jobs/:id/fail"]
+    E_GET_api_jobs__id_prompt["GET /api/jobs/:id/prompt"]
+    E_GET_api_projects__id_jobs["GET /api/projects/:id/jobs"]
+    E_POST_api_projects__id_jobs["POST /api/projects/:id/jobs"]
+  end
+  subgraph D_knowledge_edges["knowledge-edges"]
+    direction TB
+    E_GET_api_knowledge_edges["GET /api/knowledge-edges"]
+    E_POST_api_knowledge_edges["POST /api/knowledge-edges"]
+    E_DELETE_api_knowledge_edges__id["DELETE /api/knowledge-edges/:id"]
+  end
+  subgraph D_knowledge["knowledge"]
+    direction TB
+    E_POST_api_knowledge_ingest["POST /api/knowledge/ingest"]
+  end
+  subgraph D_labels["labels"]
+    direction TB
+    E_DELETE_api_labels__id["DELETE /api/labels/:id"]
+    E_PATCH_api_labels__id["PATCH /api/labels/:id"]
+    E_GET_api_projects__id_labels["GET /api/projects/:id/labels"]
+    E_POST_api_projects__id_labels["POST /api/projects/:id/labels"]
+  end
+  subgraph D_me["me"]
+    direction TB
+    E_GET_api_me_attention["GET /api/me/attention"]
+  end
+  subgraph D_memory["memory"]
+    direction TB
+    E_GET_api_memory["GET /api/memory"]
+    E_POST_api_memory["POST /api/memory"]:::orphan
+    E_DELETE_api_memory__id["DELETE /api/memory/:id"]
+    E_DELETE_api_memory_by_source["DELETE /api/memory/by-source"]:::orphan
+    E_POST_api_memory_search["POST /api/memory/search"]
+  end
+  subgraph D_notifications["notifications"]
+    direction TB
+    E_DELETE_api_notifications__id["DELETE /api/notifications/:id"]
+  end
+  subgraph D_pat["pat"]
+    direction TB
+    E_GET_api_pat["GET /api/pat"]
+    E_POST_api_pat["POST /api/pat"]
+    E_DELETE_api_pat__id["DELETE /api/pat/:id"]
+    E_GET_api_pat__id_audit["GET /api/pat/:id/audit"]
+    E_POST_api_pat__id_rotate["POST /api/pat/:id/rotate"]
+  end
+  subgraph D_integrations["integrations"]
+    direction TB
+    E_GET_api_projects__projectId_integrations["GET /api/projects/:projectId/integrations"]
+    E_POST_api_projects__projectId_integrations["POST /api/projects/:projectId/integrations"]
+    E_DELETE_api_projects__projectId_integrations__id["DELETE /api/projects/:projectId/integrations/:id"]
+    E_PATCH_api_projects__projectId_integrations__id["PATCH /api/projects/:projectId/integrations/:id"]
+    E_POST_api_projects__projectId_integrations__id_confirm_prod_deploy["POST /api/projects/:projectId/integrations/:id/confirm-prod-deploy"]
+    E_GET_api_projects__projectId_integrations__id_deliveries["GET /api/projects/:projectId/integrations/:id/deliveries"]
+    E_POST_api_projects__projectId_integrations__id_rotate_secret["POST /api/projects/:projectId/integrations/:id/rotate-secret"]
+    E_POST_api_projects__projectId_integrations__id_test["POST /api/projects/:projectId/integrations/:id/test"]
+  end
+  subgraph D_pm["pm"]
+    direction TB
+    E_GET_api_projects__projectId_pm_config["GET /api/projects/:projectId/pm/config"]
+    E_PUT_api_projects__projectId_pm_config["PUT /api/projects/:projectId/pm/config"]
+    E_GET_api_projects__projectId_pm_decisions["GET /api/projects/:projectId/pm/decisions"]
+    E_POST_api_projects__projectId_pm_escalations__decisionId_respond["POST /api/projects/:projectId/pm/escalations/:decisionId/respond"]
+    E_GET_api_projects__projectId_pm_policies["GET /api/projects/:projectId/pm/policies"]
+    E_POST_api_projects__projectId_pm_policies["POST /api/projects/:projectId/pm/policies"]
+    E_DELETE_api_projects__projectId_pm_policies__id["DELETE /api/projects/:projectId/pm/policies/:id"]
+    E_PATCH_api_projects__projectId_pm_policies__id["PATCH /api/projects/:projectId/pm/policies/:id"]
+    E_POST_api_projects__projectId_pm_run["POST /api/projects/:projectId/pm/run"]:::orphan
+  end
+  subgraph D_skills["skills"]
+    direction TB
+    E_GET_api_projects__projectId_skill_registrations["GET /api/projects/:projectId/skill-registrations"]
+    E_DELETE_api_projects__projectId_skills__skillId_override["DELETE /api/projects/:projectId/skills/:skillId/override"]
+    E_GET_api_projects__projectId_skills__skillId_override["GET /api/projects/:projectId/skills/:skillId/override"]:::orphan
+    E_PUT_api_projects__projectId_skills__skillId_override["PUT /api/projects/:projectId/skills/:skillId/override"]
+    E_POST_api_projects__projectId_skills__skillId_register["POST /api/projects/:projectId/skills/:skillId/register"]
+    E_DELETE_api_projects__projectId_skills_registrations__stage["DELETE /api/projects/:projectId/skills/registrations/:stage"]
+    E_POST_api_projects__projectId_skills_sync["POST /api/projects/:projectId/skills/sync"]:::orphan
+    E_GET_api_skills["GET /api/skills"]
+    E_POST_api_skills["POST /api/skills"]
+    E_DELETE_api_skills__id["DELETE /api/skills/:id"]
+    E_GET_api_skills__id["GET /api/skills/:id"]
+    E_PUT_api_skills__id["PUT /api/skills/:id"]
+    E_POST_api_skills_bulk_push["POST /api/skills/bulk-push"]
+    E_POST_api_skills_sync_status["POST /api/skills/sync-status"]
+  end
+  subgraph D_prompt["prompt"]
+    direction TB
+    E_POST_api_prompts_preview["POST /api/prompts/preview"]:::orphan
+  end
+  subgraph D_runners["runners"]
+    direction TB
+    E_GET_api_runners["GET /api/runners"]:::orphan
+    E_POST_api_runners["POST /api/runners"]:::orphan
+    E_DELETE_api_runners__id["DELETE /api/runners/:id"]:::orphan
+    E_GET_api_runners__id["GET /api/runners/:id"]:::orphan
+    E_PATCH_api_runners__id["PATCH /api/runners/:id"]:::orphan
+    E_POST_api_runners__id_events["POST /api/runners/:id/events"]:::orphan
+    E_POST_api_runners__id_exclude["POST /api/runners/:id/exclude"]:::orphan
+    E_POST_api_runners__id_health_check["POST /api/runners/:id/health-check"]:::orphan
+    E_POST_api_runners__id_include["POST /api/runners/:id/include"]:::orphan
+    E_POST_api_runners__id_refresh_quota["POST /api/runners/:id/refresh-quota"]:::orphan
+    E_GET_api_runners_types["GET /api/runners/types"]:::orphan
+  end
+  subgraph D_schedules["schedules"]
+    direction TB
+    E_GET_api_schedules["GET /api/schedules"]
+    E_POST_api_schedules["POST /api/schedules"]
+    E_DELETE_api_schedules__id["DELETE /api/schedules/:id"]
+    E_GET_api_schedules__id["GET /api/schedules/:id"]
+    E_PUT_api_schedules__id["PUT /api/schedules/:id"]
+    E_POST_api_schedules__id_run["POST /api/schedules/:id/run"]
+  end
+  subgraph D_uploads["uploads"]
+    direction TB
+    E_PUT_api_uploads__uploadId["PUT /api/uploads/:uploadId"]:::orphan
+  end
+  subgraph D_usage_records["usage-records"]
+    direction TB
+    E_GET_api_usage_records["GET /api/usage-records"]
+    E_POST_api_usage_records["POST /api/usage-records"]
+    E_GET_api_usage_records__id["GET /api/usage-records/:id"]:::orphan
+    E_POST_api_usage_records_bulk["POST /api/usage-records/bulk"]:::orphan
+  end
+  subgraph D_webhooks["webhooks"]
+    direction TB
+    E_POST_api_webhooks_in__slug["POST /api/webhooks/in/:slug"]:::orphan
+  end
+  subgraph D_misc["misc"]
+    direction TB
+    E_GET_health["GET /health"]:::orphan
+    E_DELETE_mcp["DELETE /mcp"]:::orphan
+    E_GET_mcp["GET /mcp"]:::orphan
+    E_POST_mcp["POST /mcp"]:::orphan
+  end
+  subgraph D_install["install"]
+    direction TB
+    E_GET_install_sh["GET /install.sh"]:::orphan
+    E_GET_install_bin__target["GET /install/bin/:target"]:::orphan
+    E_GET_install_latest_json["GET /install/latest.json"]:::orphan
+  end
+  CL_web --> E_GET_api_admin_audit
+  CL_web --> E_GET_api_admin_devices
+  CL_web --> E_GET_api_admin_projects
+  CL_web --> E_GET_api_admin_users
+  CL_web --> E_GET_api_admin_whoami
+  CL_web --> E_GET_api_agent_sessions
+  CL_web --> E_DELETE_api_agent_sessions__id
+  CL_web --> E_GET_api_agent_sessions__id
+  CL_web --> E_POST_api_agent_sessions__id_cancel
+  CL_web --> E_POST_api_agent_sessions__id_fork
+  CL_dev --> E_POST_api_agent_sessions__id_relay
+  CL_web --> E_POST_api_agent_sessions__id_rerun
+  CL_web --> E_POST_api_agent_sessions__id_retry
+  CL_web --> E_GET_api_agent_sessions__id_turns
+  CL_web --> E_PATCH_api_agent_sessions__id_turns__turnId
+  CL_web --> E_POST_api_agent_sessions__id_turns__turnId_regenerate
+  CL_web --> E_POST_api_agent_sessions_abort
+  CL_web --> E_POST_api_agent_sessions_build_prompt
+  CL_web --> E_GET_api_agent_sessions_desktop_status
+  CL_dev --> E_POST_api_agent_sessions_prompt_built
+  CL_web --> E_GET_api_agent_sessions_queue_stats
+  CL_web --> E_POST_api_agent_sessions_sweep_zombies
+  CL_web --> E_POST_api_agents
+  CL_web --> E_DELETE_api_agents__id
+  CL_web --> E_GET_api_agents__id
+  CL_web --> E_GET_api_app_config__projectId
+  CL_web --> E_PUT_api_app_config__projectId
+  CL_web --> E_DELETE_api_attachments__id
+  CL_web --> E_POST_api_auth_local
+  CL_web --> E_POST_api_auth_logout
+  CL_web --> E_GET_api_auth_me
+  CL_web --> E_GET_api_auth_me_preferences
+  CL_web --> E_PATCH_api_auth_me_preferences
+  CL_web --> E_GET_api_auth_oauth_providers
+  CL_web --> E_GET_api_auth_preferences
+  CL_web --> E_PATCH_api_auth_preferences
+  CL_web --> E_POST_api_auth_reauth
+  CL_web --> E_POST_api_auth_refresh
+  CL_web --> E_POST_api_auth_register
+  CL_web --> E_GET_api_chat_logs
+  CL_web --> E_GET_api_chat_logs__id
+  CL_web --> E_PATCH_api_chat_logs__id
+  CL_web --> E_POST_api_comments__commentId_attachments
+  CL_web --> E_PATCH_api_devices__id
+  CL_web --> E_GET_api_devices__id_runners
+  CL_runner --> E_POST_api_devices_heartbeat
+  CL_runner --> E_GET_api_devices_me_runners
+  CL_runner --> E_PATCH_api_devices_me_runners__runnerId
+  CL_runner --> E_POST_api_devices_pair
+  CL_web --> E_DELETE_api_issues__id
+  CL_web --> E_GET_api_issues__id_activity
+  CL_web --> E_DELETE_api_issues__id_activity__activityId
+  CL_web --> E_PATCH_api_issues__id_activity__activityId_evaluate
+  CL_web --> E_GET_api_issues__id_attachments
+  CL_web --> E_POST_api_issues__id_attachments
+  CL_web --> E_POST_api_issues__id_decompose
+  CL_web --> E_GET_api_issues__id_dependencies
+  CL_web --> E_POST_api_issues__id_dependencies
+  CL_web --> E_DELETE_api_issues__id_dependencies__edgeId
+  CL_web --> E_GET_api_issues__id_job_history
+  CL_web --> E_PATCH_api_issues__id_manual_hold
+  CL_web --> E_POST_api_issues__id_run_pipeline_step
+  CL_web --> E_POST_api_issues__id_tasks
+  CL_web --> E_POST_api_issues__id_tasks_reorder
+  CL_web --> E_PATCH_api_issues_batch
+  CL_web --> E_GET_api_issues_pipeline_timing
+  CL_web --> E_GET_api_jobs__id
+  CL_web --> E_POST_api_jobs__id_cancel
+  CL_runner --> E_POST_api_jobs__id_complete
+  CL_runner --> E_POST_api_jobs__id_fail
+  CL_web --> E_GET_api_jobs__id_prompt
+  CL_web --> E_GET_api_knowledge_edges
+  CL_web --> E_POST_api_knowledge_edges
+  CL_web --> E_DELETE_api_knowledge_edges__id
+  CL_web --> E_POST_api_knowledge_ingest
+  CL_web --> E_DELETE_api_labels__id
+  CL_web --> E_PATCH_api_labels__id
+  CL_web --> E_GET_api_me_attention
+  CL_web --> E_GET_api_me_devices
+  CL_web --> E_GET_api_memory
+  CL_web --> E_DELETE_api_memory__id
+  CL_web --> E_POST_api_memory_search
+  CL_web --> E_DELETE_api_notifications__id
+  CL_web --> E_GET_api_pat
+  CL_web --> E_POST_api_pat
+  CL_web --> E_DELETE_api_pat__id
+  CL_web --> E_GET_api_pat__id_audit
+  CL_web --> E_POST_api_pat__id_rotate
+  CL_web --> E_GET_api_pipeline_runs__id
+  CL_web --> E_POST_api_pipeline_runs__id_cancel
+  CL_web --> E_POST_api_pipeline_runs__id_pause
+  CL_web --> E_POST_api_pipeline_runs__id_resume
+  CL_web --> E_GET_api_pipeline_cycle_time
+  CL_web --> E_GET_api_pipeline_registry
+  CL_web --> E_GET_api_pipeline_step_durations
+  CL_web --> E_GET_api_pipeline_throughput
+  CL_web --> E_POST_api_projects
+  CL_web --> E_DELETE_api_projects__id
+  CL_web --> E_POST_api_projects__id_devices_pairing_codes
+  CL_web --> E_GET_api_projects__id_issues_by_display__displayId
+  CL_web --> E_GET_api_projects__id_issues_search
+  CL_web --> E_GET_api_projects__id_jobs
+  CL_web --> E_POST_api_projects__id_jobs
+  CL_web --> E_GET_api_projects__id_labels
+  CL_web --> E_POST_api_projects__id_labels
+  CL_web --> E_GET_api_projects__id_pipeline_config
+  CL_web --> E_PATCH_api_projects__id_pipeline_config
+  CL_web --> E_GET_api_projects__id_pipeline_runs
+  CL_web --> E_POST_api_projects__id_runners
+  CL_web --> E_DELETE_api_projects__id_runners__runnerId
+  CL_web --> E_PATCH_api_projects__id_runners__runnerId
+  CL_web --> E_GET_api_projects__projectId_integrations
+  CL_web --> E_POST_api_projects__projectId_integrations
+  CL_web --> E_DELETE_api_projects__projectId_integrations__id
+  CL_web --> E_PATCH_api_projects__projectId_integrations__id
+  CL_web --> E_POST_api_projects__projectId_integrations__id_confirm_prod_deploy
+  CL_web --> E_GET_api_projects__projectId_integrations__id_deliveries
+  CL_web --> E_POST_api_projects__projectId_integrations__id_rotate_secret
+  CL_web --> E_POST_api_projects__projectId_integrations__id_test
+  CL_web --> E_GET_api_projects__projectId_members
+  CL_web --> E_DELETE_api_projects__projectId_members__userId
+  CL_web --> E_POST_api_projects__projectId_members_invite
+  CL_web --> E_GET_api_projects__projectId_pm_config
+  CL_web --> E_PUT_api_projects__projectId_pm_config
+  CL_web --> E_GET_api_projects__projectId_pm_decisions
+  CL_web --> E_POST_api_projects__projectId_pm_escalations__decisionId_respond
+  CL_web --> E_GET_api_projects__projectId_pm_policies
+  CL_web --> E_POST_api_projects__projectId_pm_policies
+  CL_web --> E_DELETE_api_projects__projectId_pm_policies__id
+  CL_web --> E_PATCH_api_projects__projectId_pm_policies__id
+  CL_web --> E_GET_api_projects__projectId_skill_registrations
+  CL_web --> E_DELETE_api_projects__projectId_skills__skillId_override
+  CL_web --> E_PUT_api_projects__projectId_skills__skillId_override
+  CL_web --> E_POST_api_projects__projectId_skills__skillId_register
+  CL_web --> E_DELETE_api_projects__projectId_skills_registrations__stage
+  CL_web --> E_GET_api_projects_health
+  CL_web --> E_GET_api_schedules
+  CL_web --> E_POST_api_schedules
+  CL_web --> E_DELETE_api_schedules__id
+  CL_web --> E_GET_api_schedules__id
+  CL_web --> E_PUT_api_schedules__id
+  CL_web --> E_POST_api_schedules__id_run
+  CL_web --> E_GET_api_skills
+  CL_web --> E_POST_api_skills
+  CL_web --> E_DELETE_api_skills__id
+  CL_web --> E_GET_api_skills__id
+  CL_web --> E_PUT_api_skills__id
+  CL_web --> E_POST_api_skills_bulk_push
+  CL_web --> E_POST_api_skills_sync_status
+  CL_web --> E_DELETE_api_tasks__taskId
+  CL_web --> E_GET_api_tasks__taskId
+  CL_web --> E_GET_api_usage_records
+  CL_dev --> E_POST_api_usage_records
+  classDef orphan fill:#fee,stroke:#c00,color:#900;
+  classDef client fill:#eef,stroke:#33a;

@@ -13,7 +13,7 @@ pub struct Args {
 
 pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     if args.watch {
-        println!("⏳ --watch (live TUI) chưa làm (M4) — in trạng thái tĩnh:\n");
+        println!("⏳ --watch (live TUI) not implemented yet (M4) — printing static status:\n");
     }
     let cfg = Config::load()?;
     println!(
@@ -29,7 +29,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         "paired     {}",
         cfg.device_id
             .as_deref()
-            .unwrap_or("chưa (forge-runner login)")
+            .unwrap_or("not yet (forge-runner login)")
     );
     println!("token      {}", cred_store::active_backend());
     println!(

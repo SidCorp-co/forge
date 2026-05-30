@@ -67,7 +67,7 @@ Skills sync, knowledge/conventions reader, `open_terminal`, usage rollup (core t
 | Phase | Scope | Effort |
 |---|---|---|
 | M0 | Scaffold workspace + clap skeleton + CI cross-OS | ½ ngày |
-| M1 | cred store (keychain+file fallback) + pair(fallback) + heartbeat + ws connect/subscribe `device:<id>` → online trên dashboard | 1–2 ngày |
+| M1 | cred store (keychain+file fallback) + `login` (pairing fallback) + heartbeat + ws connect/subscribe `device:<id>` → online trên dashboard | 1–2 ngày |
 | M2 | Runner trait + ClaudeCodeRunner + dispatch → 1 job code end-to-end | 2–3 ngày |
 | M3 | lifecycle `/complete` `/fail` + cancel/abort + map events + usage_limit/resume_failed | 1–2 ngày |
 | M4 | `status --watch` + `logs -f` + `doctor` + `service install` + auto repo resolve/clone | 1–2 ngày |
@@ -85,4 +85,4 @@ Skills sync, knowledge/conventions reader, `open_terminal`, usage rollup (core t
 ## Rủi ro
 - WSL/Windows spawn (`spawn.rs` ~740 dòng) là phần khó nhất — port nguyên + test 3 OS, giữ logic poll `try_wait`+grace 2s (MCP grandchild giữ pipe).
 - Drift contract → integration test chạy với core dev server (pair → register → dispatch giả → events).
-- Mất UX cho người không rành terminal → bù bằng `doctor` + thông điệp pair rõ; GUI/tray để sau (lib đã tách sẵn).
+- Mất UX cho người không rành terminal → bù bằng `doctor` + thông điệp `login` rõ; GUI/tray để sau (lib đã tách sẵn).

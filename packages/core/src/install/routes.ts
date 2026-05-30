@@ -56,10 +56,21 @@ esac
 echo "Next:  forge-runner login --core-url $BASE --code <CODE>"
 `;
 
+// Served when RUNNER_RELEASE_DIR is unset: the download script above would
+// `curl` /install/bin/:target and hit an opaque 501. Print a clear message and
+// exit non-zero instead, so `curl … | sh` fails loudly rather than silently.
+const INSTALL_SH_UNPUBLISHED = `#!/bin/sh
+echo "forge-runner release has not been published yet." >&2
+echo "Ask the operator to set RUNNER_RELEASE_DIR on the core server." >&2
+exit 1
+`;
+
 installRoutes.get('/install.sh', (c) =>
-  c.body(INSTALL_SH.replace(/__BASE__/g, origin(c.req.url)), 200, {
-    'content-type': 'text/x-shellscript; charset=utf-8',
-  }),
+  c.body(
+    RELEASE_DIR ? INSTALL_SH.replace(/__BASE__/g, origin(c.req.url)) : INSTALL_SH_UNPUBLISHED,
+    200,
+    { 'content-type': 'text/x-shellscript; charset=utf-8' },
+  ),
 );
 
 installRoutes.get('/install/latest.json', async (c) => {

@@ -24,11 +24,10 @@
     "state": "React Query for server state (web/dev). Zustand for client state (dev). Drizzle + DB triggers / route hooks for cascading updates in core."
   },
   "branchStrategy": {
-    "summary": "Two-layer branch resolution. Each issue's effective {baseBranch, targetBranch, prodBranch} is computed field-by-field: issue override → project default → literal 'main'. See CLAUDE.md § Branching strategy for the prose version.",
+    "summary": "Two-layer branch resolution. Each issue's effective {baseBranch, targetBranch, prodBranch} is computed field-by-field: issue override → project default. The resolver has NO hard 'main' fallback (it returns null on a misconfigured project); the 'main' default is applied at project-create time (REST projects/routes.ts + MCP forge-projects.create, ISS-274) instead. See CLAUDE.md § Branching strategy for the prose version.",
     "resolutionOrder": [
       "issue.metadata.branchConfig.<field> (per-issue override, nullable)",
-      "projects.baseBranch / projects.productionBranch (project default)",
-      "'main' (hard default)"
+      "projects.baseBranch / projects.productionBranch (project default; defaulted to 'main' at create time, not in the resolver)"
     ],
     "targetBranchFallback": "targetBranch has no dedicated project column; if neither layer sets it, it falls through to the resolved baseBranch.",
     "resolver": "packages/core/src/branches/resolve.ts → resolveIssueBranches(issue, project) returns { baseBranch, targetBranch, prodBranch }.",
