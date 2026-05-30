@@ -1,0 +1,14 @@
+# Keep the Docker build context clean + reproducible (matches a fresh git
+# checkout, which is what Coolify builds from). Without this, a local
+# `docker build` copies host node_modules/.next into the image and can mask
+# missing-dependency bugs that only surface on Coolify's clean checkout.
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/.git
+.git
+.claude
+**/*.tsbuildinfo
+**/coverage
+packages/dev/src-tauri/target
