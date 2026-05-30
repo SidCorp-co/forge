@@ -168,11 +168,44 @@ export function useBindRunner() {
       body,
     }: {
       projectId: string;
-      body: { deviceId: string; capabilities?: Record<string, unknown> };
+      // ISS-273 — the device-management page binds with a manually-typed
+      // repoPath/branch, so the body widens beyond the bare deviceId.
+      body: {
+        deviceId: string;
+        capabilities?: Record<string, unknown>;
+        repoPath?: string | null;
+        branch?: string | null;
+      };
     }) => projectApi.bindRunner(projectId, body),
     onSuccess: (_data, { projectId }) => {
       qc.invalidateQueries({ queryKey: projectKeys.all });
       qc.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+      // Device-management page lists runners under ['devices', id, 'runners'].
+      qc.invalidateQueries({ queryKey: ['devices'] });
+    },
+  });
+}
+
+/**
+ * ISS-273 — update a runner's per-device repo path/branch via
+ * `PATCH /api/projects/:id/runners/:runnerId`. Used by the device-management
+ * page and the project-setup Device step.
+ */
+export function usePatchRunner() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      projectId,
+      runnerId,
+      body,
+    }: {
+      projectId: string;
+      runnerId: string;
+      body: { repoPath?: string | null; branch?: string | null };
+    }) => projectApi.patchRunner(projectId, runnerId, body),
+    onSuccess: (_data, { projectId }) => {
+      qc.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+      qc.invalidateQueries({ queryKey: ['devices'] });
     },
   });
 }

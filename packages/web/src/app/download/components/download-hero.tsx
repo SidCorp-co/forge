@@ -155,7 +155,7 @@ export function DownloadHero({ release }: DownloadHeroProps) {
               <ArrowUpRight className="w-3.5 h-3.5 transition-transform group-hover/link:translate-x-0.5 group-hover/link:-translate-y-0.5" />
             </a>
             <Link
-              href="#quickstart"
+              href="/#quickstart"
               className="inline-flex items-center gap-1.5 text-primary-fixed hover:text-on-surface transition-colors"
             >
               <Terminal className="w-4 h-4" />

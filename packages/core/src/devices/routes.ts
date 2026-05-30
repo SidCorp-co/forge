@@ -190,6 +190,52 @@ deviceOwnerRoutes.delete(
   },
 );
 
+// ISS-273 — owner-scoped runner discovery for the web device-management page.
+// Mirrors the device-token `GET /me/runners` (above) but authed by the user
+// JWT and param-scoped to a device the caller owns, so Settings → Devices →
+// [device] can list assigned projects with each runner's repo path/branch and
+// online/offline status. `projectDefaultRepoPath`/`baseBranch` give the UI a
+// sensible prefill when a runner has no per-device path set yet.
+deviceOwnerRoutes.get(
+  '/devices/:id/runners',
+  zValidator('param', deviceIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const [device] = await db
+      .select({ ownerId: devices.ownerId })
+      .from(devices)
+      .where(eq(devices.id, id))
+      .limit(1);
+    if (!device) {
+      throw new HTTPException(404, { message: 'device not found', cause: { code: 'NOT_FOUND' } });
+    }
+    if (device.ownerId !== userId) throw forbidden('not the device owner');
+
+    const rows = await db
+      .select({
+        runnerId: runners.id,
+        projectId: runners.projectId,
+        slug: projects.slug,
+        name: projects.name,
+        repoPath: runners.repoPath,
+        branch: runners.branch,
+        status: runners.status,
+        lastSeenAt: runners.lastSeenAt,
+        projectDefaultRepoPath: projects.repoPath,
+        baseBranch: projects.baseBranch,
+      })
+      .from(runners)
+      .innerJoin(projects, eq(projects.id, runners.projectId))
+      .where(and(eq(runners.deviceId, id), eq(runners.type, 'claude-code')));
+
+    return c.json(rows);
+  },
+);
+
 // User-auth — project member mints a pairing code the device will redeem.
 export const deviceUserRoutes = new Hono<{ Variables: AuthVars }>();
 deviceUserRoutes.use('*', requireAuth(), assertEmailVerified());

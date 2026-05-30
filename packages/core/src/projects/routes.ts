@@ -43,6 +43,9 @@ export const createProjectSchema = z.object({
     .min(3)
     .max(64),
   name: z.string().trim().min(1).max(200),
+  // ISS-273 — `projects.description` already exists; the create path now
+  // persists it instead of silently dropping the field the modal collects.
+  description: z.string().trim().max(2000).nullable().optional(),
 });
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
@@ -133,14 +136,20 @@ projectRoutes.post(
     }
   }),
   async (c) => {
-    const { slug, name } = c.req.valid('json');
+    const { slug, name, description } = c.req.valid('json');
     const userId = c.get('userId');
 
     try {
       const created = await db.transaction(async (tx) => {
         const inserted = await tx
           .insert(projects)
-          .values({ slug, name, ownerId: userId, apiKey: generateApiKey() })
+          .values({
+            slug,
+            name,
+            ownerId: userId,
+            apiKey: generateApiKey(),
+            ...(description !== undefined ? { description } : {}),
+          })
           .returning({
             id: projects.id,
             slug: projects.slug,

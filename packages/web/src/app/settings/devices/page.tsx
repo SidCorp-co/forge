@@ -1,6 +1,7 @@
 'use client';
 
 import { Check, Copy, FolderCog, Pencil, Plus, Trash2, X } from 'lucide-react';
+import Link from 'next/link';
 import { useState } from 'react';
 import { Button, Modal } from '@/components/ui';
 import { ManageProjectsModal } from './components/manage-projects-modal';
@@ -171,9 +172,16 @@ function DeviceRow({
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <span className={isRevoked ? 'text-outline line-through' : 'text-on-surface'}>
-              {device.name}
-            </span>
+            {isRevoked ? (
+              <span className="text-outline line-through">{device.name}</span>
+            ) : (
+              <Link
+                href={`/settings/devices/${device.id}`}
+                className="text-on-surface hover:text-primary hover:underline"
+              >
+                {device.name}
+              </Link>
+            )}
             {!isRevoked && (
               <button
                 type="button"
