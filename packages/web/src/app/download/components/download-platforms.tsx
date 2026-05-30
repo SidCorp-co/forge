@@ -1,4 +1,5 @@
 import { Apple, Download as DownloadIcon, FileTerminal, Github, Monitor } from 'lucide-react';
+import Link from 'next/link';
 import type { PlatformAsset, ReleaseInfo } from '@/lib/github-releases';
 import { RELEASES_PAGE_URL, REPO_URL } from '@/lib/github-releases';
 
@@ -65,13 +66,13 @@ export function DownloadPlatforms({ release }: DownloadPlatformsProps) {
             <Github className="w-4 h-4" />
             Watch releases on GitHub
           </a>
-          <a
-            href="#quickstart"
+          <Link
+            href="/#quickstart"
             className="inline-flex items-center gap-1.5 rounded-xl border border-outline-variant/40 bg-white px-6 py-3 text-base font-medium text-on-surface transition-colors hover:border-outline-variant"
           >
             Build from source
             <span aria-hidden>→</span>
-          </a>
+          </Link>
         </div>
       </section>
     );

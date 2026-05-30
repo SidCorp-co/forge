@@ -34,11 +34,13 @@ export function CreateProjectModal({ open, onClose }: CreateProjectModalProps) {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '');
 
-    // Core's create-project schema accepts { slug, name } only — description
-    // is captured here for UX but not persisted until core grows the field.
-    void description;
+    const trimmedDescription = description.trim();
     createProject.mutate(
-      { name: trimmedName, slug },
+      {
+        name: trimmedName,
+        slug,
+        ...(trimmedDescription ? { description: trimmedDescription } : {}),
+      },
       {
         onSuccess: (project) => {
           onClose();

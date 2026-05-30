@@ -1,8 +1,12 @@
 import { apiClient } from '@/lib/api/client';
-import type { MyDevice } from './types';
+import type { DeviceRunnerAssignment, MyDevice } from './types';
 
 export const deviceApi = {
   listMine: () => apiClient<MyDevice[]>('/me/devices'),
+
+  // ISS-273 — projects assigned to this device, with per-device repo path/branch.
+  listRunners: (deviceId: string) =>
+    apiClient<DeviceRunnerAssignment[]>(`/devices/${deviceId}/runners`),
 
   rename: (id: string, name: string) =>
     apiClient<MyDevice>(`/devices/${id}`, {

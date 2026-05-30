@@ -276,6 +276,60 @@ describe('GET /api/devices/me/runners (ISS-271)', () => {
   });
 });
 
+describe('GET /api/devices/:id/runners (ISS-273)', () => {
+  const ID = '11111111-1111-4111-8111-111111111111';
+
+  it('400 on invalid uuid', async () => {
+    const app = buildApp();
+    const res = await app.fetch(req('/api/devices/not-a-uuid/runners', { token: 'user-jwt' }));
+    expect(res.status).toBe(400);
+  });
+
+  it('404 when the device is missing', async () => {
+    selectWhere.mockReturnValueOnce({ limit: vi.fn(async () => []) });
+    const app = buildApp();
+    const res = await app.fetch(req(`/api/devices/${ID}/runners`, { token: 'user-jwt' }));
+    expect(res.status).toBe(404);
+  });
+
+  it('403 when the caller is not the device owner', async () => {
+    selectWhere.mockReturnValueOnce({ limit: vi.fn(async () => [{ ownerId: 'someone-else' }]) });
+    const app = buildApp();
+    const res = await app.fetch(req(`/api/devices/${ID}/runners`, { token: 'user-jwt' }));
+    expect(res.status).toBe(403);
+  });
+
+  it('returns the owned device assignments with repoPath/branch/status', async () => {
+    selectWhere
+      .mockReturnValueOnce({ limit: vi.fn(async () => [{ ownerId: 'u-1' }]) })
+      .mockReturnValueOnce(
+        Promise.resolve([
+          {
+            runnerId: 'run-1',
+            projectId: 'proj-1',
+            slug: 'my-app',
+            name: 'My App',
+            repoPath: '/home/u/code/my-app',
+            branch: 'dev',
+            status: 'online',
+            lastSeenAt: new Date('2026-05-30T00:00:00Z'),
+            projectDefaultRepoPath: '/srv/my-app',
+            baseBranch: 'main',
+          },
+        ]),
+      );
+
+    const app = buildApp();
+    const res = await app.fetch(req(`/api/devices/${ID}/runners`, { token: 'user-jwt' }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ slug: string; repoPath: string }>;
+    expect(body).toHaveLength(1);
+    expect(body[0]?.slug).toBe('my-app');
+    expect(body[0]?.repoPath).toBe('/home/u/code/my-app');
+    expect(selectInnerJoin).toHaveBeenCalled();
+  });
+});
+
 describe('PATCH /api/devices/me/runners/:runnerId (ISS-271)', () => {
   const RID = '33333333-3333-4333-8333-333333333333';
 
