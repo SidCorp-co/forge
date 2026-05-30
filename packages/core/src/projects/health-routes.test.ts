@@ -13,6 +13,11 @@ vi.mock('../config/env.js', () => ({
 // / orderBy / groupBy / limit all coexist in this handler).
 const queryQueue: unknown[] = [];
 
+// Captures every `sql` template handed to `db.execute(...)` so a test can assert
+// the literal SQL text (the mock resolves data but can't exercise Postgres type
+// binding — see the `::uuid[]` regression test below).
+const executedSql: unknown[] = [];
+
 function makeChain() {
   const chain: Record<string, unknown> & PromiseLike<unknown> = {} as never;
   const methods = [
@@ -44,8 +49,12 @@ vi.mock('../db/client.js', () => ({
     update: () => makeChain(),
     delete: () => makeChain(),
     // `db.execute(sql`...`)` (the trailing-24h spend view query) is awaited
-    // directly; it shifts the same queue as the chained selects.
-    execute: () => makeChain(),
+    // directly; it shifts the same queue as the chained selects. The template is
+    // captured so a test can assert the literal SQL (e.g. the `::uuid[]` cast).
+    execute: (query: unknown) => {
+      executedSql.push(query);
+      return makeChain();
+    },
   },
 }));
 
@@ -71,6 +80,7 @@ const PROJECT_B_ID = '33333333-3333-4333-8333-333333333333';
 beforeEach(() => {
   vi.clearAllMocks();
   queryQueue.length = 0;
+  executedSql.length = 0;
 });
 
 async function token() {
@@ -229,6 +239,36 @@ describe('GET /api/projects/health', () => {
     expect(beta?.members).toEqual([]);
     expect(beta?.lastActivityAt).toBeNull();
     expect(beta?.description).toBeNull();
+  });
+
+  it('spend query casts the project-id array to ::uuid[] (regression: ANY(text[]) 500s on live)', async () => {
+    // The trailing-24h spend query binds projectIds (a JS string[] → text[]),
+    // but pipeline_run_step_durations.project_id is uuid. Postgres has no
+    // implicit uuid = text operator for the ANY() element type, so without the
+    // `::uuid[]` cast the live query throws PostgresError and 500s the whole
+    // endpoint (regressing the shared v1 dashboard too). The db mock can't
+    // exercise real type binding, so assert the literal SQL carries the cast.
+    authVerified();
+    queryQueue.push([{ id: USER_ID, isCeo: false }]); // me
+    queryQueue.push([
+      { id: PROJECT_A_ID, slug: 'alpha', name: 'Alpha', agentConfig: null },
+    ]); // visibleProjects
+    queryQueue.push([]); // statusRows
+    queryQueue.push([]); // blockerRowsAll
+    queryQueue.push([]); // throughputRows
+    queryQueue.push([]); // liveRunRows
+    queryQueue.push([]); // runnerRows
+    queryQueue.push([]); // spendRows (db.execute)
+
+    const res = await buildApp().request('/api/projects/health', {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+
+    expect(res.status).toBe(200);
+    // The captured sql template serializes its literal chunks (incl. `::uuid[]`).
+    const serialized = JSON.stringify(executedSql);
+    expect(serialized).toContain('pipeline_run_step_durations');
+    expect(serialized).toContain('::uuid[]');
   });
 
   it('CEO branch: skips project-membership filter', async () => {
