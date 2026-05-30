@@ -77,6 +77,19 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
       }
       return;
     }
+    case 'agent-session.turn.appended':
+    case 'agent-session.turn.edited':
+    case 'agent-session.turn.truncated': {
+      // ISS-292 — the conversation detail (`features/session`) keys turns under
+      // ['agent-session', id, 'turns']; the streaming caret + live turn updates
+      // ride on this invalidation. The streaming-tail `turn.appended` is
+      // debounced ~100ms server-side (core `agent-sessions/broadcast.ts`).
+      if (data?.sessionId) {
+        qc.invalidateQueries({ queryKey: ['agent-session', data.sessionId, 'turns'] });
+        qc.invalidateQueries({ queryKey: ['agent-session', data.sessionId] });
+      }
+      return;
+    }
     // ISS-197 — recoveryStats refresh on the sessions panel.
     case 'session.recoveryChanged': {
       qc.invalidateQueries({ queryKey: ['agent-sessions'] });
@@ -190,4 +203,7 @@ export function replayOnReconnect(qc: QueryClient): void {
   qc.invalidateQueries({ queryKey: ['projects'] });
   // ISS-291 — refresh the sessions index after a dropped connection.
   qc.invalidateQueries({ queryKey: ['agent-sessions'] });
+  // ISS-292 — refresh any open conversation detail (`['agent-session', id, …]`)
+  // so a session viewed across a reconnect re-pulls its turns + status.
+  qc.invalidateQueries({ queryKey: ['agent-session'] });
 }

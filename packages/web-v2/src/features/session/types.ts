@@ -1,0 +1,372 @@
+// web-v2 feature module: session (singular — the run-conversation detail
+// surface). Kept separate from the plural `features/sessions/` index/queue to
+// avoid query-key + component name collisions (ISS-292).
+//
+// Types mirror the per-turn rows returned by `GET /api/agent-sessions/:id/turns`
+// (`packages/core/src/agent-sessions/turns-helpers.ts loadTurns` → raw
+// `agent_session_turns` rows) and the runner `messageEntry` stored at
+// `content.value`. The block-derivation + tool-label + inline-diff logic is
+// ported from v1 (`packages/web/src/components/chat/chat-message/*` +
+// `hooks/use-agent-session-api.ts parseStoredMessages`) so both UIs agree.
+//
+// `@forge/contracts` has no agent-session-turn types yet, so these are re-typed
+// locally (same note as ISS-291's `features/sessions/types.ts`).
+
+/** A single tool invocation as serialized by the runner. */
+export interface ToolCallData {
+  id: string;
+  name: string;
+  input?: Record<string, unknown>;
+  result?: unknown;
+  durationMs?: number;
+  isError?: boolean;
+}
+
+export interface AgentTodo {
+  content: string;
+  status: "pending" | "in_progress" | "completed";
+  activeForm?: string;
+}
+
+/** Structured content blocks within an assistant message entry. */
+export type ContentBlock =
+  | { type: "text"; text: string }
+  | { type: "tool_use"; tool: ToolCallData }
+  | { type: "todos"; todos: AgentTodo[] };
+
+/** The runner-written message entry stored at `agent_session_turns.content.value`. */
+export interface MessageEntry {
+  role: "user" | "assistant" | "tool" | "system";
+  content?: unknown;
+  timestamp?: number;
+  toolCalls?: ToolCallData[];
+  contentBlocks?: ContentBlock[];
+}
+
+export type TurnRole = "user" | "assistant" | "tool";
+
+/** Raw `agent_session_turns` row (`content` wraps the entry as `{ value }`). */
+export interface TurnRow {
+  id: string;
+  agentSessionId: string;
+  turnIndex: number;
+  role: TurnRole;
+  content: { value?: MessageEntry } | MessageEntry | null;
+  parentTurnId?: string | null;
+  editedAt: string | null;
+  createdAt: string;
+}
+
+/** `GET /:id/turns` envelope. */
+export interface TurnsResponse {
+  turns: TurnRow[];
+  nextCursor: string | null;
+}
+
+/** A block ready to render inside an agent turn. */
+export type RenderBlock =
+  | { type: "text"; text: string }
+  | { type: "tool"; tool: ToolCallData }
+  | { type: "todos"; todos: AgentTodo[] };
+
+/**
+ * A flattened, render-ready conversation entry. Each persisted turn maps to
+ * exactly one item: user turns become `prompt` (editable / regen / fork
+ * anchor), everything else becomes `agent` carrying ordered render blocks.
+ */
+export interface ConversationItem {
+  id: string;
+  turnId: string;
+  turnIndex: number;
+  role: TurnRole;
+  kind: "prompt" | "agent";
+  /** Prompt text (kind === 'prompt'). */
+  text: string;
+  /** Ordered render blocks (kind === 'agent'). */
+  blocks: RenderBlock[];
+  timestamp?: number;
+  editedAt: string | null;
+}
+
+/** Coarse tool classification driving the tool-card layout. */
+export type ToolKind = "edit" | "read" | "search" | "run" | "task" | "generic";
+
+const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+
+export function toolKind(name: string): ToolKind {
+  if (EDIT_TOOLS.has(name)) return "edit";
+  if (name === "Read") return "read";
+  if (name === "Grep" || name === "Glob") return "search";
+  if (name === "Bash") return "run";
+  if (name === "Task" || name === "Skill") return "task";
+  return "generic";
+}
+
+/* ----------------------------- tool labels ------------------------------ */
+
+function formatMcpLabel(name: string, input: Record<string, unknown>): string {
+  const toolName = name.replace(/^mcp__[^_]+__/, "");
+  const action = (input.action as string) ?? "";
+  const id = (input.uuid as string) ?? (input.documentId as string) ?? "";
+  const detail = id ? `(${id.slice(0, 8)})` : action ? `(${action})` : "";
+  switch (toolName) {
+    case "forge_issues":
+      if (action === "get" || action === "update")
+        return `Issue${id ? `(${id.slice(0, 8)})` : `(${action})`}`;
+      return `Issues(${action || "list"})`;
+    case "forge_comments":
+      return `Comment(${action || "list"})`;
+    case "forge_memory":
+      return "Memory";
+    case "forge_skills":
+      return "Skills";
+    default: {
+      const label = toolName.replace(/_/g, " ");
+      return `${label.charAt(0).toUpperCase() + label.slice(1)}${detail}`;
+    }
+  }
+}
+
+/** Human label for a tool call — ported from v1 `tool-label.ts`. */
+export function getToolLabel(tc: ToolCallData): string {
+  const input = tc.input ?? {};
+  const filePath = (input.file_path as string) ?? "";
+  switch (tc.name) {
+    case "Edit":
+    case "MultiEdit":
+      return `Updated ${filePath}`;
+    case "Write":
+      return `Created ${filePath}`;
+    case "Read":
+      return `Read ${filePath}`;
+    case "Bash":
+      return `Ran ${((input.command as string) ?? "").slice(0, 80)}`;
+    case "Grep":
+      return `Searched ${(input.pattern as string) ?? ""}${input.path ? ` in ${input.path}` : ""}`;
+    case "Glob":
+      return `Found ${(input.pattern as string) ?? ""}`;
+    case "TodoWrite":
+      return "Updated task list";
+    case "Task":
+      return `Agent: ${(input.description as string) ?? (input.subagent_type as string) ?? "subtask"}`;
+    case "Skill":
+      return `Skill: ${(input.skill as string) ?? "unknown"}`;
+    default:
+      return tc.name.startsWith("mcp__") ? formatMcpLabel(tc.name, input) : tc.name;
+  }
+}
+
+/* --------------------------- block derivation --------------------------- */
+
+function todoWriteToTodos(input: Record<string, unknown> | undefined): RenderBlock {
+  const raw = (input?.todos as AgentTodo[] | undefined) ?? [];
+  return {
+    type: "todos",
+    todos: raw.map((t) => ({
+      content: t.content,
+      status: (t.status as AgentTodo["status"]) ?? "pending",
+      activeForm: t.activeForm,
+    })),
+  };
+}
+
+/** Keep only the last todos block (the runner re-emits the full list each time). */
+function dedupeTodos(blocks: RenderBlock[]): RenderBlock[] {
+  let lastIdx = -1;
+  blocks.forEach((b, i) => {
+    if (b.type === "todos") lastIdx = i;
+  });
+  if (lastIdx < 0) return blocks;
+  return blocks.filter((b, i) => b.type !== "todos" || i === lastIdx);
+}
+
+function entryText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((b) => (b && typeof b === "object" ? ((b as { text?: string }).text ?? "") : String(b)))
+      .join("");
+  }
+  return "";
+}
+
+/** Unwrap the `{ value }` wrapper (older/forked rows may store the entry flat). */
+function unwrapEntry(content: TurnRow["content"]): MessageEntry {
+  if (content && typeof content === "object" && "value" in content && content.value) {
+    return content.value as MessageEntry;
+  }
+  return (content as MessageEntry) ?? { role: "assistant" };
+}
+
+function assistantBlocks(entry: MessageEntry): RenderBlock[] {
+  const out: RenderBlock[] = [];
+  if (entry.contentBlocks?.length) {
+    for (const b of entry.contentBlocks) {
+      if (b.type === "tool_use") {
+        out.push(
+          b.tool.name === "TodoWrite"
+            ? todoWriteToTodos(b.tool.input)
+            : { type: "tool", tool: b.tool },
+        );
+      } else if (b.type === "todos") {
+        out.push({ type: "todos", todos: b.todos });
+      } else if (b.type === "text" && b.text) {
+        out.push({ type: "text", text: b.text });
+      }
+    }
+  } else {
+    if (entry.toolCalls?.length) {
+      for (const tc of entry.toolCalls) {
+        out.push(tc.name === "TodoWrite" ? todoWriteToTodos(tc.input) : { type: "tool", tool: tc });
+      }
+    }
+    const text = entryText(entry.content);
+    if (text) out.push({ type: "text", text });
+  }
+  return dedupeTodos(out);
+}
+
+/**
+ * Flatten persisted turn rows into render-ready conversation items. User turns
+ * become editable prompts; assistant/tool turns become agent rows with ordered
+ * blocks. Empty turns (no text, no tools, no todos) are dropped.
+ */
+export function parseTurns(turns: TurnRow[]): ConversationItem[] {
+  const items: ConversationItem[] = [];
+  for (const turn of turns) {
+    const entry = unwrapEntry(turn.content);
+    const role = turn.role;
+    if (role === "user") {
+      const text = entryText(entry.content);
+      if (!text) continue;
+      items.push({
+        id: turn.id,
+        turnId: turn.id,
+        turnIndex: turn.turnIndex,
+        role,
+        kind: "prompt",
+        text,
+        blocks: [],
+        timestamp: entry.timestamp,
+        editedAt: turn.editedAt,
+      });
+    } else {
+      const blocks = assistantBlocks(entry);
+      if (blocks.length === 0) continue;
+      items.push({
+        id: turn.id,
+        turnId: turn.id,
+        turnIndex: turn.turnIndex,
+        role,
+        kind: "agent",
+        text: "",
+        blocks,
+        timestamp: entry.timestamp,
+        editedAt: turn.editedAt,
+      });
+    }
+  }
+  return items;
+}
+
+/* ----------------------------- file diffs ------------------------------- */
+
+export interface DiffHunk {
+  oldLines: string[];
+  newLines: string[];
+}
+
+export interface FileDiff {
+  path: string;
+  isNew: boolean;
+  hunks: DiffHunk[];
+  /** Added / removed line counts (sum across hunks). */
+  added: number;
+  removed: number;
+}
+
+function pushEdit(map: Map<string, FileDiff>, path: string, oldStr: string, newStr: string): void {
+  if (!oldStr && !newStr) return;
+  const existing = map.get(path) ?? { path, isNew: false, hunks: [], added: 0, removed: 0 };
+  existing.hunks.push({ oldLines: oldStr ? oldStr.split("\n") : [], newLines: newStr ? newStr.split("\n") : [] });
+  map.set(path, existing);
+}
+
+function collectFromTool(map: Map<string, FileDiff>, tc: ToolCallData): void {
+  const input = tc.input ?? {};
+  const path = (input.file_path as string) ?? "";
+  if (!path) return;
+  if (tc.name === "Edit" || tc.name === "NotebookEdit") {
+    pushEdit(map, path, (input.old_string as string) ?? "", (input.new_string as string) ?? "");
+  } else if (tc.name === "MultiEdit") {
+    const edits = (input.edits as { old_string?: string; new_string?: string }[]) ?? [];
+    for (const e of edits) pushEdit(map, path, e.old_string ?? "", e.new_string ?? "");
+  } else if (tc.name === "Write") {
+    const content = (input.content as string) ?? (typeof tc.result === "string" ? tc.result : "") ?? "";
+    if (!content) return;
+    const d = map.get(path) ?? { path, isNew: true, hunks: [], added: 0, removed: 0 };
+    d.isNew = true;
+    d.hunks = [{ oldLines: [], newLines: content.split("\n") }];
+    map.set(path, d);
+  }
+}
+
+function finalizeCounts(map: Map<string, FileDiff>): FileDiff[] {
+  return Array.from(map.values()).map((d) => ({
+    ...d,
+    added: d.hunks.reduce((s, h) => s + h.newLines.length, 0),
+    removed: d.hunks.reduce((s, h) => s + h.oldLines.length, 0),
+  }));
+}
+
+/** Build the file diff for a single edit-type tool call (null if not an edit). */
+export function buildFileDiff(tc: ToolCallData): FileDiff | null {
+  if (toolKind(tc.name) !== "edit") return null;
+  const map = new Map<string, FileDiff>();
+  collectFromTool(map, tc);
+  return finalizeCounts(map)[0] ?? null;
+}
+
+/**
+ * Aggregate every edit-type tool block across the conversation into a
+ * files-changed list (the context rail; no diff REST endpoint exists). Counts
+ * are approximate when a tool lacks `old_string`/`new_string`.
+ */
+export function deriveFilesChanged(items: ConversationItem[]): FileDiff[] {
+  const map = new Map<string, FileDiff>();
+  for (const item of items) {
+    if (item.kind !== "agent") continue;
+    for (const block of item.blocks) {
+      if (block.type === "tool") collectFromTool(map, block.tool);
+    }
+  }
+  return finalizeCounts(map);
+}
+
+/**
+ * Split a hunk into context/removed/added regions via common prefix+suffix —
+ * ported from v1 `inline-diff-summary.tsx`. Pure so it's unit-testable.
+ */
+export function splitHunk(hunk: DiffHunk): {
+  prefix: string[];
+  removed: string[];
+  added: string[];
+  suffix: string[];
+} {
+  const { oldLines: oldL, newLines: newL } = hunk;
+  let start = 0;
+  while (start < oldL.length && start < newL.length && oldL[start] === newL[start]) start++;
+  let end = 0;
+  while (
+    end < oldL.length - start &&
+    end < newL.length - start &&
+    oldL[oldL.length - 1 - end] === newL[newL.length - 1 - end]
+  )
+    end++;
+  return {
+    prefix: oldL.slice(0, start),
+    removed: oldL.slice(start, oldL.length - end),
+    added: newL.slice(start, newL.length - end),
+    suffix: oldL.slice(oldL.length - end),
+  };
+}
