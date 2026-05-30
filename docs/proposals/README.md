@@ -12,6 +12,7 @@ Planned features that are not yet implemented. When a proposal ships, its doc mo
 | [integration-framework.md](integration-framework.md) | Draft | One polymorphic framework for Coolify (deploy) + Sentry (errors) + Human-Task (PM tool) external integrations |
 | [step-handoff-memory.md](step-handoff-memory.md) | Draft | In-session compaction → memory store; replace raw description/plan injection across pipeline states |
 | [forge-runner-cli.md](forge-runner-cli.md) | Draft | Thay `packages/dev` (Tauri) bằng CLI daemon thuần Rust — broker core↔runner, lib tách riêng cho đa-runner |
+| [web-v2-redesign.md](web-v2-redesign.md) | Draft | Parallel `packages/web-v2`: brand reskin (light/flame), IA cleanup (~40→18 surfaces), 2-layer tokens (dark drop-in), UI-switch + big-bang cutover |
 
 ## Naming convention
 
