@@ -118,6 +118,10 @@
 .forge-slide { animation: forge-slide var(--dur-base) var(--ease-out); }
 .forge-pop { animation: forge-pop var(--dur-base) var(--ease-out); }
 
+/* Page enter — content rises + fades on each route change (app/template.tsx). */
+@keyframes forge-rise { from { transform: translateY(6px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.forge-rise { animation: forge-rise var(--dur-base) var(--ease-out); }
+
 /* ── Loading & live effects ────────────────────────────────── */
 
 /* Skeleton — warm paper shimmer (not cold gray). */

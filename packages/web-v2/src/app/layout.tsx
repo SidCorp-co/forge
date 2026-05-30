@@ -3,6 +3,7 @@ import { Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { QueryProvider } from "@/providers/query-provider";
 import { ToastProvider } from "@/providers/toast-provider";
+import { RouteProgress } from "@/design/patterns/route-progress";
 import "./globals.css";
 
 const hanken = Hanken_Grotesk({
@@ -30,7 +31,10 @@ export default function RootLayout({
       <body className={`${hanken.variable} ${jetbrainsMono.variable}`}>
         <ThemeProvider>
           <QueryProvider>
-            <ToastProvider>{children}</ToastProvider>
+            <ToastProvider>
+              <RouteProgress />
+              {children}
+            </ToastProvider>
           </QueryProvider>
         </ThemeProvider>
       </body>

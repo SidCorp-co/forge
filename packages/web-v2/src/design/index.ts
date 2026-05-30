@@ -33,6 +33,20 @@ export { Toggle, type ToggleProps } from "./primitives/toggle";
 export {
   SegmentedControl, type SegmentedControlProps, type SegmentOption,
 } from "./primitives/segmented-control";
+export { Textarea, type TextareaProps } from "./primitives/textarea";
+export { Checkbox, type CheckboxProps } from "./primitives/checkbox";
+export { Radio, RadioGroup, type RadioProps, type RadioGroupProps } from "./primitives/radio";
+export { Select, type SelectProps, type SelectOption } from "./primitives/select";
+export { IconButton, type IconButtonProps } from "./primitives/icon-button";
+export { Badge, type BadgeProps } from "./primitives/badge";
+export { Divider, type DividerProps } from "./primitives/divider";
+export { Banner, type BannerProps } from "./primitives/banner";
+export { Tooltip, type TooltipProps } from "./primitives/tooltip";
+export { Tabs, type TabsProps, type TabItem } from "./primitives/tabs";
+export { Breadcrumb, type BreadcrumbProps, type Crumb } from "./primitives/breadcrumb";
+export { Pagination, type PaginationProps } from "./primitives/pagination";
+export { Collapsible, type CollapsibleProps } from "./primitives/collapsible";
+export { Table, THead, TBody, TR, TH, TD } from "./primitives/table";
 
 // patterns
 export { PipelineTracker, type PipelineTrackerProps } from "./patterns/pipeline-tracker";
@@ -45,6 +59,9 @@ export {
 } from "./patterns/notifications-menu";
 export { StreamingText, type StreamingTextProps } from "./patterns/streaming-text";
 export { Highlight, type HighlightProps } from "./patterns/highlight";
+export { SlideOver, type SlideOverProps } from "./patterns/slide-over";
+export { Menu, type MenuProps, type MenuItem } from "./patterns/menu";
+export { RouteProgress } from "./patterns/route-progress";
 
 // skeleton compositions
 export {

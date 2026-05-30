@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
-  Avatar, BoardRowSkeleton, Button, Card, CardContent, CardHeader, CardTitle,
-  CommandPalette, EmptyState, ErrorState, Field, Highlight, HealthDot, Icon,
-  Input, KanbanCardSkeleton, KanbanColumnSkeleton, Kicker, KanbanCard, LiveDot,
-  MonoTag, NavRail, NotificationsMenu, PipelineTracker, ProgressBar,
-  ProjectCardSkeleton, ProjectMark, SegmentedControl, SessionRowSkeleton,
-  Skeleton, Spinner, STAGES, Stat, StatusChip, StreamingText, Toggle, TopBar,
-  useAnimatedNumber, useElapsed,
+  Avatar, Badge, Banner, BoardRowSkeleton, Breadcrumb, Button, Card, CardContent,
+  CardHeader, CardTitle, Checkbox, Collapsible, CommandPalette, Divider, EmptyState,
+  ErrorState, Field, Highlight, HealthDot, Icon, IconButton, Input,
+  KanbanCardSkeleton, KanbanColumnSkeleton, Kicker, KanbanCard, LiveDot, Menu,
+  MonoTag, NavRail, NotificationsMenu, Pagination, PipelineTracker, ProgressBar,
+  ProjectCardSkeleton, ProjectMark, Radio, RadioGroup, SegmentedControl, Select,
+  SessionRowSkeleton, Skeleton, SlideOver, Spinner, STAGES, Stat, StatusChip,
+  StreamingText, Table, TBody, TD, TH, THead, TR, Tabs, Textarea, Toggle, Tooltip,
+  TopBar, useAnimatedNumber, useElapsed,
   type Command, type NotificationItem, type StageKey, type StatusKey,
 } from "@/design";
 import { useToast } from "@/providers/toast-provider";
@@ -77,6 +80,7 @@ const NAV_ANCHORS = [
   "tokens", "type", "buttons", "status", "avatars", "tags", "forms", "cards",
   "pipeline", "kanban", "navrail", "topbar", "overlays", "states",
   "skeletons", "progress", "feedback", "realtime",
+  "formcontrols", "display", "disclosure", "data", "overlays2", "pageload",
 ];
 
 /* ── interactive demos for the loading & motion sections ── */
@@ -222,6 +226,78 @@ function ToastButtons() {
         Trigger error
       </Button>
     </div>
+  );
+}
+
+function FormControlsDemo() {
+  const [check, setCheck] = useState(true);
+  const [radio, setRadio] = useState("sonnet");
+  const [sel, setSel] = useState("recent");
+  return (
+    <div className="grid max-w-xl gap-5">
+      <Field label="Notes" htmlFor="kit-notes">
+        <Textarea id="kit-notes" placeholder="Anything the agent should know…" />
+      </Field>
+      <Field label="Model" htmlFor="kit-model">
+        <Select
+          options={[
+            { value: "haiku", label: "claude-haiku" },
+            { value: "sonnet", label: "claude-sonnet" },
+            { value: "opus", label: "claude-opus" },
+          ]}
+          value={radio}
+          onChange={(e) => setRadio(e.target.value)}
+          id="kit-model"
+        />
+      </Field>
+      <Checkbox checked={check} onChange={setCheck} label="Auto-advance on pass" />
+      <div>
+        <span className="fg-label mb-2 block">Sort</span>
+        <RadioGroup name="kit-sort" value={sel} onChange={setSel}>
+          <Radio value="recent" label="Most recent" />
+          <Radio value="name" label="Name" />
+          <Radio value="health" label="Health" />
+        </RadioGroup>
+      </div>
+    </div>
+  );
+}
+
+function TabsDemo() {
+  const [tab, setTab] = useState("activity");
+  return (
+    <div>
+      <Tabs
+        tabs={[
+          { value: "activity", label: "Activity" },
+          { value: "tasks", label: "Tasks", count: 5 },
+          { value: "comments", label: "Comments", count: 3 },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
+      <p className="fg-body-sm mt-3 capitalize">{tab} panel</p>
+    </div>
+  );
+}
+
+function PaginationDemo() {
+  const [page, setPage] = useState(2);
+  return <Pagination page={page} pageCount={7} onChange={setPage} />;
+}
+
+function SlideOverDemo() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button variant="secondary" icon="arrowRight" onClick={() => setOpen(true)}>
+        Open run detail
+      </Button>
+      <SlideOver open={open} onClose={() => setOpen(false)} title={<span className="font-mono">FRG-241</span>}>
+        <PipelineTracker stage="code" status="running" variant="full" />
+        <p className="fg-body-sm mt-5">Sweep orphaned runner jobs on reconnect. Code agent is editing the reconnect handler.</p>
+      </SlideOver>
+    </>
   );
 }
 
@@ -567,6 +643,109 @@ export default function KitPage() {
                   <AnimatedStatDemo />
                 </div>
               </div>
+            </div>
+          </Section>
+
+          <Section id="formcontrols" title="Form controls" hint="Textarea, Select, Checkbox, Radio — all on the semantic token + focus-ring system.">
+            <FormControlsDemo />
+          </Section>
+
+          <Section id="display" title="Display" hint="Badges, banners, dividers, tooltips, breadcrumbs, icon buttons, pagination.">
+            <div className="flex flex-col gap-6">
+              <Row>
+                <Badge>12</Badge>
+                <Badge tone="accent">3</Badge>
+                <Badge tone="cobalt">beta</Badge>
+                <Badge tone="green">passed</Badge>
+                <Badge tone="red">2 failed</Badge>
+                <Badge tone="amber">review</Badge>
+              </Row>
+              <div className="flex flex-col gap-2.5">
+                <Banner tone="attention" action={<Button size="sm" variant="secondary">Review</Button>}>
+                  2 projects need attention — a runner is offline and a deploy is blocked.
+                </Banner>
+                <Banner tone="info">A new agent session started for FRG-241.</Banner>
+                <Banner tone="danger">Runner ci-runner-01 lost connection.</Banner>
+                <Banner tone="success">Release agent opened PR #1284 → main.</Banner>
+              </div>
+              <Row>
+                <Breadcrumb items={[{ label: "Projects", href: "#" }, { label: "forge-core", href: "#" }, { label: "FRG-241" }]} />
+                <Divider orientation="vertical" className="h-5" />
+                <Tooltip label="⌘K">
+                  <IconButton icon="search" aria-label="Search" />
+                </Tooltip>
+                <IconButton icon="more" variant="secondary" aria-label="More" />
+                <Menu
+                  trigger={<IconButton icon="settings" variant="secondary" aria-label="Run actions" />}
+                  items={[
+                    { label: "Pause run", icon: "pause" },
+                    { label: "Rerun", icon: "rerun" },
+                    { label: "Fork", icon: "fork" },
+                    { label: "Cancel", icon: "trash", danger: true },
+                  ]}
+                />
+                <PaginationDemo />
+              </Row>
+            </div>
+          </Section>
+
+          <Section id="disclosure" title="Tabs & disclosure">
+            <div className="flex flex-col gap-6">
+              <TabsDemo />
+              <Collapsible title="Agent plan — 5 tasks" defaultOpen>
+                <ol className="fg-body-sm flex list-decimal flex-col gap-1 pl-5">
+                  <li>Detect orphaned jobs on runner reconnect</li>
+                  <li>Add grace-period sweep to the job table</li>
+                  <li>Emit pipeline event on cleanup</li>
+                </ol>
+              </Collapsible>
+            </div>
+          </Section>
+
+          <Section id="data" title="Table" hint="Calm data table — sessions / issues lists.">
+            <Table>
+              <THead>
+                <tr>
+                  <TH>session</TH>
+                  <TH>issue</TH>
+                  <TH>status</TH>
+                  <TH className="text-right">cost</TH>
+                </tr>
+              </THead>
+              <TBody>
+                {[
+                  { sid: "S-1043", iss: "FRG-241", st: "running" as StatusKey, stage: "code", cost: "$0.42" },
+                  { sid: "S-1042", iss: "FRG-238", st: "review" as StatusKey, stage: undefined, cost: "$1.08" },
+                  { sid: "S-1039", iss: "FRG-224", st: "failed" as StatusKey, stage: undefined, cost: "$0.91" },
+                ].map((r) => (
+                  <TR key={r.sid}>
+                    <TD><MonoTag>{r.sid}</MonoTag></TD>
+                    <TD><MonoTag hue="cobalt">{r.iss}</MonoTag></TD>
+                    <TD><StatusChip status={r.st} stage={r.stage} size="sm" /></TD>
+                    <TD className="text-right font-mono">{r.cost}</TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          </Section>
+
+          <Section id="overlays2" title="Slide-over & menu" hint="Right-hand detail drawer (RunDetail) + dropdown menus.">
+            <Row>
+              <SlideOverDemo />
+            </Row>
+          </Section>
+
+          <Section id="pageload" title="Page load & route transitions" hint="Top flame progress bar on navigation, a Suspense skeleton (loading.tsx), and a page enter transition (template.tsx).">
+            <div className="flex flex-col gap-4">
+              <p className="fg-body-sm">
+                Navigate to a real async route — watch the top bar, the loading skeleton, then the page rise-in.
+              </p>
+              <Row>
+                <Link href="/kit/sandbox">
+                  <Button variant="primary" icon="arrowRight">Open sandbox route</Button>
+                </Link>
+                <span className="fg-caption">then use “Back to kit” there</span>
+              </Row>
             </div>
           </Section>
 
