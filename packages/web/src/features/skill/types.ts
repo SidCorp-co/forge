@@ -65,7 +65,12 @@ export interface BulkPushResult {
 export interface EffectiveSkill extends Skill {
   isOverridden: boolean;
   globalSkillId?: string;
+  // Skill Studio 2 (ISS-276): `globalContentHash` is the global's *current*
+  // effective hash; `forkedFromHash` is the snapshot taken when the override
+  // was forked; `driftFromGlobal` is true once the global moved since the fork.
   globalContentHash?: string | null;
+  forkedFromHash?: string | null;
+  driftFromGlobal?: boolean;
   globalSkillMd?: string | null;
 }
 
@@ -74,7 +79,11 @@ export interface SkillOverride {
   projectId: string;
   skillId: string;
   skillMdOverride: string;
+  // Skill Studio 2 (ISS-276): forked copy of the global folder's files +
+  // fork-time snapshot of the global's effective hash.
+  files: SkillFile[];
   contentHash: string;
+  globalContentHash?: string | null;
   createdAt: string;
   updatedAt: string;
 }

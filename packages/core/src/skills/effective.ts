@@ -41,12 +41,39 @@ export interface SkillBodyRow {
 }
 
 /**
+ * The effective markdown body for a skill ignoring overrides: `skill_md` when
+ * present, else the legacy `prompt` fallback (skills seeded pre-v0.1 have
+ * `skill_md = NULL`). Shared so the override route and the resolver derive the
+ * global body identically.
+ */
+export function globalEffectiveMd(skill: { skillMd: string | null; prompt: string | null }): string {
+  if (skill.skillMd != null && skill.skillMd.trim() !== '') return skill.skillMd;
+  return skill.prompt ?? '';
+}
+
+/**
+ * The current effective hash of a global skill's folder (`md + files`). This is
+ * the single source of truth for the fork-time `globalContentHash` snapshot AND
+ * for the live drift comparison, so the two never diverge in how they hash
+ * legacy (`prompt`-only) skills.
+ */
+export function globalEffectiveHash(skill: {
+  skillMd: string | null;
+  prompt: string | null;
+  files: unknown;
+}): string {
+  return hashSkillBody(globalEffectiveMd(skill), skill.files);
+}
+
+/**
  * Resolve the effective body + hash for one skill, applying a project
  * override when present. Pure — no DB access — so the merge/hash rules are
  * unit-testable in isolation.
  *
- * - Overrides apply to **global** skills only and carry markdown but no files,
- *   so the effective files always come from the base `skills.files`.
+ * - Overrides apply to **global** skills only and now fork the whole folder:
+ *   the effective files come from the override's `files`, falling back to the
+ *   base `skills.files` when the override carries none (legacy markdown-only
+ *   rows backfilled with `files = []`).
  * - Legacy skills (seeded pre-v0.1) have `skill_md = NULL` and only `prompt`
  *   populated; fall back to `prompt` so the device never installs a 0-byte
  *   SKILL.md.
@@ -55,19 +82,21 @@ export interface SkillBodyRow {
  */
 export function computeEffectiveSkill(
   skill: SkillBodyRow,
-  override: { skillMdOverride: string } | undefined,
+  override: { skillMdOverride: string; files?: unknown } | undefined,
 ): EffectiveSkill {
-  const files = (Array.isArray(skill.files) ? skill.files : []) as SkillFile[];
+  const baseFiles = (Array.isArray(skill.files) ? skill.files : []) as SkillFile[];
 
   let md: string;
+  let files: SkillFile[];
   let isOverridden = false;
   if (skill.scope === 'global' && override) {
     md = override.skillMdOverride;
+    const overrideFiles = (Array.isArray(override.files) ? override.files : []) as SkillFile[];
+    files = overrideFiles.length > 0 ? overrideFiles : baseFiles;
     isOverridden = true;
-  } else if (skill.skillMd != null && skill.skillMd.trim() !== '') {
-    md = skill.skillMd;
   } else {
-    md = skill.prompt ?? '';
+    files = baseFiles;
+    md = globalEffectiveMd(skill);
   }
 
   return {
@@ -107,6 +136,7 @@ export async function resolveEffectiveSkillsForProject(
     .select({
       skillId: projectSkillOverrides.skillId,
       skillMdOverride: projectSkillOverrides.skillMdOverride,
+      files: projectSkillOverrides.files,
     })
     .from(projectSkillOverrides)
     .where(eq(projectSkillOverrides.projectId, projectId));

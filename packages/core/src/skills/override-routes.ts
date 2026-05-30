@@ -3,11 +3,11 @@ import { and, asc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { createHash } from 'node:crypto';
 import { db } from '../db/client.js';
 import { projectMembers, projectSkillOverrides, projects, skills } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
+import { globalEffectiveHash, globalEffectiveMd } from './effective.js';
 import { hashSkillBody } from './hash.js';
 
 const overrideParamSchema = z.object({
@@ -17,9 +17,23 @@ const overrideParamSchema = z.object({
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
 
+// A single forked file. Mirrors `SkillFile` (effective.ts) — base64 lets the
+// fork carry binary references/scripts, not just markdown.
+const skillFileSchema = z
+  .object({
+    path: z.string().min(1).max(1024),
+    content: z.string().max(5_000_000),
+    encoding: z.enum(['utf8', 'base64']),
+  })
+  .strict();
+
 const overrideBodySchema = z
   .object({
     skillMdOverride: z.string().min(1).max(200_000),
+    // Optional: when omitted on create the whole global folder is forked as the
+    // editable starting point; when omitted on update the existing files are
+    // preserved.
+    files: z.array(skillFileSchema).max(500).optional(),
   })
   .strict();
 
@@ -55,10 +69,6 @@ function isMember(ctx: { ownerId: string; role: string | null }, userId: string)
 
 function isOwnerOrAdmin(ctx: { ownerId: string; role: string | null }, userId: string): boolean {
   return ctx.ownerId === userId || ctx.role === 'owner' || ctx.role === 'admin';
-}
-
-function sha256(s: string): string {
-  return createHash('sha256').update(s).digest('hex');
 }
 
 async function loadGlobalSkill(skillId: string) {
@@ -111,40 +121,47 @@ skillOverrideRoutes.get(
 
     const overrideBySkillId = new Map(overrides.map((o) => [o.skillId, o]));
 
-    // Legacy skills (seeded pre-v0.1) only have `prompt` populated; `skillMd`
-    // is NULL. Without this fallback they install on the desktop as 0-byte
-    // SKILL.md and break `/forge-*`. Hash is recomputed from the effective
-    // body so a cached legacy contentHash doesn't pin clients on the empty
-    // install.
-    const effectiveGlobal = (g: typeof globals[number]) => {
-      if (g.skillMd && g.skillMd.trim()) return { md: g.skillMd, hash: g.contentHash };
-      const md = g.prompt ?? '';
-      if (!md.trim()) return { md: '', hash: g.contentHash };
-      return { md, hash: hashSkillBody(md, g.files) };
-    };
-
+    // The global's current effective body + hash. Legacy skills (seeded
+    // pre-v0.1) only have `prompt` populated (`skillMd` NULL); the shared
+    // `globalEffective*` helpers fall back to `prompt` so the device never
+    // installs a 0-byte SKILL.md, and recompute the hash so a cached legacy
+    // contentHash doesn't pin clients on the empty install.
     const result = globals.map((g) => {
-      const eff = effectiveGlobal(g);
+      const globalMd = globalEffectiveMd(g);
+      const currentGlobalHash = globalEffectiveHash(g);
       const ov = overrideBySkillId.get(g.id);
       if (!ov) {
         return {
           ...g,
-          skillMd: eff.md,
-          contentHash: eff.hash,
+          skillMd: globalMd,
+          contentHash: currentGlobalHash,
           isOverridden: false as const,
           overrideId: null,
-          globalContentHash: eff.hash,
+          globalContentHash: currentGlobalHash,
+          forkedFromHash: null,
+          driftFromGlobal: false,
         };
       }
+      // Forked folder: serve the override's files, falling back to the base
+      // global files for legacy markdown-only rows (files = []).
+      const overrideFiles =
+        Array.isArray(ov.files) && ov.files.length > 0 ? ov.files : g.files;
       return {
         ...g,
         skillMd: ov.skillMdOverride,
         prompt: ov.skillMdOverride,
+        files: overrideFiles,
         contentHash: ov.contentHash,
         updatedAt: ov.updatedAt,
         isOverridden: true as const,
         overrideId: ov.id,
-        globalContentHash: eff.hash,
+        // `globalContentHash` = the global's *current* effective hash;
+        // `forkedFromHash` = the snapshot taken when the fork was created.
+        // Drift is "the global moved since we forked".
+        globalContentHash: currentGlobalHash,
+        forkedFromHash: ov.globalContentHash ?? null,
+        driftFromGlobal:
+          ov.globalContentHash != null && ov.globalContentHash !== currentGlobalHash,
       };
     });
 
@@ -196,7 +213,7 @@ skillOverrideRoutes.put(
   }),
   async (c) => {
     const { projectId, skillId } = c.req.valid('param');
-    const { skillMdOverride } = c.req.valid('json');
+    const { skillMdOverride, files } = c.req.valid('json');
     const userId = c.get('userId');
 
     const ctx = await loadCallerRole(projectId, userId);
@@ -205,10 +222,12 @@ skillOverrideRoutes.put(
     }
 
     const skill = await loadGlobalSkill(skillId);
-    const contentHash = sha256(skillMdOverride);
 
     const [existing] = await db
-      .select({ id: projectSkillOverrides.id })
+      .select({
+        id: projectSkillOverrides.id,
+        files: projectSkillOverrides.files,
+      })
       .from(projectSkillOverrides)
       .where(
         and(
@@ -220,16 +239,27 @@ skillOverrideRoutes.put(
 
     let row;
     if (existing) {
+      // Update: take new files when supplied, otherwise preserve the fork's
+      // existing files. `globalContentHash` is left untouched (re-forking is a
+      // delete + recreate). Hash always reflects the merged md + files.
+      const effectiveFiles = files ?? (Array.isArray(existing.files) ? existing.files : []);
+      const contentHash = hashSkillBody(skillMdOverride, effectiveFiles);
       const [updated] = await db
         .update(projectSkillOverrides)
-        .set({ skillMdOverride, contentHash, updatedAt: new Date() })
+        .set({ skillMdOverride, files: effectiveFiles, contentHash, updatedAt: new Date() })
         .where(eq(projectSkillOverrides.id, existing.id))
         .returning();
       row = updated;
     } else {
+      // Create = fork the whole current global folder as the editable starting
+      // point (unless the client supplied its own files), and snapshot the
+      // global's effective hash so the effective view can later flag drift.
+      const forkedFiles = files ?? (Array.isArray(skill.files) ? skill.files : []);
+      const contentHash = hashSkillBody(skillMdOverride, forkedFiles);
+      const globalContentHash = globalEffectiveHash(skill);
       const [inserted] = await db
         .insert(projectSkillOverrides)
-        .values({ projectId, skillId, skillMdOverride, contentHash })
+        .values({ projectId, skillId, skillMdOverride, files: forkedFiles, contentHash, globalContentHash })
         .returning();
       row = inserted;
     }
@@ -240,7 +270,7 @@ skillOverrideRoutes.put(
       skillId,
       name: skill.name,
       action: 'upsert',
-      contentHash,
+      contentHash: row.contentHash,
       actorUserId: userId,
     });
 

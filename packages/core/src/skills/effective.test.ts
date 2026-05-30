@@ -7,7 +7,8 @@ vi.mock('../config/env.js', () => ({
 }));
 vi.mock('../db/client.js', () => ({ db: {} }));
 
-const { computeDeviceSkillStatus, computeEffectiveSkill } = await import('./effective.js');
+const { computeDeviceSkillStatus, computeEffectiveSkill, globalEffectiveHash, globalEffectiveMd } =
+  await import('./effective.js');
 type EffectiveSkill = import('./effective.js').EffectiveSkill;
 type SkillBodyRow = import('./effective.js').SkillBodyRow;
 const { hashSkillBody } = await import('./hash.js');
@@ -32,13 +33,31 @@ describe('computeEffectiveSkill', () => {
     expect(eff.effectiveHash).toBe(hashSkillBody('# Skill', row.files));
   });
 
-  it('applies a global override body but keeps the base files', () => {
+  it('falls back to base files when the override forks no files (legacy row)', () => {
     const row = baseRow();
-    const eff = computeEffectiveSkill(row, { skillMdOverride: '# Local' });
+    const eff = computeEffectiveSkill(row, { skillMdOverride: '# Local', files: [] });
     expect(eff.skillMd).toBe('# Local');
     expect(eff.isOverridden).toBe(true);
-    // Override carries no files — hash must fold in the base files, NOT the
+    expect(eff.files).toEqual(row.files);
+    // Empty override files → hash folds in the base files, NOT the
     // files-blind override.contentHash.
+    expect(eff.effectiveHash).toBe(hashSkillBody('# Local', row.files));
+  });
+
+  it('uses the override files when the fork carries its own folder', () => {
+    const row = baseRow();
+    const overrideFiles = [{ path: 'references/b.md', content: 'B', encoding: 'utf8' as const }];
+    const eff = computeEffectiveSkill(row, { skillMdOverride: '# Local', files: overrideFiles });
+    expect(eff.skillMd).toBe('# Local');
+    expect(eff.isOverridden).toBe(true);
+    expect(eff.files).toEqual(overrideFiles);
+    expect(eff.effectiveHash).toBe(hashSkillBody('# Local', overrideFiles));
+  });
+
+  it('treats a missing override files field as no fork (falls back to base files)', () => {
+    const row = baseRow();
+    const eff = computeEffectiveSkill(row, { skillMdOverride: '# Local' });
+    expect(eff.files).toEqual(row.files);
     expect(eff.effectiveHash).toBe(hashSkillBody('# Local', row.files));
   });
 
@@ -54,6 +73,26 @@ describe('computeEffectiveSkill', () => {
     const eff = computeEffectiveSkill(row, { skillMdOverride: '# ShouldBeIgnored' });
     expect(eff.skillMd).toBe('# Project');
     expect(eff.isOverridden).toBe(false);
+  });
+});
+
+describe('globalEffective helpers', () => {
+  it('globalEffectiveMd prefers skillMd, falls back to prompt', () => {
+    expect(globalEffectiveMd({ skillMd: '# Md', prompt: 'p' })).toBe('# Md');
+    expect(globalEffectiveMd({ skillMd: null, prompt: 'p' })).toBe('p');
+    expect(globalEffectiveMd({ skillMd: '   ', prompt: 'p' })).toBe('p');
+    expect(globalEffectiveMd({ skillMd: null, prompt: null })).toBe('');
+  });
+
+  it('globalEffectiveHash matches hashSkillBody over the effective body', () => {
+    const files = [{ path: 'a.md', content: 'A', encoding: 'utf8' as const }];
+    expect(globalEffectiveHash({ skillMd: '# Md', prompt: 'p', files })).toBe(
+      hashSkillBody('# Md', files),
+    );
+    // legacy prompt-only skill hashes off the prompt fallback
+    expect(globalEffectiveHash({ skillMd: null, prompt: 'p', files })).toBe(
+      hashSkillBody('p', files),
+    );
   });
 });
 

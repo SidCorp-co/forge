@@ -130,6 +130,53 @@ describe('GET /api/projects/:projectId/skills/effective', () => {
     expect(fix?.isOverridden).toBe(false);
     expect(fix?.skillMd).toBe('GLOBAL2');
   });
+
+  it('merges override files and flags driftFromGlobal once the global moves', async () => {
+    const overrideFiles = [{ path: 'references/x.md', content: 'X', encoding: 'utf8' }];
+    authVerified();
+    selectLimit.mockResolvedValueOnce([{ ownerId: USER_ID }]); // project
+    selectLimit.mockResolvedValueOnce([{ role: 'owner' }]); // member
+    selectOrderBy.mockResolvedValueOnce([
+      {
+        id: SKILL_ID,
+        name: 'forge-code',
+        scope: 'global',
+        skillMd: 'GLOBAL-NOW',
+        contentHash: 'g1',
+        files: [{ path: 'references/a.md', content: 'A', encoding: 'utf8' }],
+      },
+    ]);
+    selectOrderBy.mockResolvedValueOnce([
+      {
+        id: OVERRIDE_ID,
+        projectId: PROJECT_ID,
+        skillId: SKILL_ID,
+        skillMdOverride: 'PROJECT-LOCAL',
+        files: overrideFiles,
+        contentHash: 'p1',
+        // Stale fork-time snapshot — does not match the current global hash.
+        globalContentHash: 'STALE_FORK_HASH',
+        updatedAt: new Date(),
+      },
+    ]);
+
+    const res = await buildApp().request(`/api/projects/${PROJECT_ID}/skills/effective`, {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{
+      name: string;
+      isOverridden: boolean;
+      files: unknown;
+      driftFromGlobal: boolean;
+      forkedFromHash: string | null;
+    }>;
+    const code = body.find((b) => b.name === 'forge-code');
+    expect(code?.isOverridden).toBe(true);
+    expect(code?.files).toEqual(overrideFiles);
+    expect(code?.driftFromGlobal).toBe(true);
+    expect(code?.forkedFromHash).toBe('STALE_FORK_HASH');
+  });
 });
 
 describe('PUT /api/projects/:projectId/skills/:skillId/override', () => {
@@ -216,6 +263,73 @@ describe('PUT /api/projects/:projectId/skills/:skillId/override', () => {
         action: 'upsert',
       }),
     );
+  });
+
+  it('forks the whole global folder + snapshots globalContentHash on create', async () => {
+    const { hashSkillBody } = await import('./hash.js');
+    const globalFiles = [{ path: 'references/a.md', content: 'A', encoding: 'utf8' }];
+    authVerified();
+    selectLimit.mockResolvedValueOnce([{ ownerId: USER_ID }]); // project
+    selectLimit.mockResolvedValueOnce([{ role: 'owner' }]); // member
+    selectLimit.mockResolvedValueOnce([
+      { id: SKILL_ID, name: 'forge-code', scope: 'global', skillMd: '# Global', files: globalFiles },
+    ]); // global skill lookup
+    selectLimit.mockResolvedValueOnce([]); // existing override lookup -> none
+    insertReturning.mockResolvedValueOnce([
+      { id: OVERRIDE_ID, projectId: PROJECT_ID, skillId: SKILL_ID, contentHash: 'x' },
+    ]);
+
+    const res = await buildApp().request(
+      `/api/projects/${PROJECT_ID}/skills/${SKILL_ID}/override`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+        // No files in the body → fork the global folder.
+        body: JSON.stringify({ skillMdOverride: '# Local' }),
+      },
+    );
+    expect(res.status).toBe(200);
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        files: globalFiles,
+        contentHash: hashSkillBody('# Local', globalFiles),
+        globalContentHash: hashSkillBody('# Global', globalFiles),
+      }),
+    );
+  });
+
+  it('persists supplied files + hashSkillBody hash, preserving the fork on update', async () => {
+    const { hashSkillBody } = await import('./hash.js');
+    const newFiles = [{ path: 'scripts/run.sh', content: 'echo hi', encoding: 'utf8' }];
+    authVerified();
+    selectLimit.mockResolvedValueOnce([{ ownerId: USER_ID }]); // project
+    selectLimit.mockResolvedValueOnce([{ role: 'owner' }]); // member
+    selectLimit.mockResolvedValueOnce([
+      { id: SKILL_ID, name: 'forge-code', scope: 'global', skillMd: '# Global', files: [] },
+    ]); // global skill
+    selectLimit.mockResolvedValueOnce([{ id: OVERRIDE_ID, files: [] }]); // existing override
+    updateReturning.mockResolvedValueOnce([
+      { id: OVERRIDE_ID, projectId: PROJECT_ID, skillId: SKILL_ID, contentHash: 'y' },
+    ]);
+
+    const res = await buildApp().request(
+      `/api/projects/${PROJECT_ID}/skills/${SKILL_ID}/override`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ skillMdOverride: '# Local', files: newFiles }),
+      },
+    );
+    expect(res.status).toBe(200);
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        files: newFiles,
+        contentHash: hashSkillBody('# Local', newFiles),
+      }),
+    );
+    // globalContentHash is NOT re-snapshotted on update.
+    const setArg = (updateSet.mock.calls as unknown[][])[0]?.[0] as Record<string, unknown>;
+    expect(setArg).not.toHaveProperty('globalContentHash');
   });
 });
 
