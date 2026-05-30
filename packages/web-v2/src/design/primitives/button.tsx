@@ -1,6 +1,7 @@
 import type { ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/utils/cn";
 import { Icon, type IconName } from "@/design/icons/icon";
+import { Spinner } from "./spinner";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md";
@@ -22,18 +23,25 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
   size?: Size;
   icon?: IconName;
+  /** Show an inline spinner + disable, without changing the button's width. */
+  loading?: boolean;
 }
 
 export function Button({
   variant = "secondary",
   size = "md",
   icon,
+  loading = false,
+  disabled,
   className,
   children,
   ...props
 }: ButtonProps) {
+  const px = size === "sm" ? 15 : 16;
   return (
     <button
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       className={cn(
         "inline-flex items-center justify-center whitespace-nowrap rounded-md border font-semibold leading-none",
         "transition-colors duration-[120ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
@@ -44,7 +52,11 @@ export function Button({
       )}
       {...props}
     >
-      {icon && <Icon name={icon} size={size === "sm" ? 15 : 16} />}
+      {loading ? (
+        <Spinner size={px} className="border-current/40 border-t-current" />
+      ) : (
+        icon && <Icon name={icon} size={px} />
+      )}
       {children}
     </button>
   );

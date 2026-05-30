@@ -58,14 +58,16 @@ export function PipelineTracker({ stage, status = "running", variant = "full" }:
         <span className="whitespace-nowrap font-mono text-muted" style={{ fontSize: 12 }}>
           {done} / {STAGES.length}
         </span>
-        <div className="h-1 flex-1 overflow-hidden rounded-pill bg-[var(--paper-200)]">
+        <div className="relative h-1 flex-1 overflow-hidden rounded-pill bg-[var(--paper-200)]">
           <div
-            className="h-full rounded-pill"
+            className="h-full rounded-pill transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
             style={{
               width: `${pct}%`,
               background: isErr ? "var(--red-500)" : status === "done" ? "var(--green-500)" : "var(--accent)",
             }}
           />
+          {/* active run → a flame sliver sweeps to signal "in progress, % unknown" */}
+          {status === "running" && <span className="forge-indeterminate" style={{ background: "var(--accent)" }} />}
         </div>
       </div>
     );
@@ -104,7 +106,7 @@ export function PipelineTracker({ stage, status = "running", variant = "full" }:
             </div>
             {!last && (
               <div
-                className="h-0.5 flex-1"
+                className="h-0.5 flex-1 transition-[background] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
                 style={{
                   background: st === "done" ? "var(--green-500)" : "var(--border-default)",
                   margin: variant === "compact" ? "7px 2px 0" : "12px 3px 0",

@@ -1,14 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  Avatar, Button, Card, CardContent, CardHeader, CardTitle,
-  CommandPalette, EmptyState, Field, HealthDot, Icon, Input, Kicker,
-  KanbanCard, MonoTag, NavRail, NotificationsMenu,
-  PipelineTracker, ProjectMark, SegmentedControl, Spinner, STAGES, Stat,
-  StatusChip, Toggle, TopBar,
+  Avatar, BoardRowSkeleton, Button, Card, CardContent, CardHeader, CardTitle,
+  CommandPalette, EmptyState, ErrorState, Field, Highlight, HealthDot, Icon,
+  Input, KanbanCardSkeleton, KanbanColumnSkeleton, Kicker, KanbanCard, LiveDot,
+  MonoTag, NavRail, NotificationsMenu, PipelineTracker, ProgressBar,
+  ProjectCardSkeleton, ProjectMark, SegmentedControl, SessionRowSkeleton,
+  Skeleton, Spinner, STAGES, Stat, StatusChip, StreamingText, Toggle, TopBar,
+  useAnimatedNumber, useElapsed,
   type Command, type NotificationItem, type StageKey, type StatusKey,
 } from "@/design";
+import { useToast } from "@/providers/toast-provider";
 
 function Section({ id, title, hint, children }: { id: string; title: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -73,7 +76,154 @@ const TRACKER_CASES: { stage: StageKey; status: "running" | "done" | "failed" | 
 const NAV_ANCHORS = [
   "tokens", "type", "buttons", "status", "avatars", "tags", "forms", "cards",
   "pipeline", "kanban", "navrail", "topbar", "overlays", "states",
+  "skeletons", "progress", "feedback", "realtime",
 ];
+
+/* ── interactive demos for the loading & motion sections ── */
+
+function LoadingButtonDemo() {
+  const [loading, setLoading] = useState(false);
+  return (
+    <Button
+      variant="primary"
+      icon="play"
+      loading={loading}
+      onClick={() => {
+        setLoading(true);
+        setTimeout(() => setLoading(false), 1800);
+      }}
+    >
+      Run pipeline
+    </Button>
+  );
+}
+
+function ProgressDemo() {
+  const [value, setValue] = useState(40);
+  return (
+    <div className="flex max-w-md flex-col gap-3">
+      <ProgressBar value={value} />
+      <input
+        type="range"
+        min={0}
+        max={100}
+        value={value}
+        onChange={(e) => setValue(Number(e.target.value))}
+        className="w-full accent-[var(--accent)]"
+        aria-label="Progress value"
+      />
+      <span className="fg-caption">Indeterminate (unknown %):</span>
+      <ProgressBar indeterminate />
+    </div>
+  );
+}
+
+function StreamingDemo() {
+  const full =
+    "On it. Detecting jobs left in `running` whose runner just reconnected, then sweeping them after a 30s grace window so we don't race an in-flight heartbeat.";
+  const [n, setN] = useState(0);
+  const done = n >= full.length;
+  useEffect(() => {
+    if (done) return;
+    const id = setInterval(() => setN((x) => Math.min(full.length, x + 2)), 24);
+    return () => clearInterval(id);
+  }, [done, full.length]);
+  return (
+    <div className="flex max-w-xl flex-col gap-3">
+      <StreamingText text={full.slice(0, n)} streaming={!done} />
+      <Button size="sm" variant="ghost" icon="rerun" onClick={() => setN(0)}>
+        Replay
+      </Button>
+    </div>
+  );
+}
+
+function ElapsedDemo() {
+  const [start, setStart] = useState<number | undefined>(undefined);
+  const [running, setRunning] = useState(false);
+  const elapsed = useElapsed(start, running);
+  return (
+    <div className="flex items-center gap-3">
+      <span className="font-mono text-fg" style={{ fontSize: 15, minWidth: 64 }}>{elapsed}</span>
+      <Button
+        size="sm"
+        variant={running ? "danger" : "secondary"}
+        icon={running ? "stop" : "play"}
+        onClick={() => {
+          if (running) setRunning(false);
+          else {
+            setStart(Date.now());
+            setRunning(true);
+          }
+        }}
+      >
+        {running ? "Stop" : "Start run"}
+      </Button>
+    </div>
+  );
+}
+
+function AnimatedStatDemo() {
+  const [n, setN] = useState(142);
+  const display = useAnimatedNumber(n);
+  return (
+    <div className="flex items-center gap-3">
+      <span className="font-mono text-fg" style={{ fontSize: 22, fontWeight: 700, minWidth: 72 }}>
+        {Math.round(display)}
+      </span>
+      <span className="fg-caption">tests passed</span>
+      <Button size="sm" variant="secondary" icon="plus" onClick={() => setN((x) => x + 37)}>
+        +37
+      </Button>
+    </div>
+  );
+}
+
+function HighlightDemo() {
+  const [tick, setTick] = useState(0);
+  const [stage, setStage] = useState<StageKey>("code");
+  const [status, setStatus] = useState<StatusKey>("running");
+  return (
+    <div className="flex max-w-xl flex-col gap-3">
+      <Highlight trigger={tick} className="rounded-md border border-line bg-surface px-3 py-2.5">
+        <div className="flex items-center gap-3">
+          <MonoTag>FRG-241</MonoTag>
+          <span className="fg-body-sm flex-1 truncate text-fg">Sweep orphaned runner jobs on reconnect</span>
+          <StatusChip status={status} stage={stage} size="sm" />
+        </div>
+      </Highlight>
+      <Button
+        size="sm"
+        variant="secondary"
+        icon="activity"
+        onClick={() => {
+          setStatus("passed");
+          setStage("test");
+          setTick((t) => t + 1);
+        }}
+      >
+        Simulate WS update
+      </Button>
+    </div>
+  );
+}
+
+function ToastButtons() {
+  const { toast } = useToast();
+  return (
+    <div className="flex flex-wrap gap-3">
+      <Button size="sm" variant="primary" icon="plus" onClick={() => toast({ title: "Issue created", description: "FRG-242 · routed to triage", tone: "success" })}>
+        Create issue
+      </Button>
+      <Button size="sm" variant="secondary" icon="trash" onClick={() => toast({ title: "Swept 1 zombie", description: "S-1037 cancelled", tone: "info" })}>
+        Sweep zombies
+      </Button>
+      <Button size="sm" variant="danger" icon="alert" onClick={() => toast({ title: "Runner lost connection", description: "ci-runner-01 — retrying", tone: "error" })}>
+        Trigger error
+      </Button>
+    </div>
+  );
+}
 
 export default function KitPage() {
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -334,6 +484,88 @@ export default function KitPage() {
               </div>
               <div className="flex items-center justify-center gap-3 rounded-md border border-line p-10">
                 <Spinner /> <span className="fg-body-sm">Loading runs…</span>
+              </div>
+            </div>
+          </Section>
+
+          <Section id="skeletons" title="Skeletons" hint="Cold-load placeholders that mirror the real layout (warm paper shimmer) — shown instead of a centered spinner.">
+            <div className="flex flex-col gap-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <ProjectCardSkeleton />
+                <ProjectCardSkeleton />
+              </div>
+              <div className="rounded-md border border-line bg-surface">
+                <BoardRowSkeleton />
+                <BoardRowSkeleton />
+                <BoardRowSkeleton />
+              </div>
+              <div className="grid max-w-3xl grid-cols-3 gap-4">
+                <KanbanColumnSkeleton cards={2} />
+                <KanbanColumnSkeleton cards={1} />
+                <KanbanCardSkeleton />
+              </div>
+              <div className="rounded-md border border-line bg-surface">
+                <SessionRowSkeleton />
+                <SessionRowSkeleton />
+              </div>
+              <div className="flex items-center gap-3">
+                <Skeleton variant="circle" className="size-9" />
+                <Skeleton variant="text" className="w-40" />
+                <Skeleton className="h-6 w-20 rounded-pill" />
+              </div>
+            </div>
+          </Section>
+
+          <Section id="progress" title="Progress & busy" hint="Determinate vs indeterminate; inline button loading; the pipeline mini bar now sweeps a flame sliver while running.">
+            <div className="flex flex-col gap-6">
+              <ProgressDemo />
+              <div className="my-1 h-px bg-[var(--border-subtle)]" />
+              <div className="flex flex-wrap items-center gap-6">
+                <LoadingButtonDemo />
+                <div className="flex items-center gap-3">
+                  <Spinner /> <Spinner size={22} /> <span className="fg-body-sm">inline spinners</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-6">
+                <span className="fg-caption w-24">running mini</span>
+                <PipelineTracker stage="code" status="running" variant="mini" />
+              </div>
+            </div>
+          </Section>
+
+          <Section id="feedback" title="Feedback — error & toasts" hint="Distinct error state with retry; toasts on create / sweep / failure (bottom-right).">
+            <div className="flex flex-col gap-6">
+              <div className="rounded-md border border-line">
+                <ErrorState message="Couldn't load runs. Check your connection, then retry." onRetry={() => {}} />
+              </div>
+              <ToastButtons />
+            </div>
+          </Section>
+
+          <Section id="realtime" title="Real-time motion" hint="The signature layer: live connection, streaming output, change-highlight, ticking durations, count-up.">
+            <div className="flex flex-col gap-7">
+              <Row>
+                <LiveDot state="live" withLabel />
+                <LiveDot state="connecting" withLabel />
+                <LiveDot state="offline" withLabel />
+              </Row>
+              <div>
+                <span className="fg-caption mb-2 block">Streaming agent output</span>
+                <StreamingDemo />
+              </div>
+              <div>
+                <span className="fg-caption mb-2 block">Highlight on WS update</span>
+                <HighlightDemo />
+              </div>
+              <div className="flex flex-wrap items-center gap-10">
+                <div>
+                  <span className="fg-caption mb-2 block">Live duration</span>
+                  <ElapsedDemo />
+                </div>
+                <div>
+                  <span className="fg-caption mb-2 block">Animated stat</span>
+                  <AnimatedStatDemo />
+                </div>
               </div>
             </div>
           </Section>

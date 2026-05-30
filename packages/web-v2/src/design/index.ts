@@ -21,7 +21,12 @@ export { Card, CardHeader, CardTitle, CardContent } from "./primitives/card";
 export { Kicker } from "./primitives/kicker";
 export { Kbd } from "./primitives/kbd";
 export { Spinner, type SpinnerProps } from "./primitives/spinner";
+export { Skeleton, type SkeletonProps } from "./primitives/skeleton";
+export { ProgressBar, type ProgressBarProps } from "./primitives/progress-bar";
 export { EmptyState, type EmptyStateProps } from "./primitives/empty-state";
+export { ErrorState, type ErrorStateProps } from "./primitives/error-state";
+export { LiveDot, type LiveDotProps } from "./primitives/live-dot";
+export { Toast, type ToastView, type ToastTone } from "./primitives/toast";
 export { Input, type InputProps } from "./primitives/input";
 export { Field, type FieldProps } from "./primitives/field";
 export { Toggle, type ToggleProps } from "./primitives/toggle";
@@ -38,3 +43,15 @@ export { CommandPalette, type CommandPaletteProps, type Command } from "./patter
 export {
   NotificationsMenu, type NotificationsMenuProps, type NotificationItem,
 } from "./patterns/notifications-menu";
+export { StreamingText, type StreamingTextProps } from "./patterns/streaming-text";
+export { Highlight, type HighlightProps } from "./patterns/highlight";
+
+// skeleton compositions
+export {
+  BoardRowSkeleton, KanbanCardSkeleton, KanbanColumnSkeleton,
+  SessionRowSkeleton, ProjectCardSkeleton,
+} from "./skeletons";
+
+// hooks
+export { useElapsed } from "./hooks/use-elapsed";
+export { useAnimatedNumber } from "./hooks/use-animated-number";

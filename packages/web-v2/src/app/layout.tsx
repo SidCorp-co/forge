@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { QueryProvider } from "@/providers/query-provider";
+import { ToastProvider } from "@/providers/toast-provider";
 import "./globals.css";
 
 const hanken = Hanken_Grotesk({
@@ -28,7 +29,9 @@ export default function RootLayout({
     <html lang="en" data-theme="light" suppressHydrationWarning>
       <body className={`${hanken.variable} ${jetbrainsMono.variable}`}>
         <ThemeProvider>
-          <QueryProvider>{children}</QueryProvider>
+          <QueryProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </QueryProvider>
         </ThemeProvider>
       </body>
     </html>

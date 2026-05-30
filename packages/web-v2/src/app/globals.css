@@ -115,3 +115,35 @@
 .forge-pulse { animation: forge-pulse 1.8s var(--ease-in-out) infinite; }
 .forge-fade { animation: forge-fade var(--dur-base) var(--ease-out); }
 .forge-drop { animation: forge-drop var(--dur-base) var(--ease-out); }
+.forge-slide { animation: forge-slide var(--dur-base) var(--ease-out); }
+.forge-pop { animation: forge-pop var(--dur-base) var(--ease-out); }
+
+/* ── Loading & live effects ────────────────────────────────── */
+
+/* Skeleton — warm paper shimmer (not cold gray). */
+@keyframes forge-shimmer { 100% { transform: translateX(100%); } }
+.skeleton { position: relative; overflow: hidden; background: var(--paper-100); }
+.skeleton::after {
+  content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent);
+  animation: forge-shimmer 1.4s var(--ease-in-out) infinite;
+}
+
+/* Indeterminate progress — a flame sliver sweeping the track. */
+@keyframes forge-indeterminate { 0% { left: -40%; } 100% { left: 100%; } }
+.forge-indeterminate { position: absolute; top: 0; bottom: 0; width: 40%; border-radius: 999px; animation: forge-indeterminate 1.2s var(--ease-in-out) infinite; }
+
+/* Highlight-fade — flash a row when its data changes (WS update). */
+@keyframes forge-highlight { 0% { background: var(--accent-tint); } 100% { background: transparent; } }
+.forge-highlight { animation: forge-highlight 1.2s var(--ease-out); }
+
+/* Streaming caret — blinks at the end of a token-streaming message. */
+@keyframes forge-caret { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+.forge-caret { display: inline-block; width: 2px; height: 1em; margin-left: 1px; vertical-align: text-bottom; background: var(--accent); animation: forge-caret 1s steps(1) infinite; }
+
+/* ── Accessibility: respect reduced-motion ─────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .forge-pulse, .skeleton::after, .forge-indeterminate, .forge-highlight, .forge-caret { animation: none !important; }
+  .skeleton::after { display: none; }
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}
