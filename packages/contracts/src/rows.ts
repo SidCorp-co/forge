@@ -70,4 +70,8 @@ export type JobEvent = typeof schema.jobEvents.$inferSelect;
 
 export type Device = typeof schema.devices.$inferSelect;
 
+// ISS-271 — runner row now carries the per (device × project) repo checkout
+// (`repoPath`/`branch`), the server source of truth for the runner working dir.
+export type Runner = typeof schema.runners.$inferSelect;
+
 export type ActivityLog = typeof schema.activityLog.$inferSelect;

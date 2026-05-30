@@ -627,6 +627,11 @@ export const runners = pgTable(
     labels: jsonb('labels').notNull().default([]),
     capabilities: jsonb('capabilities').notNull().default({}),
     config: jsonb('config').notNull().default({}),
+    // ISS-271 — per (device × project) repo checkout. Source of truth for the
+    // runner working dir, written by web (PATCH) or CLI (`forge-runner bind`).
+    // `projects.repoPath` is now only a default hint when binding a new device.
+    repoPath: text('repo_path'),
+    branch: text('branch'),
     status: text('status', { enum: runnerStatuses }).notNull().default('offline'),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     lastError: text('last_error'),

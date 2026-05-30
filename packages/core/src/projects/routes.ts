@@ -4,10 +4,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import {
-  type IssueBranchOverride,
-  resolveIssueBranches,
-} from '../branches/resolve.js';
+import { type IssueBranchOverride, resolveIssueBranches } from '../branches/resolve.js';
 import { db } from '../db/client.js';
 import {
   devices,
@@ -30,10 +27,7 @@ import {
   pipelineConfigPatchSchema,
   pipelineConfigSchema,
 } from '../pipeline/pipeline-config-schema.js';
-import {
-  PipelineConfigError,
-  updatePipelineConfig,
-} from '../pipeline/pipeline-config-service.js';
+import { PipelineConfigError, updatePipelineConfig } from '../pipeline/pipeline-config-service.js';
 import { STATUS_TO_JOB_TYPE } from '../pipeline/skill-mapping.js';
 import { mergeStateContext, stateContextSchema } from './state-context.js';
 
@@ -265,11 +259,7 @@ projectRoutes.get(
       .from(runners)
       .innerJoin(devices, eq(devices.id, runners.deviceId))
       .where(
-        and(
-          eq(runners.projectId, id),
-          eq(runners.type, 'claude-code'),
-          eq(runners.host, 'device'),
-        ),
+        and(eq(runners.projectId, id), eq(runners.type, 'claude-code'), eq(runners.host, 'device')),
       );
 
     // apiKey returned as-is — caller passed loadMembership() above. See the
@@ -374,8 +364,7 @@ projectRoutes.patch(
         patch.agentConfig !== undefined
           ? ((patch.agentConfig ?? {}) as Record<string, unknown>)
           : { ...currentAc };
-      const existingSc =
-        patch.agentConfig !== undefined ? undefined : currentAc.stateContext;
+      const existingSc = patch.agentConfig !== undefined ? undefined : currentAc.stateContext;
       const mergedSc = mergeStateContext(existingSc, patch.stateContext);
       if (mergedSc === null) {
         delete baseAc.stateContext;
@@ -419,6 +408,10 @@ const createRunnerBodySchema = z
   .object({
     deviceId: z.uuid(),
     capabilities: z.record(z.string(), z.unknown()).optional(),
+    // ISS-271 — per (device × project) repo checkout. Optional at bind time:
+    // a web bind may leave them null until the operator sets the path later.
+    repoPath: z.string().trim().max(500).nullable().optional(),
+    branch: z.string().trim().max(100).nullable().optional(),
   })
   .strict();
 
@@ -432,7 +425,7 @@ projectRoutes.post(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { deviceId, capabilities } = c.req.valid('json');
+    const { deviceId, capabilities, repoPath, branch } = c.req.valid('json');
     const userId = c.get('userId');
 
     const { project, role } = await loadMembership(id, userId);
@@ -469,6 +462,8 @@ projectRoutes.post(
         deviceId,
         name: device.name,
         capabilities: defaultRunnerCapabilities('claude-code', capabilities),
+        ...(repoPath !== undefined ? { repoPath } : {}),
+        ...(branch !== undefined ? { branch } : {}),
         status,
       })
       .onConflictDoUpdate({
@@ -478,12 +473,16 @@ projectRoutes.post(
           status,
           updatedAt: new Date(),
           ...(capabilities ? { capabilities } : {}),
+          ...(repoPath !== undefined ? { repoPath } : {}),
+          ...(branch !== undefined ? { branch } : {}),
         },
       })
       .returning({
         id: runners.id,
         projectId: runners.projectId,
         deviceId: runners.deviceId,
+        repoPath: runners.repoPath,
+        branch: runners.branch,
         status: runners.status,
       });
 
@@ -492,6 +491,64 @@ projectRoutes.post(
 );
 
 const runnerParamSchema = z.object({ id: z.uuid(), runnerId: z.uuid() });
+
+// ISS-271 — update the per-device repo checkout (and capabilities) on a
+// runner row. Web and the CLI `forge-runner bind` both write here, so the
+// server stays the single source of truth for the runner working dir.
+const patchRunnerBodySchema = z
+  .object({
+    repoPath: z.string().trim().max(500).nullable().optional(),
+    branch: z.string().trim().max(100).nullable().optional(),
+    capabilities: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict();
+
+projectRoutes.patch(
+  '/:id/runners/:runnerId',
+  zValidator('param', runnerParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  zValidator('json', patchRunnerBodySchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { id, runnerId } = c.req.valid('param');
+    const { repoPath, branch, capabilities } = c.req.valid('json');
+    const userId = c.get('userId');
+
+    const { project, role } = await loadMembership(id, userId);
+    if (project.ownerId !== userId && role !== 'owner' && role !== 'admin') {
+      throw forbidden('owner or admin required');
+    }
+
+    const [runner] = await db
+      .update(runners)
+      .set({
+        updatedAt: new Date(),
+        ...(repoPath !== undefined ? { repoPath } : {}),
+        ...(branch !== undefined ? { branch } : {}),
+        ...(capabilities ? { capabilities } : {}),
+      })
+      .where(and(eq(runners.id, runnerId), eq(runners.projectId, id)))
+      .returning({
+        id: runners.id,
+        projectId: runners.projectId,
+        deviceId: runners.deviceId,
+        repoPath: runners.repoPath,
+        branch: runners.branch,
+        status: runners.status,
+      });
+
+    if (!runner) {
+      throw new HTTPException(404, {
+        message: 'runner not found',
+        cause: { code: 'RUNNER_NOT_FOUND' },
+      });
+    }
+
+    return c.json(runner);
+  },
+);
 
 projectRoutes.delete(
   '/:id/runners/:runnerId',
@@ -509,9 +566,7 @@ projectRoutes.delete(
 
     // Idempotent: 204 whether the runner existed or not, mirroring the old
     // PUT/DELETE /:id/devices/:deviceId contract.
-    await db
-      .delete(runners)
-      .where(and(eq(runners.id, runnerId), eq(runners.projectId, id)));
+    await db.delete(runners).where(and(eq(runners.id, runnerId), eq(runners.projectId, id)));
     return c.body(null, 204);
   },
 );
@@ -797,8 +852,12 @@ projectRoutes.post(
     // Build registration rows: one per (status → skill) pair where the
     // global skill exists. Missing skills are skipped (logged) so a partial
     // builtin seed doesn't crash bootstrap.
-    const toInsert: Array<{ projectId: string; skillId: string; stage: string; registeredBy: string }> =
-      [];
+    const toInsert: Array<{
+      projectId: string;
+      skillId: string;
+      stage: string;
+      registeredBy: string;
+    }> = [];
     for (const [status, mapping] of Object.entries(STATUS_TO_JOB_TYPE)) {
       if (!mapping) continue;
       const skillName = `forge-${mapping.type}`;
@@ -828,10 +887,7 @@ projectRoutes.post(
           states: defaultStatesConfig(),
         },
       };
-      await db
-        .update(projects)
-        .set({ agentConfig: merged })
-        .where(eq(projects.id, id));
+      await db.update(projects).set({ agentConfig: merged }).where(eq(projects.id, id));
     } else if (currentPipeline.states === undefined) {
       // Preset stays untouched but ensure `states` is populated so the
       // orchestrator can rely on the field.

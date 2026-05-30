@@ -1,4 +1,5 @@
 import type {
+  BindRunnerResponse,
   CreateProjectInput,
   Project,
   ProjectMember,
@@ -23,13 +24,6 @@ export interface ProjectDetail extends Project {
     lastSeenAt: string | null;
     runnerId: string;
   }>;
-}
-
-export interface BindRunnerResponse {
-  id: string;
-  projectId: string;
-  deviceId: string;
-  status: 'online' | 'offline';
 }
 
 /**
@@ -95,12 +89,33 @@ export const projectApi = {
 
   bindRunner: (
     projectId: string,
-    body: { deviceId: string; capabilities?: Record<string, unknown> },
+    body: {
+      deviceId: string;
+      capabilities?: Record<string, unknown>;
+      repoPath?: string | null;
+      branch?: string | null;
+    },
   ) =>
     apiClient<BindRunnerResponse>(`/projects/${projectId}/runners`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  // ISS-271 — set/clear the per-device repo path + branch on a runner row.
+  // ISS-273 (web UX) wires this into the project settings form.
+  patchRunner: (
+    projectId: string,
+    runnerId: string,
+    body: {
+      repoPath?: string | null;
+      branch?: string | null;
+      capabilities?: Record<string, unknown>;
+    },
+  ) =>
+    apiClient<BindRunnerResponse>(
+      `/projects/${projectId}/runners/${runnerId}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    ),
 
   unbindRunner: (projectId: string, runnerId: string) =>
     apiClient<void>(`/projects/${projectId}/runners/${runnerId}`, {

@@ -860,6 +860,128 @@ describe('DELETE /api/projects/:id/runners/:runnerId (ISS-172)', () => {
   });
 });
 
+describe('POST /api/projects/:id/runners — repoPath/branch (ISS-271)', () => {
+  const PID = '11111111-1111-4111-8111-111111111111';
+  const DID = '22222222-2222-4222-8222-222222222222';
+  const RID = '33333333-3333-4333-8333-333333333333';
+
+  it('passes repoPath/branch into the insert and returns them', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
+      .mockResolvedValueOnce([{ role: 'owner' }])
+      .mockResolvedValueOnce([
+        { id: DID, name: 'laptop', status: 'online', lastSeenAt: new Date() },
+      ]);
+    insertReturning.mockResolvedValueOnce([
+      {
+        id: RID,
+        projectId: PID,
+        deviceId: DID,
+        repoPath: '/home/u/code/app',
+        branch: 'main',
+        status: 'online',
+      },
+    ]);
+
+    const res = await req(`/${PID}/runners`, {
+      method: 'POST',
+      body: JSON.stringify({ deviceId: DID, repoPath: '/home/u/code/app', branch: 'main' }),
+      token,
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { repoPath: string; branch: string };
+    expect(body.repoPath).toBe('/home/u/code/app');
+    expect(body.branch).toBe('main');
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ repoPath: '/home/u/code/app', branch: 'main' }),
+    );
+  });
+});
+
+describe('PATCH /api/projects/:id/runners/:runnerId (ISS-271)', () => {
+  const PID = '11111111-1111-4111-8111-111111111111';
+  const RID = '33333333-3333-4333-8333-333333333333';
+
+  it('403 FORBIDDEN for non-owner non-admin', async () => {
+    const token = await signUserToken('uuid-member');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-other' }])
+      .mockResolvedValueOnce([{ role: 'member' }]);
+
+    const res = await req(`/${PID}/runners/${RID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ repoPath: '/x' }),
+      token,
+    });
+    expect(res.status).toBe(403);
+    expect(updateReturning).not.toHaveBeenCalled();
+  });
+
+  it('200 updates repoPath/branch for owner', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
+      .mockResolvedValueOnce([{ role: 'owner' }]);
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: RID,
+        projectId: PID,
+        deviceId: '22222222-2222-4222-8222-222222222222',
+        repoPath: '/home/u/code/app',
+        branch: 'dev',
+        status: 'online',
+      },
+    ]);
+
+    const res = await req(`/${PID}/runners/${RID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ repoPath: '/home/u/code/app', branch: 'dev' }),
+      token,
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { repoPath: string; branch: string };
+    expect(body.repoPath).toBe('/home/u/code/app');
+    expect(body.branch).toBe('dev');
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ repoPath: '/home/u/code/app', branch: 'dev' }),
+    );
+  });
+
+  it('404 RUNNER_NOT_FOUND when no row matches', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
+      .mockResolvedValueOnce([{ role: 'owner' }]);
+    updateReturning.mockResolvedValueOnce([]);
+
+    const res = await req(`/${PID}/runners/${RID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ repoPath: '/home/u/code/app' }),
+      token,
+    });
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('RUNNER_NOT_FOUND');
+  });
+
+  it('400 BAD_REQUEST on unknown field (strict body)', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+
+    const res = await req(`/${PID}/runners/${RID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ nope: true }),
+      token,
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
 describe('POST /api/projects/:id/api-key/rotate', () => {
   const ID = '11111111-1111-4111-8111-111111111111';
 

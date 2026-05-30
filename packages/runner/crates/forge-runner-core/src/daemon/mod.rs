@@ -15,8 +15,11 @@ use crate::error::Result;
 use crate::runner::claude_code::ClaudeCodeRunner;
 use crate::runner::Runner;
 use crate::transport::frames::{job_id_of, Frame};
+use crate::transport::runners;
 use crate::transport::ws::{self, RunnerRegistration, WsConfig};
 use crate::transport::{heartbeat, CoreClient};
+
+use dispatch::resolve_repo;
 
 /// Run the daemon until Ctrl-C. `device_token` comes from the cred store.
 pub async fn run(
@@ -31,22 +34,61 @@ pub async fn run(
         device_token.clone(),
     ));
 
-    // One runner registration per bound project that has a project_id.
-    let device_name = crate::auth::pairing::default_device_name();
-    let registrations: Vec<RunnerRegistration> = cfg
-        .bindings
-        .iter()
-        .filter_map(|(slug, b)| {
-            b.project_id.clone().map(|pid| RunnerRegistration {
-                project_id: pid,
-                name: format!("{device_name} ({slug})"),
-                runner_type: "claude-code".into(),
-            })
-        })
-        .collect();
+    // Discover server-side assignments (`/me/runners`). This is the source of
+    // truth for which projects route to this device and for their repo paths;
+    // config.toml is only a local fallback now (ISS-271). Best-effort: an old
+    // server or transient failure falls back to config-only behaviour.
+    let server = match runners::list_me(&client).await {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::warn!(
+                "[me/runners] discovery failed ({e}) — using local config bindings only"
+            );
+            Vec::new()
+        }
+    };
 
-    if cfg.bindings.is_empty() {
-        tracing::warn!("no project bindings — jobs cannot be routed. Run `forge-runner bind`.");
+    // One runner registration per assigned project. Union the server
+    // assignments (authoritative project_id + slug) with any local config
+    // binding that already has a project_id, deduped by project_id.
+    let device_name = crate::auth::pairing::default_device_name();
+    let mut seen_project_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut registrations: Vec<RunnerRegistration> = Vec::new();
+
+    for r in &server {
+        if seen_project_ids.insert(r.project_id.clone()) {
+            registrations.push(RunnerRegistration {
+                project_id: r.project_id.clone(),
+                name: format!("{device_name} ({})", r.slug),
+                runner_type: "claude-code".into(),
+            });
+        }
+        // AC 5 — warn when assigned on the server but no usable repo path
+        // (neither server nor local), with the exact command to fix it.
+        if resolve_repo(&server, &cfg, &r.project_id).is_err() {
+            tracing::warn!(
+                "[me/runners] project '{}' is assigned but has no local repo path — run `forge-runner bind {} --path <dir>`",
+                r.slug,
+                r.slug
+            );
+        }
+    }
+    for (slug, b) in &cfg.bindings {
+        if let Some(pid) = b.project_id.clone() {
+            if seen_project_ids.insert(pid.clone()) {
+                registrations.push(RunnerRegistration {
+                    project_id: pid,
+                    name: format!("{device_name} ({slug})"),
+                    runner_type: "claude-code".into(),
+                });
+            }
+        }
+    }
+
+    if registrations.is_empty() {
+        tracing::warn!(
+            "no project assignments — jobs cannot be routed. Bind a device in the web UI, then run `forge-runner bind <slug> --path <dir>`."
+        );
     }
 
     let (cancel_tx, cancel_rx) = watch::channel(false);
