@@ -1,13 +1,14 @@
 "use client";
 
 import { Fragment, useEffect, useRef } from "react";
+import { assetPath } from "@/lib/asset";
 
 /* A rigged, living Forge mascot. The PNG carries the helmet / flame horns / gem;
    an SVG layer reconstructs the white face-screen + eyes so they can blink and
    look around (driven by `progress`); two clipped PNG copies flicker the flames.
    Geometry is in the PNG's native 180×180 space, scaled to `size`. */
 
-const MASCOT_SRC = "/forge-mark-180.png";
+const MASCOT_SRC = assetPath("/forge-mark-180.png");
 const STAGE_RING = ["#8A6BD1", "#2D5BD6", "#1F8FB0", "#F15A2B", "#E8920C", "#1F9D6B", "#5A616E"];
 const LX = 61, RX = 119, EY = 112;
 

@@ -11,8 +11,17 @@ import type { NextConfig } from "next";
  */
 const coreProxy = process.env.E2E_CORE_PROXY_URL;
 
+/**
+ * Release mounts web-v2 under `/v2` on the same origin as the current web
+ * (reverse-proxied). Set `WEB_V2_BASE_PATH=/v2` in the deploy env; local dev
+ * leaves it empty so the app stays at `/`. API/WS calls intentionally stay
+ * unprefixed (`/api`, `/ws`) so the shared httpOnly cookie + WS upgrade work.
+ */
+const basePath = process.env.WEB_V2_BASE_PATH || "";
+
 const nextConfig: NextConfig = {
   output: "standalone",
+  ...(basePath ? { basePath, assetPrefix: basePath } : {}),
   async rewrites() {
     if (!coreProxy) return [];
     return [

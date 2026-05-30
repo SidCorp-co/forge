@@ -20,7 +20,7 @@ The redesign kit defines a new brand — *"calm, bright workshop"*: light-first,
 | E | **Keep custom primitives** (extend `design/primitives`); no shadcn/Radix. |
 | 1 | Issue views: lean to the design → **Board (list) + Pipeline (stage-kanban) only**; drop the separate status-kanban. |
 | 2 | **Defer entirely:** admin/*, ceo, ceo/dashboard, usage, settings/sessions. |
-| 3 | Switch: **separate Coolify app + cookie toggle** ("Try new UI" ⇄ "Back to classic"). |
+| 3 | Release: **same domain under `/v2`** (Next `basePath`), reverse-proxied alongside current web; in-UI toggle "Try new UI" (→ `/v2`) ⇄ "Back to classic" (→ `/`). |
 
 ## Scope cleanup (from current web)
 
@@ -65,9 +65,15 @@ Rule: `design/` never touches data → `features/` wires data → `app/` compose
 - Tailwind v4 `@theme inline` maps utilities → semantic vars (no `tailwind.config.ts`).
 - Adding dark later = one `[data-theme="dark"] { … }` override of the semantic layer; raw scale + components untouched. Enforced by review rule: *no hex / no raw-scale in `features/` & `app/`*.
 
-## Switch + cutover (A)
+## Release on `/v2` + cutover (A)
 
-`web-v2` is its own Next.js app sharing `@forge/contracts` + `core` REST/WS (no DB/contract change). Deploy as a separate Coolify app; current web TopBar gets *"Try new UI"* (cookie + redirect), v2 has *"Back to classic"*. Big-bang: flip default, retire `packages/web` (clean-break, v0.1 — no long-lived shim).
+`web-v2` is its own Next.js app sharing `@forge/contracts` + `core` REST/WS (no DB/contract change), **served under the `/v2` path on the same origin** — no second domain, cookies/auth shared.
+
+- **Path mount:** `next.config.ts` sets `basePath: '/v2'` (env-guarded via `WEB_V2_BASE_PATH` so local dev stays at `/`). Next prefixes routes, `next/image`/`next/link`/imported assets automatically. Plain `<img src="/…">` (the mascot PNGs) is **not** auto-prefixed, so they go through `lib/asset.ts → assetPath()` which reads `NEXT_PUBLIC_BASE_PATH` — **set `NEXT_PUBLIC_BASE_PATH=/v2` to mirror `WEB_V2_BASE_PATH`** in the deploy.
+- **API/WS stay unprefixed:** `apiClient` + the WS client target `/api` and `/ws` (or `NEXT_PUBLIC_API_URL`), NOT `/v2/api` — same-origin, so the httpOnly `forge_auth` cookie and WS upgrade keep working unchanged.
+- **Reverse proxy (Coolify/Caddy):** route `^/v2(/.*)?$` → the web-v2 container; everything else → current `web`; `/api` + `/ws` → `core`. One domain, two front-ends.
+- **Toggle:** current web TopBar gets *"Try new UI"* → `/v2`; web-v2 TopBar has *"Back to classic"* → `/`. (Optional cookie to remember the choice and auto-route the root.)
+- **Big-bang cutover:** when the core loop is covered, swap the proxy so `/` serves web-v2 and retire `packages/web` (or keep `/v2` as the canonical path). Clean-break, v0.1 — no long-lived shim.
 
 ## Phased build
 
@@ -76,7 +82,7 @@ Rule: `design/` never touches data → `features/` wires data → `app/` compose
 2. **Sessions** — richest surface first; SessionsList + SessionThread wired live.
 3. **Core loop** — Issues table + Issue detail (simple + rich/ISS-273) + Pipeline kanban + RunDetail.
 4. **Workspace** — Projects console (merges dashboard) + Runners (merges 3 device UIs) + Activity + Skills + Schedules + Context + PM + Login.
-5. **Switch + dark-ready audit** — cookie toggle; verify semantic-only token usage.
+5. **`/v2` mount + dark-ready audit** — `basePath` env guard, reverse-proxy rule, in-UI toggle; verify semantic-only token usage.
 6. **Verify** — Playwright walk core loop; compare against `Forge - Web App.html`.
 
 ## Design gaps to fill (kit doesn't cover these)
