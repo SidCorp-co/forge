@@ -1,6 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { ExternalLink } from 'lucide-react';
 import { AlertBanner, Spinner } from '@/components/ui';
 import { useFocusOnMount } from '../hooks/use-focus-on-mount';
 import { ApiError } from '@/lib/api/client';
@@ -78,6 +81,7 @@ interface UndoState {
 }
 
 export function SkillRegistrationsSection({ projectId, isOwner }: Props) {
+  const { slug } = useParams<{ slug: string }>();
   const skills = useSkills(projectId);
   const registrations = useProjectSkillRegistrations(projectId);
   const cfg = usePipelineConfig(projectId);
@@ -288,31 +292,44 @@ export function SkillRegistrationsSection({ projectId, isOwner }: Props) {
                 ))}
               </div>
 
-              <select
-                value={binding?.skillId ?? ''}
-                disabled={
-                  !isOwner ||
-                  isSoftSkip ||
-                  stageCfg.enabled === false ||
-                  registerSkill.isPending ||
-                  unregisterSkill.isPending
-                }
-                onChange={(e) => {
-                  void onBind(stage, e.target.value, binding?.skillId);
-                }}
-                data-config-health-target={`skills.${stage}`}
-                className="rounded-sm border border-outline-variant/20 bg-surface-container px-2 py-1 text-xs text-on-surface disabled:opacity-50"
-              >
-                <option value="">
-                  {isSoftSkip ? 'Soft-skip only — no skill' : '— Unbound —'}
-                </option>
-                {!isSoftSkip &&
-                  skillOptions.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} {s.scope === 'project' ? '(project)' : ''}
-                    </option>
-                  ))}
-              </select>
+              <div className="flex items-center gap-1.5">
+                <select
+                  value={binding?.skillId ?? ''}
+                  disabled={
+                    !isOwner ||
+                    isSoftSkip ||
+                    stageCfg.enabled === false ||
+                    registerSkill.isPending ||
+                    unregisterSkill.isPending
+                  }
+                  onChange={(e) => {
+                    void onBind(stage, e.target.value, binding?.skillId);
+                  }}
+                  data-config-health-target={`skills.${stage}`}
+                  className="min-w-0 flex-1 rounded-sm border border-outline-variant/20 bg-surface-container px-2 py-1 text-xs text-on-surface disabled:opacity-50"
+                >
+                  <option value="">
+                    {isSoftSkip ? 'Soft-skip only — no skill' : '— Unbound —'}
+                  </option>
+                  {!isSoftSkip &&
+                    skillOptions.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} {s.scope === 'project' ? '(project)' : ''}
+                      </option>
+                    ))}
+                </select>
+                {/* Deep-link into Skill Studio (ISS-277): authoring lives there;
+                    this matrix only binds skills to stages. One surface, no dupe. */}
+                {binding && (
+                  <Link
+                    href={`/projects/${slug}/skills?skill=${encodeURIComponent(binding.skillId)}`}
+                    title={`Open "${binding.skillName}" in Skill Studio`}
+                    className="shrink-0 text-outline hover:text-on-surface"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </Link>
+                )}
+              </div>
 
               <button
                 type="button"

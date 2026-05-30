@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { Suspense, useMemo, useState } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
 import { Plus } from 'lucide-react';
 import { useProjectBySlug } from '@/features/project/hooks/use-projects';
 import {
@@ -19,7 +19,10 @@ import {
   type SortField,
   type SortDirection,
 } from '@/features/skill/components/skill-list';
-import { SkillEditor } from '@/features/skill/components/skill-editor';
+import {
+  SkillFolderEditor,
+  type SkillFolderSavePayload,
+} from '@/features/skill/components/skill-folder-editor';
 import { SkillSyncPanel } from '@/features/skill/components/skill-sync-panel';
 import { SkillHistory } from '@/features/skill/components/skill-history';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -28,9 +31,10 @@ import { formatApiError } from '@/lib/api/error';
 import type { Skill, EffectiveSkill } from '@/features/skill/types';
 import { RotateCcw } from 'lucide-react';
 
-export default function SkillsPage() {
+function SkillsPageInner() {
   useSetPageTitle('Skills');
   const { slug } = useParams<{ slug: string }>();
+  const searchParams = useSearchParams();
   const project = useProjectBySlug(slug);
   const projectId = project?.id;
 
@@ -47,11 +51,16 @@ export default function SkillsPage() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // True once the user picks/creates/closes a skill — pins manual selection so
+  // the `?skill=` deep-link no longer forces a row (see deepLinkSelectedId).
+  const [interacted, setInteracted] = useState(false);
   const [filter, setFilter] = useState('');
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
-  const skills = skillsQuery.data?.data ?? [];
+  // Memoized so its identity is stable across renders — the deep-link + filter
+  // useMemos below depend on it (avoids react-hooks/exhaustive-deps churn).
+  const skills = useMemo(() => skillsQuery.data?.data ?? [], [skillsQuery.data]);
   const syncStatuses = syncQuery.data?.data ?? [];
 
   const filteredSorted = useMemo(() => {
@@ -71,9 +80,23 @@ export default function SkillsPage() {
     return base;
   }, [skills, filter, sortField, sortDirection]);
 
+  // Deep-link selection (ISS-277): the Settings by-stage matrix links here with
+  // `?skill=<skillId>`, so the two surfaces (Studio + Settings) point at one
+  // authoring page. Resolved as DERIVED state (no effect) — the matching row is
+  // pre-selected until the user interacts, after which `interacted` pins manual
+  // selection. Matches the registration's `skillId` (`id`) or `documentId`.
+  const deepLinkSkillId = searchParams.get('skill');
+  const deepLinkSelectedId = useMemo(() => {
+    if (interacted || !deepLinkSkillId) return null;
+    const match = skills.find((s) => s.id === deepLinkSkillId || s.documentId === deepLinkSkillId);
+    return match ? (match.documentId ?? match.id) : null;
+  }, [interacted, deepLinkSkillId, skills]);
+
+  const activeSelectedId = selectedId ?? deepLinkSelectedId;
+
   const selected = useMemo(
-    () => skills.find((s) => (s.documentId ?? s.id) === selectedId) ?? null,
-    [skills, selectedId],
+    () => skills.find((s) => (s.documentId ?? s.id) === activeSelectedId) ?? null,
+    [skills, activeSelectedId],
   );
 
   function handleSort(field: SortField) {
@@ -85,31 +108,49 @@ export default function SkillsPage() {
     }
   }
 
-  function handleSave(data: {
-    name: string;
-    description: string;
-    skillMd: string;
-    target: 'dev' | 'cloud' | 'all';
-    isGlobal: boolean;
-  }) {
+  function handleSave(data: SkillFolderSavePayload) {
+    setInteracted(true);
     if (selected) {
       // Editing a global skill in a project context = create/update an override
       // (server stores in `project_skill_overrides`, not the global `skills` row).
       const isGlobalRow = selected.scope === 'global';
       if (isGlobalRow && projectId) {
         upsertOverride.mutate(
-          { projectId, skillId: selected.id, skillMdOverride: data.skillMd },
+          {
+            projectId,
+            skillId: selected.id,
+            skillMdOverride: data.skillMd,
+            files: data.files,
+          },
           { onSuccess: () => setSelectedId(null) },
         );
       } else {
         updateSkill.mutate(
-          { documentId: selected.documentId ?? selected.id, data },
+          {
+            documentId: selected.documentId ?? selected.id,
+            data: {
+              name: data.name,
+              description: data.description,
+              skillMd: data.skillMd,
+              target: data.target,
+              isGlobal: data.isGlobal,
+              files: data.files,
+            },
+          },
           { onSuccess: () => setSelectedId(null) },
         );
       }
     } else if (projectId) {
       createSkill.mutate(
-        { ...data, projectId: data.isGlobal ? undefined : projectId },
+        {
+          name: data.name,
+          description: data.description,
+          skillMd: data.skillMd,
+          target: data.target,
+          isGlobal: data.isGlobal,
+          files: data.files,
+          projectId: data.isGlobal ? undefined : projectId,
+        },
         {
           onSuccess: (res) => {
             setCreating(false);
@@ -138,7 +179,10 @@ export default function SkillsPage() {
     const id = skill.documentId ?? skill.id;
     deleteSkill.mutate(id, {
       onSuccess: () => {
-        if (selectedId === id) setSelectedId(null);
+        if (activeSelectedId === id) {
+          setInteracted(true);
+          setSelectedId(null);
+        }
       },
     });
   }
@@ -149,7 +193,10 @@ export default function SkillsPage() {
       { projectId, skillId: skill.id },
       {
         onSuccess: () => {
-          if (selectedId === (skill.documentId ?? skill.id)) setSelectedId(null);
+          if (activeSelectedId === (skill.documentId ?? skill.id)) {
+            setInteracted(true);
+            setSelectedId(null);
+          }
         },
       },
     );
@@ -184,6 +231,7 @@ export default function SkillsPage() {
           <button
             type="button"
             onClick={() => {
+              setInteracted(true);
               setSelectedId(null);
               setCreating(true);
             }}
@@ -221,6 +269,7 @@ export default function SkillsPage() {
                 <SkillList
                   skills={filteredSorted}
                   onSelect={(s) => {
+                    setInteracted(true);
                     setCreating(false);
                     setSelectedId(s.documentId ?? s.id);
                   }}
@@ -259,12 +308,16 @@ export default function SkillsPage() {
                       Editing this <strong>global</strong> skill creates a per-project override. The original global skill is unaffected.
                     </p>
                   )}
-                  <SkillEditor
+                  <SkillFolderEditor
+                    // Remount on skill change so the editor re-seeds from the
+                    // newly selected skill's frontmatter + files.
+                    key={selected?.documentId ?? selected?.id ?? 'new'}
                     skill={selected}
                     projectDocumentId={projectId}
                     globalSkillMd={editorGlobalSkillMd}
                     onSave={handleSave}
                     onCancel={() => {
+                      setInteracted(true);
                       setCreating(false);
                       setSelectedId(null);
                     }}
@@ -295,5 +348,15 @@ export default function SkillsPage() {
         </>
       )}
     </div>
+  );
+}
+
+export default function SkillsPage() {
+  // Suspense boundary keeps useSearchParams() (deep-link `?skill=` hydration)
+  // from forcing fully-dynamic prerender under Next 16.
+  return (
+    <Suspense fallback={null}>
+      <SkillsPageInner />
+    </Suspense>
   );
 }

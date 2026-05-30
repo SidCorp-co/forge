@@ -1,5 +1,5 @@
 import { apiClient } from '@/lib/api/client';
-import type { Skill, SkillSyncStatus, BulkPushResult, EffectiveSkill, SkillOverride } from './types';
+import type { Skill, SkillFile, SkillSyncStatus, BulkPushResult, EffectiveSkill, SkillOverride } from './types';
 
 export const skillApi = {
   getAll: (projectId?: string) => {
@@ -54,12 +54,20 @@ export const skillApi = {
       `/projects/${encodeURIComponent(projectId)}/skills/effective`,
     ).then((data) => ({ data })),
 
-  upsertOverride: (projectId: string, skillId: string, skillMdOverride: string) =>
+  upsertOverride: (
+    projectId: string,
+    skillId: string,
+    skillMdOverride: string,
+    files?: SkillFile[],
+  ) =>
     apiClient<SkillOverride>(
       `/projects/${encodeURIComponent(projectId)}/skills/${encodeURIComponent(skillId)}/override`,
       {
         method: 'PUT',
-        body: JSON.stringify({ skillMdOverride }),
+        // The route forks the whole global folder when `files` is omitted on
+        // create; sending the editor's files[] makes the override carry the
+        // authored folder (Skill Studio 3).
+        body: JSON.stringify(files ? { skillMdOverride, files } : { skillMdOverride }),
       },
     ).then((data) => ({ data })),
 
