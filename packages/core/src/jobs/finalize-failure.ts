@@ -81,7 +81,18 @@ export async function finalizeFailedJob(
   const retry: RetryOutcome =
     opts.precomputedRetry ?? (await scheduleAutoRetryWithVerify(updated, opts.error));
 
-  if (!retry.scheduled && updated.issueId) {
+  // A retry is skipped for two very different reasons:
+  //  - genuine failure with no retry left (budget exhausted / non-retryable
+  //    kind / resume-abort) → surface to the operator via manual-hold;
+  //  - verify-first recovery: the issue ALREADY advanced past this step
+  //    (`completed_via_recovery`) or moved into another step's territory
+  //    (`cancelled_stale`) → the work is effectively done, manual-holding here
+  //    would wedge an issue that has already recovered (ISS-280 AC2/AC4).
+  // Only the first case manual-holds.
+  const recoveredViaVerify =
+    retry.reason === 'completed_via_recovery' || retry.reason === 'cancelled_stale';
+
+  if (!retry.scheduled && !recoveredViaVerify && updated.issueId) {
     const classificationKind = mapFailureKindToClassification(updated.failureKind);
     const recoveryStats = await loadRecoveryStats(updated.issueId);
     await setManualHoldBlock({

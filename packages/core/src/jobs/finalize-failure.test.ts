@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const scheduleRetryMock = vi.fn(async (..._args: unknown[]) => ({ scheduled: false }) as {
   scheduled: boolean;
+  reason?: string;
 });
 vi.mock('./retry.js', () => ({
   scheduleAutoRetryWithVerify: (...args: unknown[]) => scheduleRetryMock(...args),
@@ -142,6 +143,23 @@ describe('finalizeFailedJob', () => {
     // Slot is still freed even for system jobs.
     expect(dispatchTickMock).toHaveBeenCalledWith('p1');
   });
+
+  it.each(['completed_via_recovery', 'cancelled_stale'])(
+    'does NOT manual-hold when verify-first recovery skipped the retry (reason=%s)',
+    async (reason) => {
+      scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason });
+      const retry = await finalizeFailedJob(makeJob(), { error: 'session_lost' });
+
+      expect(retry.scheduled).toBe(false);
+      // The issue already recovered — manual-holding would wedge it (ISS-280 AC2/AC4).
+      expect(setManualHoldBlockMock).not.toHaveBeenCalled();
+      // ...but the slot is still freed + lifecycle still mirrored.
+      expect(dispatchTickMock).toHaveBeenCalledWith('p1');
+      expect(syncSessionMock).toHaveBeenCalledWith(expect.any(Object), 'failed', {
+        retryPending: false,
+      });
+    },
+  );
 
   it('short-circuits scheduleAutoRetryWithVerify when precomputedRetry is given', async () => {
     const retry = await finalizeFailedJob(makeJob(), {
