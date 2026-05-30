@@ -1,20 +1,55 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { db } from '../db/client.js';
-import { activityLog, issues, projectMembers, projects, users } from '../db/schema.js';
+import {
+  activityLog,
+  issues,
+  pipelineRuns,
+  projectMembers,
+  projects,
+  runners,
+  users,
+} from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
 interface ProjectHealthRow {
+  /** Project UUID — needed by web-v2 to join the `GET /api/projects` list rows
+   *  (which carry `id` but no metrics) against this health rollup. */
+  id: string;
   projectName: string;
   projectSlug: string;
   projectMeta: Record<string, unknown>;
+  /** Free-text description (nullable in the DB → `null` here). */
+  description: string | null;
+  /** Repo path/slug shown under the project name (nullable). */
+  repoPath: string | null;
   throughput: number;
   totalActive: number;
   statusDistribution: Record<string, number>;
   blockers: Array<{ issueId: string; documentId: string; status: string }>;
   pendingEscalations: number;
   avgCycleTimeDays: number;
+  /** Pipeline runs currently `running` or `paused`. */
+  liveRuns: number;
+  /** Runners in the `online` state. */
+  runnerCount: number;
+  /** Trailing-24h spend (USD) from the `pipeline_run_step_durations` view. */
+  spend24hUsd: number;
+  /** True total project membership count. */
+  memberCount: number;
+  /** Up to 5 email-derived avatar initials (no display-name column exists). */
+  members: string[];
+  /** ISO timestamp of the most recent issue/run activity, or `null`. */
+  lastActivityAt: string | null;
 }
+
+/** First 2 chars of the email local-part, uppercased — the avatar initials. */
+function emailInitials(email: string): string {
+  const local = email.split('@')[0] ?? email;
+  return local.slice(0, 2).toUpperCase();
+}
+
+const MEMBER_AVATAR_CAP = 5;
 
 const ACTIVE_STATUSES = ['open', 'confirmed', 'waiting', 'approved', 'in_progress', 'developed', 'deploying', 'testing', 'tested', 'pass', 'staging', 'reopen'] as const;
 const BLOCKED_STATUSES = ['on_hold', 'needs_info'] as const;
@@ -34,7 +69,14 @@ projectHealthRoutes.get('/health', async (c) => {
 
   const visibleProjects = me?.isCeo
     ? await db
-        .select({ id: projects.id, slug: projects.slug, name: projects.name, agentConfig: projects.agentConfig })
+        .select({
+          id: projects.id,
+          slug: projects.slug,
+          name: projects.name,
+          agentConfig: projects.agentConfig,
+          description: projects.description,
+          repoPath: projects.repoPath,
+        })
         .from(projects)
     : await db
         .selectDistinct({
@@ -42,6 +84,8 @@ projectHealthRoutes.get('/health', async (c) => {
           slug: projects.slug,
           name: projects.name,
           agentConfig: projects.agentConfig,
+          description: projects.description,
+          repoPath: projects.repoPath,
         })
         .from(projects)
         .leftJoin(projectMembers, eq(projectMembers.projectId, projects.id))
@@ -115,6 +159,75 @@ projectHealthRoutes.get('/health', async (c) => {
     )
     .groupBy(issues.projectId);
 
+  // Live runs — pipeline_runs currently running or paused, per project.
+  const liveRunRows = await db
+    .select({
+      projectId: pipelineRuns.projectId,
+      n: sql<number>`count(*)::int`,
+    })
+    .from(pipelineRuns)
+    .where(
+      and(
+        inArray(pipelineRuns.projectId, projectIds),
+        inArray(pipelineRuns.status, ['running', 'paused']),
+      ),
+    )
+    .groupBy(pipelineRuns.projectId);
+
+  // Online runners per project.
+  const runnerRows = await db
+    .select({
+      projectId: runners.projectId,
+      n: sql<number>`count(*)::int`,
+    })
+    .from(runners)
+    .where(and(inArray(runners.projectId, projectIds), eq(runners.status, 'online')))
+    .groupBy(runners.projectId);
+
+  // Trailing-24h spend from the pipeline_run_step_durations view (same source as
+  // the per-project cost-summary route). `= ANY(...)` keeps it a single batch
+  // query over all visible project ids — no per-project N+1.
+  const spendRows = (await db.execute(sql`
+    SELECT project_id, COALESCE(SUM(cost_usd), 0)::float AS spend
+    FROM pipeline_run_step_durations
+    WHERE project_id = ANY(${projectIds})
+      AND started_at >= now() - interval '24 hours'
+    GROUP BY project_id
+  `)) as unknown as Array<{ project_id: string; spend: number }>;
+
+  // Members — fetch (projectId, email) ordered so the per-project cap below is
+  // deterministic. memberCount carries the true total; `members` is capped for
+  // the avatar stack.
+  const memberRows = await db
+    .select({
+      projectId: projectMembers.projectId,
+      email: users.email,
+      joinedAt: projectMembers.createdAt,
+    })
+    .from(projectMembers)
+    .innerJoin(users, eq(users.id, projectMembers.userId))
+    .where(inArray(projectMembers.projectId, projectIds))
+    .orderBy(projectMembers.projectId, projectMembers.createdAt);
+
+  // Last activity = max(updated_at) across issues + pipeline_runs, per project.
+  const issueActivityRows = await db
+    .select({
+      projectId: issues.projectId,
+      lastAt: sql<string | null>`max(${issues.updatedAt})`,
+    })
+    .from(issues)
+    .where(inArray(issues.projectId, projectIds))
+    .groupBy(issues.projectId);
+
+  const runActivityRows = await db
+    .select({
+      projectId: pipelineRuns.projectId,
+      lastAt: sql<string | null>`max(${pipelineRuns.updatedAt})`,
+    })
+    .from(pipelineRuns)
+    .where(inArray(pipelineRuns.projectId, projectIds))
+    .groupBy(pipelineRuns.projectId);
+
   const distByProject = new Map<string, Record<string, number>>();
   for (const r of statusRows) {
     const dist = distByProject.get(r.projectId) ?? {};
@@ -132,21 +245,59 @@ projectHealthRoutes.get('/health', async (c) => {
   const throughputByProject = new Map<string, number>();
   for (const r of throughputRows) throughputByProject.set(r.projectId, Number(r.n));
 
+  const liveRunsByProject = new Map<string, number>();
+  for (const r of liveRunRows) liveRunsByProject.set(r.projectId, Number(r.n));
+
+  const runnersByProject = new Map<string, number>();
+  for (const r of runnerRows) runnersByProject.set(r.projectId, Number(r.n));
+
+  const spendByProject = new Map<string, number>();
+  for (const r of spendRows) spendByProject.set(r.project_id, Number(r.spend));
+
+  // Build the capped avatar list + true count from the ordered member rows.
+  const memberCountByProject = new Map<string, number>();
+  const membersByProject = new Map<string, string[]>();
+  for (const r of memberRows) {
+    memberCountByProject.set(r.projectId, (memberCountByProject.get(r.projectId) ?? 0) + 1);
+    const arr = membersByProject.get(r.projectId) ?? [];
+    if (arr.length < MEMBER_AVATAR_CAP) arr.push(emailInitials(r.email));
+    membersByProject.set(r.projectId, arr);
+  }
+
+  // Merge issue + run activity into a single max-timestamp per project.
+  const lastActivityByProject = new Map<string, string | null>();
+  const noteActivity = (projectId: string, lastAt: string | null) => {
+    if (!lastAt) return;
+    const cur = lastActivityByProject.get(projectId);
+    if (!cur || lastAt > cur) lastActivityByProject.set(projectId, lastAt);
+  };
+  for (const r of issueActivityRows) noteActivity(r.projectId, r.lastAt);
+  for (const r of runActivityRows) noteActivity(r.projectId, r.lastAt);
+
   const result: ProjectHealthRow[] = visibleProjects.map((p) => {
     const dist = distByProject.get(p.id) ?? {};
     let totalActive = 0;
     for (const s of ACTIVE_STATUSES) totalActive += dist[s] ?? 0;
     const blockers = blockersByProject.get(p.id) ?? [];
     return {
+      id: p.id,
       projectName: p.name,
       projectSlug: p.slug,
       projectMeta: (p.agentConfig as Record<string, unknown> | null) ?? {},
+      description: p.description ?? null,
+      repoPath: p.repoPath ?? null,
       throughput: throughputByProject.get(p.id) ?? 0,
       totalActive,
       statusDistribution: dist,
       blockers,
       pendingEscalations: dist['needs_info'] ?? 0,
       avgCycleTimeDays: 0,
+      liveRuns: liveRunsByProject.get(p.id) ?? 0,
+      runnerCount: runnersByProject.get(p.id) ?? 0,
+      spend24hUsd: spendByProject.get(p.id) ?? 0,
+      memberCount: memberCountByProject.get(p.id) ?? 0,
+      members: membersByProject.get(p.id) ?? [],
+      lastActivityAt: lastActivityByProject.get(p.id) ?? null,
     };
   });
 

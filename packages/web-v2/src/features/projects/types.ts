@@ -3,6 +3,7 @@
 // health) are re-typed here to match the exact `core` route responses — see
 // `packages/core/src/projects/routes.ts` + `health-routes.ts`. Verified against
 // those routes for ISS-288 (do not guess field names).
+import type { HealthKey } from '@/design';
 import type { Project, ProjectMember } from '@forge/contracts';
 
 export type { Project, ProjectMember } from '@forge/contracts';
@@ -41,16 +42,71 @@ export interface ProjectDetail extends Project {
 
 /**
  * One row of `GET /api/projects/health` (mirrors
- * `packages/core/src/projects/health-routes.ts`).
+ * `packages/core/src/projects/health-routes.ts` — extended additively in
+ * ISS-290 with the per-project console rollups; do not guess field names).
  */
 export interface ProjectHealthRow {
+  /** Project UUID — join key against `ProjectListItem.id`. */
+  id: string;
   projectName: string;
   projectSlug: string;
   projectMeta: Record<string, unknown>;
+  description: string | null;
+  repoPath: string | null;
   throughput: number;
   totalActive: number;
   statusDistribution: Record<string, number>;
   blockers: Array<{ issueId: string; documentId: string; status: string }>;
   pendingEscalations: number;
   avgCycleTimeDays: number;
+  /** Pipeline runs currently running or paused. */
+  liveRuns: number;
+  /** Runners in the `online` state. */
+  runnerCount: number;
+  /** Trailing-24h spend (USD). */
+  spend24hUsd: number;
+  /** True total membership count. */
+  memberCount: number;
+  /** Up to 5 email-derived avatar initials. */
+  members: string[];
+  /** ISO timestamp of the most recent issue/run activity, or `null`. */
+  lastActivityAt: string | null;
+}
+
+/** Sort options for the projects console toolbar. */
+export type ProjectSort = 'recent' | 'name' | 'health';
+
+/** Cards ⇄ List view toggle. */
+export type ProjectView = 'cards' | 'list';
+
+/**
+ * One fully-hydrated console row: the list item joined with its health rollup,
+ * a client-derived `health` enum, and the client-only `pinned` flag.
+ */
+export interface ProjectConsoleItem {
+  id: string;
+  slug: string;
+  name: string;
+  role: ProjectListItem['role'];
+  createdAt: string;
+  description: string | null;
+  repoPath: string | null;
+  health: HealthKey;
+  liveRuns: number;
+  openIssues: number;
+  runnerCount: number;
+  spend24hUsd: number;
+  memberCount: number;
+  members: string[];
+  lastActivityAt: string | null;
+  pinned: boolean;
+}
+
+/** Workspace summary totals for the stats band. */
+export interface WorkspaceTotals {
+  projects: number;
+  liveRuns: number;
+  openIssues: number;
+  runners: number;
+  spend24hUsd: number;
 }
