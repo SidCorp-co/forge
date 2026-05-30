@@ -39,6 +39,7 @@ import {
   devicePublicRoutes,
   deviceUserRoutes,
 } from './devices/routes.js';
+import { deviceSkillRoutes, deviceSkillStatusRoutes } from './devices/skills-routes.js';
 import { registerDeviceStaleDetector } from './devices/stale-detector.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { seedDomainTemplates } from './domain-templates/seed.js';
@@ -346,8 +347,10 @@ app.route('/api/admin', adminRoutes);
 app.route('/api/admin/pipeline', pipelineHealthAdminRoutes);
 app.route('/api/devices', devicePublicRoutes);
 app.route('/api/devices', deviceAuthRoutes);
+app.route('/api/devices', deviceSkillRoutes);
 app.route('/api', deviceOwnerRoutes);
 app.route('/api/projects', deviceUserRoutes);
+app.route('/api/projects', deviceSkillStatusRoutes);
 app.route('/api/pipeline/registry', pipelineRegistryRoutes);
 app.route('/api/pipeline', pipelineAnalyticsRoutes);
 app.route('/api/projects', projectCostAnalyticsRoutes);

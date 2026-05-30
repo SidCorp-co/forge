@@ -6,12 +6,14 @@
 //! - `lifecycle` — POST `/complete`, `/fail` (M3)
 //! - `heartbeat` — POST `/api/devices/heartbeat` every 30s (M1)
 //! - `runners`   — GET `/api/devices/me/runners` discovery + self PATCH (ISS-271)
+//! - `skills`    — device skill sync: manifest/content pull + install report (ISS-278)
 
 pub mod events;
 pub mod frames;
 pub mod heartbeat;
 pub mod lifecycle;
 pub mod runners;
+pub mod skills;
 pub mod ws;
 
 /// Shared HTTP client + auth context for the REST surface.

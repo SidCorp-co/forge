@@ -18,7 +18,8 @@ use super::process::{build_command, graceful_kill};
 use super::{FailureKind, JobSpec, Runner, RunnerEvent, RunnerKind, RunnerStatus, SessionId};
 use crate::error::{Error, Result};
 use crate::mcp;
-use crate::workspace::worktree;
+use crate::transport::CoreClient;
+use crate::workspace::{skill_sync, worktree};
 
 struct Session {
     status: RunnerStatus,
@@ -121,6 +122,25 @@ impl Runner for ClaudeCodeRunner {
                 .to_string(),
             None => repo,
         };
+
+        // ISS-278 — server-driven skill seeding. Pull the project's effective
+        // skills, seed `.claude/skills/<name>/` into the working dir, and
+        // report installed hashes. Best-effort: a sync failure (old server,
+        // transient error, no registered skills) must never block the job —
+        // it just means `/forge-*` skills may be absent for this run.
+        {
+            let client = CoreClient::new(self.core_url.clone(), self.device_token.clone());
+            match skill_sync::sync_skills(
+                &client,
+                &spec.project_id,
+                std::path::Path::new(&effective_repo),
+            )
+            .await
+            {
+                Ok(n) => tracing::info!("[skills] job={job_id} synced {n} skill(s)"),
+                Err(e) => tracing::warn!("[skills] job={job_id} sync skipped: {e}"),
+            }
+        }
 
         let prompt = spec
             .prompt

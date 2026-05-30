@@ -359,6 +359,7 @@ name = "forge-runner-core"
 version = "0.2.10"
 dependencies = [
  "async-trait",
+ "base64",
  "dirs-next",
  "futures-util",
  "hex",
