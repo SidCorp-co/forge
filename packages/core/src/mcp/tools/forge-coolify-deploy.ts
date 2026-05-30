@@ -49,6 +49,7 @@ const inputSchema = z
     issueId: z.uuid().optional(),
     integrationId: z.uuid().optional(),
     deploymentUuid: z.string().optional(),
+    force: z.boolean().optional(),
   })
   .strict();
 
@@ -84,9 +85,12 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = ({
     'lastHealthStatus, breakerOpen); empty array => project is local-only (no Coolify). ' +
     "deploy: requires issueId — resolves the issue's latest pipeline run and enqueues a " +
     'deploy via the SAME idempotent path as the release auto-subscriber (requestId = ' +
-    'runId:integrationId), so a second deploy for the same run is a no-op (no double-deploy). ' +
+    'runId:integrationId), so a second deploy for the same run is a no-op (no double-deploy) ' +
+    'and returns dispatched:false, reason:"already-dispatched". Pass force:true to RE-DEPLOY the ' +
+    'same run after a branch fix: a per-attempt requestId bypasses the dedup and Coolify rebuilds ' +
+    '(deploy?force=). ' +
     'prod integrations honor the human-confirm gate: returns pendingHumanConfirm:true and does ' +
-    'NOT dispatch until confirmed via the confirm-prod-deploy endpoint. ' +
+    'NOT dispatch until confirmed via the confirm-prod-deploy endpoint (force does NOT bypass it). ' +
     'status: latest outbound delivery per integration (or a specific integrationId): ' +
     'deploymentUuid, status, breakerOpen, createdAt. ' +
     'logs: fetch the Coolify build/deploy log for a deployment and return it scrubbed + tailed. ' +
@@ -140,6 +144,7 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = ({
           projectId,
           issueId: input.issueId,
           runId,
+          ...(input.force ? { force: true } : {}),
         });
         return {
           dispatched: outcome.dispatched,

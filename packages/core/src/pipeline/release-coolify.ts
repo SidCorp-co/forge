@@ -34,8 +34,19 @@ export async function tryDispatchCoolifyRelease(args: {
   projectId: string;
   issueId: string | null;
   runId: string;
+  /**
+   * Explicit re-deploy. The auto-subscriber dedupes on the per-run requestId
+   * (`runId:integrationId`) so a single release event never double-deploys —
+   * but that also permanently no-ops a LEGITIMATE re-deploy of the same run
+   * after a fix is merged to the branch (ISS-290). When `force` is set the
+   * dispatch uses a per-attempt requestId so it bypasses both the delivery-row
+   * dedup and pg-boss's `singletonKey`, and passes `force` down so Coolify
+   * rebuilds. Only the agent-driven `forge_coolify_deploy → deploy` path sets
+   * this; the auto-subscriber never does, so it stays idempotent.
+   */
+  force?: boolean;
 }): Promise<DispatchOutcome> {
-  const { projectId, issueId, runId } = args;
+  const { projectId, issueId, runId, force } = args;
   const rows = await db
     .select()
     .from(projectIntegrations)
@@ -52,6 +63,11 @@ export async function tryDispatchCoolifyRelease(args: {
   }
 
   const dispatched: string[] = [];
+  // Integrations whose deploy was already enqueued for this run (dedup hit).
+  // Tracked separately from `dispatched` so the caller can tell a fresh
+  // dispatch from a no-op — the old code reported both as `dispatched:true`,
+  // which made an idempotency skip look like a successful re-deploy (ISS-290).
+  const alreadyDispatched: string[] = [];
   let pendingHumanConfirm = false;
 
   for (const row of rows) {
@@ -73,11 +89,17 @@ export async function tryDispatchCoolifyRelease(args: {
     // re-enqueueing so manual + auto never double-deploy. (recordDelivery does
     // a plain insert, so without this a second dispatch would hit the
     // `integration_deliveries_request_id_uq` violation inside the worker.)
-    const requestId = `${runId}:${row.id}`;
-    const existing = await findDeliveryByRequestId(row.id, requestId);
-    if (existing) {
-      dispatched.push(row.id);
-      continue;
+    //
+    // `force` (ISS-290) opts OUT of this guard for an explicit re-deploy: a
+    // per-attempt requestId sidesteps both the row dedup and pg-boss's
+    // singletonKey so the same run can deploy again after a branch fix.
+    const requestId = force ? `${runId}:${row.id}:redeploy-${Date.now()}` : `${runId}:${row.id}`;
+    if (!force) {
+      const existing = await findDeliveryByRequestId(row.id, requestId);
+      if (existing) {
+        alreadyDispatched.push(row.id);
+        continue;
+      }
     }
 
     await setCurrentStepForce(runId, RELEASE_DEPLOY_IN_FLIGHT);
@@ -88,6 +110,7 @@ export async function tryDispatchCoolifyRelease(args: {
       issueId,
       eventName: 'release.requested',
       requestId,
+      ...(force ? { force: true } : {}),
     });
     dispatched.push(row.id);
 
@@ -107,6 +130,16 @@ export async function tryDispatchCoolifyRelease(args: {
       pendingHumanConfirm: true,
       integrationIds: rows.filter((r) => r.environment === 'prod').map((r) => r.id),
       reason: 'awaiting-prod-confirm',
+    };
+  }
+  // Nothing fresh enqueued, but a prior delivery already covered every active
+  // integration — surface that instead of a misleading `dispatched:true`.
+  if (dispatched.length === 0 && alreadyDispatched.length > 0) {
+    return {
+      dispatched: false,
+      pendingHumanConfirm,
+      integrationIds: alreadyDispatched,
+      reason: 'already-dispatched',
     };
   }
   return { dispatched: dispatched.length > 0, pendingHumanConfirm, integrationIds: dispatched };

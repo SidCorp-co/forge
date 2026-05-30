@@ -117,7 +117,29 @@ describe('tryDispatchCoolifyRelease — staging idempotency', () => {
     });
 
     expect(enqueueSpy).not.toHaveBeenCalled();
-    // Still reported as dispatched so the caller treats it as a no-op success.
+    // No fresh build: report it honestly as a no-op so the caller (e.g. the
+    // MCP deploy action) can distinguish a dedup from a real re-deploy (ISS-290).
+    expect(outcome.dispatched).toBe(false);
+    expect(outcome.reason).toBe('already-dispatched');
+    expect(outcome.integrationIds).toEqual([STAGING_INT]);
+  });
+
+  it('force re-deploys the same run: bypasses the dedup with a per-attempt requestId and force flag', async () => {
+    selectQueue.push([stagingRow]);
+
+    const outcome = await tryDispatchCoolifyRelease({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      runId: RUN_ID,
+      force: true,
+    });
+
+    // force must NOT consult the idempotency guard at all.
+    expect(findDeliverySpy).not.toHaveBeenCalled();
+    expect(enqueueSpy).toHaveBeenCalledTimes(1);
+    const job = enqueueSpy.mock.calls[0]?.[0] as { requestId: string; force?: boolean };
+    expect(job.force).toBe(true);
+    expect(job.requestId).toMatch(new RegExp(`^${RUN_ID}:${STAGING_INT}:redeploy-\\d+$`));
     expect(outcome.dispatched).toBe(true);
     expect(outcome.integrationIds).toEqual([STAGING_INT]);
   });
