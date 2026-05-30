@@ -22,7 +22,7 @@ const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
   { key: "activity", label: "Activity", icon: "activity", href: "/activity" },
   { key: "runners", label: "Runners", icon: "server", href: "/runners" },
   { key: "sessions", label: "Sessions", icon: "agent", href: "/sessions" },
-  { key: "pipeline-ops", label: "Pipeline ops", icon: "pipeline", href: "/pipeline" },
+  { key: "pipeline-ops", label: "Pipeline ops", icon: "pipeline", href: "/ops" },
 ];
 
 /** Project-tier nav, relative to `/projects/[slug]`. `sub` is appended to the

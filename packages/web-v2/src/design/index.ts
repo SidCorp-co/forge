@@ -53,6 +53,8 @@ export { Table, THead, TBody, TR, TH, TD } from "./primitives/table";
 // patterns
 export { PipelineTracker, type PipelineTrackerProps } from "./patterns/pipeline-tracker";
 export { KanbanCard, type KanbanCardProps } from "./patterns/kanban-card";
+export { KanbanBoard, type KanbanBoardProps } from "./patterns/kanban-board";
+export { KanbanColumn, type KanbanColumnProps } from "./patterns/kanban-column";
 export { NavRail, type NavRailProps, type NavItem } from "./patterns/nav-rail";
 export { TopBar, type TopBarProps } from "./patterns/top-bar";
 export { CommandPalette, type CommandPaletteProps, type Command } from "./patterns/command-palette";

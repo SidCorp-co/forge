@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { type CSSProperties, useEffect, useRef, type ReactNode } from "react";
 import { Icon } from "@/design/icons/icon";
 
 export interface SlideOverProps {
@@ -66,8 +66,8 @@ export function SlideOver({ open, onClose, title, children, width = 480 }: Slide
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        className="forge-slide flex h-full flex-col border-l border-line bg-surface shadow-lg"
-        style={{ width }}
+        className="forge-slide flex h-full w-full max-w-[100vw] flex-col border-l border-line bg-surface shadow-lg sm:w-[var(--slide-over-w)]"
+        style={{ "--slide-over-w": `${width}px` } as CSSProperties}
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex flex-none items-center justify-between gap-3 border-b border-line px-5 py-4">
