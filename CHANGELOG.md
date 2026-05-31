@@ -34,6 +34,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **The web session view now works for jobs run by the CLI runner — it shows the agent transcript just like the desktop app (CLI-runner jobs previously showed nothing).**
   *Technical: Web session view derives the transcript from agent_sessions for CLI-runner jobs, reaching parity with desktop (ISS-283). Merge 10b2026a.*
 
+- **The new /v2 web app is now polished and brand-compliant — the sidebar shows the real Forge logo, the account menu (Settings, Sign out) works, navigation collapses into a mobile drawer with no sideways scrolling, unknown URLs show an on-brand "Page not found", not-yet-built pages show a friendly "Coming soon" instead of a hard 404, and all text renders in the brand fonts (Hanken Grotesk + JetBrains Mono).**
+  *Technical: web-v2 shell completion + brand pass: sidebar logo via assetPath('/forge-mark-32.png'); footer Menu wired to /settings + logout(); responsive md: hamburger drawer (>=44px targets, safe-area insets); global not-found.tsx; ComingSoon placeholders for /activity + /projects/[slug]/pm; 3 raw-token->semantic swaps; brand fonts fixed by scoping next/font vars to <html>. Merge eb0be34.*
+
 ### Security
 
 ## [0.2.10] - 2026-05-28
