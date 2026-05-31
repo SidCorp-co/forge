@@ -19,6 +19,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **The project Automation page now has a working PM tab: view and edit the PM Agent's cadence, run triggers, and settings, and browse its decision audit log.**
   *Technical: web-v2 automation feature gains a PM slice (types/api/hooks + PmScreen) backed by /api/projects/:projectId/pm/config (GET/PUT) and /pm/decisions (paginated); replaces the ComingSoon stub. Config edits are owner/admin-gated. Merge f52623b.*
 
+- **The v2 Runners screen now has a per-device detail panel — open any device from the Runners list to rename it, see its status and configuration (platform, agent version, last seen, git-push credential), and assign or adjust the project pools (runners) bound to it. This brings v2 to parity with the v1 device settings page.**
+  *Technical: web-v2 device-detail SlideOver in features/runners, opened by a per-row Manage action (no new route or sidebar item). Rename via PATCH /api/devices/:id; pools via GET /api/devices/:id/runners + POST/PATCH/DELETE /api/projects/:id/runners; reuses kit primitives + projects hooks. No core change (ISS-317). Merge 260a0e78.*
+
 ### Changed
 
 - **You can now configure a project directly in the new web app — name & description, repository path, base/production branches, pipeline stages, labels, and members — reached from the project dashboard's gear icon or the ⌘K command palette, with no new sidebar item. Edits persist immediately and project secrets are never shown.**
