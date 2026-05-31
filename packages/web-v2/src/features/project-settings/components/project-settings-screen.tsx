@@ -20,6 +20,7 @@ import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import { formatApiError } from "@/lib/api/error";
 import { BasicsTab } from "./basics-tab";
 import { RepoTab } from "./repo-tab";
+import { TestingTab } from "./testing-tab";
 import { PipelineTab } from "./pipeline-tab";
 import { LabelsTab } from "./labels-tab";
 import { MembersTab } from "./members-tab";
@@ -28,6 +29,7 @@ import { IntegrationsTab } from "./integrations-tab";
 const TABS: TabItem[] = [
   { value: "basics", label: "Basics" },
   { value: "repo", label: "Repository" },
+  { value: "testing", label: "Testing" },
   { value: "pipeline", label: "Pipeline" },
   { value: "labels", label: "Labels" },
   { value: "members", label: "Members" },
@@ -129,6 +131,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 
       {tab === "basics" && <BasicsTab project={project} canEdit={canEdit} />}
       {tab === "repo" && <RepoTab project={project} canEdit={canEdit} />}
+      {tab === "testing" && <TestingTab project={project} canEdit={canEdit} />}
       {tab === "pipeline" && <PipelineTab projectId={project.id} canEdit={canEdit} />}
       {tab === "labels" && <LabelsTab projectId={project.id} canEdit={canEdit} />}
       {tab === "members" && <MembersTab projectId={project.id} canEdit={canEdit} />}
