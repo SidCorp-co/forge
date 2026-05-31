@@ -12,6 +12,10 @@ export interface NavItem {
   key: string;
   label: string;
   icon: IconName;
+  /** Optional count pill (e.g. the Attention/Inbox unread count). Rendered as a
+   *  small badge beside the label, or as a count dot on the icon when collapsed.
+   *  Falsy / 0 hides it. */
+  badge?: number;
 }
 
 /** A titled group of project-tier nav items (e.g. Work / Insight / Config). */
@@ -60,29 +64,62 @@ function NavRow({
   collapsed?: boolean;
   onClick?: () => void;
 }) {
+  const count = item.badge && item.badge > 0 ? item.badge : 0;
+  const badgeLabel = count > 99 ? "99+" : String(count);
   const btn = (
     <button
       type="button"
       onClick={onClick}
       aria-current={active ? "page" : undefined}
-      aria-label={collapsed ? item.label : undefined}
+      aria-label={
+        collapsed
+          ? count > 0
+            ? `${item.label}, ${count} need attention`
+            : item.label
+          : undefined
+      }
       title={undefined}
       className={cn(
-        "flex w-full items-center rounded-md text-[13.5px] font-semibold transition-colors duration-[120ms]",
+        "flex w-full items-center rounded-md text-[13.5px] font-semibold transition-colors duration-[120ms] focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
         // ≥44px touch target on small screens (drawer); compact on desktop rail.
         "max-md:min-h-[44px]",
         collapsed ? "justify-center px-0 py-2" : "gap-2.5 px-2.5 py-2",
         active ? "bg-accent-tint text-accent-text" : "text-muted hover:bg-hover hover:text-fg",
       )}
     >
-      <Icon name={item.icon} size={17} style={active ? { color: "var(--accent)" } : undefined} />
-      {!collapsed && item.label}
+      {collapsed ? (
+        // Icon-only: anchor a count dot on the top-right of the glyph.
+        <span className="relative inline-flex">
+          <Icon name={item.icon} size={17} style={active ? { color: "var(--accent)" } : undefined} />
+          {count > 0 && (
+            <span
+              className="absolute -right-2 -top-1.5 inline-flex min-w-[15px] items-center justify-center rounded-pill px-1 font-semibold"
+              style={{ fontSize: 9.5, lineHeight: "14px", color: "var(--flame-700)", background: "var(--flame-50)" }}
+            >
+              {badgeLabel}
+            </span>
+          )}
+        </span>
+      ) : (
+        <>
+          <Icon name={item.icon} size={17} style={active ? { color: "var(--accent)" } : undefined} />
+          <span className="flex-1 text-left">{item.label}</span>
+          {count > 0 && (
+            <span
+              className="inline-flex min-w-[18px] items-center justify-center rounded-pill px-1.5 font-semibold"
+              style={{ fontSize: 11, lineHeight: "16px", color: "var(--flame-700)", background: "var(--flame-50)" }}
+            >
+              {badgeLabel}
+            </span>
+          )}
+        </>
+      )}
     </button>
   );
   // Tooltip surfaces the label in icon-only mode — but expanding the rail also
   // reveals labels, so discoverability is NOT hover-dependent.
   return collapsed ? (
-    <Tooltip label={item.label} side="bottom">
+    <Tooltip label={count > 0 ? `${item.label} · ${count}` : item.label} side="bottom">
       {btn}
     </Tooltip>
   ) : (
