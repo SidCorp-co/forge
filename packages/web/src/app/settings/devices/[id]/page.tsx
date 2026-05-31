@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, Check, Plus } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, ChevronRight, Plus, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
@@ -14,6 +14,8 @@ import {
   useProject,
   useProjects,
 } from '@/features/project/hooks/use-projects';
+import { useBulkPushSkills, useDeviceSkillStatus } from '@/features/skill/hooks/use-skills';
+import type { DeviceSkillStatusEntry } from '@/features/skill/types';
 import { useSetPageTitle } from '@/hooks/use-page-title';
 
 // Reused from the devices list page — keep the colour map in sync so a device
@@ -102,7 +104,7 @@ export default function DeviceDetailPage() {
       {runners && runners.length > 0 && (
         <div className="space-y-3">
           {runners.map((r) => (
-            <RunnerRow key={r.runnerId} assignment={r} />
+            <RunnerRow key={r.runnerId} assignment={r} deviceId={deviceId} />
           ))}
         </div>
       )}
@@ -112,7 +114,13 @@ export default function DeviceDetailPage() {
   );
 }
 
-function RunnerRow({ assignment }: { assignment: DeviceRunnerAssignment }) {
+function RunnerRow({
+  assignment,
+  deviceId,
+}: {
+  assignment: DeviceRunnerAssignment;
+  deviceId: string;
+}) {
   const patchRunner = usePatchRunner();
   const [repoPath, setRepoPath] = useState(assignment.repoPath ?? '');
   const [branch, setBranch] = useState(assignment.branch ?? '');
@@ -183,6 +191,118 @@ function RunnerRow({ assignment }: { assignment: DeviceRunnerAssignment }) {
           </Button>
         </div>
       </div>
+
+      <RunnerSkills assignment={assignment} deviceId={deviceId} />
+    </div>
+  );
+}
+
+const SKILL_STATUS_STYLES: Record<DeviceSkillStatusEntry['status'], string> = {
+  synced: 'border-success/30 bg-success-surface/40 text-success',
+  outdated: 'border-warning/30 bg-warning-dim/10 text-warning',
+  missing: 'border-outline-variant/40 bg-surface-container text-outline',
+};
+
+function skillStatusLabel(s: DeviceSkillStatusEntry): string {
+  if (s.status === 'synced') return `synced (v${s.installedVersion ?? '?'})`;
+  if (s.status === 'missing') return 'missing';
+  return `outdated (v${s.installedVersion ?? '?'})`;
+}
+
+/**
+ * Skill Studio 5 (ISS-279) — by-device view: this device × this project's
+ * skills with installedVersion + sync status, a per-skill Sync, and a
+ * cross-link back to Studio (`?skill=` deep-link).
+ */
+function RunnerSkills({
+  assignment,
+  deviceId,
+}: {
+  assignment: DeviceRunnerAssignment;
+  deviceId: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading, error } = useDeviceSkillStatus(
+    open ? assignment.projectId : undefined,
+    open ? deviceId : undefined,
+  );
+  const bulkPush = useBulkPushSkills();
+  const [syncingSkill, setSyncingSkill] = useState<string | null>(null);
+
+  const skills = data?.skills ?? [];
+  const outdated = skills.filter((s) => s.status !== 'synced').length;
+
+  function syncSkill(name?: string) {
+    setSyncingSkill(name ?? '*');
+    bulkPush.mutate(
+      {
+        targets: ['dev'],
+        projectDocumentId: assignment.projectId,
+        skillNames: name ? [name] : undefined,
+      },
+      { onSettled: () => setSyncingSkill(null) },
+    );
+  }
+
+  return (
+    <div className="border-t border-outline-variant/20 pt-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-1.5 text-[11px] font-medium uppercase tracking-widest text-outline hover:text-on-surface"
+      >
+        {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+        Skills
+        {open && skills.length > 0 && (
+          <span className="ml-1 normal-case tracking-normal text-outline">
+            {outdated > 0 ? `· ${outdated} out of sync` : '· all in sync'}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="mt-2 space-y-1.5">
+          {isLoading && <p className="text-[11px] text-outline">Loading skills…</p>}
+          {error && (
+            <p className="text-[11px] text-danger">Failed to load skill status.</p>
+          )}
+          {!isLoading && !error && skills.length === 0 && (
+            <p className="text-[11px] text-outline">No skills registered for this project.</p>
+          )}
+          {skills.map((s) => {
+            const skillSyncing = bulkPush.isPending && syncingSkill === s.name;
+            return (
+              <div
+                key={s.skillId}
+                className="flex items-center justify-between gap-2 rounded border border-outline-variant/20 bg-surface-container/40 px-2 py-1"
+              >
+                <Link
+                  href={`/projects/${assignment.slug}/skills?skill=${s.skillId}`}
+                  className="flex min-w-0 items-center gap-2 text-xs text-on-surface-variant hover:text-on-surface"
+                  title="Open in Skill Studio"
+                >
+                  <span className="truncate font-medium">{s.name}</span>
+                  <span
+                    className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] ${SKILL_STATUS_STYLES[s.status]}`}
+                  >
+                    {skillStatusLabel(s)}
+                  </span>
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => syncSkill(s.name)}
+                  disabled={bulkPush.isPending || s.status === 'synced'}
+                  title={s.status === 'synced' ? 'In sync' : 'Push this skill'}
+                  className="inline-flex shrink-0 items-center gap-1 rounded border border-outline-variant/30 px-2 py-0.5 text-[10px] text-on-surface hover:bg-surface-container disabled:opacity-40"
+                >
+                  <RefreshCw className={`h-3 w-3 ${skillSyncing ? 'animate-spin' : ''}`} />
+                  Sync
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

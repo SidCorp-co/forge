@@ -8,7 +8,11 @@ import { deviceSkills, runners } from '../db/schema.js';
 import { assertProjectMemberAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { loadDeviceSkillStatus, resolveRegisteredEffectiveSkills } from '../skills/effective.js';
+import {
+  loadDeviceSkillStatus,
+  loadProjectSkillSyncStatus,
+  resolveRegisteredEffectiveSkills,
+} from '../skills/effective.js';
 
 // Skill Studio 4 (ISS-278) — server-driven device skill sync.
 //
@@ -223,5 +227,28 @@ deviceSkillStatusRoutes.get(
 
     const status = await loadDeviceSkillStatus(projectId, deviceId);
     return c.json({ skills: status });
+  },
+);
+
+const syncStatusParamSchema = z.object({ projectId: z.uuid() });
+
+// GET /api/projects/:projectId/skill-sync-status
+// Aggregated skill-major freshness for the Studio by-skill panel (ISS-279):
+// every project-bound device × every registered skill, sourced from the real
+// `device_skills` rows. Replaces the legacy empty-`devices` stub.
+deviceSkillStatusRoutes.get(
+  '/:projectId/skill-sync-status',
+  requireAuth(),
+  assertEmailVerified(),
+  zValidator('param', syncStatusParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId } = c.req.valid('param');
+    const userId = c.get('userId');
+    await assertProjectMemberAccess(projectId, userId);
+
+    const data = await loadProjectSkillSyncStatus(projectId);
+    return c.json(data);
   },
 );

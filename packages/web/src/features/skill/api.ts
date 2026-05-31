@@ -1,5 +1,13 @@
 import { apiClient } from '@/lib/api/client';
-import type { Skill, SkillFile, SkillSyncStatus, BulkPushResult, EffectiveSkill, SkillOverride } from './types';
+import type {
+  Skill,
+  SkillFile,
+  SkillSyncStatus,
+  BulkPushResult,
+  EffectiveSkill,
+  SkillOverride,
+  ProjectSkillSyncStatus,
+} from './types';
 
 export const skillApi = {
   getAll: (projectId?: string) => {
@@ -41,6 +49,13 @@ export const skillApi = {
       method: 'POST',
       body: JSON.stringify({ projectId }),
     }).then((data) => ({ data })),
+
+  // Skill Studio 5 (ISS-279) — aggregated skill-major per-device freshness,
+  // sourced from real device_skills rows.
+  projectSyncStatus: (projectId: string) =>
+    apiClient<ProjectSkillSyncStatus>(
+      `/projects/${encodeURIComponent(projectId)}/skill-sync-status`,
+    ).then((data) => ({ data })),
 
   bulkPush: (targets: string[], projectId: string, skillNames?: string[]) =>
     apiClient<{ results: BulkPushResult[] }>('/skills/bulk-push', {

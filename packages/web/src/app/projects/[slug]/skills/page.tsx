@@ -8,7 +8,7 @@ import {
   useCreateSkill,
   useUpdateSkill,
   useDeleteSkill,
-  useSkillSyncStatus,
+  useProjectSkillSyncStatus,
   useBulkPushSkills,
   useEffectiveSkills,
   useUpsertSkillOverride,
@@ -41,7 +41,7 @@ function SkillsPageInner() {
   // EPIC 6 (ISS-290) — `/effective` returns globals merged with this project's
   // overrides. Each row carries `isOverridden` + `globalSkillMd` for diff view.
   const skillsQuery = useEffectiveSkills(projectId);
-  const syncQuery = useSkillSyncStatus(projectId);
+  const syncQuery = useProjectSkillSyncStatus(projectId);
   const createSkill = useCreateSkill();
   const updateSkill = useUpdateSkill();
   const deleteSkill = useDeleteSkill();
@@ -61,7 +61,9 @@ function SkillsPageInner() {
   // Memoized so its identity is stable across renders — the deep-link + filter
   // useMemos below depend on it (avoids react-hooks/exhaustive-deps churn).
   const skills = useMemo(() => skillsQuery.data?.data ?? [], [skillsQuery.data]);
-  const syncStatuses = syncQuery.data?.data ?? [];
+  const syncStatus = syncQuery.data?.data;
+  // Tracks which skill's "Sync now" is in flight (null = a top-level Sync All).
+  const [syncingSkill, setSyncingSkill] = useState<string | null>(null);
 
   const filteredSorted = useMemo(() => {
     const f = filter.trim().toLowerCase();
@@ -202,9 +204,21 @@ function SkillsPageInner() {
     );
   }
 
-  function handleSyncAll() {
+  // Sync now → enqueue a target-scoped bulk-push job (the runner pulls + reports
+  // back; the 30s poll on useProjectSkillSyncStatus then refreshes freshness).
+  // `skillName` omitted = Sync All. Targets dev only — the freshness view tracks
+  // claude-code (dev) devices, and a cloud-target job has no consumer here.
+  function handleSync(skillName?: string) {
     if (!projectId) return;
-    bulkPush.mutate({ targets: ['dev'], projectDocumentId: projectId });
+    setSyncingSkill(skillName ?? null);
+    bulkPush.mutate(
+      {
+        targets: ['dev'],
+        projectDocumentId: projectId,
+        skillNames: skillName ? [skillName] : undefined,
+      },
+      { onSettled: () => setSyncingSkill(null) },
+    );
   }
 
   const saving =
@@ -248,9 +262,11 @@ function SkillsPageInner() {
       ) : (
         <>
           <SkillSyncPanel
-            syncStatuses={syncStatuses}
-            onSyncAll={handleSyncAll}
+            data={syncStatus}
+            onSync={handleSync}
             syncing={bulkPush.isPending}
+            syncingSkill={syncingSkill}
+            deviceHref={(deviceId) => `/settings/devices/${deviceId}`}
           />
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
