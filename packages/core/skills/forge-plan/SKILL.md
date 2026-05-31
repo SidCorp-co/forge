@@ -171,15 +171,15 @@ For Complex issues with **>3 parallel workstreams** that each ship independently
 
 3. Write the parent's `plan` field with one section per child — title, scope, files, acceptance criteria. The parent plan is the index; each child's own `description` carries the child-specific implementation detail.
 
-4. Set the parent to `status: 'waiting'`. **Do NOT auto-approve** — a human reviews the decomposition before the cascade fires.
+4. Do **NOT** set the parent's status yourself. `decomposeParent` (core) atomically parks the parent at `status: 'waiting'` (the review gate) and creates the children at `draft`. State control for decompose lives in core, not in this skill — manually overriding the parent status is the drift that breaks the kickoff. A human reviews the decomposition before approving.
 
 5. Post a plan comment summarizing the decomposition decision and rationale: which children, why this split, what the parent's integration test will verify.
 
-**What happens after human approval (automatic):**
-- Parent waiting → approved fires the cascade: every `on_hold` child flips to `approved` (manualHold cleared if set).
-- Children run their pipelines in parallel through code → review → test → staging.
-- When the LAST child reaches `staging`, the watcher posts a comment on the parent and re-fires the parent's pipeline so forge-test runs the integration step on merged children code.
-- Parent reaches `released`. The L2 release gate (`waiting_on_decomp_parent`) clears for every child's queued `release` job — children release atomically with the epic.
+**What happens after human approval (automatic, all system-owned):**
+- Parent enters `approved` → the cascade flips every `draft` child → `approved` simultaneously (manualHold cleared if set).
+- Children run their pipelines in parallel through code → review → test → released → closed. Children do NOT wait for the parent.
+- The parent sits at `approved` but its forward jobs (code/review/test/fix) are held by the `decomposeChildrenPending` dispatch gate until EVERY child has landed on the base branch (`child.merged_at` set, i.e. child reached `closed`).
+- Once all children are merged, the gate clears and the parent runs its integration work LAST (code → … → released → closed). The parent merges after its children.
 - Parent → `closed` forces any non-closed children to `closed` (clean-up when the epic is abandoned).
 
 **Verifying sibling-blocks edges took effect (ISS-131 breadcrumb):**

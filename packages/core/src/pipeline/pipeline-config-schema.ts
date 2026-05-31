@@ -288,7 +288,7 @@ export type SessionGroupsConfig = z.infer<typeof sessionGroupsSchema>;
  *
  * Trunk-based projects (jarvis-agents, Anhome) leave both fields at
  * `"released"` — `productionBranch` collapses into `baseBranch` and the
- * `releaseDecomposePending` L2 gate shares the column with `blockedBy`.
+ * `decomposeChildrenPending` L2 gate shares the column with `blockedBy`.
  * Multi-base-branch projects will split these in a future v3 with a
  * dedicated `merged_to_prod_at` column.
  */
