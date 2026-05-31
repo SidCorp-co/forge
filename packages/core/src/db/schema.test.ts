@@ -362,7 +362,7 @@ describe('db/schema — devices', () => {
     expect(deviceStatuses).toEqual(['online', 'offline', 'revoked']);
   });
 
-  it('has the thirteen documented columns', () => {
+  it('has the fourteen documented columns', () => {
     const names = getTableConfig(devices).columns.map((c) => c.name);
     expect(names.sort()).toEqual(
       [
@@ -373,6 +373,8 @@ describe('db/schema — devices', () => {
         'git_credential_ref',
         'id',
         'last_seen_at',
+        // Stable per-machine identity for re-pair-keeps-device dedup.
+        'machine_id',
         'name',
         'owner_id',
         'paired_at',

@@ -42,6 +42,7 @@ import {
   deviceUserRoutes,
 } from './devices/routes.js';
 import { deviceSkillRoutes, deviceSkillStatusRoutes } from './devices/skills-routes.js';
+import { registerDevicePrune } from './devices/prune.js';
 import { registerDeviceStaleDetector } from './devices/stale-detector.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { seedDomainTemplates } from './domain-templates/seed.js';
@@ -409,6 +410,7 @@ if (isMain) {
   await registerPmDispatcher();
   await registerStaleDetector();
   await registerDeviceStaleDetector();
+  await registerDevicePrune();
   await registerRunnerStaleDetector();
   await registerRetentionSweeper();
   await registerDesktopPairingCleanup();

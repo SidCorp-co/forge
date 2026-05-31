@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import argon2 from 'argon2';
 import { type InferSelectModel, and, eq, ne } from 'drizzle-orm';
 import { env } from '../config/env.js';
@@ -23,6 +23,20 @@ export interface IssueDeviceTokenInput {
   platform: DevicePlatform;
   agentVersion?: string | null;
   capabilities?: unknown;
+  /** Raw stable machine id (e.g. /etc/machine-id) — hashed before storage. */
+  machineId?: string | null;
+}
+
+/**
+ * Deterministic, non-reversible fingerprint of a host's machine id. Used as the
+ * dedup key so the raw `/etc/machine-id` is never stored (systemd advises
+ * hashing it before exposing externally). Plain sha256 (not argon2) because it
+ * must be reproducible for equality lookups, unlike the salted token hash.
+ */
+export function hashMachineId(raw: string): string {
+  return createHash('sha256')
+    .update(`${raw}:${env.DEVICE_TOKEN_PEPPER}`)
+    .digest('hex');
 }
 
 export interface IssuedDeviceToken {
@@ -113,6 +127,75 @@ export async function issueOrRotateDeviceToken(
     })
     .returning();
   if (!device) throw new Error('issueOrRotateDeviceToken: insert returned no row');
+  return { device, plaintext };
+}
+
+/**
+ * Pairing-flow token issuer keyed on a stable machine id. When `machineId` is
+ * present and a non-revoked device with the same (ownerId, machineId) already
+ * exists, rotate that device's token IN PLACE — keeping its id and therefore
+ * its runner bindings — instead of inserting a duplicate. When `machineId` is
+ * absent (legacy runner), falls back to always-insert (old behaviour).
+ *
+ * This is what makes "re-pair from the same machine" idempotent: no ghost
+ * devices, no orphaned runner assignments. Mirrors how Consul/Tailscale key
+ * node identity on a persistent machine fingerprint.
+ */
+export async function issueOrRotateDeviceTokenByMachine(
+  input: IssueDeviceTokenInput,
+): Promise<IssuedDeviceToken> {
+  if (!input.machineId) {
+    return issueDeviceToken(input);
+  }
+  const machineIdHash = hashMachineId(input.machineId);
+  const plaintext = randomBytes(TOKEN_BYTES).toString('base64url');
+  const tokenPrefix = plaintext.slice(0, PREFIX_LEN);
+  const tokenHash = await argon2.hash(plaintext + env.DEVICE_TOKEN_PEPPER, ARGON2_OPTIONS);
+
+  const [existing] = await db
+    .select()
+    .from(devices)
+    .where(
+      and(
+        eq(devices.ownerId, input.ownerId),
+        eq(devices.machineId, machineIdHash),
+        ne(devices.status, 'revoked'),
+      ),
+    )
+    .limit(1);
+
+  if (existing) {
+    const [rotated] = await db
+      .update(devices)
+      .set({
+        tokenHash,
+        tokenPrefix,
+        name: input.name,
+        platform: input.platform,
+        status: 'offline',
+        ...(input.agentVersion !== undefined ? { agentVersion: input.agentVersion } : {}),
+        ...(input.capabilities !== undefined ? { capabilities: input.capabilities } : {}),
+      })
+      .where(eq(devices.id, existing.id))
+      .returning();
+    if (!rotated) throw new Error('issueOrRotateDeviceTokenByMachine: rotate returned no row');
+    return { device: rotated, plaintext };
+  }
+
+  const [device] = await db
+    .insert(devices)
+    .values({
+      ownerId: input.ownerId,
+      name: input.name,
+      platform: input.platform,
+      agentVersion: input.agentVersion ?? null,
+      tokenHash,
+      tokenPrefix,
+      capabilities: input.capabilities ?? null,
+      machineId: machineIdHash,
+    })
+    .returning();
+  if (!device) throw new Error('issueOrRotateDeviceTokenByMachine: insert returned no row');
   return { device, plaintext };
 }
 

@@ -302,11 +302,18 @@ export const devices = pgTable(
     // 'ssh-deploy-key'); NULL means no credential was provisioned. The secret
     // material itself is returned once at poll time and never stored here.
     gitCredentialRef: text('git_credential_ref'),
+    // Stable per-machine identity (sha256 hex of the host's /etc/machine-id),
+    // sent by the runner at pairing. Lets a re-pair from the same machine
+    // rotate the EXISTING device row in place (keeping its runner bindings)
+    // instead of inserting a duplicate "ghost" device. NULL for legacy clients
+    // that don't send one → pairing falls back to always-insert.
+    machineId: text('machine_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     ownerIdIdx: index('devices_owner_id_idx').on(t.ownerId),
     tokenPrefixIdx: index('devices_token_prefix_idx').on(t.tokenPrefix),
+    ownerMachineIdx: index('devices_owner_machine_idx').on(t.ownerId, t.machineId),
   }),
 );
 

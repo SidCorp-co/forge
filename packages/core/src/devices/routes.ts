@@ -46,6 +46,9 @@ const pairBodySchema = z
     platform: platformEnum,
     agentVersion: z.string().max(80).optional(),
     capabilities: z.record(z.string(), z.unknown()).optional(),
+    // Stable machine id (e.g. /etc/machine-id). When present, re-pairing from
+    // the same machine rotates the existing device row instead of duplicating.
+    machineId: z.string().min(1).max(256).optional(),
   })
   .strict();
 
@@ -75,6 +78,7 @@ devicePublicRoutes.post(
       platform: input.platform,
       ...(input.agentVersion !== undefined ? { agentVersion: input.agentVersion } : {}),
       ...(input.capabilities !== undefined ? { capabilities: input.capabilities } : {}),
+      ...(input.machineId !== undefined ? { machineId: input.machineId } : {}),
     });
     return c.json(
       {

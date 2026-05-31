@@ -1,6 +1,10 @@
 import { eq, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { type Device, type IssueDeviceTokenInput, issueDeviceToken } from '../auth/deviceToken.js';
+import {
+  type Device,
+  type IssueDeviceTokenInput,
+  issueOrRotateDeviceTokenByMachine,
+} from '../auth/deviceToken.js';
 import { db } from '../db/client.js';
 import { pairingCodes } from '../db/schema.js';
 
@@ -54,12 +58,13 @@ export async function redeemPairingCode(input: PairInput): Promise<PairResult> {
       throw badRequest('CODE_EXPIRED', 'pairing code expired');
     }
 
-    const { device, plaintext } = await issueDeviceToken({
+    const { device, plaintext } = await issueOrRotateDeviceTokenByMachine({
       ownerId: row.user_id,
       name: input.name,
       platform: input.platform,
       agentVersion: input.agentVersion ?? null,
       capabilities: input.capabilities,
+      machineId: input.machineId ?? null,
     });
 
     await tx

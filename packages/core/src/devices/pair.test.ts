@@ -13,7 +13,9 @@ const issueDeviceToken = vi.fn(async () => ({
 }));
 
 vi.mock('../auth/deviceToken.js', () => ({
-  issueDeviceToken: (input: unknown) => issueDeviceToken(input),
+  // pair.ts now routes through the machine-id-aware issuer; the spy var keeps
+  // its old name to minimise churn in the assertions below.
+  issueOrRotateDeviceTokenByMachine: (input: unknown) => issueDeviceToken(input),
 }));
 
 const txExecute = vi.fn();

@@ -603,6 +603,13 @@
       "when": 1781481600000,
       "tag": "0087_drop_users_is_ceo",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1781568000000,
+      "tag": "0088_device_machine_id",
+      "breakpoints": true
     }
   ]
 }

@@ -40,6 +40,22 @@ pub fn default_device_name() -> String {
         .unwrap_or_else(|| "forge-runner".to_string())
 }
 
+/// Stable per-machine identity. Reads systemd's `/etc/machine-id` (falling back
+/// to D-Bus's `/var/lib/dbus/machine-id`). The server hashes it before storage,
+/// so sending it raw is fine. `None` when neither file exists (e.g. macOS) — the
+/// server then keeps its legacy always-insert pairing behaviour.
+pub fn machine_id() -> Option<String> {
+    for path in ["/etc/machine-id", "/var/lib/dbus/machine-id"] {
+        if let Ok(s) = std::fs::read_to_string(path) {
+            let v = s.trim();
+            if !v.is_empty() {
+                return Some(v.to_string());
+            }
+        }
+    }
+    None
+}
+
 // === ISS-305 — browser-approve device login (OAuth device-authorization) ===
 //
 // Mirrors the desktop pairing flow but mints a *device token* and (optionally)
@@ -156,12 +172,15 @@ fn urlencoding(s: &str) -> String {
 }
 
 pub async fn pair(core_url: &str, code: &str, name: &str) -> Result<PairResponse> {
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "code": code,
         "name": name,
         "platform": detected_platform(),
         "agentVersion": env!("CARGO_PKG_VERSION"),
     });
+    if let Some(mid) = machine_id() {
+        body["machineId"] = serde_json::Value::String(mid);
+    }
     let url = format!("{}/api/devices/pair", core_url.trim_end_matches('/'));
     let resp = reqwest::Client::new()
         .post(&url)
