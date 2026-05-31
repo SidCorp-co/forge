@@ -1,12 +1,9 @@
-import { ComingSoon } from "@/design";
+"use client";
 
-/** `/activity` — feature not built yet (tracked in ISS-296). On-brand
- *  placeholder so the nav row never dead-ends on a hard 404. */
+// Workspace-tier Activity index (`/v2/activity`) — cross-project, no scope.
+// Migrates v1 Chat Logs into the workspace feed (ISS-314).
+import { ActivityScreen } from "@/features/activity/components/activity-screen";
+
 export default function ActivityPage() {
-  return (
-    <ComingSoon
-      title="Activity"
-      message="A unified feed of pipeline runs, deploys, and agent events is on the way."
-    />
-  );
+  return <ActivityScreen />;
 }
