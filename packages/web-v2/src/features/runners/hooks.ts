@@ -1,10 +1,13 @@
 "use client";
 
-// web-v2 feature module: runners / devices — React Query hooks.
+// web-v2 feature module: runners / devices — React Query hooks. Reconciles
+// ISS-296 (per-project runners + quota) with ISS-305 (browser-approve device
+// login).
 //
-// Query-key contract (ISS-296): keys MUST match the WS event-router cases or
-// live updates silently no-op. `lib/ws/event-router.ts` invalidates:
-//   • `['devices']`              on device.status / device.statusChanged
+// Query-key contract: keys MUST match the WS event-router cases or live updates
+// silently no-op. `lib/ws/event-router.ts` invalidates:
+//   • `['devices']`              on device.status / device.statusChanged and
+//                                device.login / device.paired / device.revoked
 //   • `['runners', projectId]`   on runner.created / updated / deleted
 //   • `['runners']` + `['devices']` on replayOnReconnect.
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -103,14 +106,17 @@ export function useRevokeDevice() {
   });
 }
 
-/** Pair-a-device: mint a pairing code. Not invalidating — the modal shows the
- *  returned code directly; the device list refreshes via WS once it pairs. */
-export function useMintPairingCode() {
+/**
+ * Pair-a-device (ISS-305 browser-approve login): mint a device-login pairing
+ * code via `POST /api/devices/login/init`. Not invalidating — the PairPanel
+ * shows the returned code directly; the device list refreshes live via WS
+ * (`device.login`/`device.paired`) once the device is approved.
+ */
+export function useInitPairing() {
   const { toast } = useToast();
   return useMutation({
-    mutationFn: (projectId: string) => runnersApi.mintPairingCode(projectId),
-    onError: (err) => {
-      toast({ title: "Couldn't mint pairing code", description: formatApiError(err), tone: "error" });
-    },
+    mutationFn: (deviceLabel: string) => runnersApi.initPairing(deviceLabel),
+    onError: (err) =>
+      toast({ title: "Could not mint code", description: formatApiError(err), tone: "error" }),
   });
 }

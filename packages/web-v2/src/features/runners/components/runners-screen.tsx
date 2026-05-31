@@ -1,15 +1,19 @@
 "use client";
 
-// web-v2 Runners / devices console (`/v2/runners`). Consolidates the legacy
-// /devices, /settings/devices and /admin/devices surfaces. Lists the caller's
-// real devices with their per-project runners (status / model / activity /
-// Claude quota), a Pair-a-device flow, offline → ReconnectingBanner, skeleton +
-// EmptyState, and live updates via WS. Mirrors the prototype RunnersScreen.jsx.
+// web-v2 Runners / devices console (`/v2/runners`). Reconciles two
+// implementations of this surface:
+//   • ISS-305 — browser-approve device-login pairing (PairPanel) + git push
+//     credential, live via the owner's user room.
+//   • ISS-296 — device cards listing per-project runners (status / model /
+//     activity / Claude quota), offline → ReconnectingBanner, live via each
+//     project room.
+// Consolidates the legacy /devices, /settings/devices and /admin/devices
+// surfaces. Mirrors the prototype RunnersScreen.jsx.
 //
 // Responsive: card grid collapses to 1-col @375px, runner rows stack, all
 // action targets are ≥44px (IconButton min-h-11), no horizontal page scroll,
 // min-h-dvh.
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   Banner,
   Button,
@@ -18,11 +22,12 @@ import {
   ErrorState,
   ProjectCardSkeleton,
 } from "@/design";
+import { useAuth } from "@/providers/auth-provider";
 import { useProjects } from "@/features/projects/hooks";
-import { projectRoom } from "@/lib/ws/rooms";
+import { projectRoom, userRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { DeviceCard, NoDevices } from "./device-card";
-import { PairDeviceModal } from "./pair-device-modal";
+import { PairPanel } from "./pair-panel";
 import { RunnerRow } from "./runner-row";
 import { useAllRunners, useMyDevices } from "../hooks";
 
@@ -33,9 +38,12 @@ function RoomSub({ projectId }: { projectId: string }) {
 }
 
 export function RunnersScreen() {
+  const { user } = useAuth();
+  // ISS-305 — live pending→approved + revoke ride the owner's user room.
+  useRoom(user?.id ? userRoom(user.id) : null);
+
   const devicesQ = useMyDevices();
   const projectsQ = useProjects();
-  const [pairOpen, setPairOpen] = useState(false);
 
   const projects = useMemo(() => projectsQ.data ?? [], [projectsQ.data]);
   const projectIds = useMemo(() => projects.map((p) => p.id), [projects]);
@@ -58,7 +66,6 @@ export function RunnersScreen() {
 
   const devices = devicesQ.data ?? [];
   const loading = devicesQ.isLoading || (projectsQ.isLoading && projectIds.length === 0);
-  const projectOptions = projects.map((p) => ({ id: p.id, name: p.name }));
 
   return (
     <div className="mx-auto w-full min-h-dvh max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
@@ -66,17 +73,17 @@ export function RunnersScreen() {
         <RoomSub key={p.id} projectId={p.id} />
       ))}
 
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="fg-h2">Runners</h1>
-          <p className="fg-body-sm mt-1">
-            Your devices and their per-project runners — status, model, and Claude quota.
-          </p>
-        </div>
-        <Button variant="primary" size="sm" icon="plus" onClick={() => setPairOpen(true)}>
-          Pair a device
-        </Button>
+      <header className="mb-6">
+        <h1 className="fg-h2">Runners &amp; devices</h1>
+        <p className="fg-body-sm mt-1">
+          Your paired devices and their per-project runners — pairing, status, model, and Claude
+          quota. Status updates live.
+        </p>
       </header>
+
+      <div className="mb-6">
+        <PairPanel />
+      </div>
 
       {loading && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -115,7 +122,7 @@ export function RunnersScreen() {
       )}
 
       {!loading && !devicesQ.isError && devices.length === 0 && remote.length === 0 && (
-        <NoDevices onPair={() => setPairOpen(true)} />
+        <NoDevices />
       )}
 
       {!loading && !devicesQ.isError && (devices.length > 0 || remote.length > 0) && (
@@ -146,8 +153,6 @@ export function RunnersScreen() {
           )}
         </div>
       )}
-
-      <PairDeviceModal open={pairOpen} onClose={() => setPairOpen(false)} projects={projectOptions} />
     </div>
   );
 }

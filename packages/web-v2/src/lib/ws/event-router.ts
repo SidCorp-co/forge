@@ -165,6 +165,17 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
       qc.invalidateQueries({ queryKey: ['projects', 'health'] });
       return;
     }
+    // ISS-305 — runner browser-approve device login + revoke. These ride the
+    // owner's user room so pending→approved and revoke reflect live without
+    // polling. The unified Runners console keys devices under the broad
+    // ['devices'] prefix (⊇ ['devices','mine']), so invalidate that.
+    case 'device.login':
+    case 'device.paired':
+    case 'device.revoked': {
+      qc.invalidateQueries({ queryKey: ['devices'] });
+      qc.invalidateQueries({ queryKey: ['projects', 'health'] });
+      return;
+    }
     case 'user.preferencesChanged': {
       qc.invalidateQueries({ queryKey: ['user-prefs'] });
       return;

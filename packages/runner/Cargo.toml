@@ -34,6 +34,8 @@ hostname = "0.4"
 sha2 = "0.10"
 hex = "0.4"
 base64 = "0.22"
+# ISS-305 — open the browser to the /pair approval URL during `forge-runner login`.
+webbrowser = "1"
 
 # Lightweight release: single small static-ish binary.
 [profile.release]

@@ -103,6 +103,7 @@ deviceOwnerRoutes.get('/me/devices', async (c) => {
       lastSeenAt: devices.lastSeenAt,
       pairedAt: devices.pairedAt,
       capabilities: devices.capabilities,
+      gitCredentialRef: devices.gitCredentialRef,
       createdAt: devices.createdAt,
     })
     .from(devices)
@@ -185,6 +186,23 @@ deviceOwnerRoutes.delete(
       await tx.update(devices).set({ status: 'revoked' }).where(eq(devices.id, id));
       await tx.delete(runners).where(eq(runners.deviceId, id));
     });
+
+    // Live-refresh the owner's Runners surface (and any device room watchers).
+    // Best-effort, lazily imported to avoid circular deps at module init.
+    try {
+      const { roomManager } = await import('../ws/server.js');
+      const { deviceRoom, userRoom } = await import('../ws/rooms.js');
+      roomManager.publish(userRoom(userId), {
+        event: 'device.revoked',
+        data: { deviceId: id },
+      });
+      roomManager.publish(deviceRoom(id), {
+        event: 'device.revoked',
+        data: { deviceId: id },
+      });
+    } catch {
+      // Non-fatal: revoke already committed.
+    }
 
     return c.body(null, 204);
   },

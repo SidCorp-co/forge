@@ -1,6 +1,8 @@
 // web-v2 feature module: runners / devices — REST surface. Every call goes
-// through the shared `apiClient` (no raw fetch). Routes verified against
-// `packages/core/src/devices/routes.ts` + `runners/routes.ts` for ISS-296.
+// through the shared `apiClient` (no raw fetch). Reconciles ISS-296 (runner
+// detail / quota / exclude-include) with ISS-305 (browser-approve device login).
+// Routes verified against `packages/core/src/devices/{routes,login-routes}.ts`
+// + `packages/core/src/runners/routes.ts`.
 import { apiClient } from "@/lib/api/client";
 import type { MyDevice, PairingCode, RefreshQuotaResult, RunnerDetail } from "./types";
 
@@ -38,10 +40,15 @@ export const runnersApi = {
   /** `DELETE /api/devices/:id` — revoke a device (requires fresh auth). */
   revokeDevice: (id: string) => apiClient<void>(`/devices/${id}`, { method: "DELETE" }),
 
-  /** `POST /api/projects/:id/devices/pairing-codes` — mint a 5-min pairing code. */
-  mintPairingCode: (projectId: string) =>
-    apiClient<PairingCode>(`/projects/${projectId}/devices/pairing-codes`, {
+  /**
+   * `POST /api/devices/login/init` (ISS-305) — mint a pairing code for the
+   * browser-approve device-login flow (like `claude login`). `device_platform`
+   * defaults to linux (the common runner host); it only labels the device row
+   * created at approval time.
+   */
+  initPairing: (deviceLabel: string, platform: "macos" | "linux" | "windows" = "linux") =>
+    apiClient<PairingCode>(`/devices/login/init`, {
       method: "POST",
-      body: JSON.stringify({}),
+      body: JSON.stringify({ device_label: deviceLabel, device_platform: platform }),
     }),
 };

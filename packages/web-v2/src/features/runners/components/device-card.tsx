@@ -9,6 +9,7 @@ import {
   CardContent,
   EmptyState,
   HealthDot,
+  Icon,
   IconButton,
   Menu,
   MonoTag,
@@ -63,6 +64,12 @@ export function DeviceCard({
               <MonoTag>{device.platform}</MonoTag>
               {device.agentVersion && <span className="fg-caption">v{device.agentVersion}</span>}
               <span className="fg-caption">· seen {lastSeenLabel(device.lastSeenAt)}</span>
+              {/* ISS-305 — git push credential provisioned for this device. */}
+              {device.gitCredentialRef && (
+                <span className="fg-caption inline-flex items-center gap-1">
+                  · <Icon name="check" size={12} className="text-[color:var(--green-600)]" /> git push
+                </span>
+              )}
             </div>
           </div>
           <Menu
@@ -107,13 +114,14 @@ export function DeviceCard({
   );
 }
 
-/** Empty placeholder when the caller has no paired devices at all. */
-export function NoDevices({ onPair }: { onPair: () => void }) {
+/** Empty placeholder when the caller has no paired devices at all. Pairing is
+ *  driven by the always-visible PairPanel above, so this is informational. */
+export function NoDevices() {
   return (
     <EmptyState
       title="No devices paired"
-      message="Pair a device to run agents on your own hardware. Devices appear here with their per-project runners, status, and Claude quota."
-      action={{ label: "Pair a device", onClick: onPair }}
+      message="Pair a device with the panel above to run agents on your own hardware. Devices appear here with their per-project runners, status, and Claude quota."
+      mascot={false}
     />
   );
 }

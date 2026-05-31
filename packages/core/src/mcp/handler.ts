@@ -27,6 +27,7 @@ function stubDeviceForPat(userId: string, tokenId: string): Device {
     lastSeenAt: null,
     pairedAt: new Date(0),
     capabilities: null,
+    gitCredentialRef: null,
     createdAt: new Date(0),
   };
 }

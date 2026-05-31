@@ -1,8 +1,10 @@
 // web-v2 feature module: runners / devices. Types are re-typed to match the
 // EXACT JSON returned by core (timestamps are ISO strings over the wire, not
-// `Date`). Verified for ISS-296 against:
-//   • `packages/core/src/devices/routes.ts`  (GET /api/me/devices, pairing-codes)
-//   • `packages/core/src/runners/routes.ts`  (GET /api/runners, refresh-quota)
+// `Date`). Reconciles ISS-296 (per-project runner detail + quota) with ISS-305
+// (browser-approve device-login + git push credential). Verified against:
+//   • `packages/core/src/devices/routes.ts`       (GET /api/me/devices)
+//   • `packages/core/src/devices/login-routes.ts` (POST /devices/login/init — ISS-305)
+//   • `packages/core/src/runners/routes.ts`        (GET /api/runners, refresh-quota)
 // Do NOT invent fields — the device card derives `model`/`quota`/activity from
 // the real runner row below (there is no top-level `model`/`currentJob` column).
 import type { HealthKey } from "@/design";
@@ -21,8 +23,10 @@ export interface MyDevice {
   agentVersion: string | null;
   status: DeviceStatus;
   lastSeenAt: string | null;
-  pairedAt: string;
+  pairedAt: string | null;
   capabilities: Record<string, unknown>;
+  /** Non-secret label set when a git push credential was provisioned (ISS-305). */
+  gitCredentialRef: string | null;
   createdAt: string;
 }
 
@@ -61,10 +65,13 @@ export interface RefreshQuotaResult {
   details?: Record<string, unknown>;
 }
 
-/** `POST /api/projects/:id/devices/pairing-codes` response. */
+/** `POST /api/devices/login/init` response (ISS-305) — a fresh pairing code +
+ *  the relative verify URL for the browser-approve device-login flow. */
 export interface PairingCode {
-  code: string;
-  expiresAt: string;
+  pairing_code: string;
+  /** Relative verify URL, e.g. `/pair?code=XXX-XXXX`. */
+  verify_url: string;
+  expires_at: string;
 }
 
 /** Map a device status to a design-kit health key for the HealthDot. */

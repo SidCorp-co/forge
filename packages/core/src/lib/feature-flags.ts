@@ -70,6 +70,14 @@ const flagDefs = {
   // pairing flow uses the user's existing cookie session, so it works for
   // password-only users. Set FEATURE_DESKTOP_PAIRING=false to disable.
   desktopPairing: true,
+
+  // ISS-305 — auto git-credential provisioning at runner-login time. Ships
+  // DARK (default OFF): provisioning a real push credential requires a
+  // configured host token/deploy-key source (env GIT_PROVISION_*), which most
+  // self-hosted deployments do not have. When off, runner login still mints a
+  // device token — only the git_credential side-channel is skipped. Flip
+  // FEATURE_RUNNER_GIT_CRED_PROVISION=true once a host source is configured.
+  runnerGitCredProvision: false,
 } as const;
 
 export type FeatureFlag = keyof typeof flagDefs;
