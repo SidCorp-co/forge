@@ -6,8 +6,8 @@
 // the mutation factory, the row value snaps back since nothing is invalidated).
 
 import { Menu, NativeSelect, Select, StatusChip, type MenuItem, type SelectOption } from "@/design";
-import { statusToChip } from "../derive";
-import { ISSUE_STATUSES, type IssueAgentStatus, type IssueStatus } from "../types";
+import { allowedTransitions, statusToChip } from "../derive";
+import { type IssueAgentStatus, type IssueStatus } from "../types";
 
 interface InlineSelectProps {
   value: string;
@@ -69,12 +69,12 @@ interface StatusEditProps {
 
 /**
  * StatusChip that doubles as an inline status editor. Clicking opens a menu of
- * every lifecycle status; selecting one fires a transition. The full enum is
- * presented (there is no "allowed transitions" endpoint to pre-filter) — an
- * illegal transition 409s and is toasted by the caller's mutation.
+ * the VALID next statuses (`allowedTransitions`, mirroring core's runtime
+ * guard); selecting one fires a transition. Pre-filtering stops the user from
+ * picking a target that 409s and silently snaps back (ISS-308 E1).
  */
 export function StatusEdit({ status, agentStatus, onTransition, disabled, size }: StatusEditProps) {
-  const items: MenuItem[] = ISSUE_STATUSES.filter((s) => s !== status).map((s) => ({
+  const items: MenuItem[] = allowedTransitions(status).map((s) => ({
     label: s,
     onSelect: () => onTransition(s),
   }));

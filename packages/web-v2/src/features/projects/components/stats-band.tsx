@@ -14,11 +14,16 @@ export function StatsBand({ totals }: StatsBandProps) {
       <span className="text-[13.5px] font-bold text-fg">Workspace</span>
       <span className="h-4 w-px bg-line" aria-hidden />
       <Stat icon="folder">{totals.projects} projects</Stat>
-      <span className="inline-flex items-center gap-1.5 font-mono text-[12.5px] text-accent-text">
+      <span
+        className="inline-flex items-center gap-1.5 font-mono text-[12.5px] text-accent-text"
+        title="Pipeline runs currently running or paused"
+      >
         <span className="forge-pulse inline-block size-[7px] rounded-pill bg-accent" aria-hidden />
-        {totals.liveRuns} live
+        {totals.liveRuns} live runs
       </span>
-      <Stat icon="inbox">{totals.openIssues} open</Stat>
+      <Stat icon="inbox" title="In-flight issues (not closed)">
+        {totals.openIssues} active
+      </Stat>
       <Stat icon="server">{totals.runners} runners</Stat>
       <Stat icon="dollar" title="Trailing 24h spend">
         {formatSpend(totals.spend24hUsd)} / 24h

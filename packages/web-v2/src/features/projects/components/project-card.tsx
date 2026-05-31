@@ -65,7 +65,7 @@ export function ProjectCard({ project, now, onTogglePin }: ProjectCardProps) {
 
       <div className="flex items-center gap-3.5 border-t border-line-subtle pt-3">
         <LiveCount n={project.liveRuns} />
-        <Stat icon="inbox" title="Open issues">
+        <Stat icon="inbox" title="In-flight issues (not closed)">
           {project.openIssues}
         </Stat>
         <Stat icon="server" title="Online runners">

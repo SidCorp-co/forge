@@ -20,7 +20,8 @@ export function KanbanCard({ id, title, stage, status, cost, assignee, onClick }
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full flex-col gap-2.5 rounded-md border border-line bg-surface p-3 text-left shadow-xs transition-colors duration-[120ms] hover:bg-hover"
+      aria-label={`Open ${id} — ${title}`}
+      className="flex w-full flex-col gap-2.5 rounded-md border border-line bg-surface p-3 text-left shadow-xs transition-colors duration-[120ms] hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
     >
       <div className="flex items-center justify-between gap-2">
         <MonoTag>{id}</MonoTag>

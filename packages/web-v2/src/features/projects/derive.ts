@@ -138,6 +138,23 @@ export function formatSpend(usd: number): string {
 }
 
 /**
+ * Format an average cycle time (in days) for the overview Stat. A bare `0d` is
+ * misleading (ISS-308 B1) — it reads as "instant" when it usually means "no
+ * resolved issues in the window" or "sub-day, rounded away". So: 0 / no data →
+ * `—`; under a day → hours (`8h`); under ~10 days → one decimal (`2.4d`); else
+ * whole days (`14d`).
+ */
+export function formatCycleTime(days: number | null | undefined): string {
+  if (days == null || !Number.isFinite(days) || days <= 0) return "—";
+  if (days < 1) {
+    const hours = Math.max(1, Math.round(days * 24));
+    return `${hours}h`;
+  }
+  if (days < 10) return `${days.toFixed(1)}d`;
+  return `${Math.round(days)}d`;
+}
+
+/**
  * Compact relative time ("just now", "5m", "3h", "2d", "4w") from an ISO
  * string. `now` is injected so the function stays pure + testable.
  */

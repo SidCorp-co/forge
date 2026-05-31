@@ -9,43 +9,28 @@ import {
   Badge,
   Stat,
   Kicker,
-  PipelineTracker,
   ProjectLoader,
   EmptyState,
   ErrorState,
   type IconName,
 } from "@/design";
-import type { StageKey } from "@/design/stages";
+import { STAGES, stageColor, type StageKey } from "@/design/stages";
+import { statusToStage } from "@/features/issues/derive";
+import type { IssueStatus } from "@/features/issues/types";
 import { useProjects, useProjectHealth } from "@/features/projects/hooks";
+import { formatCycleTime } from "@/features/projects/derive";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import { formatApiError } from "@/lib/api/error";
 
-/** Map a core issue status (statusDistribution key) to a pipeline stage so the
- *  overview's PipelineTracker reflects where the project's work actually sits. */
-const STATUS_TO_STAGE: Record<string, StageKey> = {
-  open: "triage",
-  needs_info: "triage",
-  confirmed: "triage",
-  waiting: "clarify",
-  approved: "plan",
-  in_progress: "code",
-  reopen: "code",
-  developed: "review",
-  deploying: "test",
-  testing: "test",
-  tested: "test",
-  pass: "release",
-  staging: "release",
-  released: "release",
-  closed: "release",
-};
-
-function dominantStage(dist: Record<string, number>): StageKey {
-  let best: { status: string; count: number } | null = null;
+/** Fold a status→count distribution into the 7 pipeline stages (A4: reuse the
+ *  single `statusToStage` source of truth instead of a duplicated local map). */
+function stageDistribution(dist: Record<string, number>): { stage: StageKey; count: number }[] {
+  const byStage = new Map<StageKey, number>(STAGES.map((s) => [s.key, 0]));
   for (const [status, count] of Object.entries(dist)) {
-    if (!best || count > best.count) best = { status, count };
+    const stage = statusToStage(status as IssueStatus);
+    byStage.set(stage, (byStage.get(stage) ?? 0) + count);
   }
-  return (best && STATUS_TO_STAGE[best.status]) || "triage";
+  return STAGES.map((s) => ({ stage: s.key, count: byStage.get(s.key) ?? 0 }));
 }
 
 export default function ProjectOverviewPage() {
@@ -97,13 +82,36 @@ export default function ProjectOverviewPage() {
   }
 
   const glyph = projectGlyph(project.id);
-  const stage = health ? dominantStage(health.statusDistribution) : "triage";
+  const stages = health ? stageDistribution(health.statusDistribution) : [];
+  const stageTotal = stages.reduce((n, s) => n + s.count, 0);
 
-  const metrics: Array<{ icon: IconName; label: string; value: string }> = [
-    { icon: "inbox", label: "Active issues", value: String(health?.totalActive ?? 0) },
-    { icon: "activity", label: "Throughput", value: String(health?.throughput ?? 0) },
-    { icon: "clock", label: "Avg cycle time", value: health ? `${health.avgCycleTimeDays}d` : "—" },
-    { icon: "alert", label: "Escalations", value: String(health?.pendingEscalations ?? 0) },
+  // Caption clarifies the timeframe / definition behind each number so the
+  // workspace, card, and overview all read consistently (ISS-308 B2/B3).
+  const metrics: Array<{ icon: IconName; label: string; value: string; caption?: string }> = [
+    {
+      icon: "inbox",
+      label: "Active issues",
+      value: String(health?.totalActive ?? 0),
+      caption: "in-flight (not closed)",
+    },
+    {
+      icon: "activity",
+      label: "Throughput",
+      value: String(health?.throughput ?? 0),
+      caption: "resolved · last 7 days",
+    },
+    {
+      icon: "clock",
+      label: "Avg cycle time",
+      value: formatCycleTime(health?.avgCycleTimeDays),
+      caption: "created → resolved · 7d",
+    },
+    {
+      icon: "alert",
+      label: "Escalations",
+      value: String(health?.pendingEscalations ?? 0),
+      caption: "awaiting info",
+    },
   ];
 
   return (
@@ -128,20 +136,51 @@ export default function ProjectOverviewPage() {
                   {m.label}
                 </Stat>
                 <p className="mt-2 font-mono text-2xl font-bold tabular-nums text-fg">{m.value}</p>
+                {m.caption && <p className="fg-caption mt-0.5 text-subtle">{m.caption}</p>}
               </CardContent>
             </Card>
           ))}
         </div>
 
+        {/* Work distribution — how the project's issues are spread across the
+            seven stages RIGHT NOW. Deliberately NOT the sequential
+            PipelineTracker (ISS-308 A3): a static status snapshot rendered as a
+            run timeline read as "the pipeline finished" (e.g. closed-heavy
+            projects showed triage→release all green). A labelled bar per stage
+            can't be mistaken for one completed run. */}
         <Card>
           <CardContent>
             <div className="mb-4 flex items-center justify-between gap-3">
-              <Kicker>Pipeline</Kicker>
-              <Stat icon="pipeline" mono={false}>
-                most work at {stage}
+              <Kicker>Work distribution</Kicker>
+              <Stat icon="list" mono={false}>
+                {stageTotal} issue{stageTotal === 1 ? "" : "s"} by stage
               </Stat>
             </div>
-            <PipelineTracker stage={stage} status="running" variant="full" />
+            {stageTotal === 0 ? (
+              <p className="fg-body-sm text-muted">No issues to distribute yet.</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
+                {stages.map((s) => {
+                  const pct = stageTotal > 0 ? (s.count / stageTotal) * 100 : 0;
+                  return (
+                    <div key={s.stage}>
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="fg-caption font-mono lowercase text-muted">{s.stage}</span>
+                        <span className="font-mono text-sm font-bold tabular-nums text-fg">
+                          {s.count}
+                        </span>
+                      </div>
+                      <div className="mt-1 h-1.5 overflow-hidden rounded-pill bg-[var(--paper-200)]">
+                        <div
+                          className="h-full rounded-pill"
+                          style={{ width: `${pct}%`, background: stageColor(s.stage) }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

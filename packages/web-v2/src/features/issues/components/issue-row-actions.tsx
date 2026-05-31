@@ -26,6 +26,7 @@ import {
   type MenuItem,
 } from "@/design";
 import {
+  allowedTransitions,
   initials,
   memberLabel,
   statusToChip,
@@ -35,7 +36,6 @@ import {
 import {
   ISSUE_COMPLEXITIES,
   ISSUE_PRIORITIES,
-  ISSUE_STATUSES,
   type IssuePriority,
   type IssueRow,
   type ProjectMember,
@@ -76,8 +76,9 @@ function useRowMenuItems(
 ): MenuItem[] {
   const items: MenuItem[] = [{ label: "Open issue", icon: "arrowRight", onSelect: open }];
 
-  for (const s of ISSUE_STATUSES) {
-    if (s === row.status) continue;
+  // Only valid next states (mirrors core's runtime guard) so a pick can't 409
+  // and silently snap back (ISS-308 E1).
+  for (const s of allowedTransitions(row.status)) {
     items.push({ label: `Status: ${s}`, onSelect: () => actions.transition({ id: row.id, toStatus: s }) });
   }
   for (const p of ISSUE_PRIORITIES) {
@@ -152,12 +153,22 @@ export function IssueTableRow({
   return (
     <TR className="group">
       <TD>
-        <button type="button" onClick={open} className="focus-visible:outline-none">
+        <button
+          type="button"
+          onClick={open}
+          aria-label={`Open ${row.displayId}`}
+          className="rounded-sm focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+        >
           <MonoTag hue="cobalt">{row.displayId}</MonoTag>
         </button>
       </TD>
       <TD className="max-w-[320px]">
-        <button type="button" onClick={open} className="block w-full text-left focus-visible:outline-none">
+        <button
+          type="button"
+          onClick={open}
+          aria-label={`Open ${row.displayId}: ${row.title}`}
+          className="block w-full rounded-sm text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+        >
           <span className="fg-body-sm block truncate text-fg group-hover:text-accent-text">{row.title}</span>
         </button>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -214,7 +225,12 @@ export function IssueMobileCard({
     <Card>
       <CardContent>
         <div className="flex items-start justify-between gap-3">
-          <button type="button" onClick={open} className="min-w-0 text-left focus-visible:outline-none">
+          <button
+            type="button"
+            onClick={open}
+            aria-label={`Open ${row.displayId}: ${row.title}`}
+            className="min-w-0 rounded-sm text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          >
             <MonoTag hue="cobalt">{row.displayId}</MonoTag>
             <span className="fg-body-sm mt-1.5 block truncate text-fg">{row.title}</span>
           </button>

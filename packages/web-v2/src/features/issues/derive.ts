@@ -4,6 +4,7 @@
 
 import type { StageKey } from "@/design/stages";
 import type { StatusKey } from "@/design/status";
+import { ISSUE_STATUSES } from "./types";
 import type {
   CommentKind,
   GroupBy,
@@ -107,6 +108,20 @@ export function statusToChip(status: IssueStatus, agentStatus?: IssueAgentStatus
     default:
       return "queued";
   }
+}
+
+/**
+ * Status targets the server will accept from `from`, for the inline status
+ * editors. Mirrors core's runtime guard `canTransitionFree`
+ * (`pipeline/state-machine.ts`): the lifecycle is permissive — any state may
+ * branch to needs_info / on_hold / reopen / forward — the ONLY hard rules are
+ * (1) `draft` is never a transition target and (2) a `draft` may only be
+ * promoted to `open` or discarded to `closed`. Filtering to this set stops the
+ * menu from offering picks that 409 and silently snap back (ISS-308 E1).
+ */
+export function allowedTransitions(from: IssueStatus): IssueStatus[] {
+  if (from === "draft") return ["open", "closed"];
+  return ISSUE_STATUSES.filter((s) => s !== from && s !== "draft");
 }
 
 export interface DepCounts {

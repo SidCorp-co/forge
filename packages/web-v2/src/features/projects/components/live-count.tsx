@@ -11,6 +11,7 @@ export function LiveCount({ n }: LiveCountProps) {
   const live = n > 0;
   return (
     <span
+      title="Pipeline runs currently running or paused"
       className={cn(
         'inline-flex items-center gap-1.5 font-mono text-[12.5px]',
         live ? 'text-accent-text' : 'text-subtle',
@@ -19,7 +20,7 @@ export function LiveCount({ n }: LiveCountProps) {
       {live && (
         <span className="forge-pulse inline-block size-[7px] rounded-pill bg-accent" aria-hidden />
       )}
-      {n} live
+      {n} live runs
     </span>
   );
 }
