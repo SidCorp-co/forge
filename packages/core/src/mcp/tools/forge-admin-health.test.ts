@@ -9,11 +9,13 @@ vi.mock('../../config/env.js', () => ({
 }));
 
 const selectImpl = vi.fn();
+const selectDistinctImpl = vi.fn();
 const executeImpl = vi.fn();
 
 vi.mock('../../db/client.js', () => ({
   db: {
     select: (...a: unknown[]) => selectImpl(...a),
+    selectDistinct: (...a: unknown[]) => selectDistinctImpl(...a),
     execute: (...a: unknown[]) => executeImpl(...a),
   },
 }));
@@ -56,27 +58,12 @@ function buildCtx() {
   };
 }
 
-const TOKEN_ID = '66666666-6666-4666-8666-666666666666';
-
-function buildPatCtx(scopes: readonly string[]) {
-  return {
-    principal: {
-      kind: 'pat' as const,
-      userId: OWNER_ID,
-      tokenId: TOKEN_ID,
-      scopes,
-      projectIds: null,
-    },
-    device: fakeDevice,
-    projectSlug: null,
-  };
-}
-
-function mockCeoLookup(isCeo: boolean) {
-  selectImpl.mockImplementationOnce(() => ({
+// loadVisibleProjectIdsForPrincipal: selectDistinct({id}).from.leftJoin.where.
+function mockVisible(ids: string[]) {
+  selectDistinctImpl.mockImplementationOnce(() => ({
     from: () => ({
-      where: () => ({
-        limit: () => Promise.resolve([{ isCeo }]),
+      leftJoin: () => ({
+        where: () => Promise.resolve(ids.map((id) => ({ id }))),
       }),
     }),
   }));
@@ -85,6 +72,7 @@ function mockCeoLookup(isCeo: boolean) {
 beforeEach(() => {
   vi.clearAllMocks();
   selectImpl.mockReset();
+  selectDistinctImpl.mockReset();
   executeImpl.mockReset();
 });
 
@@ -112,29 +100,31 @@ function collectSqlFragments(sqlArg: unknown): string {
 }
 
 describe('forge_admin_health', () => {
-  it('returns extended health snapshot', async () => {
-    mockCeoLookup(true);
+  it('returns health snapshot scoped to visible projects', async () => {
+    mockVisible([PROJECT_ID]);
     // db.execute(`select 1`) → succeeds
     executeImpl.mockResolvedValueOnce([{ '?column?': 1 }]);
-    // runner rows
+    // runner rows (scoped: from().where())
     selectImpl.mockImplementationOnce(() => ({
-      from: () =>
-        Promise.resolve([
-          {
-            id: RUNNER_ID,
-            projectId: PROJECT_ID,
-            type: 'claude-code',
-            host: 'device',
-            deviceId: DEVICE_ID,
-            name: 'r1',
-            labels: [],
-            capabilities: {},
-            config: {},
-            status: 'online',
-            lastSeenAt: null,
-            lastError: null,
-          },
-        ]),
+      from: () => ({
+        where: () =>
+          Promise.resolve([
+            {
+              id: RUNNER_ID,
+              projectId: PROJECT_ID,
+              type: 'claude-code',
+              host: 'device',
+              deviceId: DEVICE_ID,
+              name: 'r1',
+              labels: [],
+              capabilities: {},
+              config: {},
+              status: 'online',
+              lastSeenAt: null,
+              lastError: null,
+            },
+          ]),
+      }),
     }));
     // in-flight aggregation: capture the where() predicate so we can assert the
     // job-status filter is applied (without it, terminal jobs would count).
@@ -146,13 +136,15 @@ describe('forge_admin_health', () => {
         where: inFlightWhere,
       }),
     }));
-    // projects aggregation
+    // projects aggregation (scoped: leftJoin().where().groupBy().orderBy().limit())
     selectImpl.mockImplementationOnce(() => ({
       from: () => ({
         leftJoin: () => ({
-          groupBy: () => ({
-            orderBy: () => ({
-              limit: () => Promise.resolve([{ id: PROJECT_ID, slug: 'p1', n: 5 }]),
+          where: () => ({
+            groupBy: () => ({
+              orderBy: () => ({
+                limit: () => Promise.resolve([{ id: PROJECT_ID, slug: 'p1', n: 5 }]),
+              }),
             }),
           }),
         }),
@@ -195,17 +187,19 @@ describe('forge_admin_health', () => {
   });
 
   it('honors custom staleJobThresholdSeconds', async () => {
-    mockCeoLookup(true);
+    mockVisible([PROJECT_ID]);
     executeImpl.mockResolvedValueOnce([{ '?column?': 1 }]);
     selectImpl.mockImplementationOnce(() => ({
-      from: () => Promise.resolve([]),
+      from: () => ({ where: () => Promise.resolve([]) }),
     }));
     selectImpl.mockImplementationOnce(() => ({
       from: () => ({
         leftJoin: () => ({
-          groupBy: () => ({
-            orderBy: () => ({
-              limit: () => Promise.resolve([]),
+          where: () => ({
+            groupBy: () => ({
+              orderBy: () => ({
+                limit: () => Promise.resolve([]),
+              }),
             }),
           }),
         }),
@@ -220,17 +214,19 @@ describe('forge_admin_health', () => {
     expect(res.staleJobThresholdSeconds).toBe(60);
   });
 
-  it('FORBIDDEN when not CEO', async () => {
-    mockCeoLookup(false);
+  it('returns global status but no tenant data when caller has no visible projects', async () => {
+    mockVisible([]);
+    executeImpl.mockResolvedValueOnce([{ '?column?': 1 }]); // select 1
     const tool = forgeAdminHealthTool(buildCtx());
-    await expect(tool.handler({ action: 'get' })).rejects.toThrow(/FORBIDDEN/);
-  });
-
-  it('PAT principal without admin scope is rejected even if isCeo=true', async () => {
-    mockCeoLookup(true);
-    const tool = forgeAdminHealthTool(buildPatCtx(['read', 'write']));
-    await expect(tool.handler({ action: 'get' })).rejects.toThrow(
-      /FORBIDDEN: requires admin scope on the PAT/,
-    );
+    const res = (await tool.handler({ action: 'get' })) as {
+      db: string;
+      runners: unknown[];
+      projects: unknown[];
+      stuckJobs: unknown[];
+    };
+    expect(res.db).toBe('ok');
+    expect(res.runners).toEqual([]);
+    expect(res.projects).toEqual([]);
+    expect(res.stuckJobs).toEqual([]);
   });
 });

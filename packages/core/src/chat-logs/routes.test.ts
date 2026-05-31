@@ -86,7 +86,6 @@ async function token() {
 describe('GET /api/chat-logs', () => {
   it('200 with empty list when projectSlug omitted and caller has no visible projects', async () => {
     authVerified();
-    queryQueue.push([{ id: USER_ID, isCeo: false }]); // me lookup
     queryQueue.push([]); // visible projects (selectDistinct ... leftJoin ... where) → empty
 
     const res = await buildApp().request('/api/chat-logs', {
@@ -100,7 +99,6 @@ describe('GET /api/chat-logs', () => {
 
   it('200 across visible projects when projectSlug omitted', async () => {
     authVerified();
-    queryQueue.push([{ id: USER_ID, isCeo: false }]); // me
     queryQueue.push([{ slug: 'alpha' }, { slug: 'beta' }]); // visible projects
     queryQueue.push([
       { id: LOG_ID, projectSlug: 'alpha', query: 'q1', reply: 'r1' },
@@ -114,22 +112,6 @@ describe('GET /api/chat-logs', () => {
     expect(res.headers.get('X-Total-Count')).toBe('1');
     const body = (await res.json()) as Array<{ id: string }>;
     expect(body).toHaveLength(1);
-  });
-
-  it('CEO branch: projectSlug omitted returns aggregated logs unrestricted', async () => {
-    authVerified();
-    queryQueue.push([{ id: USER_ID, isCeo: true }]); // me — CEO
-    queryQueue.push([{ slug: 'alpha' }]); // unrestricted projects.select
-    queryQueue.push([{ id: LOG_ID, projectSlug: 'alpha' }]); // rows
-    queryQueue.push([{ n: 1 }]); // count
-
-    const res = await buildApp().request('/api/chat-logs', {
-      headers: { authorization: `Bearer ${await token()}` },
-    });
-    expect(res.status).toBe(200);
-    expect(res.headers.get('X-Total-Count')).toBe('1');
-    const body = (await res.json()) as Array<{ projectSlug: string }>;
-    expect(body[0]?.projectSlug).toBe('alpha');
   });
 
   it('404 when projectSlug provided but unknown', async () => {

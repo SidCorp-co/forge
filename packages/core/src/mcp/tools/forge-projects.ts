@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
-import { type ProjectMemberRole, projectMembers, projects, users } from '../../db/schema.js';
+import { type ProjectMemberRole, projectMembers, projects } from '../../db/schema.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../../lib/db-errors.js';
 import { type ContextScopedMcpToolFactory, principalUserId, zodToMcpSchema } from './lib.js';
 
@@ -31,7 +31,7 @@ type ListedProject = {
 export const forgeProjectsListTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.list',
   description:
-    "List projects visible to the principal (owned + member; CEO sees all). For PAT principals, results are additionally narrowed to the token's projectIds allowlist when set. Returns id, slug, name, ownerId, role.",
+    "List projects visible to the principal (projects owned + ones the user is a member of). For PAT principals, results are additionally narrowed to the token's projectIds allowlist when set. Returns id, slug, name, ownerId, role.",
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     inputSchema.parse(args);
@@ -41,29 +41,6 @@ export const forgeProjectsListTool: ContextScopedMcpToolFactory = (ctx) => ({
       principal.kind === 'pat' && principal.projectIds !== null
         ? new Set(principal.projectIds)
         : null;
-
-    const [me] = await db
-      .select({ id: users.id, isCeo: users.isCeo })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-
-    if (me?.isCeo) {
-      const rows = await db
-        .select({
-          id: projects.id,
-          slug: projects.slug,
-          name: projects.name,
-          ownerId: projects.ownerId,
-        })
-        .from(projects);
-      const out: ListedProject[] = rows.map((r) => ({
-        ...r,
-        role: r.ownerId === userId ? 'owner' : 'admin',
-      }));
-      const narrowed = patAllowlist ? out.filter((r) => patAllowlist.has(r.id)) : out;
-      return { projects: narrowed };
-    }
 
     // Two separate queries instead of a left-join + selectDistinct: the join
     // approach inflates rows for owned projects that have multiple members
@@ -144,8 +121,8 @@ const createInputSchema = z
 
 /**
  * User-facing project creation over MCP (Issue: PAT users had no non-browser
- * path to provision a project — `forge_admin_projects.create` requires
- * `users.isCeo=true`, and the REST `POST /api/projects` is session-JWT only).
+ * path to provision a project — `forge_admin_projects.create` makes the
+ * caller the owner, and the REST `POST /api/projects` is session-JWT only).
  *
  * Surface superset of REST: REST `createProjectSchema` (projects/routes.ts)
  * accepts only slug+name and forces description/repoPath/baseBranch/
@@ -370,15 +347,15 @@ const getInputSchema = z.object({ projectId: z.uuid() }).strict();
  * is locked: `agentConfig`, `webhookSecret`, `apiKey` stay on REST
  * (sensitive / not needed by agents).
  *
- * Authorization: any project member (owner/admin/member) can read. CEO
- * (`users.isCeo=true`) bypasses membership. PAT principals must carry the
- * `read` scope and a matching `projectIds` allowlist (mismatch → NOT_FOUND
- * so the project namespace stays non-enumerable — mirrors update tool).
+ * Authorization: any project member (owner/admin/member) can read. PAT
+ * principals must carry the `read` scope and a matching `projectIds`
+ * allowlist (mismatch → NOT_FOUND so the project namespace stays
+ * non-enumerable — mirrors update tool).
  */
 export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.get',
   description:
-    'Fetch project detail visible to the principal — id, slug, name, description, ownerId, role, repoPath, baseBranch, productionBranch, defaultDeviceId, previewDeploy.{stagingUrl,stagingApiUrl,testingUrls,testCredentials}, createdAt. Any project member (owner/admin/member) can read; CEO bypasses membership. PAT principals must carry the `read` scope. Sensitive fields (agentConfig, webhookSecret, apiKey) stay on REST.',
+    'Fetch project detail visible to the principal — id, slug, name, description, ownerId, role, repoPath, baseBranch, productionBranch, defaultDeviceId, previewDeploy.{stagingUrl,stagingApiUrl,testingUrls,testCredentials}, createdAt. Any project member (owner/admin/member) can read. PAT principals must carry the `read` scope. Sensitive fields (agentConfig, webhookSecret, apiKey) stay on REST.',
   inputSchema: zodToMcpSchema(getInputSchema),
   handler: async (args) => {
     const input = getInputSchema.parse(args);
@@ -419,8 +396,8 @@ export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
     if (!proj) throw new Error('NOT_FOUND: project not found or not accessible');
 
     // Resolve caller role. Owner short-circuit keeps the hot path at one
-    // query; CEO bypass costs one extra SELECT and only fires when caller
-    // is neither owner nor a project_members row.
+    // query; a non-member surfaces NOT_FOUND so the namespace stays
+    // non-enumerable.
     let role: 'owner' | ProjectMemberRole;
     if (proj.ownerId === userId) {
       role = 'owner';
@@ -432,20 +409,10 @@ export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
           and(eq(projectMembers.projectId, input.projectId), eq(projectMembers.userId, userId)),
         )
         .limit(1);
-      if (member) {
-        role = member.role;
-      } else {
-        const [me] = await db
-          .select({ isCeo: users.isCeo })
-          .from(users)
-          .where(eq(users.id, userId))
-          .limit(1);
-        if (!me?.isCeo) {
-          throw new Error('NOT_FOUND: project not found or not accessible');
-        }
-        // CEO bypass surfaces role='admin' (matches forge_projects.list).
-        role = 'admin';
+      if (!member) {
+        throw new Error('NOT_FOUND: project not found or not accessible');
       }
+      role = member.role;
     }
 
     // Normalize previewDeploy: tolerate null + missing inner fields so the

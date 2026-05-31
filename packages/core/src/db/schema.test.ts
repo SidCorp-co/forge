@@ -79,7 +79,6 @@ describe('db/schema — users', () => {
         'email',
         'email_verified_at',
         'id',
-        'is_ceo',
         'last_fresh_auth_at',
         'password_hash',
       ].sort(),

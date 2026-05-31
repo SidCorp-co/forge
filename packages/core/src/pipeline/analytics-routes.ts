@@ -4,14 +4,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import {
-  activityLog,
-  issues,
-  jobTypes,
-  projectMembers,
-  projects,
-  users,
-} from '../db/schema.js';
+import { activityLog, issues, jobTypes, projectMembers, projects } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
 const badRequest = (details: unknown) =>
@@ -23,16 +16,9 @@ const forbidden = (message: string) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-// Project-member gate for the per-project cost analytics endpoints. CEO users
-// bypass (mirrors `loadVisibleProjectIds`). 404 when the project does not
-// exist so we don't leak existence to non-members.
+// Project-member gate for the per-project cost analytics endpoints. 404 when
+// the project does not exist so we don't leak existence to non-members.
 async function assertProjectMember(projectId: string, userId: string): Promise<void> {
-  const [me] = await db
-    .select({ isCeo: users.isCeo })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-
   const [project] = await db
     .select({ ownerId: projects.ownerId })
     .from(projects)
@@ -40,7 +26,6 @@ async function assertProjectMember(projectId: string, userId: string): Promise<v
     .limit(1);
   if (!project) throw notFound('project not found');
 
-  if (me?.isCeo) return;
   if (project.ownerId === userId) return;
 
   const [member] = await db
@@ -67,21 +52,11 @@ const stepDurationsQuerySchema = z.object({
 });
 
 async function loadVisibleProjectIds(userId: string, scopedTo?: string): Promise<string[]> {
-  const [me] = await db
-    .select({ id: users.id, isCeo: users.isCeo })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-
-  const visible = me?.isCeo
-    ? await db.select({ id: projects.id }).from(projects)
-    : await db
-        .selectDistinct({ id: projects.id })
-        .from(projects)
-        .leftJoin(projectMembers, eq(projectMembers.projectId, projects.id))
-        .where(
-          sql`${projects.ownerId} = ${userId} OR ${projectMembers.userId} = ${userId}`,
-        );
+  const visible = await db
+    .selectDistinct({ id: projects.id })
+    .from(projects)
+    .leftJoin(projectMembers, eq(projectMembers.projectId, projects.id))
+    .where(sql`${projects.ownerId} = ${userId} OR ${projectMembers.userId} = ${userId}`);
 
   const ids = visible.map((r) => r.id);
   if (!scopedTo) return ids;

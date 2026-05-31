@@ -12,7 +12,6 @@ const PUBLIC_NO_REDIRECT = new Set(['/download']);
 // Unknown paths fall through to Next.js so not-found.tsx renders with a real 404.
 const PROTECTED_PREFIXES = [
   '/admin',
-  '/ceo',
   '/chat-logs',
   '/connect-device',
   '/dashboard',

@@ -122,13 +122,6 @@ function IdentityCard() {
               {new Date(data.createdAt).toLocaleDateString()}
             </p>
           </div>
-          {data.isCeo && (
-            <div className="col-span-2">
-              <span className="inline-flex rounded-sm bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-primary">
-                CEO
-              </span>
-            </div>
-          )}
         </div>
       )}
     </div>

@@ -60,12 +60,6 @@ export function AccountTab() {
               <dt className="fg-label">User ID</dt>
               <dd>{user?.id ? <MonoTag>{user.id}</MonoTag> : "—"}</dd>
             </div>
-            {user?.isCEO && (
-              <div className="flex items-center justify-between gap-3">
-                <dt className="fg-label">Role</dt>
-                <dd className="fg-body-sm text-fg">CEO</dd>
-              </div>
-            )}
           </dl>
         </CardContent>
       </Card>

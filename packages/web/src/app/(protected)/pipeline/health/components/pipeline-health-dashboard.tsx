@@ -73,7 +73,7 @@ export function PipelineHealthDashboard() {
       <div>
         <h1 className="text-xl font-semibold text-on-surface">Pipeline Health</h1>
         <p className="mt-1 text-xs text-outline">
-          Live metrics across every project you can see. CEO scope shows the full org.
+          Live metrics across every project you can see (projects you own or are a member of).
         </p>
       </div>
 

@@ -100,7 +100,6 @@ describe('GET /api/projects/health', () => {
 
   it('returns [] when caller has no visible projects', async () => {
     authVerified();
-    queryQueue.push([{ id: USER_ID, isCeo: false }]); // me
     queryQueue.push([]); // visibleProjects (empty → handler short-circuits)
 
     const res = await buildApp().request('/api/projects/health', {
@@ -112,7 +111,6 @@ describe('GET /api/projects/health', () => {
 
   it('200 with health rows including throughput from issue.statusChanged activity', async () => {
     authVerified();
-    queryQueue.push([{ id: USER_ID, isCeo: false }]); // me
     queryQueue.push([
       { id: PROJECT_A_ID, slug: 'alpha', name: 'Alpha', agentConfig: null },
       { id: PROJECT_B_ID, slug: 'beta', name: 'Beta', agentConfig: { foo: 1 } },
@@ -150,7 +148,6 @@ describe('GET /api/projects/health', () => {
 
   it('200 with throughput=0 when no activity rows match (regression: empty result must not 500)', async () => {
     authVerified();
-    queryQueue.push([{ id: USER_ID, isCeo: false }]);
     queryQueue.push([
       { id: PROJECT_A_ID, slug: 'alpha', name: 'Alpha', agentConfig: null },
     ]);
@@ -170,7 +167,6 @@ describe('GET /api/projects/health', () => {
 
   it('200 with additive rollups (liveRuns / runners / spend24h / members / lastActivityAt)', async () => {
     authVerified();
-    queryQueue.push([{ id: USER_ID, isCeo: false }]); // me
     queryQueue.push([
       {
         id: PROJECT_A_ID,
@@ -251,7 +247,6 @@ describe('GET /api/projects/health', () => {
     // The db mock can't bind real Postgres, so assert the literal SQL shape:
     // it must say `IN (` and must NOT carry `ANY(` or `::uuid[]`.
     authVerified();
-    queryQueue.push([{ id: USER_ID, isCeo: false }]); // me
     queryQueue.push([
       { id: PROJECT_A_ID, slug: 'alpha', name: 'Alpha', agentConfig: null },
     ]); // visibleProjects
@@ -273,24 +268,5 @@ describe('GET /api/projects/health', () => {
     expect(serialized).toContain('IN (');
     expect(serialized).not.toContain('ANY(');
     expect(serialized).not.toContain('::uuid[]');
-  });
-
-  it('CEO branch: skips project-membership filter', async () => {
-    authVerified();
-    queryQueue.push([{ id: USER_ID, isCeo: true }]); // CEO
-    queryQueue.push([
-      { id: PROJECT_A_ID, slug: 'alpha', name: 'Alpha', agentConfig: null },
-    ]); // visibleProjects (unrestricted select)
-    queryQueue.push([]); // statusRows
-    queryQueue.push([]); // blockerRowsAll
-    queryQueue.push([{ projectId: PROJECT_A_ID, n: 5 }]); // throughputRows
-
-    const res = await buildApp().request('/api/projects/health', {
-      headers: { authorization: `Bearer ${await token()}` },
-    });
-
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as Array<{ throughput: number }>;
-    expect(body[0]?.throughput).toBe(5);
   });
 });

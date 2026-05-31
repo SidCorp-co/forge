@@ -60,38 +60,19 @@ projectHealthRoutes.use('/health', requireAuth(), assertEmailVerified());
 projectHealthRoutes.get('/health', async (c) => {
   const userId = c.get('userId');
 
-  // CEO sees all projects; everyone else sees own + member projects.
-  const [me] = await db
-    .select({ id: users.id, isCeo: users.isCeo })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-
-  const visibleProjects = me?.isCeo
-    ? await db
-        .select({
-          id: projects.id,
-          slug: projects.slug,
-          name: projects.name,
-          agentConfig: projects.agentConfig,
-          description: projects.description,
-          repoPath: projects.repoPath,
-        })
-        .from(projects)
-    : await db
-        .selectDistinct({
-          id: projects.id,
-          slug: projects.slug,
-          name: projects.name,
-          agentConfig: projects.agentConfig,
-          description: projects.description,
-          repoPath: projects.repoPath,
-        })
-        .from(projects)
-        .leftJoin(projectMembers, eq(projectMembers.projectId, projects.id))
-        .where(
-          sql`${projects.ownerId} = ${userId} OR ${projectMembers.userId} = ${userId}`,
-        );
+  // Caller sees the projects they own + are a member of.
+  const visibleProjects = await db
+    .selectDistinct({
+      id: projects.id,
+      slug: projects.slug,
+      name: projects.name,
+      agentConfig: projects.agentConfig,
+      description: projects.description,
+      repoPath: projects.repoPath,
+    })
+    .from(projects)
+    .leftJoin(projectMembers, eq(projectMembers.projectId, projects.id))
+    .where(sql`${projects.ownerId} = ${userId} OR ${projectMembers.userId} = ${userId}`);
 
   if (visibleProjects.length === 0) return c.json([]);
 

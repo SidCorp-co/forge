@@ -13,7 +13,6 @@ import {
   GitMerge,
   MessageSquare,
   FolderOpen,
-  Smartphone,
   Settings,
   LogOut,
   ChevronDown,
@@ -22,7 +21,6 @@ import {
   X,
   Sun,
   Moon,
-  Crown,
   LifeBuoy,
 } from 'lucide-react';
 import { useThemePreference } from '@/hooks/use-theme-preference';
@@ -318,31 +316,6 @@ export function SidebarNav({ onClose }: SidebarNavProps) {
           </Link>
         )}
 
-        {user?.isCEO && (
-          <>
-            <Link
-              href="/ceo/dashboard"
-              className={cn(
-                'flex items-center gap-3 px-3 py-2 transition-all duration-150',
-                pathname === '/ceo/dashboard' ? 'bg-amber-500/10 text-amber-600 font-semibold border-l-2 border-amber-500' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface border-l-2 border-transparent'
-              )}
-            >
-              <Crown className="h-[18px] w-[18px]" />
-              <span>CEO Dashboard</span>
-            </Link>
-            <Link
-              href="/ceo"
-              className={cn(
-                'flex items-center gap-3 px-3 py-2 transition-all duration-150',
-                pathname === '/ceo' ? 'bg-amber-500/10 text-amber-600 font-semibold border-l-2 border-amber-500' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface border-l-2 border-transparent'
-              )}
-            >
-              <MessageSquare className="h-[18px] w-[18px] text-amber-500" />
-              <span>CEO Chat</span>
-            </Link>
-          </>
-        )}
-
         <div className="pt-2">
           <button
             onClick={() => setProjectsOpen(!projectsOpen)}
@@ -382,21 +355,6 @@ export function SidebarNav({ onClose }: SidebarNavProps) {
           )}
         </div>
 
-        {user?.isCEO && (
-          <>
-            <Link
-              href="/devices"
-              className={cn(
-                'flex items-center gap-3 px-3 py-2 transition-all duration-150 mt-1',
-                pathname === '/devices' ? 'bg-surface-variant text-primary font-semibold border-l-2 border-primary' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface border-l-2 border-transparent'
-              )}
-            >
-              <Smartphone className="h-[18px] w-[18px]" />
-              <span>Devices</span>
-            </Link>
-
-          </>
-        )}
       </nav>
 
       <div className="mt-auto px-3 pt-3 md:pt-6 pb-3 md:pb-6 border-t border-outline-variant/20 space-y-2">

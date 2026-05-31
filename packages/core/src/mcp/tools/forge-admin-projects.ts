@@ -12,7 +12,8 @@ import {
 import { isUniqueViolation } from '../../lib/db-errors.js';
 import {
   type ContextScopedMcpToolFactory,
-  assertPrincipalCanAdmin,
+  assertPrincipalIsAdmin,
+  loadVisibleProjectIdsForPrincipal,
   principalUserId,
   zodToMcpSchema,
 } from './lib.js';
@@ -26,7 +27,6 @@ const createDataSchema = z
       .min(3)
       .max(64),
     name: z.string().trim().min(1).max(200),
-    ownerId: z.uuid(),
     description: z.string().trim().max(2000).optional(),
     repoPath: z.string().trim().max(500).optional(),
     baseBranch: z.string().trim().max(100).optional(),
@@ -56,16 +56,22 @@ function generateApiKey(): string {
 export const forgeAdminProjectsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_admin_projects',
   description:
-    "Cross-tenant project administration. Requires system admin (`users.isCeo=true`) AND PAT scope `admin` (device tokens are exempt). Actions: `list` (paginated; `includeStats:true` adds memberCount/issueCount), `create` (slug+name+ownerId; returns project without apiKey), `archive` (hard-delete; requires `confirm:true` and refuses with PROJECT_BUSY if any agent_sessions are queued/running).",
+    "Manage the projects in your scope (projects you own or are a member of). Actions: `list` (paginated; `includeStats:true` adds memberCount/issueCount), `create` (slug+name; the calling user becomes owner; returns project without apiKey), `archive` (hard-delete; requires owner/admin on the project, `confirm:true`, and refuses with PROJECT_BUSY if any agent_sessions are queued/running).",
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    await assertPrincipalCanAdmin(ctx.principal);
 
     if (input.action === 'list') {
       const limit = input.limit ?? 50;
       const offset = input.offset ?? 0;
-      const totalRows = await db.select({ total: count() }).from(projects);
+      const visibleIds = await loadVisibleProjectIdsForPrincipal(ctx.principal);
+      if (visibleIds.length === 0) {
+        return { projects: [], total: 0 };
+      }
+      const totalRows = await db
+        .select({ total: count() })
+        .from(projects)
+        .where(inArray(projects.id, visibleIds));
       const total = Number(totalRows[0]?.total ?? 0);
       const baseRows = await db
         .select({
@@ -80,6 +86,7 @@ export const forgeAdminProjectsTool: ContextScopedMcpToolFactory = (ctx) => ({
         })
         .from(projects)
         .leftJoin(users, eq(users.id, projects.ownerId))
+        .where(inArray(projects.id, visibleIds))
         .orderBy(projects.createdAt)
         .limit(limit)
         .offset(offset);
@@ -113,8 +120,9 @@ export const forgeAdminProjectsTool: ContextScopedMcpToolFactory = (ctx) => ({
       if (!input.data) {
         throw new Error('BAD_REQUEST: data is required for action=create');
       }
-      const { slug, name, ownerId, description, repoPath, baseBranch, productionBranch } =
-        input.data;
+      const { slug, name, description, repoPath, baseBranch, productionBranch } = input.data;
+      // The calling user always becomes the owner — no cross-tenant create.
+      const ownerId = principalUserId(ctx.principal);
       try {
         const created = await db.transaction(async (tx) => {
           const inserted = await tx
@@ -162,6 +170,8 @@ export const forgeAdminProjectsTool: ContextScopedMcpToolFactory = (ctx) => ({
       throw new Error('BAD_REQUEST: archive requires confirm:true');
     }
     const projectId = input.projectId;
+    // Only an owner/admin of the project may archive it.
+    await assertPrincipalIsAdmin(ctx.principal, projectId);
     const activeRows = await db
       .select({ active: count() })
       .from(agentSessions)

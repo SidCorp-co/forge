@@ -13,7 +13,6 @@ import {
   issues,
   projectMembers,
   projects,
-  users,
 } from '../db/schema.js';
 import {
   broadcastSession,
@@ -1106,22 +1105,13 @@ agentSessionRoutes.get(
     } else if (deviceId) {
       conditions.push(eq(agentSessions.deviceId, deviceId));
     } else {
-      // Cross-project view: restrict to caller-visible projects.
-      // CEO sees all; everyone else sees owned + member projects.
-      // Pattern mirrors packages/core/src/chat-logs/routes.ts + projects/health-routes.ts.
-      const [me] = await db
-        .select({ id: users.id, isCeo: users.isCeo })
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1);
-
-      const visible = me?.isCeo
-        ? await db.select({ id: projects.id }).from(projects)
-        : await db
-            .selectDistinct({ id: projects.id })
-            .from(projects)
-            .leftJoin(projectMembers, eq(projectMembers.projectId, projects.id))
-            .where(sql`${projects.ownerId} = ${userId} OR ${projectMembers.userId} = ${userId}`);
+      // Cross-project view: restrict to caller-visible projects
+      // (owned + member). Pattern mirrors packages/core/src/chat-logs/routes.ts.
+      const visible = await db
+        .selectDistinct({ id: projects.id })
+        .from(projects)
+        .leftJoin(projectMembers, eq(projectMembers.projectId, projects.id))
+        .where(sql`${projects.ownerId} = ${userId} OR ${projectMembers.userId} = ${userId}`);
 
       if (visible.length === 0) {
         setTotalCount(c, 0);

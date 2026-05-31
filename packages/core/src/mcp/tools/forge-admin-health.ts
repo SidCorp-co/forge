@@ -7,7 +7,7 @@ import { isBossStarted } from '../../queue/boss.js';
 import { isWsListening } from '../../ws/server.js';
 import {
   type ContextScopedMcpToolFactory,
-  assertPrincipalCanAdmin,
+  loadVisibleProjectIdsForPrincipal,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -23,12 +23,13 @@ type RunnerRow = typeof runners.$inferSelect;
 export const forgeAdminHealthTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_admin_health',
   description:
-    "Extended health snapshot for system admin (`users.isCeo=true`) AND PAT scope `admin` (device tokens are exempt). Returns `{ version, uptimeSeconds, db, queue, ws, runners: [{ id, name, projectId, status, lastSeenAt, inFlightCount }], projects: [{ id, slug, activeJobCount }], stuckJobs: [{ jobId, type, runnerId, dispatchedAt, ageSeconds }] }`. `staleJobThresholdSeconds` (60..86400, default 600) controls the stuckJobs cutoff.",
+    "Health snapshot scoped to your projects (projects you own or are a member of). Returns `{ version, uptimeSeconds, db, queue, ws, runners: [{ id, name, projectId, status, lastSeenAt, inFlightCount }], projects: [{ id, slug, activeJobCount }], stuckJobs: [{ jobId, type, runnerId, dispatchedAt, ageSeconds }] }` — `runners`, `projects`, and `stuckJobs` are limited to your visible projects; `version`/`uptimeSeconds`/`db`/`queue`/`ws` are global status indicators. `staleJobThresholdSeconds` (60..86400, default 600) controls the stuckJobs cutoff.",
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
     const staleJobThresholdSeconds = input.staleJobThresholdSeconds ?? 600;
-    await assertPrincipalCanAdmin(ctx.principal);
+    const visibleIds = await loadVisibleProjectIdsForPrincipal(ctx.principal);
+    const hasScope = visibleIds.length > 0;
 
     let dbOk = false;
     try {
@@ -38,7 +39,10 @@ export const forgeAdminHealthTool: ContextScopedMcpToolFactory = (ctx) => ({
       dbOk = false;
     }
 
-    const runnerRows: RunnerRow[] = dbOk ? await db.select().from(runners) : [];
+    const runnerRows: RunnerRow[] =
+      dbOk && hasScope
+        ? await db.select().from(runners).where(inArray(runners.projectId, visibleIds))
+        : [];
     let inFlightByRunner = new Map<string, number>();
     if (dbOk && runnerRows.length > 0) {
       const aggregated = await db
@@ -73,7 +77,7 @@ export const forgeAdminHealthTool: ContextScopedMcpToolFactory = (ctx) => ({
     // Per-project active session count. Cap at top-50 projects by active count
     // to keep the payload bounded.
     let projectsOut: Array<{ id: string; slug: string; activeJobCount: number }> = [];
-    if (dbOk) {
+    if (dbOk && hasScope) {
       const projectRows = await db
         .select({
           id: projects.id,
@@ -85,6 +89,7 @@ export const forgeAdminHealthTool: ContextScopedMcpToolFactory = (ctx) => ({
           agentSessions,
           sql`${agentSessions.projectId} = ${projects.id} AND ${agentSessions.status} IN ('queued','running')`,
         )
+        .where(inArray(projects.id, visibleIds))
         .groupBy(projects.id, projects.slug)
         .orderBy(sql`count(${agentSessions.id}) DESC`)
         .limit(50);
@@ -102,7 +107,7 @@ export const forgeAdminHealthTool: ContextScopedMcpToolFactory = (ctx) => ({
       dispatchedAt: string | null;
       ageSeconds: number;
     }> = [];
-    if (dbOk) {
+    if (dbOk && hasScope) {
       const rows = await db.execute<{
         id: string;
         type: string;
@@ -116,6 +121,7 @@ export const forgeAdminHealthTool: ContextScopedMcpToolFactory = (ctx) => ({
         WHERE status = 'dispatched'
           AND dispatched_at IS NOT NULL
           AND dispatched_at < now() - (${staleJobThresholdSeconds}::int * interval '1 second')
+          AND project_id = ANY(${visibleIds}::uuid[])
         ORDER BY dispatched_at ASC
         LIMIT 50
       `);

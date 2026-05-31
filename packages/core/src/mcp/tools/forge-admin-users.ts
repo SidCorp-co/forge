@@ -1,10 +1,10 @@
-import { count, eq, ilike, inArray } from 'drizzle-orm';
+import { and, count, eq, ilike, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { projectMembers, projects, users } from '../../db/schema.js';
 import {
   type ContextScopedMcpToolFactory,
-  assertPrincipalCanAdmin,
+  loadVisibleProjectIdsForPrincipal,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -20,17 +20,42 @@ const inputSchema = z
 export const forgeAdminUsersTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_admin_users',
   description:
-    "Cross-tenant user list with membership matrix. Requires system admin (`users.isCeo=true`) AND PAT scope `admin` (device tokens are exempt). Read-only in v1. Action: `list` (optional `search` matches email prefix; paginated). Each user includes `memberships: [{ projectId, projectSlug, role }]`. Never returns passwordHash or any auth secret.",
+    "List the collaborators across your projects (projects you own or are a member of) with a membership matrix scoped to those projects. Read-only. Action: `list` (optional `search` matches email prefix; paginated). Each user includes `memberships: [{ projectId, projectSlug, role }]` limited to your visible projects. Never returns passwordHash or any auth secret.",
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
     const limit = input.limit ?? 50;
     const offset = input.offset ?? 0;
-    await assertPrincipalCanAdmin(ctx.principal);
 
-    const whereClause = input.search
+    const visibleIds = await loadVisibleProjectIdsForPrincipal(ctx.principal);
+    if (visibleIds.length === 0) {
+      return { users: [], total: 0 };
+    }
+
+    // Candidate users = owners + members of the caller's visible projects.
+    const [ownerRows, memberUserRows] = await Promise.all([
+      db
+        .selectDistinct({ id: projects.ownerId })
+        .from(projects)
+        .where(inArray(projects.id, visibleIds)),
+      db
+        .selectDistinct({ id: projectMembers.userId })
+        .from(projectMembers)
+        .where(inArray(projectMembers.projectId, visibleIds)),
+    ]);
+    const candidateIds = [
+      ...new Set([...ownerRows.map((r) => r.id), ...memberUserRows.map((r) => r.id)]),
+    ];
+    if (candidateIds.length === 0) {
+      return { users: [], total: 0 };
+    }
+
+    const searchClause = input.search
       ? ilike(users.email, `${input.search.replace(/[%_]/g, '\\$&')}%`)
       : undefined;
+    const whereClause = searchClause
+      ? and(inArray(users.id, candidateIds), searchClause)
+      : inArray(users.id, candidateIds);
 
     const [totalRow] = await db
       .select({ total: count() })
@@ -42,7 +67,6 @@ export const forgeAdminUsersTool: ContextScopedMcpToolFactory = (ctx) => ({
       .select({
         id: users.id,
         email: users.email,
-        isCeo: users.isCeo,
         emailVerifiedAt: users.emailVerifiedAt,
         createdAt: users.createdAt,
       })
@@ -66,7 +90,9 @@ export const forgeAdminUsersTool: ContextScopedMcpToolFactory = (ctx) => ({
       })
       .from(projectMembers)
       .innerJoin(projects, eq(projects.id, projectMembers.projectId))
-      .where(inArray(projectMembers.userId, ids));
+      .where(
+        and(inArray(projectMembers.userId, ids), inArray(projectMembers.projectId, visibleIds)),
+      );
 
     const byUser = new Map<
       string,
@@ -81,7 +107,6 @@ export const forgeAdminUsersTool: ContextScopedMcpToolFactory = (ctx) => ({
     const out = userRows.map((u) => ({
       id: u.id,
       email: u.email,
-      isCeo: u.isCeo,
       emailVerifiedAt: u.emailVerifiedAt,
       createdAt: u.createdAt,
       memberships: byUser.get(u.id) ?? [],
