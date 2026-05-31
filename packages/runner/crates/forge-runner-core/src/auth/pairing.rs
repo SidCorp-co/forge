@@ -40,6 +40,121 @@ pub fn default_device_name() -> String {
         .unwrap_or_else(|| "forge-runner".to_string())
 }
 
+// === ISS-305 — browser-approve device login (OAuth device-authorization) ===
+//
+// Mirrors the desktop pairing flow but mints a *device token* and (optionally)
+// returns a git push credential. Endpoints: `POST /api/devices/login/init`,
+// `GET /api/devices/login/poll`. The `/login/approve` step happens in the
+// browser, not here. Response bodies are snake_case (unlike `/pair`).
+
+/// `POST /api/devices/login/init` response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LoginInitResponse {
+    pub pairing_code: String,
+    /// Relative verify URL, e.g. `/pair?code=XXX-XXXX`.
+    pub verify_url: String,
+    pub expires_at: String,
+}
+
+/// Git push credential handed to the runner at poll time (flag-gated server-side).
+#[derive(Debug, Clone, Deserialize)]
+pub struct GitCredential {
+    pub transport: String,
+    pub host: String,
+    pub username: String,
+    pub password: String,
+    #[serde(default)]
+    pub instructions: Option<String>,
+}
+
+/// `GET /api/devices/login/poll` success body (HTTP 200).
+#[derive(Debug, Clone, Deserialize)]
+pub struct LoginApproved {
+    pub device_token: String,
+    pub device_id: String,
+    #[serde(default)]
+    pub git_credential: Option<GitCredential>,
+}
+
+/// Outcome of one poll tick.
+#[derive(Debug, Clone)]
+pub enum LoginPoll {
+    /// 204 — not approved yet; keep polling.
+    Pending,
+    /// 200 — approved + consumed (single-use).
+    Approved(Box<LoginApproved>),
+    /// 410 — expired / already consumed / unknown.
+    Gone(String),
+}
+
+/// Start a browser-approve device login. Returns the code + verify URL.
+pub async fn login_init(core_url: &str, name: &str) -> Result<LoginInitResponse> {
+    let body = serde_json::json!({
+        "device_label": name,
+        "device_platform": detected_platform(),
+        "device_hostname": hostname::get().ok().and_then(|h| h.into_string().ok()),
+    });
+    let url = format!("{}/api/devices/login/init", core_url.trim_end_matches('/'));
+    let resp = reqwest::Client::new()
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| Error::Other(format!("login init request: {e}")))?;
+    let status = resp.status();
+    if !status.is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        return Err(Error::Other(format!("login init failed ({status}): {text}")));
+    }
+    resp.json::<LoginInitResponse>()
+        .await
+        .map_err(|e| Error::Other(format!("login init decode: {e}")))
+}
+
+/// Poll once for approval. Maps HTTP 204/200/410 to [`LoginPoll`].
+pub async fn login_poll(core_url: &str, pairing_code: &str) -> Result<LoginPoll> {
+    let url = format!(
+        "{}/api/devices/login/poll?pairing_code={}",
+        core_url.trim_end_matches('/'),
+        urlencoding(pairing_code),
+    );
+    let resp = reqwest::Client::new()
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| Error::Other(format!("login poll request: {e}")))?;
+    let status = resp.status();
+    if status.as_u16() == 204 {
+        return Ok(LoginPoll::Pending);
+    }
+    if status.as_u16() == 410 {
+        let text = resp.text().await.unwrap_or_default();
+        return Ok(LoginPoll::Gone(text));
+    }
+    if !status.is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        return Err(Error::Other(format!("login poll failed ({status}): {text}")));
+    }
+    let approved = resp
+        .json::<LoginApproved>()
+        .await
+        .map_err(|e| Error::Other(format!("login poll decode: {e}")))?;
+    Ok(LoginPoll::Approved(Box::new(approved)))
+}
+
+/// Minimal percent-encoding for the pairing code query param (alnum + `-`).
+fn urlencoding(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~' {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
 pub async fn pair(core_url: &str, code: &str, name: &str) -> Result<PairResponse> {
     let body = serde_json::json!({
         "code": code,
