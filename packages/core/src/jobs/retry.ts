@@ -86,21 +86,31 @@ function autoRetryPhasedCooldownMs(nextAttempt: number): number {
   return AUTO_RETRY_PHASE_2_COOLDOWN_MS;
 }
 
-/** Payload key the dispatcher reads to skip the just-failed device on the
- *  next attempt. See `dispatcher.ts` — when the value matches the project's
- *  primary device, primary selection is skipped so the runner pool rotates
- *  to a standby; single-device projects fall through to the failed device
- *  again (selector retries without exclusion when no alternative exists). */
+/** Payload key the dispatcher reads to skip every device already tried in
+ *  this retry chain. See `dispatcher.ts` — the selector skips primary + pin
+ *  whose device is in the set and excludes the set from standby selection, so
+ *  each retry lands on a not-yet-tried runner. When the set covers every
+ *  online runner the selector re-runs with an EMPTY set so the chain wraps
+ *  around instead of starving (single-/few-device projects keep cycling). */
 export const AUTO_RETRY_PAYLOAD_KEY = '_autoRetry';
 
 export interface AutoRetryPayload {
-  excludeDeviceId?: string;
+  /** Devices already attempted in this retry chain (accumulated, deduped). */
+  excludeDeviceIds?: string[];
 }
 
-export function readAutoRetryPayload(payload: unknown): AutoRetryPayload {
-  if (!payload || typeof payload !== 'object') return {};
+/** Always returns a normalized `{ excludeDeviceIds }` — never undefined — so
+ *  callers can `.includes`/spread without guards. Non-array / legacy payloads
+ *  collapse to an empty set (clean-break: the old singular `excludeDeviceId`
+ *  key is not honoured; a stale in-flight job loses at most one exclusion). */
+export function readAutoRetryPayload(payload: unknown): { excludeDeviceIds: string[] } {
+  if (!payload || typeof payload !== 'object') return { excludeDeviceIds: [] };
   const raw = (payload as Record<string, unknown>)[AUTO_RETRY_PAYLOAD_KEY];
-  return raw && typeof raw === 'object' ? (raw as AutoRetryPayload) : {};
+  if (!raw || typeof raw !== 'object') return { excludeDeviceIds: [] };
+  const ids = (raw as AutoRetryPayload).excludeDeviceIds;
+  return {
+    excludeDeviceIds: Array.isArray(ids) ? ids.filter((x): x is string => typeof x === 'string') : [],
+  };
 }
 
 /**
@@ -253,18 +263,18 @@ export async function scheduleAutoRetryWithVerify(
   const retryAfterAt =
     retryAfterHint && retryAfterHint > phaseFloor ? retryAfterHint : phaseFloor;
 
-  // Rotate device on each retry when the project has more than one online
-  // runner. The dispatcher reads `payload[AUTO_RETRY_PAYLOAD_KEY]` and skips
-  // primary selection if the failed device matches; single-device projects
-  // still retry on the same device because the selector falls back without
-  // the exclusion when no alternative is online.
+  // Rotate device on each retry by ACCUMULATING every device tried so far in
+  // this chain (not just the last one). The dispatcher reads
+  // `payload[AUTO_RETRY_PAYLOAD_KEY]` and excludes the whole set, so the chain
+  // sweeps all online runners before any device repeats; single-/few-device
+  // projects wrap around because the selector falls back without the exclusion
+  // once the set covers every online runner.
   const basePayload = (job.payload ?? {}) as Record<string, unknown>;
   const nextPayload: Record<string, unknown> = { ...basePayload };
   if (job.deviceId) {
     const prior = readAutoRetryPayload(basePayload);
     nextPayload[AUTO_RETRY_PAYLOAD_KEY] = {
-      ...prior,
-      excludeDeviceId: job.deviceId,
+      excludeDeviceIds: [...new Set([...prior.excludeDeviceIds, job.deviceId])],
     } satisfies AutoRetryPayload;
   }
 

@@ -451,7 +451,7 @@ describe('jobs/dispatcher PM path', () => {
       projectId: 'p1',
       requiredCapabilities: { pm: true },
       pinDeviceId: null,
-      excludeDeviceId: null,
+      excludeDeviceIds: [],
     });
 
     // ISS-186 — snapshot must persist on runner path too, before adapter.dispatch.
@@ -485,7 +485,7 @@ describe('jobs/dispatcher PM path', () => {
       projectId: 'p1',
       requiredCapabilities: { pm: true },
       pinDeviceId: null,
-      excludeDeviceId: null,
+      excludeDeviceIds: [],
     });
   });
 

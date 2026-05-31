@@ -280,12 +280,12 @@ async function dispatchViaRunner(
     }
   }
 
-  // Auto-retry device rotation — when retry.ts wrote a payload hint with the
-  // just-failed deviceId, drop any session-group pin that resolves to the
-  // same device so the selector can pick a standby. Single-device projects
-  // still fall through (selector retries without the exclusion).
+  // Auto-retry device rotation — when retry.ts wrote a payload hint listing
+  // the devices already tried, drop any session-group pin that resolves to
+  // one of them so the selector can pick a not-yet-tried runner. Single-/few-
+  // device projects still fall through (selector wraps without the exclusion).
   const autoRetry = readAutoRetryPayload(job.payload);
-  if (autoRetry.excludeDeviceId && pinDeviceId === autoRetry.excludeDeviceId) {
+  if (pinDeviceId && autoRetry.excludeDeviceIds.includes(pinDeviceId)) {
     pinDeviceId = null;
     priorClaudeSessionId = null;
   }
@@ -298,7 +298,7 @@ async function dispatchViaRunner(
     projectId: job.projectId,
     requiredCapabilities: required,
     pinDeviceId,
-    excludeDeviceId: autoRetry.excludeDeviceId ?? null,
+    excludeDeviceIds: autoRetry.excludeDeviceIds,
   });
   if (!runner) {
     // ISS-198 — selectRunnerForJob filters runners with stale heartbeats
