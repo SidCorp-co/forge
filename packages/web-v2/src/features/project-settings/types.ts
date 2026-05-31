@@ -4,13 +4,43 @@
 // `labels/routes.ts`, `projects/members-routes.ts`, and
 // `pipeline/pipeline-config-schema.ts`. Do not guess field names.
 
-/** Patch body accepted by `PATCH /api/projects/:id` (basics + repo subset). */
+/** Patch body accepted by `PATCH /api/projects/:id` (basics + repo + testing). */
 export interface ProjectUpdateInput {
   name?: string;
   description?: string | null;
   repoPath?: string | null;
   baseBranch?: string | null;
   productionBranch?: string | null;
+  previewDeploy?: PreviewDeployConfig | null;
+}
+
+/** One `previewDeploy.testingUrls` row — mirrors `testingUrlSchema` in core. */
+export interface TestingUrl {
+  label: string;
+  url: string;
+}
+
+/** One `previewDeploy.testCredentials` row — mirrors `testCredentialSchema`. */
+export interface TestCredential {
+  label: string;
+  username: string;
+  password: string;
+}
+
+/**
+ * The `previewDeploy` jsonb blob on a project — staging endpoints + the testing
+ * URLs / credentials QA uses against a deployment. Mirrors the known keys of
+ * `previewDeployPatchSchema` in `packages/core/src/projects/routes.ts`; the
+ * server schema is `.catchall(z.unknown())`, so unknown keys round-trip
+ * untouched (the Testing tab spreads the stored blob on save to preserve them).
+ * `Project.previewDeploy` is untyped jsonb (`unknown`) — cast through this.
+ */
+export interface PreviewDeployConfig {
+  stagingUrl?: string | null;
+  stagingApiUrl?: string | null;
+  testingUrls?: TestingUrl[];
+  testCredentials?: TestCredential[];
+  [key: string]: unknown;
 }
 
 /** One row of `GET /api/projects/:id/members` — includes the member email. */
