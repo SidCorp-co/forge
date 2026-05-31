@@ -1,182 +1,66 @@
 # Architecture
 
-How Forge is put together, and why.
+Canonical map of how Forge is laid out: control plane vs runtime, the device-runner split, dual-principal auth.
 
-This is the canonical map of how Forge is laid out today: control plane vs runtime, the device-runner split, and where each module fits.
+## Two planes
 
-## One-paragraph summary
+- **Control plane** — `packages/core` (Hono + Drizzle): REST, WebSocket, MCP. Holds project/issue state, queues jobs (pg-boss), embeddings (pgvector), streams events. **Never holds Claude credentials.**
+- **Runtime plane** — device agents on users' machines. Shared Rust `agent-core`; two form factors: `dev` (Tauri GUI), `forged`/`forge-runner` (CLI daemon). Pair into the account, receive jobs over WS, spawn `claude` CLI in a git worktree, stream JobEvents back.
 
-Forge splits into two planes:
-
-- **Control plane** — `packages/core`, a Hono + Drizzle service exposing REST, WebSocket, and MCP. Hosts project and issue state, queues jobs (pg-boss), stores embeddings (pgvector), and streams events. **Never holds Claude credentials.**
-- **Runtime plane** — **device agents** running on users' own machines. Two form factors share a Rust `agent-core` crate: `dev` (Tauri GUI) and `forged` (CLI daemon). Devices pair into the account, receive job dispatches over WebSocket, spawn the `claude` CLI locally in a git worktree, and stream JobEvents back.
-
-Two principals interact with the system — **user** (JWT) and **device** (long-lived revocable token). Both pass through a shared policy layer so access checks live in one place.
+Two principals, one shared policy layer: **user** (JWT) and **device** (long-lived revocable token).
 
 ## Component map
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                       Your browser                      │
-│   web (Next.js)       dev (Tauri)    [app paused, 0.2+] │
-└──────────────────────┬──────────────────────────────────┘
-                       │ REST + WebSocket (user JWT)
-                       │ MCP (user token or device token)
-                       ▼
-┌─────────────────────────────────────────────────────────┐
-│           Control plane — packages/core (Hono)             │
-│  ┌───────────┐ ┌───────────┐ ┌────────────────────────┐ │
-│  │ REST /api │ │ WS /ws    │ │ MCP /mcp               │ │
-│  └─────┬─────┘ └─────┬─────┘ └───────────┬────────────┘ │
-│        └───────┬─────┴───────────────────┘              │
-│                │ shared policy layer                    │
-│                │ (user ▷ project member,                │
-│                │  device ▷ project pool)                │
-│        ┌───────▼────────┐   ┌────────────────────┐      │
-│        │ Job dispatcher │   │ Event broadcaster  │      │
-│        │ (pg-boss)      │   │ (room-scoped ws)   │      │
-│        └───────┬────────┘   └─────────┬──────────┘      │
-│                └──────────┬───────────┘                 │
-│                           ▼                             │
-│              ┌──────────────────────────┐               │
-│              │ Postgres 17              │               │
-│              │ state + jobs (pg-boss)   │               │
-│              │ embeddings (pgvector)    │               │
-│              └──────────────────────────┘               │
-└──────────────┬──────────────────────────────────────────┘
-               │ WebSocket (device token)
-               ▼
-┌─────────────────────────────────────────────────────────┐
-│       Runtime plane — Your machine(s)                   │
-│  ┌──────────────────┐       ┌──────────────────┐        │
-│  │ dev (Tauri GUI)  │   OR  │ forged (CLI)     │        │
-│  │ for developers   │       │ for CI / daemons │        │
-│  └────────┬─────────┘       └────────┬─────────┘        │
-│           └──────────┬─────────────────┘                │
-│                      ▼                                  │
-│           ┌──────────────────────┐                      │
-│           │ agent-core (Rust)    │                      │
-│           │ pair / ws / keychain │                      │
-│           │ git / job_runner     │                      │
-│           └──────────┬───────────┘                      │
-│                      ▼                                  │
-│           ┌──────────────────────┐                      │
-│           │ spawns `claude` CLI  │                      │
-│           │ in git worktree      │                      │
-│           └──────────────────────┘                      │
-│           (Claude credentials in OS keychain, here)     │
-└─────────────────────────────────────────────────────────┘
+browser: web (Next.js) · dev (Tauri)
+   │ REST + WS (user JWT) · MCP (user/device token)
+   ▼
+control plane — packages/core (Hono)
+   REST /api · WS /ws · MCP /mcp
+   └─ shared policy layer (user ▷ project member · device ▷ project pool)
+   └─ job dispatcher (pg-boss) · event broadcaster (room-scoped ws)
+   └─ Postgres 17: state + jobs + embeddings (pgvector)
+   │ WS (device token)
+   ▼
+runtime plane — your machine(s)
+   dev (Tauri GUI) OR forge-runner (CLI)
+   └─ agent-core (Rust): pair / ws / keychain / git / job_runner
+   └─ spawns `claude` CLI in git worktree  (Claude creds in OS keychain, here)
 ```
 
 ## Why this shape
 
-### Split control plane from runtime
-
-The server has the wrong lifetime to run agents. HTTP requests live for milliseconds; Claude Code jobs run for minutes to hours. Running agent execution in the same process that serves HTTP creates two problems:
-
-1. Subprocess lifetime outlives requests — complex state management
-2. Credentials for a powerful CLI sit next to all the HTTP attack surface
-
-Pushing execution to paired devices solves both. The server becomes a thin coordinator. Claude credentials never leave the user's keychain.
-
-### Two device form factors, one Rust core
-
-The same `agent-core` crate handles pairing, WebSocket protocol, job dispatch, keychain access, and `claude` spawning. Two thin wrappers add the form-factor-specific bits:
-
-- **`dev` (Tauri)** — desktop GUI with project picker, pairing UI, live job viewer. First-class for developer workstations.
-- **`forged` (CLI daemon)** — headless, for CI runners, long-running dev boxes, or power users who prefer the terminal.
-
-Both share the protocol. A team can use either, or both.
-
-### Dual-principal authorization
-
-Two actors call the API, and they deserve different trust:
-
-- **User** (JWT, 7-day TTL, refresh rotation) — can read/write projects they own or are members of, enqueue jobs, revoke devices.
-- **Device** (long-lived device token, revocable) — can accept jobs for projects where the device is pooled, submit JobEvents for jobs it's running, heartbeat. **Cannot** read user PII or enumerate projects outside its pool.
-
-A single policy module exports helpers (`assertUserIsProjectMember`, `assertDeviceBelongsToProject`, `assertJobAccessibleByPrincipal`). REST, WebSocket, and MCP all call these helpers. No code path bypasses the policy layer.
-
-### WebSocket with room-scoped broadcasts
-
-Older versions broadcast every event to every connected client. The new model subscribes each socket to specific rooms on authentication:
-
-- User socket → `user:<id>` + `project:<id>` for every project they're in
-- Device socket → `device:<id>` + `project:<id>` for every project pool it's in
-
-Clients cannot choose their own rooms. Events publish to rooms; fan-out is scoped.
-
-### MCP on the same data layer
-
-MCP clients (Claude Code itself, Cline, custom tools) reach the same data via `/mcp`. Tools are thin wrappers around REST controllers — same validation, same policy checks, same audit. User MCP tokens are **account-wide** (tool call must include `projectId`; policy enforces access); device MCP tokens are device-scoped.
+- **Control plane ≠ runtime.** HTTP requests live ms; Claude jobs run minutes–hours. Pushing execution to paired devices keeps core a thin coordinator and keeps Claude credentials in the user's keychain, off the server's attack surface.
+- **One Rust core, two wrappers.** `agent-core` does pairing/WS/dispatch/keychain/spawn; `dev` adds a GUI, `forge-runner` is headless (CI, dev boxes).
+- **Dual-principal auth.** User (JWT, 7-day TTL, refresh rotation): read/write own/member projects, enqueue jobs, revoke devices. Device (revocable token): accept jobs for pooled projects, submit JobEvents, heartbeat — **cannot** read user PII or enumerate projects outside its pool. One policy module (`assertUserIsProjectMember`, `assertDeviceBelongsToProject`, `assertJobAccessibleByPrincipal`) gates REST + WS + MCP; no path bypasses it.
+- **Room-scoped WS.** Sockets are subscribed to rooms at auth (`user:<id>`, `project:<id>`, `device:<id>`); clients can't pick rooms. See [websocket.md](websocket.md).
+- **MCP on the same data layer.** Tools wrap REST controllers (same validation/policy/audit). User MCP tokens are account-wide (call must include `projectId`); device tokens are device-scoped.
 
 ## Data flow — a typical job
 
-```
-1. Webhook fires: GitHub issue opened (or Sentry alert, or Stripe event)
-   → POST /api/webhooks/<project-id>
-   → Server creates a Forge issue in status `open`
-
-2. Pipeline triggers `forge-triage` job (if auto-triage is enabled for this project)
-   → Job row inserted: {project, issue, type: 'triage', status: 'queued'}
-   → Dispatcher picks the project's activeDevice
-   → WS event `job.assigned` sent to the device's room
-
-3. Device agent receives job:
-   → agent-core spawns `claude` in the project's git worktree
-   → Passes skill prompt + issue context
-   → Streams stdout / stderr / tool calls back over WS
-
-4. For each stream chunk:
-   → Device POSTs batched JobEvent records to /api/jobs/:id/events
-   → Server persists + broadcasts on project room
-   → Web dashboard renders live
-
-5. Claude finishes:
-   → Device POSTs /api/jobs/:id/complete with exitCode + summary
-   → Job status → `done` (or `failed`)
-   → If pipeline has a next stage and that stage is auto-enabled, another job is enqueued
-   → Otherwise issue waits for human approval
-```
+1. Webhook → `POST /api/webhooks/in/<project-slug>` → issue created `open`.
+2. Pipeline enqueues `forge-triage` (if `autoTriage`): job row `{project, issue, type, queued}` → dispatcher picks an eligible runner → `job.assigned` to device room.
+3. Device: `agent-core` spawns `claude` in the git worktree with skill prompt + issue context; streams stdout/tool-calls back over WS.
+4. Per chunk: device batches `POST /api/jobs/:id/events` → core persists + broadcasts on project room → dashboard renders live.
+5. Done: `POST /api/jobs/:id/complete` (exit + summary) → status `done`/`failed` → next auto-enabled stage enqueues, else waits for human.
 
 ## Pipeline state machine
 
-Issues move through 17 statuses defined in `packages/core/src/db/schema.ts` (`issueStatuses`). The canonical lifecycle, transitions, and skill mapping live in [`docs/modules/issues-pipeline/status-pipeline.md`](../modules/issues-pipeline/status-pipeline.md) — this section is a high-level overview only.
-
-Happy-path sequence:
-
-```
-open → confirmed → approved → in_progress → developed →
-deploying → testing → tested → pass → staging → released → closed
-```
-
-Branches off the happy path:
-
-- `waiting` — complex issues pause here for human plan approval (between `confirmed` and `approved`).
-- `reopen` — rejection at any review/test gate; `forge-fix` resumes on the same ISS-* branch.
-- `on_hold` — paused / blocked by infra or manual intervention.
-- `needs_info` — triage cannot proceed; awaiting reporter clarification.
-- `draft` — pre-`open` working state for issues authored incrementally.
-
-Skill→status mapping (which agent fires on which entry status) is the single table in [`status-pipeline.md` §Skill mapping](../modules/issues-pipeline/status-pipeline.md#skill-mapping). Per-project `pipelineConfig.auto*` toggles decide whether each step auto-runs or waits for human approval.
+17 statuses in `packages/core/src/db/schema.ts` (`issueStatuses`). Lifecycle, transitions, and skill mapping: [status-pipeline.md](../modules/issues-pipeline/status-pipeline.md) (source of truth). Per-project `pipelineConfig.auto*` decides auto-run vs human gate.
 
 ## Security boundaries
 
-- **Claude credentials never on the server.** They live in each device's OS keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service).
-- **User JWT:** 7-day TTL, refresh-token rotation, `httpOnly` cookies on web.
-- **Device token:** long-lived, stored in OS keychain, revocable from the web UI.
-- **Rate limits** on `/api/auth/*` and `/api/devices/pair`. Defaults: `/api/auth/local` 5 attempts / 15 min / IP, `/api/auth/register` 3 / hour / IP, `/api/devices/pair` 10 / hour / IP — all configurable via `RATE_LIMIT_*` env vars. Source of truth: `packages/core/src/config/rate-limits.ts`.
-- **Email verification** required before creating the first project.
-- **CORS:** whitelist + regex patterns via `CORS_ORIGINS` / `CORS_ORIGIN_PATTERNS`.
-- **MCP `crossProjectAccess` flag removed** — every tool call must include `projectId` and pass the policy check.
+- Claude credentials only in each device's OS keychain — never on the server.
+- User JWT: 7-day TTL, refresh rotation, `httpOnly` cookies.
+- Device token: long-lived, OS keychain, revocable from web UI.
+- Rate limits on `/api/auth/*` + `/api/devices/pair` (`RATE_LIMIT_*` env; defaults in `config/rate-limits.ts`).
+- Email verification before first project. CORS via `CORS_ORIGINS` / `CORS_ORIGIN_PATTERNS`.
+- MCP: no cross-project flag — every call includes `projectId` + passes policy.
 
 ## Non-goals
 
-- **Not multi-tenant SaaS.** One control-plane instance = one tenant. Run multiple instances for multiple tenants.
-- **Not optimized for >~1000 concurrent WS sockets** in a single instance. Beyond that, a Redis pub/sub layer will be added (v0.5+).
-- **Not a Linux headless agent in v0.x.** Secret Service + D-Bus needs a follow-up RFC.
-- **Not using the Anthropic API.** We orchestrate Claude Code CLI, the user's subscription.
+- Not multi-tenant SaaS (one instance = one tenant). Not tuned for >~1000 concurrent WS sockets (Redis pub/sub later). No Linux headless agent in v0.x. Not the Anthropic API — orchestrates the user's Claude Code CLI.
 
 ## Evolution
 
-Significant changes (new service, schema migration, new client form factor, new principal class) go through the [RFC process](../rfcs/README.md). In-flight work lives in the issue tracker.
+New service / schema migration / client form factor / principal class → [RFC](../rfcs/README.md). In-flight work: issue tracker.

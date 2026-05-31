@@ -1,10 +1,11 @@
 # Devices
 
-Paired machines that run `claude` CLI locally. The runtime plane's connection point to the control plane.
+Paired machines running `claude` CLI locally — the runtime plane's connection point to the control plane.
 
 ## Overview
 
-A user pairs devices (laptop, desktop, CI box) with their account. Each device installs the Forge agent (Tauri `dev` or `forged` CLI). Projects bind to devices from a user's pool — one active at a time per project.
+- User pairs devices (laptop, desktop, CI box) with their account; each installs the Forge agent (Tauri `dev` or `forged` CLI).
+- Projects bind to devices from a user's pool — one active at a time per project.
 
 ## Data Flow
 
@@ -84,7 +85,7 @@ Status transitions:
 
 ### First-time pair
 
-1. User navigates **Account → Devices → Add device**
+1. User: **Account → Devices → Add device**
 2. `POST /api/devices/pairing-codes` → returns 8-char code
 3. Code displayed in web UI
 4. User runs `forged pair F9-3K7T-92XA` on machine
@@ -94,31 +95,25 @@ Status transitions:
 
 ### Project binding
 
-1. User navigates **Project → Settings → Runtime**
+1. User: **Project → Settings → Runtime**
 2. Dropdown shows user's devices (by `name`, showing `status`)
 3. User picks a device → `PUT /api/projects/:id/runtime/active-device`
-4. Server validates:
-   - Is the user a project member?
-   - Is the device in the project's pool (or adds it first)?
-   - Are there any `running` jobs? If yes → 409 with `jobId` (user must cancel or wait)
+4. Server validates: user is project member? device in pool (or adds it)? any `running` jobs → 409 with `jobId` (cancel or wait)
 5. Server updates `project.activeDevice`
 6. On first bind, UI prompts for repo local path → device clones if needed
 
 ### Heartbeat + online / offline detection
 
-1. Device sends `POST /api/devices/heartbeat` every 30s
-2. Server updates `lastSeenAt`
-3. Cron every 2 min: marks devices with `lastSeenAt > 90s ago` as `offline`
-4. On next heartbeat: `status → online`
+1. Device sends `POST /api/devices/heartbeat` every 30s → server updates `lastSeenAt`
+2. Cron every 2 min: marks devices with `lastSeenAt > 90s ago` as `offline`
+3. On next heartbeat: `status → online`
 
 ### Revocation
 
-1. User clicks **Revoke** on device card
-2. `DELETE /api/devices/:id`
-3. Server sets `status = revoked`, invalidates `tokenHash`
-4. Server closes the device's WebSocket
-5. Any `running` jobs on this device get `cancelled` with reason `device_revoked`
-6. Next reconnect attempt: 401, device surfaces "Device revoked, please re-pair"
+1. User clicks **Revoke** on device card → `DELETE /api/devices/:id`
+2. Server sets `status = revoked`, invalidates `tokenHash`, closes the device's WebSocket
+3. Any `running` jobs on this device get `cancelled` with reason `device_revoked`
+4. Next reconnect attempt: 401, device surfaces "Device revoked, please re-pair"
 
 ## API Endpoints
 

@@ -1,32 +1,22 @@
 # Trunk-Based Development
 
-How `forge` branches, merges, and ships. This is the practical guide
-external contributors and maintainers both work from; the rationale (why
-this and not GitFlow / GitLab Flow) lives in §Consequences and
-§Alternatives at the bottom.
+How `forge` branches, merges, and ships. Practical guide for contributors + maintainers; rationale in §Consequences / §Alternatives.
 
-> Originally captured as ADR 0014 (2026-04-26). Migrated to
-> `docs/guides/` when the legacy `docs/decisions/` archive was retired.
+> Originally ADR 0014 (2026-04-26). Migrated to `docs/guides/` when `docs/decisions/` was retired.
 
 ## Context
 
-`jarvis-agents` ships an autonomous pipeline (Forge skills run `/forge-triage → /forge-plan → /forge-code → /forge-review → /forge-test → /forge-release` end-to-end). Branches are created and consumed by the pipeline itself, not just by humans, on the order of dozens per day. Long-lived branches and a release-train cadence are incompatible with that throughput:
+The autonomous pipeline (`/forge-triage → /forge-plan → /forge-code → /forge-review → /forge-test → /forge-release`) creates/consumes dozens of branches per day. Long-lived branches + release-train cadence are incompatible:
 
-- `develop` would always be ahead of what the pipeline can dispatch — every issue would need rebase before code phase.
-- Release branches would couple every fix to a fortnightly cut, breaking the "open an issue, see it merged today" loop the pipeline targets.
-- The skill state machine (canonical order in
-  [status-pipeline.md](../modules/issues-pipeline/status-pipeline.md):
-  `open → confirmed → approved → in_progress → developed → testing → … → released → closed`)
-  already encodes the gates a release process traditionally enforces.
+- `develop` would always be ahead of dispatchable work — every issue needs rebase before code.
+- Release branches couple every fix to a fortnightly cut, breaking the "open an issue, see it merged today" loop.
+- The skill state machine ([status-pipeline.md](../modules/issues-pipeline/status-pipeline.md): `open → confirmed → approved → in_progress → developed → testing → … → released → closed`) already encodes the gates a release process enforces.
 
-The merge to `main` and the live deploy + E2E verification all happen at the
-`testing` stage (`forge-test`), against a single live beta — not a
-multi-environment promotion track — so a `staging → production` branch
-separation does not apply.
+Merge to `main` + live deploy + E2E verification all happen at `testing` (`forge-test`), against a single live beta — not a multi-environment promotion track, so `staging → production` separation does not apply.
 
 ## Decision
 
-Adopt **Trunk-Based Development**. Single trunk = `main`. No `develop`, no `staging`, no long-lived release branches.
+**Trunk-Based Development.** Single trunk = `main`. No `develop`, no `staging`, no long-lived release branches.
 
 ### Rules
 
@@ -60,24 +50,13 @@ open → confirmed → approved → in_progress
                                 closed
 ```
 
-The merge, deploy, and live verification all run at `testing` (`/forge-test`),
-because the live walk must run on the **merged** code; `/forge-release` is a
-thin release-note + close step. The intermediate `tested → pass → staging`
-statuses are auto-advanced by `forge-test`, not human gates.
+Merge/deploy/live-verify run at `testing` (`/forge-test`) — the live walk must run on **merged** code. `/forge-release` is a thin release-note + close step. `tested → pass → staging` are auto-advanced by `forge-test`, not human gates.
 
-> The old VPS staging-deploy step (`/forge-staging`) was retired on 2026-05-12 —
-> it is now a no-op kept only so the dispatcher doesn't error on a legacy
-> `staging`-status job. Skill manifests live under
-> [`.claude/skills/<skill-name>/SKILL.md`](../../.claude/skills/) (there is no
-> `packages/core/skills/`).
+> The old VPS staging-deploy step (`/forge-staging`) was retired 2026-05-12 — now a no-op kept only so the dispatcher doesn't error on a legacy `staging`-status job. Skill manifests live under [`.claude/skills/<skill-name>/SKILL.md`](../../.claude/skills/) (no `packages/core/skills/`).
 
 ### Branch naming — dual scheme
 
-The repo is open source on GitHub but the canonical issue tracker is the
-project's own Forge instance (which uses `ISS-<seq>` IDs from `iss_seq`).
-Two branch-name schemes coexist so external contributors don't need a
-Forge account, and the autonomous pipeline still sees a tracker-linked
-branch on the maintainer side.
+Repo is open source on GitHub but canonical tracker is the project's Forge instance (`ISS-<seq>` IDs from `iss_seq`). Two schemes coexist: external contributors need no Forge account, the pipeline still sees a tracker-linked branch.
 
 #### 1. Maintainer / Forge pipeline (canonical)
 
@@ -86,10 +65,7 @@ ISS-<seq>-<slug>                 e.g. ISS-279-job-assigned-handler
 ISS-<seq>-chunk-<a-z>-<slug>     e.g. ISS-293-chunk-a-issues-comments
 ```
 
-Used by the Forge pipeline (`/forge-code` cuts these), maintainers, and
-internal contributors who have a Forge account. The `ISS-<seq>` prefix
-ties the branch to a single tracker entry and is the input the autonomous
-pipeline reads to advance status.
+Used by the Forge pipeline (`/forge-code` cuts these), maintainers, and internal contributors with a Forge account. The `ISS-<seq>` prefix ties the branch to one tracker entry and is the input the pipeline reads to advance status.
 
 #### 2. External contributor (GitHub-native)
 
@@ -101,25 +77,19 @@ docs/<slug>      chore/<slug>      refactor/<slug>
 test/<slug>      perf/<slug>
 ```
 
-`gh-<num>-` is optional; use it when the work is tied to a GitHub Issue.
-The maintainer who merges the PR will assign an `ISS-<seq>` retroactively
-on the Forge tracker if pipeline tracking is needed downstream.
+`gh-<num>-` is optional; use it when work is tied to a GitHub Issue. The merging maintainer assigns an `ISS-<seq>` retroactively if downstream pipeline tracking is needed.
 
 #### Slug rules (both schemes)
 
 - Lowercase `a-z 0-9`, kebab-case (hyphen separator, no underscores).
 - 2 to ~5 words, ≤ 50 characters.
 - **Total branch name** ≤ 60 characters.
-- **One issue per branch.** Multi-issue branches like `ISS-261-262-rc6`
-  are forbidden — split work into separate branches.
-- **No orphan ISS branches.** `ISS-attention-mvp` (no seq) is forbidden;
-  every `ISS-` prefix needs a numeric seq from the tracker.
+- **One issue per branch.** Multi-issue branches like `ISS-261-262-rc6` are forbidden — split into separate branches.
+- **No orphan ISS branches.** `ISS-attention-mvp` (no seq) is forbidden; every `ISS-` prefix needs a numeric seq from the tracker.
 
 #### Validation
 
-`scripts/check-branch-name.sh` enforces the rules above; the pre-push
-hook calls it before the build/test cycle so a malformed name fails fast.
-Run it standalone any time:
+`scripts/check-branch-name.sh` enforces the rules; the pre-push hook calls it before build/test so a malformed name fails fast. Standalone:
 
 ```bash
 scripts/check-branch-name.sh                          # current branch
@@ -130,44 +100,38 @@ scripts/check-branch-name.sh ISS-279-foo              # specific name
 
 ### Commit messages
 
-Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`, `perf:`). Reference the issue ID in the body, not the subject (`ISS-279`), to keep subjects under 72 chars.
+Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`, `perf:`). Reference the issue ID (`ISS-279`) in the body, not the subject — keep subjects under 72 chars.
 
 ### Release tagging
 
-`vX.Y.Z` tags are cut directly on `main` when a slice of work is ready to ship. Pre-release suffix `-beta` is reserved for the dogfood phase before the next minor (e.g. `v0.1.5-beta`). No release branch, no merge-back, no cherry-pick gymnastics.
+`vX.Y.Z` tags cut directly on `main` when a slice ships. Pre-release suffix `-beta` reserved for dogfood before the next minor (e.g. `v0.1.5-beta`). No release branch, merge-back, or cherry-pick.
 
 ### Deployment & live verification
 
-There is no separate staging environment or VPS deploy step. After review,
-`forge-test` (at `status=testing`) merges the ISS-* branch to `main`, deploys
-`main` to the live beta (Coolify), and runs the full Playwright E2E
-(`forge-verify-live`) against it before the issue is allowed to close. A live
-failure sends the issue back to `reopen` (fix-forward, no revert);
-`forge-release` then writes the release note and closes. Self-hosters configure
-their own deploy target per [release.md](release.md).
+No separate staging environment or VPS deploy step. After review, `forge-test` (at `status=testing`) merges the ISS-* branch to `main`, deploys `main` to the live beta (Coolify), and runs the full Playwright E2E (`forge-verify-live`) before close. A live failure sends the issue back to `reopen` (fix-forward, no revert); `forge-release` then writes the release note and closes. Self-hosters configure their own deploy target per [release.md](release.md).
 
 ## Consequences
 
-### Pros
+**Pros**
 
-- The autonomous pipeline can dispatch + merge issues continuously without coordinating with a release calendar.
-- Every contributor — human or skill — sees the same `main`-is-truth model. No "which branch did this ship in?" archaeology.
-- Feature flags absorb half-done work, so a slow contributor doesn't block fast contributors.
-- Reverts are cheap. The blast radius of a bad commit is one revert, not one cherry-pick storm across release branches.
+- Pipeline dispatches + merges issues continuously, no release calendar.
+- Every contributor (human or skill) sees the same `main`-is-truth model — no "which branch did this ship in?" archaeology.
+- Feature flags absorb half-done work, so a slow contributor doesn't block fast ones.
+- Reverts are cheap — blast radius is one revert, not a cherry-pick storm.
 
-### Cons
+**Cons**
 
-- Requires CI + pre-push hook discipline. A green `main` is a contract; it costs vigilance to keep.
-- Long-running migrations need to be split (schema first, code second, drop second) so a feature flag can toggle without locking the trunk.
-- The pre-push hook can fail on pre-existing flaky tests. `SKIP_PREPUSH=1` is acceptable for unrelated work — track the flake under a follow-up issue and reference it in your commit so the maintainer can re-enable the gate once it's fixed.
+- Requires CI + pre-push hook discipline; a green `main` is a contract.
+- Long-running migrations must be split (schema first, code second, drop second) so a flag can toggle without locking trunk.
+- Pre-push hook can fail on pre-existing flaky tests. `SKIP_PREPUSH=1` is acceptable for unrelated work — track the flake under a follow-up issue, reference it in the commit so the maintainer can re-enable the gate.
 
-### Alternatives considered
+**Alternatives considered**
 
-- **GitFlow** — rejected. The `develop` branch becomes a perpetual rebase target for a skill pipeline that ships issues hourly. The release branch model assumes train cadence the project does not have.
-- **GitLab Flow** — closer fit, but its long-lived `staging`/environment branches add merge ergonomics overhead the single-trunk + live-verify-at-`testing` flow doesn't need; one beta deployed straight from `main` already covers pre-release verification.
-- **No branches, commit straight to main** — rejected on safety grounds. Pre-push hook + branch + same-day merge buys an inexpensive review gate without slowing throughput.
+- **GitFlow** — rejected. `develop` becomes a perpetual rebase target for an hourly-shipping pipeline; release-branch model assumes train cadence the project lacks.
+- **GitLab Flow** — closer fit, but long-lived `staging`/environment branches add merge overhead the single-trunk + live-verify-at-`testing` flow doesn't need; one beta deployed straight from `main` covers pre-release verification.
+- **No branches, commit straight to main** — rejected on safety. Pre-push hook + branch + same-day merge buys a cheap review gate without slowing throughput.
 
 ## Follow-ups
 
-- Pre-push flake cleanup tracked under a separate ISS — see project tracker for the live list.
-- If multi-tenant deploys land in v0.2, this ADR may need a "promotion track" addendum (a tag → environment lifecycle). It does not need to change the trunk model.
+- Pre-push flake cleanup tracked under a separate ISS — see project tracker.
+- If multi-tenant deploys land in v0.2, this ADR may need a "promotion track" addendum (tag → environment lifecycle). Trunk model unchanged.

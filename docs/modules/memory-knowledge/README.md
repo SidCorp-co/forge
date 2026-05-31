@@ -2,9 +2,13 @@
 
 Postgres `pgvector` semantic memory, project knowledge graph, RAG retrieval.
 
+> Sub-doc: [step-handoffs.md](step-handoffs.md) — per-step structured handoff context passed between pipeline stages.
+
 ## Overview
 
-Claude Code has no memory between sessions by default. Forge adds persistent memory: the system captures issue content, agent session outputs, decisions, and resolved errors; embeds them and stores the vectors in Postgres via `pgvector` (same connection as the rest of the data); and surfaces relevant context to agents at the start of each session.
+- Claude Code has no cross-session memory; Forge adds persistent memory.
+- Captures issue content, agent session outputs, decisions, resolved errors → embeds → stores vectors in Postgres `pgvector` (same connection as the rest of the data).
+- Surfaces relevant context to agents at the start of each session.
 
 ## Data Flow
 
@@ -76,38 +80,17 @@ Claude Code has no memory between sessions by default. Forge adds persistent mem
 
 ### `memories` table layout (Postgres + pgvector)
 
-- Single table for all projects, partitioned by `project_id` filter on every query (project scope enforced in the policy layer)
-- `vector vector(N)` column — N matches the embedding model dimension (default 1536)
+- Single table for all projects, partitioned by `project_id` filter on every query (project scope enforced in policy layer)
+- `vector vector(N)` column — N matches embedding model dimension (default 1536)
 - Index: HNSW on `vector` (`USING hnsw (vector vector_cosine_ops)`) per ADR 0011
 - Indexed columns: `(project_id, source)`, `(project_id, source_ref)`
 - Payload columns: `source`, `source_ref`, `project_id`, `metadata jsonb`, `embedded_at`
 
 ## Key Business Flows
 
-### Indexing on issue create
-
-1. User creates issue → `issue:created` hook fires
-2. Embeddings service normalizes text (strip markdown, canonicalize whitespace)
-3. POST to embedding provider (LiteLLM)
-4. INSERT/UPDATE into `memories` (vector + metadata) in one statement
-5. `embeddedAt` set; broadcast `memory:indexed` over ws to subscribed clients
-
-### Retrieval at session start
-
-1. Agent session starts on device
-2. System prompt builder calls `forge_memory.search(query, projectId)` via MCP
-3. Server runs `SELECT ... FROM memories WHERE project_id = $1 ORDER BY vector <=> $2 LIMIT K` (cosine distance via HNSW index)
-4. Top-K results returned, sorted by relevance
-5. Returned as context snippets in system prompt
-6. Session runs with context
-
-### Project knowledge indexing (manual trigger)
-
-1. User clicks "Reindex codebase" on project settings
-2. Device runs `index-codebase` skill: scans filesystem, runs `grep` + semantic search
-3. Generates `.forge/knowledge.json` with: architecture notes, key files, conventions
-4. Uploads to server
-5. Server embeds and stores as `source: 'knowledge'` memory
+- **Indexing on issue create:** `issue:created` hook → embeddings service normalizes text (strip markdown, canonicalize whitespace) → POST to embedding provider (LiteLLM) → INSERT/UPDATE into `memories` (vector + metadata) in one statement → `embeddedAt` set; broadcast `memory:indexed` over ws to subscribed clients.
+- **Retrieval at session start:** Agent session starts on device → system prompt builder calls `forge_memory.search(query, projectId)` via MCP → server runs `SELECT ... FROM memories WHERE project_id = $1 ORDER BY vector <=> $2 LIMIT K` (cosine distance via HNSW index) → top-K sorted by relevance returned as context snippets in system prompt → session runs with context.
+- **Project knowledge indexing (manual trigger):** User clicks "Reindex codebase" → device runs `index-codebase` skill (scans filesystem, `grep` + semantic search) → generates `.forge/knowledge.json` (architecture notes, key files, conventions) → uploads to server → server embeds and stores as `source: 'knowledge'` memory.
 
 ## API Endpoints
 
@@ -118,8 +101,7 @@ Claude Code has no memory between sessions by default. Forge adds persistent mem
 | `DELETE` | `/api/memory/:id` | user | Remove a memory entry |
 | `POST` | `/api/projects/:id/memory/reindex` | user | Trigger full reindex |
 
-MCP tool:
-- `forge_memory` — exposes the same search to agents
+MCP tool: `forge_memory` — exposes the same search to agents.
 
 ## Cross-Module Touchpoints
 

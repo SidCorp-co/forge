@@ -1,10 +1,12 @@
 # Chat
 
-Interactive conversational sessions with project agents. Separate from pipeline jobs — this is conversation, not execution.
+Interactive conversational sessions with project agents — conversation, not pipeline execution.
 
 ## Overview
 
-Users can open a chat session with an agent inside a project. The agent has access to the project's memory, skills, and MCP tools, but the interaction is free-form — not routed through the 14-status pipeline. Useful for "what's the state of ISS-42?" questions, brainstorming, or exploratory work before creating an issue.
+- Open a chat session with an agent inside a project; agent has project memory, skills, MCP tools.
+- Free-form — not routed through the 14-status pipeline.
+- Use for "what's the state of ISS-42?", brainstorming, exploration before creating an issue.
 
 ## Data Flow
 
@@ -69,23 +71,22 @@ Users can open a chat session with an agent inside a project. The agent has acce
 ### Start a chat
 
 1. User navigates **Project → Chat**
-2. `POST /api/chat/sessions` → new `ChatSession` created
+2. `POST /api/chat/sessions` → new `ChatSession`
 3. WebSocket subscription opens for streaming
 
 ### Send a message
 
 1. User types message → `POST /api/chat`
 2. System prompt built (project context + recent history)
-3. If pairing-backed: request routed to device; device runs `claude` in chat mode
-4. If LLM-only: direct LiteLLM call
+3. Pairing-backed: routed to device; device runs `claude` in chat mode
+4. LLM-only: direct LiteLLM call
 5. Response streams back via WebSocket
 6. Each chunk logged as ChatLog
 
 ### End a session
 
-1. Session auto-ends after 1h inactivity
-2. Or user explicitly ends
-3. `ChatSession.status = 'ended'`
+1. Auto-ends after 1h inactivity, or user explicitly ends
+2. `ChatSession.status = 'ended'`
 
 ## API Endpoints
 

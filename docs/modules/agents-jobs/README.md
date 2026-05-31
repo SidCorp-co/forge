@@ -1,10 +1,12 @@
 # Agents & Jobs
 
-Job queue, dispatch, execution, and event streaming. The execution orchestration layer between the pipeline and the devices.
+Execution orchestration between the pipeline and devices: job queue, dispatch, execution, event streaming.
+
+> Sub-doc: [prompt-config.md](prompt-config.md) — SSOT system-prompt builder + per-state model/tools/mcp config + prompt hashing.
 
 ## Overview
 
-A **Job** is a unit of agent work: "run `forge-plan` on ISS-42 for project `forge-agents`." Jobs are enqueued by the pipeline, dispatched to the project's active device, executed as a `claude` CLI invocation on that device, and streamed back as **JobEvents**.
+A **Job** = a unit of agent work (e.g. "run `forge-plan` on ISS-42 for project `forge-agents`"). Enqueued by the pipeline → dispatched to the project's active device → executed as a `claude` CLI invocation there → streamed back as **JobEvents**.
 
 ## Data Flow
 
@@ -79,20 +81,19 @@ queued → dispatched → running → done / failed / cancelled
 
 ### `JobEvent`
 
-Append-only event log per job. `seq` is monotonic per job — the dashboard uses it for ordered rendering and reconnect replay.
-
-Retention: **30 days after the parent Job reaches a terminal state.** Daily cron sweeps expired events.
+- Append-only event log per job. `seq` monotonic per job — dashboard uses it for ordered rendering and reconnect replay.
+- Retention: **30 days after the parent Job reaches a terminal state.** Daily cron sweeps expired events.
 
 ## Key Business Flows
 
 ### Enqueue → dispatch → execute → complete
 
-1. Pipeline enqueues job: `Job.create({ status: 'queued', ...payload })`
+1. Pipeline enqueues: `Job.create({ status: 'queued', ...payload })`
 2. pg-boss publishes to queue
 3. Dispatcher polls, looks up `project.activeDevice`
-4. If device online: `Job.update({ status: 'dispatched', device })` + WS `job.assigned` to device room
-5. If device offline: job stays `queued`, UI shows "Waiting for device `macbook-pro`"
-6. Device receives, spawns `claude`, transitions job: `Job.update({ status: 'running' })`
+4. Device online: `Job.update({ status: 'dispatched', device })` + WS `job.assigned` to device room
+5. Device offline: job stays `queued`, UI shows "Waiting for device `macbook-pro`"
+6. Device receives, spawns `claude`, `Job.update({ status: 'running' })`
 7. Device POSTs JobEvent batches to `/api/jobs/:id/events`
 8. Server persists, broadcasts on project WS room
 9. Device POSTs `/api/jobs/:id/complete` with exit code
@@ -101,19 +102,19 @@ Retention: **30 days after the parent Job reaches a terminal state.** Daily cron
 
 ### Cancel a running job
 
-1. User clicks "Cancel" in UI → `POST /api/jobs/:id/cancel` (user principal)
+1. User clicks "Cancel" → `POST /api/jobs/:id/cancel` (user principal)
 2. Server marks `cancellationRequested = true`
 3. Server WS pushes `job.cancel` to device room
-4. Device receives, sends SIGTERM to Claude subprocess
+4. Device sends SIGTERM to Claude subprocess
 5. Device POSTs `/complete` with `exitCode: -1`, `error: 'cancelled'`
 6. `Job.update({ status: 'cancelled' })`
 
 ### Stale detection + auto-retry
 
 1. Cron every 5 min: find jobs `running` with no JobEvent in 5+ min
-2. Assume stuck; mark `Job.update({ status: 'failed', error: 'stale' })`
-3. If retry count <3: re-enqueue new job with same payload
-4. Beyond 3 retries: leave as failed, surface in health dashboard
+2. Mark stuck: `Job.update({ status: 'failed', error: 'stale' })`
+3. Retry count <3: re-enqueue new job with same payload
+4. Beyond 3 retries: leave failed, surface in health dashboard
 
 ## API Endpoints
 

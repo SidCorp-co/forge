@@ -1,94 +1,43 @@
 # MCP Threat Model — Personal Access Tokens (ISS-150)
 
-This document captures the threats and mitigations for the Personal Access
-Token (PAT) authentication path added alongside the legacy device-token
-path in `/mcp`. Read together with `packages/core/src/auth/pat.ts`,
-`packages/core/src/middleware/require-pat-or-device.ts`, and
-`packages/core/src/mcp/server.ts`.
+Threats + mitigations for the PAT auth path alongside legacy device-token on `/mcp`. Read with `packages/core/src/auth/pat.ts`, `packages/core/src/middleware/require-pat-or-device.ts`, `packages/core/src/mcp/server.ts`.
 
 ## Surface
 
-`/mcp` (POST/GET/DELETE) accepts `Authorization: Bearer <token>` where
-`<token>` is either:
-
-- a paired-device token (legacy desktop path — unchanged behaviour), or
-- a PAT of shape `forge_pat_<env>_<64 hex>` (`<env>` ∈ `dev|stg|prd`).
-
-The dispatcher (`require-pat-or-device.ts`) chooses the path by prefix and
-populates `c.get('principal')` with the union type
-`{ kind: 'device'; device } | { kind: 'pat'; userId; tokenId; scopes; projectIds }`.
-
-REST CRUD for PATs lives under `/api/pat` and requires a regular user JWT
-(cookie or Bearer). PATs cannot mint PATs — the user must be logged in via
-the browser/web flow first.
+- `/mcp` (POST/GET/DELETE) accepts `Authorization: Bearer <token>`, either a paired-device token (legacy desktop, unchanged) or a PAT `forge_pat_<env>_<64 hex>` (`<env>` ∈ `dev|stg|prd`).
+- Dispatcher (`require-pat-or-device.ts`) picks path by prefix, sets `c.get('principal')` = `{ kind: 'device'; device } | { kind: 'pat'; userId; tokenId; scopes; projectIds }`.
+- PAT CRUD under `/api/pat`, requires user JWT (cookie/Bearer). PATs cannot mint PATs — browser/web login required first.
 
 ## Threats and mitigations
 
 ### T1 — Cross-tenant read via stolen or mis-issued PAT
 
-A PAT scoped to project X must not allow `forge_issues.list` against
-project Y, regardless of how the caller frames the request.
+PAT scoped to project X must not allow `forge_issues.list` against project Y, however framed.
 
-**Mitigations:**
-
-- `personal_access_tokens.project_ids` is enforced in two places:
-  - `mcp/server.ts` checks `projectId` extracted from common arg fields
-    (`projectId`, `filters.projectId`) before invoking any tool. On miss,
-    we return `not_found` (NOT `forbidden`) to avoid existence leaks.
-  - `assertPrincipalIsMember(principal, projectId)` and
-    `assertPrincipalIsAdmin(principal, projectId)` in `tools/lib.ts` do
-    the same check at the per-call layer for tools that adopt the
-    principal-aware helpers.
-- The REST mint endpoint (`POST /api/pat`) rejects any `projectIds` entry
-  that isn't a project the user can access — preventing the user from
-  minting a token "scoped to" a project they have no claim on.
+- `personal_access_tokens.project_ids` enforced in two places:
+  - `mcp/server.ts` checks `projectId` from common arg fields (`projectId`, `filters.projectId`) before any tool. On miss returns `not_found` (NOT `forbidden`) to avoid existence leaks.
+  - `assertPrincipalIsMember(principal, projectId)` / `assertPrincipalIsAdmin(principal, projectId)` in `tools/lib.ts` do the same per-call for principal-aware tools.
+- Mint endpoint (`POST /api/pat`) rejects any `projectIds` entry the user can't access — can't scope a token to an unclaimed project.
 
 ### T2 — Token leak via logs / Sentry / WebSocket broadcasts
 
-If a PAT plaintext appears in a Sentry event, log line, or WS payload,
-attackers with read access to the observability stack can replay it.
+PAT plaintext in a Sentry event, log line, or WS payload is replayable by observability-stack readers.
 
-**Mitigations:**
-
-- `packages/observability/src/index.ts` exports `PAT_STRING_PATTERN`
-  (unanchored, global) and `scrubStringValues` / `scrubPatInString`.
-- `scrubSentryEvent` now applies the PAT scrubber to request URL, body,
-  breadcrumb messages, breadcrumb `data`, and recursively walks nested
-  string values. Header values are still redacted by the existing
-  key-based pass.
-- `packages/web/instrumentation*.ts` and `packages/core/src/observability/sentry.ts`
-  call `scrubSentryEvent` already — extending the canonical module flows
-  through to every surface with no per-adapter change.
+- `packages/observability/src/index.ts` exports `PAT_STRING_PATTERN` (unanchored, global) + `scrubStringValues` / `scrubPatInString`.
+- `scrubSentryEvent` applies the PAT scrubber to request URL, body, breadcrumb messages, breadcrumb `data`, and recursively nested strings. Header values still redacted by existing key-based pass.
+- `packages/web/instrumentation*.ts` + `packages/core/src/observability/sentry.ts` already call `scrubSentryEvent` — canonical module flows to every surface, no per-adapter change.
 
 ### T3 — Privilege escalation through admin tools
 
-A non-admin user must not be able to call `forge_admin_*` or `forge_pm_*`
-tools through a PAT, no matter what `scopes` they minted on the token.
+Non-admin user must not call `forge_admin_*` / `forge_pm_*` via PAT, whatever `scopes` they minted.
 
-**Mitigations:**
-
-- `forge_pm_*` tools are listed in `DEVICE_REQUIRED_TOOLS` in
-  `mcp/server.ts`. A PAT principal hitting any of these short-circuits
-  to `FORBIDDEN: PM_REQUIRES_DEVICE` before the tool runs. PM tools
-  inherently require a paired claude-code runner, which only paired
-  devices can host.
-- For role-gated tools, `assertPrincipalIsAdmin(principal, projectId)`
-  checks `projects.ownerId === userId` OR
-  `projectMembers.role IN ('owner','admin')`. The PAT `scopes` array
-  does NOT widen this — admin access is bound to the underlying user's
-  role on the project, not to anything that can be granted at mint time.
-- For cross-tenant `forge_admin_*` tools, `assertPrincipalCanAdmin`
-  enforces a combined gate: the underlying user must have
-  `users.isCeo === true` AND, if the principal is a PAT, the token's
-  `scopes` array must include `admin`. The `isCeo` check runs first so
-  a non-admin who minted a PAT with `scopes:['admin']` still gets the
-  generic `FORBIDDEN: requires system admin` error. Device principals
-  skip the scope check (devices have no PAT scope vector).
+- `forge_pm_*` listed in `DEVICE_REQUIRED_TOOLS` (`mcp/server.ts`); PAT principal short-circuits to `FORBIDDEN: PM_REQUIRES_DEVICE` before run. PM tools need a paired claude-code runner, hostable only by paired devices.
+- Role-gated tools: `assertPrincipalIsAdmin(principal, projectId)` checks `projects.ownerId === userId` OR `projectMembers.role IN ('owner','admin')`. PAT `scopes` does NOT widen this — admin access binds to the user's project role, not anything granted at mint.
+- Cross-tenant `forge_admin_*`: `assertPrincipalCanAdmin` requires `users.isCeo === true` AND (if PAT) `scopes` includes `admin`. `isCeo` runs first, so a non-admin's `scopes:['admin']` PAT still gets `FORBIDDEN: requires system admin`. Device principals skip the scope check (no PAT scope vector).
 
 ### PAT scopes
 
-A PAT's `scopes` column is a JSONB array. Three values are honored at
-tool dispatch time:
+`scopes` column is a JSONB array; three values honored at tool dispatch:
 
 | scope | What it grants |
 |---|---|
@@ -96,138 +45,57 @@ tool dispatch time:
 | `write` | Project-scoped mutating tools (issues/comments/etc.) the underlying user can already reach. |
 | `admin` | Required to invoke any `forge_admin_*` tool. Only honored when the underlying user is also `users.isCeo=true`; otherwise the tool still refuses with `FORBIDDEN: requires system admin`. |
 
-Defaults: `mintPat` writes `['read', 'write']` when the caller omits
-`scopes`. `admin` must be explicitly requested at create time and is
-never auto-included. PAT creation does not itself check `isCeo`
-(non-admins may technically mint an `admin`-scoped token); the gate
-runs at tool time, so the token is unusable for admin tools without
-the role.
+- `mintPat` defaults to `['read', 'write']` when `scopes` omitted. `admin` must be explicitly requested, never auto-included.
+- PAT creation doesn't check `isCeo` (non-admins may mint an `admin`-scoped token); gate runs at tool time, so token is unusable for admin tools without the role.
 
 ### T4 — Brute force / credential stuffing
 
-An attacker who learns a PAT's prefix should not be able to brute-force
-the body cheaply.
+Knowing a PAT prefix must not allow cheap body brute-force.
 
-**Mitigations:**
-
-- argon2id hashing with the same parameters used elsewhere
-  (`memoryCost: 19456, timeCost: 2, parallelism: 1`).
-- Distinct pepper `PAT_PEPPER` per-environment, distinct from
-  `DEVICE_TOKEN_PEPPER`.
-- Per-PAT rate limit: 60 req/min by default, configurable via the
-  `rate_limit_max` column or `RATE_LIMIT_PAT_*` envs.
-- Auto-revoke after three rate-limit breaches within an hour — the
-  attacker has a small budget before the token burns.
+- argon2id hashing, same params as elsewhere (`memoryCost: 19456, timeCost: 2, parallelism: 1`).
+- Distinct per-env pepper `PAT_PEPPER`, distinct from `DEVICE_TOKEN_PEPPER`.
+- Per-PAT rate limit: 60 req/min default, configurable via `rate_limit_max` column or `RATE_LIMIT_PAT_*` envs.
+- Auto-revoke after three rate-limit breaches within an hour.
 
 ### T5 — Replay after revocation
 
-Revoking a PAT must take effect immediately. A cache between revoke and
-the next request introduces a window for replay.
+Revocation must take effect immediately; a cache opens a replay window.
 
-**Mitigations:**
-
-- `verifyPat` queries the DB on every request. There is no in-memory
-  verification cache. The rate-limit bucket caches per-token usage
-  but does NOT cache verification results.
-- The bucket's hot path costs one indexed lookup + argon2 verify — see
-  the load-test note below.
+- `verifyPat` queries the DB every request; no in-memory verification cache. Rate-limit bucket caches per-token usage but NOT verification results.
+- Bucket hot path costs one indexed lookup + argon2 verify — see load-test note below.
 
 ### T6 — Timing oracle on prefix lookup
 
-If `verifyPat` returns faster for a non-matching prefix than for a
-matching-prefix wrong-body, an attacker can probe prefixes.
+`verifyPat` returning faster for a non-matching prefix than a matching-prefix wrong-body lets an attacker probe prefixes.
 
-**Mitigations:**
-
-- We always iterate every row returned by the prefix-indexed query and
-  run `argon2.verify` on each, even after we have already matched.
-  Total verify work is proportional to the bucket size for the
-  attacker's prefix, not to whether a match was found.
-- Prefix selectivity (`forge_pat_<env>_<4 hex>`) gives ~65k buckets per
-  env at uniform distribution; expected rows per bucket are O(1) for
-  any realistic user base.
+- Always iterate every row from the prefix-indexed query and run `argon2.verify` on each, even after a match. Verify work ∝ bucket size for the attacker's prefix, not whether a match was found.
+- Prefix selectivity (`forge_pat_<env>_<4 hex>`) gives ~65k buckets/env at uniform distribution; expected rows/bucket O(1) for any realistic user base.
 
 ### T7 — Audit gap
 
-If an MCP tool call fails to record an audit row, an operator cannot
-forensically reconstruct what happened.
+A missed audit row blocks forensic reconstruction.
 
-**Mitigations:**
-
-- `mcp/server.ts` writes one `mcp_audit_log` row per call (success, scope
-  miss, device-required, error, rate-limited). Inserts are fire-and-forget
-  so audit failure cannot 5xx a tool call.
-- Indexes (`mcp_audit_token_idx`, `mcp_audit_user_idx`, `mcp_audit_project_idx`)
-  support fast retrieval from REST (`GET /api/pat/:id/audit`).
+- `mcp/server.ts` writes one `mcp_audit_log` row per call (success, scope miss, device-required, error, rate-limited). Inserts fire-and-forget so audit failure can't 5xx a call.
+- Indexes (`mcp_audit_token_idx`, `mcp_audit_user_idx`, `mcp_audit_project_idx`) support fast retrieval from REST (`GET /api/pat/:id/audit`).
 
 ## Operational guidance
 
-### `PAT_PEPPER` rotation
-
-The pepper is part of the input to argon2id. Rotating it invalidates
-every existing PAT (verify will return false). For first roll-out (no
-PATs exist yet), this is harmless — set a strong value in production
-before the first PAT is minted.
-
-In production, `PAT_PEPPER` must be set explicitly to a 32+ char value.
-The env schema defaults it to a placeholder in dev/test to avoid
-breaking unit tests.
-
-### Audit-log retention
-
-Migration `0063_mcp_audit_log.sql` creates a plain (non-partitioned)
-table. Retention is enforced by the periodic
-`enforceMcpAuditRetention()` call (deletes rows older than 90 days).
-
-A follow-up PR should migrate this table to monthly `RANGE` partitions
-so retention becomes `DROP PARTITION` instead of a `DELETE`. The plan
-in ISS-150 sketches the partition wiring; implementation is deferred
-to keep this PR reviewable.
-
-### Append-only grant
-
-The plan recommends `REVOKE UPDATE, DELETE ON mcp_audit_log FROM forge_app`
-so the app role can only INSERT + SELECT. Our DB client uses a single
-role from `DATABASE_URL`, so this grant must be applied out-of-band by
-the operator. We document the recipe rather than running it from a
-migration because the role name is operator-specific.
+- **`PAT_PEPPER` rotation** — pepper feeds argon2id; rotating invalidates every existing PAT (verify returns false). Harmless at first roll-out (no PATs yet) — set a strong value before the first mint. In production `PAT_PEPPER` must be set explicitly to 32+ chars; env schema defaults to a placeholder in dev/test to avoid breaking unit tests.
+- **Audit-log retention** — migration `0063_mcp_audit_log.sql` creates a plain (non-partitioned) table. Retention via periodic `enforceMcpAuditRetention()` (deletes rows older than 90 days). Follow-up PR should migrate to monthly `RANGE` partitions so retention becomes `DROP PARTITION` not `DELETE`; partition wiring sketched in ISS-150, deferred for reviewability.
+- **Append-only grant** — plan recommends restricting the app role to INSERT + SELECT. DB client uses a single role from `DATABASE_URL`, so this grant is applied out-of-band by the operator (role name is operator-specific); recipe below rather than run from a migration.
 
 ```sql
 -- Replace `forge_app` with the role from your DATABASE_URL.
 REVOKE UPDATE, DELETE ON mcp_audit_log FROM forge_app;
 ```
 
-### Auto-revoke on password change
-
-The threat model requires that changing a user's password revokes
-every live PAT for that user. The helper
-`revokeAllPatsForUser(userId, 'password_changed')` is exported from
-`packages/core/src/auth/pat.ts`. The password-change endpoint is not
-yet implemented in this repo — when it lands, it MUST call this helper
-in the same transaction as the `users.password_hash` update.
-
-### Auto-revoke on suspicious IP fan-out
-
-The plan sketches a check that revokes any PAT whose last N audit rows
-show > 3 distinct IPs in 60 seconds. This is feasible against the
-existing `mcp_audit_token_idx` and is left to a follow-up PR — the
-core middleware path already supports the auto-revoke action
-(`forceRevokePat(id)`), so this is a pure detection-logic addition.
+- **Auto-revoke on password change** — changing a user's password must revoke every live PAT. Helper `revokeAllPatsForUser(userId, 'password_changed')` exported from `packages/core/src/auth/pat.ts`. Password-change endpoint not yet implemented; when it lands it MUST call this helper in the same transaction as the `users.password_hash` update.
+- **Auto-revoke on suspicious IP fan-out** — plan sketches revoking any PAT whose last N audit rows show > 3 distinct IPs in 60 seconds. Feasible against `mcp_audit_token_idx`, left to a follow-up PR; core path already supports the auto-revoke action (`forceRevokePat(id)`), so this is pure detection logic.
 
 ## Out of scope for ISS-150
 
-- HTTPS-only enforcement on `/mcp` — handled at the deploy layer
-  (Traefik/Coolify). No app-layer redirect.
-- Granular scope semantics beyond `read`/`write` — the array is
-  reserved on the row, but the verifier doesn't yet refuse a tool
-  based on its declared scope. The `scopes` column is a forward-compat
-  hook for a future ISS that maps each MCP tool to a required scope.
-- Cross-user admin audit page — `POST /api/admin/tokens/audit` is not
-  in this PR. Operators with DB access can `SELECT * FROM mcp_audit_log`.
-- The CI mutation test for `assertPrincipalIsMember` — the test
-  infrastructure (separate `vitest.mutation.config.ts`, monkey-patched
-  helper, CI step) is sketched in the issue plan and deferred to
-  follow-up so this PR stays reviewable.
-- Load-test job with `p95 < 50ms` assertion. The verifier on a warm
-  process measures comfortably under 50ms locally; we ship the
-  primitives and defer the gated CI step.
+- HTTPS-only enforcement on `/mcp` — handled at deploy layer (Traefik/Coolify); no app-layer redirect.
+- Granular scope semantics beyond `read`/`write` — array reserved on the row, but verifier doesn't yet refuse a tool by declared scope; `scopes` is a forward-compat hook for a future ISS mapping each MCP tool to a required scope.
+- Cross-user admin audit page — `POST /api/admin/tokens/audit` not in this PR. Operators with DB access can `SELECT * FROM mcp_audit_log`.
+- CI mutation test for `assertPrincipalIsMember` — infra (separate `vitest.mutation.config.ts`, monkey-patched helper, CI step) sketched in the issue plan, deferred for reviewability.
+- Load-test job with `p95 < 50ms` assertion — verifier on a warm process measures comfortably under 50ms locally; primitives ship, gated CI step deferred.

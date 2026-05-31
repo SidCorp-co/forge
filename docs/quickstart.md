@@ -1,12 +1,12 @@
 # Quickstart
 
-Get Forge running end-to-end — server + one paired device + first job — in about 10 minutes.
+Server + one paired device + first job, ~10 minutes.
 
 ## Requirements
 
 - **Docker** 24+ with Docker Compose v2
-- **Node** 20+ (for local dev against the `packages/core` API)
-- **Claude Code CLI** installed on at least one machine (`claude`) with a working Claude Pro or Max subscription
+- **Node** 20+ (local dev against `packages/core` API)
+- **Claude Code CLI** (`claude`) on at least one machine, with a working Claude Pro or Max subscription
 - ~1.5 GB free disk for the server (Postgres + `packages/core` + node_modules)
 
 ## 1. Run the server
@@ -19,7 +19,7 @@ cp .env.example .env
 
 ### Configure `.env`
 
-Minimum required values (see `.env.example` for the full list):
+Minimum required (full list in `.env.example`):
 
 ```bash
 # Generate strong values: openssl rand -base64 32
@@ -53,31 +53,31 @@ Wait ~30 seconds for services to become healthy.
 
 - Core API + health: <http://localhost:8080/health>
 - Web dashboard: <http://localhost:3000>
-- DB inspector (dev only): `pnpm --filter @forge/core db:studio` → opens Drizzle Studio
+- DB inspector (dev only): `pnpm --filter @forge/core db:studio` → Drizzle Studio
 
-## 2. Create your first user and project
+## 2. Create first user and project
 
-1. Open <http://localhost:3000> — register a user for the web dashboard.
-2. **Verify your email.** Forge requires email verification before you can create your first project. Check the verification email; click the link.
-3. Create a project. Note its slug — you'll use it when pairing a device.
+1. Open <http://localhost:3000> — register a user.
+2. **Verify your email** (required before creating your first project) — click the link in the email.
+3. Create a project. Note its slug (used when pairing a device).
 
-> Admin operations (user list, device list, audit log) are exposed at `/admin` in the web app once Phase 2.6 ships. Until then, use Drizzle Studio + REST.
+> Admin ops (user list, device list, audit log) live at `/admin` once Phase 2.6 ships. Until then: Drizzle Studio + REST.
 
 ## 3. Pair a device
 
-A device is any machine that will run `claude` for your projects. Most teams start with their development laptop.
+A device is any machine that will run `claude` for your projects (commonly your dev laptop).
 
 ### Option A: Desktop GUI (Tauri)
 
 1. Download the desktop app for your OS from [GitHub Releases](https://github.com/SidCorp-co/forge/releases).
 2. Install and open it.
 3. Point it at your server: `http://localhost:8080` (or your deployed URL).
-4. In the web dashboard: **Account → Devices → Add device** → copy the pairing code.
-5. In the desktop app: **Settings → Pair** → paste the code.
+4. Web dashboard: **Account → Devices → Add device** → copy the pairing code.
+5. Desktop app: **Settings → Pair** → paste the code.
 
 ### Option B: CLI daemon (`forged`)
 
-For CI runners, headless dev boxes, or if you prefer the terminal:
+For CI runners, headless dev boxes, or terminal preference:
 
 ```bash
 # Install forged (example — actual install path TBD)
@@ -86,15 +86,15 @@ For CI runners, headless dev boxes, or if you prefer the terminal:
 forged pair F9-3K7T-92XA
 ```
 
-The agent stores its token in the OS keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service) and starts its WebSocket connection. Within seconds your device appears as **online** in the web dashboard.
+Token stored in the OS keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service); WebSocket connects; device appears **online** within seconds.
 
 ## 4. Bind the project to the device
 
-1. In the dashboard: **Project → Settings → Runtime** → pick the device you just paired.
-2. The UI asks for the local path to the project's git repo on that device. If the repo doesn't exist there yet, the agent can `git clone` for you.
+1. Dashboard: **Project → Settings → Runtime** → pick the paired device.
+2. Provide the local path to the project's git repo on that device. If absent there, the agent can `git clone` for you.
 3. Confirm. The device is now the project's **active** runner.
 
-One device is active per project at any time. You can pool multiple devices (Switch Device to drain and hand over when needed).
+One device active per project at a time. Pool multiple devices (Switch Device to drain and hand over).
 
 ## 5. Run your first job
 
@@ -106,44 +106,25 @@ curl -X POST http://localhost:3000/api/webhooks/in/<project-slug> \
   -d '{"title":"Test issue","description":"Verify the pipeline works"}'
 ```
 
-The issue appears in the Kanban. Click **Run triage** — a `forge-triage` job is queued. Within seconds, the device picks it up, spawns `claude` locally with the triage skill, and streams the output to your dashboard.
+Issue appears in the Kanban. Click **Run triage** → a `forge-triage` job queues. Within seconds the device picks it up, spawns `claude` locally with the triage skill, streams output to the dashboard.
 
-Watch the session in real time. When triage completes, the issue advances to `confirmed`. Continue through the pipeline (plan → code → review → release) with each stage either auto-running or waiting for your click, depending on your project's configuration.
+On triage complete the issue advances to `confirmed`. Continue through the pipeline (plan → code → review → release) — each stage auto-runs or waits for your click per project config.
 
 ## What's next
 
-- Learn the full pipeline: [architecture/system-overview.md](architecture/system-overview.md) and [modules/issues-pipeline/status-pipeline.md](modules/issues-pipeline/status-pipeline.md)
+- Full pipeline: [architecture/system-overview.md](architecture/system-overview.md) and [modules/issues-pipeline/status-pipeline.md](modules/issues-pipeline/status-pipeline.md)
 - Author a custom skill for a domain-specific pipeline step (how-to coming soon)
 - Integrate external sources via webhooks (GitHub events, Sentry alerts, custom)
 
 ## Troubleshooting
 
-### `docker compose up` hangs on "waiting for postgres"
-
-`docker compose logs postgres`. Common fixes:
-
-- Wrong `POSTGRES_PASSWORD` — reset via `docker compose down -v` then restart fresh.
-- Port conflict — something else using 5432? Change the host-side port in `docker-compose.yml`.
-
-### Device shows as `offline` in the dashboard
-
-- Confirm the agent is running on the machine (`forged status` or check the Tauri app).
-- Check the agent log for WebSocket connect errors.
-- Server URL mismatch: the agent must point at a URL the server is reachable at (not `localhost` if the agent is on a different machine).
-
-### `forged pair` fails with "pairing code expired"
-
-Codes are valid for 5 minutes. Generate a new one from **Account → Devices → Add device**.
-
-### Device is online but jobs stay `queued`
-
-- Is the project bound to this device? Check **Project → Settings → Runtime**.
-- Is another job already `running`? Only one job per device at a time.
-- Is `claude` installed on the device and in the PATH? The agent spawns `claude` as a subprocess.
-
-### Email verification loop
-
-Forge sends verification via the configured SMTP provider. For local dev, set `SMTP_DEBUG=true` in `.env` to print verification links to the container logs instead.
+| Symptom | Fix |
+|---|---|
+| `docker compose up` hangs on "waiting for postgres" | `docker compose logs postgres`. Wrong `POSTGRES_PASSWORD` → `docker compose down -v` then restart fresh. Port conflict on 5432 → change host-side port in `docker-compose.yml`. |
+| Device shows `offline` | Confirm agent running (`forged status` or Tauri app). Check agent log for WebSocket connect errors. Server URL mismatch — agent must point at a reachable URL (not `localhost` if on a different machine). |
+| `forged pair` fails "pairing code expired" | Codes valid 5 minutes. Generate a new one from **Account → Devices → Add device**. |
+| Device online but jobs stay `queued` | Project bound to this device? (**Project → Settings → Runtime**). Another job already `running`? (one per device). Is `claude` installed and in PATH? (agent spawns it as a subprocess). |
+| Email verification loop | Forge sends via configured SMTP. For local dev set `SMTP_DEBUG=true` in `.env` to print verification links to container logs. |
 
 ---
 

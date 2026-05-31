@@ -1,13 +1,16 @@
 # Proposal: Web v2 — full redesign (parallel package)
 
+Clean reskin + IA cleanup as parallel `packages/web-v2`, big-bang cutover; backend unchanged.
+
 - **Status:** Draft proposal (pre-RFC)
 - **Date:** 2026-05-30
 - **Design reference:** `packages/web-redesign-plan/` (design-system tokens + hi-fi ui-kit prototype + INTEGRATION.md)
-- **Approach:** new `packages/web-v2` built in parallel, UI-switchable, **big-bang cutover** when core loop is covered. Backend (`core` REST/WS) + `@forge/contracts` unchanged.
+- **Approach:** new `packages/web-v2` in parallel, UI-switchable, **big-bang cutover** when core loop is covered. Backend (`core` REST/WS) + `@forge/contracts` unchanged.
 
 ## Why
 
-The redesign kit defines a new brand — *"calm, bright workshop"*: light-first, warm paper neutrals, flame-orange action accent, cobalt structure, the 7-stage pipeline hue motif, Hanken Grotesk + JetBrains Mono. Current `packages/web` is dark-first monochrome (MD3 "Stitch"), and has accumulated **orphan + double-meaning routes**. v2 is a clean reskin + IA cleanup, not a feature add.
+- New brand — *"calm, bright workshop"*: light-first, warm paper neutrals, flame-orange action accent, cobalt structure, 7-stage pipeline hue motif, Hanken Grotesk + JetBrains Mono.
+- Current `packages/web` is dark-first monochrome (MD3 "Stitch") with accumulated **orphan + double-meaning routes**. v2 = clean reskin + IA cleanup, not a feature add.
 
 ## Decisions (locked)
 
@@ -18,14 +21,13 @@ The redesign kit defines a new brand — *"calm, bright workshop"*: light-first,
 | C | **Light-only** now, but tokens defined in **2 layers** so dark is a drop-in. |
 | D | **Two-tier nav (kit)** + keep URL nesting `/projects/[slug]/*`. |
 | E | **Keep custom primitives** (extend `design/primitives`); no shadcn/Radix. |
-| 1 | Issue views: lean to the design → **Board (list) + Pipeline (stage-kanban) only**; drop the separate status-kanban. |
+| 1 | Issue views: **Board (list) + Pipeline (stage-kanban) only**; drop separate status-kanban. |
 | 2 | **Defer entirely:** admin/*, ceo, ceo/dashboard, usage, settings/sessions. |
 | 3 | Release: **same domain under `/v2`** (Next `basePath`), reverse-proxied alongside current web; in-UI toggle "Try new UI" (→ `/v2`) ⇄ "Back to classic" (→ `/`). |
 
 ## Scope cleanup (from current web)
 
-**Drop / defer (orphan or dead — verified via nav + grep):**
-`/ceo` (UnimplementedBanner), `/ceo/dashboard` (experimental, defer), `/admin/*` (no nav links, defer to admin bundle), `/usage` (orphan → fold into pipeline analytics later), `/settings/sessions` ("Coming soon"), `/devices` (only 302s to `/settings/devices`).
+**Drop / defer (orphan or dead — verified via nav + grep):** `/ceo` (UnimplementedBanner), `/ceo/dashboard` (experimental, defer), `/admin/*` (no nav links, defer to admin bundle), `/usage` (orphan → fold into pipeline analytics later), `/settings/sessions` ("Coming soon"), `/devices` (only 302s to `/settings/devices`).
 
 **Consolidate (double meaning):**
 - **Devices ×3** (`/devices`, `/settings/devices`, `/admin/devices`) → one **Runners** surface (my devices + per-project runners + quota); global admin view → admin bundle.
@@ -40,8 +42,8 @@ Result: ~40 routes → **~18 core surfaces** + 1 deferred admin bundle.
 
 - **Workspace tier:** Projects console · Activity · Runners · Sessions (cross-project queue + sweep) · Pipeline ops.
 - **Project tier** (`/projects/[slug]/*`): Overview · Issues (table) · Pipeline (stage-kanban, hero) · Board (issue list) · Sessions (project-scoped) · Chat · Skills · Schedules · Context (Knowledge + Memory) · PM · Settings.
-- **Pipeline ops** — kept in v2 core (daily-ops view, not admin); the 4 current routes (`/pipeline`, `/progress`, `/health`, `/runs`) collapse into **one tabbed surface**.
-- **Sessions** — **both tiers, one shared component, different filter**: workspace-level for the total queue + sweep-zombies, project-scoped for runs in context.
+- **Pipeline ops** — kept in v2 core (daily-ops, not admin); 4 current routes (`/pipeline`, `/progress`, `/health`, `/runs`) collapse into **one tabbed surface**.
+- **Sessions** — **both tiers, one shared component, different filter**: workspace-level for total queue + sweep-zombies, project-scoped for runs in context.
 - **Account/global:** Account · Tokens · MCP · Notifications · Chat-logs.
 
 ## Structure (standardized day-one)
@@ -63,17 +65,17 @@ Rule: `design/` never touches data → `features/` wires data → `app/` compose
 - **Layer 1 — raw palette** (theme-independent): `--flame-*`, `--paper-*`, `--ink-*`, `--cobalt-*`, `--stage-*`. Components never reference these, never hardcode hex.
 - **Layer 2 — semantic**: `--bg-app/-surface`, `--fg-default/-muted`, `--accent`, `--border-*`, `--focus-ring`, `--stage-active`. **Components reference only this layer.**
 - Tailwind v4 `@theme inline` maps utilities → semantic vars (no `tailwind.config.ts`).
-- Adding dark later = one `[data-theme="dark"] { … }` override of the semantic layer; raw scale + components untouched. Enforced by review rule: *no hex / no raw-scale in `features/` & `app/`*.
+- Dark later = one `[data-theme="dark"] { … }` override of semantic layer; raw scale + components untouched. Enforced by review rule: *no hex / no raw-scale in `features/` & `app/`*.
 
 ## Release on `/v2` + cutover (A)
 
-`web-v2` is its own Next.js app sharing `@forge/contracts` + `core` REST/WS (no DB/contract change), **served under the `/v2` path on the same origin** — no second domain, cookies/auth shared.
+`web-v2` is its own Next.js app sharing `@forge/contracts` + `core` REST/WS (no DB/contract change), **served under `/v2` on the same origin** — no second domain, cookies/auth shared.
 
-- **Path mount (no env needed):** `next.config.ts` defaults `basePath` + `assetPrefix` to `/v2`; `lib/asset.ts → assetPath()` defaults to `/v2` for plain `<img src>` (mascot PNGs — Next doesn't auto-prefix raw img strings). So **v1 at `/` and v2 at `/v2` run side-by-side out of the box**. The only override is the cutover build: set `WEB_V2_BASE_PATH=""` + `NEXT_PUBLIC_BASE_PATH=""` to serve v2 at root.
-- **API/WS stay unprefixed:** `apiClient` + the WS client target `/api` and `/ws` (or `NEXT_PUBLIC_API_URL`), NOT `/v2/api` — same-origin, so the httpOnly `forge_auth` cookie and WS upgrade keep working unchanged.
-- **Reverse proxy (Coolify/Caddy):** route `^/v2(/.*)?$` → the web-v2 container; everything else → current `web`; `/api` + `/ws` → `core`. One domain, two front-ends.
-- **Toggle:** current web TopBar gets *"Try new UI"* → `/v2`; web-v2 TopBar has *"Back to classic"* → `/`. (Optional cookie to remember the choice and auto-route the root.)
-- **Big-bang cutover:** when the core loop is covered, swap the proxy so `/` serves web-v2 and retire `packages/web` (or keep `/v2` as the canonical path). Clean-break, v0.1 — no long-lived shim.
+- **Path mount (no env needed):** `next.config.ts` defaults `basePath` + `assetPrefix` to `/v2`; `lib/asset.ts → assetPath()` defaults to `/v2` for plain `<img src>` (mascot PNGs — Next doesn't auto-prefix raw img strings). So **v1 at `/` and v2 at `/v2` run side-by-side out of the box**. Only override is the cutover build: set `WEB_V2_BASE_PATH=""` + `NEXT_PUBLIC_BASE_PATH=""` to serve v2 at root.
+- **API/WS stay unprefixed:** `apiClient` + WS client target `/api` and `/ws` (or `NEXT_PUBLIC_API_URL`), NOT `/v2/api` — same-origin, so httpOnly `forge_auth` cookie + WS upgrade keep working unchanged.
+- **Reverse proxy (Coolify/Caddy):** route `^/v2(/.*)?$` → web-v2 container; everything else → current `web`; `/api` + `/ws` → `core`. One domain, two front-ends.
+- **Toggle:** current web TopBar gets *"Try new UI"* → `/v2`; web-v2 TopBar has *"Back to classic"* → `/`. (Optional cookie to remember choice + auto-route root.)
+- **Big-bang cutover:** when core loop covered, swap proxy so `/` serves web-v2 and retire `packages/web` (or keep `/v2` as canonical). Clean-break, v0.1 — no long-lived shim.
 
 ## Phased build
 
@@ -87,7 +89,7 @@ Rule: `design/` never touches data → `features/` wires data → `app/` compose
 
 ## Design gaps to fill (kit doesn't cover these)
 
-The kit designs the core loop + brand. Still **needs design/reskin with no mockup**:
+Kit designs core loop + brand. Still **needs design/reskin with no mockup**:
 - Settings sub-pages (Account, Tokens, MCP, Notifications), PM Agent, Knowledge, Memory, project Overview, Schedules detail, single-Chat (`/agent`).
 - Auth/onboarding beyond Login: register, connect-device, download, landing.
 - **Responsive/mobile** — kit is fixed 1180px desktop only.

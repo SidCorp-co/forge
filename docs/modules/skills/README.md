@@ -1,10 +1,9 @@
 # Skills
 
-The units of agent work. Each skill is a prompt + tool allow-list that Claude Code executes when a job is dispatched.
+Units of agent work: each skill is a prompt + tool allow-list Claude Code runs when a job is dispatched.
 
-## Overview
-
-Forge ships 8 built-in pipeline skills (`forge-triage`, `forge-clarify`, `forge-plan`, `forge-code`, `forge-review`, `forge-test`, `forge-release`, `forge-fix`). Users can also author custom skills and register them to pipeline stages — enabling domain-specific workflows without forking the product.
+- 8 built-in pipeline skills (`forge-triage`, `forge-clarify`, `forge-plan`, `forge-code`, `forge-review`, `forge-test`, `forge-release`, `forge-fix`).
+- Users author custom skills + register them to pipeline stages — domain workflows without forking.
 
 ## Data Flow
 
@@ -62,8 +61,7 @@ Forge ships 8 built-in pipeline skills (`forge-triage`, `forge-clarify`, `forge-
 
 ### `SkillRegistration` (DB record)
 
-A registration binds one skill to a pipeline stage **per project**. A skill
-can be registered to different stages in different projects.
+Binds one skill to a pipeline stage **per project**; same skill can map to different stages across projects.
 
 | Field | Description |
 |-------|-------------|
@@ -78,30 +76,9 @@ Unique constraint: `(projectId, stage)` — at most one skill per stage per proj
 
 ## Key Business Flows
 
-### Using a built-in skill
-
-1. Job enqueued with `skillName: 'forge-code'`
-2. Dispatcher looks up skill by name (built-ins indexed at boot)
-3. Payload built: prompt + tool allow-list + issue context
-4. Device receives, runs `claude` with payload
-5. JobEvents stream back
-
-### Authoring a custom skill
-
-1. User creates `.claude/skills/my-custom-skill/SKILL.md` in their project repo
-2. On next project sync, device reads the file
-3. Device POSTs `/api/projects/:id/skills/sync` with skill content + hash
-4. Server persists `Skill` record with `scope: 'project'`
-5. User registers it to a pipeline stage via **Project Settings → Pipeline**
-6. Future jobs at that stage use the custom skill
-
-### Skill updates
-
-1. User edits `SKILL.md` locally
-2. Next project sync detects content hash mismatch
-3. Device POSTs update
-4. Server updates skill record, bumps version
-5. WebSocket broadcasts `skills:updated` to all clients connected to the project room
+- **Using a built-in skill**: job enqueued `skillName: 'forge-code'` → dispatcher looks up by name (built-ins indexed at boot) → payload (prompt + tool allow-list + issue context) → device runs `claude` → JobEvents stream back.
+- **Authoring a custom skill**: user creates `.claude/skills/my-custom-skill/SKILL.md` in repo → next project sync, device reads file → device POSTs `/api/projects/:id/skills/sync` (content + hash) → server persists `Skill` `scope: 'project'` → user registers to stage via **Project Settings → Pipeline** → future jobs at that stage use it.
+- **Skill updates**: user edits `SKILL.md` locally → next sync detects content hash mismatch → device POSTs update → server updates record, bumps version → WebSocket broadcasts `skills:updated` to all clients in the project room.
 
 ## API Endpoints
 

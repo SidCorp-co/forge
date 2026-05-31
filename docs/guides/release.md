@@ -1,14 +1,12 @@
 # Release process
 
-> **Audience:** maintainers cutting an official release. End users building from source do not need to follow this — they can run `pnpm tauri build` directly.
+How Forge Beta (Tauri desktop app) gets built, signed, published, surfaced on `/download`.
 
-How a new version of Forge Beta (the Tauri desktop app) gets built, signed, published, and surfaced on `/download`.
+**Audience:** maintainers cutting an official release. Source builders skip this — run `pnpm tauri build` directly.
 
 ## TL;DR
 
-Use the release skill — it bumps every version file in lockstep, promotes the
-`## [Unreleased]` CHANGELOG section to `## [X.Y.Z]`, tags, and pushes, with an
-atomic preflight that rejects version mismatches:
+Use the release skill: bumps every version file in lockstep, promotes `## [Unreleased]` CHANGELOG → `## [X.Y.Z]`, tags, pushes, with atomic preflight rejecting version mismatches.
 
 ```bash
 /forge-cut-release X.Y.Z --headline "..."
@@ -16,19 +14,14 @@ atomic preflight that rejects version mismatches:
 .claude/skills/forge-cut-release/scripts/cut-release.sh X.Y.Z
 ```
 
-Do **not** bump versions by hand — the files must move together (see
-[Versioning](#versioning)) and manual edits drift. Pushing the `vX.Y.Z` tag is
-what triggers `.github/workflows/release.yml`.
-
-That triggers `.github/workflows/release.yml`. ~15-20 min later:
-
-- A draft GitHub Release is created with notes lifted from `CHANGELOG.md`.
-- `tauri-action@v0` builds + signs + uploads artifacts on macOS (Intel + ARM), Windows, Linux.
-- Tauri's updater manifest (`latest.json`) is generated alongside the bundles.
-- The publish job flips the release to non-draft.
-- The `/download` page (in `packages/web`) reads GitHub Releases API and shows the new bundles automatically — no redeploy needed.
-
-If a build job fails, the release stays Draft and the publish job is skipped. Inspect logs at `gh run list -R <owner>/<repo> --workflow=release.yml`.
+- Never bump by hand — files must move together ([Versioning](#versioning)); manual edits drift.
+- Pushing the `vX.Y.Z` tag triggers `.github/workflows/release.yml`. ~15-20 min later:
+  - Draft GitHub Release created, notes from `CHANGELOG.md`.
+  - `tauri-action@v0` builds + signs + uploads on macOS (Intel + ARM), Windows, Linux.
+  - Tauri updater manifest `latest.json` generated alongside bundles.
+  - Publish job flips release to non-draft.
+  - `/download` page (`packages/web`) reads GitHub Releases API, shows new bundles — no redeploy.
+- Build job fails → release stays Draft, publish skipped. Logs: `gh run list -R <owner>/<repo> --workflow=release.yml`.
 
 ## Pipeline shape
 
@@ -42,7 +35,7 @@ build matrix (4)     ubuntu-22.04 / macos-arm64 / macos-x64 / windows
 publish job          gh release edit --draft=false
 ```
 
-Matrix is `fail-fast: false` — a Windows failure won't kill the macOS jobs. But the **publish** job needs *all* builds to succeed; partial success leaves the release Draft.
+Matrix `fail-fast: false` — Windows failure won't kill macOS jobs. But **publish** needs *all* builds; partial success leaves release Draft.
 
 ## Required secrets
 
@@ -55,13 +48,11 @@ Set in GitHub: **Settings → Secrets and variables → Actions → Secrets**.
 | `TAURI_SIGNING_PRIVATE_KEY` | Output of `pnpm tauri signer generate -w ~/.tauri/forge.key`. Sign-once for the lifetime of the app — rotating breaks updates for installed users. |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Passphrase chosen at generate time. |
 
-The matching public key lives at [`packages/dev/src-tauri/tauri.conf.json:pubkey`](../../packages/dev/src-tauri/tauri.conf.json) and is what the in-app updater verifies against.
+Matching public key: [`packages/dev/src-tauri/tauri.conf.json:pubkey`](../../packages/dev/src-tauri/tauri.conf.json) — what the in-app updater verifies against.
 
 ### Optional — macOS code signing + notarization
 
-Without these, builds succeed but the `.dmg` shows *"can't be opened — unidentified developer"* on first launch. Users right-click → Open to bypass once.
-
-To enable: enroll in the Apple Developer Program ($99/yr), create a *Developer ID Application* certificate, export as `.p12`.
+Without these: builds succeed but `.dmg` shows *"can't be opened — unidentified developer"* on first launch (right-click → Open to bypass once). To enable: enroll Apple Developer Program ($99/yr), create *Developer ID Application* cert, export as `.p12`.
 
 | Secret | How to get it |
 |---|---|
@@ -72,13 +63,11 @@ To enable: enroll in the Apple Developer Program ($99/yr), create a *Developer I
 | `APPLE_PASSWORD` | app-specific password from [appleid.apple.com](https://appleid.apple.com/) → *Sign-In and Security → App-Specific Passwords* |
 | `APPLE_TEAM_ID` | 10-char Team ID from [developer.apple.com](https://developer.apple.com/) → *Membership* |
 
-`tauri-action` autodetects these env vars and runs `codesign` + `xcrun notarytool submit` for you. No further config in `tauri.conf.json` needed.
+`tauri-action` autodetects these env vars, runs `codesign` + `xcrun notarytool submit`. No `tauri.conf.json` config needed.
 
 ### Optional — Windows code signing
 
-Without these, builds succeed but Windows SmartScreen shows *"Windows protected your PC"* on first launch. Users click *More info → Run anyway*. SmartScreen reputation builds over time; an EV cert short-circuits this.
-
-Cert vendors: Certum (~$150/yr OV), Sectigo (~$300/yr OV, ~$400/yr EV), DigiCert. EV certs require a hardware token.
+Without these: builds succeed but SmartScreen shows *"Windows protected your PC"* on first launch (More info → Run anyway). SmartScreen reputation builds over time; an EV cert short-circuits this. Cert vendors: Certum (~$150/yr OV), Sectigo (~$300/yr OV, ~$400/yr EV), DigiCert. EV certs require a hardware token.
 
 | Secret | How to get it |
 |---|---|
@@ -87,11 +76,11 @@ Cert vendors: Certum (~$150/yr OV), Sectigo (~$300/yr OV, ~$400/yr EV), DigiCert
 
 ## Versioning
 
-The repo uses pre-`1.0` semver — `v0.X.Y` while in alpha. Tags must match `v*.*.*` exactly (workflow trigger pattern). Pre-release suffix (`v0.1.16-rc.1`) marks GitHub Release as pre-release automatically.
+- Pre-`1.0` semver — `v0.X.Y` while in alpha.
+- Tags must match `v*.*.*` exactly (workflow trigger pattern).
+- Pre-release suffix (`v0.1.16-rc.1`) marks GitHub Release as pre-release automatically.
 
-The whole monorepo shares one version. `cut-release.sh` bumps these files in
-lockstep — this list is the canonical set
-([`.claude/skills/forge-cut-release/scripts/cut-release.sh`](../../.claude/skills/forge-cut-release/scripts/cut-release.sh)):
+Whole monorepo shares one version. `cut-release.sh` bumps these in lockstep — canonical set ([`.claude/skills/forge-cut-release/scripts/cut-release.sh`](../../.claude/skills/forge-cut-release/scripts/cut-release.sh)):
 
 | File | Field |
 |---|---|
@@ -105,15 +94,11 @@ lockstep — this list is the canonical set
 | `packages/dev/src-tauri/Cargo.toml` | `[package].version` |
 | `packages/runner/Cargo.toml` | `[workspace.package].version` |
 
-The script's preflight is **atomic**: after bumping it runs
-`jq -r .version <all json files> | sort -u` and aborts unless that yields a
-single line, so a mismatch can never reach a tag. (A mismatch also makes the
-in-app updater misbehave — another reason the gate is hard, not advisory.) This
-is why you run `/forge-cut-release` rather than editing the files by hand.
+Preflight is **atomic**: after bumping runs `jq -r .version <all json files> | sort -u`, aborts unless one line — a mismatch can never reach a tag (mismatch also breaks the in-app updater, so the gate is hard not advisory). Hence `/forge-cut-release` over hand-editing.
 
 ## CHANGELOG
 
-`release.yml` extracts the section under `## [X.Y.Z] - YYYY-MM-DD` from `CHANGELOG.md` as the release notes body. Format must be exactly:
+`release.yml` extracts the section under `## [X.Y.Z] - YYYY-MM-DD` from `CHANGELOG.md` as release notes body. Format must be exactly:
 
 ```markdown
 ## [0.1.16] - 2026-04-30
@@ -125,26 +110,20 @@ is why you run `/forge-cut-release` rather than editing the files by hand.
 - Other thing.
 ```
 
-If no matching section is found, the workflow falls back to GitHub's auto-generated commit-list.
+No matching section → workflow falls back to GitHub's auto-generated commit-list.
 
 ### Writing changelog entries — style guide
 
-The same CHANGELOG entry reaches end users (via the in-app updater changelog) AND developers (via the GitHub release page). It must read first as a release note for someone who has never opened the repo, with technical depth available on a second pass.
+Each entry reaches end users (in-app updater changelog) AND developers (GitHub release page). Must read first as a release note for someone who never opened the repo, with technical depth on second pass.
 
-**Lead with the user-visible outcome, not the implementation.**
-
-- ✅ *"The pipeline now uses ~30% fewer tokens per issue — your monthly cost on the same workload drops."*
-- ❌ *"`buildPipelinePreamble` in `chat-preamble.ts` now ships `PIPELINE_RULES` + `TOOL_REFERENCE` for prompt-cache hits."*
-
-**One concept per bullet.** If you have to say "and" twice, split it. Don't bury a fix inside a feature bullet — they belong in different `###` sections (`### Added` vs `### Fixed`).
-
-**Plain language in the first sentence; code in a sub-line.** Tool names, function names, file paths, and migration numbers belong in an italic `*Technical:*` sub-line under the user-facing one. Skip the sub-line entirely if there is no useful debugging breadcrumb to leave.
-
-**Numbers > adjectives.** "~30% fewer tokens" beats "much faster". "Dropped from $1.42 to $0.45" beats "significantly cheaper". If you don't have a number, say what surface the user sees changed (e.g. "the Insights → Cost page" rather than "metrics").
-
-**No internal jargon in the user-facing sentence.** Avoid "legacy device path", "Wave 1", "PR-B", `ISS-NNN`, "the L2 dispatcher gate". These are fine inside `*Technical:*`. If a feature exists *because of* a removed system, name the user-visible thing it replaces, not the old system's internal name.
-
-**One headline per release.** The first line under `## [X.Y.Z]` is 1–2 sentences in plain language summarising why a user would update. Lead with the user benefit, ideally with one concrete number.
+- **Lead with user-visible outcome, not implementation.**
+  - ✅ *"The pipeline now uses ~30% fewer tokens per issue — your monthly cost on the same workload drops."*
+  - ❌ *"`buildPipelinePreamble` in `chat-preamble.ts` now ships `PIPELINE_RULES` + `TOOL_REFERENCE` for prompt-cache hits."*
+- **One concept per bullet.** Two "and"s → split. Don't bury a fix in a feature bullet — different `###` sections (`### Added` vs `### Fixed`).
+- **Plain language first sentence; code in a sub-line.** Tool/function names, file paths, migration numbers go in an italic `*Technical:*` sub-line. Skip the sub-line if there's no useful debugging breadcrumb.
+- **Numbers > adjectives.** "~30% fewer tokens" beats "much faster". "Dropped from $1.42 to $0.45" beats "significantly cheaper". No number → name the surface the user sees changed (e.g. "the Insights → Cost page" not "metrics").
+- **No internal jargon in the user-facing sentence.** Avoid "legacy device path", "Wave 1", "PR-B", `ISS-NNN`, "the L2 dispatcher gate" — fine inside `*Technical:*`. Feature exists because of a removed system → name the user-visible replacement, not the old internal name.
+- **One headline per release.** First line under `## [X.Y.Z]` is 1–2 plain-language sentences on why a user would update. Lead with user benefit, ideally one concrete number.
 
 #### Template
 
@@ -172,18 +151,18 @@ The pipeline now uses ~30–60% fewer tokens per issue thanks to smarter server-
   *Technical: `usage_records.session_id` was storing the local Tauri job id instead of the forge `agent_sessions.id`, so the `pipeline_run_step_durations` view JOIN never matched. Accumulator + POST moved to `use-web-socket.ts`'s pipeline-complete handler, keyed by the forge UUID surfaced on `job.assigned`.*
 ```
 
-Two-pass rule of thumb: a non-developer reading only the bold-text first sentence of every bullet should walk away knowing what the release does for them. A developer reading the *Technical:* lines should know where to start debugging if the change misbehaves.
+Two-pass rule: a non-developer reading only the bold first sentence of every bullet knows what the release does for them; a developer reading the *Technical:* lines knows where to start debugging.
 
 ## Testing a release without publishing
 
-Push a pre-release tag — the workflow runs, but `prerelease: true` is set on the GitHub Release so it doesn't compete with the latest stable for `/download`'s "latest" lookup:
+Push a pre-release tag — workflow runs, but `prerelease: true` keeps it from competing with latest stable for `/download`'s "latest" lookup:
 
 ```bash
 git tag v0.1.16-rc.1
 git push origin v0.1.16-rc.1
 ```
 
-Re-tag with the stable name once the artifacts look right.
+Re-tag with the stable name once artifacts look right.
 
 ## Rollback / emergency unpublish
 
@@ -191,7 +170,7 @@ Re-tag with the stable name once the artifacts look right.
 gh release delete vX.Y.Z --repo SidCorp-co/forge --cleanup-tag
 ```
 
-`--cleanup-tag` removes the git tag too. Forks of installed users on this version stay on it (no auto-downgrade); the next valid release published as Latest takes over the updater channel.
+`--cleanup-tag` removes the git tag too. Installed users on this version stay (no auto-downgrade); the next valid release published as Latest takes over the updater channel.
 
 ## Troubleshooting
 

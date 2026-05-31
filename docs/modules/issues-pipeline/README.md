@@ -2,30 +2,14 @@
 
 The 14-status state machine that routes work through agent stages.
 
-## Overview
-
-A project contains issues. Each issue has a status representing where it is in the pipeline. Pipeline transitions can trigger agent skills (via jobs dispatched to paired devices); each transition is either auto-run or human-gated per-project.
+- Project contains issues; each issue's status = where it is in the pipeline.
+- Transitions can trigger agent skills (jobs dispatched to paired devices); each is auto-run or human-gated per-project.
 
 ## Data Flow
 
-```
-Input sources:
-  - Web UI (user creates issue)
-  - Webhook ingestion (external platform POSTs)
-  - MCP tool call (agent creates issue)
-          │
-          ▼
-  ┌──────────────┐
-  │ issue record │
-  └──────┬───────┘
-         │ lifecycle hook on create / update
-         ▼
-  ┌──────────────┐
-  │ pipeline     │ ──── auto-run enabled? ──── yes ──► enqueue job
-  │ decision     │                                      (see agents-jobs)
-  │ point        │                          no ──► wait for human gate
-  └──────────────┘
-```
+Input sources → `issue record` → lifecycle hook on create/update → `pipeline decision point`: auto-run enabled? yes → enqueue job (see agents-jobs); no → wait for human gate.
+
+Input sources: Web UI (user creates issue) · Webhook ingestion (external platform POSTs) · MCP tool call (agent creates issue).
 
 ### Input Sources
 
@@ -78,9 +62,7 @@ Standard supporting entities. See code for schema detail.
 
 ## Status Lifecycle
 
-14 statuses + branches. See [status-pipeline.md](status-pipeline.md) for the full lifecycle reference (transition rules, allowed skills, reopen cycles, blocked transitions).
-
-Short version:
+14 statuses + branches. Full reference (transition rules, allowed skills, reopen cycles, blocked transitions): [status-pipeline.md](status-pipeline.md).
 
 ```
 draft → open → confirmed → clarified → waiting → approved →
@@ -96,31 +78,9 @@ Each transition can map to a skill (triage, clarify, plan, code, review, test, r
 
 ## Key Business Flows
 
-### Issue created via webhook → auto-triage
-
-1. External system POSTs to `/api/webhooks/<project-slug>`
-2. Server authenticates via project webhook secret
-3. Issue created in status `open`
-4. Lifecycle hook fires `issue:created`
-5. If `autoTriage` enabled: job of type `triage` enqueued
-6. See [../agents-jobs/README.md](../agents-jobs/README.md) for job execution
-
-### Human approves a plan
-
-1. Issue in status `clarified` with completed plan
-2. User clicks "Approve" in web UI
-3. Status advances to `approved`
-4. If `autoCode` enabled: `forge-code` job enqueued
-5. Loop continues through pipeline
-
-### Reopen cycle
-
-1. Issue in `testing` or later fails QA
-2. User clicks "Reopen with feedback"
-3. Status transitions to `reopen`, comment captures rejection reason
-4. `forge-fix` job enqueued with feedback payload
-5. On fix success, status → `developed`, pipeline resumes
-6. Max 5 reopen cycles; beyond that, issue is `on_hold` for human review
+- **Webhook → auto-triage**: external POST to `/api/webhooks/<project-slug>` → auth via project webhook secret → issue created `open` → lifecycle hook fires `issue:created` → if `autoTriage`, `triage` job enqueued (execution: [../agents-jobs/README.md](../agents-jobs/README.md)).
+- **Human approves plan**: issue `clarified` with completed plan → user clicks "Approve" → status → `approved` → if `autoCode`, `forge-code` job enqueued → loop continues.
+- **Reopen cycle**: issue `testing`+ fails QA → user clicks "Reopen with feedback" → status → `reopen`, comment captures rejection reason → `forge-fix` job enqueued with feedback payload → on success status → `developed`, pipeline resumes. Max 5 reopen cycles; beyond → `on_hold` for human review.
 
 ## API Endpoints
 
