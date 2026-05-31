@@ -7,13 +7,13 @@
  * Actions:
  *  - `list`   — active Coolify integrations for the project; drives the
  *               skills' "local-only mode" detection (empty array → no Coolify).
- *  - `deploy` — enqueue a Coolify deploy for the issue's latest run. Reuses the
- *               EXACT dispatch path the release auto-subscriber uses
- *               (`tryDispatchCoolifyRelease` → `enqueueCoolifyDispatch`,
- *               `requestId = ${runId}:${integrationId}`) so the agent-driven
- *               and auto paths DEDUPE instead of double-deploying. There is no
- *               parallel deploy path. Requires `issueId` because MCP carries no
- *               run context (only `X-Forge-Project-Slug`).
+ *  - `deploy` — enqueue a Coolify deploy. `issueId` is optional (ISS-312):
+ *               with it, a run-tracked deploy via the EXACT dispatch path the
+ *               release auto-subscriber uses (`tryDispatchCoolifyRelease` →
+ *               `enqueueCoolifyDispatch`); without it, a run-less resource
+ *               redeploy (`dispatchCoolifyDeployDirect`, `runId=null`) that
+ *               resolves the integration like the `logs` action and advances no
+ *               pipeline. Each call is its own per-attempt requestId.
  *  - `status` — latest outbound delivery (deployment_uuid / ok|failed|pending /
  *               breaker) per integration, or for a specific `integrationId`.
  *
@@ -32,6 +32,7 @@ import { CoolifyApiError } from '../../integrations/coolify/client.js';
 import type { CoolifyConfig } from '../../integrations/coolify/types.js';
 import { findLastOutbound } from '../../integrations/deliveries.js';
 import {
+  dispatchCoolifyDeployDirect,
   resolveLatestIssueRunId,
   tryDispatchCoolifyRelease,
 } from '../../pipeline/release-coolify.js';
@@ -82,9 +83,14 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = ({
     'Coolify deploy controls for the pipeline skills. Actions: list | deploy | status | logs. ' +
     'list: active Coolify integrations for the project (id, environment, resourceUuid, ' +
     'lastHealthStatus, breakerOpen); empty array => project is local-only (no Coolify). ' +
-    "deploy: requires issueId — resolves the issue's latest pipeline run and enqueues a " +
-    'deploy via the SAME path as the release auto-subscriber. Each call is its own dispatch ' +
-    '(per-attempt requestId) and Coolify force-rebuilds, so re-deploying the same run after a ' +
+    'deploy: issueId is OPTIONAL. With issueId — run-tracked deploy: resolves the ' +
+    "issue's latest pipeline run and enqueues via the SAME path as the release " +
+    'auto-subscriber (the Coolify webhook then advances that run). Without issueId — ' +
+    'run-less resource redeploy: resolves the target integration like the logs action ' +
+    '(explicit integrationId, else the single active Coolify integration, else BAD_REQUEST ' +
+    'when multiple exist) and dispatches with no run attached (the webhook records the ' +
+    'delivery but advances no pipeline). Each call is its own dispatch ' +
+    '(per-attempt requestId) and Coolify force-rebuilds, so re-deploying after a ' +
     'branch fix actually fires a fresh build. ' +
     'prod integrations honor the human-confirm gate: returns pendingHumanConfirm:true and does ' +
     'NOT dispatch until confirmed via the confirm-prod-deploy endpoint. ' +
@@ -121,27 +127,61 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = ({
       }
 
       case 'deploy': {
-        if (!input.issueId) {
-          throw new Error('BAD_REQUEST: issueId is required for deploy');
-        }
         const projectId = await resolveProjectId(input, projectSlug);
         await assertPrincipalIsMember(principal, projectId);
 
-        const runId = await resolveLatestIssueRunId(input.issueId);
-        if (!runId) {
+        // issueId present → run-tracked deploy (unchanged): resolve the issue's
+        // latest run and dispatch via the shared release path.
+        if (input.issueId) {
+          const runId = await resolveLatestIssueRunId(input.issueId);
+          if (!runId) {
+            return {
+              dispatched: false,
+              pendingHumanConfirm: false,
+              integrationIds: [],
+              reason: 'no-run',
+            };
+          }
+
+          const outcome = await tryDispatchCoolifyRelease({
+            projectId,
+            issueId: input.issueId,
+            runId,
+          });
           return {
-            dispatched: false,
-            pendingHumanConfirm: false,
-            integrationIds: [],
-            reason: 'no-run',
+            dispatched: outcome.dispatched,
+            pendingHumanConfirm: outcome.pendingHumanConfirm,
+            integrationIds: outcome.integrationIds,
+            ...(outcome.reason ? { reason: outcome.reason } : {}),
           };
         }
 
-        const outcome = await tryDispatchCoolifyRelease({
-          projectId,
-          issueId: input.issueId,
-          runId,
-        });
+        // No issueId → run-less resource redeploy (ISS-312). Resolve the target
+        // integration the same way the `logs` action does: explicit
+        // integrationId wins; else the single active Coolify integration; else
+        // ambiguous BAD_REQUEST.
+        const rows = await activeCoolifyIntegrations(projectId);
+        const row = input.integrationId
+          ? rows.find((r) => r.id === input.integrationId)
+          : rows.length === 1
+            ? rows[0]
+            : undefined;
+        if (!row) {
+          if (input.integrationId) {
+            throw new Error('BAD_REQUEST: no active Coolify integration with that integrationId');
+          }
+          if (rows.length === 0) {
+            return {
+              dispatched: false,
+              pendingHumanConfirm: false,
+              integrationIds: [],
+              reason: 'no-integration',
+            };
+          }
+          throw new Error('BAD_REQUEST: multiple active Coolify integrations — pass integrationId');
+        }
+
+        const outcome = await dispatchCoolifyDeployDirect({ projectId, integrationId: row.id });
         return {
           dispatched: outcome.dispatched,
           pendingHumanConfirm: outcome.pendingHumanConfirm,

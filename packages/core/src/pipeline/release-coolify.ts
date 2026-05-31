@@ -107,6 +107,77 @@ export async function tryDispatchCoolifyRelease(args: {
   return { dispatched: dispatched.length > 0, pendingHumanConfirm, integrationIds: dispatched };
 }
 
+/**
+ * Run-less Coolify deploy (ISS-312). Triggers a resource redeploy for a single
+ * integration with no pipeline run attached — the path for a plain "ship latest
+ * main now" that isn't tied to any issue. Keeps `tryDispatchCoolifyRelease`
+ * run-centric and untouched.
+ *
+ * Enqueues with `runId=null` + a synthetic per-attempt requestId (no
+ * `setCurrentStepForce` — there is no run to stamp). The adapter records the
+ * outbound delivery with runId:null; the inbound webhook then no-ops (it can't
+ * map a run), so a run-less deploy simply won't advance any pipeline.
+ *
+ * Prod is never auto-dispatched: a prod integration returns
+ * `pendingHumanConfirm` without enqueueing. (The confirm-prod-deploy endpoint
+ * is run-keyed, so completing a prod deploy still requires the issueId path —
+ * documented limitation. The invariant that matters — prod is never
+ * auto-dispatched run-less — is preserved.)
+ */
+export async function dispatchCoolifyDeployDirect(args: {
+  projectId: string;
+  integrationId: string;
+}): Promise<DispatchOutcome> {
+  const { projectId, integrationId } = args;
+  const rows = await db
+    .select()
+    .from(projectIntegrations)
+    .where(
+      and(
+        eq(projectIntegrations.projectId, projectId),
+        eq(projectIntegrations.provider, 'coolify'),
+        eq(projectIntegrations.active, true),
+      ),
+    );
+  const row = rows.find((r) => r.id === integrationId);
+  if (!row) {
+    return { dispatched: false, pendingHumanConfirm: false, integrationIds: [], reason: 'no-integration' };
+  }
+
+  if (row.environment === 'prod') {
+    // Prod is never auto-dispatched run-less. Confirming a prod deploy is
+    // run-keyed (confirm-prod-deploy endpoint), so it still requires the
+    // issueId path — return the gate outcome without enqueueing.
+    return {
+      dispatched: false,
+      pendingHumanConfirm: true,
+      integrationIds: [row.id],
+      reason: 'awaiting-prod-confirm',
+    };
+  }
+
+  const requestId = `direct:${integrationId}:${Date.now()}-${randomUUID().slice(0, 8)}`;
+  await enqueueCoolifyDispatch({
+    jobKind: 'coolify.dispatch',
+    integrationId: row.id,
+    runId: null,
+    issueId: null,
+    eventName: 'release.requested',
+    requestId,
+  });
+
+  if (isSentryEnabled()) {
+    Sentry.addBreadcrumb({
+      category: 'integration.coolify.dispatch',
+      level: 'info',
+      message: 'enqueued run-less coolify dispatch',
+      data: { integrationId: row.id, environment: row.environment, runId: null },
+    });
+  }
+
+  return { dispatched: true, pendingHumanConfirm: false, integrationIds: [row.id] };
+}
+
 // Pending-confirmation gate state. Persisted on pipelineRuns.metadata under
 // a stable key so the inbound webhook and the UI banner can observe it.
 interface ProdGateState {

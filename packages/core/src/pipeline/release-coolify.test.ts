@@ -69,7 +69,9 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-const { tryDispatchCoolifyRelease } = await import('./release-coolify.js');
+const { tryDispatchCoolifyRelease, dispatchCoolifyDeployDirect } = await import(
+  './release-coolify.js'
+);
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const ISSUE_ID = '33333333-3333-4333-8333-333333333333';
@@ -117,6 +119,61 @@ describe('tryDispatchCoolifyRelease — staging dispatch', () => {
     const r1 = (enqueueSpy.mock.calls[0]?.[0] as { requestId: string }).requestId;
     const r2 = (enqueueSpy.mock.calls[1]?.[0] as { requestId: string }).requestId;
     expect(r1).not.toBe(r2);
+  });
+});
+
+describe('dispatchCoolifyDeployDirect — run-less resource redeploy (ISS-312)', () => {
+  it('staging: enqueues with runId:null + a synthetic direct: requestId', async () => {
+    selectQueue.push([stagingRow]); // active coolify integrations
+
+    const outcome = await dispatchCoolifyDeployDirect({
+      projectId: PROJECT_ID,
+      integrationId: STAGING_INT,
+    });
+
+    expect(enqueueSpy).toHaveBeenCalledTimes(1);
+    const job = enqueueSpy.mock.calls[0]?.[0] as {
+      integrationId: string;
+      runId: string | null;
+      issueId: string | null;
+      requestId: string;
+    };
+    expect(job.integrationId).toBe(STAGING_INT);
+    expect(job.runId).toBeNull();
+    expect(job.issueId).toBeNull();
+    expect(job.requestId).toMatch(new RegExp(`^direct:${STAGING_INT}:\\d+-[0-9a-f]{8}$`));
+    expect(outcome.dispatched).toBe(true);
+    expect(outcome.pendingHumanConfirm).toBe(false);
+    expect(outcome.integrationIds).toEqual([STAGING_INT]);
+  });
+
+  it('prod: returns pendingHumanConfirm and enqueues nothing', async () => {
+    selectQueue.push([prodRow]);
+
+    const outcome = await dispatchCoolifyDeployDirect({
+      projectId: PROJECT_ID,
+      integrationId: PROD_INT,
+    });
+
+    expect(enqueueSpy).not.toHaveBeenCalled();
+    expect(outcome.dispatched).toBe(false);
+    expect(outcome.pendingHumanConfirm).toBe(true);
+    expect(outcome.integrationIds).toEqual([PROD_INT]);
+    expect(outcome.reason).toBe('awaiting-prod-confirm');
+  });
+
+  it('unknown/inactive integration: returns no-integration without enqueueing', async () => {
+    selectQueue.push([stagingRow]); // active set does not include the requested id
+
+    const outcome = await dispatchCoolifyDeployDirect({
+      projectId: PROJECT_ID,
+      integrationId: PROD_INT,
+    });
+
+    expect(enqueueSpy).not.toHaveBeenCalled();
+    expect(outcome.dispatched).toBe(false);
+    expect(outcome.integrationIds).toEqual([]);
+    expect(outcome.reason).toBe('no-integration');
   });
 });
 
