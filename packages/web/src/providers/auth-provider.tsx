@@ -3,12 +3,11 @@
 import type { LoginInput, RegisterInput, User as CoreUser } from '@forge/contracts';
 
 /**
- * `isCEO` (alias of core `isCeo`) and the legacy `chatLogAccess` flag remain
- * exposed as optional fields. `isCeo` is the canonical core column; `isCEO`
- * is kept for the existing UPPER-case readers in the sidebar / dashboard.
+ * The legacy `chatLogAccess` flag remains exposed as an optional field for the
+ * existing sidebar reader. There is no system-admin / CEO flag anymore —
+ * access is purely owner/member per project.
  */
 export type User = CoreUser & {
-  isCEO?: boolean;
   chatLogAccess?: boolean;
 };
 import { useRouter } from 'next/navigation';
@@ -61,7 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     authApi
       .me()
       .then((me) => {
-        if (!cancelled) setUser({ ...me, isCEO: me.isCeo });
+        if (!cancelled) setUser({ ...me });
       })
       .catch((err) => {
         if (cancelled) return;
@@ -85,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // touch localStorage. /auth/me returns the canonical user shape (includes
     // createdAt) — use it as the source of truth.
     const me = await authApi.me();
-    setUser({ ...me, isCEO: me.isCeo });
+    setUser({ ...me });
   }, []);
 
   const register = useCallback(async (input: RegisterInput) => {

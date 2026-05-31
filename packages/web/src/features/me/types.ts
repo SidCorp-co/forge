@@ -2,7 +2,6 @@ export interface MeProfile {
   id: string;
   email: string;
   emailVerifiedAt: string | null;
-  isCeo: boolean;
   createdAt: string;
   hasPassword: boolean;
   oauthProviders: string[];

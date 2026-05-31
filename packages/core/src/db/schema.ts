@@ -45,7 +45,6 @@ export const users = pgTable('users', {
   // accounts cannot be brute-forced via the email/password endpoint.
   passwordHash: text('password_hash'),
   emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
-  isCeo: boolean('is_ceo').notNull().default(false),
   // Last time the user re-entered their password via POST /api/auth/reauth.
   // Drives the requireFreshAuth() middleware; nullable for users that have
   // never re-authed (treated as stale → forces a prompt). See migration 0065.

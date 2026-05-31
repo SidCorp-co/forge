@@ -14,7 +14,8 @@ import { countInFlightForRunner } from '../../jobs/dispatch-gates.js';
 import { runnerCapabilitiesSchema } from '../../runners/types.js';
 import {
   type ContextScopedMcpToolFactory,
-  assertPrincipalCanAdmin,
+  assertPrincipalIsAdmin,
+  loadVisibleProjectIdsForPrincipal,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -80,21 +81,22 @@ function parseCapabilitiesOrThrow(input: unknown): Record<string, unknown> {
 export const forgeAdminRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_admin_runners',
   description:
-    "Cross-tenant runner administration. Requires system admin (`users.isCeo=true`) AND PAT scope `admin` (device tokens are exempt). Actions: `list` (optional projectId/status/type filters; returns inFlightCount per runner), `register` (insert with default status=offline), `retire` (sets status=disabled; refuses with RUNNER_BUSY unless force:true), `update_capabilities` (replaces capabilities jsonb after server-side validation).",
+    "Manage runners for projects in your scope (projects you own or are a member of). Actions: `list` (optional projectId/status/type filters, restricted to your projects; returns inFlightCount per runner), `register` (insert with default status=offline; requires owner/admin on the target project), `retire` (sets status=disabled; requires owner/admin; refuses with RUNNER_BUSY unless force:true), `update_capabilities` (replaces capabilities jsonb after server-side validation; requires owner/admin).",
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    await assertPrincipalCanAdmin(ctx.principal);
 
     if (input.action === 'list') {
-      const filters: SQL[] = [];
+      const visibleIds = await loadVisibleProjectIdsForPrincipal(ctx.principal);
+      if (visibleIds.length === 0) return { runners: [] };
+      const filters: SQL[] = [inArray(runners.projectId, visibleIds)];
       if (input.projectId) filters.push(eq(runners.projectId, input.projectId));
       if (input.status) filters.push(eq(runners.status, input.status as RunnerStatus));
       if (input.type) filters.push(eq(runners.type, input.type as RunnerType));
       const rows = await db
         .select()
         .from(runners)
-        .where(filters.length > 0 ? and(...filters) : undefined);
+        .where(and(...filters));
       if (rows.length === 0) return { runners: [] };
 
       const inFlightRows = await db
@@ -125,6 +127,7 @@ export const forgeAdminRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
       if (!input.data) {
         throw new Error('BAD_REQUEST: data is required for action=register');
       }
+      await assertPrincipalIsAdmin(ctx.principal, input.data.projectId);
       const caps = parseCapabilitiesOrThrow(input.data.capabilities);
       const [row] = await db
         .insert(runners)
@@ -149,6 +152,13 @@ export const forgeAdminRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
         throw new Error('BAD_REQUEST: runnerId is required for action=retire');
       }
       const runnerId = input.runnerId;
+      const [target] = await db
+        .select({ projectId: runners.projectId })
+        .from(runners)
+        .where(eq(runners.id, runnerId))
+        .limit(1);
+      if (!target) throw new Error('NOT_FOUND: runner not found');
+      await assertPrincipalIsAdmin(ctx.principal, target.projectId);
       const force = input.force ?? false;
       const inFlight = await countInFlightForRunner(runnerId);
       if (inFlight > 0 && !force) {
@@ -178,6 +188,13 @@ export const forgeAdminRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
     if (input.capabilities === undefined) {
       throw new Error('BAD_REQUEST: capabilities is required for action=update_capabilities');
     }
+    const [target] = await db
+      .select({ projectId: runners.projectId })
+      .from(runners)
+      .where(eq(runners.id, input.runnerId))
+      .limit(1);
+    if (!target) throw new Error('NOT_FOUND: runner not found');
+    await assertPrincipalIsAdmin(ctx.principal, target.projectId);
     const caps = parseCapabilitiesOrThrow(input.capabilities);
     const [row] = await db
       .update(runners)

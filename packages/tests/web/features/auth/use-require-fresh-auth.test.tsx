@@ -44,7 +44,6 @@ function makeProfile(over: Partial<MeProfile>): MeProfile {
     id: 'u1',
     email: 'u@example.com',
     emailVerifiedAt: null,
-    isCeo: false,
     createdAt: '2026-01-01T00:00:00Z',
     hasPassword: false,
     oauthProviders: ['github'],

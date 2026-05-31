@@ -48,22 +48,20 @@ function buildApp() {
 const PROJECT_UUID = '33333333-3333-4333-8333-333333333333';
 const ISSUE_UUID = '44444444-4444-4444-8444-444444444444';
 
-// Stack the three lookups assertProjectMember performs after the email-verify
-// pre-check. Call order matters: (1) users.isCeo, (2) projects.ownerId,
-// (3) projectMembers row (skipped when CEO or owner).
+// Stack the lookups assertProjectMember performs after the email-verify
+// pre-check. Call order matters: (1) projects.ownerId, (2) projectMembers row
+// (skipped when caller is the owner).
 function mockMembership(opts: {
-  isCeo?: boolean;
   ownerId?: string;
   memberOf?: boolean;
   projectExists?: boolean;
 }) {
   selectLimit
     .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-    .mockResolvedValueOnce([{ isCeo: !!opts.isCeo }])
     .mockResolvedValueOnce(
       opts.projectExists === false ? [] : [{ ownerId: opts.ownerId ?? 'other-owner' }],
     );
-  if (!opts.isCeo && opts.ownerId !== 'u-1' && opts.projectExists !== false) {
+  if (opts.ownerId !== 'u-1' && opts.projectExists !== false) {
     selectLimit.mockResolvedValueOnce(opts.memberOf ? [{ userId: 'u-1' }] : []);
   }
 }
@@ -97,9 +95,7 @@ describe('GET /api/pipeline/throughput', () => {
 
   it('returns [] when user has no visible projects', async () => {
     const token = await signUserToken('u-1');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'u-1', isCeo: false }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     leftJoinWhere.mockResolvedValueOnce([]);
 
     const app = buildApp();
@@ -110,9 +106,7 @@ describe('GET /api/pipeline/throughput', () => {
 
   it('returns daily counts grouped by project for member', async () => {
     const token = await signUserToken('u-1');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'u-1', isCeo: false }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     leftJoinWhere.mockResolvedValueOnce([{ id: 'p-1' }]);
     selectOrderBy.mockResolvedValueOnce([
       { projectId: 'p-1', date: '2026-04-26', count: 3 },
@@ -130,9 +124,7 @@ describe('GET /api/pipeline/throughput', () => {
 
   it('scopes to projectId when caller has access', async () => {
     const token = await signUserToken('u-1');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'u-1', isCeo: false }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     leftJoinWhere.mockResolvedValueOnce([{ id: 'p-1' }, { id: 'p-2' }]);
     selectOrderBy.mockResolvedValueOnce([
       { projectId: 'p-1', date: '2026-04-27', count: 7 },
@@ -150,9 +142,7 @@ describe('GET /api/pipeline/throughput', () => {
 
   it('returns [] when projectId is not in user visibility', async () => {
     const token = await signUserToken('u-1');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'u-1', isCeo: false }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     leftJoinWhere.mockResolvedValueOnce([{ id: 'p-1' }]);
 
     const app = buildApp();
@@ -185,9 +175,7 @@ describe('GET /api/pipeline/cycle-time', () => {
 
   it('returns [] when user has no visible projects', async () => {
     const token = await signUserToken('u-1');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'u-1', isCeo: false }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     leftJoinWhere.mockResolvedValueOnce([]);
 
     const app = buildApp();
@@ -198,9 +186,7 @@ describe('GET /api/pipeline/cycle-time', () => {
 
   it('returns avgHours per status', async () => {
     const token = await signUserToken('u-1');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'u-1', isCeo: false }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     leftJoinWhere.mockResolvedValueOnce([{ id: 'p-1' }]);
     dbExecute.mockResolvedValueOnce([
       { status: 'open', avg_hours: 4.5, n: 12 },
@@ -227,9 +213,7 @@ describe('GET /api/pipeline/step-durations', () => {
 
   it('returns [] when user has no visible projects', async () => {
     const token = await signUserToken('u-1');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'u-1', isCeo: false }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     leftJoinWhere.mockResolvedValueOnce([]);
 
     const app = buildApp();
@@ -267,9 +251,7 @@ describe('GET /api/pipeline/step-durations', () => {
 
   it('maps snake_case view rows to camelCase and coerces numbers', async () => {
     const token = await signUserToken('u-1');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'u-1', isCeo: false }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     leftJoinWhere.mockResolvedValueOnce([{ id: 'p-1' }]);
     dbExecute.mockResolvedValueOnce([
       {
@@ -324,9 +306,7 @@ describe('GET /api/pipeline/step-durations', () => {
 
   it('passes step filter into the SQL parameters', async () => {
     const token = await signUserToken('u-1');
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: 'u-1', isCeo: false }]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     leftJoinWhere.mockResolvedValueOnce([{ id: 'p-1' }]);
     dbExecute.mockResolvedValueOnce([]);
 
@@ -443,7 +423,7 @@ describe('GET /api/projects/:id/analytics/cost-trend', () => {
 
   it('200 daily series with empty annotations when activity_log returns none', async () => {
     const token = await signUserToken('u-1');
-    mockMembership({ isCeo: true });
+    mockMembership({ ownerId: 'u-1' });
     dbExecute
       .mockResolvedValueOnce([
         { date: '2026-05-22', cost: '1.5', runs: 3 },

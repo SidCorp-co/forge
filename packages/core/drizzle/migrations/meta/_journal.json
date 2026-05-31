@@ -596,6 +596,13 @@
       "when": 1781395200000,
       "tag": "0086_device_login_codes",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1781481600000,
+      "tag": "0087_drop_users_is_ceo",
+      "breakpoints": true
     }
   ]
 }

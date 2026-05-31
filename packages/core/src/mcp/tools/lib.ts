@@ -1,9 +1,9 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Device } from '../../auth/deviceToken.js';
 import { db } from '../../db/client.js';
 import type { McpPrincipal } from '../../middleware/require-pat-or-device.js';
-import { projectMembers, projects, runners, users } from '../../db/schema.js';
+import { projectMembers, projects, runners } from '../../db/schema.js';
 import type { McpTool } from './forge-version.js';
 
 /**
@@ -223,48 +223,36 @@ async function loadUserProjectRole(
 /**
  * Resolve a principal to the underlying user id — device principals expose
  * `device.ownerId`, PAT principals carry `userId` directly. Used by tools
- * that need to check user-level attributes (e.g. `users.isCeo`).
+ * that need to check user-level attributes or scope by ownership.
  */
 export function principalUserId(principal: McpPrincipal): string {
   return principal.kind === 'device' ? principal.device.ownerId : principal.userId;
 }
 
 /**
- * Throw if the principal is not a system admin (`users.isCeo === true`).
- * Used by cross-project metrics tools that surface data outside a single
- * project's scope — same gate the analytics REST routes already enforce via
- * `loadVisibleProjectIds`.
+ * The set of project ids a principal can see: projects the underlying user
+ * owns OR is a member of, intersected with the PAT's `projectIds` allowlist
+ * when present. There is no cross-tenant bypass — every principal is scoped
+ * to its own projects. Used by the formerly system-admin `forge_admin_*` and
+ * cross-project metrics tools to bound their result sets to the caller.
+ *
+ * Mirrors the REST `loadVisibleProjectIds` (pipeline/analytics-routes.ts).
  */
-export async function assertPrincipalIsSystemAdmin(principal: McpPrincipal): Promise<void> {
+export async function loadVisibleProjectIdsForPrincipal(
+  principal: McpPrincipal,
+): Promise<string[]> {
   const userId = principalUserId(principal);
-  const [row] = await db
-    .select({ isCeo: users.isCeo })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  if (!row || row.isCeo !== true) {
-    throw new Error('FORBIDDEN: requires system admin');
+  const rows = await db
+    .selectDistinct({ id: projects.id })
+    .from(projects)
+    .leftJoin(projectMembers, eq(projectMembers.projectId, projects.id))
+    .where(sql`${projects.ownerId} = ${userId} OR ${projectMembers.userId} = ${userId}`);
+  let ids = rows.map((r) => r.id);
+  if (principal.kind === 'pat' && principal.projectIds !== null) {
+    const allow = new Set(principal.projectIds);
+    ids = ids.filter((id) => allow.has(id));
   }
-}
-
-/**
- * Combined gate for `forge_admin_*` MCP tools (ISS-170). Checks BOTH:
- *   1. The underlying user is a system admin (`users.isCeo === true`).
- *   2. If the principal is a PAT, the token's `scopes` array includes `admin`.
- *
- * Device principals have no PAT scope vector — they pass the scope check
- * implicitly, matching the existing pattern (`assertPrincipalIsMember` etc.).
- *
- * Order matters: the isCeo check runs first so a non-admin who somehow mints
- * a PAT with `scopes:['admin']` (the create endpoint allows it; the gate is
- * at tool time) still gets the existing `requires system admin` error
- * rather than leaking that an `admin` scope path exists.
- */
-export async function assertPrincipalCanAdmin(principal: McpPrincipal): Promise<void> {
-  await assertPrincipalIsSystemAdmin(principal);
-  if (principal.kind === 'pat' && !principal.scopes.includes('admin')) {
-    throw new Error('FORBIDDEN: requires admin scope on the PAT');
-  }
+  return ids;
 }
 
 /**

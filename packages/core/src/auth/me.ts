@@ -21,7 +21,6 @@ meRoutes.get('/me', async (c) => {
       id: users.id,
       email: users.email,
       emailVerifiedAt: users.emailVerifiedAt,
-      isCeo: users.isCeo,
       createdAt: users.createdAt,
       lastFreshAuthAt: users.lastFreshAuthAt,
       // Selected only to derive `hasPassword` — the hash itself is never
@@ -49,7 +48,6 @@ meRoutes.get('/me', async (c) => {
     id: row.id,
     email: row.email,
     emailVerifiedAt: row.emailVerifiedAt,
-    isCeo: row.isCeo,
     createdAt: row.createdAt,
     lastFreshAuthAt: row.lastFreshAuthAt,
     hasPassword: row.passwordHash !== null,

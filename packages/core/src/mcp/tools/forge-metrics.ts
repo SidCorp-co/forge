@@ -5,7 +5,7 @@ import { jobTypes } from '../../db/schema.js';
 import {
   type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
-  assertPrincipalIsSystemAdmin,
+  loadVisibleProjectIdsForPrincipal,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -45,11 +45,14 @@ function num(x: number | string | null | undefined): number {
 export const forgeMetricsAdminStepDurationsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_metrics.admin_step_durations',
   description:
-    'Cross-project aggregated pipeline-step durations (p50/p95/avg/cost/sample size) over `pipeline_run_step_durations`. Requires system admin (`users.isCeo`). Filterable by `days` (1..90, default 30) and `step` (job type). Returns `{ rows: [{ projectId, projectSlug, step, p50, p95, avg, totalCostUsd, n }], windowDays }`.',
+    'Aggregated pipeline-step durations (p50/p95/avg/cost/sample size) over `pipeline_run_step_durations` across the projects you can access (projects you own or are a member of). Filterable by `days` (1..90, default 30) and `step` (job type). Returns `{ rows: [{ projectId, projectSlug, step, p50, p95, avg, totalCostUsd, n }], windowDays }`.',
   inputSchema: zodToMcpSchema(adminInputSchema),
   handler: async (args) => {
     const input = adminInputSchema.parse(args);
-    await assertPrincipalIsSystemAdmin(ctx.principal);
+    const visibleIds = await loadVisibleProjectIdsForPrincipal(ctx.principal);
+    if (visibleIds.length === 0) {
+      return { rows: [], windowDays: input.days };
+    }
 
     const stepFilter = input.step ? sql`AND v.step = ${input.step}` : sql``;
     const result = await db.execute(sql`
@@ -63,7 +66,8 @@ export const forgeMetricsAdminStepDurationsTool: ContextScopedMcpToolFactory = (
              count(*)::int AS n
       FROM pipeline_run_step_durations v
       LEFT JOIN projects p ON p.id = v.project_id
-      WHERE v.started_at >= now() - (${input.days}::int * interval '1 day')
+      WHERE v.project_id = ANY(${visibleIds}::uuid[])
+        AND v.started_at >= now() - (${input.days}::int * interval '1 day')
         ${stepFilter}
       GROUP BY v.project_id, p.slug, v.step
       ORDER BY v.project_id, v.step

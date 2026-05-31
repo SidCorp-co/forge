@@ -9,10 +9,12 @@ vi.mock('../../config/env.js', () => ({
 }));
 
 const selectImpl = vi.fn();
+const selectDistinctImpl = vi.fn();
 
 vi.mock('../../db/client.js', () => ({
   db: {
     select: (...a: unknown[]) => selectImpl(...a),
+    selectDistinct: (...a: unknown[]) => selectDistinctImpl(...a),
   },
 }));
 
@@ -22,6 +24,7 @@ const OWNER_ID = '11111111-1111-4111-8111-111111111111';
 const USER_A = '22222222-2222-4222-8222-222222222222';
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
 const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
+const TOKEN_ID = '66666666-6666-4666-8666-666666666666';
 
 const fakeDevice = {
   id: DEVICE_ID,
@@ -46,45 +49,52 @@ function buildCtx() {
   };
 }
 
-const TOKEN_ID = '66666666-6666-4666-8666-666666666666';
-
-function buildPatCtx(scopes: readonly string[]) {
+function buildPatCtx(scopes: readonly string[], projectIds: string[] | null = null) {
   return {
     principal: {
       kind: 'pat' as const,
       userId: OWNER_ID,
       tokenId: TOKEN_ID,
       scopes,
-      projectIds: null,
+      projectIds,
     },
     device: fakeDevice,
     projectSlug: null,
   };
 }
 
-function mockCeoLookup(isCeo: boolean) {
-  selectImpl.mockImplementationOnce(() => ({
+// loadVisibleProjectIdsForPrincipal: selectDistinct({id}).from.leftJoin.where.
+function mockVisible(ids: string[]) {
+  selectDistinctImpl.mockImplementationOnce(() => ({
     from: () => ({
-      where: () => ({
-        limit: () => Promise.resolve([{ isCeo }]),
+      leftJoin: () => ({
+        where: () => Promise.resolve(ids.map((id) => ({ id }))),
       }),
     }),
+  }));
+}
+
+// owners / members lookup: selectDistinct({id}).from.where.
+function mockDistinctIds(ids: string[]) {
+  selectDistinctImpl.mockImplementationOnce(() => ({
+    from: () => ({ where: () => Promise.resolve(ids.map((id) => ({ id }))) }),
   }));
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   selectImpl.mockReset();
+  selectDistinctImpl.mockReset();
 });
 
 describe('forge_admin_users', () => {
   it('list returns memberships matrix and never exposes passwordHash', async () => {
-    mockCeoLookup(true);
+    mockVisible([PROJECT_ID]);
+    mockDistinctIds([OWNER_ID]); // owners of visible projects
+    mockDistinctIds([USER_A]); // members of visible projects
     // count(*)
     selectImpl.mockImplementationOnce(() => ({
-      from: () => ({
-        where: () => Promise.resolve([{ total: 1 }]),
-      }),
+      from: () => ({ where: () => Promise.resolve([{ total: 1 }]) }),
     }));
     // user rows
     selectImpl.mockImplementationOnce(() => ({
@@ -97,7 +107,6 @@ describe('forge_admin_users', () => {
                   {
                     id: USER_A,
                     email: 'a@example.com',
-                    isCeo: false,
                     emailVerifiedAt: null,
                     createdAt: new Date(),
                   },
@@ -132,14 +141,15 @@ describe('forge_admin_users', () => {
     expect(res.total).toBe(1);
     expect(res.users[0].memberships[0].role).toBe('admin');
     expect(res.users[0]).not.toHaveProperty('passwordHash');
+    expect(res.users[0]).not.toHaveProperty('isCeo');
   });
 
   it('list with search returns empty + total when no users match', async () => {
-    mockCeoLookup(true);
+    mockVisible([PROJECT_ID]);
+    mockDistinctIds([OWNER_ID]);
+    mockDistinctIds([USER_A]);
     selectImpl.mockImplementationOnce(() => ({
-      from: () => ({
-        where: () => Promise.resolve([{ total: 0 }]),
-      }),
+      from: () => ({ where: () => Promise.resolve([{ total: 0 }]) }),
     }));
     selectImpl.mockImplementationOnce(() => ({
       from: () => ({
@@ -161,17 +171,21 @@ describe('forge_admin_users', () => {
     expect(res.total).toBe(0);
   });
 
-  it('FORBIDDEN when not CEO', async () => {
-    mockCeoLookup(false);
+  it('returns empty when the caller has no visible projects', async () => {
+    mockVisible([]);
     const tool = forgeAdminUsersTool(buildCtx());
-    await expect(tool.handler({ action: 'list' })).rejects.toThrow(/FORBIDDEN/);
+    const res = (await tool.handler({ action: 'list' })) as { users: unknown[]; total: number };
+    expect(res.users).toEqual([]);
+    expect(res.total).toBe(0);
   });
 
-  it('PAT principal without admin scope is rejected even if isCeo=true', async () => {
-    mockCeoLookup(true);
-    const tool = forgeAdminUsersTool(buildPatCtx(['read', 'write']));
-    await expect(tool.handler({ action: 'list' })).rejects.toThrow(
-      /FORBIDDEN: requires admin scope on the PAT/,
-    );
+  it('PAT with an empty projectIds allowlist sees nobody', async () => {
+    // selectDistinct returns a project the user owns, but the PAT allowlist is
+    // empty so the visible set intersects to nothing.
+    mockVisible([PROJECT_ID]);
+    const tool = forgeAdminUsersTool(buildPatCtx(['read'], []));
+    const res = (await tool.handler({ action: 'list' })) as { users: unknown[]; total: number };
+    expect(res.users).toEqual([]);
+    expect(res.total).toBe(0);
   });
 });

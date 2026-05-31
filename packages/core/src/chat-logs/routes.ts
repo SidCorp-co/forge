@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { chatLogs, projectMembers, projects, qaRatings, users } from '../db/schema.js';
+import { chatLogs, projectMembers, projects, qaRatings } from '../db/schema.js';
 import { setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -97,22 +97,13 @@ chatLogRoutes.get(
       await assertChatLogAccess(projectSlug, userId);
       conditions.push(eq(chatLogs.projectSlug, projectSlug));
     } else {
-      // Cross-project view: restrict to caller-visible projects.
-      // CEO sees all; everyone else sees owned + member projects.
-      // Pattern mirrors packages/core/src/projects/health-routes.ts.
-      const [me] = await db
-        .select({ id: users.id, isCeo: users.isCeo })
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1);
-
-      const visible = me?.isCeo
-        ? await db.select({ slug: projects.slug }).from(projects)
-        : await db
-            .selectDistinct({ slug: projects.slug })
-            .from(projects)
-            .leftJoin(projectMembers, eq(projectMembers.projectId, projects.id))
-            .where(sql`${projects.ownerId} = ${userId} OR ${projectMembers.userId} = ${userId}`);
+      // Cross-project view: restrict to caller-visible projects
+      // (owned + member). Pattern mirrors packages/core/src/projects/health-routes.ts.
+      const visible = await db
+        .selectDistinct({ slug: projects.slug })
+        .from(projects)
+        .leftJoin(projectMembers, eq(projectMembers.projectId, projects.id))
+        .where(sql`${projects.ownerId} = ${userId} OR ${projectMembers.userId} = ${userId}`);
 
       if (visible.length === 0) {
         setTotalCount(c, 0);
