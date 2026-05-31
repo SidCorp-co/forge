@@ -8,8 +8,15 @@
    No tailwind.config.ts; this block is the config.
    ============================================================ */
 @theme inline {
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
+  /* Point straight at the next/font CSS variables (set on <body> in
+     app/layout.tsx). The previous `var(--font-sans)` was a circular
+     self-reference: in `@theme inline` Tailwind inlines the theme value into
+     the generated `--default-font-family`, so `--font-sans: var(--font-sans)`
+     resolved to itself → empty → the browser fell back to a system sans, and
+     Hanken/JetBrains never rendered even though they loaded. Mirrors the
+     full stacks in styles/tokens.css. */
+  --font-sans: var(--font-hanken), "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-jetbrains), "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   /* surfaces */
   --color-app: var(--bg-app);
