@@ -236,7 +236,9 @@ async function findStandby(
   // Retry-chain exclusion: skip every device already tried. One
   // `IS DISTINCT FROM` fragment per id (chains are bounded by the device
   // count) keeps remote runners (NULL device_id) eligible and every id
-  // parameterised. Joined with no separator since each fragment is `AND …`.
+  // parameterised. The space separator is REQUIRED — each fragment starts
+  // with `AND` but ends in a bound param (`… IS DISTINCT FROM $n`), so an
+  // empty separator would render `$nAND` and break the SQL.
   const retryExclusionClause =
     extra.excludeDeviceIds.length > 0
       ? sql.join(
