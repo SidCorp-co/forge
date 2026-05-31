@@ -7,8 +7,13 @@ vi.mock('../config/env.js', () => ({
 }));
 vi.mock('../db/client.js', () => ({ db: {} }));
 
-const { computeDeviceSkillStatus, computeEffectiveSkill, globalEffectiveHash, globalEffectiveMd } =
-  await import('./effective.js');
+const {
+  computeDeviceSkillStatus,
+  computeEffectiveSkill,
+  globalEffectiveHash,
+  globalEffectiveMd,
+  pivotProjectSkillSyncStatus,
+} = await import('./effective.js');
 type EffectiveSkill = import('./effective.js').EffectiveSkill;
 type SkillBodyRow = import('./effective.js').SkillBodyRow;
 const { hashSkillBody } = await import('./hash.js');
@@ -140,5 +145,52 @@ describe('computeDeviceSkillStatus', () => {
     expect(byId['s-3']?.status).toBe('missing');
     expect(byId['s-1']?.syncedAt).toBe(syncedAt.toISOString());
     expect(byId['s-3']?.installedHash).toBeNull();
+  });
+});
+
+describe('pivotProjectSkillSyncStatus', () => {
+  const eff: EffectiveSkill[] = [
+    { skillId: 's-1', name: 'a', version: 5, skillMd: '', files: [], effectiveHash: 'h1', isOverridden: false },
+    { skillId: 's-2', name: 'b', version: 2, skillMd: '', files: [], effectiveHash: 'h2', isOverridden: false },
+  ];
+  const devicesList = [
+    { deviceId: 'd-1', name: 'laptop', status: 'online', lastSeenAt: null },
+    { deviceId: 'd-2', name: 'desktop', status: 'offline', lastSeenAt: null },
+  ];
+
+  it('pivots into a skill-major shape with per-device synced/outdated/missing', () => {
+    const installedByDevice = new Map([
+      // d-1: s-1 synced, s-2 outdated
+      [
+        'd-1',
+        [
+          { skillId: 's-1', installedHash: 'h1', installedVersion: 5, syncedAt: null },
+          { skillId: 's-2', installedHash: 'OLD', installedVersion: 1, syncedAt: null },
+        ],
+      ],
+      // d-2: no install rows → everything missing
+    ]);
+
+    const out = pivotProjectSkillSyncStatus(devicesList, eff, installedByDevice);
+
+    expect(out.devices).toHaveLength(2);
+    expect(out.skills.map((s) => s.skillId)).toEqual(['s-1', 's-2']);
+
+    const s1 = out.skills.find((s) => s.skillId === 's-1')!;
+    expect(s1.currentVersion).toBe(5);
+    expect(s1.devices.find((d) => d.deviceId === 'd-1')?.status).toBe('synced');
+    expect(s1.devices.find((d) => d.deviceId === 'd-2')?.status).toBe('missing');
+
+    const s2 = out.skills.find((s) => s.skillId === 's-2')!;
+    const s2d1 = s2.devices.find((d) => d.deviceId === 'd-1')!;
+    expect(s2d1.status).toBe('outdated');
+    expect(s2d1.installedVersion).toBe(1);
+  });
+
+  it('returns each skill with an empty devices array when no devices are bound', () => {
+    const out = pivotProjectSkillSyncStatus([], eff, new Map());
+    expect(out.devices).toEqual([]);
+    expect(out.skills).toHaveLength(2);
+    expect(out.skills.every((s) => s.devices.length === 0)).toBe(true);
   });
 });

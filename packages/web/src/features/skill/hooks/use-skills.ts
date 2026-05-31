@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { deviceApi } from '@/features/device/api';
 import { skillApi, skillRegistrationApi } from '../api';
 import type { Skill, SkillFile } from '../types';
 
@@ -71,6 +72,18 @@ export function useSkillSyncStatus(projectDocumentId?: string) {
   });
 }
 
+// Skill Studio 5 (ISS-279) — aggregated skill-major per-device freshness for
+// the Studio sync panel. 30s poll so freshness catches up after a device
+// reports its install hashes back.
+export function useProjectSkillSyncStatus(projectDocumentId?: string) {
+  return useQuery({
+    queryKey: ['skill-sync-status-by-device', projectDocumentId],
+    queryFn: () => skillApi.projectSyncStatus(projectDocumentId!),
+    enabled: !!projectDocumentId,
+    refetchInterval: 30000,
+  });
+}
+
 export function useBulkPushSkills() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -81,7 +94,25 @@ export function useBulkPushSkills() {
     }) => skillApi.bulkPush(targets, projectDocumentId, skillNames),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['skill-sync-status'] });
+      // Skill Studio 5 — also refresh the by-device aggregate + per-device views
+      // so a Sync now reflects once the runner pulls and reports back.
+      queryClient.invalidateQueries({ queryKey: ['skill-sync-status-by-device'] });
+      queryClient.invalidateQueries({ queryKey: ['device-skill-status'] });
     },
+  });
+}
+
+// Skill Studio 5 (ISS-279) — per-device skill freshness for the device-centric
+// settings page (reuses the existing single-device endpoint).
+export function useDeviceSkillStatus(
+  projectId: string | undefined,
+  deviceId: string | undefined,
+) {
+  return useQuery({
+    queryKey: ['device-skill-status', projectId, deviceId],
+    queryFn: () => deviceApi.skillStatus(projectId as string, deviceId as string),
+    enabled: !!projectId && !!deviceId,
+    refetchInterval: 30000,
   });
 }
 

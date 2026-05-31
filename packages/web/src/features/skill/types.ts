@@ -58,6 +58,50 @@ export interface BulkPushResult {
   error?: string;
 }
 
+// Skill Studio 5 (ISS-279) — aggregated, skill-major per-device freshness from
+// GET /api/projects/:projectId/skill-sync-status. Replaces the legacy empty
+// `devices` stub on SkillSyncStatus; sourced from the real `device_skills`.
+export type DeviceSkillSyncState = 'synced' | 'outdated' | 'missing';
+
+export interface SkillSyncDevice {
+  deviceId: string;
+  name: string;
+  status: string;
+  lastSeenAt: string | null;
+}
+
+export interface SkillDeviceStatus {
+  deviceId: string;
+  status: DeviceSkillSyncState;
+  installedVersion: number | null;
+  installedHash: string | null;
+  syncedAt: string | null;
+}
+
+export interface SkillSyncSkillEntry {
+  skillId: string;
+  name: string;
+  currentVersion: number;
+  effectiveHash: string;
+  devices: SkillDeviceStatus[];
+}
+
+export interface ProjectSkillSyncStatus {
+  devices: SkillSyncDevice[];
+  skills: SkillSyncSkillEntry[];
+}
+
+// Per-device endpoint shape: GET /api/projects/:projectId/devices/:deviceId/skills
+export interface DeviceSkillStatusEntry {
+  skillId: string;
+  name: string;
+  effectiveHash: string;
+  installedHash: string | null;
+  installedVersion: number | null;
+  syncedAt: string | null;
+  status: DeviceSkillSyncState;
+}
+
 // EPIC 6 (ISS-278/290) — per-project skill override response shape from
 // /api/projects/:projectId/skills/effective. The list merges global skills
 // with their project-specific overrides; `isOverridden` flags rows where the
