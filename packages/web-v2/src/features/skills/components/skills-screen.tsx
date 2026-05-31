@@ -3,20 +3,31 @@
 // Project-tier Skills registry (`/v2/projects/[slug]/skills`). Responsive card
 // grid of global + project skills with scope, sync state, registered-stage
 // chips, and an owner/admin enable control. ISS-299.
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   EmptyState,
   ErrorState,
+  Input,
   ProjectCardSkeleton,
+  SegmentedControl,
+  Stat,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useRegisterSkill, useSkills, useSkillSyncStatus, useUnregisterSkill } from "../hooks";
-import { mergeSkills } from "../types";
+import { mergeSkills, type SkillScope } from "../types";
 import { SkillCard } from "./skill-card";
 
 interface SkillsScreenProps {
   scope: { projectId: string; canManage: boolean };
 }
+
+type ScopeFilter = "all" | SkillScope;
+
+const SCOPE_OPTIONS: { value: ScopeFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "global", label: "Global" },
+  { value: "project", label: "Project" },
+];
 
 export function SkillsScreen({ scope }: SkillsScreenProps) {
   const { projectId, canManage } = scope;
@@ -35,6 +46,31 @@ export function SkillsScreen({ scope }: SkillsScreenProps) {
   );
   const pending = register.isPending || unregister.isPending;
 
+  const [query, setQuery] = useState("");
+  const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return skills.filter((s) => {
+      if (scopeFilter !== "all" && s.scope !== scopeFilter) return false;
+      if (!q) return true;
+      return (
+        s.name.toLowerCase().includes(q) ||
+        (s.description?.toLowerCase().includes(q) ?? false)
+      );
+    });
+  }, [skills, query, scopeFilter]);
+
+  const isFiltered = query.trim() !== "" || scopeFilter !== "all";
+
+  // Hide the per-card scope badge when every visible card shares one scope —
+  // the badge only earns its place in a mixed view.
+  const singleScope = useMemo(() => {
+    if (visible.length === 0) return false;
+    const first = visible[0].scope;
+    return visible.every((s) => s.scope === first);
+  }, [visible]);
+
   return (
     <div className="mx-auto w-full min-h-dvh max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
       <header className="mb-6">
@@ -43,6 +79,28 @@ export function SkillsScreen({ scope }: SkillsScreenProps) {
           Global and project skills, and the pipeline stages they run on.
         </p>
       </header>
+
+      {!isLoading && !isError && skills.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <Input
+            icon="search"
+            placeholder="Filter skills…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="w-full sm:w-64"
+          />
+          <SegmentedControl
+            options={SCOPE_OPTIONS}
+            value={scopeFilter}
+            onChange={setScopeFilter}
+          />
+          <div className="ml-auto">
+            <Stat icon="book" mono={false}>
+              {visible.length} {visible.length === 1 ? "skill" : "skills"}
+            </Stat>
+          </div>
+        </div>
+      )}
 
       {isLoading && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -70,14 +128,23 @@ export function SkillsScreen({ scope }: SkillsScreenProps) {
         />
       )}
 
-      {!isLoading && !isError && skills.length > 0 && (
+      {!isLoading && !isError && skills.length > 0 && visible.length === 0 && (
+        <EmptyState
+          title="Nothing here"
+          message="No skills match the current filter."
+          mascot={false}
+        />
+      )}
+
+      {!isLoading && !isError && visible.length > 0 && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {skills.map((skill) => (
+          {visible.map((skill) => (
             <SkillCard
               key={skill.id}
               skill={skill}
               canManage={canManage}
               pending={pending}
+              showScope={!singleScope}
               onRegister={(skillId, stage) => register.mutate({ skillId, stage })}
               onUnregister={(stage) => unregister.mutate(stage)}
             />

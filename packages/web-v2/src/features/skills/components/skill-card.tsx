@@ -20,9 +20,18 @@ interface SkillCardProps {
   onRegister: (skillId: string, stage: string) => void;
   onUnregister: (stage: string) => void;
   pending: boolean;
+  /** Show the scope badge. Suppressed when the surrounding view is single-scope. */
+  showScope?: boolean;
 }
 
-export function SkillCard({ skill, canManage, onRegister, onUnregister, pending }: SkillCardProps) {
+export function SkillCard({
+  skill,
+  canManage,
+  onRegister,
+  onUnregister,
+  pending,
+  showScope = true,
+}: SkillCardProps) {
   const registered = new Set(skill.registeredStages);
   const stageOptions = useMemo<SelectOption[]>(
     () =>
@@ -38,7 +47,9 @@ export function SkillCard({ skill, canManage, onRegister, onUnregister, pending 
           <div className="min-w-0">
             <p className="fg-body truncate font-semibold text-fg">{skill.name}</p>
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              <Badge tone={skill.scope === "global" ? "cobalt" : "accent"}>{skill.scope}</Badge>
+              {showScope && (
+                <Badge tone={skill.scope === "global" ? "cobalt" : "accent"}>{skill.scope}</Badge>
+              )}
               {skill.synced ? (
                 <Badge tone="green">synced</Badge>
               ) : (

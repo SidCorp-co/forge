@@ -61,19 +61,18 @@ export function TopBar({
         </button>
       )}
 
-      {title && <h1 className="fg-h3 mr-2">{title}</h1>}
-
-      <button
-        type="button"
-        onClick={onCommandPalette}
-        className="flex h-9 max-w-md flex-1 items-center gap-2.5 rounded-md border border-line-strong bg-surface px-3 text-subtle transition-colors hover:border-[color:var(--link)] hover:bg-hover"
-      >
-        <Icon name="search" size={16} />
-        <span className="fg-body-sm flex-1 text-left">Search or jump to…</span>
-        <Kbd>⌘K</Kbd>
-      </button>
+      {title && <h1 className="fg-h3 mr-2 truncate">{title}</h1>}
 
       <div className="ml-auto flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onCommandPalette}
+          className="hidden h-9 w-[280px] items-center gap-2.5 rounded-md border border-line-strong bg-surface px-3 text-subtle transition-colors hover:border-[color:var(--link)] hover:bg-hover sm:flex"
+        >
+          <Icon name="search" size={16} />
+          <span className="fg-body-sm flex-1 truncate text-left">Search issues, runs…</span>
+          <Kbd>⌘K</Kbd>
+        </button>
         {density && onDensityChange && (
           <Tooltip label="Display density" side="bottom">
             <SegmentedControl<TopBarDensity>

@@ -41,10 +41,21 @@ function fmtTime(iso: string | null): string {
   });
 }
 
-function LastResult({ status }: { status: ScheduleRow["lastStatus"] }) {
+/**
+ * Condensed last-result: status chip + the time it ran, inline. Renders nothing
+ * when a schedule has never run (no chip, no em dash).
+ */
+function LastResult({ status, at }: { status: ScheduleRow["lastStatus"]; at: string | null }) {
   const chip = lastStatusToChip(status);
-  if (!chip) return <span className="fg-caption">—</span>;
-  return <StatusChip status={chip} size="sm" />;
+  if (!chip) {
+    return <span className="fg-caption text-subtle">Never run</span>;
+  }
+  return (
+    <span className="inline-flex items-center gap-2">
+      <StatusChip status={chip} size="sm" />
+      {at && <span className="fg-caption text-subtle">{fmtTime(at)}</span>}
+    </span>
+  );
 }
 
 interface RowActions {
@@ -153,9 +164,15 @@ function ScheduleTableRow({ row, actions }: { row: ScheduleRow; actions: RowActi
       <TD>
         <MonoTag>{row.cron}</MonoTag>
       </TD>
-      <TD className="font-mono text-muted">{row.enabled ? fmtTime(row.nextRunAt) : "—"}</TD>
+      <TD className="font-mono text-muted">
+        {row.enabled ? (
+          fmtTime(row.nextRunAt)
+        ) : (
+          <span className="fg-caption font-sans text-subtle">Off</span>
+        )}
+      </TD>
       <TD>
-        <LastResult status={row.lastStatus} />
+        <LastResult status={row.lastStatus} at={row.lastRunAt} />
       </TD>
       <TD className="text-right">
         <Button
@@ -193,12 +210,16 @@ function ScheduleMobileCard({ row, actions }: { row: ScheduleRow; actions: RowAc
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <MonoTag>{row.cron}</MonoTag>
-          <LastResult status={row.lastStatus} />
+          <LastResult status={row.lastStatus} at={row.lastRunAt} />
         </div>
         <div className="mt-3 flex items-center justify-between gap-3">
-          <span className="fg-caption font-mono">
-            Next: {row.enabled ? fmtTime(row.nextRunAt) : "—"}
-          </span>
+          {row.enabled ? (
+            <span className="fg-caption font-mono text-subtle">
+              Next: {fmtTime(row.nextRunAt)}
+            </span>
+          ) : (
+            <span className="fg-caption text-subtle">Off</span>
+          )}
           <Button
             variant="secondary"
             size="sm"

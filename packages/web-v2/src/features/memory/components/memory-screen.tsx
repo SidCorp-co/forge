@@ -8,6 +8,7 @@ import {
   Badge,
   Card,
   CardContent,
+  Divider,
   EmptyState,
   ErrorState,
   Input,
@@ -88,6 +89,9 @@ export function MemoryScreen({ scope }: MemoryScreenProps) {
 
   const totalCount = listQ.data?.totalCount ?? 0;
   const pageCount = Math.max(1, Math.ceil(totalCount / MEMORY_PAGE_SIZE));
+  const filtered = searching || source !== "";
+
+  const ready = !active.isLoading && !active.isError;
 
   return (
     <div className="mx-auto w-full min-h-dvh max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
@@ -98,19 +102,30 @@ export function MemoryScreen({ scope }: MemoryScreenProps) {
         </p>
       </header>
 
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row">
-        <div className="flex-1">
-          <Input
-            icon="search"
-            value={query}
-            placeholder="Search memory…"
-            aria-label="Search memory"
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </div>
-        <div className="sm:w-52">
-          <Select options={SOURCE_OPTIONS} value={source} onChange={setSource} placeholder="All sources" />
-        </div>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <Input
+          icon="search"
+          value={query}
+          placeholder="Search memory…"
+          aria-label="Search memory"
+          onChange={(e) => setQuery(e.target.value)}
+          className="w-full sm:w-72"
+        />
+        <Select
+          options={SOURCE_OPTIONS}
+          value={source}
+          onChange={setSource}
+          placeholder="All sources"
+          aria-label="Filter by source"
+          className="w-full sm:w-48"
+        />
+        {ready && items.length > 0 && (
+          <p className="fg-caption ml-auto text-subtle">
+            {searching
+              ? `${items.length} match${items.length === 1 ? "" : "es"}`
+              : `${totalCount} breadcrumb${totalCount === 1 ? "" : "s"}`}
+          </p>
+        )}
       </div>
 
       {active.isLoading && (
@@ -129,19 +144,19 @@ export function MemoryScreen({ scope }: MemoryScreenProps) {
         />
       )}
 
-      {!active.isLoading && !active.isError && items.length === 0 && (
+      {ready && items.length === 0 && (
         <EmptyState
-          title={searching ? "No matches" : "No memory yet"}
+          title={filtered ? "Nothing here" : "No memory yet"}
           message={
-            searching
-              ? "No breadcrumbs match this search."
+            filtered
+              ? "No breadcrumbs match these filters."
               : "Breadcrumbs from issues, comments, jobs, and decisions will appear here."
           }
-          mascot={!searching}
+          mascot={!filtered}
         />
       )}
 
-      {!active.isLoading && !active.isError && items.length > 0 && (
+      {ready && items.length > 0 && (
         <div className="space-y-2.5">
           {items.map((item) => (
             <MemoryCard key={item.id} item={item} />
@@ -149,7 +164,7 @@ export function MemoryScreen({ scope }: MemoryScreenProps) {
         </div>
       )}
 
-      {!searching && !active.isLoading && !active.isError && totalCount > MEMORY_PAGE_SIZE && (
+      {!searching && ready && totalCount > MEMORY_PAGE_SIZE && (
         <div className="mt-6 flex justify-center">
           <Pagination page={page} pageCount={pageCount} onChange={setPage} />
         </div>
@@ -159,26 +174,33 @@ export function MemoryScreen({ scope }: MemoryScreenProps) {
 }
 
 function MemoryCard({ item }: { item: BreadcrumbItem }) {
+  const meta =
+    item.score != null
+      ? { label: item.score.toFixed(3), title: "Match score" }
+      : item.createdAt
+        ? {
+            label: new Date(item.createdAt).toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+            }),
+            title: "Recorded",
+          }
+        : null;
+
   return (
     <Card>
       <CardContent>
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={sourceTone(item.source)}>{item.source}</Badge>
-            {item.sourceRef && <MonoTag>{item.sourceRef}</MonoTag>}
-          </div>
-          {item.score != null ? (
-            <span className="fg-caption font-mono">{item.score.toFixed(3)}</span>
-          ) : item.createdAt ? (
-            <span className="fg-caption font-mono">
-              {new Date(item.createdAt).toLocaleDateString(undefined, {
-                month: "short",
-                day: "numeric",
-              })}
+        <div className="flex items-center gap-2">
+          <Badge tone={sourceTone(item.source)}>{item.source}</Badge>
+          {item.sourceRef && <MonoTag>{item.sourceRef}</MonoTag>}
+          {meta && (
+            <span className="fg-mono ml-auto text-subtle tabular-nums" title={meta.title}>
+              {meta.label}
             </span>
-          ) : null}
+          )}
         </div>
-        <p className="fg-body-sm mt-2 line-clamp-4 text-fg">{item.text}</p>
+        <Divider className="my-3" />
+        <p className="fg-body-sm line-clamp-4 text-fg">{item.text}</p>
       </CardContent>
     </Card>
   );

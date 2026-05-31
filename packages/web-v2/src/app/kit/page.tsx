@@ -13,12 +13,13 @@ import {
   STAGES, Stat, StatusChip,
   StreamingText, Table, TBody, TD, TH, THead, TR, Tabs, Textarea, Toggle, Tooltip,
   TopBar, HelpButton, PinnedTabBar, useAnimatedNumber, useElapsed,
-  type Command, type NavCluster, type NotificationItem, type PinnedTab,
+  type Command, type NotificationItem, type PinnedTab,
   type StageKey, type StatusKey, type TopBarDensity,
 } from "@/design";
 import {
   ForgeMascot, ProjectLoader, ColdBoot, AgentWorking, ReconnectingBanner,
 } from "@/design";
+import { NavRailCompact, type RailItem, type SwitcherProject } from "@/features/shell";
 import { useToast } from "@/providers/toast-provider";
 
 function Section({ id, title, hint, children }: { id: string; title: string; hint?: string; children: React.ReactNode }) {
@@ -46,43 +47,29 @@ const SEMANTIC_TOKENS = [
 
 const STATUSES: StatusKey[] = ["running", "queued", "blocked", "waiting", "passed", "failed", "paused", "done", "review"];
 
-const WORKSPACE_NAV = [
-  { key: "projects", label: "Projects", icon: "folder" as const },
-  { key: "activity", label: "Activity", icon: "activity" as const },
-  { key: "runners", label: "Runners", icon: "server" as const },
-  { key: "sessions", label: "Sessions", icon: "inbox" as const },
+// Mirrors the shipped nav (src/app/(workspace)/layout.tsx): a 3-item workspace
+// tier + a flat 6-item project tier (Concept C). Kept in sync so the kit documents
+// what actually ships, not a hypothetical grouping.
+const WORKSPACE_NAV: RailItem[] = [
+  { key: "overview", label: "Overview", icon: "grid", badge: 3 },
+  { key: "activity", label: "Activity", icon: "activity" },
+  { key: "runners", label: "Runners", icon: "server" },
 ];
 
-const PROJECT_CLUSTERS: NavCluster[] = [
-  {
-    key: "work",
-    kicker: "Work",
-    items: [
-      { key: "board", label: "Issues", icon: "list" },
-      { key: "pipeline", label: "Pipeline", icon: "pipeline" },
-      { key: "sessions", label: "Sessions", icon: "agent" },
-    ],
-  },
-  {
-    key: "insight",
-    kicker: "Insight",
-    items: [
-      { key: "activity", label: "Activity", icon: "activity" },
-      { key: "monitor", label: "Monitor", icon: "monitor" },
-      { key: "pm", label: "PM", icon: "shield" },
-    ],
-  },
-  {
-    key: "config",
-    kicker: "Config",
-    collapsible: true,
-    items: [
-      { key: "context", label: "Context", icon: "inbox" },
-      { key: "skills", label: "Skills", icon: "star" },
-      { key: "schedules", label: "Schedules", icon: "calendar" },
-      { key: "settings", label: "Settings", icon: "settings" },
-    ],
-  },
+const PROJECT_NAV: RailItem[] = [
+  { key: "proj-overview", label: "Dashboard", icon: "grid" },
+  { key: "proj-issues", label: "Issues", icon: "list", badge: 12 },
+  { key: "proj-pipeline", label: "Pipeline", icon: "pipeline" },
+  { key: "proj-agents", label: "Agents", icon: "agent", badge: 3 },
+  { key: "proj-library", label: "Library", icon: "book" },
+  { key: "proj-automation", label: "Automation", icon: "calendar" },
+];
+
+// Sample switcher rows for the compact rail's hover flyout (pinned-first).
+const RAIL_SWITCHER: SwitcherProject[] = [
+  { id: "p1", slug: "forge-core", name: "forge-core", initials: "FRG", tint: "var(--flame-50)", ink: "var(--flame-700)", liveRuns: 3, pinned: true },
+  { id: "p2", slug: "forge-web", name: "forge-web", initials: "FWB", tint: "var(--cobalt-50)", ink: "var(--cobalt-700)", liveRuns: 1, pinned: true },
+  { id: "p3", slug: "data-pipeline", name: "data-pipeline", initials: "DP", tint: "var(--green-50)", ink: "var(--green-600)", liveRuns: 0, pinned: false },
 ];
 
 const COMMANDS: Command[] = [
@@ -386,10 +373,8 @@ export default function KitPage() {
   const [notesOpen, setNotesOpen] = useState(true);
   const [toggleOn, setToggleOn] = useState(true);
   const [view, setView] = useState<"cards" | "list">("cards");
-  const [navActive, setNavActive] = useState("board");
-  // Shell demos (ISS-304): collapse, clusters, density, pinned tabs.
-  const [navCollapsed, setNavCollapsed] = useState(false);
-  const [navGroups, setNavGroups] = useState<Record<string, boolean>>({ config: false });
+  const [navActive, setNavActive] = useState("proj-issues");
+  // Shell demos: density toggle (TopBar) + pinned tabs.
   const [kitDensity, setKitDensity] = useState<TopBarDensity>("comfortable");
   const [kitTabs, setKitTabs] = useState<PinnedTab[]>([
     { id: "issues-active", label: "Issues · active", icon: "list", href: "/projects/forge-core/issues?filter=active" },
@@ -626,26 +611,38 @@ export default function KitPage() {
             </div>
           </Section>
 
-          <Section id="navrail" title="Nav rail" hint="Two-tier: Workspace links + project switcher + clustered project sub-nav (Work / Insight / Config). Collapses to icon-only; Config cluster collapses; Docs pinned bottom-left.">
-            <div className="mb-3">
-              <Button variant="secondary" size="sm" icon="panelLeft" onClick={() => setNavCollapsed((c) => !c)}>
-                {navCollapsed ? "Expand rail" : "Collapse to icons"}
-              </Button>
-            </div>
-            <div className="h-[520px] overflow-hidden rounded-md border border-line">
-              <NavRail
-                workspaceItems={WORKSPACE_NAV}
-                projectClusters={PROJECT_CLUSTERS}
-                activeKey={navActive}
-                onNavigate={setNavActive}
-                onDocs={() => setNavActive("docs")}
-                project={{ name: "forge-core", initials: "FRG", tint: "var(--flame-50)", ink: "var(--flame-700)" }}
-                user={{ initials: "SK" }}
-                collapsed={navCollapsed}
-                onToggleCollapsed={() => setNavCollapsed((c) => !c)}
-                groupOpen={navGroups}
-                onToggleGroup={(k) => setNavGroups((g) => ({ ...g, [k]: g[k] === false ? true : false }))}
-              />
+          <Section id="navrail" title="Nav rail" hint="Concept C, two modes. Default: the compact 76px icon Rail — Workspace tier (Overview · Activity · Runners), a hover project switcher, then the flat project tier (Dashboard · Issues · Pipeline · Agents · Library · Automation). Active row = flame tint + a 3px accent bar; Issues/Agents carry count badges. Brand expands it to the labeled 232px rail.">
+            <div className="flex gap-6">
+              {/* Default: compact 76px rail. Hover the project mark for the switcher. */}
+              <div className="h-[560px] overflow-hidden rounded-md border border-line">
+                <NavRailCompact
+                  workspaceItems={WORKSPACE_NAV}
+                  projectItems={PROJECT_NAV}
+                  activeKey={navActive}
+                  activeSlug="forge-core"
+                  activeProject={{ name: "forge-core", initials: "FRG", tint: "var(--flame-50)", ink: "var(--flame-700)", liveRuns: 3 }}
+                  switcherProjects={RAIL_SWITCHER}
+                  onNavigate={setNavActive}
+                  onSelectProject={() => {}}
+                  onTogglePin={() => {}}
+                  onAllProjects={() => {}}
+                  onNewProject={() => {}}
+                  userInitials="SK"
+                />
+              </div>
+              {/* Expanded: the labeled 232px rail (brand toggles between the two). */}
+              <div className="h-[560px] flex-1 overflow-hidden rounded-md border border-line">
+                <NavRail
+                  workspaceItems={WORKSPACE_NAV}
+                  projectItems={PROJECT_NAV}
+                  activeKey={navActive}
+                  onNavigate={setNavActive}
+                  onDocs={() => setNavActive("docs")}
+                  onProjectSwitch={() => {}}
+                  project={{ name: "forge-core", initials: "FRG", tint: "var(--flame-50)", ink: "var(--flame-700)" }}
+                  user={{ initials: "SK" }}
+                />
+              </div>
             </div>
           </Section>
 

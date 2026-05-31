@@ -31,8 +31,8 @@ import { ISSUES_PAGE_SIZE } from "../api";
 import { groupRows } from "../derive";
 import { useIssues, usePatchIssue, useProjectMembers, useTransitionIssue } from "../hooks";
 import type { GroupBy, IssueFilter, IssueSort } from "../types";
-import { IssueMobileCard } from "./issue-mobile-card";
-import { IssueTableRow, type RowActions } from "./issue-table-row";
+import type { RowActions } from "./issue-table-row";
+import { IssueMobileCard, IssueTableRow } from "./issue-row-actions";
 
 const FILTERS: SegmentOption<IssueFilter>[] = [
   { value: "all", label: "All" },
@@ -250,9 +250,10 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
                         <TH>Pipeline</TH>
                         <TH>Status</TH>
                         <TH>Priority</TH>
-                        <TH>Cx</TH>
+                        <TH>Complexity</TH>
                         <TH className="text-right">Cost</TH>
                         <TH>Assignee</TH>
+                        <TH className="sr-only">Actions</TH>
                       </TR>
                     </THead>
                     <TBody>

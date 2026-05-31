@@ -1,15 +1,15 @@
 "use client";
 
-// Project-tier Memory view (`/v2/projects/[slug]/memory`). Resolve slug →
-// project (issues-page template) then render the scoped screen. Read-only, so
-// no `canManage` is needed.
+// Project-tier Agents view (`/v2/projects/[slug]/agents`, Concept C) — merged
+// Sessions + Chat. Resolve slug → project (issues-page template), then render
+// the scoped shell.
 import { useParams } from "next/navigation";
 import { ErrorState, ProjectLoader } from "@/design";
-import { MemoryScreen } from "@/features/memory/components/memory-screen";
+import { AgentsScreen } from "@/features/agents/components/agents-screen";
 import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 
-export default function ProjectMemoryPage() {
+export default function ProjectAgentsPage() {
   const params = useParams<{ slug: string }>();
   const slug = params?.slug;
   const { data: projects, isLoading, isError, error, refetch } = useProjects();
@@ -17,7 +17,7 @@ export default function ProjectMemoryPage() {
   if (isLoading) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ProjectLoader label="loading memory…" />
+        <ProjectLoader label="loading agents…" />
       </div>
     );
   }
@@ -42,5 +42,5 @@ export default function ProjectMemoryPage() {
     );
   }
 
-  return <MemoryScreen scope={{ projectId: project.id }} />;
+  return <AgentsScreen scope={{ projectId: project.id }} />;
 }

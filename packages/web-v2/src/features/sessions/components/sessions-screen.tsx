@@ -14,7 +14,6 @@ import {
   IconButton,
   Menu,
   MonoTag,
-  PipelineTracker,
   SegmentedControl,
   SessionRowSkeleton,
   StatusChip,
@@ -46,7 +45,6 @@ import {
   deriveStage,
   isRetryable,
   statusToChip,
-  statusToRun,
   type AgentSessionDisplayStatus,
   type SessionFilter,
   type SessionRow,
@@ -123,25 +121,14 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
     let active = 0;
     let queued = 0;
     let zombies = 0;
-    const waits: number[] = [];
     rows.forEach((r, i) => {
       const d = displays[i];
       if (d === "running") active += 1;
-      if (r.status === "queued") {
-        queued += 1;
-        waits.push(now - new Date(r.createdAt).getTime());
-      }
-      if (r.status === "idle") queued += 1;
+      if (r.status === "queued" || r.status === "idle") queued += 1;
       if (d === "stalled" || r.status === "cancelled_stale") zombies += 1;
     });
-    waits.sort((a, b) => a - b);
-    const median = waits.length
-      ? waits.length % 2
-        ? waits[(waits.length - 1) / 2]
-        : (waits[waits.length / 2 - 1] + waits[waits.length / 2]) / 2
-      : null;
-    return { active, queued, zombies, medianWait: median };
-  }, [rows, displays, now]);
+    return { active, queued, zombies };
+  }, [rows, displays]);
 
   const counts = useMemo(() => {
     const c: Record<SessionFilter, number> = { all: rows.length, running: 0, queued: 0, attention: 0 };
@@ -198,14 +185,10 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
 
       {/* Headline queue stats — derived from the loaded list so they work at
           both tiers (queue-stats only returns per-device queued/running). */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+      <div className="grid grid-cols-3 gap-3 sm:gap-4">
         <StatCard label="Active" value={String(stats.active)} />
         <StatCard label="Queued" value={String(stats.queued)} />
         <StatCard label="Zombies" value={String(stats.zombies)} tone={stats.zombies > 0 ? "alert" : "default"} />
-        <StatCard
-          label="Median wait"
-          value={stats.medianWait == null ? "—" : formatDuration(stats.medianWait)}
-        />
       </div>
 
       <div className="mt-6 mb-4 overflow-x-auto">
@@ -255,7 +238,6 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
                   <TH className="text-right">Turns</TH>
                   <TH className="text-right">Duration</TH>
                   <TH>Status</TH>
-                  <TH>Pipeline</TH>
                   <TH className="text-right">Actions</TH>
                 </TR>
               </THead>
@@ -301,10 +283,10 @@ function StatCard({
   return (
     <Card>
       <CardContent>
-        <p className="fg-caption">{label}</p>
+        <p className="fg-overline">{label}</p>
         <p
-          className="mt-1 font-mono text-2xl font-bold"
-          style={{ color: tone === "alert" ? "var(--red-600)" : "var(--fg-default)" }}
+          className="fg-h1 mt-1 tabular-nums"
+          style={tone === "alert" ? { color: "var(--color-red)" } : undefined}
         >
           {value}
         </p>
@@ -402,9 +384,6 @@ function SessionTableRow({ row, now, actions }: { row: SessionRow; now: number; 
       <TD>
         <StatusChip status={statusToChip(display)} stage={stage} />
       </TD>
-      <TD>
-        <PipelineTracker stage={stage} status={statusToRun(display)} variant="mini" />
-      </TD>
       <TD className="text-right">
         <RowActionsMenu row={row} display={display} actions={actions} />
       </TD>
@@ -427,11 +406,8 @@ function SessionMobileCard({ row, now, actions }: { row: SessionRow; now: number
           <StatusChip status={statusToChip(display)} stage={stage} size="sm" />
           <div className="flex items-center gap-3">
             <Badge tone="neutral">{row.usage?.turns ?? 0} turns</Badge>
-            <span className="fg-caption font-mono">{duration}</span>
+            <span className="fg-mono text-muted">{duration}</span>
           </div>
-        </div>
-        <div className="mt-3">
-          <PipelineTracker stage={stage} status={statusToRun(display)} variant="mini" />
         </div>
       </CardContent>
     </Card>

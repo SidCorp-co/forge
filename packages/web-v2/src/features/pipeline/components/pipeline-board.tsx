@@ -2,24 +2,25 @@
 
 // Pipeline kanban screen (`/v2/projects/[slug]/pipeline`, ISS-295). 7 stage
 // columns (triage→…→release); cards are issues grouped by STATUS_TO_STAGE with
-// the live run/cost overlaid by issueId. Live via WS (the project room
+// the live run status overlaid by issueId. Live via WS (the project room
 // invalidates `['issues','search']` + `['pipeline-runs','list']`). Mirrors the
 // prototype `web-redesign-plan/ui-kit/PipelineScreen.jsx`.
 import { useMemo, useState } from "react";
 import {
   ErrorState,
-  HelpButton,
+  IconButton,
   KanbanBoard,
   KanbanCard,
   KanbanColumn,
   KanbanColumnSkeleton,
+  LiveDot,
   STAGES,
+  Tooltip,
 } from "@/design";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { formatApiError } from "@/lib/api/error";
 import {
-  formatUsd,
   groupIssuesByStage,
   initialsFor,
   issueStatusToStatusKey,
@@ -59,16 +60,14 @@ export function PipelineBoard({ scope }: PipelineBoardProps) {
         <p className="fg-body-sm hidden text-muted sm:block">
           Issues flow left → right; a stage starts once the previous finishes.
         </p>
-        <div className="ml-auto">
-          <HelpButton
-            summary="A kanban of this project's issues across the 7 pipeline stages (triage → release). Cards show the live run status and cost; opening one reveals its full run."
-            actions={[
-              "Click a card to inspect its pipeline run",
-              "Pause / resume / cancel an active run from the run panel",
-              "Jump from a run to its issue",
-            ]}
-            shortcuts={[{ keys: "⌘K", desc: "Open the command palette" }]}
-          />
+        <div className="ml-auto flex items-center gap-3">
+          <LiveDot state="live" />
+          <Tooltip
+            side="bottom"
+            label="Click a card to inspect its run · pause / resume / cancel from the panel"
+          >
+            <IconButton icon="help" variant="ghost" size="sm" aria-label="Pipeline help" />
+          </Tooltip>
         </div>
       </header>
 
@@ -105,7 +104,6 @@ export function PipelineBoard({ scope }: PipelineBoardProps) {
                     title={issue.title}
                     stage={group.stage}
                     status={status}
-                    cost={run ? formatUsd(run.cost.estimatedCost) : undefined}
                     assignee={initials ? { initials } : undefined}
                     onClick={() => setSelected({ issue, runId: run?.id ?? null })}
                   />

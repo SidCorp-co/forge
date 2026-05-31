@@ -90,29 +90,40 @@ export function ChatScreen({ projectId }: { projectId: string }) {
 
   if (latestQ.isError) {
     return (
-      <div className="grid min-h-dvh place-items-center">
-        <ErrorState message={formatApiError(latestQ.error)} onRetry={() => latestQ.refetch()} />
+      <div className="grid min-h-dvh place-items-center px-4">
+        <ErrorState
+          title="Couldn't load chat"
+          message={formatApiError(latestQ.error)}
+          onRetry={() => latestQ.refetch()}
+        />
       </div>
     );
   }
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-line bg-app/95 px-4 py-3 backdrop-blur sm:px-6">
-        <h1 className="fg-h3">Agent chat</h1>
+      <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-line bg-app/95 px-4 py-4 backdrop-blur sm:px-8">
+        <div className="min-w-0">
+          <h1 className="fg-h2">Agent chat</h1>
+          <p className="fg-body-sm mt-1 text-muted">Ask the agent anything about this project.</p>
+        </div>
         {session && display && (
-          <StatusChip status={statusToChip(display)} stage={deriveStage(session.metadata)} size="sm" />
+          <div className="ml-auto">
+            <StatusChip status={statusToChip(display)} stage={deriveStage(session.metadata)} size="sm" />
+          </div>
         )}
       </header>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
+        <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-8">
           {!resolvedId || items.length === 0 ? (
-            <EmptyState
-              title="Start a conversation"
-              message="Ask the agent anything about this project — it has your repo + pipeline context."
-              mascot
-            />
+            <div className="grid min-h-[40dvh] place-items-center">
+              <EmptyState
+                title="Start a conversation"
+                message="Ask the agent anything about this project — it has your repo + pipeline context."
+                mascot
+              />
+            </div>
           ) : (
             <Conversation
               items={items}
@@ -124,7 +135,7 @@ export function ChatScreen({ projectId }: { projectId: string }) {
             />
           )}
           {live && (
-            <div className="mt-5">
+            <div className="mt-6">
               <AgentWorking label="Agent is working…" elapsed={elapsed} />
             </div>
           )}

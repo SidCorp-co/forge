@@ -20,8 +20,9 @@ interface Persisted {
   groupOpen: Record<string, boolean>;
 }
 
-// Config cluster starts collapsed by default (acceptance criterion); others open.
-const DEFAULT: Persisted = { collapsed: false, groupOpen: { config: false } };
+// Compact 76px Rail is the default (Concept C); expand opens the labeled rail.
+// Config cluster starts collapsed; other clusters open.
+const DEFAULT: Persisted = { collapsed: true, groupOpen: { config: false } };
 
 export function useSidebar(): SidebarState {
   const [state, setState] = usePersistedState<Persisted>('web-v2:sidebar', DEFAULT);

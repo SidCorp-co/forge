@@ -1,24 +1,24 @@
 "use client";
 
-// Run-conversation detail (`/v2/projects/[slug]/sessions/[id]`). Resolve the
-// slug → project (same pattern as the sessions index page), then render the
-// shared SessionScreen for the `[id]` agent session. ISS-292.
+// Project-tier Library view (`/v2/projects/[slug]/library`, Concept C) — merged
+// Knowledge + Memory + Skills. Resolve slug → project (issues-page template),
+// then render the scoped tabbed shell. Ingest / registration mutations are
+// owner/admin-only, so pass `canManage` from the membership role.
 import { useParams } from "next/navigation";
 import { ErrorState, ProjectLoader } from "@/design";
-import { SessionScreen } from "@/features/session/components/session-screen";
+import { LibraryScreen } from "@/features/library/components/library-screen";
 import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 
-export default function SessionDetailPage() {
-  const params = useParams<{ slug: string; id: string }>();
+export default function ProjectLibraryPage() {
+  const params = useParams<{ slug: string }>();
   const slug = params?.slug;
-  const id = params?.id;
   const { data: projects, isLoading, isError, error, refetch } = useProjects();
 
   if (isLoading) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ProjectLoader label="loading session…" />
+        <ProjectLoader label="loading library…" />
       </div>
     );
   }
@@ -43,5 +43,6 @@ export default function SessionDetailPage() {
     );
   }
 
-  return <SessionScreen sessionId={id as string} projectSlug={slug} />;
+  const canManage = project.role === "owner" || project.role === "admin";
+  return <LibraryScreen scope={{ projectId: project.id, canManage }} />;
 }

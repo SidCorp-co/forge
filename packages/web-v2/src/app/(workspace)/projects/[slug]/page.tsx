@@ -3,17 +3,17 @@
 import { useParams } from "next/navigation";
 import {
   Card,
-  CardHeader,
-  CardTitle,
   CardContent,
   ProjectMark,
   MonoTag,
   Badge,
   Stat,
+  Kicker,
   PipelineTracker,
   ProjectLoader,
   EmptyState,
   ErrorState,
+  type IconName,
 } from "@/design";
 import type { StageKey } from "@/design/stages";
 import { useProjects, useProjectHealth } from "@/features/projects/hooks";
@@ -70,6 +70,7 @@ export default function ProjectOverviewPage() {
     return (
       <div className="grid min-h-[60vh] place-items-center">
         <ErrorState
+          title="Couldn't load project"
           message={formatApiError(projectsQ.error ?? healthQ.error)}
           onRetry={() => {
             projectsQ.refetch();
@@ -89,6 +90,7 @@ export default function ProjectOverviewPage() {
         <EmptyState
           title="Project not found"
           message="This project doesn't exist or you don't have access to it."
+          mascot
         />
       </div>
     );
@@ -96,10 +98,16 @@ export default function ProjectOverviewPage() {
 
   const glyph = projectGlyph(project.id);
   const stage = health ? dominantStage(health.statusDistribution) : "triage";
-  const dist = health ? Object.entries(health.statusDistribution) : [];
+
+  const metrics: Array<{ icon: IconName; label: string; value: string }> = [
+    { icon: "inbox", label: "Active issues", value: String(health?.totalActive ?? 0) },
+    { icon: "activity", label: "Throughput", value: String(health?.throughput ?? 0) },
+    { icon: "clock", label: "Avg cycle time", value: health ? `${health.avgCycleTimeDays}d` : "—" },
+    { icon: "alert", label: "Escalations", value: String(health?.pendingEscalations ?? 0) },
+  ];
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-8 py-8">
+    <div className="mx-auto w-full min-h-dvh max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
       <header className="mb-6 flex items-center gap-4">
         <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={projectInitials(project.name)} size={48} />
         <div className="flex-1">
@@ -111,66 +119,32 @@ export default function ProjectOverviewPage() {
         </div>
       </header>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {metrics.map((m) => (
+            <Card key={m.label}>
+              <CardContent>
+                <Stat icon={m.icon} mono={false}>
+                  {m.label}
+                </Stat>
+                <p className="mt-2 font-mono text-2xl font-bold tabular-nums text-fg">{m.value}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
         <Card>
           <CardContent>
-            <p className="fg-caption">Active issues</p>
-            <p className="mt-1 font-mono text-2xl font-bold text-fg">{health?.totalActive ?? 0}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent>
-            <p className="fg-caption">Throughput</p>
-            <p className="mt-1 font-mono text-2xl font-bold text-fg">{health?.throughput ?? 0}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent>
-            <p className="fg-caption">Avg cycle</p>
-            <p className="mt-1 font-mono text-2xl font-bold text-fg">
-              {health ? `${health.avgCycleTimeDays}d` : "—"}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent>
-            <p className="fg-caption">Escalations</p>
-            <p className="mt-1 font-mono text-2xl font-bold text-fg">{health?.pendingEscalations ?? 0}</p>
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <Kicker>Pipeline</Kicker>
+              <Stat icon="pipeline" mono={false}>
+                most work at {stage}
+              </Stat>
+            </div>
+            <PipelineTracker stage={stage} status="running" variant="full" />
           </CardContent>
         </Card>
       </div>
-
-      <Card className="mt-4">
-        <CardHeader>
-          <CardTitle>Pipeline</CardTitle>
-          <Stat icon="pipeline" mono={false}>
-            most work at {stage}
-          </Stat>
-        </CardHeader>
-        <CardContent>
-          <PipelineTracker stage={stage} status="running" variant="full" />
-        </CardContent>
-      </Card>
-
-      <Card className="mt-4">
-        <CardHeader>
-          <CardTitle>Status distribution</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {dist.length === 0 ? (
-            <p className="fg-body-sm">No active issues.</p>
-          ) : (
-            <div className="flex flex-wrap gap-3">
-              {dist.map(([status, count]) => (
-                <span key={status} className="flex items-center gap-2">
-                  <MonoTag>{status}</MonoTag>
-                  <span className="font-mono text-sm text-muted">{count}</span>
-                </span>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

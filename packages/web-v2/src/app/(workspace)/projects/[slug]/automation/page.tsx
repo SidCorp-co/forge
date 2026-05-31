@@ -1,15 +1,16 @@
 "use client";
 
-// Project-tier Schedules view (`/v2/projects/[slug]/schedules`). Resolve slug →
-// project via the console list (issues-page template), then render the scoped
-// screen. Toggle/run are owner/admin-only, so pass `canManage` from the role.
+// Project-tier Automation view (`/v2/projects/[slug]/automation`, Concept C) —
+// merged Schedules + PM. Resolve slug → project (issues-page template), then
+// render the scoped tabbed shell. Schedule toggle/run are owner/admin-only, so
+// pass `canManage` from the membership role.
 import { useParams } from "next/navigation";
 import { ErrorState, ProjectLoader } from "@/design";
-import { SchedulesScreen } from "@/features/schedules/components/schedules-screen";
+import { AutomationScreen } from "@/features/automation/components/automation-screen";
 import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 
-export default function ProjectSchedulesPage() {
+export default function ProjectAutomationPage() {
   const params = useParams<{ slug: string }>();
   const slug = params?.slug;
   const { data: projects, isLoading, isError, error, refetch } = useProjects();
@@ -17,7 +18,7 @@ export default function ProjectSchedulesPage() {
   if (isLoading) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ProjectLoader label="loading schedules…" />
+        <ProjectLoader label="loading automation…" />
       </div>
     );
   }
@@ -43,5 +44,5 @@ export default function ProjectSchedulesPage() {
   }
 
   const canManage = project.role === "owner" || project.role === "admin";
-  return <SchedulesScreen scope={{ projectId: project.id, canManage }} />;
+  return <AutomationScreen scope={{ projectId: project.id, canManage }} />;
 }

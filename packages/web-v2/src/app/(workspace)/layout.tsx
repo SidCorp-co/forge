@@ -15,60 +15,62 @@ import {
   type Command,
 } from "@/design";
 import { cn } from "@/lib/utils/cn";
+import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { useAuth } from "@/providers/auth-provider";
 import { useToast } from "@/providers/toast-provider";
-import { useProjects } from "@/features/projects/hooks";
+import { useProjects, useProjectsConsole } from "@/features/projects/hooks";
 import { usePinnedProjects } from "@/features/projects/pins";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
+import { ProjectFlyout } from "@/features/projects/components/project-flyout";
 import { useAttention } from "@/features/attention/hooks";
 import {
-  DensityProvider,
-  useDensity,
   useSidebar,
   useRecents,
   usePinnedViews,
+  NavRailCompact,
+  type RailItem,
+  type SwitcherProject,
 } from "@/features/shell";
 
-/** Concept B (ISS-307): the left rail carries ONLY workspace destinations.
- *  Project context moved to a horizontal tab bar (projects/[slug]/layout.tsx),
- *  and the secondary destinations below moved into ⌘K. Keys are globally unique
- *  (project-tier keys are prefixed `proj-`) so a single `activeKey` never lights
- *  two rows. */
+/** Concept C (ISS-307): the left rail is two-tier — workspace destinations on
+ *  top, then (when a project is active) an inline project tier with a searchable
+ *  switcher flyout. Keys are globally unique (project-tier keys are prefixed
+ *  `proj-`) so a single `activeKey` never lights two rows. */
 const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
-  { key: "projects", label: "Projects", icon: "folder", href: "/" },
-  { key: "attention", label: "Attention", icon: "inbox", href: "/attention" },
+  // Overview = the all-projects home; the Attention queue is folded in here
+  // (its live count rides on this row's badge).
+  { key: "overview", label: "Overview", icon: "grid", href: "/" },
   { key: "activity", label: "Activity", icon: "activity", href: "/activity" },
   { key: "runners", label: "Runners", icon: "server", href: "/runners" },
-  { key: "settings", label: "Settings", icon: "settings", href: "/settings" },
 ];
 
 /** Destinations dropped from the rail to keep it minimal — still reachable via
- *  ⌘K (Step 5 of the plan). They are NOT rendered on the rail. */
+ *  ⌘K. Settings also lives in the rail's account menu; Attention is folded into
+ *  Overview. They are NOT rendered as rail rows. */
 const SECONDARY_DESTINATIONS: Array<NavItem & { href: string }> = [
+  { key: "attention", label: "Attention", icon: "inbox", href: "/attention" },
+  { key: "settings", label: "Settings", icon: "settings", href: "/settings" },
   { key: "integrations", label: "Integrations", icon: "link", href: "/integrations" },
   { key: "sessions", label: "Sessions", icon: "agent", href: "/sessions" },
   { key: "pipeline-ops", label: "Pipeline ops", icon: "pipeline", href: "/ops" },
 ];
 
-/** A project-tier nav item. `sub` is appended to `/projects/[slug]`; `href`
- *  routes to an absolute (workspace) target where no project-scoped route
- *  exists. Kept ONLY to feed ⌘K deep-nav — the rail no longer renders these. */
+/** A project-tier nav item. `sub` is appended to `/projects/[slug]`. The rail
+ *  renders these inline (Concept C) and ⌘K mirrors them for deep-nav. */
 interface ProjItem extends NavItem {
-  sub?: string;
-  href?: string;
+  sub: string;
 }
 
+/** Concept C: exactly 6 flat project-tier items (no clusters). Agents merges
+ *  Sessions+Chat; Library merges Knowledge+Memory+Skills; Automation merges
+ *  Schedules+PM. */
 const PROJECT_ITEMS: ProjItem[] = [
-  { key: "proj-overview", label: "Overview", icon: "grid", sub: "" },
+  { key: "proj-overview", label: "Dashboard", icon: "grid", sub: "" },
   { key: "proj-issues", label: "Issues", icon: "list", sub: "/issues" },
   { key: "proj-pipeline", label: "Pipeline", icon: "pipeline", sub: "/pipeline" },
-  { key: "proj-sessions", label: "Sessions", icon: "agent", sub: "/sessions" },
-  { key: "proj-pm", label: "PM", icon: "shield", sub: "/pm" },
-  { key: "proj-knowledge", label: "Knowledge", icon: "book", sub: "/knowledge" },
-  { key: "proj-memory", label: "Memory", icon: "archive", sub: "/memory" },
-  { key: "proj-schedules", label: "Schedules", icon: "calendar", sub: "/schedules" },
-  { key: "proj-skills", label: "Skills", icon: "star", sub: "/skills" },
-  { key: "proj-chat", label: "Chat", icon: "mail", sub: "/agent" },
+  { key: "proj-agents", label: "Agents", icon: "agent", sub: "/agents" },
+  { key: "proj-library", label: "Library", icon: "book", sub: "/library" },
+  { key: "proj-automation", label: "Automation", icon: "calendar", sub: "/automation" },
 ];
 
 /** Parse the active project slug out of the (basePath-stripped) pathname. */
@@ -77,12 +79,18 @@ function activeSlug(pathname: string): string | null {
   return m ? m[1] : null;
 }
 
+/** Project items by descending sub-length so the longest match wins (e.g.
+ *  "/issues" beats "" for Overview). Sorted once — the list is a module const. */
+const PROJECT_ITEMS_BY_SPECIFICITY = [...PROJECT_ITEMS].sort((a, b) => b.sub.length - a.sub.length);
+
+/** Match a project-relative path remainder against a project-tier `sub`
+ *  (mirrors the project tab bar's logic so the rail lights the right row). */
+function matchesSub(rest: string, sub: string): boolean {
+  return sub === "" ? rest === "" : rest === sub || rest.startsWith(`${sub}/`);
+}
+
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <DensityProvider>
-      <WorkspaceShell>{children}</WorkspaceShell>
-    </DensityProvider>
-  );
+  return <WorkspaceShell>{children}</WorkspaceShell>;
 }
 
 function WorkspaceShell({ children }: { children: React.ReactNode }) {
@@ -91,7 +99,6 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const { user, isLoading, logout } = useAuth();
   const { toast } = useToast();
   const { data: projects } = useProjects();
-  const { density, setDensity } = useDensity();
   const sidebar = useSidebar();
   const { items: recents } = useRecents();
   const pinnedViews = usePinnedViews();
@@ -108,13 +115,15 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [flyoutOpen, setFlyoutOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
 
-  // Close the mobile drawer whenever the route changes (nav item tapped).
+  // Close the mobile drawer + project flyout whenever the route changes.
   useEffect(() => {
     setMobileNavOpen(false);
+    setFlyoutOpen(false);
   }, [pathname]);
 
   // Esc closes the mobile drawer.
@@ -133,6 +142,27 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     [projects, slug],
   );
 
+  // Remember the last project visited so the rail can keep showing a project
+  // context (mark + tier) even on workspace screens — no vanishing block.
+  const [lastSlug, setLastSlug] = usePersistedState<string | null>("web-v2:last-project", null);
+  useEffect(() => {
+    if (slug && slug !== lastSlug) setLastSlug(slug);
+  }, [slug, lastSlug, setLastSlug]);
+
+  // The project the rail renders: the one you're in, else the last visited, else
+  // your first (pinned-first) project. Lets you re-enter a project from anywhere.
+  const railSlug = useMemo(() => {
+    if (slug) return slug;
+    const list = projects ?? [];
+    if (lastSlug && list.some((p) => p.slug === lastSlug)) return lastSlug;
+    const pinnedFirst = list.find((p) => pinnedIds.has(p.id));
+    return pinnedFirst?.slug ?? list[0]?.slug ?? null;
+  }, [slug, lastSlug, projects, pinnedIds]);
+  const railProject = useMemo(
+    () => (railSlug ? projects?.find((p) => p.slug === railSlug) ?? null : null),
+    [projects, railSlug],
+  );
+
   // ⌘K / Ctrl-K toggles the command palette.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -145,29 +175,122 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Active rail row — workspace-only now. Project routes light "Projects"; the
-  // in-project tab bar carries the sub-context. Docs is lit on its own route.
+  // Active rail row. Inside a project the rail carries the project tier, so we
+  // light the matching `proj-*` key by matching the project-relative remainder
+  // (mirrors the old tab bar's matchesSub). Docs is lit on its own route.
   const activeKey = useMemo(() => {
     if (pathname.startsWith("/docs")) return "docs";
-    if (slug) return "projects";
+    if (slug) {
+      const base = `/projects/${slug}`;
+      const rest = pathname.startsWith(base) ? pathname.slice(base.length) : "";
+      const hit = PROJECT_ITEMS_BY_SPECIFICITY.find((it) => matchesSub(rest, it.sub));
+      return hit?.key ?? "proj-overview";
+    }
     const ws = WORKSPACE_ITEMS.find((it) =>
       it.href === "/" ? pathname === "/" : pathname.startsWith(it.href),
     );
-    return ws?.key ?? "projects";
+    return ws?.key ?? "overview";
   }, [pathname, slug]);
 
-  // The Attention destination shows a live count pill on the rail.
+  // Project-tier glyph for the rail's switcher button — follows the rail project.
+  const projectMark = useMemo(() => {
+    if (!railProject) return undefined;
+    const g = projectGlyph(railProject.id);
+    return {
+      name: railProject.name,
+      initials: projectInitials(railProject.name),
+      tint: g.tint,
+      ink: g.ink,
+    };
+  }, [railProject]);
+
+  // Attention is folded into Overview — its live count rides Overview's badge.
   const railItems = useMemo<NavItem[]>(
     () =>
       WORKSPACE_ITEMS.map((it) =>
-        it.key === "attention" ? { ...it, badge: attentionCount } : it,
+        it.key === "overview" ? { ...it, badge: attentionCount } : it,
       ),
     [attentionCount],
   );
 
+  // Compact-rail data: the console rollup gives per-project liveRuns/openIssues
+  // (for the "{N} live" label, the switcher pulse dots, and the Issues badge).
+  const projectsConsole = useProjectsConsole();
+  const switcherProjects = useMemo<SwitcherProject[]>(
+    () =>
+      projectsConsole.items.map((p) => {
+        const g = projectGlyph(p.id);
+        return {
+          id: p.id,
+          slug: p.slug,
+          name: p.name,
+          initials: projectInitials(p.name),
+          tint: g.tint,
+          ink: g.ink,
+          liveRuns: p.liveRuns,
+          pinned: p.pinned,
+        };
+      }),
+    [projectsConsole.items],
+  );
+  const railConsole = useMemo(
+    () => (railSlug ? projectsConsole.items.find((p) => p.slug === railSlug) ?? null : null),
+    [projectsConsole.items, railSlug],
+  );
+  const compactActiveProject = useMemo(
+    () =>
+      railProject && projectMark
+        ? {
+            name: projectMark.name,
+            initials: projectMark.initials,
+            tint: projectMark.tint,
+            ink: projectMark.ink,
+            liveRuns: railConsole?.liveRuns ?? 0,
+          }
+        : null,
+    [railProject, projectMark, railConsole],
+  );
+  const compactWorkspaceItems = useMemo<RailItem[]>(
+    () => [
+      { key: "overview", label: "Overview", icon: "grid", badge: attentionCount },
+      { key: "activity", label: "Activity", icon: "activity" },
+      { key: "runners", label: "Runners", icon: "server" },
+    ],
+    [attentionCount],
+  );
+  // Project tier with the Issues queue badge (= open issues). Agents would carry
+  // an active-sessions count, but the console rollup has no per-project session
+  // total yet, so it stays unbadged until that field ships.
+  const compactProjectItems = useMemo<RailItem[] | null>(
+    () =>
+      compactActiveProject
+        ? PROJECT_ITEMS.map((it) => ({
+            key: it.key,
+            label: it.label,
+            icon: it.icon,
+            badge: it.key === "proj-issues" ? railConsole?.openIssues : undefined,
+          }))
+        : null,
+    [compactActiveProject, railConsole],
+  );
+
+  // Top-bar title = the active section's label (mirrors the prototype header).
+  const topBarTitle = useMemo(() => {
+    if (activeKey === "docs") return "Docs";
+    if (activeKey.startsWith("proj-")) {
+      return PROJECT_ITEMS.find((i) => i.key === activeKey)?.label ?? activeProject?.name ?? "";
+    }
+    return WORKSPACE_ITEMS.find((i) => i.key === activeKey)?.label ?? "";
+  }, [activeKey, activeProject]);
+
   function navigate(key: string) {
     if (key === "docs") {
       router.push("/docs");
+      return;
+    }
+    if (key.startsWith("proj-") && railSlug) {
+      const item = PROJECT_ITEMS.find((it) => it.key === key);
+      if (item) router.push(`/projects/${railSlug}${item.sub}`);
       return;
     }
     const dest =
@@ -276,7 +399,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           label: `${activeProject?.name ?? slug} · ${it.label}`,
           icon: it.icon,
           group: "navigate",
-          onRun: () => (it.href ? router.push(it.href) : router.push(`/projects/${slug}${it.sub ?? ""}`)),
+          onRun: () => router.push(`/projects/${slug}${it.sub}`),
         });
       }
     }
@@ -319,20 +442,47 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-dvh overflow-hidden bg-app">
-      {/* Desktop rail — workspace-only, hidden below md where the bottom tab bar
-          + project-switch drawer take over. */}
+      {/* Desktop rail — compact 76px icon Rail by default (Concept C); expands
+          to the labeled 232px NavRail. Hidden below md (bottom tab bar takes
+          over). */}
       <div className="hidden h-full md:block">
-        <NavRail
-          workspaceItems={railItems}
-          activeKey={activeKey}
-          onNavigate={navigate}
-          onDocs={() => router.push("/docs")}
-          onAccount={() => router.push("/settings")}
-          onSignOut={logout}
-          user={userInitials ? { initials: userInitials } : undefined}
-          collapsed={sidebar.collapsed}
-          onToggleCollapsed={sidebar.toggleCollapsed}
-        />
+        {sidebar.collapsed ? (
+          <NavRailCompact
+            workspaceItems={compactWorkspaceItems}
+            projectItems={compactProjectItems}
+            activeKey={activeKey}
+            activeSlug={railSlug}
+            activeProject={compactActiveProject}
+            switcherProjects={switcherProjects}
+            onNavigate={navigate}
+            onSelectProject={(s) => router.push(`/projects/${s}`)}
+            onTogglePin={projectsConsole.toggle}
+            onAllProjects={() => router.push("/")}
+            onNewProject={() => router.push("/?new=1")}
+            onAccount={() => router.push("/settings")}
+            onSignOut={logout}
+            userInitials={userInitials}
+            onExpand={sidebar.toggleCollapsed}
+          />
+        ) : (
+          <>
+            <NavRail
+              workspaceItems={railItems}
+              project={projectMark}
+              projectItems={projectMark ? PROJECT_ITEMS : undefined}
+              onProjectSwitch={() => setFlyoutOpen((o) => !o)}
+              activeKey={activeKey}
+              onNavigate={navigate}
+              onDocs={() => router.push("/docs")}
+              onAccount={() => router.push("/settings")}
+              onSignOut={logout}
+              user={userInitials ? { initials: userInitials } : undefined}
+              onToggleCollapsed={sidebar.toggleCollapsed}
+            />
+            {/* Searchable project switcher for the expanded rail. */}
+            <ProjectFlyout open={flyoutOpen} onClose={() => setFlyoutOpen(false)} activeSlug={railSlug} />
+          </>
+        )}
       </div>
 
       {/* Mobile drawer — a project switcher (the workspace destinations live in
@@ -396,15 +546,13 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             onMenu={() => setMobileNavOpen(true)}
             onCommandPalette={() => setPaletteOpen(true)}
             onNotifications={() => setNotificationsOpen((o) => !o)}
+            title={topBarTitle}
             onNewIssue={() =>
               slug
                 ? router.push(`/projects/${slug}/issues`)
                 : toast({ title: "New issue", description: "Open a project to create an issue.", tone: "info" })
             }
-            density={density}
-            onDensityChange={setDensity}
             scrolled={scrolled}
-            backToClassicHref="/"
           />
           {notificationsOpen && (
             <>
