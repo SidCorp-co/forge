@@ -21,6 +21,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **You can now configure a project directly in the new web app — name & description, repository path, base/production branches, pipeline stages, labels, and members — reached from the project dashboard's gear icon or the ⌘K command palette, with no new sidebar item. Edits persist immediately and project secrets are never shown.**
+  *Technical: web-v2 features/project-settings: nested /projects/[slug]/settings route (Basics/Repository/Pipeline/Labels/Members/Integrations tabs) wired to PATCH /projects/:id, GET|PATCH pipeline-config, and labels + members REST; owner-gated edits, secrets never rendered. Merge b62e3ef (ISS-316).*
+
 ### Removed
 
 ### Fixed
