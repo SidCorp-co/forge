@@ -31,6 +31,7 @@ const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
   { key: "projects", label: "Projects", icon: "folder", href: "/" },
   { key: "activity", label: "Activity", icon: "activity", href: "/activity" },
   { key: "runners", label: "Runners", icon: "server", href: "/runners" },
+  { key: "integrations", label: "Integrations", icon: "link", href: "/integrations" },
   { key: "sessions", label: "Sessions", icon: "agent", href: "/sessions" },
   { key: "pipeline-ops", label: "Pipeline ops", icon: "pipeline", href: "/ops" },
   { key: "settings", label: "Settings", icon: "settings", href: "/settings" },

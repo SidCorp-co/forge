@@ -137,6 +137,17 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
       qc.invalidateQueries({ queryKey: ['projects', 'health'] });
       return;
     }
+    // ISS-305 — runner browser-approve device login + revoke. The Runners
+    // surface (`features/runners`) keys its device list under ['devices','me'];
+    // these events ride the owner's user room so pending→approved and revoke
+    // reflect live without polling.
+    case 'device.login':
+    case 'device.paired':
+    case 'device.revoked': {
+      qc.invalidateQueries({ queryKey: ['devices', 'me'] });
+      qc.invalidateQueries({ queryKey: ['projects', 'health'] });
+      return;
+    }
     case 'user.preferencesChanged': {
       qc.invalidateQueries({ queryKey: ['user-prefs'] });
       return;
