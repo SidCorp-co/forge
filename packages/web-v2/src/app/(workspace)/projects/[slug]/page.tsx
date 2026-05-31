@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -9,6 +9,7 @@ import {
   Badge,
   Stat,
   Kicker,
+  IconButton,
   ProjectLoader,
   EmptyState,
   ErrorState,
@@ -35,6 +36,7 @@ function stageDistribution(dist: Record<string, number>): { stage: StageKey; cou
 
 export default function ProjectOverviewPage() {
   const params = useParams<{ slug: string }>();
+  const router = useRouter();
   const slug = params?.slug;
 
   const projectsQ = useProjects();
@@ -125,6 +127,14 @@ export default function ProjectOverviewPage() {
             <Badge tone={project.role === "owner" ? "accent" : "neutral"}>{project.role}</Badge>
           </div>
         </div>
+        {/* Gear affordance → per-project settings (ISS-316). The project tier is
+            fixed at 6 flat rail items, so settings attaches here (and ⌘K) rather
+            than as a 7th rail row. */}
+        <IconButton
+          icon="settings"
+          aria-label="Project settings"
+          onClick={() => router.push(`/projects/${slug}/settings`)}
+        />
       </header>
 
       <div className="space-y-6">

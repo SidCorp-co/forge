@@ -402,6 +402,15 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           onRun: () => router.push(`/projects/${slug}${it.sub}`),
         });
       }
+      // Project settings (ISS-316) — a nested route kept off the rail, reachable
+      // via the dashboard gear and here.
+      out.push({
+        label: `${activeProject?.name ?? slug} · Settings`,
+        icon: "settings",
+        group: "navigate",
+        keywords: "project settings config repo branch members labels pipeline",
+        onRun: () => router.push(`/projects/${slug}/settings`),
+      });
     }
 
     // Actions — wired to existing handlers/routes only; no fabricated endpoints.
