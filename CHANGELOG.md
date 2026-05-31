@@ -22,6 +22,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Removed the legacy device-routing path (activeDeviceId) and unified all job dispatch on the runner framework; orphaned or stale devices no longer block job dispatch.**
   *Technical: Deleted active-device.ts and the dispatchViaDevice branch, retired the runnerFramework flag (now always-on), and dropped activeDeviceId from the forge_config response. Orphan/never-connected devices are skipped at select time and swept online→offline by the device stale-detector.*
 
+- **Redesigned v2 navigation: the left sidebar now shows only top-level destinations, project sections moved into horizontal tabs, and a new cross-project Attention inbox gathers everything waiting on you (reviews, blocked issues, mentions, failed jobs, offline runners) with a live count. On phones a bottom tab bar plus a project-switcher drawer replace the sidebar.**
+  *Technical: web-v2 Concept B nav: workspace-only NavRail with NavItem.badge, new projects/[slug]/layout.tsx + ProjectTabBar, features/attention/* against GET /api/me/attention merged with /me/devices offline runners, BottomTabBar pattern, per-project RoomSub WS fan-out, ['attention'] invalidations in event-router.*
+
 ### Removed
 
 - **The non-functional "Add member" action has been removed — it previously called a project-members endpoint that did not exist and always failed with a 404.**
