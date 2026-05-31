@@ -28,6 +28,9 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
     case 'issue.deleted': {
       qc.invalidateQueries({ queryKey: ['issues', 'list'] });
       qc.invalidateQueries({ queryKey: ['issues', 'search'] });
+      // ISS-307 — assignment / status edits move issues in/out of the Attention
+      // needs-review + awaiting-input buckets.
+      qc.invalidateQueries({ queryKey: ['attention'] });
       if (data?.issueId) {
         qc.invalidateQueries({ queryKey: ['issue', data.issueId] });
         qc.invalidateQueries({ queryKey: ['activities', data.issueId] });
@@ -40,6 +43,9 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
       // Projects console (ISS-290): open-issue counts / health derive from
       // issue status, so refresh the batch health rollup.
       qc.invalidateQueries({ queryKey: ['projects', 'health'] });
+      // ISS-307 — Attention buckets are status-driven (developed/reopen,
+      // waiting/needs_info/on_hold); refresh the cross-project inbox + rail count.
+      qc.invalidateQueries({ queryKey: ['attention'] });
       if (data?.issueId) {
         qc.invalidateQueries({ queryKey: ['issue', data.issueId] });
         qc.invalidateQueries({ queryKey: ['activities', data.issueId] });
@@ -112,6 +118,9 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
     case 'job.statusChanged':
     case 'job.cancelled': {
       qc.invalidateQueries({ queryKey: ['jobs', 'list'] });
+      // ISS-307 — a job flipping to failed (incl. deploy) belongs in Attention's
+      // failed-jobs bucket; refresh the cross-project inbox + rail count.
+      qc.invalidateQueries({ queryKey: ['attention'] });
       if (data?.jobId) {
         qc.invalidateQueries({ queryKey: ['job', data.jobId] });
       }
@@ -133,8 +142,11 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
     }
     case 'device.statusChanged': {
       qc.invalidateQueries({ queryKey: ['admin', 'devices'] });
+      qc.invalidateQueries({ queryKey: ['devices', 'me'] });
       // Projects console (ISS-290): online-runner counts feed per-project health.
       qc.invalidateQueries({ queryKey: ['projects', 'health'] });
+      // ISS-307 — a runner going offline/online moves it in/out of Attention.
+      qc.invalidateQueries({ queryKey: ['attention'] });
       return;
     }
     // ISS-305 — runner browser-approve device login + revoke. The Runners
@@ -156,6 +168,8 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
     case 'notification.read': {
       qc.invalidateQueries({ queryKey: ['notifications'] });
       qc.invalidateQueries({ queryKey: ['notifications-unread'] });
+      // ISS-307 — unread @-mentions feed Attention's mentions bucket.
+      qc.invalidateQueries({ queryKey: ['attention'] });
       return;
     }
     case 'dependencyChanged': {
@@ -217,4 +231,8 @@ export function replayOnReconnect(qc: QueryClient): void {
   // ISS-292 — refresh any open conversation detail (`['agent-session', id, …]`)
   // so a session viewed across a reconnect re-pulls its turns + status.
   qc.invalidateQueries({ queryKey: ['agent-session'] });
+  // ISS-307 — refresh the cross-project Attention inbox + rail count after a
+  // dropped connection (its buckets ride issue/job/notification events above).
+  qc.invalidateQueries({ queryKey: ['attention'] });
+  qc.invalidateQueries({ queryKey: ['devices', 'me'] });
 }
