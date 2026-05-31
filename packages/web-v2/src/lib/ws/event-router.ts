@@ -235,4 +235,9 @@ export function replayOnReconnect(qc: QueryClient): void {
   // dropped connection (its buckets ride issue/job/notification events above).
   qc.invalidateQueries({ queryKey: ['attention'] });
   qc.invalidateQueries({ queryKey: ['devices', 'me'] });
+  // ISS-314 — refresh the cross-project Activity feed (`features/activity`,
+  // keyed ['chat-logs']) after a dropped connection. chat_logs has no per-row
+  // WS broadcast yet, so reconnect replay (+ window-focus refetch + Refresh) is
+  // its freshness signal until a `chat-log.created` event lands in core.
+  qc.invalidateQueries({ queryKey: ['chat-logs'] });
 }
