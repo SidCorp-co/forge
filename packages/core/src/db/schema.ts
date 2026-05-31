@@ -157,6 +157,11 @@ export const userPreferences = pgTable('user_preferences', {
     .references(() => users.id, { onDelete: 'cascade' }),
   theme: text('theme').notNull().default('system'),
   language: text('language').notNull().default('en'),
+  // Notification delivery preference: when false, suppress in-app `mention`
+  // notifications for this user (gated in createNotification). `mention` is the
+  // only user-initiated notification type currently produced, so it is the only
+  // honest opt-out we expose — no fake controls for unimplemented channels.
+  notifyOnMention: boolean('notify_on_mention').notNull().default(true),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

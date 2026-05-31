@@ -65,10 +65,15 @@ const preferencesSchema = z
   .object({
     theme: z.enum(themes).optional(),
     language: z.enum(languages).optional(),
+    notifyOnMention: z.boolean().optional(),
   })
   .strict();
 
-const DEFAULT_PREFS = { theme: 'system' as const, language: 'en' as const };
+const DEFAULT_PREFS = {
+  theme: 'system' as const,
+  language: 'en' as const,
+  notifyOnMention: true,
+};
 
 meRoutes.get('/me/preferences', async (c) => {
   const userId = c.get('userId');
@@ -76,6 +81,7 @@ meRoutes.get('/me/preferences', async (c) => {
     .select({
       theme: userPreferences.theme,
       language: userPreferences.language,
+      notifyOnMention: userPreferences.notifyOnMention,
       updatedAt: userPreferences.updatedAt,
     })
     .from(userPreferences)
@@ -115,18 +121,23 @@ meRoutes.patch(
         userId,
         theme: patch.theme ?? DEFAULT_PREFS.theme,
         language: patch.language ?? DEFAULT_PREFS.language,
+        notifyOnMention: patch.notifyOnMention ?? DEFAULT_PREFS.notifyOnMention,
       })
       .onConflictDoUpdate({
         target: userPreferences.userId,
         set: {
           ...(patch.theme !== undefined ? { theme: patch.theme } : {}),
           ...(patch.language !== undefined ? { language: patch.language } : {}),
+          ...(patch.notifyOnMention !== undefined
+            ? { notifyOnMention: patch.notifyOnMention }
+            : {}),
           updatedAt: new Date(),
         },
       })
       .returning({
         theme: userPreferences.theme,
         language: userPreferences.language,
+        notifyOnMention: userPreferences.notifyOnMention,
         updatedAt: userPreferences.updatedAt,
       });
 

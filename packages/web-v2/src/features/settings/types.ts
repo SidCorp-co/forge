@@ -7,6 +7,9 @@ export type LanguagePref = "en" | "vi";
 export interface Preferences {
   theme: ThemePref;
   language: LanguagePref;
+  /** Notification delivery preference: when false, in-app `mention`
+   *  notifications are suppressed server-side (gated in createNotification). */
+  notifyOnMention: boolean;
   updatedAt: string | null;
 }
 

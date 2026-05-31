@@ -160,7 +160,12 @@ describe('GET /api/auth/me/preferences', () => {
     });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ theme: 'system', language: 'en', updatedAt: null });
+    expect(body).toEqual({
+      theme: 'system',
+      language: 'en',
+      notifyOnMention: true,
+      updatedAt: null,
+    });
   });
 
   it('returns the stored row when present', async () => {
@@ -197,6 +202,22 @@ describe('PATCH /api/auth/me/preferences', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.theme).toBe('dark');
+    expect(dbInsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('upserts the notifyOnMention delivery preference', async () => {
+    const token = await signUserToken('00000000-0000-0000-0000-000000000003');
+    insertReturning.mockResolvedValueOnce([
+      { theme: 'system', language: 'en', notifyOnMention: false, updatedAt: null },
+    ]);
+    const res = await buildApp().request('/api/auth/me/preferences', {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ notifyOnMention: false }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.notifyOnMention).toBe(false);
     expect(dbInsert).toHaveBeenCalledTimes(1);
   });
 

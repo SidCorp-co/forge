@@ -193,6 +193,8 @@ describe('DELETE /api/notifications/:id', () => {
 
 describe('createNotification helper + WS bridge', () => {
   it('emits notificationCreated which bridges to userRoom', async () => {
+    // mention gate: preferences lookup returns no row → opted-in by default.
+    selectLimit.mockResolvedValueOnce([]);
     insertReturning.mockResolvedValueOnce([{ id: NOTIF_ID }]);
     const seenUserIds: string[] = [];
     hooksModule.hooks.on('notificationCreated', (p) => {
@@ -206,5 +208,24 @@ describe('createNotification helper + WS bridge', () => {
       projectId: PROJECT_ID,
     });
     expect(seenUserIds).toEqual([USER_ID]);
+  });
+
+  it('suppresses a mention when notify_on_mention is false', async () => {
+    // mention gate: preferences row opts out → no insert, no emit, returns null.
+    selectLimit.mockResolvedValueOnce([{ notifyOnMention: false }]);
+    const seenUserIds: string[] = [];
+    hooksModule.hooks.on('notificationCreated', (p) => {
+      seenUserIds.push(p.userId);
+    });
+    const { createNotification } = await import('./routes.js');
+    const result = await createNotification({
+      userId: USER_ID,
+      type: 'mention',
+      title: 'You were mentioned',
+      projectId: PROJECT_ID,
+    });
+    expect(result).toBeNull();
+    expect(insertReturning).not.toHaveBeenCalled();
+    expect(seenUserIds).toEqual([]);
   });
 });

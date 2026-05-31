@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { notifications } from '../db/schema.js';
+import { notifications, userPreferences } from '../db/schema.js';
 import { setTotalCount } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -181,7 +181,21 @@ export async function createNotification(input: {
   body?: string | null;
   issueId?: string | null;
   agentSessionId?: string | null;
-}): Promise<{ id: string }> {
+}): Promise<{ id: string } | null> {
+  // Delivery preference gate: a user can opt out of `mention` notifications via
+  // `user_preferences.notify_on_mention` (Settings → Notifications). Default is
+  // opted-in, so an absent preferences row notifies as before. Only `mention`
+  // is gated — it is the only user-initiated type; system/escalation types are
+  // always delivered.
+  if (input.type === 'mention') {
+    const [prefs] = await db
+      .select({ notifyOnMention: userPreferences.notifyOnMention })
+      .from(userPreferences)
+      .where(eq(userPreferences.userId, input.userId))
+      .limit(1);
+    if (prefs && !prefs.notifyOnMention) return null;
+  }
+
   const inserted = await db
     .insert(notifications)
     .values({
@@ -209,4 +223,3 @@ export async function createNotification(input: {
 
   return { id: row.id };
 }
-

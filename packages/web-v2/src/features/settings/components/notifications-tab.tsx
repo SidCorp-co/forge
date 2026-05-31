@@ -1,13 +1,13 @@
 "use client";
 
-// Settings → Notifications. There is no per-user notification-preferences API,
-// so this tab surfaces the real controls that exist (the notification feed +
-// mark-all-read) and is explicit that delivery preferences aren't configurable
-// yet — no fake toggles.
+// Settings → Notifications. Delivery preferences (the `@mention` opt-out, the
+// only user-initiated notification type produced) persist via
+// `/api/auth/me/preferences`; the feed below lists in-app notifications with
+// mark-all-read. Only real, server-enforced controls are shown — no fake
+// toggles for unimplemented delivery channels.
 import { useState } from "react";
 import {
   Badge,
-  Banner,
   Button,
   Card,
   CardContent,
@@ -15,10 +15,16 @@ import {
   ErrorState,
   Pagination,
   Skeleton,
+  Toggle,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { NOTIFICATIONS_PAGE_SIZE } from "../api";
-import { useMarkAllRead, useNotifications } from "../hooks";
+import {
+  useMarkAllRead,
+  useNotifications,
+  usePreferences,
+  useUpdatePreferences,
+} from "../hooks";
 import type { NotificationRow } from "../types";
 
 function fmtTime(iso: string): string {
@@ -40,9 +46,7 @@ export function NotificationsTab() {
 
   return (
     <div className="space-y-6">
-      <Banner tone="info">
-        Delivery preferences aren&apos;t configurable yet. Your in-app notifications are below.
-      </Banner>
+      <DeliveryPreferences />
 
       <div className="flex items-center justify-between gap-3">
         <h2 className="fg-h3">Notifications</h2>
@@ -93,6 +97,50 @@ export function NotificationsTab() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Delivery preferences card — the `@mention` opt-out, persisted via
+ *  `/api/auth/me/preferences`. The toggle reflects the server value and writes
+ *  on change; React Query keeps it in sync after the mutation resolves. */
+function DeliveryPreferences() {
+  const prefsQ = usePreferences();
+  const update = useUpdatePreferences();
+
+  return (
+    <Card>
+      <CardContent>
+        <h2 className="fg-h3 mb-1">Delivery preferences</h2>
+        <p className="fg-caption mb-4">Choose which notifications Forge sends you.</p>
+
+        {prefsQ.isLoading && <Skeleton className="h-11 w-full rounded-md" />}
+
+        {prefsQ.isError && (
+          <ErrorState
+            title="Couldn't load preferences"
+            message={formatApiError(prefsQ.error)}
+            onRetry={() => prefsQ.refetch()}
+          />
+        )}
+
+        {prefsQ.data && (
+          <div className="flex items-center justify-between gap-3 py-1">
+            <div className="min-w-0">
+              <p className="fg-label text-fg">Mentions</p>
+              <p className="fg-caption text-muted">
+                Notify me when someone @mentions me in a comment.
+              </p>
+            </div>
+            <Toggle
+              checked={prefsQ.data.notifyOnMention}
+              disabled={update.isPending}
+              onChange={(checked) => update.mutate({ notifyOnMention: checked })}
+              aria-label="Notify me when I'm mentioned"
+            />
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
