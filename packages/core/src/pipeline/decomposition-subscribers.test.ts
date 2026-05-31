@@ -153,9 +153,9 @@ describe('cascade approve', () => {
     expect(applyStatusTransition).not.toHaveBeenCalled();
   });
 
-  it('fires the cascade when the parent enters approved from on_hold (drift-tolerant)', async () => {
+  it('cascades on_hold children (skill-created) when parent enters approved from on_hold (drift-tolerant)', async () => {
     findDecompositionChildren.mockResolvedValueOnce([
-      { id: CHILD_A, status: 'draft', manualHold: false, projectId: PROJECT_ID },
+      { id: CHILD_A, status: 'on_hold', manualHold: false, projectId: PROJECT_ID },
     ]);
     findDecompositionParent.mockResolvedValue(null);
     findDecompositionChildren.mockResolvedValue([]);
@@ -174,7 +174,7 @@ describe('cascade approve', () => {
     expect(applyStatusTransition.mock.calls[0]?.[0]?.id).toBe(CHILD_A);
   });
 
-  it('skips children that are not in draft (e.g. already in_progress)', async () => {
+  it('skips children that are not parked (e.g. already in_progress)', async () => {
     findDecompositionChildren.mockResolvedValueOnce([
       { id: CHILD_A, status: 'in_progress', manualHold: false, projectId: PROJECT_ID },
       { id: CHILD_B, status: 'draft', manualHold: false, projectId: PROJECT_ID },
@@ -197,7 +197,7 @@ describe('cascade approve', () => {
   });
 
   // ISS-130 regression guard: a child at `open` must NOT be cascaded — only
-  // `draft` is the parking status. If decomposition ever lands a child at
+  // `draft`/`on_hold` are parking statuses. If decomposition ever lands a child at
   // `open` again (the original bug), forge-triage would have already grabbed
   // it before the cascade could fire; even if the cascade fires first, the
   // filter must reject `open` so we never silently double-approve an issue

@@ -5,8 +5,8 @@
  *
  *  1. cascade approve   — parent enters `approved` (from the review gate
  *                         `waiting`, or tolerantly `on_hold`/`confirmed`) and
- *                         flips all `draft` children → `approved`, clearing
- *                         `manualHold`.
+ *                         flips all parked children (`draft` or `on_hold`) →
+ *                         `approved`, clearing `manualHold`.
  *  2. watcher           — when the LAST sibling reaches
  *                         {staging, released, closed}, post a system comment
  *                         on the parent and re-fire the parent's pipeline so
@@ -56,14 +56,23 @@ async function resolveDeviceForProject(projectId: string): Promise<DeviceLite | 
 }
 
 /**
- * Statuses a child can be in when we cascade-approve. Decompose creates
- * children at `draft` (the inert proposal state — no STATUS_TO_JOB_TYPE entry,
- * so the orchestrator does not auto-dispatch). The cascade collapses
- * `draft → approved` via `applyStatusTransition({ skip: true })` when the
- * human approves the parent. Children that have already moved past `draft`
- * (e.g. promoted manually) are skipped.
+ * Statuses a child can be in when we cascade-approve. Both `draft` and
+ * `on_hold` are accepted parking states:
+ *   - `draft`   — the inert proposal state new core paths use.
+ *   - `on_hold` — what the forge-plan skill still creates children at via
+ *                 `forge_issues.create { status: 'on_hold' }`. Skills are
+ *                 explicit-sync + per-project-overridable, so children keep
+ *                 arriving as `on_hold` in the wild; the cascade MUST handle
+ *                 both or those children strand at approval (regression seen
+ *                 on dodgeprint ISS-4, 2026-06-01).
+ * Neither has a STATUS_TO_JOB_TYPE entry, so the orchestrator never
+ * auto-dispatches them before the cascade fires. Children that have already
+ * moved past parking (e.g. promoted manually) are skipped.
  */
-const CASCADE_APPROVE_FROM_STATUSES: ReadonlySet<IssueStatus> = new Set(['draft']);
+const CASCADE_APPROVE_FROM_STATUSES: ReadonlySet<IssueStatus> = new Set([
+  'draft',
+  'on_hold',
+]);
 
 /**
  * Parent statuses from which entering `approved` should fire the cascade.
