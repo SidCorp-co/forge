@@ -13,6 +13,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Project Settings now has a Testing tab where project owners can set the staging URL, staging API URL, named testing links, and test login credentials (passwords masked with a reveal toggle) — no database access needed.**
   *Technical: Frontend-only web-v2 Testing tab editing project.previewDeploy via existing owner-gated PATCH /api/projects/:id; preserves unknown jsonb keys, client-side URL/label validation mirrors previewDeployPatchSchema. Merge 105be93.*
 
+- **The Activity page now shows a live, cross-project feed of agent conversations — filter by source, intent, or quality rating, page through history, and open any entry to read the full query and reply with token and timing details.**
+  *Technical: New web-v2 `features/activity` (api/hooks/types/screen) consumes `GET /api/chat-logs` cross-project (no projectSlug). Built from the @/design kit; loading/empty/error via kit primitives. Usage represented as feed-derived token throughput; full per-project cost dashboard stays project-scoped (summary endpoint requires projectId). Queries keyed ['chat-logs']; replayOnReconnect invalidates it. Merge 0d0b673.*
+
 ### Changed
 
 ### Removed
