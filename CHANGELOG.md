@@ -27,6 +27,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **You can now configure a project directly in the new web app — name & description, repository path, base/production branches, pipeline stages, labels, and members — reached from the project dashboard's gear icon or the ⌘K command palette, with no new sidebar item. Edits persist immediately and project secrets are never shown.**
   *Technical: web-v2 features/project-settings: nested /projects/[slug]/settings route (Basics/Repository/Pipeline/Labels/Members/Integrations tabs) wired to PATCH /projects/:id, GET|PATCH pipeline-config, and labels + members REST; owner-gated edits, secrets never rendered. Merge b62e3ef (ISS-316).*
 
+- **Workspace Settings now helps you connect MCP clients and control notification delivery: the MCP tab generates a ready-to-paste connection snippet for Claude CLI, Cursor, Cline, Zed, or any client and lets you test the connection live, while the Notifications tab adds a toggle to turn @mention alerts on or off — your choice is saved.**
+  *Technical: web-v2 features/settings: MCP tab (mcp-tab.tsx + mcp.ts) builds per-client snippets + a live JSON-RPC tools/list test against core /mcp, with the endpoint origin derived from NEXT_PUBLIC_API_URL (fixes cross-origin beta). Notifications toggle wired to GET/PATCH /api/auth/me/preferences; new user_preferences.notify_on_mention (migration 0090) gates the mention notification server-side. No secret echo, no new sidebar item. Merge b67e6cdc.*
+
 ### Removed
 
 ### Fixed
