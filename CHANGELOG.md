@@ -10,6 +10,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [0.2.11] - 2026-05-31
+
+Device-centric runner management and a redesigned v2 navigation with a cross-project Attention inbox and mobile tab bar, plus self-healing pipelines — wedged runner slots now auto-recover within minutes.
+
+### Added
+
 - **Runner management is now device-centric — each device has its own page showing the projects and runners bound to it, with a clearer pairing / runner-onboarding flow.**
   *Technical: New per-device management path (ISS-273) on top of the runner framework, plus runner-onboarding UX fixes. Merge 9d00232f.*
 - **The `forge-runner doctor` command now gives a clear online/offline verdict so onboarding problems are obvious at a glance.**
