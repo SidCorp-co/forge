@@ -15,6 +15,8 @@ export interface TopBarProps {
   onCommandPalette?: () => void;
   onNotifications?: () => void;
   onNewIssue?: () => void;
+  /** Opens the mobile nav drawer. Renders a hamburger button below `md`. */
+  onMenu?: () => void;
   /** Global display density. Renders a Comfortable/Compact toggle when set. */
   density?: TopBarDensity;
   onDensityChange?: (d: TopBarDensity) => void;
@@ -35,6 +37,7 @@ export function TopBar({
   onCommandPalette,
   onNotifications,
   onNewIssue,
+  onMenu,
   density,
   onDensityChange,
   scrolled = false,
@@ -47,6 +50,17 @@ export function TopBar({
         scrolled ? "h-11" : "h-14",
       )}
     >
+      {onMenu && (
+        <button
+          type="button"
+          onClick={onMenu}
+          aria-label="Open navigation"
+          className="-ml-1 inline-flex size-11 flex-none items-center justify-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg md:hidden"
+        >
+          <Icon name="menu" size={20} />
+        </button>
+      )}
+
       {title && <h1 className="fg-h3 mr-2">{title}</h1>}
 
       <button

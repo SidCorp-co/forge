@@ -15,11 +15,25 @@ export interface MenuProps {
   trigger: ReactNode;
   items: MenuItem[];
   align?: "left" | "right";
+  /** Which side of the trigger the panel opens toward. Footer/bottom-anchored
+   *  triggers use "top" so the menu rises instead of clipping off-screen. */
+  side?: "top" | "bottom";
+  /** Extra classes on the menu root (e.g. `w-full` for a block trigger). */
+  className?: string;
+  /** Extra classes on the trigger wrapper (e.g. `block w-full`). */
+  triggerClassName?: string;
 }
 
 /** Generic dropdown menu (row actions, overflow ⋯). Keyboard: ↑/↓ move, Enter
     select, Esc close (returns focus to trigger). Closes on outside click. */
-export function Menu({ trigger, items, align = "right" }: MenuProps) {
+export function Menu({
+  trigger,
+  items,
+  align = "right",
+  side = "bottom",
+  className,
+  triggerClassName,
+}: MenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLSpanElement>(null);
@@ -58,8 +72,8 @@ export function Menu({ trigger, items, align = "right" }: MenuProps) {
   };
 
   return (
-    <div ref={ref} className="relative inline-flex">
-      <span ref={triggerRef} onClick={() => setOpen((o) => !o)}>
+    <div ref={ref} className={cn("relative inline-flex", className)}>
+      <span ref={triggerRef} className={triggerClassName} onClick={() => setOpen((o) => !o)}>
         {trigger}
       </span>
       {open && (
@@ -67,7 +81,8 @@ export function Menu({ trigger, items, align = "right" }: MenuProps) {
           role="menu"
           onKeyDown={onKeyDown}
           className={cn(
-            "forge-drop absolute top-[calc(100%+6px)] z-50 min-w-[180px] overflow-hidden rounded-lg border border-line bg-surface p-1.5 shadow-lg",
+            "forge-drop absolute z-50 min-w-[180px] overflow-hidden rounded-lg border border-line bg-surface p-1.5 shadow-lg",
+            side === "top" ? "bottom-[calc(100%+6px)]" : "top-[calc(100%+6px)]",
             align === "right" ? "right-0" : "left-0",
           )}
         >

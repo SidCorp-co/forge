@@ -29,7 +29,7 @@ const STATUS_META: Record<
     icon: "dot",
     label: "Not configured",
     fg: "var(--fg-subtle)",
-    bg: "var(--paper-100)",
+    bg: "var(--bg-sunken)",
   },
 };
 
