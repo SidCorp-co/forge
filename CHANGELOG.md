@@ -16,6 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **The Activity page now shows a live, cross-project feed of agent conversations — filter by source, intent, or quality rating, page through history, and open any entry to read the full query and reply with token and timing details.**
   *Technical: New web-v2 `features/activity` (api/hooks/types/screen) consumes `GET /api/chat-logs` cross-project (no projectSlug). Built from the @/design kit; loading/empty/error via kit primitives. Usage represented as feed-derived token throughput; full per-project cost dashboard stays project-scoped (summary endpoint requires projectId). Queries keyed ['chat-logs']; replayOnReconnect invalidates it. Merge 0d0b673.*
 
+- **The project Automation page now has a working PM tab: view and edit the PM Agent's cadence, run triggers, and settings, and browse its decision audit log.**
+  *Technical: web-v2 automation feature gains a PM slice (types/api/hooks + PmScreen) backed by /api/projects/:projectId/pm/config (GET/PUT) and /pm/decisions (paginated); replaces the ComingSoon stub. Config edits are owner/admin-gated. Merge f52623b.*
+
 ### Changed
 
 ### Removed
