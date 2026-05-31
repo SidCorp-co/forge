@@ -8,7 +8,8 @@ import type { CoolifyConfig, CoolifySecrets } from './coolify/types.js';
 export interface CoolifyDispatchJob {
   jobKind: 'coolify.dispatch';
   integrationId: string;
-  runId: string;
+  /** `null` for a run-less resource redeploy (no pipeline run to track). */
+  runId: string | null;
   issueId: string | null;
   eventName: string;
   requestId?: string;

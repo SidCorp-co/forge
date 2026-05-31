@@ -41,9 +41,11 @@ vi.mock('../../db/client.js', () => ({
 
 const tryDispatchSpy = vi.fn();
 const resolveRunSpy = vi.fn();
+const dispatchDirectSpy = vi.fn();
 vi.mock('../../pipeline/release-coolify.js', () => ({
   tryDispatchCoolifyRelease: (a: unknown) => tryDispatchSpy(a),
   resolveLatestIssueRunId: (a: unknown) => resolveRunSpy(a),
+  dispatchCoolifyDeployDirect: (a: unknown) => dispatchDirectSpy(a),
 }));
 
 const findLastOutboundSpy = vi.fn();
@@ -93,6 +95,7 @@ beforeEach(() => {
   resultQueue.length = 0;
   tryDispatchSpy.mockReset();
   resolveRunSpy.mockReset();
+  dispatchDirectSpy.mockReset();
   findLastOutboundSpy.mockReset();
 });
 
@@ -161,12 +164,70 @@ describe('forge_coolify_deploy → list', () => {
 });
 
 describe('forge_coolify_deploy → deploy', () => {
-  it('requires issueId', async () => {
+  it('without issueId, single active integration → run-less deploy via dispatchCoolifyDeployDirect', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
-    await expect(tool.handler({ action: 'deploy', projectId: PROJECT_ID })).rejects.toThrow(
-      /issueId is required/,
-    );
+    pushMemberOk();
+    resultQueue.push([{ id: STAGING_INT, environment: 'staging' }]); // single active integration
+    dispatchDirectSpy.mockResolvedValueOnce({
+      dispatched: true,
+      pendingHumanConfirm: false,
+      integrationIds: [STAGING_INT],
+    });
+
+    const result = (await tool.handler({ action: 'deploy', projectId: PROJECT_ID })) as {
+      dispatched: boolean;
+      integrationIds: string[];
+    };
+
+    expect(dispatchDirectSpy).toHaveBeenCalledTimes(1);
+    expect(dispatchDirectSpy).toHaveBeenCalledWith({
+      projectId: PROJECT_ID,
+      integrationId: STAGING_INT,
+    });
     expect(tryDispatchSpy).not.toHaveBeenCalled();
+    expect(result.dispatched).toBe(true);
+    expect(result.integrationIds).toEqual([STAGING_INT]);
+  });
+
+  it('without issueId, multiple active integrations and no integrationId → BAD_REQUEST ambiguous', async () => {
+    const tool = forgeCoolifyDeployTool(makeDeviceCtx());
+    pushMemberOk();
+    resultQueue.push([
+      { id: STAGING_INT, environment: 'staging' },
+      { id: PROD_INT, environment: 'prod' },
+    ]);
+
+    await expect(tool.handler({ action: 'deploy', projectId: PROJECT_ID })).rejects.toThrow(
+      /multiple active Coolify integrations/,
+    );
+    expect(dispatchDirectSpy).not.toHaveBeenCalled();
+    expect(tryDispatchSpy).not.toHaveBeenCalled();
+  });
+
+  it('without issueId, explicit integrationId picks that integration', async () => {
+    const tool = forgeCoolifyDeployTool(makeDeviceCtx());
+    pushMemberOk();
+    resultQueue.push([
+      { id: STAGING_INT, environment: 'staging' },
+      { id: PROD_INT, environment: 'prod' },
+    ]);
+    dispatchDirectSpy.mockResolvedValueOnce({
+      dispatched: true,
+      pendingHumanConfirm: false,
+      integrationIds: [STAGING_INT],
+    });
+
+    const result = (await tool.handler({
+      action: 'deploy',
+      projectId: PROJECT_ID,
+      integrationId: STAGING_INT,
+    })) as { dispatched: boolean; integrationIds: string[] };
+
+    expect(dispatchDirectSpy).toHaveBeenCalledWith({
+      projectId: PROJECT_ID,
+      integrationId: STAGING_INT,
+    });
+    expect(result.dispatched).toBe(true);
   });
 
   it('delegates a staging deploy to tryDispatchCoolifyRelease and passes the outcome through', async () => {

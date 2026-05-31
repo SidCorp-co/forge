@@ -31,8 +31,9 @@ export interface OutboundDispatchInput<TPayload = unknown> {
   payload: TPayload;
   /** Optional dedup key shared with integration_deliveries.request_id. */
   requestId?: string;
-  /** Pipeline-run correlation; allows inbound handler to advance the right run. */
-  runId?: string;
+  /** Pipeline-run correlation; allows inbound handler to advance the right run.
+   *  `null` for a run-less resource redeploy (no pipeline run to advance). */
+  runId?: string | null;
 }
 
 export interface OutboundDispatchResult {

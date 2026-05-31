@@ -26,7 +26,8 @@ const BREADCRUMB_OUT = 'integration.coolify.dispatch';
 const BREADCRUMB_IN = 'integration.coolify.inbound';
 
 interface DeployPayload extends Record<string, unknown> {
-  runId: string;
+  /** `null` for a run-less resource redeploy (no pipeline run to advance). */
+  runId: string | null;
   issueId: string | null;
   environment: 'staging' | 'prod';
   resourceUuid: string;
@@ -100,10 +101,11 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
     }
 
     const payload = (input.payload ?? {}) as Partial<DeployPayload>;
-    const runId = payload.runId ?? input.runId ?? '';
-    if (!runId) {
-      throw new Error('coolify dispatch: runId is required');
-    }
+    // `runId` is purely a tracking key for the deployment_uuid → run mapping.
+    // A run-less resource redeploy (ISS-312) legitimately carries no run, so we
+    // coalesce to null and record the delivery with runId:null rather than
+    // throwing. The inbound webhook handler already no-ops on a null-run match.
+    const runId = payload.runId ?? input.runId ?? null;
 
     const deliveryId = await recordDelivery({
       projectIntegrationId: ctx.integrationId,
