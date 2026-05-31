@@ -473,8 +473,16 @@ issueRoutes.get(
 
     const healthMap = await safeHydratePipelineHealth(issue.projectId, [issue.id]);
     const serialized = serializeIssue(issue);
+    // ISS-308 A1 — hydrate the derived agentStatus on the single-issue detail
+    // payload too (the list/search endpoints already do). Without it the detail
+    // PipelineTracker can't render a failed/queued run state and falls back to a
+    // status-only bead, so a `testing` issue whose agent FAILED still drew green.
+    const agentMap = await hydrateAgentSessionsForIssues(issue.projectId, [issue.id]);
+    const agentBucket = agentMap.get(issue.id);
     return c.json({
       ...serialized,
+      agentSessions: agentBucket?.agentSessions ?? [],
+      agentStatus: agentBucket?.agentStatus ?? null,
       pipelineHealth: healthMap.get(issue.id) ?? { stage: serialized.status },
       labels: labelRows,
       comments: [],

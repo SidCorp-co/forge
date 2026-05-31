@@ -149,7 +149,10 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
   const isFiltered = q !== "" || filter !== "all";
 
   return (
-    <div className="mx-auto w-full min-h-dvh max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
+    // Wider than the other workspace screens (max-w-7xl vs 6xl): the dense
+    // issues table has 9 columns and was clipping the Assignee/Actions cells off
+    // the right edge at ~1440px inside the narrower container (ISS-308 C1).
+    <div className="mx-auto w-full min-h-dvh max-w-7xl px-4 py-6 sm:px-8 sm:py-8">
       <header className="mb-6">
         <h1 className="fg-h2">Issues</h1>
         <p className="fg-body-sm mt-1">
@@ -232,8 +235,10 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
 
       {!issuesQ.isLoading && !issuesQ.isError && rows.length > 0 && (
         <>
-          {/* Desktop / tablet: dense table, grouped sections when requested. */}
-          <div className="hidden space-y-6 md:block">
+          {/* Desktop only (≥lg): dense table, grouped sections when requested.
+              Tablets (768–1024) fall through to the card layout below — the
+              9-column table needs horizontal scroll under ~1100px (ISS-308 C3). */}
+          <div className="hidden space-y-6 lg:block">
             {groups.map((g) => (
               <section key={g.key}>
                 {groupBy !== "none" && (
@@ -273,8 +278,8 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
             ))}
           </div>
 
-          {/* Mobile: stacked cards. */}
-          <div className="space-y-4 md:hidden">
+          {/* Mobile + tablet (<lg): stacked cards. */}
+          <div className="space-y-4 lg:hidden">
             {groups.map((g) => (
               <section key={g.key}>
                 {groupBy !== "none" && (

@@ -25,6 +25,7 @@ import {
   MonoTag,
   PipelineTracker,
   ProjectLoader,
+  Skeleton,
   StatusChip,
   Tabs,
   type TabItem,
@@ -34,7 +35,7 @@ import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
-import { parseChecklist, statusToChip, statusToStage } from "../derive";
+import { parseChecklist, statusToChip, statusToRun, statusToStage } from "../derive";
 import {
   usePatchIssue,
   useIssueCost,
@@ -213,7 +214,11 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
         <div className="min-w-0 space-y-4">
           <Card>
             <CardContent>
-              <PipelineTracker stage={stage} status="running" variant="full" />
+              <PipelineTracker
+                stage={stage}
+                status={statusToRun(issue.status, issue.agentStatus)}
+                variant="full"
+              />
             </CardContent>
           </Card>
 
@@ -263,7 +268,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
               <div className="mt-4">
                 {tab === "comments" &&
                   (commentsQ.isLoading ? (
-                    <p className="fg-body-sm text-muted">Loading comments…</p>
+                    <TabLoading />
                   ) : (
                     <CommentThread
                       issueId={id}
@@ -273,13 +278,13 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
                   ))}
                 {tab === "activity" &&
                   (activityQ.isLoading ? (
-                    <p className="fg-body-sm text-muted">Loading activity…</p>
+                    <TabLoading />
                   ) : (
                     <ActivityFeed items={activityQ.data?.items ?? []} />
                   ))}
                 {tab === "tasks" &&
                   (tasksQ.isLoading ? (
-                    <p className="fg-body-sm text-muted">Loading tasks…</p>
+                    <TabLoading />
                   ) : (tasksQ.data?.length ?? 0) === 0 ? (
                     <EmptyState title="No tasks" message="This issue has no sub-tasks." mascot={false} />
                   ) : (
@@ -333,6 +338,24 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
           </Collapsible>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Skeleton placeholder for the detail tab bodies (comments / activity / tasks)
+ *  while their queries load — replaces the bare "Loading …" text (ISS-308 F1). */
+function TabLoading() {
+  return (
+    <div className="space-y-3" aria-busy>
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="flex items-start gap-2.5">
+          <Skeleton variant="circle" className="size-[26px] flex-none" />
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Skeleton variant="text" className="w-32" />
+            <Skeleton variant="text" className="w-full max-w-[24rem]" />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

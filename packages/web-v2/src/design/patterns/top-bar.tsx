@@ -87,12 +87,16 @@ export function TopBar({
         )}
         {backToClassicHref && (
           // Raw anchor (NOT next/link) — must escape the /v2 basePath to reach v1.
+          // Label collapses to icon-only below sm so the header stays one row at
+          // 375px (ISS-308 C2).
           <a
             href={backToClassicHref}
-            className="fg-body-sm inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-muted transition-colors hover:bg-hover hover:text-fg"
+            title="Back to classic"
+            aria-label="Back to classic"
+            className="fg-body-sm inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-muted transition-colors hover:bg-hover hover:text-fg sm:px-2.5"
           >
             <Icon name="arrowRight" size={15} className="rotate-180" />
-            Back to classic
+            <span className="hidden sm:inline">Back to classic</span>
           </a>
         )}
         <button
@@ -111,8 +115,9 @@ export function TopBar({
             </span>
           )}
         </button>
-        <Button variant="primary" size="sm" icon="plus" onClick={onNewIssue}>
-          New issue
+        {/* Icon-only below sm so the header doesn't wrap at 375px (ISS-308 C2). */}
+        <Button variant="primary" size="sm" icon="plus" onClick={onNewIssue} aria-label="New issue">
+          <span className="hidden sm:inline">New issue</span>
         </Button>
       </div>
     </header>

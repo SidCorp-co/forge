@@ -73,7 +73,17 @@ export function Menu({
 
   return (
     <div ref={ref} className={cn("relative inline-flex", className)}>
-      <span ref={triggerRef} className={triggerClassName} onClick={() => setOpen((o) => !o)}>
+      {/* The wrapper carries the popup semantics; callers pass an interactive
+          element (button/IconButton) as `trigger`, so native Enter/Space
+          activation bubbles to this onClick — keyboard-operable without a
+          redundant tab stop. aria-haspopup/expanded announce the menu (D1). */}
+      <span
+        ref={triggerRef}
+        className={triggerClassName}
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
         {trigger}
       </span>
       {open && (

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   deriveHealth,
   filterProjects,
+  formatCycleTime,
   formatRelativeTime,
   formatSpend,
   isAttention,
@@ -186,5 +187,23 @@ describe('formatSpend / formatRelativeTime', () => {
     expect(formatRelativeTime('2026-05-31T09:00:00.000Z', now)).toBe('3h');
     expect(formatRelativeTime('2026-05-29T12:00:00.000Z', now)).toBe('2d');
     expect(formatRelativeTime('2026-05-10T12:00:00.000Z', now)).toBe('3w');
+  });
+});
+
+describe('formatCycleTime', () => {
+  it('shows — for zero / missing / invalid (no misleading "0d")', () => {
+    expect(formatCycleTime(0)).toBe('—');
+    expect(formatCycleTime(null)).toBe('—');
+    expect(formatCycleTime(undefined)).toBe('—');
+    expect(formatCycleTime(Number.NaN)).toBe('—');
+    expect(formatCycleTime(-3)).toBe('—');
+  });
+  it('renders sub-day values as hours', () => {
+    expect(formatCycleTime(0.5)).toBe('12h');
+    expect(formatCycleTime(0.01)).toBe('1h'); // floored at 1h
+  });
+  it('renders day values with sensible precision', () => {
+    expect(formatCycleTime(2.4)).toBe('2.4d');
+    expect(formatCycleTime(14.2)).toBe('14d');
   });
 });

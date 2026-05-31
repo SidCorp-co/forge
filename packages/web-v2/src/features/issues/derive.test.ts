@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   COMMENT_KIND_META,
+  allowedTransitions,
   deriveCommentKind,
   depCounts,
   filterToStatusParams,
@@ -75,6 +76,21 @@ describe("statusToChip", () => {
     expect(statusToChip("pass")).toBe("passed");
     expect(statusToChip("released")).toBe("done");
     expect(statusToChip("on_hold")).toBe("paused");
+  });
+});
+
+describe("allowedTransitions", () => {
+  it("never offers draft as a target, nor the current status", () => {
+    const from = allowedTransitions("approved");
+    expect(from).not.toContain("draft");
+    expect(from).not.toContain("approved");
+    // permissive guard: every non-draft status is reachable from a live state
+    expect(from).toContain("in_progress");
+    expect(from).toContain("on_hold");
+    expect(from).toContain("reopen");
+  });
+  it("restricts draft to promote or discard only", () => {
+    expect(allowedTransitions("draft")).toEqual(["open", "closed"]);
   });
 });
 

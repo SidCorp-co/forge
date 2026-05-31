@@ -323,12 +323,16 @@ export function NavRailCompact({
       <div className="mt-auto flex flex-col items-center gap-1.5">
         <Menu
           trigger={
-            <span
-              className="inline-flex size-7 items-center justify-center rounded-pill font-bold text-white"
+            // A real button (not a span) so the account menu is reachable by
+            // keyboard (ISS-308 D1).
+            <button
+              type="button"
+              aria-label="Account menu"
+              className="inline-flex size-7 items-center justify-center rounded-pill font-bold text-white focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
               style={{ background: 'var(--cobalt-500)', fontSize: 11 }}
             >
               {userInitials ?? 'SK'}
-            </span>
+            </button>
           }
           items={userMenu}
           side="top"
