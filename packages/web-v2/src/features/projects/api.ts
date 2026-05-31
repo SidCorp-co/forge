@@ -2,11 +2,25 @@
 // shared `apiClient` (no raw fetch). Routes verified against
 // `packages/core/src/projects/routes.ts` for ISS-288.
 import { apiClient } from '@/lib/api/client';
-import type { ProjectDetail, ProjectHealthRow, ProjectListItem } from './types';
+import type {
+  CreatedProject,
+  CreateProjectInput,
+  ProjectDetail,
+  ProjectHealthRow,
+  ProjectListItem,
+} from './types';
 
 export const projectApi = {
   /** `GET /api/projects` — the caller's projects (with membership role). */
   list: () => apiClient<ProjectListItem[]>('/projects'),
+
+  /** `POST /api/projects` — create a project (caller becomes owner). 201 on
+   *  success; 409 `SLUG_TAKEN` when the slug collides. */
+  create: (body: CreateProjectInput) =>
+    apiClient<CreatedProject>('/projects', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   /** `GET /api/projects/health` — per-project pipeline health rollup. */
   health: () => apiClient<ProjectHealthRow[]>('/projects/health'),

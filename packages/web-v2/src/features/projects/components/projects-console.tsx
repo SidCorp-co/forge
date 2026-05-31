@@ -5,6 +5,7 @@
 // the loading / empty / error states. All data flows through
 // `useProjectsConsole`; all derivation lives in `derive.ts`.
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   EmptyState,
   ErrorState,
@@ -14,11 +15,11 @@ import {
   ProjectCardSkeleton,
 } from '@/design';
 import { formatApiError } from '@/lib/api/error';
-import { useToast } from '@/providers/toast-provider';
 import { filterProjects, isAttention, sortProjects } from '../derive';
 import { useProjectsConsole } from '../hooks';
 import type { ProjectConsoleItem, ProjectSort, ProjectView } from '../types';
 import { AttentionBanner } from './attention-banner';
+import { NewProjectDialog } from './new-project-dialog';
 import { NewProjectTile } from './new-project-tile';
 import { ProjectCard } from './project-card';
 import { ProjectList } from './project-list';
@@ -47,8 +48,10 @@ function SectionLabel({
 
 export function ProjectsConsole() {
   const { items, totals, isLoading, isError, error, refetch, toggle } = useProjectsConsole();
-  const { toast } = useToast();
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
+  const [createOpen, setCreateOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<ProjectSort>('recent');
   const [view, setView] = useState<ProjectView>('cards');
@@ -75,8 +78,17 @@ export function ProjectsConsole() {
     [searching, visible],
   );
 
-  const onNewProject = () =>
-    toast({ title: 'New project', description: 'Coming soon.', tone: 'info' });
+  const onNewProject = () => setCreateOpen(true);
+
+  // The rail switcher's "New project" action navigates here with `?new=1`
+  // (it can't host the dialog itself). Honour the deep link, then strip the
+  // param so a refresh/back doesn't reopen the dialog.
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      setCreateOpen(true);
+      router.replace('/');
+    }
+  }, [searchParams, router]);
 
   function renderGroup(group: ProjectConsoleItem[]) {
     if (view === 'list') return <ProjectList items={group} now={now} onTogglePin={toggle} />;
@@ -108,6 +120,7 @@ export function ProjectsConsole() {
         <EmptyState
           title="No projects yet"
           message="Projects you own or are a member of will appear here."
+          action={{ label: 'New project', onClick: onNewProject }}
         />
       ) : (
         <>
@@ -153,6 +166,8 @@ export function ProjectsConsole() {
           )}
         </>
       )}
+
+      <NewProjectDialog open={createOpen} onClose={() => setCreateOpen(false)} />
     </div>
   );
 }

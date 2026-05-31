@@ -1,7 +1,7 @@
 'use client';
 
-// Dashed "New project" tile (Cards view). Create is a bounded fast-follow — for
-// now it surfaces a stub toast, matching the foundation's New-issue stub.
+// Dashed "New project" tile (Cards view). `onClick` opens the create-project
+// dialog (ISS-319) hosted by the projects console.
 import { Icon } from '@/design';
 
 export interface NewProjectTileProps {
