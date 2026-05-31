@@ -3,16 +3,21 @@ import { and, desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { promisify } from 'node:util';
 import { db } from '../db/client.js';
 import {
+  devices,
   integrationDeliveries,
   type IntegrationEnvironment,
   integrationEnvironments,
   projectIntegrations,
   projectMembers,
   projects,
+  runners,
 } from '../db/schema.js';
+import { classifyGitRemote } from '../git/provision-credential.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import type { CoolifySecrets } from './coolify/types.js';
 import { getAdapter } from './registry.js';
@@ -310,6 +315,196 @@ integrationsRoutes.get('/:projectId/integrations/:id/deliveries', async (c) => {
     .orderBy(desc(integrationDeliveries.createdAt))
     .limit(50);
   return c.json({ items: rows });
+});
+
+// === ISS-305 — composed read-only integrations status for the web hub ===
+//
+// Aggregates ONLY real, already-existing signals — no fabricated metrics. Each
+// card carries a status the UI renders with icon + text (never color-only) plus
+// a last-sync timestamp where one genuinely exists. Providers with no backing
+// data render `not_configured` rather than inventing health.
+
+const pExecFile = promisify(execFile);
+
+type CardStatus = 'connected' | 'attention' | 'error' | 'not_configured';
+
+interface StatusCard {
+  key: string;
+  label: string;
+  status: CardStatus;
+  detail: string;
+  lastSyncAt: string | null;
+  configured: boolean;
+  meta?: Record<string, unknown>;
+}
+
+/** Best-effort `git remote get-url origin` against a local checkout. */
+async function readGitRemote(repoPath: string): Promise<string | null> {
+  try {
+    const { stdout } = await pExecFile('git', ['-C', repoPath, 'remote', 'get-url', 'origin'], {
+      timeout: 3000,
+      windowsHide: true,
+    });
+    const url = stdout.trim();
+    return url || null;
+  } catch {
+    return null;
+  }
+}
+
+function coolifyHealthToStatus(lastHealthStatus: string | null, active: boolean): CardStatus {
+  if (!active) return 'not_configured';
+  if (!lastHealthStatus) return 'attention';
+  const s = lastHealthStatus.toLowerCase();
+  if (s === 'ok' || s === 'healthy' || s === 'success') return 'connected';
+  if (s === 'degraded' || s === 'pending' || s === 'unknown') return 'attention';
+  return 'error';
+}
+
+function toIso(d: Date | string | null): string | null {
+  if (!d) return null;
+  return d instanceof Date ? d.toISOString() : d;
+}
+
+integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
+  const projectId = c.req.param('projectId');
+  const userId = c.get('userId');
+  await assertProjectMember(projectId, userId);
+
+  const [project] = await db
+    .select({ repoPath: projects.repoPath, baseBranch: projects.baseBranch })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  if (!project) throw notFound('project');
+
+  const integrationRows = await db
+    .select()
+    .from(projectIntegrations)
+    .where(eq(projectIntegrations.projectId, projectId));
+
+  // Runners bound to this project + each device's git push-cred status.
+  const runnerRows = await db
+    .select({
+      runnerId: runners.id,
+      status: runners.status,
+      deviceId: runners.deviceId,
+      deviceName: devices.name,
+      gitCredentialRef: devices.gitCredentialRef,
+      lastSeenAt: runners.lastSeenAt,
+    })
+    .from(runners)
+    .leftJoin(devices, eq(devices.id, runners.deviceId))
+    .where(eq(runners.projectId, projectId));
+
+  const cards: StatusCard[] = [];
+
+  // --- GitHub (repo + per-device push-cred) ---
+  const remoteUrl = project.repoPath ? await readGitRemote(project.repoPath) : null;
+  const transport = classifyGitRemote(remoteUrl);
+  const deviceCreds = runnerRows
+    .filter((r) => r.deviceId)
+    .map((r) => ({
+      deviceId: r.deviceId,
+      deviceName: r.deviceName,
+      pushCredProvisioned: r.gitCredentialRef !== null,
+    }));
+  cards.push({
+    key: 'github',
+    label: 'GitHub',
+    status: project.repoPath ? 'connected' : 'not_configured',
+    detail: remoteUrl ?? project.repoPath ?? 'no repo configured',
+    lastSyncAt: null,
+    configured: Boolean(project.repoPath),
+    meta: { transport, remoteUrl, baseBranch: project.baseBranch, deviceCreds },
+  });
+
+  // --- Coolify (one card per configured integration) ---
+  const coolifyRows = integrationRows.filter((r) => r.provider === 'coolify');
+  if (coolifyRows.length === 0) {
+    cards.push({
+      key: 'coolify',
+      label: 'Coolify',
+      status: 'not_configured',
+      detail: 'no Coolify integration configured',
+      lastSyncAt: null,
+      configured: false,
+    });
+  } else {
+    for (const row of coolifyRows) {
+      cards.push({
+        key: `coolify:${row.environment}`,
+        label: `Coolify (${row.environment})`,
+        status: coolifyHealthToStatus(row.lastHealthStatus, row.active),
+        detail: row.lastHealthStatus
+          ? `last health: ${row.lastHealthStatus}`
+          : 'never health-checked',
+        lastSyncAt: toIso(row.lastHealthAt),
+        configured: true,
+        meta: { environment: row.environment, breakerOpen: row.breakerOpenedAt !== null },
+      });
+    }
+  }
+
+  // --- Runners / devices online ---
+  const totalRunners = runnerRows.length;
+  const onlineRunners = runnerRows.filter((r) => r.status === 'online').length;
+  cards.push({
+    key: 'runners',
+    label: 'Runners',
+    status:
+      totalRunners === 0 ? 'not_configured' : onlineRunners > 0 ? 'connected' : 'attention',
+    detail:
+      totalRunners === 0
+        ? 'no runners bound to this project'
+        : `${onlineRunners}/${totalRunners} online`,
+    lastSyncAt: null,
+    configured: totalRunners > 0,
+    meta: { online: onlineRunners, total: totalRunners },
+  });
+
+  // --- Postgres (the query above just succeeded → the DB is reachable) ---
+  cards.push({
+    key: 'postgres',
+    label: 'Postgres',
+    status: 'connected',
+    detail: 'core database reachable',
+    lastSyncAt: null,
+    configured: true,
+  });
+
+  // --- Forge MCP server (mounted at /mcp on this core) ---
+  cards.push({
+    key: 'mcp',
+    label: 'MCP server',
+    status: 'connected',
+    detail: 'Forge MCP server mounted at /mcp',
+    lastSyncAt: null,
+    configured: true,
+  });
+
+  // --- Sentry (server-side DSN presence only — no per-project quota API) ---
+  const sentryConfigured = Boolean(process.env.SENTRY_DSN);
+  cards.push({
+    key: 'sentry',
+    label: 'Sentry',
+    status: sentryConfigured ? 'connected' : 'not_configured',
+    detail: sentryConfigured ? 'error reporting enabled' : 'no SENTRY_DSN configured',
+    lastSyncAt: null,
+    configured: sentryConfigured,
+  });
+
+  // --- Claude (auth + quota are managed per-runner; no core-side backing data) ---
+  cards.push({
+    key: 'claude',
+    label: 'Claude',
+    status: 'not_configured',
+    detail: 'auth + quota managed per-runner (no core-side metric)',
+    lastSyncAt: null,
+    configured: false,
+  });
+
+  return c.json({ cards });
 });
 
 export async function loadIntegrationsForProvider(

@@ -363,13 +363,15 @@ describe('db/schema — devices', () => {
     expect(deviceStatuses).toEqual(['online', 'offline', 'revoked']);
   });
 
-  it('has the twelve documented columns', () => {
+  it('has the thirteen documented columns', () => {
     const names = getTableConfig(devices).columns.map((c) => c.name);
     expect(names.sort()).toEqual(
       [
         'agent_version',
         'capabilities',
         'created_at',
+        // ISS-305 — non-secret label for an auto-provisioned git push credential.
+        'git_credential_ref',
         'id',
         'last_seen_at',
         'name',

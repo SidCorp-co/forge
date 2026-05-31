@@ -70,6 +70,10 @@ export type JobEvent = typeof schema.jobEvents.$inferSelect;
 
 export type Device = typeof schema.devices.$inferSelect;
 
+// ISS-305 — runner browser-approve device-login grant code (mints a device
+// token, distinct from the desktop user-JWT pairing flow).
+export type DeviceLoginCode = typeof schema.deviceLoginCodes.$inferSelect;
+
 // ISS-271 — runner row now carries the per (device × project) repo checkout
 // (`repoPath`/`branch`), the server source of truth for the runner working dir.
 export type Runner = typeof schema.runners.$inferSelect;
