@@ -4,10 +4,11 @@
 // derived layout: markdown description, AC checklist, collapsible agent plan,
 // full PipelineTracker, Comments/Activity/Tasks tabs, and a properties rail.
 // Live via WS (`['issue',id]` / `['comments',id]` / `['activities',id]`). ISS-294.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Badge,
+  Breadcrumb,
   Button,
   Card,
   CardContent,
@@ -17,6 +18,7 @@ import {
   Collapsible,
   EmptyState,
   ErrorState,
+  HelpButton,
   IconButton,
   Markdown,
   Menu,
@@ -30,6 +32,8 @@ import {
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
+import { useToast } from "@/providers/toast-provider";
+import { useRecents, buildShareLink } from "@/features/shell";
 import { parseChecklist, statusToChip, statusToStage } from "../derive";
 import {
   usePatchIssue,
@@ -61,6 +65,8 @@ interface IssueDetailScreenProps {
 
 export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProps) {
   const router = useRouter();
+  const { toast } = useToast();
+  const { push: pushRecent } = useRecents();
   const [tab, setTab] = useState("comments");
 
   useRoom(projectRoom(projectId));
@@ -85,6 +91,26 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
     }
     return parseChecklist(issue?.acceptanceCriteria);
   }, [issue?.aiAcceptanceCriteria, issue?.acceptanceCriteria]);
+
+  // Track this issue as recently-viewed (surfaces in the ⌘K Recent group).
+  useEffect(() => {
+    if (!issue) return;
+    pushRecent({
+      kind: "issue",
+      id,
+      label: `${issue.displayId} · ${issue.title}`,
+      href: `/projects/${slug}/issues/${id}`,
+      icon: "list",
+    });
+  }, [issue?.displayId, issue?.title, id, slug, pushRecent]);
+
+  function copyLink() {
+    const url = buildShareLink(`/projects/${slug}/issues/${id}`);
+    navigator.clipboard?.writeText(url).then(
+      () => toast({ title: "Link copied", description: url, tone: "success" }),
+      () => toast({ title: "Couldn't copy link", tone: "error" }),
+    );
+  }
 
   if (issueQ.isLoading) {
     return (
@@ -117,8 +143,17 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
 
   return (
     <div className="mx-auto w-full min-h-dvh max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
+      <Breadcrumb
+        items={[
+          { label: slug, href: `/projects/${slug}` },
+          { label: "Issues", href: `/projects/${slug}/issues` },
+          { label: issue.displayId },
+        ]}
+        onNavigate={(href) => router.push(href)}
+      />
+
       {/* Header */}
-      <div className="mb-5 flex items-start gap-3">
+      <div className="mb-5 mt-3 flex items-start gap-3">
         <IconButton
           icon="arrowRight"
           aria-label="Back to issues"
@@ -134,6 +169,15 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
           <h1 className="fg-h2 mt-2 break-words">{issue.title}</h1>
         </div>
         <div className="hidden flex-none items-center gap-2 sm:flex">
+          <HelpButton
+            summary="The full record for one issue: pipeline progress, description, acceptance criteria, the agent plan, and Comments / Activity / Tasks."
+            actions={[
+              "Run the next pipeline step",
+              "Edit properties (status, priority, assignee) in the rail",
+              "Jump to related sessions, pipeline, and runs",
+            ]}
+            shortcuts={[{ keys: "⌘K", desc: "Open the command palette" }]}
+          />
           <Button
             variant="secondary"
             size="sm"
@@ -152,6 +196,12 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
                 icon: "agent",
                 onSelect: () => router.push(`/projects/${slug}/sessions`),
               },
+              {
+                label: "Open pipeline",
+                icon: "pipeline",
+                onSelect: () => router.push(`/projects/${slug}/pipeline`),
+              },
+              { label: "Copy link", icon: "link", onSelect: copyLink },
             ]}
             trigger={<IconButton icon="more" aria-label="Issue actions" />}
           />
@@ -173,7 +223,11 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
             </CardHeader>
             <CardContent>
               {issue.description ? (
-                <Markdown>{issue.description}</Markdown>
+                // Clamp prose to a comfortable reading measure (~70ch); data
+                // tables elsewhere stay full-width.
+                <div className="max-w-[70ch]">
+                  <Markdown>{issue.description}</Markdown>
+                </div>
               ) : (
                 <p className="fg-body-sm text-muted">No description.</p>
               )}

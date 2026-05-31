@@ -8,6 +8,7 @@
 import { useMemo, useState } from "react";
 import {
   ErrorState,
+  HelpButton,
   KanbanBoard,
   KanbanCard,
   KanbanColumn,
@@ -39,7 +40,7 @@ interface Selection {
 }
 
 export function PipelineBoard({ scope }: PipelineBoardProps) {
-  const { projectId } = scope;
+  const { projectId, slug } = scope;
   const [selected, setSelected] = useState<Selection | null>(null);
 
   // Live updates: this project's room invalidates the board's queries.
@@ -58,6 +59,17 @@ export function PipelineBoard({ scope }: PipelineBoardProps) {
         <p className="fg-body-sm hidden text-muted sm:block">
           Issues flow left → right; a stage starts once the previous finishes.
         </p>
+        <div className="ml-auto">
+          <HelpButton
+            summary="A kanban of this project's issues across the 7 pipeline stages (triage → release). Cards show the live run status and cost; opening one reveals its full run."
+            actions={[
+              "Click a card to inspect its pipeline run",
+              "Pause / resume / cancel an active run from the run panel",
+              "Jump from a run to its issue",
+            ]}
+            shortcuts={[{ keys: "⌘K", desc: "Open the command palette" }]}
+          />
+        </div>
       </header>
 
       {issuesQ.isError || runsQ.isError ? (
@@ -109,6 +121,7 @@ export function PipelineBoard({ scope }: PipelineBoardProps) {
         onClose={() => setSelected(null)}
         issue={selected?.issue ?? null}
         runId={selected?.runId ?? null}
+        slug={slug}
       />
     </div>
   );

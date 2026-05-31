@@ -28,10 +28,15 @@ export function TR({ className, ...props }: HTMLAttributes<HTMLTableRowElement>)
   );
 }
 
-export function TH({ className, ...props }: ThHTMLAttributes<HTMLTableCellElement>) {
-  return <th className={cn("fg-overline px-4 py-2.5 font-mono", className)} {...props} />;
+// Vertical padding follows the global density var (set on <html data-density>);
+// horizontal padding stays fixed. Inline style wins over the utility's py so
+// compact mode tightens rows everywhere the kit Table is used.
+const DENSITY_PY = { paddingTop: "var(--density-row-py)", paddingBottom: "var(--density-row-py)" };
+
+export function TH({ className, style, ...props }: ThHTMLAttributes<HTMLTableCellElement>) {
+  return <th className={cn("fg-overline px-4 font-mono", className)} style={{ ...DENSITY_PY, ...style }} {...props} />;
 }
 
-export function TD({ className, ...props }: TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={cn("fg-body-sm px-4 py-2.5 text-fg", className)} {...props} />;
+export function TD({ className, style, ...props }: TdHTMLAttributes<HTMLTableCellElement>) {
+  return <td className={cn("fg-body-sm px-4 text-fg", className)} style={{ ...DENSITY_PY, ...style }} {...props} />;
 }

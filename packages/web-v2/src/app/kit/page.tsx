@@ -12,8 +12,9 @@ import {
   SegmentedControl, Select, SessionRowSkeleton, Skeleton, SlideOver, Spinner,
   STAGES, Stat, StatusChip,
   StreamingText, Table, TBody, TD, TH, THead, TR, Tabs, Textarea, Toggle, Tooltip,
-  TopBar, useAnimatedNumber, useElapsed,
-  type Command, type NotificationItem, type StageKey, type StatusKey,
+  TopBar, HelpButton, PinnedTabBar, useAnimatedNumber, useElapsed,
+  type Command, type NavCluster, type NotificationItem, type PinnedTab,
+  type StageKey, type StatusKey, type TopBarDensity,
 } from "@/design";
 import {
   ForgeMascot, ProjectLoader, ColdBoot, AgentWorking, ReconnectingBanner,
@@ -51,20 +52,50 @@ const WORKSPACE_NAV = [
   { key: "runners", label: "Runners", icon: "server" as const },
   { key: "sessions", label: "Sessions", icon: "inbox" as const },
 ];
-const PROJECT_NAV = [
-  { key: "board", label: "Board", icon: "board" as const },
-  { key: "pipeline", label: "Pipeline", icon: "pipeline" as const },
-  { key: "skills", label: "Skills", icon: "agent" as const },
-  { key: "schedules", label: "Schedules", icon: "calendar" as const },
+
+const PROJECT_CLUSTERS: NavCluster[] = [
+  {
+    key: "work",
+    kicker: "Work",
+    items: [
+      { key: "board", label: "Issues", icon: "list" },
+      { key: "pipeline", label: "Pipeline", icon: "pipeline" },
+      { key: "sessions", label: "Sessions", icon: "agent" },
+    ],
+  },
+  {
+    key: "insight",
+    kicker: "Insight",
+    items: [
+      { key: "activity", label: "Activity", icon: "activity" },
+      { key: "monitor", label: "Monitor", icon: "monitor" },
+      { key: "pm", label: "PM", icon: "shield" },
+    ],
+  },
+  {
+    key: "config",
+    kicker: "Config",
+    collapsible: true,
+    items: [
+      { key: "context", label: "Context", icon: "inbox" },
+      { key: "skills", label: "Skills", icon: "star" },
+      { key: "schedules", label: "Schedules", icon: "calendar" },
+      { key: "settings", label: "Settings", icon: "settings" },
+    ],
+  },
 ];
 
 const COMMANDS: Command[] = [
-  { label: "Go to Board", icon: "board", kbd: "G B" },
-  { label: "Go to Pipeline", icon: "pipeline", kbd: "G P" },
-  { label: "Go to Sessions", icon: "inbox", kbd: "G E" },
-  { label: "All projects", icon: "folder", kbd: "G O" },
-  { label: "New issue", icon: "plus", kbd: "C" },
-  { label: "Pair a device", icon: "monitor" },
+  { label: "FRG-238 · Review changes", icon: "clock", group: "recent" },
+  { label: "forge-core", icon: "pin", group: "pinned", keywords: "project" },
+  { label: "Issues · active", icon: "list", group: "pinned", keywords: "view" },
+  { label: "Go to Board", icon: "board", kbd: "G B", group: "navigate" },
+  { label: "Go to Pipeline", icon: "pipeline", kbd: "G P", group: "navigate" },
+  { label: "Go to Sessions", icon: "inbox", kbd: "G E", group: "navigate" },
+  { label: "All projects", icon: "folder", kbd: "G O", group: "navigate" },
+  { label: "Create issue", icon: "plus", kbd: "C", group: "actions" },
+  { label: "Pair a device", icon: "server", group: "actions" },
+  { label: "Cancel a run", icon: "stop", group: "actions" },
 ];
 
 const NOTES: NotificationItem[] = [
@@ -82,7 +113,7 @@ const TRACKER_CASES: { stage: StageKey; status: "running" | "done" | "failed" | 
 
 const NAV_ANCHORS = [
   "tokens", "type", "buttons", "status", "avatars", "tags", "forms", "cards",
-  "pipeline", "kanban", "navrail", "topbar", "overlays", "states",
+  "pipeline", "kanban", "navrail", "topbar", "shell", "overlays", "states",
   "mascot", "skeletons", "progress", "feedback", "realtime",
   "formcontrols", "display", "disclosure", "data", "overlays2", "pageload",
 ];
@@ -356,6 +387,15 @@ export default function KitPage() {
   const [toggleOn, setToggleOn] = useState(true);
   const [view, setView] = useState<"cards" | "list">("cards");
   const [navActive, setNavActive] = useState("board");
+  // Shell demos (ISS-304): collapse, clusters, density, pinned tabs.
+  const [navCollapsed, setNavCollapsed] = useState(false);
+  const [navGroups, setNavGroups] = useState<Record<string, boolean>>({ config: false });
+  const [kitDensity, setKitDensity] = useState<TopBarDensity>("comfortable");
+  const [kitTabs, setKitTabs] = useState<PinnedTab[]>([
+    { id: "issues-active", label: "Issues · active", icon: "list", href: "/projects/forge-core/issues?filter=active" },
+    { id: "pipeline", label: "Pipeline", icon: "pipeline", href: "/projects/forge-core/pipeline" },
+  ]);
+  const [kitActiveTab, setKitActiveTab] = useState("/projects/forge-core/issues?filter=active");
 
   return (
     <div className="min-h-screen bg-app">
@@ -586,27 +626,63 @@ export default function KitPage() {
             </div>
           </Section>
 
-          <Section id="navrail" title="Nav rail" hint="Two-tier: Workspace links + project switcher + project sub-nav.">
-            <div className="h-[460px] overflow-hidden rounded-md border border-line">
+          <Section id="navrail" title="Nav rail" hint="Two-tier: Workspace links + project switcher + clustered project sub-nav (Work / Insight / Config). Collapses to icon-only; Config cluster collapses; Docs pinned bottom-left.">
+            <div className="mb-3">
+              <Button variant="secondary" size="sm" icon="panelLeft" onClick={() => setNavCollapsed((c) => !c)}>
+                {navCollapsed ? "Expand rail" : "Collapse to icons"}
+              </Button>
+            </div>
+            <div className="h-[520px] overflow-hidden rounded-md border border-line">
               <NavRail
                 workspaceItems={WORKSPACE_NAV}
-                projectItems={PROJECT_NAV}
+                projectClusters={PROJECT_CLUSTERS}
                 activeKey={navActive}
                 onNavigate={setNavActive}
+                onDocs={() => setNavActive("docs")}
                 project={{ name: "forge-core", initials: "FRG", tint: "var(--flame-50)", ink: "var(--flame-700)" }}
                 user={{ initials: "SK" }}
+                collapsed={navCollapsed}
+                onToggleCollapsed={() => setNavCollapsed((c) => !c)}
+                groupOpen={navGroups}
+                onToggleGroup={(k) => setNavGroups((g) => ({ ...g, [k]: g[k] === false ? true : false }))}
               />
             </div>
           </Section>
 
-          <Section id="topbar" title="Top bar">
+          <Section id="topbar" title="Top bar" hint="Search / ⌘K, density toggle (Comfortable/Compact), notifications, primary action.">
             <div className="overflow-hidden rounded-md border border-line">
               <TopBar
                 title="Board"
                 notificationCount={2}
+                density={kitDensity}
+                onDensityChange={setKitDensity}
                 onCommandPalette={() => setPaletteOpen(true)}
                 onNotifications={() => setNotesOpen((v) => !v)}
               />
+            </div>
+          </Section>
+
+          <Section id="shell" title="Shell · help, pinned tabs" hint="HelpButton/HelpPopover (what the page does / actions / shortcuts) and the horizontal pinned-view tab bar (route + filter deep-links).">
+            <div className="flex flex-col gap-5">
+              <Row>
+                <HelpButton
+                  summary="Reusable contextual help — drop it on any complex surface. Closeable (Esc / click-away / ✕); focus returns to the trigger."
+                  actions={["Explain what the page does", "List the primary actions", "Show keyboard shortcuts"]}
+                  shortcuts={[
+                    { keys: "⌘K", desc: "Command palette" },
+                    { keys: "esc", desc: "Close" },
+                  ]}
+                />
+                <span className="fg-body-sm text-muted">← click to open the help popover</span>
+              </Row>
+              <div className="overflow-hidden rounded-md border border-line">
+                <PinnedTabBar
+                  tabs={kitTabs}
+                  activeHref={kitActiveTab}
+                  onSelect={setKitActiveTab}
+                  onRemove={(id) => setKitTabs((t) => t.filter((x) => x.id !== id))}
+                />
+              </div>
             </div>
           </Section>
 

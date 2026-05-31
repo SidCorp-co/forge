@@ -4,9 +4,11 @@
 // filter / sort / pagination via the search endpoint; per-row lazy cost + dep
 // badges; inline edit (transition + patch); live via WS (`['issues','search']`
 // invalidated by the event-router). ISS-293.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import {
   BoardRowSkeleton,
+  Button,
   EmptyState,
   ErrorState,
   Input,
@@ -24,6 +26,7 @@ import {
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
+import { usePinnedViews, encodeFilters, decodeFilter, decodeNumber } from "@/features/shell";
 import { ISSUES_PAGE_SIZE } from "../api";
 import { groupRows } from "../derive";
 import { useIssues, usePatchIssue, useProjectMembers, useTransitionIssue } from "../hooks";
@@ -59,12 +62,34 @@ interface IssuesScreenProps {
 
 export function IssuesScreen({ scope }: IssuesScreenProps) {
   const { projectId, slug } = scope;
+  const pathname = usePathname() || `/projects/${slug}/issues`;
+  const pinnedViews = usePinnedViews();
   const [rawQ, setRawQ] = useState("");
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<IssueFilter>("all");
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const [sort, setSort] = useState<IssueSort>("createdAt:desc");
   const [page, setPage] = useState(1);
+  // Gate URL-sync until the initial hydrate-from-URL has run, so we don't clobber
+  // a deep-link's query on first paint.
+  const hydrated = useRef(false);
+
+  // Hydrate filter state from the URL once on mount. This makes pinned-view
+  // deep-links (route + ?filters) restore the exact view. Read from
+  // window.location to avoid forcing a Suspense boundary around the screen.
+  useEffect(() => {
+    const sp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    if (sp) {
+      const qv = sp.get("q") ?? "";
+      setRawQ(qv);
+      setQ(qv);
+      setFilter(decodeFilter<IssueFilter>(sp, "filter", "all"));
+      setGroupBy(decodeFilter<GroupBy>(sp, "groupBy", "none"));
+      setSort(decodeFilter<IssueSort>(sp, "sort", "createdAt:desc"));
+      setPage(decodeNumber(sp, "page", 1));
+    }
+    hydrated.current = true;
+  }, []);
 
   // Debounce the search box (~300ms) → server `q`.
   useEffect(() => {
@@ -72,11 +97,32 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
     return () => clearTimeout(t);
   }, [rawQ]);
 
-  // Any filter/search/sort change resets to page 1.
+  // Any filter/search/sort change resets to page 1 (after the initial hydrate).
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional reset
   useEffect(() => {
-    setPage(1);
+    if (hydrated.current) setPage(1);
   }, [q, filter, sort]);
+
+  // Mirror the current view into the URL (shallow — no navigation / refetch) so
+  // it is copy-pasteable and pinnable.
+  const viewQuery = useMemo(
+    () =>
+      encodeFilters({
+        q: q || undefined,
+        filter: filter !== "all" ? filter : undefined,
+        groupBy: groupBy !== "none" ? groupBy : undefined,
+        sort: sort !== "createdAt:desc" ? sort : undefined,
+        page: page > 1 ? page : undefined,
+      }),
+    [q, filter, groupBy, sort, page],
+  );
+  useEffect(() => {
+    if (!hydrated.current || typeof window === "undefined") return;
+    window.history.replaceState(window.history.state, "", `${pathname}${viewQuery}`);
+  }, [pathname, viewQuery]);
+
+  const viewHref = `${pathname}${viewQuery}`;
+  const isPinned = pinnedViews.isPinned(viewHref);
 
   useRoom(projectRoom(projectId));
 
@@ -137,6 +183,23 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
           onChange={(v) => setSort(v as IssueSort)}
           className="w-44"
         />
+        <Button
+          variant={isPinned ? "secondary" : "ghost"}
+          size="sm"
+          icon="pin"
+          className="ml-auto"
+          aria-pressed={isPinned}
+          onClick={() =>
+            pinnedViews.toggle({
+              id: viewHref,
+              label: `Issues${filter !== "all" ? ` · ${filter}` : ""}${q ? ` · "${q}"` : ""}`,
+              icon: "list",
+              href: viewHref,
+            })
+          }
+        >
+          {isPinned ? "Pinned" : "Pin view"}
+        </Button>
       </div>
 
       {issuesQ.isLoading && (

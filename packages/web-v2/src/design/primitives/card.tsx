@@ -24,6 +24,13 @@ export function CardTitle({ className, ...props }: HTMLAttributes<HTMLHeadingEle
   return <h3 className={cn("fg-h3", className)} {...props} />;
 }
 
-export function CardContent({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("px-5 py-4", className)} {...props} />;
+export function CardContent({ className, style, ...props }: HTMLAttributes<HTMLDivElement>) {
+  // Vertical padding follows the global density var; compact mode tightens it.
+  return (
+    <div
+      className={cn("px-5", className)}
+      style={{ paddingTop: "var(--density-card-py)", paddingBottom: "var(--density-card-py)", ...style }}
+      {...props}
+    />
+  );
 }

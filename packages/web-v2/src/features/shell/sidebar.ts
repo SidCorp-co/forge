@@ -1,0 +1,49 @@
+'use client';
+
+// Sidebar (NavRail) UI state: icon-only collapse + per-cluster open/closed.
+// NavRail itself stays presentational — this hook owns the persisted state and
+// the layout passes it down.
+import { useCallback } from 'react';
+import { usePersistedState } from '@/lib/utils/use-persisted-state';
+
+export interface SidebarState {
+  /** Icon-only rail when true. */
+  collapsed: boolean;
+  toggleCollapsed: () => void;
+  /** Per-cluster open map keyed by cluster key. Missing key ⇒ open. */
+  groupOpen: Record<string, boolean>;
+  toggleGroup: (key: string) => void;
+}
+
+interface Persisted {
+  collapsed: boolean;
+  groupOpen: Record<string, boolean>;
+}
+
+// Config cluster starts collapsed by default (acceptance criterion); others open.
+const DEFAULT: Persisted = { collapsed: false, groupOpen: { config: false } };
+
+export function useSidebar(): SidebarState {
+  const [state, setState] = usePersistedState<Persisted>('web-v2:sidebar', DEFAULT);
+
+  const toggleCollapsed = useCallback(
+    () => setState((s) => ({ ...s, collapsed: !s.collapsed })),
+    [setState],
+  );
+
+  const toggleGroup = useCallback(
+    (key: string) =>
+      setState((s) => ({
+        ...s,
+        groupOpen: { ...s.groupOpen, [key]: s.groupOpen[key] === false ? true : false },
+      })),
+    [setState],
+  );
+
+  return {
+    collapsed: state.collapsed,
+    toggleCollapsed,
+    groupOpen: state.groupOpen ?? {},
+    toggleGroup,
+  };
+}

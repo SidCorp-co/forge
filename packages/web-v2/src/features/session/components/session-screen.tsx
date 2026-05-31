@@ -4,7 +4,7 @@
 // Rerun / Fork), two-pane body (thread + context rail), sticky composer.
 // Subscribes to the project WS room so persisted-turn invalidations stream the
 // caret + live updates (ISS-291 model — no client-side stream reducer).
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AgentWorking,
@@ -12,12 +12,16 @@ import {
   EmptyState,
   ErrorState,
   IconButton,
+  Menu,
   MonoTag,
   ProjectLoader,
   SlideOver,
   StatusChip,
   useElapsed,
 } from "@/design";
+import { useToast } from "@/providers/toast-provider";
+import { usePersistedState } from "@/lib/utils/use-persisted-state";
+import { useRecents, buildShareLink } from "@/features/shell";
 import {
   deriveSessionDisplayStatus,
   deriveStage,
@@ -49,11 +53,37 @@ interface SessionScreenProps {
 
 export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
   const router = useRouter();
+  const { toast } = useToast();
+  const { push: pushRecent } = useRecents();
   const sessionQ = useSession(sessionId);
   const turnsQ = useSessionTurns(sessionId);
   const [railOpen, setRailOpen] = useState(false);
+  // Desktop context-rail collapse (persisted). Below lg the rail is a SlideOver.
+  const [railCollapsed, setRailCollapsed] = usePersistedState("web-v2:context-rail", false);
 
   const session = sessionQ.data;
+  const issueId = session?.metadata?.issueId;
+
+  // Track this session as recently-viewed (surfaces in the ⌘K Recent group).
+  useEffect(() => {
+    if (!session || !projectSlug) return;
+    pushRecent({
+      kind: "session",
+      id: session.id,
+      label: session.title ?? `Session ${session.id.slice(0, 8)}`,
+      href: `/projects/${projectSlug}/sessions/${session.id}`,
+      icon: "agent",
+    });
+  }, [session?.id, session?.title, projectSlug, pushRecent]);
+
+  function copyLink() {
+    if (!projectSlug) return;
+    const url = buildShareLink(`/projects/${projectSlug}/sessions/${sessionId}`);
+    navigator.clipboard?.writeText(url).then(
+      () => toast({ title: "Link copied", description: url, tone: "success" }),
+      () => toast({ title: "Couldn't copy link", tone: "error" }),
+    );
+  }
   // Subscribe to the project room once we know the project — the event-router
   // invalidates ['agent-session', id, 'turns'] on turn.* events.
   useRoom(session ? projectRoom(session.projectId) : null);
@@ -145,11 +175,37 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
                 Fork
               </Button>
             )}
+            <Menu
+              align="right"
+              items={[
+                ...(issueId && projectSlug
+                  ? [
+                      {
+                        label: "Open issue",
+                        icon: "list" as const,
+                        onSelect: () => router.push(`/projects/${projectSlug}/issues/${issueId}`),
+                      },
+                    ]
+                  : []),
+                ...(session.deviceId
+                  ? [{ label: "Open runner", icon: "server" as const, onSelect: () => router.push("/runners") }]
+                  : []),
+                { label: "Copy link", icon: "link" as const, onSelect: copyLink },
+              ]}
+              trigger={<IconButton icon="more" aria-label="Session actions" className="min-h-11 min-w-11" />}
+            />
             <IconButton
               icon="rows"
               aria-label="Show context"
               className="min-h-11 min-w-11 lg:hidden"
               onClick={() => setRailOpen(true)}
+            />
+            <IconButton
+              icon={railCollapsed ? "chevronLeft" : "panelLeft"}
+              aria-label={railCollapsed ? "Show context rail" : "Hide context rail"}
+              aria-pressed={railCollapsed}
+              className="hidden min-h-11 min-w-11 lg:inline-flex"
+              onClick={() => setRailCollapsed((c) => !c)}
             />
           </div>
         </div>
@@ -191,10 +247,12 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
           />
         </div>
 
-        {/* Desktop rail */}
-        <aside className="hidden w-80 shrink-0 overflow-y-auto border-l border-line px-5 py-6 lg:block">
-          <ContextRail session={session} items={items} />
-        </aside>
+        {/* Desktop rail — collapsible (persisted); hidden when collapsed so main widens. */}
+        {!railCollapsed && (
+          <aside className="hidden w-80 shrink-0 overflow-y-auto border-l border-line px-5 py-6 lg:block">
+            <ContextRail session={session} items={items} />
+          </aside>
+        )}
       </div>
 
       {/* Mobile rail */}

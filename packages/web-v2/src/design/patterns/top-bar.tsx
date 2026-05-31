@@ -3,6 +3,11 @@
 import { Icon } from "@/design/icons/icon";
 import { Button } from "@/design/primitives/button";
 import { Kbd } from "@/design/primitives/kbd";
+import { SegmentedControl } from "@/design/primitives/segmented-control";
+import { Tooltip } from "@/design/primitives/tooltip";
+import { cn } from "@/lib/utils/cn";
+
+export type TopBarDensity = "comfortable" | "compact";
 
 export interface TopBarProps {
   title?: string;
@@ -10,6 +15,11 @@ export interface TopBarProps {
   onCommandPalette?: () => void;
   onNotifications?: () => void;
   onNewIssue?: () => void;
+  /** Global display density. Renders a Comfortable/Compact toggle when set. */
+  density?: TopBarDensity;
+  onDensityChange?: (d: TopBarDensity) => void;
+  /** When true the header shrinks (used for shrink-on-scroll). */
+  scrolled?: boolean;
   /**
    * When set, renders a subtle "Back to classic" link to the v1 UI. This MUST
    * resolve as a raw `<a href>` (not `next/link`), because the app runs under
@@ -25,10 +35,18 @@ export function TopBar({
   onCommandPalette,
   onNotifications,
   onNewIssue,
+  density,
+  onDensityChange,
+  scrolled = false,
   backToClassicHref,
 }: TopBarProps) {
   return (
-    <header className="flex h-14 flex-none items-center gap-3 border-b border-line bg-surface px-5">
+    <header
+      className={cn(
+        "sticky top-0 z-30 flex flex-none items-center gap-3 border-b border-line bg-surface px-5 transition-[height] duration-150",
+        scrolled ? "h-11" : "h-14",
+      )}
+    >
       {title && <h1 className="fg-h3 mr-2">{title}</h1>}
 
       <button
@@ -42,6 +60,18 @@ export function TopBar({
       </button>
 
       <div className="ml-auto flex items-center gap-2">
+        {density && onDensityChange && (
+          <Tooltip label="Display density" side="bottom">
+            <SegmentedControl<TopBarDensity>
+              value={density}
+              onChange={onDensityChange}
+              options={[
+                { value: "comfortable", icon: "rows" },
+                { value: "compact", icon: "list" },
+              ]}
+            />
+          </Tooltip>
+        )}
         {backToClassicHref && (
           // Raw anchor (NOT next/link) — must escape the /v2 basePath to reach v1.
           <a

@@ -6,7 +6,7 @@
 // events only arrive on subscribed rooms, so we fan out a `useRoom` per project
 // (bounded list) — `pipeline_run.status_changed` then refreshes
 // `['projects','health']` + `['pipeline-runs','list']`.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Badge,
   Card,
@@ -16,6 +16,7 @@ import {
   EmptyState,
   ErrorState,
   HealthDot,
+  HelpButton,
   MonoTag,
   ProgressBar,
   ProjectLoader,
@@ -56,6 +57,16 @@ function RoomSub({ room }: { room: string }) {
 export function OpsMonitor() {
   const [tab, setTab] = useState("monitor");
   const [runId, setRunId] = useState<string | null>(null);
+
+  // Open a run directly from a shared deep-link (`/v2/ops?run=<id>`).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const shared = new URLSearchParams(window.location.search).get("run");
+    if (shared) {
+      setRunId(shared);
+      setTab("runs");
+    }
+  }, []);
 
   const projectsQ = useProjects();
   const healthQ = useProjectHealth();
@@ -99,12 +110,22 @@ export function OpsMonitor() {
         <RoomSub key={p.id} room={projectRoom(p.id)} />
       ))}
 
-      <header className="mb-5">
-        <h1 className="fg-h2">Ops</h1>
-        <p className="fg-body-sm mt-1 text-muted">
-          Cross-project run telemetry, step durations, and spend — live across {projects.length}{" "}
-          project{projects.length === 1 ? "" : "s"}.
-        </p>
+      <header className="mb-5 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="fg-h2">Ops</h1>
+          <p className="fg-body-sm mt-1 text-muted">
+            Cross-project run telemetry, step durations, and spend — live across {projects.length}{" "}
+            project{projects.length === 1 ? "" : "s"}.
+          </p>
+        </div>
+        <HelpButton
+          summary="A live cross-project view of pipeline runs: real-time monitor, throughput and stage-duration progress, project health, and a recent-runs list."
+          actions={[
+            "Switch tabs: Monitor · Progress · Health · Runs",
+            "Open any run from the Runs tab to inspect its timeline and cost",
+          ]}
+          shortcuts={[{ keys: "⌘K", desc: "Open the command palette" }]}
+        />
       </header>
 
       <div className="overflow-x-auto">

@@ -107,6 +107,21 @@
 }
 
 /* ============================================================
+   Density — Comfortable (default) vs Compact. The active mode is set on
+   <html data-density> by features/shell/density.tsx. Table cells and card
+   content read these vars (via inline style) so the SAME components compact
+   globally with no prop drilling.
+   ============================================================ */
+:root {
+  --density-row-py: 0.625rem;  /* TD / TH vertical padding (~py-2.5) */
+  --density-card-py: 1rem;     /* Card content vertical padding (~py-4) */
+}
+[data-density="compact"] {
+  --density-row-py: 0.3125rem; /* ~py-1.5 */
+  --density-card-py: 0.625rem; /* ~py-2.5 */
+}
+
+/* ============================================================
    Motion — calm & quick (120–200ms ease-out). The one flourish is
    the live/active pulse on pipeline beads and attention dots.
    ============================================================ */

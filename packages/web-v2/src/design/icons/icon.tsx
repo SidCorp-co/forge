@@ -1,10 +1,11 @@
 import {
-  Activity, Archive, ArrowRight, Bell, Calendar, Check, ChevronDown,
-  ChevronRight, ChevronsUpDown, Circle, Clock, Cpu, DollarSign, Filter,
-  Folder, GitBranch, GitFork, Github, Inbox, LayoutGrid, Link as LinkIcon,
-  List, Lock, type LucideIcon, Mail, Monitor, MoreHorizontal, Pause, Play,
-  Plus, RotateCw, Rows3, Search, Server, Settings, Shield, Sparkles, Square,
-  Star, Trash2, TriangleAlert, Workflow, X,
+  Activity, Archive, ArrowRight, Bell, BookOpen, Calendar, Check, ChevronDown,
+  ChevronLeft, ChevronRight, ChevronsUpDown, Circle, CircleHelp, Clock, Command,
+  Cpu, DollarSign, Filter, Folder, GitBranch, GitFork, Github, Inbox, Keyboard,
+  LayoutGrid, Link as LinkIcon, List, Lock, type LucideIcon, Mail, Monitor,
+  MoreHorizontal, PanelLeftClose, Pause, Pin, Play, Plus, RotateCw, Rows3,
+  Search, Server, Settings, Shield, Sparkles, Square, Star, Trash2,
+  TriangleAlert, Workflow, X,
 } from "lucide-react";
 
 /* Semantic icon names (carried over from the prototype's Icon.jsx) mapped to
@@ -54,6 +55,13 @@ const ICONS = {
   star: Star,
   archive: Archive,
   alert: TriangleAlert,
+  pin: Pin,
+  book: BookOpen,
+  panelLeft: PanelLeftClose,
+  chevronLeft: ChevronLeft,
+  keyboard: Keyboard,
+  help: CircleHelp,
+  command: Command,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;

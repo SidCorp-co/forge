@@ -6,7 +6,8 @@
 // WS-live via key `['pipeline-run', id]`). Pause/Resume/Cancel hit real
 // endpoints; Rerun/Fork have NO backend (info toast, no phantom call). Mirrors
 // the prototype `web-redesign-plan/ui-kit/RunDetail.jsx`.
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Button,
   EmptyState,
@@ -25,6 +26,7 @@ import {
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
+import { useRecents, buildShareLink } from "@/features/shell";
 import {
   formatDurationMs,
   formatUsd,
@@ -45,6 +47,8 @@ interface RunDetailProps {
   issue: PipelineIssueRow | null;
   /** Run to inspect (null when the issue has never run). */
   runId: string | null;
+  /** Active project slug — enables the "Open issue" cross-link when present. */
+  slug?: string;
 }
 
 const TABS = [
@@ -53,9 +57,11 @@ const TABS = [
   { value: "cost", label: "Cost" },
 ];
 
-export function RunDetail({ open, onClose, issue, runId }: RunDetailProps) {
+export function RunDetail({ open, onClose, issue, runId, slug }: RunDetailProps) {
   const [tab, setTab] = useState("timeline");
   const { toast } = useToast();
+  const router = useRouter();
+  const { push: pushRecent } = useRecents();
   const runQ = useRun(runId ?? undefined, open);
   const pause = usePauseRun();
   const resume = useResumeRun();
@@ -63,6 +69,27 @@ export function RunDetail({ open, onClose, issue, runId }: RunDetailProps) {
 
   const run = runQ.data;
   const taskIssueId = issue?.id ?? run?.issueId ?? null;
+
+  // Track the opened run as recently-viewed (surfaces in the ⌘K Recent group).
+  useEffect(() => {
+    if (!open || !runId) return;
+    pushRecent({
+      kind: "run",
+      id: runId,
+      label: issue?.displayId ? `${issue.displayId} · run` : `run ${runId.slice(0, 8)}`,
+      href: `/ops?run=${runId}`,
+      icon: "pipeline",
+    });
+  }, [open, runId, issue?.displayId, pushRecent]);
+
+  function copyLink() {
+    if (!runId) return;
+    const url = buildShareLink(`/ops?run=${runId}`);
+    navigator.clipboard?.writeText(url).then(
+      () => toast({ title: "Link copied", description: url, tone: "success" }),
+      () => toast({ title: "Couldn't copy link", tone: "error" }),
+    );
+  }
   const label = issue?.displayId ?? (runId ? `run ${runId.slice(0, 8)}` : "run");
   const title = issue?.title ?? "Pipeline run";
   const branch = issue?.metadata?.branchConfig?.branch ?? null;
@@ -76,10 +103,25 @@ export function RunDetail({ open, onClose, issue, runId }: RunDetailProps) {
   const notSupported = (action: string) =>
     toast({ tone: "info", title: `${action} isn't supported yet` });
 
-  const menuItems: MenuItem[] = [
+  const menuItems: MenuItem[] = [];
+  // Related / Jump-to cross-links (run ↔ issue) + shareable deep-link.
+  if (slug && taskIssueId) {
+    menuItems.push({
+      label: "Open issue",
+      icon: "list",
+      onSelect: () => {
+        onClose();
+        router.push(`/projects/${slug}/issues/${taskIssueId}`);
+      },
+    });
+  }
+  if (runId) {
+    menuItems.push({ label: "Copy link", icon: "link", onSelect: copyLink });
+  }
+  menuItems.push(
     { label: "Rerun", icon: "rerun", onSelect: () => notSupported("Rerun") },
     { label: "Fork", icon: "fork", onSelect: () => notSupported("Fork") },
-  ];
+  );
   if (isActive && runId) {
     menuItems.push({
       label: "Cancel run",
