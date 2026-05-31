@@ -33,6 +33,7 @@ const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
   { key: "runners", label: "Runners", icon: "server", href: "/runners" },
   { key: "sessions", label: "Sessions", icon: "agent", href: "/sessions" },
   { key: "pipeline-ops", label: "Pipeline ops", icon: "pipeline", href: "/ops" },
+  { key: "settings", label: "Settings", icon: "settings", href: "/settings" },
 ];
 
 /** A project-tier nav item. `sub` is appended to `/projects/[slug]`; `href`
@@ -55,13 +56,23 @@ const PROJECT_INSIGHT: ProjItem[] = [
   { key: "proj-monitor", label: "Monitor", icon: "monitor", href: "/ops" },
   { key: "proj-pm", label: "PM", icon: "shield", sub: "/pm" },
 ];
+// Context = the two knowledge surfaces (user-provided sources + system
+// breadcrumbs). Settings moved to the workspace tier (user-scoped), so it is no
+// longer a project-scoped nav item.
+const PROJECT_CONTEXT: ProjItem[] = [
+  { key: "proj-knowledge", label: "Knowledge", icon: "book", sub: "/knowledge" },
+  { key: "proj-memory", label: "Memory", icon: "archive", sub: "/memory" },
+];
 const PROJECT_CONFIG: ProjItem[] = [
-  { key: "proj-context", label: "Context", icon: "inbox", sub: "/context" },
   { key: "proj-skills", label: "Skills", icon: "star", sub: "/skills" },
   { key: "proj-schedules", label: "Schedules", icon: "calendar", sub: "/schedules" },
-  { key: "proj-settings", label: "Settings", icon: "settings", sub: "/settings" },
 ];
-const PROJECT_ITEMS: ProjItem[] = [...PROJECT_WORK, ...PROJECT_INSIGHT, ...PROJECT_CONFIG];
+const PROJECT_ITEMS: ProjItem[] = [
+  ...PROJECT_WORK,
+  ...PROJECT_INSIGHT,
+  ...PROJECT_CONTEXT,
+  ...PROJECT_CONFIG,
+];
 
 /** Parse the active project slug out of the (basePath-stripped) pathname. */
 function activeSlug(pathname: string): string | null {
@@ -166,6 +177,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     () => [
       { key: "work", kicker: "Work", items: PROJECT_WORK },
       { key: "insight", kicker: "Insight", items: PROJECT_INSIGHT },
+      { key: "context", kicker: "Context", items: PROJECT_CONTEXT, collapsible: true },
       { key: "config", kicker: "Config", items: PROJECT_CONFIG, collapsible: true },
     ],
     [],
