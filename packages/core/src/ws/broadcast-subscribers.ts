@@ -1,5 +1,5 @@
 import type { HooksBus } from '../pipeline/hooks.js';
-import { globalRoom, projectRoom, userRoom } from './rooms.js';
+import { deviceRoom, globalRoom, projectRoom, userRoom } from './rooms.js';
 import { roomManager } from './server.js';
 
 /**
@@ -153,6 +153,24 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
         actorId: p.actorUserId,
       },
     });
+  });
+
+  // Explicit skill push → one `skill.sync` command per targeted device room.
+  // This is the ONLY path that tells a device to pull skills; `skill.updated`
+  // above is project-room cache-invalidation for the web UI only and must NOT
+  // trigger a device to sync. Carries no skill bodies — the device pulls its
+  // effective manifest over REST and reports installed hashes back.
+  bus.on('skillSyncRequested', (p) => {
+    for (const id of p.deviceIds) {
+      roomManager.publish(deviceRoom(id), {
+        event: 'skill.sync',
+        data: {
+          projectId: p.projectId,
+          projectSlug: p.projectSlug,
+          skillNames: p.skillNames,
+        },
+      });
+    }
   });
 
   // ISS-118 — skill_registrations changes affect the per-project skill

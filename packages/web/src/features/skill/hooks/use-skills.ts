@@ -87,11 +87,12 @@ export function useProjectSkillSyncStatus(projectDocumentId?: string) {
 export function useBulkPushSkills() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ targets, projectDocumentId, skillNames }: {
+    mutationFn: ({ targets, projectDocumentId, skillNames, deviceId }: {
       targets: string[];
       projectDocumentId: string;
       skillNames?: string[];
-    }) => skillApi.bulkPush(targets, projectDocumentId, skillNames),
+      deviceId?: string;
+    }) => skillApi.bulkPush(targets, projectDocumentId, skillNames, deviceId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['skill-sync-status'] });
       // Skill Studio 5 — also refresh the by-device aggregate + per-device views

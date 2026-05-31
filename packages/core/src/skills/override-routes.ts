@@ -6,9 +6,8 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { projectMembers, projectSkillOverrides, projects, skills } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { hooks } from '../pipeline/hooks.js';
 import { globalEffectiveHash, globalEffectiveMd } from './effective.js';
-import { hashSkillBody } from './hash.js';
+import { deleteSkillOverride, upsertSkillOverride } from './service.js';
 
 const overrideParamSchema = z.object({
   projectId: z.uuid(),
@@ -223,54 +222,11 @@ skillOverrideRoutes.put(
 
     const skill = await loadGlobalSkill(skillId);
 
-    const [existing] = await db
-      .select({
-        id: projectSkillOverrides.id,
-        files: projectSkillOverrides.files,
-      })
-      .from(projectSkillOverrides)
-      .where(
-        and(
-          eq(projectSkillOverrides.projectId, projectId),
-          eq(projectSkillOverrides.skillId, skillId),
-        ),
-      )
-      .limit(1);
-
-    let row;
-    if (existing) {
-      // Update: take new files when supplied, otherwise preserve the fork's
-      // existing files. `globalContentHash` is left untouched (re-forking is a
-      // delete + recreate). Hash always reflects the merged md + files.
-      const effectiveFiles = files ?? (Array.isArray(existing.files) ? existing.files : []);
-      const contentHash = hashSkillBody(skillMdOverride, effectiveFiles);
-      const [updated] = await db
-        .update(projectSkillOverrides)
-        .set({ skillMdOverride, files: effectiveFiles, contentHash, updatedAt: new Date() })
-        .where(eq(projectSkillOverrides.id, existing.id))
-        .returning();
-      row = updated;
-    } else {
-      // Create = fork the whole current global folder as the editable starting
-      // point (unless the client supplied its own files), and snapshot the
-      // global's effective hash so the effective view can later flag drift.
-      const forkedFiles = files ?? (Array.isArray(skill.files) ? skill.files : []);
-      const contentHash = hashSkillBody(skillMdOverride, forkedFiles);
-      const globalContentHash = globalEffectiveHash(skill);
-      const [inserted] = await db
-        .insert(projectSkillOverrides)
-        .values({ projectId, skillId, skillMdOverride, files: forkedFiles, contentHash, globalContentHash })
-        .returning();
-      row = inserted;
-    }
-    if (!row) throw new Error('project_skill_overrides: upsert returned no row');
-
-    await hooks.emit('skillUpdated', {
+    const row = await upsertSkillOverride({
       projectId,
-      skillId,
-      name: skill.name,
-      action: 'upsert',
-      contentHash: row.contentHash,
+      skill,
+      skillMdOverride,
+      files,
       actorUserId: userId,
     });
 
@@ -294,25 +250,8 @@ skillOverrideRoutes.delete(
 
     const skill = await loadGlobalSkill(skillId);
 
-    const result = await db
-      .delete(projectSkillOverrides)
-      .where(
-        and(
-          eq(projectSkillOverrides.projectId, projectId),
-          eq(projectSkillOverrides.skillId, skillId),
-        ),
-      )
-      .returning({ id: projectSkillOverrides.id });
-    if (result.length === 0) throw notFound('override not found');
-
-    await hooks.emit('skillUpdated', {
-      projectId,
-      skillId,
-      name: skill.name,
-      action: 'delete',
-      contentHash: null,
-      actorUserId: userId,
-    });
+    const deleted = await deleteSkillOverride({ projectId, skill, actorUserId: userId });
+    if (!deleted) throw notFound('override not found');
 
     return c.body(null, 204);
   },

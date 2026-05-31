@@ -1,14 +1,24 @@
-import { and, eq, ne, or } from 'drizzle-orm';
+import { and, eq, isNotNull, ne, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   type IssueStatus,
   type SkillTarget,
+  projectSkillOverrides,
   projects,
+  runners,
   skillRegistrations,
   skills,
 } from '../db/schema.js';
 import { hooks } from '../pipeline/hooks.js';
 import { PIPELINE_STEPS } from '../pipeline/registry.js';
+import { globalEffectiveHash } from './effective.js';
+import { hashSkillBody } from './hash.js';
+
+export interface SkillFileInput {
+  path: string;
+  content: string;
+  encoding?: 'utf8' | 'base64' | undefined;
+}
 
 /**
  * Pure-ish helpers shared between the F2 REST routes and the F4 MCP tools.
@@ -254,4 +264,254 @@ export async function listSkillRegistrations(
         r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
     };
   });
+}
+
+/**
+ * Shared CRUD used by BOTH the REST routes and the MCP tools so the two
+ * surfaces can never drift. None of these check authorization — callers must
+ * verify owner/admin first. All create project-scoped skills only; global
+ * skills are managed by the boot-time seeder, never via these paths.
+ */
+export interface CreateProjectSkillInput {
+  projectId: string;
+  name: string;
+  description: string;
+  skillMd: string;
+  target?: SkillTarget | null | undefined;
+  files?: SkillFileInput[] | undefined;
+  localGuide?: string | null | undefined;
+}
+
+export async function createProjectSkill(input: CreateProjectSkillInput): Promise<SkillRow> {
+  const files = input.files ?? [];
+  const contentHash = hashSkillBody(input.skillMd, files);
+  const [inserted] = (await db
+    .insert(skills)
+    .values({
+      name: input.name,
+      description: input.description,
+      scope: 'project',
+      projectId: input.projectId,
+      prompt: input.skillMd, // keep prompt in sync with skillMd for runtime
+      tools: [],
+      manifest: {},
+      source: 'user',
+      contentHash,
+      skillMd: input.skillMd,
+      target: input.target ?? null,
+      files: files as never,
+      localGuide: input.localGuide ?? null,
+    })
+    .returning(skillProjection)) as SkillRow[];
+  if (!inserted) throw new Error('skills: insert returned no row');
+  return inserted;
+}
+
+export interface UpdateProjectSkillPatch {
+  name?: string | undefined;
+  description?: string | undefined;
+  skillMd?: string | undefined;
+  target?: SkillTarget | null | undefined;
+  files?: SkillFileInput[] | undefined;
+  localGuide?: string | null | undefined;
+}
+
+/**
+ * Apply a partial update to a project skill. `existing` is the current row
+ * (fetched + authorized by the caller). Bumps `version` + recomputes
+ * `contentHash` whenever the body (skillMd) or files change; backfills the
+ * canonical `skillMd` for legacy prompt-only rows on first edit.
+ */
+export async function updateProjectSkill(
+  existing: Pick<SkillRow, 'id' | 'skillMd' | 'prompt' | 'files' | 'version'>,
+  patch: UpdateProjectSkillPatch,
+): Promise<SkillRow> {
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  if (patch.name !== undefined) updates.name = patch.name;
+  if (patch.description !== undefined) updates.description = patch.description;
+  if (patch.skillMd !== undefined) {
+    updates.skillMd = patch.skillMd;
+    updates.prompt = patch.skillMd;
+  }
+  if (patch.target !== undefined) updates.target = patch.target;
+  if (patch.files !== undefined) updates.files = patch.files;
+  if (patch.localGuide !== undefined) updates.localGuide = patch.localGuide;
+  if (patch.skillMd !== undefined || patch.files !== undefined) {
+    const canonicalSkillMd = patch.skillMd ?? existing.skillMd ?? existing.prompt;
+    if (patch.skillMd === undefined && existing.skillMd === null) {
+      updates.skillMd = canonicalSkillMd;
+      updates.prompt = canonicalSkillMd;
+    }
+    updates.contentHash = hashSkillBody(canonicalSkillMd, patch.files ?? existing.files);
+    updates.version = (existing.version ?? 1) + 1;
+  }
+  const [updated] = (await db
+    .update(skills)
+    .set(updates)
+    .where(eq(skills.id, existing.id))
+    .returning(skillProjection)) as SkillRow[];
+  if (!updated) throw new Error('skills: update returned no row');
+  return updated;
+}
+
+export async function deleteProjectSkill(skillId: string): Promise<void> {
+  await db.delete(skills).where(eq(skills.id, skillId));
+}
+
+/**
+ * Resolve the device-bound runners for a project to a distinct set of device
+ * ids, optionally narrowed to one device. Remote (host='remote') runners have
+ * no device and are excluded — skills sync to a filesystem, which only a
+ * device-bound runner (desktop or CLI) has.
+ */
+export async function listProjectSyncDeviceIds(
+  projectId: string,
+  deviceId?: string,
+): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ deviceId: runners.deviceId })
+    .from(runners)
+    .where(
+      deviceId
+        ? and(eq(runners.projectId, projectId), eq(runners.deviceId, deviceId))
+        : and(eq(runners.projectId, projectId), isNotNull(runners.deviceId)),
+    );
+  return rows.map((r) => r.deviceId).filter((d): d is string => d != null);
+}
+
+export interface RequestSkillSyncInput {
+  projectId: string;
+  actorUserId: string;
+  skillNames?: string[] | null | undefined;
+  /** Narrow to a single device; omit to push to every device-bound runner. */
+  deviceId?: string | undefined;
+}
+
+export interface RequestSkillSyncResult {
+  projectId: string;
+  deviceIds: string[];
+}
+
+/**
+ * The single explicit-push entrypoint shared by the web Sync actions and the
+ * `forge_skills.push` MCP tool. Resolves the project's device-bound runners,
+ * emits `skillSyncRequested` (→ one `skill.sync` WS command per device room),
+ * and returns the devices that were signalled. No-op (empty deviceIds) when
+ * the project has no device-bound runner. Never seeds skills itself — the
+ * device pulls + reports.
+ */
+export async function requestSkillSync(
+  input: RequestSkillSyncInput,
+): Promise<RequestSkillSyncResult> {
+  const [project] = await db
+    .select({ slug: projects.slug })
+    .from(projects)
+    .where(eq(projects.id, input.projectId))
+    .limit(1);
+  if (!project) throw new Error('NOT_FOUND: project not found');
+
+  const deviceIds = await listProjectSyncDeviceIds(input.projectId, input.deviceId);
+  if (deviceIds.length > 0) {
+    await hooks.emit('skillSyncRequested', {
+      projectId: input.projectId,
+      projectSlug: project.slug,
+      deviceIds,
+      skillNames: input.skillNames ?? null,
+      actorUserId: input.actorUserId,
+    });
+  }
+  return { projectId: input.projectId, deviceIds };
+}
+
+/**
+ * Override CRUD shared by the REST override routes and the MCP override tools.
+ * `skill` is the already-loaded GLOBAL skill row (caller validates scope +
+ * authorization). Hashes are derived here so no client can drift them, and the
+ * `skillUpdated` hook is emitted for web cache-invalidation.
+ */
+export interface UpsertSkillOverrideInput {
+  projectId: string;
+  skill: { id: string; name: string; files: unknown; skillMd: string | null; prompt: string | null };
+  skillMdOverride: string;
+  files?: SkillFileInput[] | undefined;
+  actorUserId: string;
+}
+
+export async function upsertSkillOverride(input: UpsertSkillOverrideInput) {
+  const { projectId, skill, skillMdOverride, files, actorUserId } = input;
+  const [existing] = await db
+    .select({ id: projectSkillOverrides.id, files: projectSkillOverrides.files })
+    .from(projectSkillOverrides)
+    .where(
+      and(
+        eq(projectSkillOverrides.projectId, projectId),
+        eq(projectSkillOverrides.skillId, skill.id),
+      ),
+    )
+    .limit(1);
+
+  let row;
+  if (existing) {
+    const effectiveFiles = files ?? (Array.isArray(existing.files) ? existing.files : []);
+    const contentHash = hashSkillBody(skillMdOverride, effectiveFiles);
+    [row] = await db
+      .update(projectSkillOverrides)
+      .set({ skillMdOverride, files: effectiveFiles as never, contentHash, updatedAt: new Date() })
+      .where(eq(projectSkillOverrides.id, existing.id))
+      .returning();
+  } else {
+    const forkedFiles = files ?? (Array.isArray(skill.files) ? skill.files : []);
+    const contentHash = hashSkillBody(skillMdOverride, forkedFiles);
+    const globalContentHash = globalEffectiveHash(skill);
+    [row] = await db
+      .insert(projectSkillOverrides)
+      .values({
+        projectId,
+        skillId: skill.id,
+        skillMdOverride,
+        files: forkedFiles as never,
+        contentHash,
+        globalContentHash,
+      })
+      .returning();
+  }
+  if (!row) throw new Error('project_skill_overrides: upsert returned no row');
+
+  await hooks.emit('skillUpdated', {
+    projectId,
+    skillId: skill.id,
+    name: skill.name,
+    action: 'upsert',
+    contentHash: row.contentHash,
+    actorUserId,
+  });
+  return row;
+}
+
+export async function deleteSkillOverride(input: {
+  projectId: string;
+  skill: { id: string; name: string };
+  actorUserId: string;
+}): Promise<boolean> {
+  const { projectId, skill, actorUserId } = input;
+  const result = await db
+    .delete(projectSkillOverrides)
+    .where(
+      and(
+        eq(projectSkillOverrides.projectId, projectId),
+        eq(projectSkillOverrides.skillId, skill.id),
+      ),
+    )
+    .returning({ id: projectSkillOverrides.id });
+  if (result.length === 0) return false;
+
+  await hooks.emit('skillUpdated', {
+    projectId,
+    skillId: skill.id,
+    name: skill.name,
+    action: 'delete',
+    contentHash: null,
+    actorUserId,
+  });
+  return true;
 }

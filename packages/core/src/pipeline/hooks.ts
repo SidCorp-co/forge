@@ -112,6 +112,19 @@ export interface HookPayloads {
     unchanged: string[];
     removed: string[];
   };
+  // Explicit, user-initiated skill push. Fired only from the two web Sync
+  // actions (Skill Studio + device management) and the `forge_skills.push`
+  // MCP tool — never automatically. The WS bridge publishes `skill.sync` to
+  // each targeted `deviceRoom`, and the device (desktop or CLI runner) pulls
+  // its effective manifest and reports installed hashes back. There is NO
+  // background/auto sync: a device only syncs when it receives this command.
+  skillSyncRequested: {
+    projectId: string;
+    projectSlug: string;
+    deviceIds: string[];
+    skillNames: string[] | null;
+    actorUserId: string;
+  };
   skillRegistered: {
     projectId: string;
     skillId: string;

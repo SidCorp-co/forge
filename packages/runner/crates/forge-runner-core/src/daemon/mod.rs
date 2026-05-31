@@ -216,6 +216,14 @@ pub async fn run(
                             let _ = runner.abort(&jid).await;
                         }
                     }
+                    "skill.sync" => {
+                        let (client, cfg) = (client.clone(), cfg.clone());
+                        tokio::spawn(async move {
+                            if let Err(e) = dispatch::handle_skill_sync(&client, &cfg, frame.data).await {
+                                tracing::warn!("[skill.sync] {e}");
+                            }
+                        });
+                    }
                     "runner.registered" => tracing::info!("[ws] runner registered"),
                     other => tracing::debug!("[ws] ignored event {other}"),
                 }

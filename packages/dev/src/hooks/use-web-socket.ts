@@ -225,68 +225,23 @@ export function useWebSocket() {
     // path uses the `forge.bearer.<jwt>` Sec-WebSocket-Protocol subprotocol.
     const wsUrl = coreUrl.replace(/^http/, "ws") + "/ws";
 
-    async function handleSkillsPush(data: any) {
-      const skills: Array<{
-        name: string;
-        skillMd?: string;
-        localGuide?: string;
-        target?: string;
-        description?: string;
-        version?: string;
-        contentHash?: string;
-        files?: Array<{ path: string; content: string; encoding: string }>;
-      }> = data?.skills || [];
-
-      // Get local hashes to skip unchanged skills
-      let localHashes: Record<string, string> = {};
+    // Server-commanded skill sync. The ONLY path that makes this device pull
+    // skills: fired when a web Sync action (Skill Studio or device management)
+    // or the forge_skills.push MCP tool targets this device. No bodies are in
+    // the payload — we pull the project's effective manifest and install it.
+    async function handleSkillSync(data: any) {
+      const projectSlug: string | undefined = data?.projectSlug;
       try {
-        localHashes = await invoke<Record<string, string>>("get_skill_hashes") || {};
-      } catch { /* ignore */ }
-
-      for (const skill of skills) {
-        // Skip if hash matches (already up to date)
-        if (skill.contentHash && localHashes[skill.name] === skill.contentHash) {
-          continue;
+        if (projectSlug) {
+          await syncProjectSkills(projectSlug, "");
+        } else {
+          // Fallback: no slug carried — refresh every configured project.
+          const settings = useAppStore.getState().deviceSettings;
+          await syncAllProjectSkills(settings.projects);
         }
-
-        try {
-          const target = skill.target || "dev";
-          if (target === "cloud" || target === "all") {
-            const guideContent = skill.localGuide
-              || `# ${skill.name}\n${skill.description || ""}\n\nTo load the current version, call: forge_skills get ${skill.name}`;
-            await invoke("install_skill_guide", {
-              data: {
-                name: skill.name,
-                description: skill.description || "",
-                version: skill.version || "1.0.0",
-                localGuide: guideContent,
-                contentHash: skill.contentHash || null,
-              },
-            });
-          } else {
-            await invoke("install_skill_from_strapi", {
-              data: {
-                name: skill.name,
-                description: skill.description || "",
-                version: skill.version || "1.0.0",
-                skillMd: skill.skillMd || "",
-                files: skill.files || [],
-                contentHash: skill.contentHash || null,
-              },
-            });
-          }
-        } catch (err) {
-          console.error(`[skills:push] Failed: ${skill.name}`, err);
-        }
-      }
-
-      // Refresh all projects — this saves the sync log to disk
-      try {
-        await invoke("refresh_enabled_skills");
       } catch (err) {
-        console.error("[skills:push] refresh failed:", err);
+        console.error("[skill.sync] failed:", err);
       }
-      // Notify UI that sync log has been updated
       queryClient.invalidateQueries({ queryKey: ["skill-sync-log"] });
     }
 
@@ -346,8 +301,8 @@ export function useWebSocket() {
           return;
         }
 
-        if (event === "skills:push") {
-          handleSkillsPush(msg.data);
+        if (event === "skill.sync") {
+          handleSkillSync(msg.data);
           return;
         }
 
@@ -388,29 +343,12 @@ export function useWebSocket() {
           return;
         }
 
-        // EPIC 6 (ISS-278/290/292) — single-skill update broadcast from
-        // packages/core when a project override is upserted/deleted via the web
-        // UI. We don't get the new content in the payload (per project room
-        // privacy) — re-pull /effective for the affected project.
+        // EPIC 6 (ISS-278/290/292) — a project skill changed on the server.
+        // This is cache-invalidation ONLY; it must NOT make the device pull.
+        // A device syncs only on an explicit `skill.sync` command. The web
+        // freshness view will show this device as "outdated" until then.
         if (event === "skill.updated") {
-          const projectId = msg.data?.projectId;
-          if (!projectId) return;
-          (async () => {
-            try {
-              const currentConfig = await invoke<any>("get_config");
-              const projects = currentConfig?.projects ?? {};
-              for (const [slug, p] of Object.entries<any>(projects)) {
-                if (!p?.repoPath) continue;
-                // syncProjectSkills resolves slug→id internally; cheaper than
-                // tracking id→slug separately here. Each project's effective
-                // list is bounded (~10 skills) so the extra fetch is fine.
-                try {
-                  await syncProjectSkills(slug, p.repoPath);
-                } catch { /* per-project skip */ }
-              }
-              queryClient.invalidateQueries({ queryKey: ["skill-sync-log"] });
-            } catch { /* ignore */ }
-          })();
+          queryClient.invalidateQueries({ queryKey: ["skill-sync-log"] });
           return;
         }
 
@@ -583,22 +521,9 @@ export function useWebSocket() {
           setWsConnected(true);
           queryClient.invalidateQueries();
           startHeartbeat();
-          // Auto-sync skills from core for all configured projects
-          try {
-            const settings = useAppStore.getState().deviceSettings;
-            const synced = await syncAllProjectSkills(settings.projects);
-            if (synced) {
-              const updatedDisk = await invoke<any>("get_config");
-              if (updatedDisk) {
-                setDeviceSettings({
-                  projects: updatedDisk.projects ?? {},
-                  projectsRoot: updatedDisk.projectsRoot,
-                  skillLibrary: updatedDisk.skillLibrary,
-                  mcpLibrary: updatedDisk.mcpLibrary,
-                });
-              }
-            }
-          } catch { /* ignore */ }
+          // No skill auto-sync on connect. The device pulls skills only when
+          // the server sends a `skill.sync` command (web Sync action or the
+          // forge_skills.push MCP tool) — see the `skill.sync` handler.
           // ISS-173: emit runner:register for every project documentId in the
           // local config. Routes through the Tauri `ws_send` command added in
           // ISS-173 §2. Re-fires on every reconnect (this listener runs again).

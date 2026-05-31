@@ -57,10 +57,19 @@ export const skillApi = {
       `/projects/${encodeURIComponent(projectId)}/skill-sync-status`,
     ).then((data) => ({ data })),
 
-  bulkPush: (targets: string[], projectId: string, skillNames?: string[]) =>
-    apiClient<{ results: BulkPushResult[] }>('/skills/bulk-push', {
+  // Explicit push: omit `deviceId` to signal every device-bound runner of the
+  // project (Skill Studio "Sync All"), or pass one to target a single device
+  // (device-management "Sync"). `targets` is retained for back-compat and is
+  // no longer interpreted server-side.
+  bulkPush: (
+    targets: string[],
+    projectId: string,
+    skillNames?: string[],
+    deviceId?: string,
+  ) =>
+    apiClient<{ results: BulkPushResult[]; deviceCount: number }>('/skills/bulk-push', {
       method: 'POST',
-      body: JSON.stringify({ targets, projectId, skillNames }),
+      body: JSON.stringify({ targets, projectId, skillNames, deviceId }),
     }).then((res) => ({ data: res })),
 
   // EPIC 6 (ISS-278/290) — per-project skill override CRUD.

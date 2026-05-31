@@ -239,6 +239,7 @@ function RunnerSkills({
         targets: ['dev'],
         projectDocumentId: assignment.projectId,
         skillNames: name ? [name] : undefined,
+        deviceId,
       },
       { onSettled: () => setSyncingSkill(null) },
     );

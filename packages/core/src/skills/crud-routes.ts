@@ -4,19 +4,20 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { hashSkillBody } from './hash.js';
 import {
-  jobs,
   projectMembers,
   projects,
   skillRegistrations,
   skills,
   skillTargets,
 } from '../db/schema.js';
-import { enqueueJob } from '../jobs/enqueue.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { logger } from '../logger.js';
-import { openOneShotRun } from '../pipeline/runs.js';
+import {
+  createProjectSkill,
+  deleteProjectSkill,
+  requestSkillSync,
+  updateProjectSkill,
+} from './service.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -68,8 +69,12 @@ const syncStatusSchema = z
 
 const bulkPushSchema = z
   .object({
-    targets: z.array(z.string().min(1)).min(1).max(10),
+    // `targets` is kept for API back-compat with the web client; its values
+    // ('dev'/'cloud') are no longer interpreted — an explicit push always
+    // signals every device-bound runner of the project (or one `deviceId`).
+    targets: z.array(z.string().min(1)).min(1).max(10).optional(),
     projectId: z.uuid(),
+    deviceId: z.uuid().optional(),
     skillNames: z.array(z.string().min(1)).optional(),
   })
   .strict();
@@ -173,7 +178,6 @@ skillCrudRoutes.post(
     const userId = c.get('userId');
 
     const isGlobal = input.isGlobal ?? false;
-    const scope = isGlobal ? 'global' : 'project';
 
     // Mirror PUT/DELETE: global skills are managed via the admin route only.
     // Without this gate any authenticated user could broadcast a skill to
@@ -191,27 +195,15 @@ skillCrudRoutes.post(
       throw forbidden('only project owner or admin can create skills');
     }
 
-    const contentHash = hashSkillBody(input.skillMd, input.files);
-
-    const [inserted] = await db
-      .insert(skills)
-      .values({
-        name: input.name,
-        description: input.description,
-        scope: scope as 'global' | 'project',
-        projectId: input.projectId ?? null,
-        prompt: input.skillMd, // keep prompt in sync with skillMd for runtime
-        tools: [],
-        manifest: {},
-        source: 'user',
-        contentHash,
-        skillMd: input.skillMd,
-        target: input.target ?? null,
-        files: (input.files ?? []) as never,
-        localGuide: input.localGuide ?? null,
-      })
-      .returning();
-    if (!inserted) throw new Error('skills: insert returned no row');
+    const inserted = await createProjectSkill({
+      projectId: input.projectId,
+      name: input.name,
+      description: input.description,
+      skillMd: input.skillMd,
+      target: input.target ?? null,
+      files: input.files,
+      localGuide: input.localGuide ?? null,
+    });
 
     return c.json(inserted, 201);
   },
@@ -243,32 +235,7 @@ skillCrudRoutes.put(
       throw forbidden('global skills cannot be updated via this endpoint');
     }
 
-    const updates: Record<string, unknown> = { updatedAt: new Date() };
-    if (patch.name !== undefined) updates.name = patch.name;
-    if (patch.description !== undefined) updates.description = patch.description;
-    if (patch.skillMd !== undefined) {
-      updates.skillMd = patch.skillMd;
-      updates.prompt = patch.skillMd;
-    }
-    if (patch.target !== undefined) updates.target = patch.target;
-    if (patch.files !== undefined) updates.files = patch.files;
-    if (patch.localGuide !== undefined) updates.localGuide = patch.localGuide;
-    if (patch.skillMd !== undefined || patch.files !== undefined) {
-      // skillMd is canonical for v0.1+ skills. Legacy skills migrated from
-      // skillSync only have `prompt`; backfill skillMd on first user-CRUD edit
-      // so future reads + hashes stay consistent.
-      const canonicalSkillMd = patch.skillMd ?? row.skillMd ?? row.prompt;
-      if (patch.skillMd === undefined && row.skillMd === null) {
-        updates.skillMd = canonicalSkillMd;
-        updates.prompt = canonicalSkillMd;
-      }
-      updates.contentHash = hashSkillBody(canonicalSkillMd, patch.files ?? row.files);
-      updates.version = (row.version ?? 1) + 1;
-    }
-
-    const [updated] = await db.update(skills).set(updates).where(eq(skills.id, id)).returning();
-    if (!updated) throw notFound('skill not found');
-
+    const updated = await updateProjectSkill(row, patch);
     return c.json(updated);
   },
 );
@@ -298,7 +265,7 @@ skillCrudRoutes.delete(
       throw forbidden('global skills cannot be deleted via this endpoint');
     }
 
-    await db.delete(skills).where(eq(skills.id, id));
+    await deleteProjectSkill(id);
     return c.body(null, 204);
   },
 );
@@ -373,7 +340,7 @@ skillCrudRoutes.post(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    const { targets, projectId, skillNames } = c.req.valid('json');
+    const { projectId, deviceId, skillNames } = c.req.valid('json');
     const userId = c.get('userId');
 
     const ctx = await loadCallerRole(projectId, userId);
@@ -381,48 +348,21 @@ skillCrudRoutes.post(
       throw forbidden('only project owner or admin can push skills');
     }
 
-    const results: Array<{ target: string; status: string; jobId: string | null; error?: string }> = [];
-    for (const target of targets) {
-      try {
-        // ISS-101 — skill push is a project-scoped one-shot job with no
-        // issueId; satisfy the NOT NULL FK via a 'system' run.
-        const run = await openOneShotRun({
-          projectId,
-          kind: 'system',
-          metadata: { source: 'skill.push', target },
-        });
-        const [job] = await db
-          .insert(jobs)
-          .values({
-            projectId,
-            pipelineRunId: run.id,
-            createdBy: userId,
-            type: 'custom',
-            payload: {
-              kind: 'skill.push',
-              target,
-              projectId,
-              skillNames: skillNames ?? null,
-            },
-            status: 'queued',
-          })
-          .returning({ id: jobs.id });
-        if (!job) {
-          results.push({ target, status: 'failed', jobId: null, error: 'insert returned no row' });
-          continue;
-        }
-        try {
-          await enqueueJob({ jobId: job.id, type: 'custom' });
-        } catch (err) {
-          logger.error({ err, jobId: job.id }, 'skills.bulkPush: enqueueJob failed');
-        }
-        results.push({ target, status: 'queued', jobId: job.id });
-      } catch (err) {
-        const message = (err as Error).message;
-        results.push({ target, status: 'failed', jobId: null, error: message });
-      }
-    }
+    // Explicit push: signal device-bound runners (or one `deviceId`) over WS;
+    // each pulls its effective manifest and reports installed hashes back.
+    // No pipeline_run / job is created — skill sync is not pipeline work.
+    const { deviceIds } = await requestSkillSync({
+      projectId,
+      actorUserId: userId,
+      skillNames: skillNames ?? null,
+      deviceId,
+    });
 
-    return c.json({ results });
+    const results = deviceIds.map((id) => ({
+      target: id,
+      status: 'signalled' as const,
+      deviceId: id,
+    }));
+    return c.json({ results, deviceCount: deviceIds.length });
   },
 );

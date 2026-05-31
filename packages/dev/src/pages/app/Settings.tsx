@@ -3,7 +3,6 @@ import { useAppStore } from "@/stores/app-store";
 import { useAuth } from "@/hooks/useAuth";
 import { useAuthStore } from "@/stores/auth-store";
 import { invoke } from "@/hooks/use-tauri-ipc";
-import { syncAllProjectSkills } from "@/lib/skill-sync";
 import { PageShell } from "@/components/ui/page-shell";
 import { FormInput } from "@/components/ui/form-input";
 import { useLogout } from "@/hooks/use-logout";
@@ -34,22 +33,6 @@ export function Settings() {
   const [projectsRoot, setProjectsRoot] = useState(deviceSettings.projectsRoot ?? "");
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
-  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "synced" | "error">("idle");
-  const [syncMsg, setSyncMsg] = useState("");
-
-  async function handleSyncSkills() {
-    setSyncStatus("syncing");
-    setSyncMsg("");
-    try {
-      const any = await syncAllProjectSkills(deviceSettings.projects);
-      setSyncStatus("synced");
-      setSyncMsg(any ? "Skills synced." : "All skills already up to date.");
-      setTimeout(() => setSyncStatus("idle"), 3000);
-    } catch (err) {
-      setSyncStatus("error");
-      setSyncMsg(`Sync failed: ${err}`);
-    }
-  }
 
   async function handleBrowse() {
     try {
@@ -131,30 +114,15 @@ export function Settings() {
 
 
       <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1">
-            <h3 className="text-sm font-semibold text-gray-900">Skills</h3>
-            <p className="mt-0.5 text-xs text-gray-500">
-              Pull effective skill list (globals + per-project overrides) from packages/core into each project's <code className="rounded bg-gray-100 px-1 text-[10px]">.claude/skills/</code> dir.
-            </p>
-            {syncMsg && (
-              <p
-                className={`mt-2 text-xs ${
-                  syncStatus === "error" ? "text-red-600" : "text-green-600"
-                }`}
-              >
-                {syncMsg}
-              </p>
-            )}
-          </div>
-          <button
-            onClick={handleSyncSkills}
-            disabled={syncStatus === "syncing"}
-            className="rounded bg-blue-50 px-3 py-1.5 text-xs text-blue-600 hover:bg-blue-100 disabled:opacity-50"
-          >
-            {syncStatus === "syncing" ? "Syncing…" : "Sync skills now"}
-          </button>
-        </div>
+        <h3 className="text-sm font-semibold text-gray-900">Skills</h3>
+        <p className="mt-0.5 text-xs text-gray-500">
+          Skills sync to this device on demand from the web app — open a
+          project's <strong>Skill Studio</strong> or the <strong>device
+          management</strong> page and press <em>Sync</em>. This device pulls
+          the effective skills into each project's{" "}
+          <code className="rounded bg-gray-100 px-1 text-[10px]">.claude/skills/</code> dir
+          when it receives that command.
+        </p>
       </div>
 
       <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4">

@@ -16,6 +16,7 @@ use crate::transport::events::{post_job_events, JobEventInput};
 use crate::transport::frames::JobAssigned;
 use crate::transport::runners::{self, MeRunner};
 use crate::transport::{lifecycle, CoreClient};
+use crate::workspace::skill_sync;
 
 /// Resolved working dir for one assigned project. The server (`/me/runners`)
 /// is the source of truth for `repo_path`; `config.toml` is only a local
@@ -67,6 +68,40 @@ const FLUSH_INTERVAL: Duration = Duration::from_millis(500);
 /// (`PIPELINE_HEARTBEAT_TIMEOUT_MS`, min 30s) and matches desktop parity
 /// (`packages/dev/src/hooks/use-web-socket.ts`). See ISS-285.
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(25);
+
+/// Handle a server-pushed `skill.sync` command: resolve the project's repo on
+/// this device and seed `<repo>/.claude/skills/<name>/` from the effective
+/// manifest, reporting installed hashes back. This is the ONLY path that pulls
+/// skills to a CLI runner — it never runs automatically at job start (that was
+/// removed in 53d4ad94 because it clobbered project-local overrides). A push is
+/// always operator-initiated (web Sync action or `forge_skills.push`).
+pub async fn handle_skill_sync(client: &CoreClient, cfg: &Config, data: Value) -> Result<()> {
+    let project_id = data
+        .get("projectId")
+        .and_then(Value::as_str)
+        .ok_or_else(|| Error::Other("skill.sync: missing projectId".into()))?
+        .to_string();
+
+    let server = runners::list_me(client).await.unwrap_or_default();
+    let resolved = match resolve_repo(&server, cfg, &project_id) {
+        Ok(r) => r,
+        Err(slug) => {
+            tracing::warn!(
+                "[skill.sync] project '{slug}' is assigned here but has no repo path — skipping"
+            );
+            return Ok(());
+        }
+    };
+
+    match skill_sync::sync_skills(client, &project_id, &resolved.repo_path).await {
+        Ok(n) => tracing::info!(
+            "[skill.sync] project={project_id} synced {n} skill(s) into {}",
+            resolved.repo_path.join(".claude/skills").display()
+        ),
+        Err(e) => tracing::warn!("[skill.sync] project={project_id} sync failed: {e}"),
+    }
+    Ok(())
+}
 
 pub async fn handle(
     client: &CoreClient,

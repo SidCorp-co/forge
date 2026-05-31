@@ -53,10 +53,18 @@ import {
   forgeProjectsUpdateTool,
 } from './tools/forge-projects.js';
 import {
+  forgeSkillsCreateTool,
+  forgeSkillsDeleteTool,
+  forgeSkillsEffectiveTool,
   forgeSkillsGetTool,
   forgeSkillsListRegistrationsTool,
   forgeSkillsListTool,
+  forgeSkillsOverrideDeleteTool,
+  forgeSkillsOverrideSetTool,
+  forgeSkillsPushTool,
   forgeSkillsRegisterTool,
+  forgeSkillsSyncStatusTool,
+  forgeSkillsUpdateTool,
 } from './tools/forge-skills.js';
 import { forgeUploadsTool } from './tools/forge-uploads.js';
 import { type McpTool, forgeVersionTool } from './tools/forge-version.js';
@@ -176,6 +184,14 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeSkillsGetTool(ctx.device),
     forgeSkillsRegisterTool(ctx.device),
     forgeSkillsListRegistrationsTool(ctx),
+    forgeSkillsCreateTool(ctx),
+    forgeSkillsUpdateTool(ctx),
+    forgeSkillsDeleteTool(ctx),
+    forgeSkillsEffectiveTool(ctx),
+    forgeSkillsSyncStatusTool(ctx),
+    forgeSkillsOverrideSetTool(ctx),
+    forgeSkillsOverrideDeleteTool(ctx),
+    forgeSkillsPushTool(ctx),
     forgeMetricsAdminStepDurationsTool(ctx),
     forgeMetricsProjectStepDurationsTool(ctx),
     forgeAdminProjectsTool(ctx),
