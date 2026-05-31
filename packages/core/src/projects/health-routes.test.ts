@@ -188,6 +188,7 @@ describe('GET /api/projects/health', () => {
     queryQueue.push([{ projectId: PROJECT_A_ID, status: 'open', n: 2 }]); // statusRows
     queryQueue.push([]); // blockerRowsAll
     queryQueue.push([]); // throughputRows
+    queryQueue.push([]); // cycleRows (avgCycleTimeDays)
     queryQueue.push([{ projectId: PROJECT_A_ID, n: 3 }]); // liveRunRows
     queryQueue.push([{ projectId: PROJECT_A_ID, n: 2 }]); // runnerRows
     queryQueue.push([{ project_id: PROJECT_A_ID, spend: 13.38 }]); // spendRows (db.execute)
@@ -253,6 +254,7 @@ describe('GET /api/projects/health', () => {
     queryQueue.push([]); // statusRows
     queryQueue.push([]); // blockerRowsAll
     queryQueue.push([]); // throughputRows
+    queryQueue.push([]); // cycleRows (avgCycleTimeDays)
     queryQueue.push([]); // liveRunRows
     queryQueue.push([]); // runnerRows
     queryQueue.push([]); // spendRows (db.execute)

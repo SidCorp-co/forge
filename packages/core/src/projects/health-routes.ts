@@ -140,6 +140,30 @@ projectHealthRoutes.get('/health', async (c) => {
     )
     .groupBy(issues.projectId);
 
+  // Avg cycle time (days) = mean(resolved_at - created_at) over issues that
+  // transitioned to closed/released in the same trailing-7d window as
+  // throughput. Was hardcoded 0 (ISS-308 B1: surfaced as a misleading "0d").
+  // Same SQL-side `now() - interval` cutoff as throughput (postgres-js can't
+  // bind a JS Date — see the throughput note above).
+  const cycleRows = await db
+    .select({
+      projectId: issues.projectId,
+      avgDays: sql<
+        number | null
+      >`avg(extract(epoch from (${activityLog.createdAt} - ${issues.createdAt})) / 86400.0)`,
+    })
+    .from(activityLog)
+    .innerJoin(issues, eq(issues.id, activityLog.issueId))
+    .where(
+      and(
+        inArray(issues.projectId, projectIds),
+        eq(activityLog.action, 'issue.statusChanged'),
+        sql`${activityLog.payload} ->> 'to' IN ('closed','released')`,
+        sql`${activityLog.createdAt} >= now() - interval '7 days'`,
+      ),
+    )
+    .groupBy(issues.projectId);
+
   // Live runs — pipeline_runs currently running or paused, per project.
   const liveRunRows = await db
     .select({
@@ -238,6 +262,11 @@ projectHealthRoutes.get('/health', async (c) => {
   const throughputByProject = new Map<string, number>();
   for (const r of throughputRows) throughputByProject.set(r.projectId, Number(r.n));
 
+  const cycleByProject = new Map<string, number>();
+  for (const r of cycleRows) {
+    if (r.avgDays != null) cycleByProject.set(r.projectId, Number(r.avgDays));
+  }
+
   const liveRunsByProject = new Map<string, number>();
   for (const r of liveRunRows) liveRunsByProject.set(r.projectId, Number(r.n));
 
@@ -284,7 +313,7 @@ projectHealthRoutes.get('/health', async (c) => {
       statusDistribution: dist,
       blockers,
       pendingEscalations: dist['needs_info'] ?? 0,
-      avgCycleTimeDays: 0,
+      avgCycleTimeDays: cycleByProject.get(p.id) ?? 0,
       liveRuns: liveRunsByProject.get(p.id) ?? 0,
       runnerCount: runnersByProject.get(p.id) ?? 0,
       spend24hUsd: spendByProject.get(p.id) ?? 0,

@@ -696,8 +696,14 @@ issueExtrasRoutes.get(
 );
 
 // GET /api/issues/:id/cost-summary
-// Joins usage_records.session_id ↔ jobs.id to roll up estimated cost +
-// token totals for any usage row tagged with one of this issue's job ids.
+// Rolls up estimated cost + token totals for every usage row produced while
+// working this issue. usage_records.session_id is the AGENT SESSION id (not the
+// job id), so the link is: usage_records.session_id = agent_sessions.id, and a
+// session belongs to an issue via jobs.agent_session_id → jobs.issue_id. We
+// resolve the issue's DISTINCT session ids first and sum usage over them — a
+// direct usage⋈agent_sessions⋈jobs join fans out (one session can back several
+// jobs) and multiplied the cost. Fixes ISS-308 B4 (cost showed "—" everywhere
+// because the old `session_id::uuid = jobs.id` join never matched).
 issueExtrasRoutes.get(
   '/:id/cost-summary',
   zValidator('param', idParamSchema, (r) => {
@@ -717,6 +723,13 @@ issueExtrasRoutes.get(
     const access = await loadProjectAccess(issue.projectId, userId);
     if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
 
+    // DISTINCT agent-session ids that worked this issue (via its jobs).
+    const sessionIdSubquery = sql`(
+      SELECT DISTINCT ${jobs.agentSessionId}
+      FROM ${jobs}
+      WHERE ${jobs.issueId} = ${issueId}
+        AND ${jobs.agentSessionId} IS NOT NULL
+    )`;
     const [totals] = await db
       .select({
         estimatedCost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
@@ -730,8 +743,11 @@ issueExtrasRoutes.get(
         sampleCount: sql<number>`count(${usageRecords.id})`.mapWith(Number),
       })
       .from(usageRecords)
-      .innerJoin(jobs, eq(jobs.id, sql`${usageRecords.sessionId}::uuid`))
-      .where(eq(jobs.issueId, issueId));
+      // session_id is a uuid-shaped text column; guard the cast so a stray
+      // non-uuid value can't 500 the whole rollup.
+      .where(
+        sql`${usageRecords.sessionId} ~ '^[0-9a-fA-F-]{36}$' AND ${usageRecords.sessionId}::uuid IN ${sessionIdSubquery}`,
+      );
 
     return c.json({
       issueId,
