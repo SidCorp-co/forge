@@ -104,6 +104,36 @@ export const desktopPairingCodes = pgTable(
   }),
 );
 
+// ISS-305 — Runner browser-approve device-login (OAuth device-authorization
+// flow, cf. `claude login`). Kept distinct from `desktopPairingCodes`: that
+// flow mints a *user JWT* for the desktop app, whereas this one mints a
+// *device token* for the headless `forge-runner` CLI and (optionally)
+// provisions a git push credential. Same code-gen + hash + TTL shape so the
+// two stay auditable side-by-side.
+export const deviceLoginCodes = pgTable(
+  'device_login_codes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    codeHash: text('code_hash').notNull().unique(),
+    deviceLabel: text('device_label').notNull(),
+    devicePlatform: text('device_platform').notNull(),
+    deviceHostname: text('device_hostname'),
+    createdIp: text('created_ip'),
+    createdUserAgent: text('created_user_agent'),
+    approvedUserId: uuid('approved_user_id').references(() => users.id, {
+      onDelete: 'cascade',
+    }),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    expiresIdx: index('device_login_codes_expires_idx').on(t.expiresAt),
+    consumedIdx: index('device_login_codes_consumed_idx').on(t.consumedAt),
+  }),
+);
+
 export const emailVerificationTokens = pgTable(
   'email_verification_tokens',
   {
@@ -268,6 +298,11 @@ export const devices = pgTable(
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     pairedAt: timestamp('paired_at', { withTimezone: true }).notNull().defaultNow(),
     capabilities: jsonb('capabilities'),
+    // ISS-305 — non-secret label recording that a git push credential was
+    // auto-provisioned for this device at login time (e.g. 'https-helper' or
+    // 'ssh-deploy-key'); NULL means no credential was provisioned. The secret
+    // material itself is returned once at poll time and never stored here.
+    gitCredentialRef: text('git_credential_ref'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

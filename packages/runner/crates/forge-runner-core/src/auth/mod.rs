@@ -6,4 +6,5 @@
 //!   headless Linux; `FORGE_RUNNER_CRED_STORE=keychain|file` to force (M1)
 
 pub mod cred_store;
+pub mod git_cred;
 pub mod pairing;

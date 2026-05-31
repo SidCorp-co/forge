@@ -18,3 +18,4 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 which = { workspace = true }
 dirs-next = { workspace = true }
+webbrowser = { workspace = true }
