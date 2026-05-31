@@ -303,7 +303,7 @@ describe('scheduleAutoRetryWithVerify', () => {
     expect(setArg?.failureKind).toBe('transient');
   });
 
-  it('writes the failed deviceId as the auto-retry exclude hint on the new job', async () => {
+  it('writes the failed deviceId into the auto-retry exclude set on the new job', async () => {
     insertReturning.mockResolvedValueOnce([{ id: 'j-retry-rotate' }]);
     await scheduleAutoRetryWithVerify(
       { ...baseJob, deviceId: 'device-A' } as never,
@@ -312,9 +312,42 @@ describe('scheduleAutoRetryWithVerify', () => {
     const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(inserted.payload).toEqual(
       expect.objectContaining({
-        _autoRetry: { excludeDeviceId: 'device-A' },
+        _autoRetry: { excludeDeviceIds: ['device-A'] },
       }),
     );
+  });
+
+  it('accumulates the exclude set across a retry chain (deduped)', async () => {
+    insertReturning.mockResolvedValueOnce([{ id: 'j-retry-accumulate' }]);
+    await scheduleAutoRetryWithVerify(
+      {
+        ...baseJob,
+        deviceId: 'device-B',
+        // Prior attempt already excluded device-A; new failure on device-B.
+        payload: { _autoRetry: { excludeDeviceIds: ['device-A'] } },
+      } as never,
+      'crashed',
+    );
+    const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(inserted.payload).toEqual({
+      _autoRetry: { excludeDeviceIds: ['device-A', 'device-B'] },
+    });
+  });
+
+  it('does not duplicate a device already in the exclude set', async () => {
+    insertReturning.mockResolvedValueOnce([{ id: 'j-retry-dedupe' }]);
+    await scheduleAutoRetryWithVerify(
+      {
+        ...baseJob,
+        deviceId: 'device-A',
+        payload: { _autoRetry: { excludeDeviceIds: ['device-A'] } },
+      } as never,
+      'crashed',
+    );
+    const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(inserted.payload).toEqual({
+      _autoRetry: { excludeDeviceIds: ['device-A'] },
+    });
   });
 
   it('preserves prior payload keys when injecting the auto-retry hint', async () => {
@@ -331,7 +364,7 @@ describe('scheduleAutoRetryWithVerify', () => {
     expect(inserted.payload).toEqual({
       skill: 'forge-plan',
       custom: 'keep-me',
-      _autoRetry: { excludeDeviceId: 'device-A' },
+      _autoRetry: { excludeDeviceIds: ['device-A'] },
     });
   });
 
