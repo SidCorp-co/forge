@@ -2,120 +2,122 @@
 
 ## Statuses
 
-| # | Status | Meaning | Trigger |
-|---|--------|---------|---------|
+The status enum is the source of truth in
+[`packages/core/src/db/schema.ts`](../../../packages/core/src/db/schema.ts)
+(`issueStatuses`, 17 entries). Keep this table in lockstep with it.
+
+| # | Status | Meaning | Set by |
+|---|--------|---------|--------|
 | 1 | `open` | New, untriaged | Issue created |
-| 2 | `confirmed` | Triaged, needs plan | forge-triage |
-| 3 | `waiting` | Plan written, awaiting human approval (Complex only) | forge-plan (Complex) |
-| 4 | `approved` | Planned, ready to code | forge-plan (Simple/Medium) or human (Complex) |
+| 2 | `confirmed` | Triaged, ready to plan | forge-triage |
+| 3 | `waiting` | Plan written, awaiting human approval (gate) | forge-plan (Complex) |
+| 4 | `approved` | Plan approved, ready to code | forge-plan (Simple/Medium) or human |
 | 5 | `in_progress` | Being coded + built | forge-code start |
-| 6 | `developed` | Code pushed, awaiting review (Complex) or deploy (Simple/Medium) | forge-code push |
-| 7 | `deploying` | Deploying to staging | forge-review pass, or forge-code push (Simple/Medium) |
-| 8 | `testing` | QA against staging | Deploy success (auto-transitions from deploying) |
-| 9 | `staging` | Human final check before release | forge-test pass |
-| 10 | `released` | Approved for prod, triggers merge + deploy | Human confirms staging |
-| 11 | `closed` | Done / archived | forge-release or manual |
-| 12 | `reopen` | Rejected, needs fix | Rejection at any gate |
-| 13 | `on_hold` | Paused / blocked | Manual or infra failure |
-| 14 | `needs_info` | Blocked on clarification | Triage or manual |
+| 6 | `developed` | Code pushed, awaiting review | forge-code |
+| 7 | `deploying` | Deploy in progress (reserved — projects with an external deploy step) | external deploy trigger |
+| 8 | `testing` | Verify gate after review | forge-review (APPROVE) |
+| 9 | `tested` | Verification passed (auto-advance step) | forge-test |
+| 10 | `pass` | Auto-advance step toward release | forge-test |
+| 11 | `staging` | Final gate before release (no-op / human in most projects) | forge-test |
+| 12 | `released` | Cleared for release — triggers release note + close | forge-test |
+| 13 | `closed` | Done / archived | forge-release or manual |
+| 14 | `reopen` | Rejected, needs fix | Rejection at review/test |
+| 15 | `on_hold` | Paused / blocked | Manual or infra failure |
+| 16 | `needs_info` | Blocked on clarification — triggers forge-clarify | forge-triage or manual |
+| 17 | `draft` | AI-proposed issue awaiting human confirm (Dream / Doc-Sync schedules) | scheduled agent |
 
 ## Flow
 
+The happy path is driven by the pipeline registry
+([`packages/core/src/pipeline/registry.ts`](../../../packages/core/src/pipeline/registry.ts) →
+`PIPELINE_STEPS`), the single place the status × jobType × toggle × skill
+mapping is written down:
+
 ```
 open ──forge-triage──▶ confirmed ──forge-plan──▶ approved (S/M)
-                                                 └─▶ waiting ──human──▶ approved (Complex)
+   │                                            └─▶ waiting ──human──▶ approved (Complex)
+   └─(needs more info)─▶ needs_info ──forge-clarify──▶ confirmed
 
-approved ──forge-code──▶ in_progress ──▶ developed (Complex)  ──forge-review──▶ deploying
-                                       └▶ deploying  (Simple/Medium, auto)         │
-                                                                                    ▼
-                          deploying ──CI+deploy success──▶ testing ──forge-test──▶ staging
-                                                                                    │
-                                                       human approve ◀──────────────┘
-                                                                │
-                                                                ▼
-                                                            released ──forge-release──▶ closed
+approved ──forge-code──▶ in_progress ──▶ developed ──forge-review──▶ testing
+                                                                       │ APPROVE
+                                                                       ▼
+                              forge-test:  merge ISS-*→target + deploy + live verify
+                                                                       │
+                              testing ─▶ tested ─▶ pass ─▶ staging ─▶ released
+                                                                       │ forge-release
+                                                                       ▼
+                                                                     closed
 
-Rejection at review/test/staging  ──▶ reopen ──forge-fix──▶ developed (Complex) or deploying (S/M)
-Infra failure / unknown hang      ──▶ on_hold (manual)
-Triage cannot proceed             ──▶ needs_info (manual)
+Rejection at review/test  ──▶ reopen ──forge-fix──▶ developed
+Infra failure / unknown hang ──▶ on_hold (manual)
+Triage needs clarification   ──▶ needs_info ──forge-clarify──▶ confirmed
 ```
 
-`waiting` and `staging` are always human gates — no auto-approve.
+`waiting` and `staging` are human/no-op gates — no skill auto-runs there.
+`forge-test` auto-advances the issue through `tested → pass → staging →
+released` once its merge + live-verify gate passes (see Verification below),
+so those statuses are traversed automatically rather than gated.
 
 ## Branching Model
 
-- **baseBranch** (e.g. `develop`, `main`) — staging environment. Issues merge here for QA.
-- **productionBranch** (e.g. `master`) — production. Only forge-release merges here, via squash merge.
+- **baseBranch** (project config, e.g. `main`) — the trunk issues merge into.
+- The ISS-* branch is cut from baseBranch by forge-code, kept alive across the
+  whole pipeline (forge-fix fixes on it), and merged into baseBranch at the
+  verify gate (see below).
 
-The ISS-* branch is kept alive across the whole pipeline. forge-code pushes it; forge-fix fixes on it; forge-release squash-merges it to productionBranch at the end.
+Branch config is resolved per project via `forge_config` (`branchConfig.targetBranch`);
+skills never hard-code `main`. See [trunk-based-development.md](../../guides/trunk-based-development.md).
 
-**Never merge baseBranch → productionBranch directly** — baseBranch may carry commits from many issues. Each issue reaches production independently via its own ISS-* branch.
+## Verification (forge-test merge + live gate)
 
-## Deploy Routing (forge-code exit)
+`forge-test` runs at `status=testing` — the last auto-dispatched stage before
+`released`. In this repo it is the **merge + live-verify gate**, not a local
+test run (pre-merge build/unit checks live in forge-code; the diff smoke lives
+in forge-review):
 
-How forge-code exits `in_progress` depends on issue complexity. The ISS-* branch is always pushed.
+1. Resolve the target branch from `forge_config` (`branchConfig.targetBranch`).
+2. Merge the reviewed ISS-* branch into the target branch and push.
+3. Deploy the target branch to the live beta (Coolify).
+4. Run the full Playwright E2E (`forge-verify-live`) against the live beta.
+5. **PASS** → auto-advance `tested → pass → staging → released`; forge-release
+   then writes the release note + deletes the branch + closes.
+   **FAIL on live** → `reopen` + handoff (no revert).
+   **Merge conflict** → halt at `testing` with a comment.
 
-| Complexity | Action | Exit Status |
-|------------|--------|-------------|
-| Simple / Medium | Push ISS-*, merge to baseBranch → trigger deploy | `deploying` (auto-transitions to `testing`) |
-| Complex | Push ISS-* feature branch only | `developed` (triggers forge-review) |
-
-Staging is the sole automated test environment.
+There is **no external CI / staging-VPS deploy path**. The legacy VPS staging
+deploy was retired on 2026-05-12; `forge-staging` is now a thin no-op kept only
+so the dispatcher does not error on a legacy `staging`-status job. See
+[`.claude/skills/forge-staging/SKILL.md`](../../../.claude/skills/forge-staging/SKILL.md)
+and [`.claude/skills/forge-test/SKILL.md`](../../../.claude/skills/forge-test/SKILL.md).
 
 ## What Happens Inside `in_progress`
 
 forge-code (and forge-fix) run the full local cycle before pushing:
 
 1. Implement changes per plan
-2. Build (`npm run build`) — catch compile/type errors
-3. Test affected endpoints if applicable
-4. Tiered code review:
-   - Simple: self-review (read diff)
-   - Medium: quick review agent (Bug-severity only)
-   - Complex: full review agent + simplifier
+2. Build — catch compile/type errors
+3. Test affected packages if applicable
+4. Tiered self/agent review
 5. Fix review findings
 6. Commit locally
-7. Push — exit status per Deploy Routing above
+7. Push the ISS-* branch → exit at `developed`
 
-Build and review happen **before** push. Only clean code reaches `deploying`.
-
-For Complex issues, an additional independent review (forge-review) runs at `developed` before `deploying`.
-
-## Deploy Failure Handling
-
-Two failure modes with different responses:
-
-### CI Pipeline Failed (code problem)
-
-CI returns `status: 'failed'`. Build logs are fetched from the CI provider and posted as a comment. The orchestrator transitions to `reopen`; forge-fix reads the comment, fixes the code, re-pushes.
-
-```
-deploying → CI fails → reopen → forge-fix → deploying
-```
-
-### Server Deploy Failed (infra problem)
-
-Docker build/start/health check failed on the deploy server. Auto-retry 1–2x; if still failing, transition to `on_hold` for human ops.
-
-```
-deploying → server fail → retry → on_hold (after retries exhausted or 15min hang)
-```
-
-| Failure | Cause | Status | Handler |
-|---------|-------|--------|---------|
-| CI pipeline failed | Code doesn't build | `reopen` | forge-fix |
-| Server deploy failed | Infra issue | `on_hold` | Human / ops |
-| Deploy stuck >15 min | Unknown hang | `on_hold` | Human / ops |
+Build and review happen **before** push. An independent fresh-context review
+(forge-review) then runs at `developed` before the issue reaches the verify gate.
 
 ## Orchestrator
 
-The orchestrator watches issue status changes and dispatches the matching skill. Source: `packages/core/src/pipeline/orchestrator.ts`.
+The orchestrator watches issue status changes and dispatches the matching skill.
+The mapping is derived from `PIPELINE_STEPS`
+([`packages/core/src/pipeline/registry.ts`](../../../packages/core/src/pipeline/registry.ts));
+the same payload is served at `/api/pipeline/registry`.
 
 ### Skill mapping
 
 | Status | Skill | Per-project toggle |
 |--------|-------|--------------------|
 | `open` | forge-triage | `autoTriage` |
+| `needs_info` | forge-clarify | `autoClarify` |
 | `confirmed` | forge-plan | `autoPlan` |
 | `approved` | forge-code | `autoCode` |
 | `developed` | forge-review | `autoReview` |
@@ -123,54 +125,66 @@ The orchestrator watches issue status changes and dispatches the matching skill.
 | `reopen` | forge-fix | `autoFix` |
 | `released` | forge-release | `autoRelease` |
 
-Human-gated statuses (`waiting`, `staging`) never trigger automated skills.
+Statuses with no auto-dispatch skill (`waiting`, `deploying`, `tested`, `pass`,
+`staging`, `on_hold`, `draft`) are either human gates or auto-advance steps that
+`forge-test` walks through.
 
 ### Execution modes
 
 Each step runs through one of:
 
-- **desktop** (default) — agent session over WebSocket → device runs Claude CLI in a git worktree
+- **desktop / device runner** (default) — agent session over WebSocket → device
+  runs Claude CLI in a git worktree
 - **antigravity** — server-side execution via the Antigravity service
 
 ### Concurrency
 
-Desktop runners share one repo checkout per project, so only one agent runs per project at a time. Concurrent triggers are queued (FIFO) with deduplication on `issueId+status`.
+Device runners share one repo checkout per project, so only one agent runs per
+project at a time. Concurrent triggers are queued (FIFO) with deduplication on
+`issueId+status`.
 
 ### Reopen cycle protection
 
-After 5 `reopen → fix → deploying` cycles for the same issue, auto-fix stops and the issue stays at `reopen` for human review. Manual triggers bypass this limit.
+After repeated `reopen → fix` cycles for the same issue, auto-fix stops and the
+issue stays at `reopen` for human review. Manual triggers bypass this limit.
 
 ## Project pipeline configuration
 
-The automated pipeline is opt-in per project via `agentConfig.pipelineConfig`. Each step toggle is either:
+The automated pipeline is opt-in per project via `agentConfig.pipelineConfig`.
+Each step toggle is either:
 
-- a boolean (`true` = enabled, desktop runner, default model), or
+- a boolean (`true` = enabled, device runner, default model), or
 - an object `{ enabled, runner, model }` for runner / model overrides per step.
 
-Top-level `enabled: false` (default) disables all automation — every status transition becomes manual. Individual `auto*` toggles let projects opt out of specific steps (e.g. `autoTest: false` for human QA only).
-
-`previewDeploy` carries the staging URL + test credentials used by forge-test. Schema lives next to the orchestrator code; consult that as the source of truth.
+Top-level `enabled: false` (default) disables all automation — every status
+transition becomes manual. Individual `auto*` toggles let projects opt out of
+specific steps (e.g. `autoTest: false` for human verification only). The Zod
+schema in
+[`packages/core/src/pipeline/pipeline-config-schema.ts`](../../../packages/core/src/pipeline/pipeline-config-schema.ts)
+is the source of truth.
 
 ## Pipeline skills summary
 
 | Skill | Trigger status | Exit status | What it does |
 |-------|---------------|-------------|--------------|
 | **forge-triage** | `open` | `confirmed` / `needs_info` | Validate completeness, classify complexity, set category/priority |
+| **forge-clarify** | `needs_info` | `confirmed` | Resolve missing info, then re-enter the plan path |
 | **forge-plan** | `confirmed` | `approved` (S/M) / `waiting` (C) | Explore code, write implementation plan + QA scenarios |
-| **forge-code** | `approved` | `developed` / `deploying` | Implement, build, tiered review, commit, push |
-| **forge-review** | `developed` | `deploying` / `reopen` | Independent fresh-context code review |
-| **forge-test** | `testing` | `staging` / `reopen` | API + browser QA against staging |
-| **forge-fix** | `reopen` | `developed` (C) / `deploying` (S/M) | Scoped fix on ISS-* branch |
-| **forge-release** | `released` | `closed` | Squash merge ISS-* to productionBranch, trigger production deploy |
+| **forge-code** | `approved` | `developed` | Implement, build, tiered review, commit, push ISS-* branch |
+| **forge-review** | `developed` | `testing` / `reopen` | Independent fresh-context code review + diff smoke |
+| **forge-test** | `testing` | `released` (via tested/pass/staging) / `reopen` | Merge ISS-* + deploy beta + full live E2E gate |
+| **forge-fix** | `reopen` | `developed` | Scoped fix on ISS-* branch |
+| **forge-release** | `released` | `closed` | Append release note, delete branch, close |
 
 ## Removed statuses (historical)
 
-Older revisions of the pipeline used additional statuses; they are no longer valid and should not appear in new code or fixtures.
+Older revisions of the pipeline used additional statuses; they are no longer
+valid and should not appear in new code or fixtures.
 
 | Old status | Replacement |
 |-----------|-------------|
 | `resolved` | `closed` |
-| `in_review` | `developed` (Complex) or removed entirely (Simple/Medium — review inside `in_progress`) |
+| `in_review` | `developed` |
 | `rejected` | `closed` + comment / label |
 | `duplicate` | `closed` + label `duplicate` |
 | `wontfix` | `closed` + label `wontfix` |

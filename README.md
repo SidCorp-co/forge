@@ -131,8 +131,9 @@ See [docs/architecture/system-overview.md](docs/architecture/system-overview.md)
 
 - **Skills** — author your own in `.claude/skills/` and register with a
   pipeline stage.
-- **Pipeline stages** — modify the 14-status state machine for domain flows
-  (RFC required for public releases).
+- **Pipeline stages** — modify the
+  [issue status state machine](docs/modules/issues-pipeline/status-pipeline.md)
+  for domain flows (RFC required for public releases).
 - **Runners** — the device-agent runner is pluggable. Default runs `claude`
   CLI; future runners can be anything that emits the Forge event protocol.
 
@@ -140,8 +141,10 @@ See [docs/architecture/system-overview.md](docs/architecture/system-overview.md)
 
 See [docs/VISION.md §8](docs/VISION.md#8-roadmap-horizons).
 
-Current focus: **v0.1** — device-runner architecture, job pipeline, session
-replay, webhook ingestion.
+Device-runner pairing, the job pipeline, session replay, and webhook ingestion
+shipped across `v0.1.x`. Current focus (`v0.2.x`): the multi-device runner
+framework, custom skill authoring, and the web dashboard. See
+[CHANGELOG.md](CHANGELOG.md) for what's shipped.
 
 ## Documentation
 

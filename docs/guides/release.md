@@ -6,18 +6,19 @@ How a new version of Forge Beta (the Tauri desktop app) gets built, signed, publ
 
 ## TL;DR
 
+Use the release skill — it bumps every version file in lockstep, promotes the
+`## [Unreleased]` CHANGELOG section to `## [X.Y.Z]`, tags, and pushes, with an
+atomic preflight that rejects version mismatches:
+
 ```bash
-# 1. Bump versions
-#    packages/dev/package.json          version
-#    packages/dev/src-tauri/Cargo.toml  package.version
-#    packages/dev/src-tauri/tauri.conf.json  version (if explicit)
-
-# 2. Add a CHANGELOG.md entry under ## [X.Y.Z] - YYYY-MM-DD
-
-# 3. Tag + push
-git tag vX.Y.Z
-git push origin vX.Y.Z
+/forge-cut-release X.Y.Z --headline "..."
+# or invoke the script directly from the repo root:
+.claude/skills/forge-cut-release/scripts/cut-release.sh X.Y.Z
 ```
+
+Do **not** bump versions by hand — the files must move together (see
+[Versioning](#versioning)) and manual edits drift. Pushing the `vX.Y.Z` tag is
+what triggers `.github/workflows/release.yml`.
 
 That triggers `.github/workflows/release.yml`. ~15-20 min later:
 
@@ -88,15 +89,27 @@ Cert vendors: Certum (~$150/yr OV), Sectigo (~$300/yr OV, ~$400/yr EV), DigiCert
 
 The repo uses pre-`1.0` semver — `v0.X.Y` while in alpha. Tags must match `v*.*.*` exactly (workflow trigger pattern). Pre-release suffix (`v0.1.16-rc.1`) marks GitHub Release as pre-release automatically.
 
-Bump these in lockstep:
+The whole monorepo shares one version. `cut-release.sh` bumps these files in
+lockstep — this list is the canonical set
+([`.claude/skills/forge-cut-release/scripts/cut-release.sh`](../../.claude/skills/forge-cut-release/scripts/cut-release.sh)):
 
 | File | Field |
 |---|---|
+| `package.json` (root) | `version` |
+| `packages/core/package.json` | `version` |
+| `packages/contracts/package.json` | `version` |
+| `packages/observability/package.json` | `version` |
+| `packages/web/package.json` | `version` |
 | `packages/dev/package.json` | `version` |
-| `packages/dev/src-tauri/Cargo.toml` | `package.version` |
-| `packages/dev/src-tauri/tauri.conf.json` | `version` (if not `auto`) |
+| `packages/dev/src-tauri/tauri.conf.json` | `version` |
+| `packages/dev/src-tauri/Cargo.toml` | `[package].version` |
+| `packages/runner/Cargo.toml` | `[workspace.package].version` |
 
-Mismatches cause the in-app updater to behave oddly — keep them aligned.
+The script's preflight is **atomic**: after bumping it runs
+`jq -r .version <all json files> | sort -u` and aborts unless that yields a
+single line, so a mismatch can never reach a tag. (A mismatch also makes the
+in-app updater misbehave — another reason the gate is hard, not advisory.) This
+is why you run `/forge-cut-release` rather than editing the files by hand.
 
 ## CHANGELOG
 

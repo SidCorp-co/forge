@@ -10,13 +10,19 @@ this and not GitFlow / GitLab Flow) lives in §Consequences and
 
 ## Context
 
-`jarvis-agents` ships an autonomous pipeline (Forge skills run `/forge-plan → /forge-code → /forge-review → /forge-release` end-to-end). Branches are created and consumed by the pipeline itself, not just by humans, on the order of dozens per day. Long-lived branches and a release-train cadence are incompatible with that throughput:
+`jarvis-agents` ships an autonomous pipeline (Forge skills run `/forge-triage → /forge-plan → /forge-code → /forge-review → /forge-test → /forge-release` end-to-end). Branches are created and consumed by the pipeline itself, not just by humans, on the order of dozens per day. Long-lived branches and a release-train cadence are incompatible with that throughput:
 
 - `develop` would always be ahead of what the pipeline can dispatch — every issue would need rebase before code phase.
 - Release branches would couple every fix to a fortnightly cut, breaking the "open an issue, see it merged today" loop the pipeline targets.
-- The skill state machine (`open → confirmed → approved → in_progress → developed → released → staging → closed`) already encodes the gates a release process traditionally enforces.
+- The skill state machine (canonical order in
+  [status-pipeline.md](../modules/issues-pipeline/status-pipeline.md):
+  `open → confirmed → approved → in_progress → developed → testing → … → released → closed`)
+  already encodes the gates a release process traditionally enforces.
 
-The team also runs deploys directly to a single staging VPS, not a multi-environment promotion track, so a Coolify-style `staging → production` separation does not apply.
+The merge to `main` and the live deploy + E2E verification all happen at the
+`testing` stage (`forge-test`), against a single live beta — not a
+multi-environment promotion track — so a `staging → production` branch
+separation does not apply.
 
 ## Decision
 
@@ -41,21 +47,29 @@ open → confirmed → approved → in_progress
                                   │ /forge-code
                                   ▼
                               developed   ◄── ISS-* branch pushed, awaits review
-                                  │ /forge-review
+                                  │ /forge-review  (APPROVE | reopen → /forge-fix loop)
                                   ▼
-                              developed (pass) | reopen (fail → /forge-fix loop)
-                                  │ /forge-release
-                                  ▼
-                              released    ◄── merged to main, push complete
-                                  │ /forge-staging (auto-chained from release)
-                                  ▼
-                              staging     ◄── deployed to VPS, /health OK
-                                  │ (human verifies on staging URL)
+                              testing     ◄── /forge-test: merge ISS-*→main + push,
+                                  │              deploy main → forge-beta (Coolify),
+                                  │              full live E2E (forge-verify-live)
+                                  │ PASS → auto-walk tested → pass → staging → released
+                                  ▼            (FAIL on live → reopen, no revert)
+                              released
+                                  │ /forge-release  (append release note + delete branch)
                                   ▼
                                 closed
 ```
 
-**Skipped statuses** (used by other projects with a full Coolify pipeline): `tested`, `pass`, `deploying`, `testing`. The skill manifests under `packages/core/skills/` enforce this — see [`packages/core/skills/README.md`](../../packages/core/skills/README.md).
+The merge, deploy, and live verification all run at `testing` (`/forge-test`),
+because the live walk must run on the **merged** code; `/forge-release` is a
+thin release-note + close step. The intermediate `tested → pass → staging`
+statuses are auto-advanced by `forge-test`, not human gates.
+
+> The old VPS staging-deploy step (`/forge-staging`) was retired on 2026-05-12 —
+> it is now a no-op kept only so the dispatcher doesn't error on a legacy
+> `staging`-status job. Skill manifests live under
+> [`.claude/skills/<skill-name>/SKILL.md`](../../.claude/skills/) (there is no
+> `packages/core/skills/`).
 
 ### Branch naming — dual scheme
 
@@ -122,9 +136,15 @@ Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`, 
 
 `vX.Y.Z` tags are cut directly on `main` when a slice of work is ready to ship. Pre-release suffix `-beta` is reserved for the dogfood phase before the next minor (e.g. `v0.1.5-beta`). No release branch, no merge-back, no cherry-pick gymnastics.
 
-### Staging deployment
+### Deployment & live verification
 
-The maintainer's reference deployment uses `docker-compose.prod.yml` against a single staging VPS — operator-specific scripts live outside this repo. Self-hosters configure their own deployment per `docs/guides/release.md`. `forge-release` chains into `forge-staging` automatically after merging to main; on deploy failure, status stays at `released` for manual retry.
+There is no separate staging environment or VPS deploy step. After review,
+`forge-test` (at `status=testing`) merges the ISS-* branch to `main`, deploys
+`main` to the live beta (Coolify), and runs the full Playwright E2E
+(`forge-verify-live`) against it before the issue is allowed to close. A live
+failure sends the issue back to `reopen` (fix-forward, no revert);
+`forge-release` then writes the release note and closes. Self-hosters configure
+their own deploy target per [release.md](release.md).
 
 ## Consequences
 
@@ -144,7 +164,7 @@ The maintainer's reference deployment uses `docker-compose.prod.yml` against a s
 ### Alternatives considered
 
 - **GitFlow** — rejected. The `develop` branch becomes a perpetual rebase target for a skill pipeline that ships issues hourly. The release branch model assumes train cadence the project does not have.
-- **GitLab Flow** — closer fit, but the `staging` long-lived branch duplicates what `forge-staging` already covers via deploy script, with worse merge ergonomics.
+- **GitLab Flow** — closer fit, but its long-lived `staging`/environment branches add merge ergonomics overhead the single-trunk + live-verify-at-`testing` flow doesn't need; one beta deployed straight from `main` already covers pre-release verification.
 - **No branches, commit straight to main** — rejected on safety grounds. Pre-push hook + branch + same-day merge buys an inexpensive review gate without slowing throughput.
 
 ## Follow-ups
