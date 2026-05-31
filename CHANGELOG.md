@@ -30,6 +30,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Workspace Settings now helps you connect MCP clients and control notification delivery: the MCP tab generates a ready-to-paste connection snippet for Claude CLI, Cursor, Cline, Zed, or any client and lets you test the connection live, while the Notifications tab adds a toggle to turn @mention alerts on or off — your choice is saved.**
   *Technical: web-v2 features/settings: MCP tab (mcp-tab.tsx + mcp.ts) builds per-client snippets + a live JSON-RPC tools/list test against core /mcp, with the endpoint origin derived from NEXT_PUBLIC_API_URL (fixes cross-origin beta). Notifications toggle wired to GET/PATCH /api/auth/me/preferences; new user_preferences.notify_on_mention (migration 0090) gates the mention notification server-side. No secret echo, no new sidebar item. Merge b67e6cdc.*
 
+- **You can now create a new project right from the new web app — the Overview console button, the dashed "New Project" tile, and the project-switcher in the left rail all open a real create form (name, auto-derived slug, optional description) that creates the project on the backend and takes you straight to it. The old "Coming soon" placeholder is gone, and the new project shows up in the list immediately.**
+  *Technical: web-v2 features/projects: NewProjectDialog (kit SlideOver) wired to POST /api/projects via useCreateProject (invalidates ['projects'] for live refresh + navigates to /projects/:slug). Client validation mirrors createProjectSchema; inline SLUG_TAKEN (409) + form-level Banner via kit Field. All triggers + rail ?new=1 deep link share one dialog; home wrapped in Suspense. No new sidebar item, no feature flag. Merge dcbf0d0.*
+
 ### Removed
 
 ### Fixed
