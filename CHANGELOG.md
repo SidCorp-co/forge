@@ -19,6 +19,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Comments are no longer copied into the project's searchable memory — this cuts embedding cost with no loss of recall, since memory search and the AI pipeline never read comment entries (issues and learned fix-patterns are still indexed).**
+  *Technical: dropped the commentCreated/Updated/Deleted memory-indexer subscribers (packages/core/src/memory/indexer.ts); rewrote the agent system prompt's forge_memory guidance onto the real .search/.write API (the old text described non-existent strategy/role/category/global params Zod would reject) and steered agent-written learnings to source:'knowledge'.*
 - **Removed the legacy device-routing path (activeDeviceId) and unified all job dispatch on the runner framework; orphaned or stale devices no longer block job dispatch.**
   *Technical: Deleted active-device.ts and the dispatchViaDevice branch, retired the runnerFramework flag (now always-on), and dropped activeDeviceId from the forge_config response. Orphan/never-connected devices are skipped at select time and swept online→offline by the device stale-detector.*
 
