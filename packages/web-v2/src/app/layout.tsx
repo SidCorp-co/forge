@@ -37,8 +37,20 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" data-theme="light" suppressHydrationWarning>
-      <body className={`${hanken.variable} ${jetbrainsMono.variable}`}>
+    // Font variable classes go on <html> (not <body>): tokens.css declares
+    // --font-sans/--font-mono at :root referencing var(--font-hanken)/
+    // var(--font-jetbrains), and a var() is substituted using the custom
+    // property value in scope at the DECLARING element (:root === <html>).
+    // With the vars only on <body>, :root resolved them to empty and the body
+    // fell back to system sans. Defining them on <html> makes :root see them,
+    // so --font-sans resolves to the real next/font family.
+    <html
+      lang="en"
+      data-theme="light"
+      className={`${hanken.variable} ${jetbrainsMono.variable}`}
+      suppressHydrationWarning
+    >
+      <body>
         <ThemeProvider>
           <QueryProvider>
             <AuthProvider>
