@@ -54,6 +54,15 @@ export const forgeMetricsAdminStepDurationsTool: ContextScopedMcpToolFactory = (
       return { rows: [], windowDays: input.days };
     }
 
+    // Build the id list as a parenthesised parameter list via `sql.join` and
+    // use `IN (...)`. Embedding a JS array directly (`= ANY(${visibleIds}::uuid[])`)
+    // expands it as a record tuple ($1,$2,...), so `ANY(tuple::uuid[])` is a
+    // malformed array literal that throws at query time. Same idiom as
+    // projects/health-routes.ts.
+    const projectIdList = sql.join(
+      visibleIds.map((id) => sql`${id}`),
+      sql`, `,
+    );
     const stepFilter = input.step ? sql`AND v.step = ${input.step}` : sql``;
     const result = await db.execute(sql`
       SELECT v.project_id,
@@ -66,7 +75,7 @@ export const forgeMetricsAdminStepDurationsTool: ContextScopedMcpToolFactory = (
              count(*)::int AS n
       FROM pipeline_run_step_durations v
       LEFT JOIN projects p ON p.id = v.project_id
-      WHERE v.project_id = ANY(${visibleIds}::uuid[])
+      WHERE v.project_id IN (${projectIdList})
         AND v.started_at >= now() - (${input.days}::int * interval '1 day')
         ${stepFilter}
       GROUP BY v.project_id, p.slug, v.step

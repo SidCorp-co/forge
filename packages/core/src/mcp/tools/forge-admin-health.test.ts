@@ -184,6 +184,16 @@ describe('forge_admin_health', () => {
     const sqlText = collectSqlFragments(wherePredicate);
     expect(sqlText).toContain('dispatched');
     expect(sqlText).toContain('running');
+
+    // Regression: the stuckJobs scope filter must use `IN (...)` over a
+    // sql.join'd param list — NOT `= ANY(${visibleIds}::uuid[])`. Embedding a
+    // JS array in the drizzle template expands it as a record tuple
+    // ($1,$2,...), so ANY(tuple::uuid[]) is a malformed array literal that
+    // 500s at query time (the mock can't bind Postgres, so assert the SQL).
+    const stuckSql = collectSqlFragments(executeImpl.mock.calls[1][0]);
+    expect(stuckSql).toContain('IN (');
+    expect(stuckSql).not.toContain('ANY(');
+    expect(stuckSql).not.toContain('::uuid[]');
   });
 
   it('honors custom staleJobThresholdSeconds', async () => {

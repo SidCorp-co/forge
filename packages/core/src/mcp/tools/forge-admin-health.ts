@@ -108,6 +108,15 @@ export const forgeAdminHealthTool: ContextScopedMcpToolFactory = (ctx) => ({
       ageSeconds: number;
     }> = [];
     if (dbOk && hasScope) {
+      // Build the id list as a parenthesised parameter list via `sql.join` and
+      // use `IN (...)`. Embedding a JS array directly in the drizzle template
+      // (`= ANY(${visibleIds}::uuid[])`) expands it as a record tuple
+      // ($1,$2,...), so `ANY(tuple::uuid[])` is a malformed array literal and
+      // throws at query time. Same idiom as projects/health-routes.ts.
+      const projectIdList = sql.join(
+        visibleIds.map((id) => sql`${id}`),
+        sql`, `,
+      );
       const rows = await db.execute<{
         id: string;
         type: string;
@@ -121,7 +130,7 @@ export const forgeAdminHealthTool: ContextScopedMcpToolFactory = (ctx) => ({
         WHERE status = 'dispatched'
           AND dispatched_at IS NOT NULL
           AND dispatched_at < now() - (${staleJobThresholdSeconds}::int * interval '1 second')
-          AND project_id = ANY(${visibleIds}::uuid[])
+          AND project_id IN (${projectIdList})
         ORDER BY dispatched_at ASC
         LIMIT 50
       `);
