@@ -49,9 +49,16 @@ function format(obj: unknown): string {
   return `${JSON.stringify(obj, null, 2)}\n`;
 }
 
-/** Resolve the MCP endpoint. web-v2 is same-origin with core, so `/mcp` lives
- *  on the current origin. Falls back to the relative path during SSR. */
+/** Resolve the MCP endpoint. `/mcp` is served by core, NOT the web origin, so
+ *  we anchor it at the core API origin the same way `apiClient` derives
+ *  `CORE_URL` (`NEXT_PUBLIC_API_URL` minus the `/api` suffix). On the
+ *  cross-origin forge-beta deploy this yields the API host (e.g.
+ *  `https://forge-beta-api.sidcorp.co/mcp`) instead of the 404-ing web host.
+ *  When `NEXT_PUBLIC_API_URL` is unset/relative (same-origin `/v2` deploy,
+ *  local dev), core shares the browser origin, so fall back to it. */
 export function getMcpUrl(): string {
+  const coreUrl = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/api\/?$/, "");
+  if (coreUrl) return `${coreUrl}/mcp`;
   if (typeof window === "undefined") return "/mcp";
   return `${window.location.origin}/mcp`;
 }
