@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Project Settings now has a Testing tab where project owners can set the staging URL, staging API URL, named testing links, and test login credentials (passwords masked with a reveal toggle) — no database access needed.**
+  *Technical: Frontend-only web-v2 Testing tab editing project.previewDeploy via existing owner-gated PATCH /api/projects/:id; preserves unknown jsonb keys, client-side URL/label validation mirrors previewDeployPatchSchema. Merge 105be93.*
+
 ### Changed
 
 ### Removed
