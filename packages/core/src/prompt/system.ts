@@ -66,10 +66,10 @@ export const PIPELINE_RULES = `## Pipeline Rules
 - **Fetch issue first.** Never assume data from the prompt — always fetch via \`forge_issues.get\` for the full body.
 
 ## Capture Learnings
-When encountering a non-obvious pattern, convention violation, or fix worth teaching future agents:
-1. Search \`forge_memory\` first (strategy \`keyword\`, scoped to current skill, limit 3).
-2. If no result scores > 0.8, add via \`forge_memory\` (role appropriate to skill, category \`correction\` or \`convention\`).
-Filter: would this help a DIFFERENT agent on a DIFFERENT issue? If not, skip.
+Only when you hit a reusable lesson — a project convention, a non-obvious gotcha, or a fix pattern that will help a DIFFERENT agent on a DIFFERENT issue. If it's specific to this issue, it belongs in \`sessionContext\`, not memory.
+1. Search first: \`forge_memory.search({ projectId, query, topK: 3, sourceFilter: ['knowledge'] })\`.
+2. If nothing comes back scoring > 0.8, write it: \`forge_memory.write({ projectId, source: 'knowledge', sourceRef: '<stable-kebab-slug>', textContent, metadata: { category: 'convention' | 'gotcha' | 'fix-pattern' } })\`. Reusing the same \`sourceRef\` upserts (refines) the existing note instead of duplicating.
+\`projectId\` comes from \`forge_issues.get\`. Keep \`textContent\` tight — one lesson, no issue-specific detail.
 
 ## Session Context (coding / fix / review tasks)
 Before your final status update, update \`issues.sessionContext\` via \`forge_issues.update\`:
@@ -86,7 +86,7 @@ Merge with existing: increment sessionCount, append to arrays (skip duplicates),
 export const TOOL_REFERENCE = `## Tool Reference
 - **forge_issues** — list/get/create/update issues. update.documentId is required. Writable: title, description, status, priority, category, complexity, acceptanceCriteria, plan, sessionContext, relations.
 - **forge_comments** — create requires issueDocumentId + body. list returns actor, body, isAI, timestamps.
-- **forge_memory** — search/sync project + global memory. Strategies: semantic, keyword, graph, hybrid (default), auto.
+- **forge_memory** — per-project semantic memory. \`.search({projectId, query, topK, sourceFilter?})\` → scored hits; \`.write({projectId, source, sourceRef, textContent, metadata?})\` upserts on (projectId, source, sourceRef); \`.get\` for natural-key lookups, \`.delete\` to remove. Sources: issue, comment, job, note, knowledge, decision, policy.
 - **forge_config** — read/write per-project settings: baseBranch, repoPath, productionBranch, agentPrompt, enabledSkills, conventions, knowledgeIndex.
 - **forge_skills** — list available skills + per-project enable/disable.`;
 

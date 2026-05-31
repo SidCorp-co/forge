@@ -197,42 +197,14 @@ export function registerMemoryIndexer(bus: HooksBus): () => void {
     }),
   );
 
-  unsubs.push(
-    bus.on('commentCreated', (p) => {
-      if (!p.body) return;
-      detach(() =>
-        indexMemoryBestEffort({
-          projectId: p.projectId,
-          source: 'comment',
-          sourceRef: p.commentId,
-          text: p.body,
-          metadata: { issueId: p.issueId },
-        }),
-      );
-    }),
-  );
-
-  unsubs.push(
-    bus.on('commentUpdated', (p) => {
-      detach(() =>
-        indexMemoryBestEffort({
-          projectId: p.projectId,
-          source: 'comment',
-          sourceRef: p.commentId,
-          text: p.after,
-          metadata: { issueId: p.issueId },
-        }),
-      );
-    }),
-  );
-
-  unsubs.push(
-    bus.on('commentDeleted', (p) => {
-      detach(async () => {
-        await deleteMemory(p.projectId, 'comment', p.commentId);
-      });
-    }),
-  );
+  // Comments are deliberately NOT auto-indexed. In a pipeline-driven project
+  // the bulk of comments are bot status chatter (triage notes, plan summaries,
+  // review verdicts, handoffs) — each create/update would cost an embedding
+  // call, yet no automatic read path ever consumes `source:'comment'` memory
+  // (the only auto-injection — ci-fix-pattern-query — filters `source:'note'`).
+  // Agents that want a comment-worth lesson remembered write it explicitly via
+  // `forge_memory.write` as `source:'knowledge'`. `deleteMemory` is still
+  // exported for the `forge_memory.delete` tool.
 
   return () => {
     for (const u of unsubs) u();
