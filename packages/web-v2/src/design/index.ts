@@ -24,6 +24,7 @@ export { Spinner, type SpinnerProps } from "./primitives/spinner";
 export { Skeleton, type SkeletonProps } from "./primitives/skeleton";
 export { ProgressBar, type ProgressBarProps } from "./primitives/progress-bar";
 export { EmptyState, type EmptyStateProps } from "./primitives/empty-state";
+export { ComingSoon, type ComingSoonProps } from "./primitives/coming-soon";
 export { ErrorState, type ErrorStateProps } from "./primitives/error-state";
 export { LiveDot, type LiveDotProps } from "./primitives/live-dot";
 export { Toast, type ToastView, type ToastTone } from "./primitives/toast";

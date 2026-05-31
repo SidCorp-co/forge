@@ -255,7 +255,7 @@ function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; lo
                 style={{
                   background: state === "todo" ? "var(--bg-surface)" : DOT_COLOR[state],
                   border: `2px solid ${DOT_COLOR[state]}`,
-                  boxShadow: state === "running" ? "0 0 0 4px var(--flame-100)" : "none",
+                  boxShadow: state === "running" ? "0 0 0 4px var(--accent-tint)" : "none",
                 }}
               />
               {!isLast && (
@@ -330,7 +330,7 @@ function TasksTab({ issueId, open }: { issueId: string | null; open: boolean }) 
                 border: `1.5px solid ${done ? "var(--green-500)" : "var(--border-strong)"}`,
               }}
             >
-              {done && <Icon name="check" size={12} strokeWidth={3} style={{ color: "#fff" }} />}
+              {done && <Icon name="check" size={12} strokeWidth={3} style={{ color: "var(--fg-on-accent)" }} />}
             </span>
             <span
               className="fg-body-sm"

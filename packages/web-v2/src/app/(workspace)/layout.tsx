@@ -92,7 +92,7 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
 function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname() || "/";
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, logout } = useAuth();
   const { toast } = useToast();
   const { data: projects } = useProjects();
   const { density, setDensity } = useDensity();
@@ -110,8 +110,24 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
+
+  // Close the mobile drawer whenever the route changes (nav item tapped).
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [pathname]);
+
+  // Esc closes the mobile drawer.
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setMobileNavOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mobileNavOpen]);
 
   const slug = activeSlug(pathname);
   const activeProject = useMemo(
@@ -283,24 +299,66 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-dvh overflow-hidden bg-app">
-      <NavRail
-        workspaceItems={WORKSPACE_ITEMS}
-        projectClusters={navProject ? projectClusters : []}
-        activeKey={activeKey}
-        onNavigate={navigate}
-        onProjectSwitch={() => setPaletteOpen(true)}
-        onDocs={() => router.push("/docs")}
-        project={navProject}
-        user={userInitials ? { initials: userInitials } : undefined}
-        collapsed={sidebar.collapsed}
-        onToggleCollapsed={sidebar.toggleCollapsed}
-        groupOpen={sidebar.groupOpen}
-        onToggleGroup={sidebar.toggleGroup}
-      />
+      {/* Desktop rail — hidden below md, where it becomes the drawer below. */}
+      <div className="hidden h-full md:block">
+        <NavRail
+          workspaceItems={WORKSPACE_ITEMS}
+          projectClusters={navProject ? projectClusters : []}
+          activeKey={activeKey}
+          onNavigate={navigate}
+          onProjectSwitch={() => setPaletteOpen(true)}
+          onDocs={() => router.push("/docs")}
+          onAccount={() => router.push("/settings")}
+          onSignOut={logout}
+          project={navProject}
+          user={userInitials ? { initials: userInitials } : undefined}
+          collapsed={sidebar.collapsed}
+          onToggleCollapsed={sidebar.toggleCollapsed}
+          groupOpen={sidebar.groupOpen}
+          onToggleGroup={sidebar.toggleGroup}
+        />
+      </div>
+
+      {/* Mobile drawer — overlay rail + click-away scrim, below md only. */}
+      {mobileNavOpen && (
+        <div className="md:hidden">
+          <button
+            type="button"
+            aria-label="Close navigation"
+            className="fixed inset-0 z-40 cursor-default"
+            style={{ background: "rgba(24,27,34,0.4)" }}
+            onClick={() => setMobileNavOpen(false)}
+          />
+          <div
+            className="forge-slide fixed inset-y-0 left-0 z-50 pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pt-[env(safe-area-inset-top)]"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation"
+          >
+            <NavRail
+              workspaceItems={WORKSPACE_ITEMS}
+              projectClusters={navProject ? projectClusters : []}
+              activeKey={activeKey}
+              onNavigate={navigate}
+              onProjectSwitch={() => {
+                setMobileNavOpen(false);
+                setPaletteOpen(true);
+              }}
+              onDocs={() => router.push("/docs")}
+              onAccount={() => router.push("/settings")}
+              onSignOut={logout}
+              project={navProject}
+              user={userInitials ? { initials: userInitials } : undefined}
+              collapsed={false}
+            />
+          </div>
+        </div>
+      )}
 
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="relative">
           <TopBar
+            onMenu={() => setMobileNavOpen(true)}
             onCommandPalette={() => setPaletteOpen(true)}
             onNotifications={() => setNotificationsOpen((o) => !o)}
             onNewIssue={() =>

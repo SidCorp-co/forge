@@ -1,10 +1,12 @@
 "use client";
 
 import { cn } from "@/lib/utils/cn";
+import { assetPath } from "@/lib/asset";
 import { Icon, type IconName } from "@/design/icons/icon";
 import { Kicker } from "@/design/primitives/kicker";
 import { Tooltip } from "@/design/primitives/tooltip";
 import { ProjectMark } from "@/design/primitives/project-mark";
+import { Menu, type MenuItem } from "./menu";
 
 export interface NavItem {
   key: string;
@@ -33,6 +35,10 @@ export interface NavRailProps {
   onProjectSwitch?: () => void;
   /** Jump to the Docs page (pinned bottom-left). */
   onDocs?: () => void;
+  /** Footer user-menu actions. When set, the user chip becomes an actionable
+   *  menu (Account / Settings, Sign out) instead of a dead element. */
+  onAccount?: () => void;
+  onSignOut?: () => void;
   project?: { name: string; initials: string; tint: string; ink: string };
   user?: { initials: string };
   /** Icon-only collapsed rail. */
@@ -63,6 +69,8 @@ function NavRow({
       title={undefined}
       className={cn(
         "flex w-full items-center rounded-md text-[13.5px] font-semibold transition-colors duration-[120ms]",
+        // ≥44px touch target on small screens (drawer); compact on desktop rail.
+        "max-md:min-h-[44px]",
         collapsed ? "justify-center px-0 py-2" : "gap-2.5 px-2.5 py-2",
         active ? "bg-accent-tint text-accent-text" : "text-muted hover:bg-hover hover:text-fg",
       )}
@@ -140,6 +148,8 @@ export function NavRail({
   onNavigate,
   onProjectSwitch,
   onDocs,
+  onAccount,
+  onSignOut,
   project,
   user,
   collapsed = false,
@@ -153,6 +163,50 @@ export function NavRail({
       ? [{ key: "project", kicker: "Project", items: projectItems }]
       : []);
 
+  // Footer user-menu actions. Theme toggle is intentionally omitted: the app is
+  // light-only (forcedTheme), so shipping a toggle would be a dead control.
+  const userMenuItems: MenuItem[] = [];
+  if (onAccount) userMenuItems.push({ label: "Account & Settings", icon: "settings", onSelect: onAccount });
+  if (onSignOut) userMenuItems.push({ label: "Sign out", icon: "logOut", danger: true, onSelect: onSignOut });
+
+  const userChip = (
+    <button
+      type="button"
+      aria-label="Account menu"
+      aria-haspopup="menu"
+      className={cn(
+        "flex items-center rounded-md transition-colors hover:bg-hover focus-visible:bg-hover focus-visible:outline-none max-md:min-h-[44px]",
+        collapsed ? "w-full justify-center py-1.5" : "w-full gap-2.5 px-1.5 py-1.5",
+      )}
+    >
+      <span
+        className="inline-flex size-7 flex-none items-center justify-center rounded-pill font-bold"
+        style={{ background: "var(--cobalt-100)", color: "var(--cobalt-700)", fontSize: 12 }}
+      >
+        {user?.initials ?? "SK"}
+      </span>
+      {!collapsed && (
+        <>
+          <span className="fg-body-sm flex-1 text-left text-fg">You</span>
+          <Icon name="more" size={16} className="text-subtle" />
+        </>
+      )}
+    </button>
+  );
+  const userArea =
+    userMenuItems.length > 0 ? (
+      <Menu
+        trigger={userChip}
+        items={userMenuItems}
+        side="top"
+        align="left"
+        className="w-full"
+        triggerClassName="block w-full"
+      />
+    ) : (
+      userChip
+    );
+
   return (
     <nav
       className={cn(
@@ -161,12 +215,17 @@ export function NavRail({
       )}
     >
       <div className={cn("flex items-center", collapsed ? "justify-center" : "gap-2 px-1.5")}>
-        <span
-          className="inline-flex size-7 items-center justify-center rounded-md"
-          style={{ background: "var(--flame-500)", color: "#fff" }}
-        >
-          <Icon name="pipeline" size={17} strokeWidth={2} />
-        </span>
+        {/* Real Forge brand mark. Plain <img> needs assetPath() so the src is
+            prefixed with the /v2 basePath (Next does NOT auto-prefix raw img). */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={assetPath("/forge-mark-32.png")}
+          width={28}
+          height={28}
+          alt="Forge"
+          className="size-7 flex-none rounded-md"
+          draggable={false}
+        />
         {!collapsed && (
           <>
             <span className="fg-h3 flex-1" style={{ fontSize: 16 }}>
@@ -255,20 +314,7 @@ export function NavRail({
             onClick={onDocs}
           />
         )}
-        <div className={cn("flex items-center", collapsed ? "justify-center" : "gap-2.5 px-1.5 pt-1")}>
-          <span
-            className="inline-flex size-7 items-center justify-center rounded-pill font-bold"
-            style={{ background: "var(--cobalt-100)", color: "var(--cobalt-700)", fontSize: 12 }}
-          >
-            {user?.initials ?? "SK"}
-          </span>
-          {!collapsed && (
-            <>
-              <span className="fg-body-sm flex-1 text-fg">You</span>
-              <Icon name="settings" size={16} className="text-subtle" />
-            </>
-          )}
-        </div>
+        <div className={cn("flex items-center pt-1", collapsed ? "justify-center" : "")}>{userArea}</div>
       </div>
     </nav>
   );

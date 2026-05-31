@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { QueryProvider } from "@/providers/query-provider";
@@ -23,6 +23,14 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Forge",
   description: "A calm, bright control plane for running Claude Code at scale.",
+};
+
+// `viewport-fit=cover` lets the UI extend under notches/home indicators so our
+// `env(safe-area-inset-*)` padding (mobile drawer / topbar) actually applies.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
