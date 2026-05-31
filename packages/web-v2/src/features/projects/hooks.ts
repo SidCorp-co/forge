@@ -8,12 +8,17 @@
 // invalidates on a WS event" required by the foundation acceptance — and it is
 // the template every later web-v2 feature follows: pick a key the event-router
 // already touches, or live updates silently no-op.
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { projectApi } from './api';
 import { mergeProjects, workspaceTotals } from './derive';
 import { usePinnedProjects } from './pins';
-import type { ProjectConsoleItem, WorkspaceTotals } from './types';
+import type {
+  CreatedProject,
+  CreateProjectInput,
+  ProjectConsoleItem,
+  WorkspaceTotals,
+} from './types';
 
 /** Project console list. Keyed `['projects']` — see the WS contract above. */
 export function useProjects() {
@@ -75,6 +80,23 @@ export function useProjectsConsole(): ProjectsConsole {
     },
     toggle,
   };
+}
+
+/**
+ * Create a project. On success invalidates `['projects']` (and its `health`
+ * child) so the new row appears live in the console + rail switcher, then hands
+ * the created row back to the caller for navigation. Errors (e.g. 409
+ * `SLUG_TAKEN`) surface through the mutation's `error` for the form to render —
+ * no toast here, so inline field validation owns the failure path.
+ */
+export function useCreateProject() {
+  const qc = useQueryClient();
+  return useMutation<CreatedProject, unknown, CreateProjectInput>({
+    mutationFn: (body) => projectApi.create(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
 }
 
 /** Full detail for one project. Keyed `['project', id]`. */

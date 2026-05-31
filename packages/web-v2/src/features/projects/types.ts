@@ -73,6 +73,31 @@ export interface ProjectHealthRow {
   lastActivityAt: string | null;
 }
 
+/**
+ * Body of `POST /api/projects` — mirrors `createProjectSchema` in
+ * `packages/core/src/projects/routes.ts` (slug: 3–64 lowercase/digits/hyphens;
+ * name: 1–200; description optional). Do not loosen these without updating the
+ * server schema.
+ */
+export interface CreateProjectInput {
+  slug: string;
+  name: string;
+  description?: string | null;
+}
+
+/**
+ * `201` response of `POST /api/projects` — the inserted row projection (no
+ * membership `role`, which the caller always owns on create).
+ */
+export interface CreatedProject {
+  id: string;
+  slug: string;
+  name: string;
+  ownerId: string;
+  apiKey: string;
+  createdAt: string;
+}
+
 /** Sort options for the projects console toolbar. */
 export type ProjectSort = 'recent' | 'name' | 'health';
 
