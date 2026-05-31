@@ -1,12 +1,14 @@
 "use client";
 
 // Merged project Automation surface (Concept C, ISS-307) — Schedules + PM under
-// one tabbed shell. Schedules renders its existing scoped screen unchanged; PM
-// is the on-brand ComingSoon placeholder (no project PM route is built yet).
+// one tabbed shell. Both tabs render real, scoped screens: Schedules from the
+// schedules feature, PM from this feature's PmScreen (cadence/config + decision
+// audit log, ISS-315).
 // Active tab is mirrored to `?tab=` (shallow replaceState, hydrated on mount).
-import { ComingSoon, Tabs, type TabItem } from "@/design";
+import { Tabs, type TabItem } from "@/design";
 import { useTabParam } from "@/lib/utils/use-tab-param";
 import { SchedulesScreen } from "@/features/schedules/components/schedules-screen";
+import { PmScreen } from "./pm-screen";
 
 type AutomationTab = "schedules" | "pm";
 
@@ -32,10 +34,7 @@ export function AutomationScreen({ scope }: AutomationScreenProps) {
         <SchedulesScreen scope={{ projectId: scope.projectId, canManage: scope.canManage }} />
       )}
       {tab === "pm" && (
-        <ComingSoon
-          title="Project management"
-          message="Planning, prioritisation, and roadmap tools for this project are on the way."
-        />
+        <PmScreen scope={{ projectId: scope.projectId, canManage: scope.canManage }} />
       )}
     </div>
   );
