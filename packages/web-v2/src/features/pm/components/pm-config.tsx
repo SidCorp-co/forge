@@ -26,19 +26,21 @@ const TRIGGER_LABELS: Record<keyof PmEventTriggers, string> = {
   graphChanged: "Dependency graph changed",
 };
 
+const DEFAULT_TRIGGERS: PmEventTriggers = {
+  jobFailed: true,
+  pipelineStalled: true,
+  needsInfo: true,
+  queuePressure: true,
+  graphChanged: true,
+};
+
 export function PmConfig({ projectId }: { projectId: string }) {
   const q = usePmConfig(projectId);
   const update = useUpdatePmConfig(projectId);
 
   const [enabled, setEnabled] = useState(false);
   const [cadenceCron, setCadenceCron] = useState("");
-  const [triggers, setTriggers] = useState<PmEventTriggers>({
-    jobFailed: true,
-    pipelineStalled: true,
-    needsInfo: true,
-    queuePressure: true,
-    graphChanged: true,
-  });
+  const [triggers, setTriggers] = useState<PmEventTriggers>(DEFAULT_TRIGGERS);
   const [customInstructions, setCustomInstructions] = useState("");
   const [modelOverride, setModelOverride] = useState("");
   const [maxRunsPerHour, setMaxRunsPerHour] = useState("6");
@@ -49,7 +51,9 @@ export function PmConfig({ projectId }: { projectId: string }) {
     if (!c) return;
     setEnabled(c.enabled);
     setCadenceCron(c.cadenceCron ?? "");
-    setTriggers(c.eventTriggers);
+    // Legacy pm_config rows may carry a null eventTriggers; seed defensively so
+    // the triggers[key] render below can't throw.
+    setTriggers({ ...DEFAULT_TRIGGERS, ...(c.eventTriggers ?? {}) });
     setCustomInstructions(c.customInstructions ?? "");
     setModelOverride(c.modelOverride ?? "");
     setMaxRunsPerHour(String(c.maxRunsPerHour));

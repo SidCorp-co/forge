@@ -11,6 +11,7 @@
 // min-h-dvh.
 import { useMemo, useState } from "react";
 import {
+  Banner,
   Button,
   Card,
   CardContent,
@@ -91,6 +92,26 @@ export function RunnersScreen() {
           message="We couldn't reach the device service. Retry in a moment."
           onRetry={() => devicesQ.refetch()}
         />
+      )}
+
+      {/*
+        A per-project `GET /api/runners` failure only zeroes that project's
+        runner list (runnersQ.runners flatMaps `?? []`), so without this notice
+        a failing project's runners would silently vanish. Surface it instead.
+      */}
+      {!loading && !devicesQ.isError && runnersQ.isError && (
+        <div className="mb-4">
+          <Banner
+            tone="attention"
+            action={
+              <Button variant="ghost" size="sm" onClick={() => runnersQ.refetch()}>
+                Retry
+              </Button>
+            }
+          >
+            Some projects&rsquo; runners couldn&rsquo;t be loaded — their device cards may show fewer runners than expected.
+          </Banner>
+        </div>
       )}
 
       {!loading && !devicesQ.isError && devices.length === 0 && remote.length === 0 && (

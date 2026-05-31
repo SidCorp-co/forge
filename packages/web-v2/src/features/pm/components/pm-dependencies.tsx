@@ -139,37 +139,30 @@ export function PmDependencies({ projectId }: { projectId: string }) {
         </div>
       ) : (
         <>
+          {/*
+            Core semantics (issues/dependency-routes.ts): for the selected
+            issue, `incoming` edges (to=:id) are the issues it DEPENDS ON /
+            is blocked by, and `outgoing` edges (from=:id) are the issues it
+            BLOCKS. POST {dependsOnId} stores (from=dependsOnId, to=:id) — an
+            incoming edge — so Add + Remove live on the "Depends on" card and
+            round-trip there. The referenced issue is `fromIssueId` for an
+            incoming (depends-on) edge and `toIssueId` for an outgoing
+            (blocking) edge.
+          */}
           <Card>
             <CardContent>
               <p className="fg-label mb-3">
-                Blocked by <span className="fg-caption">(incoming)</span>
+                Depends on <span className="fg-caption">(blocked by)</span>
               </p>
               {incoming.length === 0 ? (
-                <p className="fg-caption">Nothing blocks this issue.</p>
-              ) : (
-                <div className="space-y-2">
-                  {incoming.map((e: IssueDependency) => (
-                    <EdgeRow key={e.id} label="from" issue={byId.get(e.fromIssueId)} kind={e.kind} />
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent>
-              <p className="fg-label mb-3">
-                Depends on <span className="fg-caption">(outgoing)</span>
-              </p>
-              {outgoing.length === 0 ? (
                 <p className="fg-caption">This issue has no dependencies.</p>
               ) : (
                 <div className="space-y-2">
-                  {outgoing.map((e: IssueDependency) => (
+                  {incoming.map((e: IssueDependency) => (
                     <EdgeRow
                       key={e.id}
-                      label="to"
-                      issue={byId.get(e.toIssueId)}
+                      label="needs"
+                      issue={byId.get(e.fromIssueId)}
                       kind={e.kind}
                       onRemove={() => remove.mutate(e.id)}
                     />
@@ -179,7 +172,7 @@ export function PmDependencies({ projectId }: { projectId: string }) {
 
               <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-line-subtle pt-4">
                 <div className="min-w-[220px] flex-1">
-                  <label className="fg-caption mb-1 block">Add dependency (blocks)</label>
+                  <label className="fg-caption mb-1 block">Add dependency</label>
                   <Select
                     options={targetOptions}
                     value={addTarget}
@@ -203,6 +196,29 @@ export function PmDependencies({ projectId }: { projectId: string }) {
                   Add
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="fg-label mb-3">
+                Blocking <span className="fg-caption">(outgoing)</span>
+              </p>
+              {outgoing.length === 0 ? (
+                <p className="fg-caption">This issue blocks nothing.</p>
+              ) : (
+                <div className="space-y-2">
+                  {outgoing.map((e: IssueDependency) => (
+                    <EdgeRow
+                      key={e.id}
+                      label="blocks"
+                      issue={byId.get(e.toIssueId)}
+                      kind={e.kind}
+                      onRemove={() => remove.mutate(e.id)}
+                    />
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </>
