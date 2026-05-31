@@ -25,6 +25,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Redesigned v2 navigation: the left sidebar now shows only top-level destinations, project sections moved into horizontal tabs, and a new cross-project Attention inbox gathers everything waiting on you (reviews, blocked issues, mentions, failed jobs, offline runners) with a live count. On phones a bottom tab bar plus a project-switcher drawer replace the sidebar.**
   *Technical: web-v2 Concept B nav: workspace-only NavRail with NavItem.badge, new projects/[slug]/layout.tsx + ProjectTabBar, features/attention/* against GET /api/me/attention merged with /me/devices offline runners, BottomTabBar pattern, per-project RoomSub WS fan-out, ['attention'] invalidations in event-router.*
 
+- **You can now trigger a Coolify redeploy without tying it to an issue — `forge_coolify_deploy {action:'deploy'}` works with just the project (pass an integration id when more than one is active), so shipping the latest main to forge-beta no longer requires a pipeline run.**
+  *Technical: deploy action makes issueId optional: when absent it resolves the integration like the logs action and dispatches run-less via dispatchCoolifyDeployDirect (runId nullable through types/queue/adapter, the !runId throw dropped); prod human-confirm gate preserved. Merge f177b7a (ISS-312).*
+
 ### Removed
 
 - **The non-functional "Add member" action has been removed — it previously called a project-members endpoint that did not exist and always failed with a 404.**
