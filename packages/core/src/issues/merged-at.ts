@@ -38,9 +38,10 @@ export interface MergeStatesConfig {
    *  dispatch. */
   baseBranch: IssueStatus;
   /** Multi-branch projects use a distinct state for production merge; in
-   *  trunk-based v2 this equals `baseBranch` and the
-   *  `releaseDecomposePending` L2 gate shares the column with `blockedBy`.
-   *  Future v3 will split into `merged_to_prod_at`. */
+   *  trunk-based v2 this equals `baseBranch`. The `decomposeChildrenPending`
+   *  L2 gate shares this `merged_at` column with `blockedBy` (a decompose
+   *  parent waits for its children's `merged_at`). Future v3 will split into
+   *  `merged_to_prod_at`. */
   productionBranch: IssueStatus;
 }
 

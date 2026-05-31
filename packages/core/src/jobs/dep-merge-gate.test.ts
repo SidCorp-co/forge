@@ -73,14 +73,17 @@ describe('L2 dependency gate — merged_at (ISS-232)', () => {
     expect(text).not.toMatch(/p\.status\s+NOT\s+IN/);
   });
 
-  it('picker keys releaseDecomposePending on parent2.merged_at IS NULL', async () => {
+  it('picker keys decomposeChildrenPending on child.merged_at IS NULL (parent waits for children)', async () => {
     mockProjectAgentConfigOnce(null);
     dbExecute.mockResolvedValueOnce([]);
     await pickNextDispatchableJobForProject('p1');
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
     expect(text).toMatch(/d2\.kind\s*=\s*'decomposes'/);
-    expect(text).toMatch(/p2\.merged_at\s+IS\s+NULL/);
-    expect(text).not.toMatch(/p2\.status\s+NOT\s+IN/);
+    // The job's issue is the PARENT (d2.from_issue_id = j.issue_id); the gate
+    // keys on the CHILD's merged_at (c2), not the parent's.
+    expect(text).toMatch(/d2\.from_issue_id\s*=\s*j\.issue_id/);
+    expect(text).toMatch(/c2\.merged_at\s+IS\s+NULL/);
+    expect(text).not.toMatch(/c2\.status\s+NOT\s+IN/);
   });
 
   it('asserter mirrors picker — same merged_at clauses, no status compare', async () => {
@@ -100,8 +103,8 @@ describe('L2 dependency gate — merged_at (ISS-232)', () => {
     await assertDispatchable('job-1');
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
     expect(text).toMatch(/p\.merged_at\s+IS\s+NULL/);
-    expect(text).toMatch(/p2\.merged_at\s+IS\s+NULL/);
+    expect(text).toMatch(/c2\.merged_at\s+IS\s+NULL/);
     expect(text).not.toMatch(/p\.status\s+NOT\s+IN/);
-    expect(text).not.toMatch(/p2\.status\s+NOT\s+IN/);
+    expect(text).not.toMatch(/c2\.status\s+NOT\s+IN/);
   });
 });

@@ -253,9 +253,11 @@ interface BarrierFragments {
      *  Folded `j.type <> 'pm'` into the predicate so PM jobs auto-skip the
      *  gate (PM has no issue deps). */
     blockedBy: SQL;
-    /** L2 — release jobs additionally wait for their `kind='decomposes'`
-     *  parent to release/close. Self-gated on `j.type = 'release'`. */
-    releaseDecomposePending: SQL;
+    /** L2 — a decompose PARENT's forward jobs (code/review/test/fix) wait
+     *  until every `kind='decomposes'` child has landed on base
+     *  (`child.merged_at` set). Parent runs its integration last; children are
+     *  NOT gated on the parent. */
+    decomposeChildrenPending: SQL;
   };
 }
 
@@ -368,13 +370,21 @@ function buildBarrierFragments(args: {
         AND (d.valid_until IS NULL OR d.valid_until > now())
         AND p.merged_at IS NULL
     )`,
-    releaseDecomposePending: sql`j.type = 'release' AND EXISTS (
+    // Decompose redesign — the PARENT runs its integration LAST. A decompose
+    // parent's forward jobs (code/review/test/fix) stay queued until every
+    // `kind='decomposes'` child has landed on the base branch
+    // (`child.merged_at IS NULL`, the SAME signal `blockedBy` uses above).
+    // Children are NOT gated on the parent: the old `releaseDecomposePending`
+    // gate (child release waited for `parent.merged_at`) deadlocked umbrella
+    // epics that never code-merge themselves, so it was removed. The
+    // dependency is now one-directional: parent waits for children.
+    decomposeChildrenPending: sql`j.type IN ('code','review','test','fix') AND EXISTS (
       SELECT 1 FROM issue_dependencies d2
-      JOIN issues p2 ON p2.id = d2.from_issue_id
-      WHERE d2.to_issue_id = j.issue_id
+      JOIN issues c2 ON c2.id = d2.to_issue_id
+      WHERE d2.from_issue_id = j.issue_id
         AND d2.kind = 'decomposes'
         AND (d2.valid_until IS NULL OR d2.valid_until > now())
-        AND p2.merged_at IS NULL
+        AND c2.merged_at IS NULL
     )`,
   };
 
@@ -427,7 +437,7 @@ export async function pickNextDispatchableJobForProject(projectId: string): Prom
       AND NOT (${predicates.issueBusySession})
       AND NOT (${predicates.issueBusyJob})
       AND NOT (${predicates.blockedBy})
-      AND NOT (${predicates.releaseDecomposePending})
+      AND NOT (${predicates.decomposeChildrenPending})
       AND EXISTS (
         SELECT 1 FROM fresh_capable_runners fcr
         WHERE fcr.in_flight < fcr.cap
@@ -494,7 +504,7 @@ export async function assertDispatchable(jobId: string): Promise<DispatchBarrier
         WHEN ${predicates.issueBusySession} THEN 'issue_busy'
         WHEN ${predicates.issueBusyJob} THEN 'issue_busy'
         WHEN ${predicates.blockedBy} THEN 'blocked_by'
-        WHEN ${predicates.releaseDecomposePending} THEN 'release_decompose_pending'
+        WHEN ${predicates.decomposeChildrenPending} THEN 'decompose_children_pending'
         WHEN j.issue_id IS NOT NULL
              AND j.issue_id::text NOT IN (SELECT issue_id FROM running_ids)
              AND (SELECT COUNT(*) FROM running_ids) >= ${cap}

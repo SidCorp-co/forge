@@ -3,8 +3,10 @@
  *
  * Three handlers ride the `transition` topic:
  *
- *  1. cascade approve   — parent `waiting → approved` flips all `on_hold`
- *                         children → `approved` and clears `manualHold`.
+ *  1. cascade approve   — parent enters `approved` (from the review gate
+ *                         `waiting`, or tolerantly `on_hold`/`confirmed`) and
+ *                         flips all `draft` children → `approved`, clearing
+ *                         `manualHold`.
  *  2. watcher           — when the LAST sibling reaches
  *                         {staging, released, closed}, post a system comment
  *                         on the parent and re-fire the parent's pipeline so
@@ -54,19 +56,31 @@ async function resolveDeviceForProject(projectId: string): Promise<DeviceLite | 
 }
 
 /**
- * Statuses a child can be in when we cascade-approve. The state-machine has
- * no `draft`; child issues created by forge-plan land at `on_hold` (an inert
- * entry status — `on_hold` has no STATUS_TO_JOB_TYPE entry so the
- * orchestrator does not auto-dispatch forge-triage). The cascade collapses
- * `on_hold → approved` via `applyStatusTransition({ skip: true })`. Children
- * that have moved past `on_hold` (e.g. someone already advanced them
- * manually) are skipped. See ISS-130 — `open` used to be the parking status
- * but was racing forge-triage.
+ * Statuses a child can be in when we cascade-approve. Decompose creates
+ * children at `draft` (the inert proposal state — no STATUS_TO_JOB_TYPE entry,
+ * so the orchestrator does not auto-dispatch). The cascade collapses
+ * `draft → approved` via `applyStatusTransition({ skip: true })` when the
+ * human approves the parent. Children that have already moved past `draft`
+ * (e.g. promoted manually) are skipped.
  */
-const CASCADE_APPROVE_FROM_STATUSES: ReadonlySet<IssueStatus> = new Set(['on_hold']);
+const CASCADE_APPROVE_FROM_STATUSES: ReadonlySet<IssueStatus> = new Set(['draft']);
+
+/**
+ * Parent statuses from which entering `approved` should fire the cascade.
+ * `waiting` is the canonical review-gate (set by `decomposeParent`). We also
+ * tolerate `on_hold` and `confirmed` so a skill that parked the parent off the
+ * happy path can't break the kickoff — the cascade is anchored to the
+ * system-defined event (parent ENTERS `approved`), not to the skill having set
+ * exactly one prior status.
+ */
+const CASCADE_APPROVE_PARENT_FROM: ReadonlySet<IssueStatus> = new Set([
+  'waiting',
+  'on_hold',
+  'confirmed',
+]);
 
 async function handleCascadeApprove(payload: HookPayloads['transition']): Promise<void> {
-  if (!(payload.to === 'approved' && payload.from === 'waiting')) return;
+  if (!(payload.to === 'approved' && CASCADE_APPROVE_PARENT_FROM.has(payload.from))) return;
   const children = await findDecompositionChildren(payload.issueId);
   if (children.length === 0) return;
   const device = await resolveDeviceForProject(payload.projectId);

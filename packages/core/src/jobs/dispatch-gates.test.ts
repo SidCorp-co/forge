@@ -198,7 +198,7 @@ describe('pickNextDispatchableJobForProject', () => {
     expect(text).toMatch(/d\.kind\s*=\s*'blocks'/);
     expect(text).toMatch(/d2\.kind\s*=\s*'decomposes'/);
     expect(text).toMatch(/p\.merged_at\s+IS\s+NULL/);
-    expect(text).toMatch(/p2\.merged_at\s+IS\s+NULL/);
+    expect(text).toMatch(/c2\.merged_at\s+IS\s+NULL/);
     expect(text).not.toMatch(/p\.status\s+NOT\s+IN\s*\(/);
 
     // L3 — running_ids CTE + cap comparison
@@ -501,7 +501,7 @@ describe('assertDispatchable', () => {
     expect(text).toMatch(/'retry_cooldown'/);
     expect(text).toMatch(/'issue_busy'/);
     expect(text).toMatch(/'blocked_by'/);
-    expect(text).toMatch(/'release_decompose_pending'/);
+    expect(text).toMatch(/'decompose_children_pending'/);
     expect(text).toMatch(/'project_cap'/);
     expect(text).toMatch(/'runner_stale'/);
     expect(text).toMatch(/'runner_full'/);
@@ -564,7 +564,7 @@ describe('assertDispatchable', () => {
       /FROM\s+agent_sessions\s+s/, // issueBusySession
       /FROM\s+jobs\s+other/, // issueBusyJob
       /d\.kind\s*=\s*'blocks'/, // blockedBy
-      /d2\.kind\s*=\s*'decomposes'/, // releaseDecomposePending
+      /d2\.kind\s*=\s*'decomposes'/, // decomposeChildrenPending
     ];
     for (const re of predicateSignatures) {
       expect(pickerSql, `picker missing predicate ${re}`).toMatch(re);

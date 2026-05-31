@@ -12,7 +12,10 @@
  *      shared integration branch on the project's git remote, branched off
  *      the project's `baseBranch`. Subsequent calls reuse the existing
  *      branch recorded on the parent's metadata.
- *   3. Creates new child issues at `on_hold` (postgres trigger allocates issSeq).
+ *   3. Creates new child issues at `draft` (postgres trigger allocates issSeq).
+ *      `draft` is the inert proposal state — it has no STATUS_TO_JOB_TYPE entry
+ *      so the orchestrator never auto-dispatches a child. Children stay `draft`
+ *      until a human approves the parent (the cascade promotes them).
  *   4. Inserts `kind='decomposes'` edges (idempotent on the unique edge index).
  *   5. Writes `branchConfig` metadata onto parent (first call) + every child
  *      so PR-A's resolver returns the integration branch for child base/target.
@@ -41,6 +44,7 @@ import {
 import { logger } from '../logger.js';
 import { type Actor, recordActivityTx } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
+import { applyStatusTransition } from './apply-transition.js';
 
 const MAX_BRANCH_SUFFIX = 10;
 const ALLOWED_PARENT_STATUSES: ReadonlySet<IssueStatus> = new Set(['confirmed', 'waiting']);
@@ -260,7 +264,7 @@ export async function decomposeParent(
           projectId: parentRow.projectId,
           title: spec.title.trim(),
           description: spec.description ?? null,
-          status: 'on_hold',
+          status: 'draft',
           priority: spec.priority ?? parentRow.priority,
           category: spec.category ?? parentRow.category,
           createdById: actor.userId,
@@ -442,6 +446,41 @@ export async function decomposeParent(
       await hooks.emit('dependencyChanged', edge);
     } catch (err) {
       logger.error({ err, edgeId: edge.edgeId }, 'decompose: dependencyChanged emit failed');
+    }
+  }
+
+  // Core owns the parent's review-gate transition (decompose redesign). On the
+  // FIRST decomposition, park the parent at `waiting` so a human reviews the
+  // split before the cascade fires. This is system logic — it is NOT left to
+  // the skill (which historically drifted, e.g. setting `on_hold` instead of
+  // `waiting`, breaking the kickoff). The cascade still flips children
+  // `draft → approved` when the human approves the parent. Idempotent: skipped
+  // if the parent is already `waiting` (avoids a NO_OP transition error) and on
+  // subsequent (incremental) decompositions.
+  if (!parentAlreadyDecomposed && result.createdEdges > 0 && preParent.status !== 'waiting') {
+    try {
+      const [owner] = await db
+        .select({ ownerId: projects.ownerId })
+        .from(projects)
+        .where(eq(projects.id, preParent.projectId))
+        .limit(1);
+      if (owner?.ownerId) {
+        await applyStatusTransition(
+          {
+            id: result.parentId,
+            projectId: preParent.projectId,
+            status: preParent.status,
+            reopenCount: 0,
+          },
+          'waiting',
+          { id: owner.ownerId, ownerId: owner.ownerId },
+        );
+      }
+    } catch (err) {
+      logger.warn(
+        { err, parentId: result.parentId, from: preParent.status },
+        'decompose: parent → waiting review-gate transition failed',
+      );
     }
   }
 
