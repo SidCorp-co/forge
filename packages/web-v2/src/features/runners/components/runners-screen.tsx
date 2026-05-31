@@ -29,6 +29,7 @@ import { userRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useDevices, useInitPairing, useRevokeDevice } from "../hooks";
 import { deviceHealth, type DeviceRow } from "../types";
+import { DeviceDetail } from "./device-detail";
 
 function relativeTime(iso: string | null): string {
   if (!iso) return "never";
@@ -156,8 +157,11 @@ export function RunnersScreen() {
   const devices = useDevices();
   const revoke = useRevokeDevice();
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   const rows: DeviceRow[] = devices.data ?? [];
+  // Re-derive from the live list so rename/status updates reflect in the open panel.
+  const detailDevice = rows.find((d) => d.id === detailId) ?? null;
 
   return (
     <div className="mx-auto flex w-full max-w-[1080px] flex-col gap-5 px-6 py-6">
@@ -246,9 +250,7 @@ export function RunnersScreen() {
                         <span className="text-muted">{relativeTime(d.lastSeenAt)}</span>
                       </TD>
                       <TD className="text-right">
-                        {revoked ? (
-                          <span className="fg-body-sm text-subtle">revoked</span>
-                        ) : confirmId === d.id ? (
+                        {confirmId === d.id ? (
                           <span className="inline-flex items-center gap-2">
                             <Button
                               variant="danger"
@@ -267,14 +269,26 @@ export function RunnersScreen() {
                             </Button>
                           </span>
                         ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            icon="trash"
-                            onClick={() => setConfirmId(d.id)}
-                          >
-                            Revoke
-                          </Button>
+                          <span className="inline-flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              icon="settings"
+                              onClick={() => setDetailId(d.id)}
+                            >
+                              Manage
+                            </Button>
+                            {!revoked && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                icon="trash"
+                                onClick={() => setConfirmId(d.id)}
+                              >
+                                Revoke
+                              </Button>
+                            )}
+                          </span>
                         )}
                       </TD>
                     </TR>
@@ -290,6 +304,8 @@ export function RunnersScreen() {
         Revoking requires a recent sign-in. If revoke fails with an auth error, re-authenticate in
         Settings and try again.
       </Banner>
+
+      <DeviceDetail device={detailDevice} onClose={() => setDetailId(null)} />
     </div>
   );
 }

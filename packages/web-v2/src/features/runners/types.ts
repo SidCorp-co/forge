@@ -26,12 +26,44 @@ export interface PairingCode {
   expires_at: string;
 }
 
+/**
+ * One row of `GET /api/devices/:id/runners` (owner-scoped) — a (device ×
+ * project) runner assignment. `repoPath`/`branch` are this device's per-project
+ * checkout; `projectDefaultRepoPath`/`baseBranch` are the project defaults the
+ * UI prefills from. Verified against `packages/core/src/devices/routes.ts`.
+ */
+export interface DeviceRunnerAssignment {
+  runnerId: string;
+  projectId: string;
+  slug: string;
+  name: string;
+  repoPath: string | null;
+  branch: string | null;
+  status: string;
+  lastSeenAt: string | null;
+  projectDefaultRepoPath: string | null;
+  baseBranch: string | null;
+}
+
 /** Map a device's online/offline/revoked status to a kit health key. */
 export function deviceHealth(status: DeviceRow["status"]): HealthKey {
   switch (status) {
     case "online":
       return "healthy";
     case "revoked":
+      return "down";
+    default:
+      return "idle";
+  }
+}
+
+/** Map a runner's free-form status string to a kit health key. */
+export function runnerHealth(status: string): HealthKey {
+  switch (status) {
+    case "online":
+      return "healthy";
+    case "revoked":
+    case "disabled":
       return "down";
     default:
       return "idle";
