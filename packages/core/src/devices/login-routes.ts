@@ -32,7 +32,7 @@ import { logger } from '../logger.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { Sentry } from '../observability/sentry.js';
-import { issueOrRotateDeviceToken } from '../auth/deviceToken.js';
+import { issueOrRotateDeviceTokenByMachine } from '../auth/deviceToken.js';
 import { provisionGitCredential } from '../git/provision-credential.js';
 
 type LoginPlatform = 'windows' | 'macos' | 'linux';
@@ -137,6 +137,7 @@ deviceLoginRoutes.post(
       device_label?: unknown;
       device_platform?: unknown;
       device_hostname?: unknown;
+      machine_id?: unknown;
     };
     try {
       body = (await c.req.json()) as typeof body;
@@ -172,6 +173,10 @@ deviceLoginRoutes.post(
       });
     }
     const deviceHostname = deviceHostnameRaw || null;
+    const machineId =
+      typeof body.machine_id === 'string' && body.machine_id.trim()
+        ? body.machine_id.trim().slice(0, 256)
+        : null;
 
     const createdIp = clientIp(c) ?? null;
     const uaRaw = c.req.header('user-agent') ?? '';
@@ -190,6 +195,7 @@ deviceLoginRoutes.post(
           deviceLabel,
           devicePlatform,
           deviceHostname,
+          machineId,
           createdIp,
           createdUserAgent,
           expiresAt,
@@ -321,6 +327,7 @@ deviceLoginRoutes.get('/login/poll', async (c) => {
       approvedUserId: deviceLoginCodes.approvedUserId,
       deviceLabel: deviceLoginCodes.deviceLabel,
       devicePlatform: deviceLoginCodes.devicePlatform,
+      machineId: deviceLoginCodes.machineId,
     });
 
   if (consumed.length === 1) {
@@ -343,12 +350,14 @@ deviceLoginRoutes.get('/login/poll', async (c) => {
       });
     }
 
-    // Mint a DEVICE token (not a user JWT). Dedupes by (ownerId, name, platform)
-    // so re-login from the same machine rotates the token in place.
-    const { device, plaintext } = await issueOrRotateDeviceToken({
+    // Mint a DEVICE token (not a user JWT). Dedupes by machine id when the CLI
+    // sent one (re-login from the same machine rotates the token in place,
+    // keeping runner bindings); falls back to always-insert otherwise.
+    const { device, plaintext } = await issueOrRotateDeviceTokenByMachine({
       ownerId: user.id,
       name: row.deviceLabel,
       platform: row.devicePlatform as LoginPlatform,
+      machineId: row.machineId,
     });
 
     // Optional, flag-gated, best-effort git push-credential provisioning.

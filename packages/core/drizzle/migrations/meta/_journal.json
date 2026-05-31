@@ -610,6 +610,13 @@
       "when": 1781568000000,
       "tag": "0088_device_machine_id",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1781654400000,
+      "tag": "0089_device_login_machine_id",
+      "breakpoints": true
     }
   ]
 }

@@ -117,6 +117,9 @@ export const deviceLoginCodes = pgTable(
     deviceLabel: text('device_label').notNull(),
     devicePlatform: text('device_platform').notNull(),
     deviceHostname: text('device_hostname'),
+    // Stable machine id (sha256 of /etc/machine-id) carried init→approve→issue
+    // so browser-approve login dedups by machine like the paste-code flow.
+    machineId: text('machine_id'),
     createdIp: text('created_ip'),
     createdUserAgent: text('created_user_agent'),
     approvedUserId: uuid('approved_user_id').references(() => users.id, {

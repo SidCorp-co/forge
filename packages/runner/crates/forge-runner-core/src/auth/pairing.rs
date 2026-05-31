@@ -105,11 +105,14 @@ pub enum LoginPoll {
 
 /// Start a browser-approve device login. Returns the code + verify URL.
 pub async fn login_init(core_url: &str, name: &str) -> Result<LoginInitResponse> {
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "device_label": name,
         "device_platform": detected_platform(),
         "device_hostname": hostname::get().ok().and_then(|h| h.into_string().ok()),
     });
+    if let Some(mid) = machine_id() {
+        body["machine_id"] = serde_json::Value::String(mid);
+    }
     let url = format!("{}/api/devices/login/init", core_url.trim_end_matches('/'));
     let resp = reqwest::Client::new()
         .post(&url)
