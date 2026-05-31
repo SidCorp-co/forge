@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Runner management is now device-centric — each device has its own page showing the projects and runners bound to it, with a clearer pairing / runner-onboarding flow.**
+  *Technical: New per-device management path (ISS-273) on top of the runner framework, plus runner-onboarding UX fixes. Merge 9d00232f.*
+- **The `forge-runner doctor` command now gives a clear online/offline verdict so onboarding problems are obvious at a glance.**
+  *Technical: doctor reconciles the runner's heartbeat against the server's /me/runners view and exits PASS/FAIL (ISS-272). Merge ff97cd8a.*
+- **The `forge_coolify_deploy` MCP tool gained a `logs` action — release/deploy skills can now read Coolify build & deploy logs (secrets scrubbed) directly over MCP.**
+  *Technical: New `logs` action fetches a deployment's Coolify log, redacts secrets line-by-line, tails to ~100 lines/16KB (ISS-284). Merge 1eacf97c.*
+
 ### Changed
 
 - **Removed the legacy device-routing path (activeDeviceId) and unified all job dispatch on the runner framework; orphaned or stale devices no longer block job dispatch.**
@@ -17,7 +24,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Removed
 
+- **The non-functional "Add member" action has been removed — it previously called a project-members endpoint that did not exist and always failed with a 404.**
+  *Technical: Removed the dead phantom POST to `/api/projects/:id/members` (no such route) (ISS-281). Merge 50f6bc39.*
+
 ### Fixed
+
+- **A runner slot no longer gets permanently wedged when an agent dies without reporting completion — orphaned dispatched/running jobs are now reaped within minutes and auto-retried, so the pipeline keeps moving.**
+  *Technical: Reverse session→job reconciliation (pipeline/sweeper.ts reconcileOrphanedJobs + jobs/finalize-failure.ts) reaps jobs whose linked agent_session is terminal, routing them through the normal auto-retry / manual-hold path; part of the ISS-258/259 orphan-job hygiene family (ISS-280). Merge 7e2fc1d4.*
+- **The web session view now works for jobs run by the CLI runner — it shows the agent transcript just like the desktop app (CLI-runner jobs previously showed nothing).**
+  *Technical: Web session view derives the transcript from agent_sessions for CLI-runner jobs, reaching parity with desktop (ISS-283). Merge 10b2026a.*
 
 ### Security
 
