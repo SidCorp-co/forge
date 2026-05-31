@@ -47,6 +47,11 @@ services:
       # directory is wiped on every container recreate. Switch to S3 by
       # setting STORAGE_DRIVER=s3 + S3_BUCKET/S3_REGION when ready.
       - core_uploads:/app/uploads
+      # forge-runner release assets (ISS-310). Boot-time `fetch-release.js`
+      # populates this from the latest `runner-v*` GitHub Release; the install
+      # routes serve it as /install.sh, /install/latest.json, /install/bin/*.
+      # Persisted so a redeploy doesn't re-download on every restart.
+      - runner_dist:/data/runner-dist
     env_file:
       - .env
     environment:
@@ -113,6 +118,16 @@ services:
       # SDK no-op; @sentry/node never attaches. See packages/core/src/
       # observability/sentry.ts for the opt-in contract.
       SENTRY_DSN: ${SENTRY_DSN_CORE:-}
+      # forge-runner distribution (ISS-310). Where boot-time fetch-release.js
+      # stores the runner binaries + VERSION and the install routes read them.
+      # Defaults to the persisted volume mount below; override to relocate.
+      RUNNER_RELEASE_DIR: ${RUNNER_RELEASE_DIR:-/data/runner-dist}
+      # Repo whose `runner-v*` GitHub Releases the populate step pulls from.
+      RUNNER_RELEASE_REPO: ${RUNNER_RELEASE_REPO:-SidCorp-co/forge}
+      # Optional GitHub token — only needed if the repo/releases are private or
+      # to lift the 60-req/hr unauthenticated API limit. fetch-release.js reads
+      # GITHUB_TOKEN; operators set RUNNER_RELEASE_GITHUB_TOKEN in `.env`.
+      GITHUB_TOKEN: ${RUNNER_RELEASE_GITHUB_TOKEN:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 10s
@@ -173,3 +188,4 @@ services:
 volumes:
   postgres_data:
   core_uploads:
+  runner_dist:

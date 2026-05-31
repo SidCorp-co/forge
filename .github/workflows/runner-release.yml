@@ -64,6 +64,7 @@ jobs:
           body: |
             forge-runner ${{ github.ref_name }}
 
-            Deploy: copy these assets into the core host's `RUNNER_RELEASE_DIR`
-            (keep the `forge-runner-<target>` names + `VERSION`). Core then serves
+            Deploy: no manual copy needed. On boot the core's `fetch-release.js`
+            auto-populates `RUNNER_RELEASE_DIR` from the latest `runner-v*` release
+            (keeps the `forge-runner-<target>` names + `VERSION`). Core then serves
             `/install.sh`, `/install/latest.json`, `/install/bin/<target>`.

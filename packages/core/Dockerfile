@@ -41,6 +41,9 @@ EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 \
   CMD wget -qO- http://localhost:8080/health || exit 1
 
-# Run migrations via the runtime migrator (drizzle-orm; no drizzle-kit
-# in prod deps). Then start the server.
-CMD ["sh", "-c", "node dist/db/migrate.js && node dist/index.js"]
+# Run migrations via the runtime migrator (drizzle-orm; no drizzle-kit in prod
+# deps) — these MUST block server start. Then launch the runner-release populate
+# in the BACKGROUND (best-effort; exits 0) so a slow binary download can't push
+# boot past the healthcheck start_period, and `exec` the server immediately. The
+# install routes serve 404/501 until the dir fills in (seconds later).
+CMD ["sh", "-c", "node dist/db/migrate.js && { node dist/install/fetch-release.js & } && exec node dist/index.js"]
