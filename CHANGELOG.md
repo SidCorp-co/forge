@@ -40,6 +40,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **You can now create an issue directly from web-v2 (the “New issue” button opens a dialog), and clicking an agent session opens its detail view instead of 404ing. Issues and sessions now cross-link — open an issue's sessions, jump from a session back to its issue — and block/decompose relations show clickable ISS-X badges. Raw UUIDs no longer lead on the issue and session screens.**
   *Technical: Added issuesApi.create + useCreateIssue + NewIssueDialog (?new=1 trigger); restored /projects/[slug]/agents/[sessionId] route + clickable session rows; repointed dead /sessions/:id hrefs to /agents/:id; enriched core GET /issues/:id/dependencies with both endpoints' displayId/title/status; shared IssueRefBadge.*
 
+- **Creating an issue in the web app now takes you straight to the new issue's detail page after you submit, instead of dropping you back on the issues list.**
+  *Technical: web/src/app/projects/[slug]/issues/new/page.tsx now router.push's to /projects/<slug>/issues/<displayId ?? id> on create success (V1 root surface), matching web-v2. Merge 119a7e1.*
+
 ### Security
 
 ## [0.2.11] - 2026-05-31
