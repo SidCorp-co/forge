@@ -135,13 +135,16 @@ export default function NewIssuePage() {
           dataBase64: await fileToBase64(f),
         })),
       );
-      await createIssue.mutateAsync({
+      const created = await createIssue.mutateAsync({
         title,
         ...(description.trim() ? { description } : {}),
         priority,
         ...(attachments.length > 0 ? { attachments } : {}),
       });
-      router.push(`/projects/${slug}/issues`);
+      // Land on the created issue's detail page (AC3), not the issues list.
+      // The [id] route resolves both the friendly ISS-N displayId and the UUID;
+      // prefer displayId to match the rest of the app's issue links.
+      router.push(`/projects/${slug}/issues/${created.displayId ?? created.id}`);
     } catch (err) {
       setError(formatApiError(err));
       setSubmitting(false);
