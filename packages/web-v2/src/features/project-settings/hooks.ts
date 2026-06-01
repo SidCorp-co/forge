@@ -72,10 +72,51 @@ export function useInviteMember(id: string | undefined) {
       projectSettingsApi.inviteMember(id as string, email, role),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["project", id, "members"] });
+      qc.invalidateQueries({ queryKey: ["project", id, "invitations"] });
       toast({ title: "Invitation sent", tone: "success" });
     },
     onError: (err) =>
       toast({ title: "Couldn't invite member", description: formatApiError(err), tone: "error" }),
+  });
+}
+
+/** GET pending invitations (owner/admin). */
+export function useInvitations(id: string | undefined) {
+  return useQuery({
+    queryKey: ["project", id, "invitations"],
+    queryFn: () => projectSettingsApi.listInvitations(id as string),
+    enabled: !!id,
+  });
+}
+
+/** Revoke a pending invitation by email. */
+export function useRevokeInvitation(id: string | undefined) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (email: string) => projectSettingsApi.revokeInvitation(id as string, email),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["project", id, "invitations"] });
+      toast({ title: "Invitation cancelled", tone: "success" });
+    },
+    onError: (err) =>
+      toast({ title: "Couldn't cancel invitation", description: formatApiError(err), tone: "error" }),
+  });
+}
+
+/** Change a member's role (owner only). */
+export function useUpdateMemberRole(id: string | undefined) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: "admin" | "member" }) =>
+      projectSettingsApi.updateMemberRole(id as string, userId, role),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["project", id, "members"] });
+      toast({ title: "Role updated", tone: "success" });
+    },
+    onError: (err) =>
+      toast({ title: "Couldn't update role", description: formatApiError(err), tone: "error" }),
   });
 }
 

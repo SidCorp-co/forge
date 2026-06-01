@@ -6,6 +6,7 @@ import { apiClient } from "@/lib/api/client";
 import type { ProjectDetail } from "@/features/projects/types";
 import type {
   PipelineConfig,
+  ProjectInvitationRow,
   ProjectLabel,
   ProjectMemberRow,
   ProjectUpdateInput,
@@ -45,6 +46,24 @@ export const projectSettingsApi = {
   /** `DELETE /api/projects/:id/members/:userId` — remove a member. */
   removeMember: (id: string, userId: string) =>
     apiClient<unknown>(`/projects/${id}/members/${userId}`, { method: "DELETE" }),
+
+  /** `PATCH /api/projects/:id/members/:userId` — change a member's role (owner only). */
+  updateMemberRole: (id: string, userId: string, role: "admin" | "member") =>
+    apiClient<unknown>(`/projects/${id}/members/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ role }),
+    }),
+
+  /** `GET /api/projects/:id/members/invitations` — pending invitations (owner/admin). */
+  listInvitations: (id: string) =>
+    apiClient<ProjectInvitationRow[]>(`/projects/${id}/members/invitations`),
+
+  /** `DELETE /api/projects/:id/members/invitations?email=` — revoke a pending invitation. */
+  revokeInvitation: (id: string, email: string) =>
+    apiClient<unknown>(
+      `/projects/${id}/members/invitations?email=${encodeURIComponent(email)}`,
+      { method: "DELETE" },
+    ),
 
   /** `GET /api/projects/:id/labels` — project labels. */
   listLabels: (id: string) => apiClient<ProjectLabel[]>(`/projects/${id}/labels`),

@@ -1,8 +1,9 @@
 "use client";
 
-// Project settings → Members. List (email + role) + invite by email + remove.
-// Invite/remove are owner-gated by core; we surface the controls only when the
-// caller is the owner (`canEdit`).
+// Project settings → Members. List (email + role) + invite by email + remove +
+// inline role change, plus a pending-invitations list (cancel). Invite / remove
+// / role-change / invitation controls are owner-gated by core; we surface them
+// only when the caller is the owner (`canEdit`).
 import { useState } from "react";
 import {
   Badge,
@@ -18,7 +19,14 @@ import {
   type SelectOption,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { useInviteMember, useMembers, useRemoveMember } from "../hooks";
+import {
+  useInvitations,
+  useInviteMember,
+  useMembers,
+  useRemoveMember,
+  useRevokeInvitation,
+  useUpdateMemberRole,
+} from "../hooks";
 
 const ROLE_OPTIONS: SelectOption[] = [
   { value: "member", label: "Member" },
@@ -27,8 +35,11 @@ const ROLE_OPTIONS: SelectOption[] = [
 
 export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
   const membersQ = useMembers(projectId);
+  const invitationsQ = useInvitations(canEdit ? projectId : undefined);
   const invite = useInviteMember(projectId);
   const remove = useRemoveMember(projectId);
+  const revoke = useRevokeInvitation(projectId);
+  const updateRole = useUpdateMemberRole(projectId);
 
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"admin" | "member">("member");
@@ -60,7 +71,18 @@ export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit:
               >
                 <span className="min-w-0 truncate text-fg">{m.email}</span>
                 <span className="flex shrink-0 items-center gap-2">
-                  <Badge tone={m.role === "owner" ? "accent" : "neutral"}>{m.role}</Badge>
+                  {canEdit && m.role !== "owner" ? (
+                    <Select
+                      options={ROLE_OPTIONS}
+                      value={m.role}
+                      onChange={(v) =>
+                        updateRole.mutate({ userId: m.userId, role: v as "admin" | "member" })
+                      }
+                      disabled={updateRole.isPending}
+                    />
+                  ) : (
+                    <Badge tone={m.role === "owner" ? "accent" : "neutral"}>{m.role}</Badge>
+                  )}
                   {canEdit && m.role !== "owner" && (
                     <IconButton
                       icon="trash"
@@ -73,6 +95,43 @@ export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit:
               </li>
             ))}
           </ul>
+        )}
+
+        {canEdit && (
+          <div className="mt-4 space-y-3 border-t border-line pt-4">
+            <h3 className="fg-label text-fg">Pending invitations</h3>
+            {invitationsQ.isLoading ? (
+              <Skeleton className="h-9 w-full rounded-md" />
+            ) : invitationsQ.isError ? (
+              <ErrorState
+                message={formatApiError(invitationsQ.error)}
+                onRetry={() => invitationsQ.refetch()}
+              />
+            ) : (invitationsQ.data ?? []).length === 0 ? (
+              <p className="fg-body-sm text-subtle">No pending invitations.</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {(invitationsQ.data ?? []).map((inv) => (
+                  <li
+                    key={inv.email}
+                    className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"
+                  >
+                    <span className="min-w-0 truncate text-fg">{inv.email}</span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      {inv.expired && <Badge tone="amber">Expired</Badge>}
+                      <Badge tone="neutral">{inv.role}</Badge>
+                      <IconButton
+                        icon="trash"
+                        aria-label={`Cancel invitation for ${inv.email}`}
+                        onClick={() => revoke.mutate(inv.email)}
+                        disabled={revoke.isPending}
+                      />
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         )}
 
         {canEdit && (

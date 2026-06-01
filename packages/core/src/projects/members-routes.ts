@@ -1,11 +1,17 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
-import { projectMemberRoles, projectMembers, projects, users } from '../db/schema.js';
+import {
+  projectInvitations,
+  projectMemberRoles,
+  projectMembers,
+  projects,
+  users,
+} from '../db/schema.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { sendInvitationEmail } from './invitation-email.js';
@@ -28,6 +34,12 @@ const patchRoleSchema = z.object({
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
 const memberParamSchema = z.object({ projectId: z.uuid(), userId: z.uuid() });
+
+// Revoke targets a pending invitation by email (query param, not path — avoids
+// putting an `@`/`.`-laden email in the URL path).
+const revokeInvitationQuerySchema = z.object({
+  email: z.string().trim().toLowerCase().pipe(z.email().max(254)),
+});
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, {
@@ -94,6 +106,43 @@ memberRoutes.get(
       .where(eq(projectMembers.projectId, projectId));
 
     return c.json(rows);
+  },
+);
+
+memberRoutes.get(
+  '/:projectId/members/invitations',
+  zValidator('param', projectParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { projectId } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const { project, role } = await loadProjectAndCallerRole(projectId, userId);
+    if (!isOwnerOrAdmin(role, project, userId)) {
+      throw forbidden('requires owner or admin');
+    }
+
+    const rows = await db
+      .select({
+        email: projectInvitations.email,
+        role: projectInvitations.role,
+        expiresAt: projectInvitations.expiresAt,
+        createdAt: projectInvitations.createdAt,
+        inviterEmail: users.email,
+      })
+      .from(projectInvitations)
+      .innerJoin(users, eq(users.id, projectInvitations.inviterId))
+      .where(
+        and(eq(projectInvitations.projectId, projectId), isNull(projectInvitations.acceptedAt)),
+      );
+
+    // Never leak `token` (the accept secret / PK). Surface an `expired` flag so
+    // the UI can hint at stale invites that are still cancellable.
+    const now = Date.now();
+    return c.json(
+      rows.map((r) => ({ ...r, expired: new Date(r.expiresAt).getTime() < now })),
+    );
   },
 );
 
@@ -217,6 +266,40 @@ memberRoutes.patch(
     if (!updated) throw notFound('NOT_FOUND', 'membership not found');
 
     return c.json(updated);
+  },
+);
+
+memberRoutes.delete(
+  '/:projectId/members/invitations',
+  zValidator('param', projectParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  zValidator('query', revokeInvitationQuerySchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { projectId } = c.req.valid('param');
+    const { email } = c.req.valid('query');
+    const callerId = c.get('userId');
+
+    const { project, role: callerRole } = await loadProjectAndCallerRole(projectId, callerId);
+    if (!isOwnerOrAdmin(callerRole, project, callerId)) {
+      throw forbidden('requires owner or admin');
+    }
+
+    const deleted = await db
+      .delete(projectInvitations)
+      .where(
+        and(
+          eq(projectInvitations.projectId, projectId),
+          eq(projectInvitations.email, email),
+          isNull(projectInvitations.acceptedAt),
+        ),
+      )
+      .returning({ token: projectInvitations.token });
+    if (deleted.length === 0) throw notFound('INVITATION_NOT_FOUND', 'pending invitation not found');
+
+    return c.body(null, 204);
   },
 );
 

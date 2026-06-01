@@ -51,6 +51,16 @@ export interface ProjectMemberRow {
   createdAt: string;
 }
 
+/** One row of `GET /api/projects/:id/members/invitations` — a pending invite. */
+export interface ProjectInvitationRow {
+  email: string;
+  role: "admin" | "member";
+  expiresAt: string;
+  createdAt: string;
+  inviterEmail: string;
+  expired: boolean;
+}
+
 /** A project label (`GET /api/projects/:id/labels`). */
 export interface ProjectLabel {
   id: string;
