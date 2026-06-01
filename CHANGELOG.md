@@ -22,6 +22,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **The v2 Runners screen now has a per-device detail panel — open any device from the Runners list to rename it, see its status and configuration (platform, agent version, last seen, git-push credential), and assign or adjust the project pools (runners) bound to it. This brings v2 to parity with the v1 device settings page.**
   *Technical: web-v2 device-detail SlideOver in features/runners, opened by a per-row Manage action (no new route or sidebar item). Rename via PATCH /api/devices/:id; pools via GET /api/devices/:id/runners + POST/PATCH/DELETE /api/projects/:id/runners; reuses kit primitives + projects hooks. No core change (ISS-317). Merge 260a0e78.*
 
+- **Project owners can now manage members from the new web app's Project Settings → Members tab: see pending invitations (before the invitee accepts), cancel one and re-invite, and change an existing member's role between Member and Admin. This fixes the previous inability to remove someone after they had been invited. The owner row stays protected — no role-change or remove control.**
+  *Technical: web-v2 project-settings Members tab gains a Pending invitations list + cancel and an inline role-change Select, all owner-gated (canEdit). New owner/admin-gated GET & DELETE /api/projects/:id/members/invitations (revoke by validated ?email=, token never serialized) in packages/core; reuses existing PATCH /members/:userId (owner-role immutable). packages/web (v1) untouched. Merge 65b0cab.*
+
 ### Changed
 
 - **You can now configure a project directly in the new web app — name & description, repository path, base/production branches, pipeline stages, labels, and members — reached from the project dashboard's gear icon or the ⌘K command palette, with no new sidebar item. Edits persist immediately and project secrets are never shown.**
