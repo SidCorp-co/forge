@@ -45,6 +45,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Agent session detail pages in the new web app now render the full conversation — assistant text and tool calls in their original order — for pipeline and CLI-runner sessions that previously showed an empty "No messages yet" screen. The page also shows which device/runner the session is running on (name, platform, and online status) and surfaces "Open issue" as a primary action instead of hiding it in the overflow menu.**
   *Technical: web-v2 session parser reads the canonical block shape and falls back to session.messages when /turns is empty; core messageRoleToTurnRole falls back to entry.type so derived sessions populate turn rows going forward. Merge c9ddd75.*
 
+- **The new web app now looks consistent across screens: every tabbed screen (Settings, Project Settings, Library, Automation, and Agents on mobile) shares the same tab strip and ?tab= deep links, and issue status, priority, and complexity show readable labels (e.g. "Medium", "Critical", "In progress") everywhere — lists, tables, mobile cards, and menus — not just the detail view.**
+  *Technical: web-v2: new ScreenTabs pattern unifies the tab-strip container (max-w-6xl + overflow-x-auto) across 5 screens; Settings/Project-Settings converge from #tab hash onto the shared useTabParam (?tab=). Issue row cells/menu + detail Tasks tab route through derive.ts label helpers (+ new TASK_STATUS_LABELS); dead duplicate IssueTableRow removed. Merge 427100d.*
+
 ### Removed
 
 ### Fixed
