@@ -5,7 +5,7 @@ Interactive conversational sessions with project agents — conversation, not pi
 ## Overview
 
 - Open a chat session with an agent inside a project; agent has project memory, skills, MCP tools.
-- Free-form — not routed through the 14-status pipeline.
+- Free-form — not routed through the 17-status pipeline.
 - Use for "what's the state of ISS-42?", brainstorming, exploration before creating an issue.
 
 ## Data Flow
@@ -14,7 +14,7 @@ Interactive conversational sessions with project agents — conversation, not pi
   User opens chat in web UI
         │
         ▼
-  New ChatSession created
+  ChatSession created (POST /api/chat/sessions)
         │
         ▼
   User sends message
@@ -33,7 +33,9 @@ Interactive conversational sessions with project agents — conversation, not pi
            ▼
   Streaming response
            ▼
-  Each turn logged as ChatLog
+  Conversation appended inline to chat_sessions.messages
+           ▼
+  One chat_logs audit row written per query→reply turn
 ```
 
 ### Input Sources
@@ -46,25 +48,41 @@ Interactive conversational sessions with project agents — conversation, not pi
 
 ## Core Entities
 
-### `ChatSession`
+### `ChatSession` (`chat_sessions`)
 
 | Field | Description |
 |-------|-------------|
-| `documentId` | Canonical ID |
-| `project` | Belongs to one project |
-| `createdBy` | User who started it |
-| `status` | `active` \| `ended` |
-| `lastMessageAt` | For inactivity cleanup |
+| `id` | Canonical UUID |
+| `projectId` | Belongs to one project |
+| `userId` | Authenticated owner (nullable; set for Bearer-JWT requests) |
+| `userKey` | Audit key propagated to `chat_logs.userKey` |
+| `title` | Session title (nullable) |
+| `source` | `web` \| `widget` \| `rocketchat` \| `telegram` (default `web`) |
+| `messages` | jsonb — inline conversation history |
+| `createdAt` / `updatedAt` | Timestamps |
 
-### `ChatLog`
+There is no session `status` or lifecycle column — a session exists until it is deleted.
+
+### `ChatLog` (`chat_logs`)
+
+A per-turn audit/analytics row — **one row per query→reply turn**, not a per-message log. The conversation itself lives inline in `chat_sessions.messages`; `chat_logs` is the separate audit trail.
 
 | Field | Description |
 |-------|-------------|
-| `session` | Parent ChatSession |
-| `role` | `user` \| `agent` \| `tool` |
-| `content` | Message body |
-| `toolCalls` | If the agent invoked tools |
-| `ts` | Timestamp |
+| `id` | Canonical UUID |
+| `sessionId` | Parent chat session id |
+| `projectSlug` | Project the turn ran under |
+| `userKey` | Audit key (nullable) |
+| `query` / `reply` | The user query and agent reply for the turn |
+| `model` | Model used |
+| `ragContext` | Retrieved context for the turn (jsonb) |
+| `toolCalls` | Tools the agent invoked (jsonb) |
+| `usage` | Token/cost usage (jsonb) |
+| `iterations` | Agent loop iterations |
+| `durationMs` | Turn duration |
+| `source` | Origin channel (default `web`) |
+| `qaRating` / `qaNotes` | Manual QA rating (`good` \| `bad` \| `flagged`) and notes |
+| `createdAt` | Timestamp |
 
 ## Key Business Flows
 
@@ -81,21 +99,24 @@ Interactive conversational sessions with project agents — conversation, not pi
 3. Pairing-backed: routed to device; device runs `claude` in chat mode
 4. LLM-only: direct LiteLLM call
 5. Response streams back via WebSocket
-6. Each chunk logged as ChatLog
+6. Conversation appended inline to `chat_sessions.messages`; one `chat_logs` row written for the query→reply turn
 
-### End a session
+### Delete a session
 
-1. Auto-ends after 1h inactivity, or user explicitly ends
-2. `ChatSession.status = 'ended'`
+1. User deletes the session → `DELETE /api/chat/sessions/:id`
+2. The row is hard-deleted (204). There is no status column and no auto-end mechanism.
 
 ## API Endpoints
 
 | Method | Endpoint | Principal | Description |
 |--------|----------|-----------|-------------|
-| `POST` | `/api/chat/sessions` | user | Start |
-| `POST` | `/api/chat` | user / agent via MCP | Send message, get response |
-| `GET` | `/api/chat/sessions/:id/logs` | user | History |
-| `DELETE` | `/api/chat/sessions/:id` | user | End |
+| `GET` | `/api/chat/sessions` | user | List caller's sessions |
+| `POST` | `/api/chat/sessions` | user | Create session |
+| `GET` | `/api/chat/sessions/:id` | user | Fetch one session (includes inline `messages`) |
+| `PATCH` | `/api/chat/sessions/:id` | user | Rename (title only) |
+| `DELETE` | `/api/chat/sessions/:id` | user | Hard-delete session |
+| `POST` | `/api/chat` | user / agent via MCP | Send message, get streamed response |
+| `GET` | `/api/chat-logs` | user | List per-turn audit rows (also `/recent`, `/flagged`, `/:id`) |
 
 ## Cross-Module Touchpoints
 
@@ -103,15 +124,11 @@ Interactive conversational sessions with project agents — conversation, not pi
 |-----------|--------|------|------|
 | Read from | [memory-knowledge](../memory-knowledge/README.md) | Context retrieval | Every turn |
 | Read from | [skills](../skills/README.md) | Available tool list (project-scoped) | At session start |
-| Emits to | [memory-knowledge](../memory-knowledge/README.md) | Chat content for embedding | On session end |
 | Receives from / emits to | [devices](../devices/README.md) | Runs `claude` in chat mode (if device-backed) | On user message |
 
 ## Commands / Jobs
 
-| Command/Job | Description |
-|-------------|-------------|
-| `chat-session-ender` (cron 15m) | Auto-end sessions idle >1h |
-| `chat-memory-digester` (cron hourly) | Extract salient content from ended sessions, embed for future retrieval |
+_No chat-specific crons or background jobs are registered._
 
 ## Distinction from Jobs
 
@@ -121,5 +138,5 @@ Interactive conversational sessions with project agents — conversation, not pi
 | Interface | Conversational | Structured skill execution |
 | Runs on | Device (if paired) or LiteLLM direct | Always a paired device |
 | Outcome | Answer / discussion | Status change / code change |
-| Captured | ChatLogs (per message) | JobEvents (per stdout chunk) |
+| Captured | chat_logs (per query→reply turn, audit) | JobEvents (per stdout chunk) |
 | Related to issue | Optional | Always |
