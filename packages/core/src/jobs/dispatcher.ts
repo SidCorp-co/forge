@@ -407,7 +407,15 @@ async function dispatchViaRunner(
   // Reuse the overrides we resolved before runner selection — saves one
   // round-trip to projects, and guarantees the sessionGroup we pinned on
   // matches the sessionGroup we forward to the runner.
-  const runnerStageOverrides = preDispatchOverrides;
+  //
+  // Shallow-copy before mutating: resolveStageOverrides returns a shared
+  // module-level EMPTY singleton by reference on its early-return paths
+  // (no stageStatus / no configured stage). Assigning mcpServers directly to
+  // preDispatchOverrides would otherwise write this project's Postman API key
+  // onto that singleton process-wide, leaking it into the next EMPTY-path
+  // dispatch for any other project (cross-tenant) and breaking the
+  // active=false/deleted → drop-entry guarantee. (ISS-336 review blocker.)
+  const runnerStageOverrides = { ...preDispatchOverrides };
   // ISS-336 — inject the project's Postman MCP entry (when an active postman
   // integration exists) into the per-project mcpServers override on EVERY
   // dispatch: project-default, all stages, not pinned to one. The API key is

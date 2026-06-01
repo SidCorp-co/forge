@@ -92,6 +92,17 @@ vi.mock('../observability/hold-metrics.js', () => ({
   recordDispatchBarrierSkip: vi.fn(),
 }));
 
+// ISS-336 — the dispatcher layers the project's Postman MCP entry onto the
+// resolved mcpServers override at dispatch time. Mock the resolver's DB lookup
+// so dispatcher tests don't stand up project_integrations + vault. The default
+// implementation mirrors the real one's "no active integration" path: return
+// the override unchanged. The regression test below overrides it per-call.
+vi.mock('../integrations/postman/resolver.js', () => ({
+  applyPostmanMcpServers: vi.fn(
+    async (_projectId: string, current: Record<string, unknown> | null) => current,
+  ),
+}));
+
 const { db } = await import('../db/client.js');
 // ISS-198 — dispatcher no longer imports checkLayer4RunnerFull.
 const { runnerSupportsJobType, assertDispatchable } = await import('./dispatch-gates.js');
@@ -110,6 +121,7 @@ const { roomManager } = await import('../ws/server.js');
 const { selectRunnerForJob } = await import('../runners/select.js');
 const { getRunnerAdapter } = await import('../runners/registry.js');
 const { persistPromptSnapshot } = await import('./prompt-snapshot.js');
+const { applyPostmanMcpServers } = await import('../integrations/postman/resolver.js');
 
 type Row = Record<string, unknown>;
 
@@ -422,6 +434,55 @@ describe('jobs/dispatcher', () => {
     const args = (persistPromptSnapshot as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(args.model).toBe('default');
     expect(args.userPrompt).toBe('');
+  });
+
+  // ISS-336 review blocker regression — the dispatcher must shallow-copy the
+  // resolved overrides before layering the project's Postman MCP entry. The old
+  // code mutated `preDispatchOverrides` in place; on the no-override path
+  // resolveStageOverrides returns a shared module-level EMPTY singleton by
+  // reference, so the mutation wrote one project's Postman API key onto that
+  // singleton — leaking it into the NEXT EMPTY-path dispatch for a DIFFERENT
+  // project (cross-tenant) and defeating the active=false/deleted drop
+  // guarantee. Dispatch a project WITH Postman, then one WITHOUT, and assert the
+  // second envelope carries no postman entry.
+  it('ISS-336: does not leak the Postman MCP entry into a later dispatch for another project', async () => {
+    // Dispatch 1 — project p1 has an active Postman integration.
+    (applyPostmanMcpServers as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      async (_projectId: string, current: Record<string, unknown> | null) => ({
+        ...(current ?? {}),
+        postman: { type: 'http', url: 'https://mcp.postman.com/minimal', enabled: true },
+      }),
+    );
+    mockSelectOnce([{ id: 'j-pm-on', status: 'queued', projectId: 'p1', type: 'plan', payload: {} }]);
+    mockSelectOnce([{ agentConfig: null }]);
+    const spyWith = mockRunnerDispatch();
+    mockUpdateReturn([{ id: 'j-pm-on' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
+
+    expect(await handleDispatch({ jobId: 'j-pm-on' })).toBe('dispatched');
+
+    // Dispatch 2 — project p2 has NO Postman integration. The default resolver
+    // mock returns the override unchanged (i.e. resolvePostmanMcpEntry → null).
+    mockSelectOnce([{ id: 'j-pm-off', status: 'queued', projectId: 'p2', type: 'plan', payload: {} }]);
+    mockSelectOnce([{ agentConfig: null }]);
+    const spyWithout = mockRunnerDispatch();
+    mockUpdateReturn([{ id: 'j-pm-off' }]);
+    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
+
+    expect(await handleDispatch({ jobId: 'j-pm-off' })).toBe('dispatched');
+
+    const payloadWith = (spyWith.mock.calls[0][0] as { job: { payload: Record<string, unknown> } })
+      .job.payload;
+    const payloadWithout = (
+      spyWithout.mock.calls[0][0] as { job: { payload: Record<string, unknown> } }
+    ).job.payload;
+    const mcpWith = payloadWith.mcpServersOverride as Record<string, unknown> | undefined;
+    const mcpWithout = payloadWithout.mcpServersOverride as Record<string, unknown> | undefined;
+
+    // p1 carries the injected entry…
+    expect(mcpWith?.postman).toBeDefined();
+    // …and p2 must NOT inherit it via a polluted singleton.
+    expect(mcpWithout?.postman).toBeUndefined();
   });
 });
 
