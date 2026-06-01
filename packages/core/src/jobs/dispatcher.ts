@@ -12,7 +12,7 @@ import { resolveRunnerChainForJob } from '../pipeline/resolve-step-runner.js';
 import { injectTurnLevelRules } from '../prompt/user.js';
 import { boss } from '../queue/boss.js';
 import { getRunnerAdapter } from '../runners/registry.js';
-import { selectRunnerForJob } from '../runners/select.js';
+import { getTrippedDeviceIds, selectRunnerForJob } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
 import {
@@ -285,7 +285,24 @@ async function dispatchViaRunner(
   // one of them so the selector can pick a not-yet-tried runner. Single-/few-
   // device projects still fall through (selector wraps without the exclusion).
   const autoRetry = readAutoRetryPayload(job.payload);
-  if (pinDeviceId && autoRetry.excludeDeviceIds.includes(pinDeviceId)) {
+
+  // Circuit breaker — skip devices whose runner is failing repeatedly so
+  // dispatch rotates to a healthy device instead of hammering a broken/stuck
+  // one (e.g. an autoTest re-fire loop pinned to the primary). Merge the
+  // tripped devices into the auto-retry exclusion; selectRunnerForJob's
+  // wrap-around still falls back to a tripped device when EVERY device is
+  // tripped, so this never wedges a single-device project.
+  const trippedDeviceIds = await getTrippedDeviceIds(job.projectId);
+  const excludeDeviceIds = Array.from(
+    new Set([...autoRetry.excludeDeviceIds, ...trippedDeviceIds]),
+  );
+  if (trippedDeviceIds.length > 0) {
+    logger.warn(
+      { jobId: job.id, projectId: job.projectId, trippedDeviceIds },
+      'dispatcher: device circuit breaker tripped — rotating away from failing device(s)',
+    );
+  }
+  if (pinDeviceId && excludeDeviceIds.includes(pinDeviceId)) {
     pinDeviceId = null;
     priorClaudeSessionId = null;
   }
@@ -298,7 +315,7 @@ async function dispatchViaRunner(
     projectId: job.projectId,
     requiredCapabilities: required,
     pinDeviceId,
-    excludeDeviceIds: autoRetry.excludeDeviceIds,
+    excludeDeviceIds,
   });
   if (!runner) {
     // ISS-198 — selectRunnerForJob filters runners with stale heartbeats

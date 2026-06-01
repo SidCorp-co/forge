@@ -26,6 +26,68 @@ export function defaultRunnerCapabilities(
   return {};
 }
 
+/**
+ * Circuit breaker — number of consecutive recent FAILED terminal jobs on a
+ * device (for a project) that trips it out of dispatch selection. Override via
+ * `DEVICE_FAILURE_STREAK` env. Default 3.
+ */
+export const DEVICE_FAILURE_STREAK = (() => {
+  const n = Number.parseInt(process.env.DEVICE_FAILURE_STREAK ?? '', 10);
+  return Number.isFinite(n) && n > 0 ? n : 3;
+})();
+
+/**
+ * Recency window for the breaker. A device is only "tripped" while its most
+ * recent failure is within this window, so a flapping device auto-recovers:
+ * once dispatch rotates away and the failures age past the window, the device
+ * becomes eligible again and gets a probe job. Override via
+ * `DEVICE_TRIP_WINDOW_MS` env. Default 15 minutes.
+ */
+export const DEVICE_TRIP_WINDOW_MS = (() => {
+  const n = Number.parseInt(process.env.DEVICE_TRIP_WINDOW_MS ?? '', 10);
+  return Number.isFinite(n) && n > 0 ? n : 15 * 60_000;
+})();
+
+/**
+ * Return device ids dispatch selection should SKIP for this project because
+ * their runner is failing repeatedly — the last `DEVICE_FAILURE_STREAK`
+ * terminal jobs (`failed`|`done`; `cancelled` ignored as not
+ * device-attributable) on that device are ALL `failed` and the most recent
+ * failure is within `DEVICE_TRIP_WINDOW_MS`.
+ *
+ * The dispatcher merges these into `excludeDeviceIds`, so selection rotates to
+ * a healthy device; `selectRunnerForJob`'s wrap-around still falls back to a
+ * tripped device when EVERY device is tripped (better to try than to wedge).
+ * A single succeeding job breaks the streak and the recency window ages stale
+ * failures out, so the breaker is self-healing.
+ */
+export async function getTrippedDeviceIds(projectId: string): Promise<string[]> {
+  const windowSeconds = Math.floor(DEVICE_TRIP_WINDOW_MS / 1000);
+  const rows = await db.execute<{ device_id: string }>(
+    sql`
+      WITH recent AS (
+        SELECT j.device_id, j.status, j.finished_at,
+               row_number() OVER (
+                 PARTITION BY j.device_id ORDER BY j.finished_at DESC
+               ) AS rn
+        FROM jobs j
+        WHERE j.project_id = ${projectId}
+          AND j.device_id IS NOT NULL
+          AND j.finished_at IS NOT NULL
+          AND j.status IN ('failed', 'done')
+      )
+      SELECT device_id
+      FROM recent
+      WHERE rn <= ${DEVICE_FAILURE_STREAK}
+      GROUP BY device_id
+      HAVING count(*) = ${DEVICE_FAILURE_STREAK}
+         AND bool_and(status = 'failed')
+         AND max(finished_at) > now() - (${windowSeconds} || ' seconds')::interval
+    `,
+  );
+  return rows.map((r) => r.device_id).filter((id): id is string => Boolean(id));
+}
+
 interface SelectInput {
   projectId: string;
   requiredCapabilities?: RequiredCapabilities;
