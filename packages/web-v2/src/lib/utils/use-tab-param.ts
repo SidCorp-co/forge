@@ -24,8 +24,14 @@ export function useTabParam<T extends string>(valid: readonly T[], fallback: T):
 
   useEffect(() => {
     if (!hydrated.current || typeof window === 'undefined') return;
-    const q = tab === fallback ? '' : `?tab=${tab}`;
-    window.history.replaceState(window.history.state, '', `${pathname}${q}`);
+    // Mutate only the `tab` key — preserve every other query param (e.g. the
+    // `?issue=` filter the Agents screen reads). Rebuilding the string from
+    // scratch here previously wiped sibling params on mount (ISS-331 AC3).
+    const sp = new URLSearchParams(window.location.search);
+    if (tab === fallback) sp.delete('tab');
+    else sp.set('tab', tab);
+    const qs = sp.toString();
+    window.history.replaceState(window.history.state, '', `${pathname}${qs ? `?${qs}` : ''}`);
   }, [pathname, tab, fallback]);
 
   return [tab, setTab];
