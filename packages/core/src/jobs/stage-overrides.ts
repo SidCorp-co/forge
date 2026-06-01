@@ -93,11 +93,14 @@ export async function resolveStageOverrides(
   payload: unknown,
 ): Promise<StageOverrides> {
   const stageStatus = extractStageStatus(payload);
-  if (!stageStatus) return EMPTY;
+  // Return a fresh copy, never the shared EMPTY singleton by reference, so a
+  // caller that mutates the result (e.g. the dispatcher layering the Postman
+  // mcpServers entry) cannot pollute the singleton for later dispatches.
+  if (!stageStatus) return { ...EMPTY };
 
   const states = await loadStageMap(projectId);
   const stage = states?.[stageStatus];
-  if (!stage) return EMPTY;
+  if (!stage) return { ...EMPTY };
 
   // Shallow-clone object/array fields so callers that mutate the result
   // (e.g. layer project defaults onto mcpServers, push extra tools onto

@@ -2,6 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs, projects, runners } from '../db/schema.js';
 import type { JobType, RunnerType } from '../db/schema.js';
+import { applyPostmanMcpServers } from '../integrations/postman/resolver.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
 import { logger } from '../logger.js';
@@ -406,7 +407,25 @@ async function dispatchViaRunner(
   // Reuse the overrides we resolved before runner selection — saves one
   // round-trip to projects, and guarantees the sessionGroup we pinned on
   // matches the sessionGroup we forward to the runner.
-  const runnerStageOverrides = preDispatchOverrides;
+  //
+  // Shallow-copy before mutating: resolveStageOverrides returns a shared
+  // module-level EMPTY singleton by reference on its early-return paths
+  // (no stageStatus / no configured stage). Assigning mcpServers directly to
+  // preDispatchOverrides would otherwise write this project's Postman API key
+  // onto that singleton process-wide, leaking it into the next EMPTY-path
+  // dispatch for any other project (cross-tenant) and breaking the
+  // active=false/deleted → drop-entry guarantee. (ISS-336 review blocker.)
+  const runnerStageOverrides = { ...preDispatchOverrides };
+  // ISS-336 — inject the project's Postman MCP entry (when an active postman
+  // integration exists) into the per-project mcpServers override on EVERY
+  // dispatch: project-default, all stages, not pinned to one. The API key is
+  // rendered only into this dispatch payload (the runner writes it to a temp
+  // --mcp-config file); it is never persisted. active=false/deleted → the
+  // resolver returns null and the next dispatch drops the entry.
+  runnerStageOverrides.mcpServers = await applyPostmanMcpServers(
+    job.projectId,
+    runnerStageOverrides.mcpServers,
+  );
   const { content: runnerSystemPrompt, blocks: runnerBlocks } =
     await buildPipelinePreambleStructured(job.projectId, {
       step: job.type,
