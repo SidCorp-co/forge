@@ -179,11 +179,6 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
                 Rerun
               </Button>
             )}
-            {!fromMessages && lastTurnId && (
-              <Button variant="secondary" size="sm" icon="fork" className="min-h-11" loading={fork.isPending} onClick={() => handleFork(lastTurnId)}>
-                Fork
-              </Button>
-            )}
             {issueId && projectSlug && (
               <Button
                 variant="secondary"
@@ -198,6 +193,18 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
             <Menu
               align="right"
               items={[
+                // Fork is an advanced/branching action — demoted from a primary
+                // button into the overflow menu (ISS-351); capability preserved,
+                // gated by the same condition the inline button used.
+                ...(!fromMessages && lastTurnId
+                  ? [
+                      {
+                        label: "Fork from last turn",
+                        icon: "fork" as const,
+                        onSelect: () => handleFork(lastTurnId),
+                      },
+                    ]
+                  : []),
                 ...(session.deviceId
                   ? [{ label: "Open runner", icon: "server" as const, onSelect: () => router.push("/runners") }]
                   : []),
@@ -226,7 +233,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex-1 overflow-y-auto">
-            <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
+            <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 xl:max-w-5xl">
               {turnsQ.isLoading ? (
                 <ProjectLoader label="loading turns…" size={110} />
               ) : items.length === 0 ? (
@@ -259,9 +266,12 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
           />
         </div>
 
-        {/* Desktop rail — collapsible (persisted); hidden when collapsed so main widens. */}
+        {/* Desktop rail — collapsible (persisted); hidden when collapsed so main
+            widens. Pinned below the sticky header (parity with the issue
+            Properties rail, ISS-351) so context stays visible while the thread
+            scrolls; its own `overflow-y-auto` keeps a long rail usable. */}
         {!railCollapsed && (
-          <aside className="hidden w-80 shrink-0 overflow-y-auto border-l border-line px-5 py-6 lg:block">
+          <aside className="hidden w-80 shrink-0 self-start overflow-y-auto border-l border-line px-5 py-6 lg:sticky lg:top-16 lg:block lg:max-h-[calc(100dvh-4rem)]">
             <ContextRail session={session} items={items} />
           </aside>
         )}

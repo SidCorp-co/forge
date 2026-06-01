@@ -35,6 +35,9 @@ export interface CreateIssueInput {
   priority?: IssuePriority;
   category?: string;
   complexity?: IssueComplexity;
+  /** Inline base64 attachments — mirrors core's `issueCreateSchema.attachments`
+   *  (max 10, server-validated for size/mime). Omit when none are staged. */
+  attachments?: { name: string; mime: string; dataBase64: string }[];
 }
 
 export const issuesApi = {
