@@ -8,7 +8,15 @@ import { useRouter } from "next/navigation";
 import { Avatar, MonoTag, PipelineTracker, Stat, TD, TR, type SelectOption } from "@/design";
 import type { PatchIssueInput } from "../api";
 import { useIssueCost, useIssueDeps } from "../hooks";
-import { depCounts, initials, memberLabel, statusToRun, statusToStage } from "../derive";
+import {
+  COMPLEXITY_LABELS,
+  PRIORITY_LABELS,
+  depCounts,
+  initials,
+  memberLabel,
+  statusToRun,
+  statusToStage,
+} from "../derive";
 import type { IssueComplexity, IssuePriority, IssueRow, IssueStatus, ProjectMember } from "../types";
 import { InlineSelect, StatusEdit } from "./inline-edit-cell";
 
@@ -18,21 +26,24 @@ export interface RowActions {
   isPending: boolean;
 }
 
+// Option lists keep the raw enum `value` (server contract) but show humanized
+// labels (`PRIORITY_LABELS`/`COMPLEXITY_LABELS` from derive). Imported by both
+// the table and the properties rail, so both render professional text.
 export const PRIORITY_OPTIONS: SelectOption[] = [
-  { value: "critical", label: "critical" },
-  { value: "high", label: "high" },
-  { value: "medium", label: "medium" },
-  { value: "low", label: "low" },
-  { value: "none", label: "none" },
+  { value: "critical", label: PRIORITY_LABELS.critical },
+  { value: "high", label: PRIORITY_LABELS.high },
+  { value: "medium", label: PRIORITY_LABELS.medium },
+  { value: "low", label: PRIORITY_LABELS.low },
+  { value: "none", label: PRIORITY_LABELS.none },
 ];
 
 export const COMPLEXITY_OPTIONS: SelectOption[] = [
   { value: "", label: "—" },
-  { value: "xs", label: "xs" },
-  { value: "s", label: "s" },
-  { value: "m", label: "m" },
-  { value: "l", label: "l" },
-  { value: "xl", label: "xl" },
+  { value: "xs", label: COMPLEXITY_LABELS.xs },
+  { value: "s", label: COMPLEXITY_LABELS.s },
+  { value: "m", label: COMPLEXITY_LABELS.m },
+  { value: "l", label: COMPLEXITY_LABELS.l },
+  { value: "xl", label: COMPLEXITY_LABELS.xl },
 ];
 
 export function assigneeOptions(members: ProjectMember[] | undefined): SelectOption[] {

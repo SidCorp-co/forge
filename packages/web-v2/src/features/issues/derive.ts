@@ -9,11 +9,61 @@ import type {
   CommentKind,
   GroupBy,
   IssueAgentStatus,
+  IssueComplexity,
   IssueDependencies,
   IssueFilter,
+  IssuePriority,
   IssueRow,
   IssueStatus,
 } from "./types";
+
+/**
+ * Human-readable labels for the lifecycle enums. Single source of truth so the
+ * table, rail, and detail header all show the same professional text instead of
+ * the raw wire values (`in_progress`, `xs`, …). Keys stay in lockstep with the
+ * `IssueStatus`/`IssuePriority`/`IssueComplexity` unions in `types.ts`; the
+ * helpers fall back to the raw value if a key is ever missing (drift guard).
+ */
+export const STATUS_LABELS: Record<IssueStatus, string> = {
+  open: "Open",
+  confirmed: "Confirmed",
+  waiting: "Waiting",
+  approved: "Approved",
+  in_progress: "In progress",
+  developed: "Developed",
+  deploying: "Deploying",
+  testing: "Testing",
+  tested: "Tested",
+  pass: "Passed",
+  staging: "Staging",
+  released: "Released",
+  closed: "Closed",
+  reopen: "Reopened",
+  on_hold: "On hold",
+  needs_info: "Needs info",
+  draft: "Draft",
+};
+
+export const PRIORITY_LABELS: Record<IssuePriority, string> = {
+  critical: "Critical",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+  none: "None",
+};
+
+export const COMPLEXITY_LABELS: Record<IssueComplexity, string> = {
+  xs: "XS",
+  s: "Small",
+  m: "Medium",
+  l: "Large",
+  xl: "XL",
+};
+
+export const statusLabel = (s: IssueStatus): string => STATUS_LABELS[s] ?? s;
+export const priorityLabel = (p: IssuePriority): string => PRIORITY_LABELS[p] ?? p;
+export const complexityLabel = (c: IssueComplexity | null | undefined): string =>
+  c ? (COMPLEXITY_LABELS[c] ?? c) : "—";
 
 /**
  * Map a core issue status to a pipeline stage so the per-row mini tracker

@@ -35,13 +35,12 @@ import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
-import { parseChecklist, statusToChip, statusToRun, statusToStage } from "../derive";
+import { parseChecklist, statusLabel, statusToChip, statusToRun, statusToStage } from "../derive";
 import {
   usePatchIssue,
   useIssueCost,
   useIssueDeps,
   useProjectMembers,
-  useRunPipelineStep,
   useTransitionIssue,
 } from "../hooks";
 import { useActivity, useComments, useIssue, useTasks } from "../detail-hooks";
@@ -82,7 +81,6 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
 
   const patch = usePatchIssue();
   const transition = useTransitionIssue();
-  const runStep = useRunPipelineStep();
   const pending = patch.isPending || transition.isPending;
 
   const issue = issueQ.data;
@@ -143,7 +141,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
   ];
 
   return (
-    <div className="mx-auto w-full min-h-dvh max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
+    <div className="mx-auto min-h-dvh w-full max-w-[1600px] px-4 py-6 sm:px-8 sm:py-8 2xl:max-w-[1760px]">
       <Breadcrumb
         items={[
           { label: slug, href: `/projects/${slug}` },
@@ -153,8 +151,10 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
         onNavigate={(href) => router.push(href)}
       />
 
-      {/* Header */}
-      <div className="mb-5 mt-3 flex items-start gap-3">
+      {/* Sticky action + state bar — keeps the id, live status, and the primary
+          actions reachable while scrolling a long issue (ISS-347). Full-bleed
+          via negative gutters so the backdrop spans the content width. */}
+      <div className="sticky top-0 z-20 -mx-4 mb-5 mt-3 flex items-start gap-3 border-b border-line-subtle bg-app/95 px-4 py-3 backdrop-blur sm:-mx-8 sm:px-8">
         <IconButton
           icon="arrowRight"
           aria-label="Back to issues"
@@ -165,15 +165,14 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
           <div className="flex flex-wrap items-center gap-2">
             <MonoTag hue="cobalt">{issue.displayId}</MonoTag>
             <StatusChip status={statusToChip(issue.status, issue.agentStatus)} />
-            <span className="fg-caption font-mono">{issue.status}</span>
+            <span className="fg-caption">{statusLabel(issue.status)}</span>
           </div>
-          <h1 className="fg-h2 mt-2 break-words">{issue.title}</h1>
+          <h1 className="fg-h3 mt-1.5 truncate">{issue.title}</h1>
         </div>
         <div className="hidden flex-none items-center gap-2 sm:flex">
           <HelpButton
             summary="The full record for one issue: pipeline progress, description, acceptance criteria, the agent plan, and Comments / Activity / Tasks."
             actions={[
-              "Run the next pipeline step",
               "Edit properties (status, priority, assignee) in the rail",
               "Jump to related sessions, pipeline, and runs",
             ]}
@@ -182,21 +181,14 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
           <Button
             variant="secondary"
             size="sm"
-            icon="rerun"
-            loading={runStep.isPending}
-            onClick={() => runStep.mutate({ id })}
+            icon="agent"
+            onClick={() => router.push(`/projects/${slug}/agents?issue=${id}`)}
           >
-            Run step
+            Open sessions
           </Button>
           <Menu
             align="right"
             items={[
-              { label: "Reopen", icon: "rerun", onSelect: () => onTransition("reopen") },
-              {
-                label: "Open sessions",
-                icon: "agent",
-                onSelect: () => router.push(`/projects/${slug}/agents?issue=${id}`),
-              },
               {
                 label: "Open pipeline",
                 icon: "pipeline",
@@ -209,7 +201,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
         {/* Main column */}
         <div className="min-w-0 space-y-4">
           <Card>

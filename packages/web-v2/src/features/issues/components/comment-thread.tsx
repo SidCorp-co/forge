@@ -153,14 +153,20 @@ export function CommentThread({
   comments: CommentNode[];
   members: ProjectMember[] | undefined;
 }) {
+  // Newest top-level comment first so the latest activity is reachable without
+  // scrolling past a long history (ISS-347). Sort a COPY — nested `replies`
+  // stay chronological since a thread reads top-down.
+  const ordered = [...comments].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
   return (
     <div className="space-y-5">
       <AddCommentBox issueId={issueId} placeholder="Add a comment…" />
-      {comments.length === 0 ? (
+      {ordered.length === 0 ? (
         <EmptyState title="No comments yet" message="Start the conversation." mascot={false} />
       ) : (
         <div className="space-y-5">
-          {comments.map((node) => (
+          {ordered.map((node) => (
             <CommentItem key={node.id} node={node} issueId={issueId} members={members} depth={0} />
           ))}
         </div>

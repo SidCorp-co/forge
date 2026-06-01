@@ -5,7 +5,7 @@
 // signal), the ISS-<seq> branch convention, and dependency edges (rendered as
 // clickable `ISS-X` badges linking to the related issue — ISS-331).
 
-import { Avatar, MonoTag, Stat } from "@/design";
+import { Avatar, Badge, MonoTag, Stat } from "@/design";
 import {
   COMPLEXITY_OPTIONS,
   PRIORITY_OPTIONS,
@@ -30,6 +30,11 @@ function fmtDate(iso: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toISOString().slice(0, 10);
+}
+
+/** Title-case a free-text category (`improvement` → `Improvement`). */
+function titleCase(s: string): string {
+  return s.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -153,7 +158,11 @@ export function PropertiesRail({
         </div>
       </Row>
       <Row label="Category">
-        {issue.category ? <MonoTag>{issue.category}</MonoTag> : <span className="fg-caption">—</span>}
+        {issue.category ? (
+          <Badge tone="neutral">{titleCase(issue.category)}</Badge>
+        ) : (
+          <span className="fg-caption">—</span>
+        )}
       </Row>
       {issue.labels && issue.labels.length > 0 && (
         <Row label="Labels">
