@@ -70,6 +70,8 @@ describe('L2 dependency gate — merged_at (ISS-232)', () => {
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
     expect(text).toMatch(/d\.kind\s*=\s*'blocks'/);
     expect(text).toMatch(/p\.merged_at\s+IS\s+NULL/);
+    // satisfied when merged OR closed (skill-driven-merge projects never stamp)
+    expect(text).toMatch(/p\.status\s*<>\s*'closed'/);
     expect(text).not.toMatch(/p\.status\s+NOT\s+IN/);
   });
 
@@ -83,6 +85,7 @@ describe('L2 dependency gate — merged_at (ISS-232)', () => {
     // keys on the CHILD's merged_at (c2), not the parent's.
     expect(text).toMatch(/d2\.from_issue_id\s*=\s*j\.issue_id/);
     expect(text).toMatch(/c2\.merged_at\s+IS\s+NULL/);
+    expect(text).toMatch(/c2\.status\s*<>\s*'closed'/);
     expect(text).not.toMatch(/c2\.status\s+NOT\s+IN/);
   });
 
