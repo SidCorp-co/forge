@@ -25,6 +25,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Project owners can now manage members from the new web app's Project Settings → Members tab: see pending invitations (before the invitee accepts), cancel one and re-invite, and change an existing member's role between Member and Admin. This fixes the previous inability to remove someone after they had been invited. The owner row stays protected — no role-change or remove control.**
   *Technical: web-v2 project-settings Members tab gains a Pending invitations list + cancel and an inline role-change Select, all owner-gated (canEdit). New owner/admin-gated GET & DELETE /api/projects/:id/members/invitations (revoke by validated ?email=, token never serialized) in packages/core; reuses existing PATCH /members/:userId (owner-role immutable). packages/web (v1) untouched. Merge 65b0cab.*
 
+- **Postman integration per-project: configure a Postman workspace + collection and API key in project settings, and the Postman MCP tools become available to agents/skills running for that project.**
+  *Technical: New provider='postman' on project_integrations (encrypted apiKey + workspace/collection config); a dispatch-time resolver renders it into the existing per-project mcpServers override (remote HTTP + Bearer) so CLI/desktop runners auto-inject the Postman MCP. forge_postman_target MCP tool exposes the write-target (workspace/collection) to skills without leaking the key.*
+
 ### Changed
 
 - **You can now configure a project directly in the new web app — name & description, repository path, base/production branches, pipeline stages, labels, and members — reached from the project dashboard's gear icon or the ⌘K command palette, with no new sidebar item. Edits persist immediately and project secrets are never shown.**
