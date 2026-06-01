@@ -40,7 +40,11 @@ function fmtNum(n: number | undefined): string {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
-      <h3 className="fg-caption mb-2 uppercase tracking-wide">{title}</h3>
+      {/* Sticky within the rail's own scroll so the section label stays visible
+          while a long list (e.g. Files changed) scrolls past (ISS-351). */}
+      <h3 className="fg-caption sticky top-0 z-10 mb-2 bg-app py-1 uppercase tracking-wide">
+        {title}
+      </h3>
       {children}
     </section>
   );
