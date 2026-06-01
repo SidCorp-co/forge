@@ -61,7 +61,7 @@ Wait ~30 seconds for services to become healthy.
 2. **Verify your email** (required before creating your first project) — click the link in the email.
 3. Create a project. Note its slug (used when pairing a device).
 
-> Admin ops (user list, device list, audit log) live at `/admin` once Phase 2.6 ships. Until then: Drizzle Studio + REST.
+> Admin ops (user list, device list, audit log, projects) live at `/admin` in the web app (`/admin` redirects to `/admin/users`).
 
 ## 3. Pair a device
 
