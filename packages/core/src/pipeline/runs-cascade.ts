@@ -81,13 +81,20 @@ export async function cascadeCancelChildJobs(
   }
 
   if (abortedSessionIds.length > 0) {
+    // ISS-352 — a run that closed as `pipeline_completed` did NOT fail. The
+    // terminal pipeline step (forge-test → released, forge-release → closed)
+    // sets the issue to a terminal status as its LAST action while its own
+    // job/session is still `running`; the cascade then reaps that very session.
+    // Mapping a success-close to `failed` produced the false-failed badge the
+    // reporter saw on ISS-351's forge-test / forge-release sessions. Only
+    // genuine failure/cancel closes should mark the leftover sessions failed.
+    const sessionTerminal =
+      reason === 'pipeline_completed'
+        ? { status: 'completed' as const, failureReason: null, updatedAt: now }
+        : { status: 'failed' as const, failureReason: reason, updatedAt: now };
     await tx
       .update(agentSessions)
-      .set({
-        status: 'failed',
-        failureReason: reason,
-        updatedAt: now,
-      })
+      .set(sessionTerminal)
       .where(
         and(
           inArray(agentSessions.id, abortedSessionIds),

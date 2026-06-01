@@ -272,7 +272,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
             scrolls; its own `overflow-y-auto` keeps a long rail usable. */}
         {!railCollapsed && (
           <aside className="hidden w-80 shrink-0 self-start overflow-y-auto border-l border-line px-5 py-6 lg:sticky lg:top-16 lg:block lg:max-h-[calc(100dvh-4rem)]">
-            <ContextRail session={session} items={items} />
+            <ContextRail session={session} items={items} projectSlug={projectSlug} />
           </aside>
         )}
       </div>

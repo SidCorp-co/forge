@@ -462,6 +462,54 @@ export function deriveFilesChanged(items: ConversationItem[]): FileDiff[] {
   return finalizeCounts(map);
 }
 
+/* --------------------------- agents & tasks ----------------------------- */
+
+/**
+ * A sub-agent (`Task`) or skill (`Skill`) invocation surfaced from the
+ * transcript. ISS-352: the honest "agent task / multiple agents" view — these
+ * are the only sub-agent/skill spawns provably present in the stream (no
+ * `parentSessionId` column exists yet, so a true session hierarchy is a
+ * documented backend follow-up).
+ */
+export interface AgentTaskInvocation {
+  id: string;
+  /** Underlying tool: `Task` (sub-agent) or `Skill`. */
+  tool: "Task" | "Skill";
+  /** Bare descriptor — subagent description/type, or skill name. */
+  label: string;
+  isError: boolean;
+}
+
+/** Bare label for an agent/skill invocation (no "Agent:"/"Skill:" prefix —
+ *  the section header already names the category). */
+function agentTaskLabel(tc: ToolCallData): string {
+  const input = tc.input ?? {};
+  if (tc.name === "Skill") return (input.skill as string) ?? "skill";
+  return (input.description as string) ?? (input.subagent_type as string) ?? "subtask";
+}
+
+/**
+ * Collect every `Task`/`Skill` tool block across the conversation (the
+ * sub-agent + skill invocations), in transcript order. Frontend-only —
+ * `toolKind(name) === 'task'` already classifies these blocks (ISS-352).
+ */
+export function deriveAgentTasks(items: ConversationItem[]): AgentTaskInvocation[] {
+  const out: AgentTaskInvocation[] = [];
+  for (const item of items) {
+    if (item.kind !== "agent") continue;
+    for (const block of item.blocks) {
+      if (block.type !== "tool" || toolKind(block.tool.name) !== "task") continue;
+      out.push({
+        id: block.tool.id,
+        tool: block.tool.name === "Skill" ? "Skill" : "Task",
+        label: agentTaskLabel(block.tool),
+        isError: !!block.tool.isError,
+      });
+    }
+  }
+  return out;
+}
+
 /**
  * Split a hunk into context/removed/added regions via common prefix+suffix —
  * ported from v1 `inline-diff-summary.tsx`. Pure so it's unit-testable.

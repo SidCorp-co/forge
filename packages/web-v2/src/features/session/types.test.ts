@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFileDiff,
+  deriveAgentTasks,
   deriveFilesChanged,
   getToolLabel,
   parseMessages,
@@ -224,6 +225,35 @@ describe("file diffs", () => {
     const files = deriveFilesChanged(items);
     expect(files).toHaveLength(1);
     expect(files[0].hunks).toHaveLength(2);
+  });
+});
+
+describe("deriveAgentTasks", () => {
+  it("lists Task (sub-agent) and Skill invocations from the transcript, in order", () => {
+    const items = parseMessages([
+      {
+        type: "assistant",
+        blocks: [
+          { type: "tool", toolCall: { id: "a", name: "Task", input: { description: "Explore repo", subagent_type: "Explore" } } },
+          { type: "tool", toolCall: { id: "b", name: "Read", input: { file_path: "x.ts" } } },
+          { type: "tool", toolCall: { id: "c", name: "Skill", input: { skill: "forge-code" } } },
+          { type: "tool", toolCall: { id: "d", name: "Task", input: { subagent_type: "general-purpose" }, isError: true } },
+        ],
+      },
+    ]);
+    const tasks = deriveAgentTasks(items);
+    expect(tasks).toEqual([
+      { id: "a", tool: "Task", label: "Explore repo", isError: false },
+      { id: "c", tool: "Skill", label: "forge-code", isError: false },
+      { id: "d", tool: "Task", label: "general-purpose", isError: true },
+    ]);
+  });
+
+  it("returns an empty list when no Task/Skill blocks are present", () => {
+    const items = parseMessages([
+      { type: "assistant", blocks: [{ type: "tool", toolCall: { id: "r", name: "Read", input: { file_path: "a.ts" } } }] },
+    ]);
+    expect(deriveAgentTasks(items)).toEqual([]);
   });
 });
 
