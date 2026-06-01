@@ -2,8 +2,11 @@
 
 // web-v2 shared Sessions index — used at BOTH the workspace tier
 // (`/v2/sessions`, cross-project, no `scope.projectId`) and the project tier
-// (`/v2/projects/[slug]/sessions`, scoped + Sweep zombies). ISS-291.
+// (under the Agents shell, scoped + Sweep zombies). ISS-291. Rows link to the
+// session detail (`/projects/:slug/agents/:id`) and back to their issue
+// (ISS-331); the project slug is resolved per row from the projects list.
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Badge,
   Button,
@@ -29,6 +32,7 @@ import {
   type SegmentOption,
 } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
+import { IssueRefBadge } from "@/features/issues/components/issue-ref-badge";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
@@ -51,8 +55,10 @@ import {
 } from "../types";
 
 interface SessionsScreenProps {
-  /** Project-tier scope. Omit for the cross-project workspace tier. */
-  scope?: { projectId?: string };
+  /** Project-tier scope. Omit for the cross-project workspace tier.
+   *  `issueId` (when set) filters the list to one issue's sessions — used by
+   *  the issue-detail "Open sessions" deep-link (`?issue=<uuid>`). */
+  scope?: { projectId?: string; issueId?: string };
 }
 
 /** Mirror of `useElapsed`'s formatter for static (terminal) durations. */
@@ -94,9 +100,19 @@ function RoomSub({ projectId }: { projectId: string }) {
 
 export function SessionsScreen({ scope }: SessionsScreenProps) {
   const projectId = scope?.projectId;
+  const issueFilter = scope?.issueId;
   const sessionsQ = useSessions({ projectId });
   const projectsQ = useProjects();
   const [filter, setFilter] = useState<SessionFilter>("all");
+
+  // Resolve each row's project slug (id → slug) so session rows can link to the
+  // project-scoped detail + issue routes at both tiers.
+  const slugById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of projectsQ.data ?? []) m.set(p.id, p.slug);
+    return m;
+  }, [projectsQ.data]);
+  const slugFor = (row: SessionRow) => slugById.get(row.projectId);
 
   // Live updates: project tier subscribes to its room; workspace tier fans out
   // across every visible project. The event-router invalidates ['agent-sessions'].
@@ -108,7 +124,10 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   const abort = useAbortSession();
   const sweep = useSweepZombies();
 
-  const rows = useMemo(() => sessionsQ.data?.items ?? [], [sessionsQ.data]);
+  const rows = useMemo(() => {
+    const all = sessionsQ.data?.items ?? [];
+    return issueFilter ? all.filter((r) => r.metadata?.issueId === issueFilter) : all;
+  }, [sessionsQ.data, issueFilter]);
 
   // Derive once per render so display status, stats, and filters all agree.
   const now = Date.now();
@@ -161,7 +180,11 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
         <div>
           <h1 className="fg-h2">Sessions</h1>
           <p className="fg-body-sm mt-1">
-            {projectId ? "Agent sessions for this project." : "Agent sessions across your workspace."}
+            {issueFilter
+              ? "Agent sessions for this issue."
+              : projectId
+                ? "Agent sessions for this project."
+                : "Agent sessions across your workspace."}
           </p>
         </div>
         {projectId ? (
@@ -243,7 +266,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
               </THead>
               <TBody>
                 {visibleRows.map((row) => (
-                  <SessionTableRow key={row.id} row={row} now={now} actions={actions} />
+                  <SessionTableRow key={row.id} row={row} slug={slugFor(row)} now={now} actions={actions} />
                 ))}
               </TBody>
             </Table>
@@ -252,7 +275,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
           {/* Mobile: stacked cards — no horizontal page scroll. */}
           <div className="space-y-2.5 md:hidden">
             {visibleRows.map((row) => (
-              <SessionMobileCard key={row.id} row={row} now={now} actions={actions} />
+              <SessionMobileCard key={row.id} row={row} slug={slugFor(row)} now={now} actions={actions} />
             ))}
           </div>
         </>
@@ -343,16 +366,42 @@ function RowActionsMenu({
   );
 }
 
-/** Title + issue/agent identity shared by table + card layouts. */
-function SessionIdentity({ row }: { row: SessionRow }) {
+/** Title + issue/agent identity shared by table + card layouts. The title
+ *  opens the session detail (when a slug is resolvable); the issue tag links
+ *  back to the issue. */
+function SessionIdentity({
+  row,
+  slug,
+  onOpen,
+}: {
+  row: SessionRow;
+  slug?: string;
+  onOpen?: () => void;
+}) {
   const issueId = row.metadata?.issueId;
   const type = row.metadata?.type;
+  const title = row.title ?? "Untitled session";
   return (
     <div className="min-w-0">
-      <p className="fg-body-sm truncate text-fg">{row.title ?? "Untitled session"}</p>
+      {onOpen ? (
+        <button
+          type="button"
+          onClick={onOpen}
+          className="block w-full text-left focus-visible:outline-none"
+        >
+          <span className="fg-body-sm block truncate text-fg hover:text-accent-text">{title}</span>
+        </button>
+      ) : (
+        <p className="fg-body-sm truncate text-fg">{title}</p>
+      )}
       <div className="mt-1 flex flex-wrap items-center gap-1.5">
         {type && <MonoTag>{type}</MonoTag>}
-        {issueId && <span className="fg-caption truncate">{issueId}</span>}
+        {issueId &&
+          (slug ? (
+            <IssueRefBadge id={issueId} slug={slug} />
+          ) : (
+            <span className="fg-caption truncate">{issueId}</span>
+          ))}
       </div>
     </div>
   );
@@ -367,17 +416,35 @@ function useRowDuration(row: SessionRow, display: AgentSessionDisplayStatus): st
   return formatDuration(new Date(row.updatedAt).getTime() - startMs);
 }
 
-function SessionTableRow({ row, now, actions }: { row: SessionRow; now: number; actions: RowActions }) {
+function SessionTableRow({
+  row,
+  slug,
+  now,
+  actions,
+}: {
+  row: SessionRow;
+  slug?: string;
+  now: number;
+  actions: RowActions;
+}) {
+  const router = useRouter();
   const display = deriveSessionDisplayStatus(row, now);
   const duration = useRowDuration(row, display);
   const stage = deriveStage(row.metadata);
+  const open = slug ? () => router.push(`/projects/${slug}/agents/${row.id}`) : undefined;
   return (
     <TR>
       <TD>
-        <MonoTag hue="cobalt">{row.id.slice(0, 8)}</MonoTag>
+        {open ? (
+          <button type="button" onClick={open} className="focus-visible:outline-none">
+            <MonoTag hue="cobalt">{row.id.slice(0, 8)}</MonoTag>
+          </button>
+        ) : (
+          <MonoTag hue="cobalt">{row.id.slice(0, 8)}</MonoTag>
+        )}
       </TD>
       <TD className="max-w-[260px]">
-        <SessionIdentity row={row} />
+        <SessionIdentity row={row} slug={slug} onOpen={open} />
       </TD>
       <TD className="text-right font-mono text-muted">{row.usage?.turns ?? "—"}</TD>
       <TD className="text-right font-mono text-muted">{duration}</TD>
@@ -391,15 +458,27 @@ function SessionTableRow({ row, now, actions }: { row: SessionRow; now: number; 
   );
 }
 
-function SessionMobileCard({ row, now, actions }: { row: SessionRow; now: number; actions: RowActions }) {
+function SessionMobileCard({
+  row,
+  slug,
+  now,
+  actions,
+}: {
+  row: SessionRow;
+  slug?: string;
+  now: number;
+  actions: RowActions;
+}) {
+  const router = useRouter();
   const display = deriveSessionDisplayStatus(row, now);
   const duration = useRowDuration(row, display);
   const stage = deriveStage(row.metadata);
+  const open = slug ? () => router.push(`/projects/${slug}/agents/${row.id}`) : undefined;
   return (
     <Card>
       <CardContent>
         <div className="flex items-start justify-between gap-3">
-          <SessionIdentity row={row} />
+          <SessionIdentity row={row} slug={slug} onOpen={open} />
           <RowActionsMenu row={row} display={display} actions={actions} />
         </div>
         <div className="mt-3 flex items-center justify-between gap-3">

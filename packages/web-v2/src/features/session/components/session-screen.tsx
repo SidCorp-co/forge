@@ -71,14 +71,14 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
       kind: "session",
       id: session.id,
       label: session.title ?? `Session ${session.id.slice(0, 8)}`,
-      href: `/projects/${projectSlug}/sessions/${session.id}`,
+      href: `/projects/${projectSlug}/agents/${session.id}`,
       icon: "agent",
     });
   }, [session?.id, session?.title, projectSlug, pushRecent]);
 
   function copyLink() {
     if (!projectSlug) return;
-    const url = buildShareLink(`/projects/${projectSlug}/sessions/${sessionId}`);
+    const url = buildShareLink(`/projects/${projectSlug}/agents/${sessionId}`);
     navigator.clipboard?.writeText(url).then(
       () => toast({ title: "Link copied", description: url, tone: "success" }),
       () => toast({ title: "Couldn't copy link", tone: "error" }),
@@ -104,7 +104,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
 
   const lastTurnId = items.length ? items[items.length - 1].turnId : undefined;
 
-  const goToSession = (id: string) => router.push(`/projects/${projectSlug ?? ""}/sessions/${id}`);
+  const goToSession = (id: string) => router.push(`/projects/${projectSlug ?? ""}/agents/${id}`);
 
   const handleFork = (fromTurnId: string) =>
     fork.mutate({ fromTurnId }, { onSuccess: (s) => projectSlug && goToSession(s.id) });
@@ -141,7 +141,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
               icon="arrowRight"
               className="min-h-11 rotate-180"
               aria-label="Back to sessions"
-              onClick={() => router.push(`/projects/${projectSlug}/sessions`)}
+              onClick={() => router.push(`/projects/${projectSlug}/agents`)}
             />
           )}
           <div className="min-w-0 flex-1">

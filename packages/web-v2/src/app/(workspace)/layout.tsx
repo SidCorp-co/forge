@@ -421,7 +421,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
       keywords: "new issue",
       onRun: () =>
         slug
-          ? router.push(`/projects/${slug}/issues`)
+          ? router.push(`/projects/${slug}/issues?new=1`)
           : toast({ title: "New issue", description: "Open a project to create an issue.", tone: "info" }),
     });
     out.push({
@@ -558,7 +558,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             title={topBarTitle}
             onNewIssue={() =>
               slug
-                ? router.push(`/projects/${slug}/issues`)
+                ? router.push(`/projects/${slug}/issues?new=1`)
                 : toast({ title: "New issue", description: "Open a project to create an issue.", tone: "info" })
             }
             scrolled={scrolled}

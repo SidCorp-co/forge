@@ -25,7 +25,28 @@ export interface PatchIssueInput {
   assigneeId?: string | null;
 }
 
+/** Body for `POST /api/projects/:id/issues`. Mirrors the core
+ *  `issueCreateSchema` allow-list — `title` is required; the rest optional.
+ *  `status` is intentionally omitted (new issues enter the pipeline at `open`,
+ *  the server default). */
+export interface CreateIssueInput {
+  title: string;
+  description?: string;
+  priority?: IssuePriority;
+  category?: string;
+  complexity?: IssueComplexity;
+}
+
 export const issuesApi = {
+  /** `POST /api/projects/:id/issues` — create an issue (caller must be a
+   *  project member). Returns the created row incl. `displayId` (`ISS-<seq>`)
+   *  for navigation to its detail page. */
+  create: (projectId: string, body: CreateIssueInput) =>
+    apiClient<IssueRow>(`/projects/${projectId}/issues`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   /**
    * `GET /api/projects/:id/issues/search` — server-side search + filters +
    * sort + pagination, hydrating `agentSessions`/`agentStatus`. Returns flat

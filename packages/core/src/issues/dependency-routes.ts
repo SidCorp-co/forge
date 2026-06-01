@@ -7,6 +7,7 @@
 
 import { zValidator } from '@hono/zod-validator';
 import { and, eq, inArray, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -110,16 +111,57 @@ issueDependencyRoutes.get(
       .limit(1);
     if (!member) throw forbidden('not a project member');
 
-    const outgoing = await db
-      .select()
-      .from(issueDependencies)
-      .where(eq(issueDependencies.fromIssueId, id));
-    const incoming = await db
-      .select()
-      .from(issueDependencies)
-      .where(eq(issueDependencies.toIssueId, id));
+    // Join both endpoints of each edge so the UI can render a friendly,
+    // clickable `ISS-<seq>` badge (with title/status) for the OTHER side
+    // without N extra round-trips (ISS-331). `displayId` is derived from
+    // `issSeq` to match the issues serializer (`ISS-${issSeq}`).
+    const fromIssue = alias(issues, 'from_issue');
+    const toIssue = alias(issues, 'to_issue');
+    const edgeColumns = {
+      id: issueDependencies.id,
+      projectId: issueDependencies.projectId,
+      fromIssueId: issueDependencies.fromIssueId,
+      toIssueId: issueDependencies.toIssueId,
+      kind: issueDependencies.kind,
+      reason: issueDependencies.reason,
+      createdById: issueDependencies.createdById,
+      createdAt: issueDependencies.createdAt,
+      validUntil: issueDependencies.validUntil,
+      fromIssSeq: fromIssue.issSeq,
+      fromTitle: fromIssue.title,
+      fromStatus: fromIssue.status,
+      toIssSeq: toIssue.issSeq,
+      toTitle: toIssue.title,
+      toStatus: toIssue.status,
+    };
 
-    return c.json({ outgoing, incoming });
+    const baseQuery = () =>
+      db
+        .select(edgeColumns)
+        .from(issueDependencies)
+        .leftJoin(fromIssue, eq(fromIssue.id, issueDependencies.fromIssueId))
+        .leftJoin(toIssue, eq(toIssue.id, issueDependencies.toIssueId));
+
+    const enrich = <
+      T extends { fromIssSeq: number | null; toIssSeq: number | null },
+    >(
+      edge: T,
+    ) => {
+      const { fromIssSeq, toIssSeq, ...rest } = edge;
+      return {
+        ...rest,
+        fromDisplayId: fromIssSeq != null ? `ISS-${fromIssSeq}` : null,
+        toDisplayId: toIssSeq != null ? `ISS-${toIssSeq}` : null,
+      };
+    };
+
+    const outgoingRows = await baseQuery().where(eq(issueDependencies.fromIssueId, id));
+    const incomingRows = await baseQuery().where(eq(issueDependencies.toIssueId, id));
+
+    return c.json({
+      outgoing: outgoingRows.map(enrich),
+      incoming: incomingRows.map(enrich),
+    });
   },
 );
 

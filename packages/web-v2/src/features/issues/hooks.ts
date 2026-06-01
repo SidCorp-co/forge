@@ -11,8 +11,24 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
-import { type PatchIssueInput, issuesApi } from "./api";
-import type { IssueSearchOpts, IssueStatus } from "./types";
+import { type CreateIssueInput, type PatchIssueInput, issuesApi } from "./api";
+import type { IssueRow, IssueSearchOpts, IssueStatus } from "./types";
+
+/**
+ * Create an issue in `projectId`. On success invalidates `['issues']` so the
+ * new row appears live in the list, then hands the created row back to the
+ * caller (the dialog navigates to its detail page). No toast here — the dialog
+ * owns the success/failure path (mirrors `useCreateProject`).
+ */
+export function useCreateIssue(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation<IssueRow, unknown, CreateIssueInput>({
+    mutationFn: (body) => issuesApi.create(projectId, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["issues"] });
+    },
+  });
+}
 
 /** Issues search list. Keyed `['issues','search', projectId, opts]`. */
 export function useIssues(projectId: string | undefined, opts: IssueSearchOpts) {

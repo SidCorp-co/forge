@@ -114,8 +114,11 @@ export type IssueDependencyKind =
   | "parent"
   | "decomposes";
 
-/** One dependency edge from `GET /api/issues/:id/dependencies`. IDs only —
- *  no joined title/status (resolve lazily client-side if needed). */
+/** One dependency edge from `GET /api/issues/:id/dependencies`. Each edge is
+ *  enriched (ISS-331) with both endpoints' friendly `displayId` (`ISS-<seq>`),
+ *  title, and status so relation chips render a clickable `ISS-X` link without
+ *  extra fetches. The enrichment fields are optional/nullable for back-compat
+ *  (a deleted endpoint or an older server omits them). */
 export interface IssueDependencyEdge {
   id: string;
   fromIssueId: string;
@@ -123,6 +126,12 @@ export interface IssueDependencyEdge {
   kind: IssueDependencyKind;
   reason: string | null;
   createdAt: string;
+  fromDisplayId?: string | null;
+  fromTitle?: string | null;
+  fromStatus?: IssueStatus | null;
+  toDisplayId?: string | null;
+  toTitle?: string | null;
+  toStatus?: IssueStatus | null;
 }
 
 export interface IssueDependencies {

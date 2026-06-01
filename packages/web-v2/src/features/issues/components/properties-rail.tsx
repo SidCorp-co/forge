@@ -2,8 +2,8 @@
 
 // Issue-detail properties rail. Read + inline-edit of the core fields, plus a
 // cost rollup, merge date (no merge-commit SHA is stored — `mergedAt` is the
-// signal), the ISS-<seq> branch convention, and dependency edges (ID-only from
-// the API — shown with kind + a short id label).
+// signal), the ISS-<seq> branch convention, and dependency edges (rendered as
+// clickable `ISS-X` badges linking to the related issue — ISS-331).
 
 import { Avatar, MonoTag, Stat } from "@/design";
 import {
@@ -11,6 +11,7 @@ import {
   PRIORITY_OPTIONS,
   assigneeOptions,
 } from "./issue-table-row";
+import { IssueRefBadge } from "./issue-ref-badge";
 import { InlineSelect, StatusEdit } from "./inline-edit-cell";
 import { initials, memberLabel } from "../derive";
 import type {
@@ -40,18 +41,39 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-function DepList({ edges, self, label }: { edges: IssueDependencyEdge[]; self: string; label: string }) {
+/** A relation list (Blocked by / Blocks / Related). Each edge renders the kind
+ *  plus a clickable `ISS-X` badge for the OTHER endpoint — falling back to a
+ *  short id only when the server didn't enrich the edge. */
+function DepList({
+  edges,
+  self,
+  slug,
+  label,
+}: {
+  edges: IssueDependencyEdge[];
+  self: string;
+  slug: string;
+  label: string;
+}) {
   if (edges.length === 0) return null;
   return (
     <div className="py-2">
       <p className="fg-caption mb-1">{label}</p>
-      <div className="flex flex-wrap justify-end gap-1.5">
+      <div className="flex flex-col items-end gap-1.5">
         {edges.map((e) => {
-          const other = e.fromIssueId === self ? e.toIssueId : e.fromIssueId;
+          const isFromSelf = e.fromIssueId === self;
+          const other = isFromSelf ? e.toIssueId : e.fromIssueId;
+          const otherDisplayId = isFromSelf ? e.toDisplayId : e.fromDisplayId;
+          const otherTitle = isFromSelf ? e.toTitle : e.fromTitle;
           return (
-            <MonoTag key={e.id} hue={e.kind === "blocks" ? "flame" : "neutral"}>
-              {e.kind} · {other.slice(0, 8)}
-            </MonoTag>
+            <span key={e.id} className="inline-flex items-center gap-1.5">
+              <span className="fg-caption">{e.kind}</span>
+              {otherDisplayId ? (
+                <IssueRefBadge id={other} slug={slug} displayId={otherDisplayId} title={otherTitle} />
+              ) : (
+                <MonoTag hue={e.kind === "blocks" ? "flame" : "neutral"}>{other.slice(0, 8)}</MonoTag>
+              )}
+            </span>
           );
         })}
       </div>
@@ -61,6 +83,8 @@ function DepList({ edges, self, label }: { edges: IssueDependencyEdge[]; self: s
 
 interface PropertiesRailProps {
   issue: IssueDetail;
+  /** Project slug — for building links from relation badges to related issues. */
+  slug: string;
   members: ProjectMember[] | undefined;
   cost: IssueCostSummary | undefined;
   deps: IssueDependencies | undefined;
@@ -71,6 +95,7 @@ interface PropertiesRailProps {
 
 export function PropertiesRail({
   issue,
+  slug,
   members,
   cost,
   deps,
@@ -156,9 +181,9 @@ export function PropertiesRail({
       <Row label="Reopens">
         <span className="fg-body-sm font-mono text-muted">{issue.reopenCount}</span>
       </Row>
-      <DepList edges={blockedBy} self={issue.id} label="Blocked by" />
-      <DepList edges={blocks} self={issue.id} label="Blocks" />
-      <DepList edges={relates} self={issue.id} label="Related" />
+      <DepList edges={blockedBy} self={issue.id} slug={slug} label="Blocked by" />
+      <DepList edges={blocks} self={issue.id} slug={slug} label="Blocks" />
+      <DepList edges={relates} self={issue.id} slug={slug} label="Related" />
     </div>
   );
 }

@@ -8,6 +8,7 @@
 // Mobile:  Tabs [Sessions | Chat], one pane at a time.
 // The active mobile tab is mirrored to `?tab=` (shallow replaceState, hydrated
 // from the URL on mount) so deep-links work without a Suspense boundary.
+import { useEffect, useState } from "react";
 import { Tabs, type TabItem } from "@/design";
 import { useTabParam } from "@/lib/utils/use-tab-param";
 import { SessionsScreen } from "@/features/sessions/components/sessions-screen";
@@ -27,6 +28,16 @@ export interface AgentsScreenProps {
 
 export function AgentsScreen({ scope }: AgentsScreenProps) {
   const [tab, setTab] = useTabParam<AgentsTab>(TAB_VALUES, "sessions");
+  // Issue deep-link (`?issue=<uuid>`) from issue-detail "Open sessions" — scopes
+  // the Sessions list to one issue. Read on mount (no Suspense boundary, like
+  // useTabParam); navigating here re-mounts, so a one-shot read is sufficient.
+  const [issueId, setIssueId] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    const sp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    setIssueId(sp?.get("issue") || undefined);
+  }, []);
+
+  const sessionsScope = { projectId: scope.projectId, ...(issueId ? { issueId } : {}) };
 
   return (
     <div className="flex min-h-full flex-col">
@@ -36,7 +47,7 @@ export function AgentsScreen({ scope }: AgentsScreenProps) {
           <Tabs tabs={TABS} value={tab} onChange={(v) => setTab(v as AgentsTab)} />
         </div>
         {tab === "sessions" ? (
-          <SessionsScreen scope={{ projectId: scope.projectId }} />
+          <SessionsScreen scope={sessionsScope} />
         ) : (
           <ChatScreen projectId={scope.projectId} />
         )}
@@ -45,7 +56,7 @@ export function AgentsScreen({ scope }: AgentsScreenProps) {
       {/* Desktop: list → detail, two panes side-by-side. */}
       <div className="hidden min-h-full md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
         <div className="min-w-0 border-r border-line">
-          <SessionsScreen scope={{ projectId: scope.projectId }} />
+          <SessionsScreen scope={sessionsScope} />
         </div>
         <div className="min-w-0">
           <ChatScreen projectId={scope.projectId} />
