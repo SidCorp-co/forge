@@ -42,6 +42,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **The issue detail page in the new web app is easier to read and act on: the primary action + state bar now stays pinned at the top while you scroll, the properties rail stays in view alongside it, the layout uses the full desktop width instead of a narrow centered column, the breadcrumb shows the project's name instead of its slug, status/priority/complexity show friendly labels instead of raw codes, the newest comment appears first, Open sessions is one click from the bar, and the cluttered Run step / Reopen header actions are gone (status changes stay available from the properties rail).**
   *Technical: web-v2 issue-detail refactor: shared STATUS/PRIORITY/COMPLEXITY label maps + helpers in derive.ts; sticky top-0 action+state bar; sticky properties rail (lg:sticky top-20 self-start, max-h calc overflow-y-auto); breadcrumb project name from cached useProjects() (slug fallback); container max-w-[1600px] 2xl:1760px + widened rail track; reverse-chron top-level comments (copy sort); Open sessions promoted, Run step/Reopen removed. Merges 7f410a2 + 17f4381 (ISS-347).*
 
+- **Agent session detail pages in the new web app now render the full conversation — assistant text and tool calls in their original order — for pipeline and CLI-runner sessions that previously showed an empty "No messages yet" screen. The page also shows which device/runner the session is running on (name, platform, and online status) and surfaces "Open issue" as a primary action instead of hiding it in the overflow menu.**
+  *Technical: web-v2 session parser reads the canonical block shape and falls back to session.messages when /turns is empty; core messageRoleToTurnRole falls back to entry.type so derived sessions populate turn rows going forward. Merge c9ddd75.*
+
 ### Removed
 
 ### Fixed
