@@ -72,6 +72,9 @@ export interface SessionRow {
   deviceId: string | null;
   pipelineRunId: string | null;
   title: string | null;
+  /** Absolute repo checkout path the session ran against (resolved from the
+   *  project repoPath). Present on the full row; older rows may be null. */
+  repoPath: string | null;
   status: AgentSessionStatus;
   usage: SessionUsage | null;
   metadata: SessionMetadata | null;

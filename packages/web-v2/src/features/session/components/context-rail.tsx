@@ -4,6 +4,13 @@
 // files-changed list derived from edit-tool blocks across turns (no diff REST
 // endpoint exists). Collapses into a SlideOver below `lg` (handled by the
 // parent). Kit-only tokens; cost/model are not on the session row → show "—".
+//
+// ISS-352 enrichment (frontend-only, every field proven present in the
+// `GET /agent-sessions/:id` row): cache tokens + lifecycle timings + repoPath,
+// an "Agents & tasks" list (derived from Task/Skill transcript blocks), and a
+// "Sessions for this issue" list (sibling sessions via the existing list API).
+import { useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { HealthDot, Icon, MonoTag, PipelineTracker, Stat, StatusChip, useElapsed } from "@/design";
 import {
   deriveSessionDisplayStatus,
@@ -12,9 +19,10 @@ import {
   statusToRun,
   type SessionRow,
 } from "@/features/sessions/types";
+import { useSessions } from "@/features/sessions/hooks";
 import { useDevices } from "@/features/runners/hooks";
 import { deviceHealth } from "@/features/runners/types";
-import { deriveFilesChanged, type ConversationItem } from "../types";
+import { deriveAgentTasks, deriveFilesChanged, type ConversationItem } from "../types";
 
 const PLATFORM_LABEL: Record<string, string> = {
   macos: "macOS",
@@ -37,6 +45,19 @@ function fmtNum(n: number | undefined): string {
   return String(n);
 }
 
+/** Short absolute timestamp, or "—" when absent/invalid (older rows). */
+function fmtTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const ms = new Date(iso).getTime();
+  if (Number.isNaN(ms)) return "—";
+  return new Date(ms).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
@@ -50,7 +71,16 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-export function ContextRail({ session, items }: { session: SessionRow; items: ConversationItem[] }) {
+export function ContextRail({
+  session,
+  items,
+  projectSlug,
+}: {
+  session: SessionRow;
+  items: ConversationItem[];
+  projectSlug?: string;
+}) {
+  const router = useRouter();
   const display = deriveSessionDisplayStatus(session);
   const stage = deriveStage(session.metadata);
   const live = display === "running" || display === "stalled";
@@ -64,7 +94,9 @@ export function ContextRail({ session, items }: { session: SessionRow; items: Co
 
   const usage = session.usage ?? {};
   const files = deriveFilesChanged(items);
+  const agentTasks = useMemo(() => deriveAgentTasks(items), [items]);
   const isPipeline = session.metadata?.type === "pipeline" || session.metadata?.type === "pm";
+  const hasCache = usage.cacheRead != null || usage.cacheWrite != null;
 
   // Resolve the runner the session is bound to. The device may not be in the
   // viewer's owner-scoped list (different owner) → fall back to the short id.
@@ -72,6 +104,20 @@ export function ContextRail({ session, items }: { session: SessionRow; items: Co
   const device = session.deviceId
     ? devicesQ.data?.find((d) => d.id === session.deviceId)
     : undefined;
+
+  // "Sessions for this issue": the other pipeline steps (triage/plan/code/…)
+  // that worked the same issue — the honest "multiple agents" view. Reuses the
+  // existing list endpoint (WS-invalidated, shared cache with the queue screen)
+  // and filters client-side on `metadata.issueId`, exactly as sessions-screen
+  // does. No new endpoint / no parentSessionId column needed.
+  const issueId = session.metadata?.issueId;
+  const siblingsQ = useSessions({ projectId: session.projectId });
+  const siblings = useMemo(() => {
+    if (!issueId) return [];
+    return (siblingsQ.data?.items ?? []).filter(
+      (s) => s.id !== session.id && s.metadata?.issueId === issueId,
+    );
+  }, [siblingsQ.data, issueId, session.id]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -90,11 +136,29 @@ export function ContextRail({ session, items }: { session: SessionRow; items: Co
                 {PLATFORM_LABEL[device.platform] ?? device.platform}
                 {device.agentVersion ? ` · v${device.agentVersion}` : ""}
               </span>
+              {session.repoPath && (
+                <div className="flex items-center gap-2 overflow-hidden">
+                  <Icon name="folder" size={13} className="flex-none text-subtle" />
+                  <span className="flex-1 truncate font-mono" style={{ fontSize: 11.5 }} title={session.repoPath}>
+                    {session.repoPath}
+                  </span>
+                </div>
+              )}
             </div>
           ) : (
-            <div className="flex items-center gap-2 overflow-hidden">
-              <Icon name="server" size={14} className="flex-none text-subtle" />
-              <MonoTag hue="neutral">{session.deviceId.slice(0, 8)}</MonoTag>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2 overflow-hidden">
+                <Icon name="server" size={14} className="flex-none text-subtle" />
+                <MonoTag hue="neutral">{session.deviceId.slice(0, 8)}</MonoTag>
+              </div>
+              {session.repoPath && (
+                <div className="flex items-center gap-2 overflow-hidden">
+                  <Icon name="folder" size={13} className="flex-none text-subtle" />
+                  <span className="flex-1 truncate font-mono" style={{ fontSize: 11.5 }} title={session.repoPath}>
+                    {session.repoPath}
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </Section>
@@ -118,9 +182,68 @@ export function ContextRail({ session, items }: { session: SessionRow; items: Co
           <Stat icon="arrowRight" title="Tokens in / out">
             {fmtNum(usage.inputTotal)} / {fmtNum(usage.outputTotal)} tok
           </Stat>
+          {hasCache && (
+            <Stat icon="cpu" title="Cache tokens read / write">
+              {fmtNum(usage.cacheRead)} / {fmtNum(usage.cacheWrite)} cache
+            </Stat>
+          )}
+          {/* Per-session cost & model live in the separate usage_records table,
+              not joined into this row — documented backend follow-up (ISS-352),
+              shown as "—" rather than faked. */}
           <Stat icon="dollar" title="Cost not tracked on this session">— cost</Stat>
         </div>
       </Section>
+
+      <Section title="Timing">
+        <div className="flex flex-col gap-2.5">
+          <Stat icon="calendar" title="Dispatched to a runner">
+            {fmtTime(session.dispatchedAt)} dispatched
+          </Stat>
+          <Stat icon="play" title="Agent started">{fmtTime(session.startedAt)} started</Stat>
+          <Stat icon="check" title="Ended (last update on a terminal session)">
+            {live ? "—" : fmtTime(session.updatedAt)} ended
+          </Stat>
+        </div>
+      </Section>
+
+      {agentTasks.length > 0 && (
+        <Section title={`Agents & tasks · ${agentTasks.length}`}>
+          <ul className="flex flex-col gap-1.5">
+            {agentTasks.map((t, i) => (
+              <li key={`${t.id}-${i}`} className="flex items-center gap-2 overflow-hidden">
+                <Icon
+                  name={t.tool === "Skill" ? "command" : "agent"}
+                  size={13}
+                  className="flex-none text-subtle"
+                />
+                <span className="flex-1 truncate fg-body-sm" title={t.label}>
+                  {t.label}
+                </span>
+                {t.isError && (
+                  <Icon name="alert" size={12} className="flex-none" style={{ color: "var(--red-600)" }} />
+                )}
+                <MonoTag hue={t.tool === "Skill" ? "flame" : "cobalt"}>{t.tool}</MonoTag>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {issueId && siblings.length > 0 && (
+        <Section title={`Sessions for this issue · ${siblings.length}`}>
+          <ul className="flex flex-col gap-1.5">
+            {siblings.map((s) => (
+              <SiblingRow
+                key={s.id}
+                row={s}
+                onOpen={
+                  projectSlug ? () => router.push(`/projects/${projectSlug}/agents/${s.id}`) : undefined
+                }
+              />
+            ))}
+          </ul>
+        </Section>
+      )}
 
       <Section title={`Files changed${files.length ? ` · ${files.length}` : ""}`}>
         {files.length === 0 ? (
@@ -145,5 +268,42 @@ export function ContextRail({ session, items }: { session: SessionRow; items: Co
         )}
       </Section>
     </div>
+  );
+}
+
+/** One sibling-session row in "Sessions for this issue" — step label + status
+ *  chip, links to its own detail when a project slug is known. */
+function SiblingRow({ row, onOpen }: { row: SessionRow; onOpen?: () => void }) {
+  const display = deriveSessionDisplayStatus(row);
+  const stage = deriveStage(row.metadata);
+  const label =
+    (row.metadata?.step as string | undefined) ??
+    (row.metadata?.stage as string | undefined) ??
+    row.title ??
+    `Session ${row.id.slice(0, 8)}`;
+
+  const inner = (
+    <>
+      <Icon name="pipeline" size={13} className="flex-none text-subtle" />
+      <span className="flex-1 truncate fg-body-sm capitalize" title={label}>
+        {label}
+      </span>
+      <StatusChip status={statusToChip(display)} stage={stage} size="sm" />
+    </>
+  );
+
+  if (!onOpen) {
+    return <li className="flex items-center gap-2 overflow-hidden">{inner}</li>;
+  }
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex w-full items-center gap-2 overflow-hidden rounded px-1 py-0.5 text-left transition-colors hover:bg-hover focus-visible:outline-none"
+      >
+        {inner}
+      </button>
+    </li>
   );
 }
