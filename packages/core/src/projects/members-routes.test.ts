@@ -32,7 +32,13 @@ const selectFrom = vi.fn(() => ({
 const insertValues = vi.fn(async () => undefined);
 const insert = vi.fn(() => ({ values: insertValues }));
 
-const deleteWhere = vi.fn(async () => undefined);
+// `where` is both awaitable (DELETE member: `await db.delete().where(...)`) and
+// chainable to `.returning()` (DELETE invitation: `...where(...).returning(...)`).
+const deleteReturning = vi.fn();
+const deleteWhere = vi.fn(() => ({
+  returning: deleteReturning,
+  then: (resolve: (v: unknown) => unknown) => resolve(undefined),
+}));
 const deleteFn = vi.fn(() => ({ where: deleteWhere }));
 
 const updateReturning = vi.fn();
@@ -213,5 +219,111 @@ describe('memberRoutes — DELETE /:projectId/members/:userId', () => {
     });
     expect(res.status).toBe(204);
     expect(deleteFn).toHaveBeenCalled();
+  });
+});
+
+describe('memberRoutes — GET /:projectId/members/invitations', () => {
+  it('200 with pending invitations (owner) — no token leaked, expired flag set', async () => {
+    const token = await signUserToken(OWNER_ID);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, name: 'p', ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([{ role: 'owner' }]);
+    const past = new Date(Date.now() - 1000);
+    const future = new Date(Date.now() + 60_000);
+    whereResolver.mockResolvedValueOnce([
+      {
+        email: 'pending@example.com',
+        role: 'member',
+        expiresAt: future,
+        createdAt: new Date(),
+        inviterEmail: 'owner@example.com',
+      },
+      {
+        email: 'stale@example.com',
+        role: 'admin',
+        expiresAt: past,
+        createdAt: new Date(),
+        inviterEmail: 'owner@example.com',
+      },
+    ]);
+
+    const res = await buildApp().request(`/api/projects/${PROJECT_ID}/members/invitations`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<Record<string, unknown>>;
+    expect(body).toHaveLength(2);
+    expect(body[0]).toMatchObject({ email: 'pending@example.com', expired: false });
+    expect(body[1]).toMatchObject({ email: 'stale@example.com', expired: true });
+    expect(body[0]).not.toHaveProperty('token');
+  });
+
+  it('403 FORBIDDEN when caller is a regular member', async () => {
+    const token = await signUserToken(OTHER_ID);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, name: 'p', ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([{ role: 'member' }]);
+
+    const res = await buildApp().request(`/api/projects/${PROJECT_ID}/members/invitations`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('memberRoutes — DELETE /:projectId/members/invitations', () => {
+  it('204 when owner revokes a pending invitation', async () => {
+    const token = await signUserToken(OWNER_ID);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, name: 'p', ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([{ role: 'owner' }]);
+    deleteReturning.mockResolvedValueOnce([{ token: 'tok-1' }]);
+
+    const res = await buildApp().request(
+      `/api/projects/${PROJECT_ID}/members/invitations?email=pending@example.com`,
+      { method: 'DELETE', headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(res.status).toBe(204);
+    expect(deleteFn).toHaveBeenCalled();
+  });
+
+  it('404 INVITATION_NOT_FOUND when no pending invitation matches', async () => {
+    const token = await signUserToken(OWNER_ID);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, name: 'p', ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([{ role: 'owner' }]);
+    deleteReturning.mockResolvedValueOnce([]);
+
+    const res = await buildApp().request(
+      `/api/projects/${PROJECT_ID}/members/invitations?email=missing@example.com`,
+      { method: 'DELETE', headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('INVITATION_NOT_FOUND');
+  });
+
+  it('403 FORBIDDEN when caller is a regular member', async () => {
+    const token = await signUserToken(OTHER_ID);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, name: 'p', ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([{ role: 'member' }]);
+
+    const res = await buildApp().request(
+      `/api/projects/${PROJECT_ID}/members/invitations?email=pending@example.com`,
+      { method: 'DELETE', headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it('400 BAD_REQUEST when email query param is missing', async () => {
+    const token = await signUserToken(OWNER_ID);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+
+    const res = await buildApp().request(
+      `/api/projects/${PROJECT_ID}/members/invitations`,
+      { method: 'DELETE', headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(res.status).toBe(400);
   });
 });
