@@ -195,7 +195,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
               {
                 label: "Open sessions",
                 icon: "agent",
-                onSelect: () => router.push(`/projects/${slug}/sessions`),
+                onSelect: () => router.push(`/projects/${slug}/agents?issue=${id}`),
               },
               {
                 label: "Open pipeline",
@@ -314,6 +314,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
             <CardContent>
               <PropertiesRail
                 issue={issue}
+                slug={slug}
                 members={membersQ.data}
                 cost={costQ.data}
                 deps={depsQ.data}
@@ -328,6 +329,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
           <Collapsible title="Properties" defaultOpen>
             <PropertiesRail
               issue={issue}
+              slug={slug}
               members={membersQ.data}
               cost={costQ.data}
               deps={depsQ.data}

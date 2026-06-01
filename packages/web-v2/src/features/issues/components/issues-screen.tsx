@@ -33,6 +33,7 @@ import { useIssues, usePatchIssue, useProjectMembers, useTransitionIssue } from 
 import type { GroupBy, IssueFilter, IssueSort } from "../types";
 import type { RowActions } from "./issue-table-row";
 import { IssueMobileCard, IssueTableRow } from "./issue-row-actions";
+import { NewIssueDialog } from "./new-issue-dialog";
 
 const FILTERS: SegmentOption<IssueFilter>[] = [
   { value: "all", label: "All" },
@@ -70,6 +71,9 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const [sort, setSort] = useState<IssueSort>("createdAt:desc");
   const [page, setPage] = useState(1);
+  // New-issue dialog — opened locally or via a `?new=1` deep-link (the global
+  // TopBar / ⌘K "New issue" actions route here with that param).
+  const [newOpen, setNewOpen] = useState(false);
   // Gate URL-sync until the initial hydrate-from-URL has run, so we don't clobber
   // a deep-link's query on first paint.
   const hydrated = useRef(false);
@@ -87,6 +91,7 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
       setGroupBy(decodeFilter<GroupBy>(sp, "groupBy", "none"));
       setSort(decodeFilter<IssueSort>(sp, "sort", "createdAt:desc"));
       setPage(decodeNumber(sp, "page", 1));
+      if (sp.get("new") === "1") setNewOpen(true);
     }
     hydrated.current = true;
   }, []);
@@ -153,12 +158,17 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
     // issues table has 9 columns and was clipping the Assignee/Actions cells off
     // the right edge at ~1440px inside the narrower container (ISS-308 C1).
     <div className="mx-auto w-full min-h-dvh max-w-7xl px-4 py-6 sm:px-8 sm:py-8">
-      <header className="mb-6">
-        <h1 className="fg-h2">Issues</h1>
-        <p className="fg-body-sm mt-1">
-          {total} issue{total === 1 ? "" : "s"}
-          {isFiltered ? " (filtered)" : ""}.
-        </p>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="fg-h2">Issues</h1>
+          <p className="fg-body-sm mt-1">
+            {total} issue{total === 1 ? "" : "s"}
+            {isFiltered ? " (filtered)" : ""}.
+          </p>
+        </div>
+        <Button variant="primary" size="sm" icon="plus" onClick={() => setNewOpen(true)}>
+          New issue
+        </Button>
       </header>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -309,6 +319,8 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
           )}
         </>
       )}
+
+      <NewIssueDialog open={newOpen} onClose={() => setNewOpen(false)} scope={scope} />
     </div>
   );
 }
