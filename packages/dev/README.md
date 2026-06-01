@@ -44,10 +44,12 @@ Bundles land per platform: `.dmg` (macOS), `.msi` (Windows), `.AppImage` / `.deb
 
 ```
 src/                      React/Vite frontend (UI)
-  pages/                  dashboard, project (issues, board, chat), settings
+  pages/app/              Dashboard, Settings, PmInbox, Usage, Login
+  pages/preview/          ChatPreview
+  pages/project/          per-project: issues, board, agent-chat, mcp, knowledge, settings
   components/             issue detail, chat sidebar, settings panels
   stores/app-store.ts     Zustand (auth, config, projects)
-  lib/api.ts              Forge core API client
+  lib/api/                Forge core API client (client.ts + per-domain modules)
   lib/types.ts            shared types
 
 src-tauri/src/            Rust backend (process + WS + filesystem)
@@ -56,12 +58,12 @@ src-tauri/src/            Rust backend (process + WS + filesystem)
   jobs/                   job queue + execution loop
   devices/                pairing + heartbeat
   keychain/               OS-native secret storage for the device token
-  config/                 on-disk config in `~/.forge/`
+  config/                 on-disk config in `~/.config/forge-beta/`
 ```
 
 ## Key patterns
 
-- **Tauri IPC** via `@tauri-apps/api` `invoke("command_name", { args })` for local operations; commands live in `src-tauri/src/<module>/commands.rs`.
+- **Tauri IPC** via `@tauri-apps/api` `invoke("command_name", { args })` for local operations; the `#[tauri::command]` handlers are registered in `src-tauri/src/main.rs`, with their logic delegated to the relevant `src-tauri/src/<module>/`.
 - **Streaming**: agent sessions stream via `agent:chunk` / `agent:complete` Tauri events emitted from Rust into React.
 - **Per-project MCP config**: each project gets its own `.forge/mcp.json` generated under the project root.
 - **Knowledge indexing**: `claude_cli/agent.rs` indexes the repo into `.forge/knowledge.json`.
@@ -69,9 +71,11 @@ src-tauri/src/            Rust backend (process + WS + filesystem)
 
 ## Tests
 
-```bash
-pnpm --filter forge-beta test     # vitest (UI + lib)
-```
+Frontend tests use **vitest** and live under `../tests/dev/`, but every suite is
+currently excluded in `vitest.config.ts` while the test harness is stabilised
+(missing QueryClient providers, Tauri global setup, mock isolation). There is no
+`test` script in `package.json` yet — re-enable the suites file-by-file in
+`vitest.config.ts` as they are repaired. The Rust safety net below still runs.
 
 Rust tests:
 
