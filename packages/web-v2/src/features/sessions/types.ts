@@ -81,6 +81,11 @@ export interface SessionRow {
   lastHeartbeatAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Full canonical transcript — present on the `GET /:id` detail row only
+   *  (the list endpoint omits it). The read-only render fallback when the
+   *  per-turn `/turns` table is empty (ISS-348). */
+  messages?: unknown[];
+  totalMessages?: number;
 }
 
 /** `GET /api/agent-sessions/queue-stats` response (per-device counters). */
