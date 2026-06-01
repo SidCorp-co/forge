@@ -353,15 +353,16 @@ function buildBarrierFragments(args: {
         AND other.id <> j.id
         AND other.status IN ('dispatched','running')
     )`,
-    // ISS-232 — Layer 2 is now git-aware. The previous status-based check
-    // (parent in `released | closed`) treated a manually-closed-but-unmerged
-    // parent as "satisfied" and let dependent children dispatch even though
-    // the parent's branch wasn't on origin. Switching to `parent.merged_at
-    // IS NULL` defers to the state-machine writer (see
-    // `issues/merged-at.ts:markMergedIfLeavingBase`) which stamps
-    // `merged_at` only on transitions out of `pipelineConfig.mergeStates
-    // .baseBranch`. Operator manual override is a direct
-    // `UPDATE issues SET merged_at = now() WHERE id = …`.
+    // ISS-232 — Layer 2 is git-aware: a `blocks` parent is satisfied when its
+    // `merged_at` is stamped (transition out of `pipelineConfig.mergeStates
+    // .baseBranch`, see `issues/merged-at.ts:markMergedIfLeavingBase`), OR when
+    // it is `closed`. The `OR status='closed'` arm covers skill-driven-merge
+    // projects (e.g. dodgeprint: mergeStates UNSET + issues close via
+    // `in_progress→closed` without ever leaving `released`, so `merged_at`
+    // never stamps). Without it, a sibling-`blocks` chain wedges the moment the
+    // first blocker closes. A closed issue is terminally done regardless of
+    // how its merge was recorded. Operator manual override stays a direct
+    // `UPDATE issues SET merged_at = now()` (or the `mark_merged` MCP action).
     blockedBy: sql`j.type <> 'pm' AND EXISTS (
       SELECT 1 FROM issue_dependencies d
       JOIN issues p ON p.id = d.from_issue_id
@@ -369,11 +370,13 @@ function buildBarrierFragments(args: {
         AND d.kind = 'blocks'
         AND (d.valid_until IS NULL OR d.valid_until > now())
         AND p.merged_at IS NULL
+        AND p.status <> 'closed'
     )`,
     // Decompose redesign — the PARENT runs its integration LAST. A decompose
     // parent's forward jobs (code/review/test/fix) stay queued until every
-    // `kind='decomposes'` child has landed on the base branch
-    // (`child.merged_at IS NULL`, the SAME signal `blockedBy` uses above).
+    // `kind='decomposes'` child is satisfied — `merged_at` stamped OR `closed`
+    // (same satisfaction rule as `blockedBy` above; the `closed` arm covers
+    // skill-driven-merge projects that never stamp `merged_at`).
     // Children are NOT gated on the parent: the old `releaseDecomposePending`
     // gate (child release waited for `parent.merged_at`) deadlocked umbrella
     // epics that never code-merge themselves, so it was removed. The
@@ -385,6 +388,7 @@ function buildBarrierFragments(args: {
         AND d2.kind = 'decomposes'
         AND (d2.valid_until IS NULL OR d2.valid_until > now())
         AND c2.merged_at IS NULL
+        AND c2.status <> 'closed'
     )`,
   };
 
