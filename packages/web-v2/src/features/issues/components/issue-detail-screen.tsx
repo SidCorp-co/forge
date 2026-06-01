@@ -35,6 +35,7 @@ import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
+import { useProjects } from "@/features/projects/hooks";
 import { parseChecklist, statusLabel, statusToChip, statusToRun, statusToStage } from "../derive";
 import {
   usePatchIssue,
@@ -78,6 +79,12 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
   const depsQ = useIssueDeps(id);
   const costQ = useIssueCost(id);
   const membersQ = useProjectMembers(projectId);
+  // Breadcrumb shows the friendly project name, not the raw slug. Reuses the
+  // already-cached `['projects']` list (loaded by the shell) — no extra fetch;
+  // falls back to the slug while the list is still loading (ISS-347 follow-up).
+  const projectsQ = useProjects();
+  const projectName =
+    projectsQ.data?.find((p) => p.id === projectId)?.name ?? slug;
 
   const patch = usePatchIssue();
   const transition = useTransitionIssue();
@@ -144,7 +151,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
     <div className="mx-auto min-h-dvh w-full max-w-[1600px] px-4 py-6 sm:px-8 sm:py-8 2xl:max-w-[1760px]">
       <Breadcrumb
         items={[
-          { label: slug, href: `/projects/${slug}` },
+          { label: projectName, href: `/projects/${slug}` },
           { label: "Issues", href: `/projects/${slug}/issues` },
           { label: issue.displayId },
         ]}
@@ -297,8 +304,12 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
           </Card>
         </div>
 
-        {/* Properties rail — desktop sidebar; mobile collapsible. */}
-        <aside className="hidden lg:block">
+        {/* Properties rail — desktop sidebar (sticky so it stays in view while
+            reading a long comment thread, ISS-347 follow-up); mobile collapsible.
+            `self-start` keeps the grid item at content height so sticky has room;
+            `top-20` clears the pinned action bar; a max-height + scroll keeps a
+            long rail (many deps) usable. */}
+        <aside className="hidden lg:sticky lg:top-20 lg:block lg:max-h-[calc(100dvh-6rem)] lg:self-start lg:overflow-y-auto">
           <Card>
             <CardHeader>
               <CardTitle>Properties</CardTitle>
