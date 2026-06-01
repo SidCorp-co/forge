@@ -14,7 +14,7 @@ vi.mock('../lib/dispatch-liveness.js', () => ({
   dispatchLivenessMs: () => 120_000,
 }));
 
-const { selectRunnerForJob } = await import('./select.js');
+const { selectRunnerForJob, getTrippedDeviceIds } = await import('./select.js');
 
 beforeEach(() => {
   execute.mockReset();
@@ -253,5 +253,35 @@ describe('selectRunnerForJob', () => {
     execute.mockResolvedValueOnce([fresh]); // freshest-pick query
     const r = await selectRunnerForJob({ projectId: PROJECT_A });
     expect(r?.id).toBe('r-fresh');
+  });
+});
+
+describe('getTrippedDeviceIds (device circuit breaker)', () => {
+  const PROJECT_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+  it('returns the device ids the breaker query yields', async () => {
+    execute.mockResolvedValueOnce([{ device_id: 'dev-bad' }, { device_id: 'dev-bad2' }]);
+    const tripped = await getTrippedDeviceIds(PROJECT_A);
+    expect(tripped).toEqual(['dev-bad', 'dev-bad2']);
+  });
+
+  it('returns [] when no device is tripped', async () => {
+    execute.mockResolvedValueOnce([]);
+    expect(await getTrippedDeviceIds(PROJECT_A)).toEqual([]);
+  });
+
+  it('drops null device ids defensively', async () => {
+    execute.mockResolvedValueOnce([{ device_id: 'dev-bad' }, { device_id: null }]);
+    expect(await getTrippedDeviceIds(PROJECT_A)).toEqual(['dev-bad']);
+  });
+
+  it('builds a streak query: consecutive failed terminal jobs within a window', async () => {
+    execute.mockResolvedValueOnce([]);
+    await getTrippedDeviceIds(PROJECT_A);
+    const q = JSON.stringify(execute.mock.calls.at(-1)?.[0]);
+    expect(q).toContain('row_number'); // most-recent-N per device
+    expect(q).toContain('bool_and'); // all of the last N are failed
+    expect(q).toMatch(/'failed'/); // counts failed/done terminal outcomes only
+    expect(q).toContain('finished_at'); // recency window
   });
 });
