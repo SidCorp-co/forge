@@ -28,6 +28,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Postman integration per-project: configure a Postman workspace + collection and API key in project settings, and the Postman MCP tools become available to agents/skills running for that project.**
   *Technical: New provider='postman' on project_integrations (encrypted apiKey + workspace/collection config); a dispatch-time resolver renders it into the existing per-project mcpServers override (remote HTTP + Bearer) so CLI/desktop runners auto-inject the Postman MCP. forge_postman_target MCP tool exposes the write-target (workspace/collection) to skills without leaking the key.*
 
+- **Web v2: attach files to new issues via picker, drag-and-drop, or pasting a screenshot, and view them on the issue's Attachments section. Issue descriptions now use the full column width, and the session view has a wider conversation, a pinned context rail, and a tidier action bar.**
+  *Technical: web-v2 new-issue dialog sends inline base64 attachments[]; issue-detail renders an Attachments card via useAttachments; dropped the description max-w-[70ch] clamp; session thread widened (max-w-4xl xl:max-w-5xl), right rail made lg:sticky, Fork moved to overflow menu.*
+
 ### Changed
 
 - **You can now configure a project directly in the new web app — name & description, repository path, base/production branches, pipeline stages, labels, and members — reached from the project dashboard's gear icon or the ⌘K command palette, with no new sidebar item. Edits persist immediately and project secrets are never shown.**
