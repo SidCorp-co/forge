@@ -9,7 +9,7 @@
 // The active mobile tab is mirrored to `?tab=` (shallow replaceState, hydrated
 // from the URL on mount) so deep-links work without a Suspense boundary.
 import { useEffect, useState } from "react";
-import { Tabs, type TabItem } from "@/design";
+import { ScreenTabs, type TabItem } from "@/design";
 import { useTabParam } from "@/lib/utils/use-tab-param";
 import { SessionsScreen } from "@/features/sessions/components/sessions-screen";
 import { ChatScreen } from "@/features/session/components/chat-screen";
@@ -43,9 +43,7 @@ export function AgentsScreen({ scope }: AgentsScreenProps) {
     <div className="flex min-h-full flex-col">
       {/* Mobile: single-pane tabs. */}
       <div className="md:hidden">
-        <div className="px-4 pt-6 sm:px-8">
-          <Tabs tabs={TABS} value={tab} onChange={(v) => setTab(v as AgentsTab)} />
-        </div>
+        <ScreenTabs tabs={TABS} value={tab} onChange={(v) => setTab(v as AgentsTab)} />
         {tab === "sessions" ? (
           <SessionsScreen scope={sessionsScope} />
         ) : (

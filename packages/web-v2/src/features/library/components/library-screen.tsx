@@ -5,7 +5,7 @@
 // unchanged (those screens bring their own page chrome / header), so this shell
 // only adds the tab strip. Active tab is mirrored to `?tab=` (shallow
 // replaceState, hydrated from the URL on mount) so deep-links work.
-import { Tabs, type TabItem } from "@/design";
+import { ScreenTabs, type TabItem } from "@/design";
 import { useTabParam } from "@/lib/utils/use-tab-param";
 import { KnowledgeScreen } from "@/features/knowledge/components/knowledge-screen";
 import { MemoryScreen } from "@/features/memory/components/memory-screen";
@@ -29,9 +29,7 @@ export function LibraryScreen({ scope }: LibraryScreenProps) {
 
   return (
     <div className="flex min-h-full flex-col">
-      <div className="mx-auto w-full max-w-6xl px-4 pt-6 sm:px-8 sm:pt-8">
-        <Tabs tabs={TABS} value={tab} onChange={(v) => setTab(v as LibraryTab)} />
-      </div>
+      <ScreenTabs tabs={TABS} value={tab} onChange={(v) => setTab(v as LibraryTab)} />
       {tab === "knowledge" && (
         <KnowledgeScreen scope={{ projectId: scope.projectId, canManage: scope.canManage }} />
       )}

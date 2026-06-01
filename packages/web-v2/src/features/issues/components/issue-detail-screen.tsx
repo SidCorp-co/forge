@@ -58,6 +58,17 @@ const TASK_STATUS_TONE: Record<TaskRow["status"], "neutral" | "cobalt" | "amber"
   done: "green",
 };
 
+// Human labels for the task lifecycle — the Tasks tab badge must read "In
+// progress", not the raw wire value `in_progress` (ISS-349, matching the issue
+// label helpers in derive.ts).
+const TASK_STATUS_LABELS: Record<TaskRow["status"], string> = {
+  backlog: "Backlog",
+  todo: "To do",
+  in_progress: "In progress",
+  in_review: "In review",
+  done: "Done",
+};
+
 interface IssueDetailScreenProps {
   projectId: string;
   slug: string;
@@ -294,7 +305,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
                           className="flex items-center justify-between gap-3 rounded-md border border-line-subtle px-3 py-2"
                         >
                           <span className="fg-body-sm min-w-0 truncate text-fg">{t.title}</span>
-                          <Badge tone={TASK_STATUS_TONE[t.status]}>{t.status}</Badge>
+                          <Badge tone={TASK_STATUS_TONE[t.status]}>{TASK_STATUS_LABELS[t.status]}</Badge>
                         </li>
                       ))}
                     </ul>
