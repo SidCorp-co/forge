@@ -36,6 +36,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **You can now create a new project right from the new web app — the Overview console button, the dashed "New Project" tile, and the project-switcher in the left rail all open a real create form (name, auto-derived slug, optional description) that creates the project on the backend and takes you straight to it. The old "Coming soon" placeholder is gone, and the new project shows up in the list immediately.**
   *Technical: web-v2 features/projects: NewProjectDialog (kit SlideOver) wired to POST /api/projects via useCreateProject (invalidates ['projects'] for live refresh + navigates to /projects/:slug). Client validation mirrors createProjectSchema; inline SLUG_TAKEN (409) + form-level Banner via kit Field. All triggers + rail ?new=1 deep link share one dialog; home wrapped in Suspense. No new sidebar item, no feature flag. Merge dcbf0d0.*
 
+- **The issue detail page in the new web app is easier to read and act on: the primary action + state bar now stays pinned at the top while you scroll, the layout uses the full desktop width instead of a narrow centered column, status/priority/complexity show friendly labels instead of raw codes, the newest comment appears first, Open sessions is one click from the bar, and the cluttered Run step / Reopen header actions are gone (status changes stay available from the properties rail).**
+  *Technical: web-v2 issue-detail refactor: shared STATUS/PRIORITY/COMPLEXITY label maps + helpers in derive.ts; sticky top-0 action+state bar; container max-w-[1600px] 2xl:1760px + widened rail track; reverse-chron top-level comments (copy sort); Open sessions promoted, Run step/Reopen removed. Merge 7f410a2 (ISS-347).*
+
 ### Removed
 
 ### Fixed
