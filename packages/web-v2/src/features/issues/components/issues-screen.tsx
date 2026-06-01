@@ -123,6 +123,12 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
   );
   useEffect(() => {
     if (!hydrated.current || typeof window === "undefined") return;
+    // Only sync while we're still on the issues list route. After a
+    // `router.push` to a child route (e.g. create-issue → detail page), this
+    // effect can still fire with a stale list `pathname`; rewriting the URL
+    // then would clobber the in-flight navigation and bounce the user back to
+    // the list (ISS-332). Keying off the *live* location avoids that race.
+    if (!window.location.pathname.endsWith("/issues")) return;
     window.history.replaceState(window.history.state, "", `${pathname}${viewQuery}`);
   }, [pathname, viewQuery]);
 
