@@ -94,7 +94,7 @@ Project↔device routing is expressed through the **runners framework** (`runner
 
 1. Assign the device to the project in the web UI (creates a runner row for the project↔device pair).
 2. On the machine, run `forge-runner bind <slug> --path <dir>`.
-3. The CLI resolves the assignment via `GET /api/devices/me/runners` (refusing slugs not assigned to this device) and pushes the local repo path via `PATCH /api/runners/:id`.
+3. The CLI resolves the assignment via `GET /api/devices/me/runners` (refusing slugs not assigned to this device) and pushes the local repo path via `PATCH /api/devices/me/runners/:runnerId` (device principal).
 
 ### Heartbeat + online / offline detection
 
@@ -122,8 +122,9 @@ Project↔device routing is expressed through the **runners framework** (`runner
 | `DELETE` | `/api/devices/:id` | user | Revoke |
 | `POST` | `/api/devices/heartbeat` | device | Update `lastSeenAt` |
 | `GET` | `/api/devices/me/runners` | device | Device self-reports its project assignments |
+| `PATCH` | `/api/devices/me/runners/:runnerId` | device | Push repo path / branch for a binding (used by `forge-runner bind`) |
 | `GET` | `/api/devices/:id/runners` | user | List a device's runners |
-| `GET` / `PATCH` | `/api/runners` , `/api/runners/:id` | user | Runners framework — list/update project↔device bindings (used by `forge-runner bind`) |
+| `GET` / `PATCH` | `/api/runners` , `/api/runners/:id` | user | Runners framework — web-UI surface to list/update project↔device bindings |
 
 ## Cross-Module Touchpoints
 
