@@ -27,8 +27,11 @@ import {
 } from "@/design";
 import {
   allowedTransitions,
+  complexityLabel,
   initials,
   memberLabel,
+  priorityLabel,
+  statusLabel,
   statusToChip,
   statusToRun,
   statusToStage,
@@ -54,13 +57,13 @@ const PRIORITY_TONE: Record<IssuePriority, "red" | "amber" | "neutral"> = {
 /** Read-only priority pill. `none` collapses to a muted dash. */
 function PriorityCell({ priority }: { priority: IssuePriority }) {
   if (priority === "none") return <span className="fg-caption text-subtle">—</span>;
-  return <Badge tone={PRIORITY_TONE[priority]}>{priority}</Badge>;
+  return <Badge tone={PRIORITY_TONE[priority]}>{priorityLabel(priority)}</Badge>;
 }
 
 /** Read-only complexity pill (was the cryptic "Cx" column). */
 function ComplexityCell({ complexity }: { complexity: IssueRow["complexity"] }) {
   if (!complexity) return <span className="fg-caption text-subtle">—</span>;
-  return <MonoTag>{complexity}</MonoTag>;
+  return <MonoTag>{complexityLabel(complexity)}</MonoTag>;
 }
 
 /**
@@ -79,15 +82,15 @@ function useRowMenuItems(
   // Only valid next states (mirrors core's runtime guard) so a pick can't 409
   // and silently snap back (ISS-308 E1).
   for (const s of allowedTransitions(row.status)) {
-    items.push({ label: `Status: ${s}`, onSelect: () => actions.transition({ id: row.id, toStatus: s }) });
+    items.push({ label: `Status: ${statusLabel(s)}`, onSelect: () => actions.transition({ id: row.id, toStatus: s }) });
   }
   for (const p of ISSUE_PRIORITIES) {
     if (p === row.priority) continue;
-    items.push({ label: `Priority: ${p}`, onSelect: () => actions.patch({ id: row.id, body: { priority: p } }) });
+    items.push({ label: `Priority: ${priorityLabel(p)}`, onSelect: () => actions.patch({ id: row.id, body: { priority: p } }) });
   }
   for (const c of ISSUE_COMPLEXITIES) {
     if (c === row.complexity) continue;
-    items.push({ label: `Complexity: ${c}`, onSelect: () => actions.patch({ id: row.id, body: { complexity: c } }) });
+    items.push({ label: `Complexity: ${complexityLabel(c)}`, onSelect: () => actions.patch({ id: row.id, body: { complexity: c } }) });
   }
   if (row.complexity) {
     items.push({ label: "Complexity: clear", onSelect: () => actions.patch({ id: row.id, body: { complexity: null } }) });

@@ -2,11 +2,11 @@
 
 // Per-project configuration surface (ISS-316). Reached via the gear affordance
 // on the project Dashboard header + a ⌘K command — NOT a rail item (the project
-// tier is fixed at 6 flat items by design). Tab state lives in the URL hash so
-// a tab is linkable, mirroring the workspace SettingsScreen.
-import { useEffect, useState } from "react";
+// tier is fixed at 6 flat items by design). Tab state lives in `?tab=` via the
+// shared `useTabParam` hook (ISS-349) so a tab is linkable and the strip matches
+// the other tabbed screens, mirroring the workspace SettingsScreen.
 import {
-  Tabs,
+  ScreenTabs,
   ProjectLoader,
   EmptyState,
   ErrorState,
@@ -15,6 +15,7 @@ import {
   Badge,
   type TabItem,
 } from "@/design";
+import { useTabParam } from "@/lib/utils/use-tab-param";
 import { useProjects, useProject } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import { formatApiError } from "@/lib/api/error";
@@ -26,6 +27,17 @@ import { LabelsTab } from "./labels-tab";
 import { MembersTab } from "./members-tab";
 import { IntegrationsTab } from "./integrations-tab";
 
+const TAB_VALUES = [
+  "basics",
+  "repo",
+  "testing",
+  "pipeline",
+  "labels",
+  "members",
+  "integrations",
+] as const;
+type ProjectSettingsTab = (typeof TAB_VALUES)[number];
+
 const TABS: TabItem[] = [
   { value: "basics", label: "Basics" },
   { value: "repo", label: "Repository" },
@@ -36,8 +48,6 @@ const TABS: TabItem[] = [
   { value: "integrations", label: "Integrations" },
 ];
 
-const VALID = new Set(TABS.map((t) => t.value));
-
 export function ProjectSettingsScreen({ slug }: { slug: string }) {
   // Resolve slug → id/role from the projects list (keyed ['projects']), then
   // fetch the full detail (keyed ['project', id]) — the same keys mutations
@@ -46,18 +56,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
   const listItem = projectsQ.data?.find((p) => p.slug === slug);
   const detailQ = useProject(listItem?.id);
 
-  const [tab, setTab] = useState("basics");
-  useEffect(() => {
-    const fromHash = window.location.hash.replace("#", "");
-    if (VALID.has(fromHash)) setTab(fromHash);
-  }, []);
-
-  function select(value: string) {
-    setTab(value);
-    if (typeof window !== "undefined") {
-      window.history.replaceState(null, "", `#${value}`);
-    }
-  }
+  const [tab, setTab] = useTabParam<ProjectSettingsTab>(TAB_VALUES, "basics");
 
   if (projectsQ.isLoading || (listItem && detailQ.isLoading)) {
     return (
@@ -102,40 +101,47 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
   const canEdit = listItem.role === "owner";
 
   return (
-    <div className="mx-auto w-full min-h-dvh max-w-4xl px-4 py-6 sm:px-8 sm:py-8">
-      <header className="mb-6 flex items-center gap-4">
-        <ProjectMark
-          tint={glyph.tint}
-          ink={glyph.ink}
-          initials={projectInitials(project.name)}
-          size={40}
-        />
-        <div className="min-w-0 flex-1">
-          <h1 className="fg-h2 truncate">Project settings</h1>
-          <div className="mt-1 flex items-center gap-2">
-            <MonoTag>{project.slug}</MonoTag>
-            <Badge tone={canEdit ? "accent" : "neutral"}>{listItem.role}</Badge>
-          </div>
-        </div>
-      </header>
+    <div className="flex min-h-full flex-col">
+      <ScreenTabs
+        tabs={TABS}
+        value={tab}
+        onChange={(v) => setTab(v as ProjectSettingsTab)}
+        header={
+          <>
+            <header className="mb-6 flex items-center gap-4">
+              <ProjectMark
+                tint={glyph.tint}
+                ink={glyph.ink}
+                initials={projectInitials(project.name)}
+                size={40}
+              />
+              <div className="min-w-0 flex-1">
+                <h1 className="fg-h2 truncate">Project settings</h1>
+                <div className="mt-1 flex items-center gap-2">
+                  <MonoTag>{project.slug}</MonoTag>
+                  <Badge tone={canEdit ? "accent" : "neutral"}>{listItem.role}</Badge>
+                </div>
+              </div>
+            </header>
 
-      {!canEdit && (
-        <p className="fg-body-sm mb-4 rounded-md border border-line bg-surface px-3 py-2 text-muted">
-          You have read-only access — only the project owner can change these settings.
-        </p>
-      )}
+            {!canEdit && (
+              <p className="fg-body-sm mb-4 rounded-md border border-line bg-surface px-3 py-2 text-muted">
+                You have read-only access — only the project owner can change these settings.
+              </p>
+            )}
+          </>
+        }
+      />
 
-      <div className="mb-6 overflow-x-auto">
-        <Tabs tabs={TABS} value={tab} onChange={select} />
+      <div className="mx-auto w-full max-w-4xl px-4 pb-8 pt-6 sm:px-8">
+        {tab === "basics" && <BasicsTab project={project} canEdit={canEdit} />}
+        {tab === "repo" && <RepoTab project={project} canEdit={canEdit} />}
+        {tab === "testing" && <TestingTab project={project} canEdit={canEdit} />}
+        {tab === "pipeline" && <PipelineTab projectId={project.id} canEdit={canEdit} />}
+        {tab === "labels" && <LabelsTab projectId={project.id} canEdit={canEdit} />}
+        {tab === "members" && <MembersTab projectId={project.id} canEdit={canEdit} />}
+        {tab === "integrations" && <IntegrationsTab />}
       </div>
-
-      {tab === "basics" && <BasicsTab project={project} canEdit={canEdit} />}
-      {tab === "repo" && <RepoTab project={project} canEdit={canEdit} />}
-      {tab === "testing" && <TestingTab project={project} canEdit={canEdit} />}
-      {tab === "pipeline" && <PipelineTab projectId={project.id} canEdit={canEdit} />}
-      {tab === "labels" && <LabelsTab projectId={project.id} canEdit={canEdit} />}
-      {tab === "members" && <MembersTab projectId={project.id} canEdit={canEdit} />}
-      {tab === "integrations" && <IntegrationsTab />}
     </div>
   );
 }

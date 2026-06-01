@@ -5,7 +5,7 @@
 // schedules feature, PM from this feature's PmScreen (cadence/config + decision
 // audit log, ISS-315).
 // Active tab is mirrored to `?tab=` (shallow replaceState, hydrated on mount).
-import { Tabs, type TabItem } from "@/design";
+import { ScreenTabs, type TabItem } from "@/design";
 import { useTabParam } from "@/lib/utils/use-tab-param";
 import { SchedulesScreen } from "@/features/schedules/components/schedules-screen";
 import { PmScreen } from "./pm-screen";
@@ -27,9 +27,7 @@ export function AutomationScreen({ scope }: AutomationScreenProps) {
 
   return (
     <div className="flex min-h-full flex-col">
-      <div className="mx-auto w-full max-w-6xl px-4 pt-6 sm:px-8 sm:pt-8">
-        <Tabs tabs={TABS} value={tab} onChange={(v) => setTab(v as AutomationTab)} />
-      </div>
+      <ScreenTabs tabs={TABS} value={tab} onChange={(v) => setTab(v as AutomationTab)} />
       {tab === "schedules" && (
         <SchedulesScreen scope={{ projectId: scope.projectId, canManage: scope.canManage }} />
       )}

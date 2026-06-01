@@ -1,24 +1,16 @@
 "use client";
 
-// One issue row (desktop table). Lazy per-row cost + dependency badges (React
-// Query dedupes/caches; pageSize 25 bounds the fan-out). Inline edits commit
-// via the shared mutations passed down from the screen.
+// Shared building blocks for the Issues list: the row-action contract
+// (`RowActions`), the humanized priority/complexity/assignee option lists, and
+// the lazy per-row dependency + cost cells. The active row/card renderers live
+// in `issue-row-actions.tsx` (ISS-293 redesign) and consume these exports; the
+// rail and new-issue dialog reuse the option lists.
 
-import { useRouter } from "next/navigation";
-import { Avatar, MonoTag, PipelineTracker, Stat, TD, TR, type SelectOption } from "@/design";
+import { Stat, type SelectOption } from "@/design";
 import type { PatchIssueInput } from "../api";
 import { useIssueCost, useIssueDeps } from "../hooks";
-import {
-  COMPLEXITY_LABELS,
-  PRIORITY_LABELS,
-  depCounts,
-  initials,
-  memberLabel,
-  statusToRun,
-  statusToStage,
-} from "../derive";
-import type { IssueComplexity, IssuePriority, IssueRow, IssueStatus, ProjectMember } from "../types";
-import { InlineSelect, StatusEdit } from "./inline-edit-cell";
+import { COMPLEXITY_LABELS, PRIORITY_LABELS, depCounts } from "../derive";
+import type { IssueStatus, ProjectMember } from "../types";
 
 export interface RowActions {
   patch: (args: { id: string; body: PatchIssueInput }) => void;
@@ -80,88 +72,4 @@ export function CostCell({ id }: { id: string }) {
   if (isLoading) return <span className="fg-caption">…</span>;
   const cost = data?.estimatedCost ?? 0;
   return <Stat icon="dollar">{cost > 0 ? `$${cost.toFixed(2)}` : "—"}</Stat>;
-}
-
-export function IssueTableRow({
-  row,
-  slug,
-  members,
-  actions,
-}: {
-  row: IssueRow;
-  slug: string;
-  members: ProjectMember[] | undefined;
-  actions: RowActions;
-}) {
-  const router = useRouter();
-  const stage = statusToStage(row.status);
-  const open = () => router.push(`/projects/${slug}/issues/${row.id}`);
-
-  return (
-    <TR>
-      <TD>
-        <button type="button" onClick={open} className="focus-visible:outline-none">
-          <MonoTag hue="cobalt">{row.displayId}</MonoTag>
-        </button>
-      </TD>
-      <TD className="max-w-[320px]">
-        <button type="button" onClick={open} className="block w-full text-left focus-visible:outline-none">
-          <span className="fg-body-sm block truncate text-fg hover:text-accent-text">{row.title}</span>
-        </button>
-        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-          {row.category && <MonoTag>{row.category}</MonoTag>}
-          <DepBadges id={row.id} />
-        </div>
-      </TD>
-      <TD>
-        <PipelineTracker stage={stage} status={statusToRun(row.status, row.agentStatus)} variant="mini" />
-      </TD>
-      <TD>
-        <StatusEdit
-          status={row.status}
-          agentStatus={row.agentStatus}
-          disabled={actions.isPending}
-          onTransition={(toStatus) => actions.transition({ id: row.id, toStatus })}
-        />
-      </TD>
-      <TD className="min-w-[120px]">
-        <InlineSelect
-          ariaLabel="Priority"
-          value={row.priority}
-          options={PRIORITY_OPTIONS}
-          disabled={actions.isPending}
-          onCommit={(priority) =>
-            actions.patch({ id: row.id, body: { priority: priority as IssuePriority } })
-          }
-        />
-      </TD>
-      <TD className="min-w-[88px]">
-        <InlineSelect
-          ariaLabel="Complexity"
-          value={row.complexity ?? ""}
-          options={COMPLEXITY_OPTIONS}
-          disabled={actions.isPending}
-          onCommit={(c) =>
-            actions.patch({ id: row.id, body: { complexity: c === "" ? null : (c as IssueComplexity) } })
-          }
-        />
-      </TD>
-      <TD className="text-right">
-        <CostCell id={row.id} />
-      </TD>
-      <TD className="min-w-[160px]">
-        <div className="flex items-center gap-2">
-          <Avatar initials={initials(memberLabel(row.assigneeId, members))} size={22} />
-          <InlineSelect
-            ariaLabel="Assignee"
-            value={row.assigneeId ?? ""}
-            options={assigneeOptions(members)}
-            disabled={actions.isPending}
-            onCommit={(uid) => actions.patch({ id: row.id, body: { assigneeId: uid === "" ? null : uid } })}
-            className="min-w-0 flex-1"
-          />
-        </div>
-      </TD>
-    </TR>
-  );
 }
