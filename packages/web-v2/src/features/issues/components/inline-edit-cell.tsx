@@ -6,7 +6,7 @@
 // the mutation factory, the row value snaps back since nothing is invalidated).
 
 import { Menu, NativeSelect, Select, StatusChip, type MenuItem, type SelectOption } from "@/design";
-import { allowedTransitions, statusToChip } from "../derive";
+import { allowedTransitions, statusLabel, statusToChip } from "../derive";
 import { type IssueAgentStatus, type IssueStatus } from "../types";
 
 interface InlineSelectProps {
@@ -75,13 +75,13 @@ interface StatusEditProps {
  */
 export function StatusEdit({ status, agentStatus, onTransition, disabled, size }: StatusEditProps) {
   const items: MenuItem[] = allowedTransitions(status).map((s) => ({
-    label: s,
+    label: statusLabel(s),
     onSelect: () => onTransition(s),
   }));
   const chip = (
     <span className="inline-flex items-center gap-1">
       <StatusChip status={statusToChip(status, agentStatus)} size={size} />
-      <span className="fg-caption font-mono">{status}</span>
+      <span className="fg-caption">{statusLabel(status)}</span>
     </span>
   );
   if (disabled) return chip;

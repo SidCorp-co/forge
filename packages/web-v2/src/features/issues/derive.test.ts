@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   COMMENT_KIND_META,
+  COMPLEXITY_LABELS,
+  PRIORITY_LABELS,
+  STATUS_LABELS,
   allowedTransitions,
+  complexityLabel,
   deriveCommentKind,
   depCounts,
   filterToStatusParams,
@@ -9,10 +13,13 @@ import {
   initials,
   memberLabel,
   parseChecklist,
+  priorityLabel,
+  statusLabel,
   statusToChip,
   statusToRun,
   statusToStage,
 } from "./derive";
+import { ISSUE_COMPLEXITIES, ISSUE_PRIORITIES, ISSUE_STATUSES } from "./types";
 import type { IssueDependencies, IssueRow } from "./types";
 
 function row(over: Partial<IssueRow> & { id: string }): IssueRow {
@@ -91,6 +98,25 @@ describe("allowedTransitions", () => {
   });
   it("restricts draft to promote or discard only", () => {
     expect(allowedTransitions("draft")).toEqual(["open", "closed"]);
+  });
+});
+
+describe("label helpers", () => {
+  it("humanizes status / priority / complexity (no raw enum leaks)", () => {
+    expect(statusLabel("in_progress")).toBe("In progress");
+    expect(statusLabel("needs_info")).toBe("Needs info");
+    expect(priorityLabel("critical")).toBe("Critical");
+    expect(complexityLabel("xs")).toBe("XS");
+    expect(complexityLabel("m")).toBe("Medium");
+  });
+  it("renders an em dash for an absent complexity", () => {
+    expect(complexityLabel(null)).toBe("—");
+    expect(complexityLabel(undefined)).toBe("—");
+  });
+  it("covers every enum value (label maps stay in lockstep with the unions)", () => {
+    for (const s of ISSUE_STATUSES) expect(STATUS_LABELS[s]).toBeTruthy();
+    for (const p of ISSUE_PRIORITIES) expect(PRIORITY_LABELS[p]).toBeTruthy();
+    for (const c of ISSUE_COMPLEXITIES) expect(COMPLEXITY_LABELS[c]).toBeTruthy();
   });
 });
 
