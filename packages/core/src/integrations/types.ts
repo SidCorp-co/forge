@@ -1,6 +1,6 @@
 import type { IntegrationEnvironment } from '../db/schema.js';
 
-export type IntegrationProvider = 'coolify';
+export type IntegrationProvider = 'coolify' | 'postman';
 
 export interface AdapterContext<
   TConfig extends Record<string, unknown> = Record<string, unknown>,

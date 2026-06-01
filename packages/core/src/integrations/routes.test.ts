@@ -73,6 +73,17 @@ function post(token: string, body: unknown) {
   });
 }
 
+function patch(token: string, id: string, body: unknown) {
+  return buildApp().request(`/api/projects/${PROJECT_ID}/integrations/${id}`, {
+    method: 'PATCH',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
 const VALID_BODY = {
   provider: 'coolify',
   environment: 'staging',
@@ -142,5 +153,116 @@ describe('POST /api/projects/:projectId/integrations — vault guard', () => {
     expect(body.integration.id).toBe('int-1');
     expect(body.integrationSecret).toMatch(/^whsec_/);
     expect(createIntegration).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('POST /api/projects/:projectId/integrations — postman provider schema', () => {
+  const POSTMAN_BODY = {
+    provider: 'postman',
+    environment: 'prod',
+    config: {
+      workspaceName: 'Forge Integration',
+      collectionId: 'col-123',
+      region: 'eu',
+      mode: 'minimal',
+    },
+    secrets: { apiKey: 'PMAK-abcdef123456' },
+  };
+
+  it('201 — accepts a valid postman integration and never echoes the key', async () => {
+    process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    createIntegration.mockResolvedValueOnce({
+      id: 'int-pm',
+      projectId: PROJECT_ID,
+      provider: 'postman',
+      environment: 'prod',
+      config: { ...POSTMAN_BODY.config, workspaceName: 'Forge Integration', environment: 'prod' },
+      active: true,
+      lastHealthStatus: null,
+      lastHealthAt: null,
+      breakerOpenedAt: null,
+      secretsEnc: Buffer.from('enc'),
+      integrationSecret: 'whsec_pm',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const res = await post(token, POSTMAN_BODY);
+    expect(res.status).toBe(201);
+    const raw = await res.text();
+    // The API key must never appear anywhere in the response.
+    expect(raw).not.toContain('PMAK-abcdef123456');
+    const body = JSON.parse(raw) as { integration: { id: string; provider: string } };
+    expect(body.integration.provider).toBe('postman');
+    // The encrypted config the store persisted carries the target, not the key.
+    expect(createIntegration).toHaveBeenCalledTimes(1);
+    const arg = createIntegration.mock.calls[0]?.[0] as { secrets: { apiKey: string } };
+    expect(arg.secrets.apiKey).toBe('PMAK-abcdef123456');
+  });
+
+  it('400 — rejects a postman body missing the apiKey secret', async () => {
+    process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+
+    const res = await post(token, { ...POSTMAN_BODY, secrets: {} });
+    expect(res.status).toBe(400);
+    expect(createIntegration).not.toHaveBeenCalled();
+  });
+
+  it('400 — rejects an invalid region', async () => {
+    process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+
+    const res = await post(token, {
+      ...POSTMAN_BODY,
+      config: { ...POSTMAN_BODY.config, region: 'apac' },
+    });
+    expect(res.status).toBe(400);
+    expect(createIntegration).not.toHaveBeenCalled();
+  });
+
+  it('PATCH — a partial config does NOT reset region/mode to defaults', async () => {
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    // Existing eu/full integration; PATCH only the collectionId.
+    findById.mockResolvedValueOnce({
+      id: 'int-pm',
+      projectId: PROJECT_ID,
+      provider: 'postman',
+      config: { workspaceName: 'Forge Integration', region: 'eu', mode: 'full', environment: 'prod' },
+      secretsEnc: Buffer.from('enc'),
+    });
+    updateIntegration.mockResolvedValueOnce({
+      id: 'int-pm',
+      projectId: PROJECT_ID,
+      provider: 'postman',
+      environment: 'prod',
+      config: {
+        workspaceName: 'Forge Integration',
+        region: 'eu',
+        mode: 'full',
+        collectionId: 'col-new',
+        environment: 'prod',
+      },
+      active: true,
+      lastHealthStatus: null,
+      lastHealthAt: null,
+      breakerOpenedAt: null,
+      secretsEnc: Buffer.from('enc'),
+      integrationSecret: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const res = await patch(token, 'int-pm', { config: { collectionId: 'col-new' } });
+    expect(res.status).toBe(200);
+    expect(updateIntegration).toHaveBeenCalledTimes(1);
+    const [, updatePatch] = updateIntegration.mock.calls[0] as [string, { config: Record<string, unknown> }];
+    // The eu/full target must be preserved — only collectionId changes.
+    expect(updatePatch.config).toMatchObject({ region: 'eu', mode: 'full', collectionId: 'col-new' });
   });
 });

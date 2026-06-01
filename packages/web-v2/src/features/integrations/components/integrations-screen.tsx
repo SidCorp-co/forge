@@ -17,6 +17,7 @@ import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useIntegrationsStatus } from "../hooks";
 import type { CardStatus, StatusCard } from "../types";
+import { PostmanSection } from "./postman-section";
 
 const STATUS_META: Record<
   CardStatus,
@@ -212,6 +213,13 @@ export function IntegrationsScreen() {
               <IntegrationCard key={card.key} card={card} />
             ))}
           </div>
+
+          {/* ISS-336 — editable Postman integration config. */}
+          {projectId && (
+            <div className="mt-2">
+              <PostmanSection projectId={projectId} />
+            </div>
+          )}
         </>
       )}
     </div>

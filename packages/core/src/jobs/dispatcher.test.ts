@@ -15,6 +15,9 @@ vi.mock('../db/client.js', () => {
 vi.mock('../runners/select.js', () => ({
   selectRunnerForJob: vi.fn(),
   defaultRunnerCapabilities: vi.fn((_t: string, p?: Record<string, unknown>) => p ?? {}),
+  // Device circuit breaker (feat-device-circuit-breaker) — default to "no
+  // tripped devices" so the dispatch path is unaffected unless a test opts in.
+  getTrippedDeviceIds: vi.fn(async () => [] as string[]),
 }));
 
 vi.mock('../runners/registry.js', () => ({

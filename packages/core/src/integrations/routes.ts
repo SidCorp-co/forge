@@ -76,7 +76,6 @@ function assertAdmin(role: 'owner' | 'admin' | 'member'): void {
   if (role === 'member') throw forbidden();
 }
 
-const providerSchema = z.enum(['coolify']);
 const environmentSchema = z.enum(integrationEnvironments);
 
 const coolifyConfigSchema = z.object({
@@ -89,18 +88,63 @@ const coolifySecretsSchema = z.object({
   apiToken: z.string().min(8).max(2000),
 });
 
-const createSchema = z.object({
-  provider: providerSchema,
-  environment: environmentSchema,
-  config: coolifyConfigSchema,
-  secrets: coolifySecretsSchema,
+// ISS-336 — Postman provider. Config is the non-secret write-target; the
+// API key (PMAK-...) is the only secret and is vault-encrypted like coolify's.
+// `postmanConfigBase` carries NO defaults so `.partial()` is a true partial for
+// PATCH (Zod's `.partial()` still EMITS a field's `.default()` when the key is
+// absent, which would silently reset region/mode/workspaceName on a partial
+// update). Defaults live only on the create schema below.
+const postmanConfigBase = z.object({
+  workspaceId: z.string().min(1).max(200).optional(),
+  workspaceName: z.string().min(1).max(200),
+  collectionId: z.string().min(1).max(200).optional(),
+  region: z.enum(['us', 'eu']),
+  mode: z.enum(['minimal', 'full']),
 });
 
+const postmanConfigSchema = postmanConfigBase.extend({
+  workspaceName: postmanConfigBase.shape.workspaceName.default('Forge Integration'),
+  region: postmanConfigBase.shape.region.default('us'),
+  mode: postmanConfigBase.shape.mode.default('minimal'),
+});
+
+const postmanSecretsSchema = z.object({
+  apiKey: z.string().min(8).max(2000),
+});
+
+// Discriminated on `provider` so each provider validates its own config +
+// secrets shape. `environment` defaults to 'prod' for postman (it has no
+// staging/prod split, but the table column + unique index require a value).
+const createSchema = z.discriminatedUnion('provider', [
+  z.object({
+    provider: z.literal('coolify'),
+    environment: environmentSchema,
+    config: coolifyConfigSchema,
+    secrets: coolifySecretsSchema,
+  }),
+  z.object({
+    provider: z.literal('postman'),
+    environment: environmentSchema.default('prod'),
+    config: postmanConfigSchema,
+    secrets: postmanSecretsSchema,
+  }),
+]);
+
+// PATCH carries no provider, so config/secrets are validated loosely here and
+// re-validated against the EXISTING row's provider inside the handler.
 const updateSchema = z.object({
-  config: coolifyConfigSchema.partial().optional(),
-  secrets: coolifySecretsSchema.partial().optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
+  secrets: z.record(z.string(), z.unknown()).optional(),
   active: z.boolean().optional(),
 });
+
+/** Per-provider partial config schema for PATCH validation. Uses the
+ *  no-default base for postman so a partial patch never re-emits defaults. */
+function configSchemaForProvider(provider: string): z.ZodTypeAny {
+  return provider === 'postman'
+    ? postmanConfigBase.partial()
+    : coolifyConfigSchema.partial();
+}
 
 function summarize(row: typeof projectIntegrations.$inferSelect) {
   return {
@@ -195,12 +239,30 @@ integrationsRoutes.patch(
     if (!existing || existing.projectId !== projectId) throw notFound();
 
     const patch = c.req.valid('json');
-    const mergedConfig = patch.config ? { ...(existing.config as object), ...patch.config } : undefined;
 
-    // Token rotation — keep the previous token for 24h so deploys in flight
-    // when the operator updates the token still authenticate.
+    // Re-validate the loose config against the existing row's provider so a
+    // PATCH can never strip the wrong provider's fields (union-of-partials
+    // would silently drop unknown keys).
+    let mergedConfig: Record<string, unknown> | undefined;
+    if (patch.config) {
+      const parsed = configSchemaForProvider(existing.provider).safeParse(patch.config);
+      if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
+      mergedConfig = { ...(existing.config as object), ...(parsed.data as Record<string, unknown>) };
+    }
+
     let mergedSecrets: Record<string, unknown> | null | undefined = undefined;
-    if (patch.secrets?.apiToken) {
+    if (existing.provider === 'postman') {
+      // Postman has a single non-rotating secret: the API key. Replace it
+      // wholesale when present.
+      const parsed = postmanSecretsSchema.partial().safeParse(patch.secrets ?? {});
+      if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
+      if (parsed.data.apiKey) {
+        assertVaultConfigured();
+        mergedSecrets = { apiKey: parsed.data.apiKey };
+      }
+    } else if (typeof patch.secrets?.apiToken === 'string') {
+      // Coolify token rotation — keep the previous token for 24h so deploys in
+      // flight when the operator updates the token still authenticate.
       // Only guard the vault when this PATCH touches encrypted material —
       // config-only patches must keep working even if the key is missing.
       assertVaultConfigured();
@@ -444,6 +506,35 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
         meta: { environment: row.environment, breakerOpen: row.breakerOpenedAt !== null },
       });
     }
+  }
+
+  // --- Postman (ISS-336) — one card; reflects the active integration's
+  // last test-connection health, or 'not_configured' when absent. ---
+  const postmanRow = integrationRows.find((r) => r.provider === 'postman');
+  if (!postmanRow) {
+    cards.push({
+      key: 'postman',
+      label: 'Postman',
+      status: 'not_configured',
+      detail: 'no Postman integration configured',
+      lastSyncAt: null,
+      configured: false,
+    });
+  } else {
+    const pmCfg = (postmanRow.config ?? {}) as { region?: string; mode?: string };
+    cards.push({
+      key: 'postman',
+      label: 'Postman',
+      status: coolifyHealthToStatus(postmanRow.lastHealthStatus, postmanRow.active),
+      detail: !postmanRow.active
+        ? 'integration disabled'
+        : postmanRow.lastHealthStatus
+          ? `last health: ${postmanRow.lastHealthStatus}`
+          : 'never test-connected',
+      lastSyncAt: toIso(postmanRow.lastHealthAt),
+      configured: true,
+      meta: { region: pmCfg.region ?? 'us', mode: pmCfg.mode ?? 'minimal' },
+    });
   }
 
   // --- Runners / devices online ---
