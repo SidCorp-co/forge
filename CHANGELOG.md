@@ -61,6 +61,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Creating an issue in the web app now takes you straight to the new issue's detail page after you submit, instead of dropping you back on the issues list.**
   *Technical: web/src/app/projects/[slug]/issues/new/page.tsx now router.push's to /projects/<slug>/issues/<displayId ?? id> on create success (V1 root surface), matching web-v2. Merge 119a7e1.*
 
+- **Agent sessions that completed normally are no longer mislabeled as 'failed' — pipeline steps that finish a run (such as test and release) now show a green done status, and previously mislabeled sessions are corrected automatically. The session detail view also gains cache-token counts, lifecycle timing, the repository path, an 'Agents & tasks' list of sub-agent and skill calls, and a 'Sessions for this issue' list.**
+  *Technical: core: cascadeCancelChildJobs maps close-reason 'pipeline_completed' to session status 'completed' (failureReason null), keeping pipeline_failed/cancelled as 'failed'; migration 0091 backfills existing (failed, pipeline_completed) rows. web-v2 session context-rail: cache tokens, timing, repoPath, deriveAgentTasks, sibling-session list. Per-session cost/model deferred to a usage_records join. Merge 84c3343.*
+
 ### Security
 
 ## [0.2.11] - 2026-05-31
