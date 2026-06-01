@@ -3,6 +3,7 @@ import {
   buildFileDiff,
   deriveFilesChanged,
   getToolLabel,
+  parseMessages,
   parseTurns,
   splitHunk,
   toolKind,
@@ -108,6 +109,70 @@ describe("parseTurns", () => {
     ]);
     expect(items).toHaveLength(1);
     expect(items[0].text).toBe("hi");
+  });
+});
+
+describe("parseMessages (canonical CLI-runner shape)", () => {
+  it("renders interleaved text + tool blocks in original order (text not dropped)", () => {
+    const items = parseMessages([
+      { type: "user", content: "fix the bug" },
+      {
+        id: "m1",
+        type: "assistant",
+        content: "Looking now then editing",
+        blocks: [
+          { type: "text", text: "Looking now" },
+          { type: "tool", toolCall: { id: "tc1", name: "Read", input: { file_path: "a.ts" }, output: "ok" } },
+          { type: "text", text: "then editing" },
+          { type: "tool", toolCall: { id: "tc2", name: "Edit", input: { file_path: "a.ts", old_string: "x", new_string: "y" } } },
+        ],
+      },
+    ]);
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({ kind: "prompt", text: "fix the bug" });
+    const agent = items[1];
+    expect(agent.kind).toBe("agent");
+    expect(agent.blocks.map((b) => b.type)).toEqual(["text", "tool", "text", "tool"]);
+    expect(agent.blocks[0]).toEqual({ type: "text", text: "Looking now" });
+    expect(agent.blocks[2]).toEqual({ type: "text", text: "then editing" });
+  });
+
+  it("normalizes the canonical toolCall output onto result", () => {
+    const items = parseMessages([
+      {
+        type: "assistant",
+        blocks: [{ type: "tool", toolCall: { id: "t", name: "Bash", input: { command: "ls" }, output: "file.ts" } }],
+      },
+    ]);
+    const block = items[0].blocks[0];
+    expect(block.type).toBe("tool");
+    if (block.type === "tool") expect(block.tool.result).toBe("file.ts");
+  });
+
+  it("converts canonical TodoWrite tool blocks and dedupes todos", () => {
+    const items = parseMessages([
+      {
+        type: "assistant",
+        blocks: [
+          { type: "todos", todos: [{ content: "one", status: "pending" }] },
+          { type: "todos", todos: [{ content: "two", status: "completed" }] },
+        ],
+      },
+    ]);
+    const todos = items[0].blocks.filter((b) => b.type === "todos");
+    expect(todos).toHaveLength(1);
+    expect(todos[0]).toMatchObject({ todos: [{ content: "two", status: "completed" }] });
+  });
+
+  it("drops empty / merged-away entries and assigns synthetic ids", () => {
+    const items = parseMessages([
+      { type: "system", content: "" },
+      { type: "tool_result", toolName: "tc1", toolOutput: "x" },
+      { type: "assistant", content: "real", blocks: [{ type: "text", text: "real" }] },
+    ]);
+    expect(items).toHaveLength(1);
+    expect(items[0].id).toBe("msg-2");
+    expect(items[0].turnId).toBe("");
   });
 });
 

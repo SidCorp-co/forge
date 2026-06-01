@@ -28,19 +28,55 @@ export interface AgentTodo {
   activeForm?: string;
 }
 
-/** Structured content blocks within an assistant message entry. */
+/** Structured content blocks within an assistant message entry (v1 desktop shape). */
 export type ContentBlock =
   | { type: "text"; text: string }
   | { type: "tool_use"; tool: ToolCallData }
   | { type: "todos"; todos: AgentTodo[] };
 
-/** The runner-written message entry stored at `agent_session_turns.content.value`. */
+/**
+ * A tool call as serialized on the canonical runner block. Differs from the v1
+ * `ToolCallData` in two field names: the captured output lives on `output`
+ * (string) rather than `result`. Normalize via `result ?? output` when mapping.
+ */
+export interface CanonicalToolCall {
+  id: string;
+  name: string;
+  input?: Record<string, unknown>;
+  output?: string;
+  result?: unknown;
+  durationMs?: number;
+  isError?: boolean;
+}
+
+/**
+ * The canonical content block written by the CLI-runner transcript derive
+ * (`packages/core/src/lib/agent-stream-parser.ts`). Note the field drift vs the
+ * v1 `ContentBlock`: `tool` (not `tool_use`), `toolCall` (not `tool`).
+ */
+export type CanonicalBlock =
+  | { type: "text"; text?: string }
+  | { type: "tool"; toolCall?: CanonicalToolCall }
+  | { type: "todos"; todos?: AgentTodo[] };
+
+/**
+ * A message entry. Two shapes coexist:
+ *   - desktop / edited turns: `role` + `contentBlocks`/`toolCalls` + `content`;
+ *   - CLI-runner derive: `type` + ordered `blocks` (+ `content` for plain text).
+ * Stored at `agent_session_turns.content.value` (turns path) or directly in
+ * `agent_sessions.messages` (messages fallback).
+ */
 export interface MessageEntry {
-  role: "user" | "assistant" | "tool" | "system";
+  id?: string;
+  role?: "user" | "assistant" | "tool" | "system";
+  /** Canonical entry kind (CLI-runner shape) when `role` is absent. */
+  type?: "user" | "assistant" | "tool" | "system" | "tool_use" | "tool_result";
   content?: unknown;
   timestamp?: number;
   toolCalls?: ToolCallData[];
   contentBlocks?: ContentBlock[];
+  /** Ordered canonical blocks (CLI-runner shape). */
+  blocks?: CanonicalBlock[];
 }
 
 export type TurnRole = "user" | "assistant" | "tool";
@@ -198,9 +234,35 @@ function unwrapEntry(content: TurnRow["content"]): MessageEntry {
   return (content as MessageEntry) ?? { role: "assistant" };
 }
 
+/** Map a canonical runner `toolCall` to the render-ready `ToolCallData`
+ *  (field drift: the captured output lives on `output`, not `result`). */
+function toToolCallData(tc: CanonicalToolCall): ToolCallData {
+  return {
+    id: tc.id,
+    name: tc.name,
+    input: tc.input,
+    result: tc.result ?? tc.output,
+    durationMs: tc.durationMs,
+    isError: tc.isError,
+  };
+}
+
 function assistantBlocks(entry: MessageEntry): RenderBlock[] {
   const out: RenderBlock[] = [];
-  if (entry.contentBlocks?.length) {
+  if (entry.blocks?.length) {
+    // Canonical CLI-runner shape: ordered text/tool/todos blocks. Preserving
+    // order keeps assistant text interleaved between tool calls (ISS-348).
+    for (const b of entry.blocks) {
+      if (b.type === "tool" && b.toolCall) {
+        const tool = toToolCallData(b.toolCall);
+        out.push(tool.name === "TodoWrite" ? todoWriteToTodos(tool.input) : { type: "tool", tool });
+      } else if (b.type === "todos") {
+        out.push({ type: "todos", todos: b.todos ?? [] });
+      } else if (b.type === "text" && b.text) {
+        out.push({ type: "text", text: b.text });
+      }
+    }
+  } else if (entry.contentBlocks?.length) {
     for (const b of entry.contentBlocks) {
       if (b.type === "tool_use") {
         out.push(
@@ -224,6 +286,15 @@ function assistantBlocks(entry: MessageEntry): RenderBlock[] {
     if (text) out.push({ type: "text", text });
   }
   return dedupeTodos(out);
+}
+
+/** Role decision for an entry: prefer the explicit `role`, else the canonical
+ *  `type` (`user` → prompt; everything else → agent). */
+function entryRole(entry: MessageEntry): TurnRole {
+  if (entry.role) return entry.role === "user" ? "user" : entry.role === "assistant" ? "assistant" : "tool";
+  if (entry.type === "user") return "user";
+  if (entry.type === "assistant") return "assistant";
+  return "tool";
 }
 
 /**
@@ -266,6 +337,54 @@ export function parseTurns(turns: TurnRow[]): ConversationItem[] {
       });
     }
   }
+  return items;
+}
+
+/**
+ * Flatten the canonical `agent_sessions.messages` array (returned in full by
+ * `GET /api/agent-sessions/:id`) into render-ready items — the read-only
+ * fallback for pipeline/CLI-runner sessions whose `/turns` table is empty
+ * (ISS-348). Reuses the same per-entry logic as `parseTurns`; items carry a
+ * synthetic stable id and no live `turnId` (edit/regen/fork are disabled by the
+ * screen when rendering from messages). Empty entries are dropped.
+ */
+export function parseMessages(messages: unknown[]): ConversationItem[] {
+  const items: ConversationItem[] = [];
+  messages.forEach((raw, index) => {
+    if (!raw || typeof raw !== "object") return;
+    const entry = raw as MessageEntry;
+    const role = entryRole(entry);
+    const id = entry.id ?? `msg-${index}`;
+    if (role === "user") {
+      const text = entryText(entry.content);
+      if (!text) return;
+      items.push({
+        id,
+        turnId: "",
+        turnIndex: index,
+        role,
+        kind: "prompt",
+        text,
+        blocks: [],
+        timestamp: entry.timestamp,
+        editedAt: null,
+      });
+    } else {
+      const blocks = assistantBlocks(entry);
+      if (blocks.length === 0) return;
+      items.push({
+        id,
+        turnId: "",
+        turnIndex: index,
+        role,
+        kind: "agent",
+        text: "",
+        blocks,
+        timestamp: entry.timestamp,
+        editedAt: null,
+      });
+    }
+  });
   return items;
 }
 

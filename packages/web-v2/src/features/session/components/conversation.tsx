@@ -21,6 +21,12 @@ interface ConversationProps extends ConversationActions {
   streaming?: boolean;
   /** Turn actions are disabled while a turn is in flight. */
   busy?: boolean;
+  /**
+   * Read-only render (transcript from `agent_sessions.messages`, not per-turn
+   * rows): hide per-turn Edit/Regenerate/Fork — those need real turn ids that
+   * the messages fallback doesn't carry (ISS-348).
+   */
+  readOnly?: boolean;
 }
 
 const TODO_ICON: Record<AgentTodo["status"], { name: "check" | "play" | "dot"; color: string }> = {
@@ -67,7 +73,7 @@ function TurnActions({ item, busy, onRegenerate, onFork }: { item: ConversationI
   );
 }
 
-function PromptTurn({ item, busy, onRegenerate, onFork, onEditTurn }: { item: ConversationItem; busy?: boolean } & ConversationActions) {
+function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: { item: ConversationItem; busy?: boolean; readOnly?: boolean } & ConversationActions) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(item.text);
 
@@ -101,7 +107,7 @@ function PromptTurn({ item, busy, onRegenerate, onFork, onEditTurn }: { item: Co
           <p className="fg-body whitespace-pre-wrap text-on-accent">{item.text}</p>
         )}
       </div>
-      {!editing && (
+      {!editing && !readOnly && (
         <div className="mt-1.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setDraft(item.text); setEditing(true); }} className="min-h-11">
             Edit
@@ -118,7 +124,7 @@ function PromptTurn({ item, busy, onRegenerate, onFork, onEditTurn }: { item: Co
   );
 }
 
-function AgentTurn({ item, streamingTail, busy, onRegenerate, onFork }: { item: ConversationItem; streamingTail?: boolean; busy?: boolean } & Pick<ConversationActions, "onRegenerate" | "onFork">) {
+function AgentTurn({ item, streamingTail, busy, readOnly, onRegenerate, onFork }: { item: ConversationItem; streamingTail?: boolean; busy?: boolean; readOnly?: boolean } & Pick<ConversationActions, "onRegenerate" | "onFork">) {
   // The caret trails the LAST text block of the live tail turn.
   let lastTextIdx = -1;
   item.blocks.forEach((b, i) => {
@@ -136,12 +142,12 @@ function AgentTurn({ item, streamingTail, busy, onRegenerate, onFork }: { item: 
           return <ToolCard key={block.tool.id ?? i} tool={block.tool} />;
         })}
       </div>
-      <TurnActions item={item} busy={busy} onRegenerate={onRegenerate} onFork={onFork} />
+      {!readOnly && <TurnActions item={item} busy={busy} onRegenerate={onRegenerate} onFork={onFork} />}
     </div>
   );
 }
 
-export function Conversation({ items, streaming, busy, onRegenerate, onFork, onEditTurn }: ConversationProps) {
+export function Conversation({ items, streaming, busy, readOnly, onRegenerate, onFork, onEditTurn }: ConversationProps) {
   let lastAgentIdx = -1;
   items.forEach((it, i) => {
     if (it.kind === "agent") lastAgentIdx = i;
@@ -151,13 +157,14 @@ export function Conversation({ items, streaming, busy, onRegenerate, onFork, onE
     <div className="flex flex-col gap-5">
       {items.map((item, i) =>
         item.kind === "prompt" ? (
-          <PromptTurn key={item.id} item={item} busy={busy} onRegenerate={onRegenerate} onFork={onFork} onEditTurn={onEditTurn} />
+          <PromptTurn key={item.id} item={item} busy={busy} readOnly={readOnly} onRegenerate={onRegenerate} onFork={onFork} onEditTurn={onEditTurn} />
         ) : (
           <AgentTurn
             key={item.id}
             item={item}
             streamingTail={streaming && i === lastAgentIdx}
             busy={busy}
+            readOnly={readOnly}
             onRegenerate={onRegenerate}
             onFork={onFork}
           />

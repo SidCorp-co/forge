@@ -11,18 +11,34 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type DbOrTx = typeof db | Tx;
 
 /**
- * Coerce the legacy `messages[].role` string into the per-turn enum. The older
- * agent runner sometimes emitted `'system'` for tool/preamble entries — those
- * map to `'tool'` so the row is preserved (they're never user-edited).
+ * Coerce a message entry into the per-turn enum. Two shapes exist on disk:
+ *   - the desktop runner / edited turns carry `entry.role`
+ *     (`user | assistant | tool | system`);
+ *   - the CLI-runner transcript derived by `buildSessionFromEvents`
+ *     (`agent-stream-parser`) carries NO `role` — it uses `entry.type`
+ *     (`assistant | user | system | tool_use | tool_result`).
+ *
+ * `role` takes precedence (back-compat); when absent we fall back to `type` so
+ * derived/pipeline sessions populate the turns table too. The older runner
+ * sometimes emitted `'system'` for tool/preamble entries — those map to
+ * `'tool'` so the row is preserved (they're never user-edited).
  */
 export function messageRoleToTurnRole(entry: unknown): AgentSessionTurnRole | null {
   if (!entry || typeof entry !== 'object') return null;
   const raw = (entry as { role?: unknown }).role;
-  if (typeof raw !== 'string') return null;
-  if ((agentSessionTurnRoles as readonly string[]).includes(raw)) {
-    return raw as AgentSessionTurnRole;
+  if (typeof raw === 'string') {
+    if ((agentSessionTurnRoles as readonly string[]).includes(raw)) {
+      return raw as AgentSessionTurnRole;
+    }
+    if (raw === 'system') return 'tool';
+    return null;
   }
-  if (raw === 'system') return 'tool';
+  // No `role` — fall back to the canonical `entry.type` (CLI-runner shape).
+  const type = (entry as { type?: unknown }).type;
+  if (typeof type !== 'string') return null;
+  if (type === 'assistant') return 'assistant';
+  if (type === 'user') return 'user';
+  if (type === 'system' || type === 'tool_use' || type === 'tool_result') return 'tool';
   return null;
 }
 

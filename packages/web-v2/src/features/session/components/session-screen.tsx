@@ -30,7 +30,7 @@ import {
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { parseTurns } from "../types";
+import { parseMessages, parseTurns } from "../types";
 import {
   useCancelSession,
   useEditTurn,
@@ -88,7 +88,16 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
   // invalidates ['agent-session', id, 'turns'] on turn.* events.
   useRoom(session ? projectRoom(session.projectId) : null);
 
-  const items = useMemo(() => parseTurns(turnsQ.data?.turns ?? []), [turnsQ.data]);
+  // Prefer the per-turn rows (interactive: live caret + edit/regen/fork
+  // anchors). Pipeline/CLI-runner sessions have no turn rows yet — fall back to
+  // the full canonical transcript returned on the detail row (read-only).
+  const items = useMemo(() => {
+    const turns = turnsQ.data?.turns ?? [];
+    if (turns.length > 0) return parseTurns(turns);
+    if (session?.messages?.length) return parseMessages(session.messages);
+    return [];
+  }, [turnsQ.data, session?.messages]);
+  const fromMessages = (turnsQ.data?.turns?.length ?? 0) === 0 && items.length > 0;
 
   const send = useSendMessage(sessionId);
   const regenerate = useRegenerateTurn(sessionId);
@@ -170,23 +179,25 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
                 Rerun
               </Button>
             )}
-            {lastTurnId && (
+            {!fromMessages && lastTurnId && (
               <Button variant="secondary" size="sm" icon="fork" className="min-h-11" loading={fork.isPending} onClick={() => handleFork(lastTurnId)}>
                 Fork
+              </Button>
+            )}
+            {issueId && projectSlug && (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="list"
+                className="min-h-11"
+                onClick={() => router.push(`/projects/${projectSlug}/issues/${issueId}`)}
+              >
+                Open issue
               </Button>
             )}
             <Menu
               align="right"
               items={[
-                ...(issueId && projectSlug
-                  ? [
-                      {
-                        label: "Open issue",
-                        icon: "list" as const,
-                        onSelect: () => router.push(`/projects/${projectSlug}/issues/${issueId}`),
-                      },
-                    ]
-                  : []),
                 ...(session.deviceId
                   ? [{ label: "Open runner", icon: "server" as const, onSelect: () => router.push("/runners") }]
                   : []),
@@ -226,7 +237,8 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
               ) : (
                 <Conversation
                   items={items}
-                  streaming={live}
+                  streaming={live && !fromMessages}
+                  readOnly={fromMessages}
                   busy={live || send.isPending || regenerate.isPending || editTurn.isPending}
                   onRegenerate={(turnId) => regenerate.mutate(turnId)}
                   onFork={handleFork}

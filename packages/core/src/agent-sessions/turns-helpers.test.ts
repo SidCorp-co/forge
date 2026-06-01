@@ -31,12 +31,25 @@ describe('messageRoleToTurnRole', () => {
     expect(messageRoleToTurnRole({ role: 'system', content: 'hi' })).toBe('tool');
   });
 
+  it('falls back to entry.type when role is absent (CLI-runner shape)', () => {
+    expect(messageRoleToTurnRole({ type: 'assistant', content: 'hi' })).toBe('assistant');
+    expect(messageRoleToTurnRole({ type: 'user', content: 'hi' })).toBe('user');
+    expect(messageRoleToTurnRole({ type: 'system', content: 'hi' })).toBe('tool');
+    expect(messageRoleToTurnRole({ type: 'tool_use' })).toBe('tool');
+    expect(messageRoleToTurnRole({ type: 'tool_result' })).toBe('tool');
+  });
+
+  it('prefers role over type when both are present', () => {
+    expect(messageRoleToTurnRole({ role: 'user', type: 'assistant', content: 'hi' })).toBe('user');
+  });
+
   it('returns null for malformed entries', () => {
     expect(messageRoleToTurnRole(null)).toBeNull();
     expect(messageRoleToTurnRole(undefined)).toBeNull();
     expect(messageRoleToTurnRole('')).toBeNull();
     expect(messageRoleToTurnRole({})).toBeNull();
     expect(messageRoleToTurnRole({ role: 'unknown' })).toBeNull();
+    expect(messageRoleToTurnRole({ type: 'unknown' })).toBeNull();
   });
 });
 
