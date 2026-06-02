@@ -193,10 +193,14 @@ export function depCounts(deps: IssueDependencies | undefined): DepCounts {
 
 /**
  * Translate a filter tab into server `status`/`statusNot` arrays.
- * - all: hide drafts + closed
+ * - all: every issue except drafts — closed/released INCLUDED so terminal work
+ *   is discoverable. Drafts stay hidden by default (ISS-236: drafts are
+ *   AI-generated proposals awaiting human review); the dedicated "drafts" tab
+ *   is the explicit opt-in to view them (ISS-354).
  * - active: the in-flight lifecycle band
  * - review: developed/deploying/testing/tested
  * - blocked: on_hold + needs_info (work parked / waiting on input)
+ * - drafts: only the AI-proposal drafts
  */
 export function filterToStatusParams(filter: IssueFilter): {
   status?: IssueStatus[];
@@ -209,8 +213,10 @@ export function filterToStatusParams(filter: IssueFilter): {
       return { status: ["developed", "deploying", "testing", "tested", "pass", "staging"] };
     case "blocked":
       return { status: ["on_hold", "needs_info"] };
+    case "drafts":
+      return { status: ["draft"] };
     default:
-      return { statusNot: ["draft", "closed"] };
+      return { statusNot: ["draft"] };
   }
 }
 

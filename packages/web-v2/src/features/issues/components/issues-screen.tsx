@@ -40,6 +40,7 @@ const FILTERS: SegmentOption<IssueFilter>[] = [
   { value: "active", label: "Active" },
   { value: "review", label: "Review" },
   { value: "blocked", label: "Blocked" },
+  { value: "drafts", label: "Drafts" },
 ];
 
 const GROUP_OPTIONS: SelectOption[] = [

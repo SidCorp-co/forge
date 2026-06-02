@@ -140,8 +140,11 @@ describe("depCounts", () => {
 });
 
 describe("filterToStatusParams", () => {
-  it("all excludes drafts + closed", () => {
-    expect(filterToStatusParams("all")).toEqual({ statusNot: ["draft", "closed"] });
+  it("all excludes only drafts (closed/released shown)", () => {
+    expect(filterToStatusParams("all")).toEqual({ statusNot: ["draft"] });
+  });
+  it("drafts targets only the AI-proposal drafts", () => {
+    expect(filterToStatusParams("drafts")).toEqual({ status: ["draft"] });
   });
   it("review targets the verification band", () => {
     expect(filterToStatusParams("review").status).toContain("developed");
