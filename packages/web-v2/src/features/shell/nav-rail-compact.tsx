@@ -319,6 +319,29 @@ export function NavRailCompact({
         </>
       )}
 
+      {/* Zero projects → an "Add project" button sits in the project-mark slot
+          (ISS-355): there is no project context to switch into yet, so the
+          switcher is replaced by the one action that matters. */}
+      {!activeProject && switcherProjects.length === 0 && (
+        <>
+          <div className="my-[11px] h-px w-[34px] bg-[color:var(--border-subtle)]" />
+          <button
+            type="button"
+            onClick={onNewProject}
+            aria-label="Add project"
+            className="flex w-[60px] flex-col items-center gap-1 rounded-md pb-1.5 pt-[5px] text-subtle transition-colors hover:bg-hover"
+          >
+            <span
+              className="inline-flex size-[30px] items-center justify-center rounded-md border border-dashed"
+              style={{ borderColor: 'var(--border-default)' }}
+            >
+              <Icon name="plus" size={16} className="text-subtle" />
+            </span>
+            <span className="text-[9.5px] font-semibold tracking-[-0.01em] text-muted">Add</span>
+          </button>
+        </>
+      )}
+
       {/* Footer — account menu only (Devices dropped per product decision). */}
       <div className="mt-auto flex flex-col items-center gap-1.5">
         <Menu

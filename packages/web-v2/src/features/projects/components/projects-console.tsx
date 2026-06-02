@@ -82,11 +82,12 @@ export function ProjectsConsole() {
 
   // The rail switcher's "New project" action navigates here with `?new=1`
   // (it can't host the dialog itself). Honour the deep link, then strip the
-  // param so a refresh/back doesn't reopen the dialog.
+  // param so a refresh/back doesn't reopen the dialog. Self-replace to this
+  // page (`/projects`), not `/` — `/` is the Overview dashboard now (ISS-355).
   useEffect(() => {
     if (searchParams.get('new') === '1') {
       setCreateOpen(true);
-      router.replace('/');
+      router.replace('/projects');
     }
   }, [searchParams, router]);
 
