@@ -146,6 +146,9 @@ describe("filterToStatusParams", () => {
   it("drafts targets only the AI-proposal drafts", () => {
     expect(filterToStatusParams("drafts")).toEqual({ status: ["draft"] });
   });
+  it("everything applies no filter (every issue incl. drafts + closed)", () => {
+    expect(filterToStatusParams("everything")).toEqual({});
+  });
   it("review targets the verification band", () => {
     expect(filterToStatusParams("review").status).toContain("developed");
     expect(filterToStatusParams("review").status).toContain("testing");
