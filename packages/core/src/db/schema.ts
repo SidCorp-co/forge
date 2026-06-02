@@ -204,12 +204,17 @@ export const projects = pgTable(
     previewDeploy: jsonb('preview_deploy'),
     webhookSecret: text('webhook_secret'),
     apiKey: text('api_key'),
+    // ISS-353 — soft archive. Nullable: NULL = active, a timestamp = archived.
+    // Archived projects are hidden from the default project list and paused
+    // from auto-pipeline dispatch; nothing is destroyed (fully restorable).
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     ownerIdIdx: index('projects_owner_id_idx').on(t.ownerId),
     apiKeyUq: uniqueIndex('projects_api_key_uq').on(t.apiKey).where(sql`api_key IS NOT NULL`),
     defaultDeviceIdx: index('projects_default_device_id_idx').on(t.defaultDeviceId),
+    archivedAtIdx: index('projects_archived_at_idx').on(t.archivedAt),
   }),
 );
 

@@ -631,6 +631,13 @@
       "when": 1781827200000,
       "tag": "0091_session_failed_pipeline_completed_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1781913600000,
+      "tag": "0092_project_archived_at",
+      "breakpoints": true
     }
   ]
 }

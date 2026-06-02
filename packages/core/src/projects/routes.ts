@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { zValidator } from '@hono/zod-validator';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -194,6 +194,14 @@ projectRoutes.post(
 
 projectRoutes.get('/', async (c) => {
   const userId = c.get('userId');
+  // ISS-353 — archived projects are excluded by default so existing callers
+  // (switcher, dashboard) don't see them. `?archived=1` includes them, for an
+  // explicit "Archived" view. `archivedAt` must be in the select projection or
+  // the UI can't render archived state (see memory
+  // `web:useProjectBySlug-omits-branch-fields`).
+  const includeArchived = ['1', 'true'].includes(
+    (c.req.query('archived') ?? '').toLowerCase(),
+  );
   const rows = await db
     .select({
       id: projects.id,
@@ -202,11 +210,16 @@ projectRoutes.get('/', async (c) => {
       ownerId: projects.ownerId,
       role: projectMembers.role,
       apiKey: projects.apiKey,
+      archivedAt: projects.archivedAt,
       createdAt: projects.createdAt,
     })
     .from(projectMembers)
     .innerJoin(projects, eq(projects.id, projectMembers.projectId))
-    .where(eq(projectMembers.userId, userId));
+    .where(
+      includeArchived
+        ? eq(projectMembers.userId, userId)
+        : and(eq(projectMembers.userId, userId), isNull(projects.archivedAt)),
+    );
 
   // apiKey is returned as-is — the caller is the project member (rows are
   // joined through projectMembers.userId = me) and ADR 0013 documents that
@@ -243,6 +256,7 @@ projectRoutes.get(
         previewDeploy: projects.previewDeploy,
         webhookSecret: projects.webhookSecret,
         apiKey: projects.apiKey,
+        archivedAt: projects.archivedAt,
         createdAt: projects.createdAt,
       })
       .from(projects)
@@ -603,6 +617,76 @@ projectRoutes.delete(
 
     await db.delete(projects).where(eq(projects.id, id));
     return c.body(null, 204);
+  },
+);
+
+// ─── Soft archive / unarchive (ISS-353) ──────────────────────────────────────
+//
+// Owner-only, mirroring the gate on PATCH/DELETE /:id. Archive sets
+// `archived_at` to the DB clock; unarchive clears it. Both are idempotent and
+// non-destructive — no project-owned data (issues, comments, runs, sessions)
+// is touched. Archived projects drop out of the default GET / list and stop
+// dispatching new auto-pipeline jobs (see orchestrator.loadPipelineConfig);
+// in-flight jobs are unaffected. The hard DELETE /:id route above is unchanged.
+
+const ARCHIVE_PROJECTION = {
+  id: projects.id,
+  slug: projects.slug,
+  name: projects.name,
+  ownerId: projects.ownerId,
+  apiKey: projects.apiKey,
+  archivedAt: projects.archivedAt,
+  createdAt: projects.createdAt,
+} as const;
+
+projectRoutes.post(
+  '/:id/archive',
+  zValidator('param', idParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const { project, role } = await loadMembership(id, userId);
+    if (project.ownerId !== userId && role !== 'owner') {
+      throw forbidden('not a project owner');
+    }
+
+    // `sql\`now()\`` (a SQL literal), NOT an interpolated JS Date — an untyped
+    // Date bind 500s on a timestamptz column (memory
+    // `core/drizzle-date-param-needs-timestamptz-cast`).
+    const [updated] = await db
+      .update(projects)
+      .set({ archivedAt: sql`now()` })
+      .where(eq(projects.id, id))
+      .returning(ARCHIVE_PROJECTION);
+    if (!updated) throw notFound();
+    return c.json(updated);
+  },
+);
+
+projectRoutes.post(
+  '/:id/unarchive',
+  zValidator('param', idParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const { project, role } = await loadMembership(id, userId);
+    if (project.ownerId !== userId && role !== 'owner') {
+      throw forbidden('not a project owner');
+    }
+
+    const [updated] = await db
+      .update(projects)
+      .set({ archivedAt: null })
+      .where(eq(projects.id, id))
+      .returning(ARCHIVE_PROJECTION);
+    if (!updated) throw notFound();
+    return c.json(updated);
   },
 );
 

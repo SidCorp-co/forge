@@ -1348,6 +1348,96 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
   });
 });
 
+describe('POST /api/projects/:id/archive (ISS-353)', () => {
+  it('403 FORBIDDEN when caller is a non-owner member', async () => {
+    const token = await signUserToken('uuid-member');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-other' }])
+      .mockResolvedValueOnce([{ role: 'member' }]);
+
+    const res = await req('/11111111-1111-4111-8111-111111111111/archive', {
+      method: 'POST',
+      token,
+    });
+    expect(res.status).toBe(403);
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('200 archives when caller is owner (sets archivedAt)', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
+      .mockResolvedValueOnce([{ role: 'owner' }]);
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: 'p1',
+        slug: 'p-one',
+        name: 'P One',
+        ownerId: 'uuid-owner',
+        apiKey: 'fk_x',
+        archivedAt: new Date('2026-06-02T00:00:00Z'),
+        createdAt: new Date(),
+      },
+    ]);
+
+    const res = await req('/11111111-1111-4111-8111-111111111111/archive', {
+      method: 'POST',
+      token,
+    });
+    expect(res.status).toBe(200);
+    expect(updateSet).toHaveBeenCalledTimes(1);
+    const body = (await res.json()) as { archivedAt: string | null };
+    expect(body.archivedAt).not.toBeNull();
+  });
+});
+
+describe('POST /api/projects/:id/unarchive (ISS-353)', () => {
+  it('403 FORBIDDEN when caller is a non-owner member', async () => {
+    const token = await signUserToken('uuid-member');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-other' }])
+      .mockResolvedValueOnce([{ role: 'member' }]);
+
+    const res = await req('/11111111-1111-4111-8111-111111111111/unarchive', {
+      method: 'POST',
+      token,
+    });
+    expect(res.status).toBe(403);
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('200 unarchives when caller is owner (clears archivedAt)', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
+      .mockResolvedValueOnce([{ role: 'owner' }]);
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: 'p1',
+        slug: 'p-one',
+        name: 'P One',
+        ownerId: 'uuid-owner',
+        apiKey: 'fk_x',
+        archivedAt: null,
+        createdAt: new Date(),
+      },
+    ]);
+
+    const res = await req('/11111111-1111-4111-8111-111111111111/unarchive', {
+      method: 'POST',
+      token,
+    });
+    expect(res.status).toBe(200);
+    expect(updateSet).toHaveBeenCalledWith({ archivedAt: null });
+    const body = (await res.json()) as { archivedAt: string | null };
+    expect(body.archivedAt).toBeNull();
+  });
+});
+
 describe('DELETE /api/projects/:id', () => {
   it('403 FORBIDDEN when caller is not owner', async () => {
     const token = await signUserToken('uuid-member');

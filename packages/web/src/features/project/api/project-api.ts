@@ -43,7 +43,10 @@ export interface ProjectHealthRow {
 }
 
 export const projectApi = {
-  list: () => apiClient<Project[]>('/projects'),
+  // `includeArchived` adds `?archived=1` so the Archived view can list
+  // soft-archived projects; the default call omits them (ISS-353).
+  list: (opts?: { includeArchived?: boolean }) =>
+    apiClient<Project[]>(`/projects${opts?.includeArchived ? '?archived=1' : ''}`),
 
   health: () => apiClient<ProjectHealthRow[]>('/projects/health'),
 
@@ -63,6 +66,15 @@ export const projectApi = {
 
   remove: (id: string) =>
     apiClient<void>(`/projects/${id}`, { method: 'DELETE' }),
+
+  // ISS-353 — soft archive / unarchive. Owner-only on the server (403 for
+  // non-owners). Non-destructive; the returned row carries the new
+  // `archivedAt` state.
+  archive: (id: string) =>
+    apiClient<Project>(`/projects/${id}/archive`, { method: 'POST' }),
+
+  unarchive: (id: string) =>
+    apiClient<Project>(`/projects/${id}/unarchive`, { method: 'POST' }),
 
   removeMember: (projectId: string, userId: string) =>
     apiClient<void>(`/projects/${projectId}/members/${userId}`, {

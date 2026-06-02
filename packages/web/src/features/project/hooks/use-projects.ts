@@ -19,7 +19,19 @@ export const projectKeys = {
 export function useProjects() {
   return useQuery({
     queryKey: projectKeys.all,
-    queryFn: projectApi.list,
+    queryFn: () => projectApi.list(),
+  });
+}
+
+/**
+ * ISS-353 — list soft-archived projects (the Archived view). Separate query
+ * key from `projectKeys.all` so the default list stays archived-free.
+ */
+export function useArchivedProjects(enabled = true) {
+  return useQuery({
+    queryKey: [...projectKeys.all, 'archived'] as const,
+    queryFn: () => projectApi.list({ includeArchived: true }),
+    enabled,
   });
 }
 
@@ -62,6 +74,35 @@ export function useUpdateProject() {
     mutationFn: ({ id, patch }: { id: string; patch: UpdateProjectInput }) =>
       projectApi.update(id, patch),
     onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: projectKeys.all });
+      qc.invalidateQueries({ queryKey: projectKeys.detail(id) });
+    },
+  });
+}
+
+/**
+ * ISS-353 — archive (soft) a project. Owner-only on the server. Invalidates
+ * the project list (so it drops out) + the archived list + the detail.
+ */
+export function useArchiveProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => projectApi.archive(id),
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: projectKeys.all });
+      qc.invalidateQueries({ queryKey: projectKeys.detail(id) });
+    },
+  });
+}
+
+/**
+ * ISS-353 — unarchive a project; it reappears in the default list.
+ */
+export function useUnarchiveProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => projectApi.unarchive(id),
+    onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: projectKeys.all });
       qc.invalidateQueries({ queryKey: projectKeys.detail(id) });
     },

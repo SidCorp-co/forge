@@ -26,6 +26,7 @@ import { PipelineTab } from "./pipeline-tab";
 import { LabelsTab } from "./labels-tab";
 import { MembersTab } from "./members-tab";
 import { IntegrationsTab } from "./integrations-tab";
+import { AdvancedTab } from "./advanced-tab";
 
 const TAB_VALUES = [
   "basics",
@@ -35,6 +36,7 @@ const TAB_VALUES = [
   "labels",
   "members",
   "integrations",
+  "advanced",
 ] as const;
 type ProjectSettingsTab = (typeof TAB_VALUES)[number];
 
@@ -46,6 +48,7 @@ const TABS: TabItem[] = [
   { value: "labels", label: "Labels" },
   { value: "members", label: "Members" },
   { value: "integrations", label: "Integrations" },
+  { value: "advanced", label: "Advanced" },
 ];
 
 export function ProjectSettingsScreen({ slug }: { slug: string }) {
@@ -141,6 +144,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
         {tab === "labels" && <LabelsTab projectId={project.id} canEdit={canEdit} />}
         {tab === "members" && <MembersTab projectId={project.id} canEdit={canEdit} />}
         {tab === "integrations" && <IntegrationsTab />}
+        {tab === "advanced" && <AdvancedTab project={project} canEdit={canEdit} />}
       </div>
     </div>
   );

@@ -28,6 +28,39 @@ export function useUpdateProject(id: string | undefined) {
   });
 }
 
+/** Soft archive a project (owner only). Invalidates the detail + console list
+ *  so the archived project drops out of the default list (ISS-353). */
+export function useArchiveProject(id: string | undefined) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: () => projectSettingsApi.archive(id as string),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["project", id] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      toast({ title: "Project archived", tone: "success" });
+    },
+    onError: (err) =>
+      toast({ title: "Couldn't archive project", description: formatApiError(err), tone: "error" }),
+  });
+}
+
+/** Unarchive a project (owner only); it reappears in the default list. */
+export function useUnarchiveProject(id: string | undefined) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: () => projectSettingsApi.unarchive(id as string),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["project", id] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      toast({ title: "Project unarchived", tone: "success" });
+    },
+    onError: (err) =>
+      toast({ title: "Couldn't unarchive project", description: formatApiError(err), tone: "error" }),
+  });
+}
+
 /** GET pipeline config. `enabled:false` on the query when the flag is off is
  *  NOT possible to know ahead of time — instead the caller branches on the
  *  `FEATURE_OFF` error code (404) to render an info empty-state. */
