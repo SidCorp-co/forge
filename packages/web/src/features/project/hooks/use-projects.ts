@@ -24,14 +24,22 @@ export function useProjects() {
 }
 
 /**
- * ISS-353 — list soft-archived projects (the Archived view). Separate query
- * key from `projectKeys.all` so the default list stays archived-free.
+ * ISS-353 — projects list INCLUDING archived (`?archived=1` superset). Keyed
+ * `['projects','all']`, a child of `projectKeys.all`, so the archive/unarchive
+ * mutations (which invalidate `projectKeys.all`) refresh it too.
+ *
+ * This is ALWAYS enabled and has its OWN key — it must NOT be gated by a
+ * caller-supplied `enabled` flag. An earlier fix toggled a shared
+ * `['projects','archived']` key on/off via `useProjectBySlug({includeArchived})`;
+ * the project layout also mounts `useProjectBySlug(slug)` (no opts), registering
+ * a DISABLED observer on that same key, which left the query idle so the
+ * settings page never fetched the superset and got stuck "Loading project…"
+ * (AC3 live-E2E failure). A dedicated always-on query avoids that hazard.
  */
-export function useArchivedProjects(enabled = true) {
+export function useProjectsIncludingArchived() {
   return useQuery({
-    queryKey: [...projectKeys.all, 'archived'] as const,
+    queryKey: [...projectKeys.all, 'all'] as const,
     queryFn: () => projectApi.list({ includeArchived: true }),
-    enabled,
   });
 }
 
@@ -50,19 +58,26 @@ export function useProject(projectId: string | undefined) {
   });
 }
 
-export function useProjectBySlug(
+export function useProjectBySlug(slug: string | undefined | null): Project | null {
+  const { data: projects } = useProjects();
+  return useMemo(() => {
+    if (!slug || !projects) return null;
+    return projects.find((p) => p.slug === slug) ?? null;
+  }, [projects, slug]);
+}
+
+/**
+ * ISS-353 — resolve a slug→project against the archived-INCLUSIVE list so an
+ * archived project's settings page (and its Unarchive action) stays reachable.
+ * The default `useProjectBySlug` resolves against the archived-excluded list,
+ * which drops the project the moment it is archived. Uses the dedicated
+ * always-on `useProjectsIncludingArchived` query (see its note for why a shared
+ * toggled key broke this on live).
+ */
+export function useProjectBySlugIncludingArchived(
   slug: string | undefined | null,
-  opts?: { includeArchived?: boolean },
 ): Project | null {
-  // ISS-353 — the default list excludes archived projects, so resolving an
-  // archived project's slug there returns null and any settings/detail screen
-  // becomes unreachable (Unarchive included). With `includeArchived`, resolve
-  // against the `?archived=1` superset (active + archived) instead, so the
-  // Project Settings page can still find an archived project to unarchive it.
-  const includeArchived = Boolean(opts?.includeArchived);
-  const active = useProjects();
-  const all = useArchivedProjects(includeArchived);
-  const projects = includeArchived ? all.data : active.data;
+  const { data: projects } = useProjectsIncludingArchived();
   return useMemo(() => {
     if (!slug || !projects) return null;
     return projects.find((p) => p.slug === slug) ?? null;

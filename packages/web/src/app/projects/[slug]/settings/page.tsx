@@ -2,7 +2,7 @@
 
 import { useParams } from 'next/navigation';
 import { Suspense } from 'react';
-import { useProjectBySlug } from '@/features/project/hooks/use-projects';
+import { useProjectBySlugIncludingArchived } from '@/features/project/hooks/use-projects';
 import { useSetPageTitle } from '@/hooks/use-page-title';
 import { useAuth } from '@/providers/auth-provider';
 import { BasicsSection } from './components/basics-section';
@@ -29,9 +29,10 @@ export default function ProjectSettingsPage() {
   useSetPageTitle('Project settings');
   const { user } = useAuth();
   const { slug } = useParams<{ slug: string }>();
-  // ISS-353 — include archived projects so an archived project's settings
-  // page (and its Unarchive action) stays reachable after archiving.
-  const project = useProjectBySlug(slug, { includeArchived: true });
+  // ISS-353 — resolve against the archived-inclusive list so an archived
+  // project's settings page (and its Unarchive action) stays reachable after
+  // archiving (dedicated always-on query — see useProjectsIncludingArchived).
+  const project = useProjectBySlugIncludingArchived(slug);
 
   if (!project) {
     return (
