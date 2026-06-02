@@ -73,6 +73,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Agent sessions that completed normally are no longer mislabeled as 'failed' — pipeline steps that finish a run (such as test and release) now show a green done status, and previously mislabeled sessions are corrected automatically. The session detail view also gains cache-token counts, lifecycle timing, the repository path, an 'Agents & tasks' list of sub-agent and skill calls, and a 'Sessions for this issue' list.**
   *Technical: core: cascadeCancelChildJobs maps close-reason 'pipeline_completed' to session status 'completed' (failureReason null), keeping pipeline_failed/cancelled as 'failed'; migration 0091 backfills existing (failed, pipeline_completed) rows. web-v2 session context-rail: cache tokens, timing, repoPath, deriveAgentTasks, sibling-session list. Per-session cost/model deferred to a usage_records join. Merge 84c3343.*
 
+- **Web v2 pages no longer show a duplicated page title (the section label in the top bar stacked on top of each page's own heading).**
+  *Technical: Stop the workspace TopBar from rendering the nav-section label as an <h1>; the page/screen header becomes the single title source. Single edit in (workspace)/layout.tsx.*
+
 ### Security
 
 ## [0.2.11] - 2026-05-31
