@@ -274,15 +274,6 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     [compactActiveProject, railConsole],
   );
 
-  // Top-bar title = the active section's label (mirrors the prototype header).
-  const topBarTitle = useMemo(() => {
-    if (activeKey === "docs") return "Docs";
-    if (activeKey.startsWith("proj-")) {
-      return PROJECT_ITEMS.find((i) => i.key === activeKey)?.label ?? activeProject?.name ?? "";
-    }
-    return WORKSPACE_ITEMS.find((i) => i.key === activeKey)?.label ?? "";
-  }, [activeKey, activeProject]);
-
   function navigate(key: string) {
     if (key === "docs") {
       router.push("/docs");
@@ -566,7 +557,6 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             onMenu={() => setMobileNavOpen(true)}
             onCommandPalette={() => setPaletteOpen(true)}
             onNotifications={() => setNotificationsOpen((o) => !o)}
-            title={topBarTitle}
             onNewIssue={() =>
               slug
                 ? router.push(`/projects/${slug}/issues?new=1`)
