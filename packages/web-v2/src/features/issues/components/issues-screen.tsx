@@ -37,6 +37,7 @@ import { NewIssueDialog } from "./new-issue-dialog";
 
 const FILTERS: SegmentOption<IssueFilter>[] = [
   { value: "all", label: "All" },
+  { value: "everything", label: "All + drafts" },
   { value: "active", label: "Active" },
   { value: "review", label: "Review" },
   { value: "blocked", label: "Blocked" },

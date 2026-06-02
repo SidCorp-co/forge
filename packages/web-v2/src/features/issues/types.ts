@@ -140,7 +140,7 @@ export interface IssueDependencies {
 }
 
 /** Client-side filter tabs → server `status`/`statusNot` arrays. */
-export type IssueFilter = "all" | "active" | "review" | "blocked" | "drafts";
+export type IssueFilter = "all" | "everything" | "active" | "review" | "blocked" | "drafts";
 
 /** Client-side grouping for the list. */
 export type GroupBy = "none" | "status" | "priority" | "assignee";

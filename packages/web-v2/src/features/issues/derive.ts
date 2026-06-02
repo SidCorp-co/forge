@@ -197,6 +197,10 @@ export function depCounts(deps: IssueDependencies | undefined): DepCounts {
  *   is discoverable. Drafts stay hidden by default (ISS-236: drafts are
  *   AI-generated proposals awaiting human review); the dedicated "drafts" tab
  *   is the explicit opt-in to view them (ISS-354).
+ * - everything: literally every issue INCLUDING drafts + closed — no filter at
+ *   all (the search endpoint applies no default draft exclusion, verified
+ *   core/issues/search.ts). This is the explicit one-click "view all incl.
+ *   drafts" the reporter asked for; it is NOT the default, so ISS-236 holds.
  * - active: the in-flight lifecycle band
  * - review: developed/deploying/testing/tested
  * - blocked: on_hold + needs_info (work parked / waiting on input)
@@ -207,6 +211,8 @@ export function filterToStatusParams(filter: IssueFilter): {
   statusNot?: IssueStatus[];
 } {
   switch (filter) {
+    case "everything":
+      return {};
     case "active":
       return { status: ["open", "confirmed", "waiting", "approved", "in_progress", "reopen"] };
     case "review":
