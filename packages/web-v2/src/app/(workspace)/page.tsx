@@ -1,22 +1,15 @@
 "use client";
 
-import { Suspense } from "react";
-import { ProjectsConsole } from "@/features/projects/components/projects-console";
+import { OverviewScreen } from "@/features/overview/components/overview-screen";
 
 /**
- * Workspace landing = the Projects console (`/v2/projects`). Built on
- * `useProjectsConsole()`, which composes `useProjects()` (keyed `['projects']`)
- * + `useProjectHealth()` (keyed `['projects','health']`) — both keys the WS
- * event-router invalidates, so the console refreshes itself on live events
- * (run/issue/device changes) with no bespoke wiring.
- *
- * Wrapped in Suspense because `ProjectsConsole` reads `useSearchParams()` (the
- * rail's `?new=1` deep link that opens the create-project dialog).
+ * Workspace landing = the Overview dashboard (`/v2`) — ISS-355. Replaces the
+ * old flat project list (which now lives at `/v2/projects`). Built entirely on
+ * existing hooks (`useProjectsConsole` → `['projects']` + `['projects','health']`,
+ * `useAttention` → `['attention']`, `useActivity` → `['chat-logs']`), all keys
+ * the WS event-router already invalidates, so the dashboard refreshes itself on
+ * live events with no bespoke wiring.
  */
-export default function ProjectsConsolePage() {
-  return (
-    <Suspense fallback={null}>
-      <ProjectsConsole />
-    </Suspense>
-  );
+export default function OverviewPage() {
+  return <OverviewScreen />;
 }

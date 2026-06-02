@@ -314,17 +314,19 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   );
 
   const bottomActiveKey = useMemo(() => {
-    if (slug || pathname === "/") return "projects";
+    // "Projects" tab → the list at /projects (incl. project detail). The
+    // Overview dashboard at `/` is reachable via the rail/⌘K, not a bottom tab.
+    if (pathname.startsWith("/projects")) return "projects";
     if (pathname.startsWith("/attention")) return "attention";
     if (pathname.startsWith("/activity")) return "activity";
     if (pathname.startsWith("/settings")) return "you";
     return "";
-  }, [pathname, slug]);
+  }, [pathname]);
 
   function onBottomSelect(key: string) {
     switch (key) {
       case "projects":
-        router.push("/");
+        router.push("/projects");
         break;
       case "attention":
         router.push("/attention");
@@ -384,6 +386,15 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     for (const it of SECONDARY_DESTINATIONS) {
       out.push({ label: it.label, icon: it.icon, group: "navigate", keywords: "go to", onRun: () => router.push(it.href) });
     }
+    // The project list moved off the landing route to /projects (ISS-355) — keep
+    // it reachable from ⌘K (the rail flyout/mobile drawer cover the pointer path).
+    out.push({
+      label: "All projects",
+      icon: "folder",
+      group: "navigate",
+      keywords: "projects list console go to",
+      onRun: () => router.push("/projects"),
+    });
     for (const p of projects ?? []) {
       out.push({
         label: `Switch to ${p.name}`,
@@ -466,8 +477,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             onNavigate={navigate}
             onSelectProject={(s) => router.push(`/projects/${s}`)}
             onTogglePin={projectsConsole.toggle}
-            onAllProjects={() => router.push("/")}
-            onNewProject={() => router.push("/?new=1")}
+            onAllProjects={() => router.push("/projects")}
+            onNewProject={() => router.push("/projects?new=1")}
             onAccount={() => router.push("/settings")}
             onSignOut={logout}
             userInitials={userInitials}
@@ -515,7 +526,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
               <span className="fg-label text-fg">Projects</span>
               <button
                 type="button"
-                onClick={() => router.push("/")}
+                onClick={() => router.push("/projects")}
                 className="fg-caption rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
               >
                 View all
