@@ -32,10 +32,12 @@ export function StatusMultiSelect({ selected, onChange, className }: StatusMulti
   }
 
   const label = selected.length === 0
-    ? 'All statuses'
-    : selected.length === 1
-      ? ALL_STATUSES.find((s) => s.value === selected[0])?.label ?? selected[0]
-      : `${selected.length} statuses`;
+    ? 'Active (no drafts)'
+    : selected.length === ALL_STATUSES.length
+      ? 'All statuses'
+      : selected.length === 1
+        ? ALL_STATUSES.find((s) => s.value === selected[0])?.label ?? selected[0]
+        : `${selected.length} statuses`;
 
   return (
     <div ref={ref} className={cn('relative', className)}>
@@ -70,6 +72,22 @@ export function StatusMultiSelect({ selected, onChange, className }: StatusMulti
 
       {open && (
         <div className="absolute left-0 top-full z-50 mt-1 max-h-64 w-56 overflow-y-auto rounded-sm border border-outline-variant/20 bg-surface-container-low shadow-lg">
+          <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-outline-variant/20 bg-surface-container-low px-3 py-1.5">
+            <button
+              type="button"
+              onClick={() => onChange(ALL_STATUSES.map((s) => s.value))}
+              className="text-xs text-primary hover:bg-on-surface/5 rounded-sm px-1 py-0.5 transition-colors"
+            >
+              Select all
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange([])}
+              className="text-xs text-outline hover:bg-on-surface/5 rounded-sm px-1 py-0.5 transition-colors"
+            >
+              Clear
+            </button>
+          </div>
           {ALL_STATUSES.map((s) => {
             const checked = selected.includes(s.value);
             return (
