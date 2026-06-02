@@ -31,6 +31,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Web v2: attach files to new issues via picker, drag-and-drop, or pasting a screenshot, and view them on the issue's Attachments section. Issue descriptions now use the full column width, and the session view has a wider conversation, a pinned context rail, and a tidier action bar.**
   *Technical: web-v2 new-issue dialog sends inline base64 attachments[]; issue-detail renders an Attachments card via useAttachments; dropped the description max-w-[70ch] clamp; session thread widened (max-w-4xl xl:max-w-5xl), right rail made lg:sticky, Fork moved to overflow menu.*
 
+- **Project owners can now archive a project from Project Settings → Advanced (type-to-confirm the project name). Archived projects disappear from the project list and stop running new pipeline jobs, but keep all their issues, comments, runs, and sessions — and can be unarchived at any time to restore them.**
+  *Technical: Nullable projects.archived_at (migration 0092) + owner-gated POST /api/projects/:id/archive|unarchive; GET /api/projects excludes archived by default (?archived=1 to include); orchestrator.loadPipelineConfig returns cfg=null when archived. UI in web (Settings→Advanced) and web-v2 (Settings→Advanced tab).*
+
 ### Changed
 
 - **You can now configure a project directly in the new web app — name & description, repository path, base/production branches, pipeline stages, labels, and members — reached from the project dashboard's gear icon or the ⌘K command palette, with no new sidebar item. Edits persist immediately and project secrets are never shown.**
