@@ -5,7 +5,7 @@ import { Suspense, type ReactNode } from 'react';
 import { ProjectChatBubble } from '@/components/chat/project-chat-bubble';
 import { Shell } from '@/components/layout/shell';
 import { UnblockToastSurface } from '@/features/issue/components/unblock-toast-surface';
-import { useProjectBySlug } from '@/features/project/hooks/use-projects';
+import { useProjectBySlugIncludingArchived } from '@/features/project/hooks/use-projects';
 import { AgentStreamProvider } from '@/hooks/agent-stream-context';
 import { useSetPageTitle } from '@/hooks/use-page-title';
 import { projectRoom } from '@/lib/ws/rooms';
@@ -15,7 +15,11 @@ import { cn } from '@/lib/utils/cn';
 export default function ProjectLayout({ children }: { children: ReactNode }) {
   const { slug } = useParams<{ slug: string }>();
   const pathname = usePathname();
-  const project = useProjectBySlug(slug);
+  // ISS-353 — the project shell gates ALL children on resolving the slug. Use
+  // the archived-inclusive resolver so an archived project's pages (Settings →
+  // Unarchive in particular) still mount; the default resolver excludes
+  // archived projects, leaving the shell stuck on "Loading project…".
+  const project = useProjectBySlugIncludingArchived(slug);
   useRoom(project ? projectRoom(project.id) : null);
   const base = `/projects/${slug}`;
   const isAgentPage = pathname === `${base}/agent`;
