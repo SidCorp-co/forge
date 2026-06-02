@@ -74,11 +74,20 @@ async function loadPipelineConfig(
   projectId: string,
 ): Promise<{ cfg: PipelineConfig | null; ownerId: string | null }> {
   const [row] = await db
-    .select({ agentConfig: projects.agentConfig, ownerId: projects.ownerId })
+    .select({
+      agentConfig: projects.agentConfig,
+      ownerId: projects.ownerId,
+      archivedAt: projects.archivedAt,
+    })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
   if (!row) return { cfg: null, ownerId: null };
+  // ISS-353 — archived projects pause auto-pipeline dispatch. cfg=null falls
+  // through to the same "no auto pipeline" path as a missing/invalid config,
+  // so no NEW agent jobs are queued. In-flight jobs are untouched (this only
+  // gates dispatch, not running work).
+  if (row.archivedAt != null) return { cfg: null, ownerId: row.ownerId ?? null };
   const ac = (row.agentConfig as { pipelineConfig?: unknown } | null) ?? {};
   // Parse through the canonical schema so the typed read path stays in
   // lockstep with what was validated on write. Bad data → cfg=null (caller

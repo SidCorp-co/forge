@@ -19,7 +19,19 @@ export const projectKeys = {
 export function useProjects() {
   return useQuery({
     queryKey: projectKeys.all,
-    queryFn: projectApi.list,
+    queryFn: () => projectApi.list(),
+  });
+}
+
+/**
+ * ISS-353 — list soft-archived projects (the Archived view). Separate query
+ * key from `projectKeys.all` so the default list stays archived-free.
+ */
+export function useArchivedProjects(enabled = true) {
+  return useQuery({
+    queryKey: [...projectKeys.all, 'archived'] as const,
+    queryFn: () => projectApi.list({ includeArchived: true }),
+    enabled,
   });
 }
 
@@ -38,8 +50,19 @@ export function useProject(projectId: string | undefined) {
   });
 }
 
-export function useProjectBySlug(slug: string | undefined | null): Project | null {
-  const { data: projects } = useProjects();
+export function useProjectBySlug(
+  slug: string | undefined | null,
+  opts?: { includeArchived?: boolean },
+): Project | null {
+  // ISS-353 — the default list excludes archived projects, so resolving an
+  // archived project's slug there returns null and any settings/detail screen
+  // becomes unreachable (Unarchive included). With `includeArchived`, resolve
+  // against the `?archived=1` superset (active + archived) instead, so the
+  // Project Settings page can still find an archived project to unarchive it.
+  const includeArchived = Boolean(opts?.includeArchived);
+  const active = useProjects();
+  const all = useArchivedProjects(includeArchived);
+  const projects = includeArchived ? all.data : active.data;
   return useMemo(() => {
     if (!slug || !projects) return null;
     return projects.find((p) => p.slug === slug) ?? null;
@@ -62,6 +85,35 @@ export function useUpdateProject() {
     mutationFn: ({ id, patch }: { id: string; patch: UpdateProjectInput }) =>
       projectApi.update(id, patch),
     onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: projectKeys.all });
+      qc.invalidateQueries({ queryKey: projectKeys.detail(id) });
+    },
+  });
+}
+
+/**
+ * ISS-353 — archive (soft) a project. Owner-only on the server. Invalidates
+ * the project list (so it drops out) + the archived list + the detail.
+ */
+export function useArchiveProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => projectApi.archive(id),
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: projectKeys.all });
+      qc.invalidateQueries({ queryKey: projectKeys.detail(id) });
+    },
+  });
+}
+
+/**
+ * ISS-353 — unarchive a project; it reappears in the default list.
+ */
+export function useUnarchiveProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => projectApi.unarchive(id),
+    onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: projectKeys.all });
       qc.invalidateQueries({ queryKey: projectKeys.detail(id) });
     },

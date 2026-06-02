@@ -16,7 +16,7 @@ import {
   type TabItem,
 } from "@/design";
 import { useTabParam } from "@/lib/utils/use-tab-param";
-import { useProjects, useProject } from "@/features/projects/hooks";
+import { useProjectsIncludingArchived, useProject } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import { formatApiError } from "@/lib/api/error";
 import { BasicsTab } from "./basics-tab";
@@ -26,6 +26,7 @@ import { PipelineTab } from "./pipeline-tab";
 import { LabelsTab } from "./labels-tab";
 import { MembersTab } from "./members-tab";
 import { IntegrationsTab } from "./integrations-tab";
+import { AdvancedTab } from "./advanced-tab";
 
 const TAB_VALUES = [
   "basics",
@@ -35,6 +36,7 @@ const TAB_VALUES = [
   "labels",
   "members",
   "integrations",
+  "advanced",
 ] as const;
 type ProjectSettingsTab = (typeof TAB_VALUES)[number];
 
@@ -46,13 +48,17 @@ const TABS: TabItem[] = [
   { value: "labels", label: "Labels" },
   { value: "members", label: "Members" },
   { value: "integrations", label: "Integrations" },
+  { value: "advanced", label: "Advanced" },
 ];
 
 export function ProjectSettingsScreen({ slug }: { slug: string }) {
-  // Resolve slug → id/role from the projects list (keyed ['projects']), then
-  // fetch the full detail (keyed ['project', id]) — the same keys mutations
-  // invalidate, so edits reflect after refetch.
-  const projectsQ = useProjects();
+  // Resolve slug → id/role from the projects list, then fetch the full detail
+  // (keyed ['project', id]) — the same keys mutations invalidate, so edits
+  // reflect after refetch. ISS-353: use the archived-inclusive list so an
+  // archived project stays resolvable here (the default ['projects'] list
+  // excludes archived rows → the Advanced/Unarchive tab would otherwise vanish
+  // the moment a project is archived).
+  const projectsQ = useProjectsIncludingArchived();
   const listItem = projectsQ.data?.find((p) => p.slug === slug);
   const detailQ = useProject(listItem?.id);
 
@@ -141,6 +147,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
         {tab === "labels" && <LabelsTab projectId={project.id} canEdit={canEdit} />}
         {tab === "members" && <MembersTab projectId={project.id} canEdit={canEdit} />}
         {tab === "integrations" && <IntegrationsTab />}
+        {tab === "advanced" && <AdvancedTab project={project} canEdit={canEdit} />}
       </div>
     </div>
   );

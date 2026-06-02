@@ -29,6 +29,20 @@ export function useProjects() {
 }
 
 /**
+ * ISS-353 — projects list INCLUDING archived (`?archived=1` superset). Keyed
+ * `['projects', 'all']`, a child of `['projects']`, so the WS reconnect replay
+ * and the archive/unarchive mutations (which invalidate `['projects']`) refresh
+ * it too. Used by Project Settings to resolve a slug→id even when the project
+ * is archived (the default `['projects']` list excludes archived rows).
+ */
+export function useProjectsIncludingArchived() {
+  return useQuery({
+    queryKey: ['projects', 'all'],
+    queryFn: () => projectApi.list({ includeArchived: true }),
+  });
+}
+
+/**
  * Per-project pipeline-health rollup. Keyed `['projects', 'health']`, a child
  * of `['projects']` — so the same reconnect replay invalidates it too.
  */

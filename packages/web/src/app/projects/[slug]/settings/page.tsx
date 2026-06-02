@@ -23,12 +23,15 @@ import { SkillRegistrationsSection } from './components/skill-registrations-sect
 import { TestingSection } from './components/testing-section';
 import { WebhookSection } from './components/webhook-section';
 import { AntigravitySection } from './components/antigravity-section';
+import { ArchiveSection } from './components/archive-section';
 
 export default function ProjectSettingsPage() {
   useSetPageTitle('Project settings');
   const { user } = useAuth();
   const { slug } = useParams<{ slug: string }>();
-  const project = useProjectBySlug(slug);
+  // ISS-353 — include archived projects so an archived project's settings
+  // page (and its Unarchive action) stays reachable after archiving.
+  const project = useProjectBySlug(slug, { includeArchived: true });
 
   if (!project) {
     return (
@@ -76,6 +79,12 @@ export default function ProjectSettingsPage() {
         { id: 'int.gitlab', label: 'GitLab Webhook', tag: 'INT_GLB', render: () => <GitlabWebhookSection previewMode /> },
         { id: 'int.channels', label: 'Channels', tag: 'INT_CHN', render: () => <ChannelsSection previewMode /> },
         { id: 'int.webhooks', label: 'Generic Webhooks', tag: 'INT_WHK', render: () => <WebhookSection previewMode /> },
+      ],
+    },
+    {
+      label: 'Advanced',
+      items: [
+        { id: 'danger.archive', label: 'Archive', tag: 'DNG_ARC', render: () => <ArchiveSection projectId={projectId} isOwner={isOwner} /> },
       ],
     },
   ];

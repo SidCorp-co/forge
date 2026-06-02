@@ -163,6 +163,7 @@ describe('db/schema — projects', () => {
       [
         'agent_config',
         'api_key',
+        'archived_at',
         'base_branch',
         'created_at',
         'default_device_id',

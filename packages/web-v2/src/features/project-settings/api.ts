@@ -20,6 +20,15 @@ export const projectSettingsApi = {
       body: JSON.stringify(patch),
     }),
 
+  /** `POST /api/projects/:id/archive` — soft archive (owner only). Returns the
+   *  updated row with `archivedAt` set. Non-destructive (ISS-353). */
+  archive: (id: string) =>
+    apiClient<ProjectDetail>(`/projects/${id}/archive`, { method: "POST" }),
+
+  /** `POST /api/projects/:id/unarchive` — clear `archivedAt` (owner only). */
+  unarchive: (id: string) =>
+    apiClient<ProjectDetail>(`/projects/${id}/unarchive`, { method: "POST" }),
+
   /** `GET /api/projects/:id/pipeline-config` → `{ pipelineConfig }`. 404
    *  `FEATURE_OFF` when the `pipelineControl` flag is disabled. */
   getPipelineConfig: (id: string) =>
