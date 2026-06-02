@@ -57,6 +57,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **On the issues page you can now reach every issue — including closed and draft ones. Classic app: a one-click Select all in the status filter. v2 app: a Drafts tab and an All + drafts tab that shows everything (drafts included) in one list. The default view still hides AI-draft proposals until you opt in.**
   *Technical: Discoverable draft/closed issues on both web surfaces. v1 (packages/web status-multi-select.tsx): sticky Select all / Clear header + honest trigger label ("Active (no drafts)" default, "All statuses" when full). v2 (packages/web-v2 derive.ts/issues-screen.tsx): "All" tab sends statusNot:['draft'] (closed shown), "Drafts" tab (status:['draft']), and "All + drafts" tab (no status filter => every issue incl. draft+closed). ISS-236 default (drafts hidden until opted in) preserved. Merges 7a4300a (v1) + 88dca6a + 6f9653e (v2).*
 
+- **The workspace landing page is now an Overview dashboard — KPIs, a needs-attention inbox, a work-distribution bar, spotlight projects, and recent activity — instead of a flat project list. The full project list moved to its own Projects page.**
+  *Technical: Frontend-only redesign of the /v2 landing route in packages/web-v2; new features/overview module built from existing hooks (no API/core changes), full ProjectsConsole relocated to /v2/projects. Merge fd0c759.*
+
 ### Removed
 
 ### Fixed
