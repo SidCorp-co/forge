@@ -50,8 +50,19 @@ export function useProject(projectId: string | undefined) {
   });
 }
 
-export function useProjectBySlug(slug: string | undefined | null): Project | null {
-  const { data: projects } = useProjects();
+export function useProjectBySlug(
+  slug: string | undefined | null,
+  opts?: { includeArchived?: boolean },
+): Project | null {
+  // ISS-353 — the default list excludes archived projects, so resolving an
+  // archived project's slug there returns null and any settings/detail screen
+  // becomes unreachable (Unarchive included). With `includeArchived`, resolve
+  // against the `?archived=1` superset (active + archived) instead, so the
+  // Project Settings page can still find an archived project to unarchive it.
+  const includeArchived = Boolean(opts?.includeArchived);
+  const active = useProjects();
+  const all = useArchivedProjects(includeArchived);
+  const projects = includeArchived ? all.data : active.data;
   return useMemo(() => {
     if (!slug || !projects) return null;
     return projects.find((p) => p.slug === slug) ?? null;

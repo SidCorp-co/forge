@@ -11,8 +11,12 @@ import type {
 } from './types';
 
 export const projectApi = {
-  /** `GET /api/projects` — the caller's projects (with membership role). */
-  list: () => apiClient<ProjectListItem[]>('/projects'),
+  /** `GET /api/projects` — the caller's projects (with membership role).
+   *  `includeArchived` adds `?archived=1` to return archived projects too
+   *  (ISS-353) — used by Project Settings to keep an archived project
+   *  reachable for unarchive. */
+  list: (opts?: { includeArchived?: boolean }) =>
+    apiClient<ProjectListItem[]>(`/projects${opts?.includeArchived ? '?archived=1' : ''}`),
 
   /** `POST /api/projects` — create a project (caller becomes owner). 201 on
    *  success; 409 `SLUG_TAKEN` when the slug collides. */

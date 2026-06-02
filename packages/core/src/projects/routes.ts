@@ -653,12 +653,14 @@ projectRoutes.post(
       throw forbidden('not a project owner');
     }
 
-    // `sql\`now()\`` (a SQL literal), NOT an interpolated JS Date — an untyped
-    // Date bind 500s on a timestamptz column (memory
-    // `core/drizzle-date-param-needs-timestamptz-cast`).
+    // `coalesce(archived_at, now())` keeps the ORIGINAL archive timestamp when
+    // re-archiving an already-archived project (idempotent), and only stamps
+    // the clock on the first archive. `now()` is a SQL literal, NOT an
+    // interpolated JS Date — an untyped Date bind 500s on a timestamptz column
+    // (memory `core/drizzle-date-param-needs-timestamptz-cast`).
     const [updated] = await db
       .update(projects)
-      .set({ archivedAt: sql`now()` })
+      .set({ archivedAt: sql`coalesce(${projects.archivedAt}, now())` })
       .where(eq(projects.id, id))
       .returning(ARCHIVE_PROJECTION);
     if (!updated) throw notFound();

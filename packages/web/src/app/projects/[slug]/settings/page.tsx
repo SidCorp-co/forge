@@ -29,7 +29,9 @@ export default function ProjectSettingsPage() {
   useSetPageTitle('Project settings');
   const { user } = useAuth();
   const { slug } = useParams<{ slug: string }>();
-  const project = useProjectBySlug(slug);
+  // ISS-353 — include archived projects so an archived project's settings
+  // page (and its Unarchive action) stays reachable after archiving.
+  const project = useProjectBySlug(slug, { includeArchived: true });
 
   if (!project) {
     return (

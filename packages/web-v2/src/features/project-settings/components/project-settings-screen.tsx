@@ -16,7 +16,7 @@ import {
   type TabItem,
 } from "@/design";
 import { useTabParam } from "@/lib/utils/use-tab-param";
-import { useProjects, useProject } from "@/features/projects/hooks";
+import { useProjectsIncludingArchived, useProject } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import { formatApiError } from "@/lib/api/error";
 import { BasicsTab } from "./basics-tab";
@@ -52,10 +52,13 @@ const TABS: TabItem[] = [
 ];
 
 export function ProjectSettingsScreen({ slug }: { slug: string }) {
-  // Resolve slug → id/role from the projects list (keyed ['projects']), then
-  // fetch the full detail (keyed ['project', id]) — the same keys mutations
-  // invalidate, so edits reflect after refetch.
-  const projectsQ = useProjects();
+  // Resolve slug → id/role from the projects list, then fetch the full detail
+  // (keyed ['project', id]) — the same keys mutations invalidate, so edits
+  // reflect after refetch. ISS-353: use the archived-inclusive list so an
+  // archived project stays resolvable here (the default ['projects'] list
+  // excludes archived rows → the Advanced/Unarchive tab would otherwise vanish
+  // the moment a project is archived).
+  const projectsQ = useProjectsIncludingArchived();
   const listItem = projectsQ.data?.find((p) => p.slug === slug);
   const detailQ = useProject(listItem?.id);
 
