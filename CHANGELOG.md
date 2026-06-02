@@ -51,6 +51,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **The new web app now looks consistent across screens: every tabbed screen (Settings, Project Settings, Library, Automation, and Agents on mobile) shares the same tab strip and ?tab= deep links, and issue status, priority, and complexity show readable labels (e.g. "Medium", "Critical", "In progress") everywhere — lists, tables, mobile cards, and menus — not just the detail view.**
   *Technical: web-v2: new ScreenTabs pattern unifies the tab-strip container (max-w-6xl + overflow-x-auto) across 5 screens; Settings/Project-Settings converge from #tab hash onto the shared useTabParam (?tab=). Issue row cells/menu + detail Tasks tab route through derive.ts label helpers (+ new TASK_STATUS_LABELS); dead duplicate IssueTableRow removed. Merge 427100d.*
 
+- **The issues page status filter now has a one-click Select all / Clear shortcut so you can view every issue — including drafts and closed ones — at once, and the filter label is now honest: it reads "Active (no drafts)" in the default view and "All statuses" only when everything is shown.**
+  *Technical: Frontend-only change to the web issues page status-multi-select.tsx: sticky Select all / Clear header inside the dropdown (Select all ticks all statuses incl. draft, which use-issues-page.ts maps to a draft-inclusive query, dropping the statusNot:['draft'] guard); honest trigger label logic. ISS-236 default (drafts hidden until opted in) preserved. Merge 7a4300a.*
+
 ### Removed
 
 ### Fixed
