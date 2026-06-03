@@ -1,6 +1,7 @@
 "use client";
 
 import { Icon } from "@/design/icons/icon";
+import { Breadcrumb, type Crumb } from "@/design/primitives/breadcrumb";
 import { Button } from "@/design/primitives/button";
 import { Kbd } from "@/design/primitives/kbd";
 import { SegmentedControl } from "@/design/primitives/segmented-control";
@@ -11,6 +12,14 @@ export type TopBarDensity = "comfortable" | "compact";
 
 export interface TopBarProps {
   title?: string;
+  /**
+   * Breadcrumb trail (workspace → project → page). When set it renders in the
+   * left slot in place of `title`; the last crumb is the current page. Falls
+   * back to `title` when empty/unset so older callers keep working.
+   */
+  breadcrumb?: Crumb[];
+  /** Client-side navigation for breadcrumb links (router.push). */
+  onBreadcrumbNavigate?: (href: string) => void;
   notificationCount?: number;
   onCommandPalette?: () => void;
   onNotifications?: () => void;
@@ -33,6 +42,8 @@ export interface TopBarProps {
 
 export function TopBar({
   title,
+  breadcrumb,
+  onBreadcrumbNavigate,
   notificationCount = 0,
   onCommandPalette,
   onNotifications,
@@ -61,7 +72,13 @@ export function TopBar({
         </button>
       )}
 
-      {title && <h1 className="fg-h3 mr-2 truncate">{title}</h1>}
+      {breadcrumb && breadcrumb.length > 0 ? (
+        <div className="mr-2 min-w-0 truncate">
+          <Breadcrumb items={breadcrumb} onNavigate={onBreadcrumbNavigate} />
+        </div>
+      ) : (
+        title && <h1 className="fg-h3 mr-2 truncate">{title}</h1>
+      )}
 
       <div className="ml-auto flex items-center gap-2">
         <button

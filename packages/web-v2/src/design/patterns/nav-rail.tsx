@@ -37,6 +37,11 @@ export interface NavRailProps {
   onNavigate?: (key: string) => void;
   /** Opens the searchable project switcher (the command palette). */
   onProjectSwitch?: () => void;
+  /** Hover handlers for the project switcher — open the flyout on enter,
+   *  schedule its close on leave. Click (`onProjectSwitch`) + keyboard focus
+   *  remain the accessible fallback. */
+  onSwitcherEnter?: () => void;
+  onSwitcherLeave?: () => void;
   /** Jump to the Docs page (pinned bottom-left). */
   onDocs?: () => void;
   /** Footer user-menu actions. When set, the user chip becomes an actionable
@@ -184,6 +189,8 @@ export function NavRail({
   activeKey,
   onNavigate,
   onProjectSwitch,
+  onSwitcherEnter,
+  onSwitcherLeave,
   onDocs,
   onAccount,
   onSignOut,
@@ -295,20 +302,16 @@ export function NavRail({
         </Tooltip>
       )}
 
-      <div className="flex flex-col gap-1">
-        {!collapsed && <Kicker className="px-2.5 pb-1">Workspace</Kicker>}
-        {workspaceItems.map((it) => (
-          <NavRow key={it.key} item={it} active={it.key === activeKey} collapsed={collapsed} onClick={() => onNavigate?.(it.key)} />
-        ))}
-      </div>
-
+      {/* Project-first (ISS-358): the switcher is pinned directly under the
+          brand, with the PROJECT cluster above the WORKSPACE cluster. */}
       {project && (
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+        <div onMouseEnter={onSwitcherEnter} onMouseLeave={onSwitcherLeave}>
           {collapsed ? (
             <Tooltip label={project.name} side="bottom">
               <button
                 type="button"
                 onClick={onProjectSwitch}
+                aria-haspopup="dialog"
                 aria-label="Switch project"
                 className="flex w-full items-center justify-center rounded-md border border-line bg-sunken py-1.5 transition-colors hover:bg-hover"
               >
@@ -319,27 +322,44 @@ export function NavRail({
             <button
               type="button"
               onClick={onProjectSwitch}
+              aria-haspopup="dialog"
               aria-label="Switch project"
-              className="flex items-center gap-2.5 rounded-md border border-line bg-sunken px-2.5 py-2 text-left transition-colors hover:bg-hover"
+              className="flex w-full items-center gap-2.5 rounded-md border border-line bg-sunken px-2.5 py-2 text-left transition-colors hover:bg-hover"
             >
               <ProjectMark tint={project.tint} ink={project.ink} initials={project.initials} size={26} radius="var(--r-sm)" />
               <span className="fg-label flex-1 truncate">{project.name}</span>
               <Icon name="chevronUpDown" size={15} className="text-subtle" />
             </button>
           )}
-          {clusters.map((c) => (
-            <Cluster
-              key={c.key}
-              cluster={c}
-              activeKey={activeKey}
-              collapsed={collapsed}
-              open={groupOpen?.[c.key] !== false}
-              onToggle={() => onToggleGroup?.(c.key)}
-              onNavigate={onNavigate}
-            />
-          ))}
         </div>
       )}
+
+      {/* Scroll region: PROJECT clusters on top, WORKSPACE cluster demoted
+          below. The switcher above stays pinned. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
+        {project && clusters.length > 0 && (
+          <div className="flex flex-col gap-3">
+            {clusters.map((c) => (
+              <Cluster
+                key={c.key}
+                cluster={c}
+                activeKey={activeKey}
+                collapsed={collapsed}
+                open={groupOpen?.[c.key] !== false}
+                onToggle={() => onToggleGroup?.(c.key)}
+                onNavigate={onNavigate}
+              />
+            ))}
+          </div>
+        )}
+
+        <div className="flex flex-col gap-1">
+          {!collapsed && <Kicker className="px-2.5 pb-1">Workspace</Kicker>}
+          {workspaceItems.map((it) => (
+            <NavRow key={it.key} item={it} active={it.key === activeKey} collapsed={collapsed} onClick={() => onNavigate?.(it.key)} />
+          ))}
+        </div>
+      </div>
 
       {/* Footer block: Docs pinned bottom-left, then the user chip. */}
       <div className="mt-auto flex flex-col gap-1 border-t border-line-subtle pt-3">

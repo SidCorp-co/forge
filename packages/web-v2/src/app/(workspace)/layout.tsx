@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   NavRail,
@@ -11,8 +11,10 @@ import {
   NotificationsMenu,
   PinnedTabBar,
   ProjectMark,
+  Icon,
   type NavItem,
   type Command,
+  type Crumb,
 } from "@/design";
 import { cn } from "@/lib/utils/cn";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
@@ -119,6 +121,19 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
+  // Hover-open coordination for the expanded-rail project switcher: the trigger
+  // (NavRail) and the panel (ProjectFlyout) are siblings, so the open + close
+  // timer is lifted here. Mirrors the compact rail's 150ms close delay so the
+  // pointer can travel from the switcher to the panel without it closing.
+  const flyoutCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openFlyout = useCallback(() => {
+    if (flyoutCloseTimer.current) clearTimeout(flyoutCloseTimer.current);
+    setFlyoutOpen(true);
+  }, []);
+  const scheduleCloseFlyout = useCallback(() => {
+    if (flyoutCloseTimer.current) clearTimeout(flyoutCloseTimer.current);
+    flyoutCloseTimer.current = setTimeout(() => setFlyoutOpen(false), 150);
+  }, []);
 
   // Close the mobile drawer + project flyout whenever the route changes.
   useEffect(() => {
@@ -191,6 +206,30 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     );
     return ws?.key ?? "overview";
   }, [pathname, slug]);
+
+  // Breadcrumb trail for the top header (ISS-358): workspace root → project →
+  // page. Collapses to a single non-link "Overview" crumb on the landing route
+  // and on no-project workspace screens it stays workspace-rooted.
+  const crumbs = useMemo<Crumb[]>(() => {
+    const root: Crumb = { label: "Overview", href: "/" };
+    if (pathname === "/") return [{ label: "Overview" }];
+
+    if (slug) {
+      const page = PROJECT_ITEMS.find((it) => it.key === activeKey);
+      return [
+        root,
+        { label: activeProject?.name ?? slug, href: `/projects/${slug}` },
+        { label: page?.label ?? "Dashboard" },
+      ];
+    }
+
+    if (pathname.startsWith("/docs")) return [root, { label: "Docs" }];
+    // Resolve the page label from the rail destinations; longest href match wins.
+    const hit = [...WORKSPACE_ITEMS, ...SECONDARY_DESTINATIONS]
+      .filter((it) => it.href !== "/" && pathname.startsWith(it.href))
+      .sort((a, b) => b.href.length - a.href.length)[0];
+    return hit ? [root, { label: hit.label }] : [{ label: "Overview" }];
+  }, [pathname, slug, activeProject, activeKey]);
 
   // Project-tier glyph for the rail's switcher button — follows the rail project.
   const projectMark = useMemo(() => {
@@ -482,6 +521,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
               project={projectMark}
               projectItems={projectMark ? PROJECT_ITEMS : undefined}
               onProjectSwitch={() => setFlyoutOpen((o) => !o)}
+              onSwitcherEnter={openFlyout}
+              onSwitcherLeave={scheduleCloseFlyout}
               activeKey={activeKey}
               onNavigate={navigate}
               onDocs={() => router.push("/docs")}
@@ -491,7 +532,15 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
               onToggleCollapsed={sidebar.toggleCollapsed}
             />
             {/* Searchable project switcher for the expanded rail. */}
-            <ProjectFlyout open={flyoutOpen} onClose={() => setFlyoutOpen(false)} activeSlug={railSlug} />
+            <ProjectFlyout
+              open={flyoutOpen}
+              onClose={() => setFlyoutOpen(false)}
+              activeSlug={railSlug}
+              onPanelEnter={openFlyout}
+              onPanelLeave={scheduleCloseFlyout}
+              onViewAll={() => router.push("/projects")}
+              onCreateProject={() => router.push("/projects?new=1")}
+            />
           </>
         )}
       </div>
@@ -515,13 +564,23 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           >
             <div className="flex items-center justify-between px-1.5 pb-2">
               <span className="fg-label text-fg">Projects</span>
-              <button
-                type="button"
-                onClick={() => router.push("/projects")}
-                className="fg-caption rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-              >
-                View all
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => router.push("/projects?new=1")}
+                  className="fg-caption inline-flex items-center gap-1 rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+                >
+                  <Icon name="plus" size={13} />
+                  Create
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.push("/projects")}
+                  className="fg-caption rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+                >
+                  View all
+                </button>
+              </div>
             </div>
             <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
               {(projects ?? []).map((p) => {
@@ -554,6 +613,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="relative">
           <TopBar
+            breadcrumb={crumbs}
+            onBreadcrumbNavigate={(href) => router.push(href)}
             onMenu={() => setMobileNavOpen(true)}
             onCommandPalette={() => setPaletteOpen(true)}
             onNotifications={() => setNotificationsOpen((o) => !o)}
