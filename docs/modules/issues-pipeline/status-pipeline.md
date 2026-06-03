@@ -56,9 +56,10 @@ Missing info (any stage)     ──▶ needs_info — human-gated bounce, no aut
   in a live env / validate UX vs mockups, write a root-cause hypothesis) and exits to
   `clarified`, where forge-plan picks up. Cannot-reproduce/ambiguous → `needs_info`.
 - **Complexity auto-skip**: a stage with `states.<stage>.skipComplexities` (e.g.
-  `states.confirmed.skipComplexities: ["xs","s"]`) auto-advances issues whose sized
-  `complexity` matches, one hop along `STAGE_FORWARD`, skip reason `complexity_skip`
-  (breadcrumb + `pipeline_runs.metadata.skipChain`). Unsized issues never skip.
+  `states.confirmed.skipComplexities: ["xs","s"]`) is treated as skippable by the
+  soft-skip resolver for issues whose sized `complexity` matches — same chain and
+  telemetry as disabled-stage skips, skip reason `complexity_skip` (breadcrumb +
+  `pipeline_runs.metadata.skipChain`). Unsized issues never skip.
 - Projects that don't want clarify: leave no skill registered at `confirmed`
   (missing-skill soft-skip) or set `states.confirmed.enabled: false`. The 0093
   migration backfilled `enabled: false` for every project without `autoClarify`.

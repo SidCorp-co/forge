@@ -228,10 +228,11 @@ export const stageConfigSchema = z.object({
   // members share a Claude CLI session via --resume across the group.
   sessionGroup: z.string().min(1).max(64).optional(),
   // Complexity-based auto-skip. When the issue landing on this stage has a
-  // `complexity` in this list, the orchestrator advances it one hop along
-  // STAGE_FORWARD (skip reason `complexity_skip`) instead of dispatching the
-  // stage's job. Primary use: `states.confirmed.skipComplexities=['xs','s']`
-  // lets trivially-sized issues bypass the clarify step. Unset = never skip.
+  // `complexity` in this list, the soft-skip resolver treats the stage as
+  // skippable (reason `complexity_skip`) instead of dispatching its job —
+  // same chain/telemetry as disabled-stage and missing-skill skips. Primary
+  // use: `states.confirmed.skipComplexities=['xs','s']` lets trivially-sized
+  // issues bypass the clarify step. Unset = never skip.
   skipComplexities: z.array(z.enum(issueComplexities)).max(issueComplexities.length).optional(),
 });
 

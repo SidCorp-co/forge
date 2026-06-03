@@ -134,7 +134,8 @@ export type StagesConfig = Partial<
  * boolean ("is the stage disabled?") to a typed predicate so observability
  * (Sentry breadcrumbs, pipeline_runs.metadata.skipChain) can distinguish
  * operator-initiated config disablement from runtime "no skill registered"
- * gaps.
+ * gaps. Clarify-on-happy-path adds `complexity_skip`: the issue's sized
+ * `complexity` matched the stage's `skipComplexities` config.
  */
 export type SkipReason = 'stage_disabled' | 'missing_skill' | 'complexity_skip';
 
@@ -153,6 +154,15 @@ export interface ResolveSkipOpts {
    * the ISS-110 contract used by `validateStatesConfig`.
    */
   hasSkill?: (stage: IssueStatus) => boolean;
+  /**
+   * Returns true if the issue being routed matches `stage`'s
+   * `skipComplexities` config (clarify-on-happy-path). When provided, a
+   * matching stage is treated as skippable with reason `complexity_skip` —
+   * the orchestrator closes this over the loaded issue's `complexity`.
+   * Checked after `enabled` and `hasSkill` so operator disablement keeps
+   * its reason labels.
+   */
+  complexityMatches?: (stage: IssueStatus) => boolean;
 }
 
 export interface SkipResolution {
@@ -169,10 +179,11 @@ export interface SkipResolution {
 function classifySkippable(
   stage: IssueStatus,
   states: StagesConfig | undefined,
-  hasSkill: ((s: IssueStatus) => boolean) | undefined,
+  opts: ResolveSkipOpts | undefined,
 ): SkipReason | null {
   if (states?.[stage]?.enabled === false) return 'stage_disabled';
-  if (hasSkill && !hasSkill(stage)) return 'missing_skill';
+  if (opts?.hasSkill && !opts.hasSkill(stage)) return 'missing_skill';
+  if (opts?.complexityMatches?.(stage)) return 'complexity_skip';
   return null;
 }
 
@@ -199,8 +210,7 @@ export function resolveSkipTarget(
   opts?: ResolveSkipOpts,
 ): SkipResolution | null {
   if (!SKIPPABLE_STAGES.has(from)) return null;
-  const hasSkill = opts?.hasSkill;
-  const sourceReason = classifySkippable(from, states, hasSkill);
+  const sourceReason = classifySkippable(from, states, opts);
   if (!sourceReason) return null;
 
   const chain: IssueStatus[] = [];
@@ -216,7 +226,7 @@ export function resolveSkipTarget(
       // Anchor stage (e.g. `approved`, `closed`) — chain terminates here.
       return { to: cursor, chain, hops };
     }
-    const cursorReason = classifySkippable(cursor, states, hasSkill);
+    const cursorReason = classifySkippable(cursor, states, opts);
     if (!cursorReason) {
       // Skippable stage that is enabled AND has a skill — chain anchors here.
       return { to: cursor, chain, hops };

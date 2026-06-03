@@ -277,6 +277,46 @@ describe('soft-skip resolver — missing-skill predicate (ISS-239)', () => {
   });
 });
 
+describe('soft-skip resolver — complexity predicate (clarify-on-happy-path)', () => {
+  it('skips an enabled + skilled stage when complexityMatches returns true', () => {
+    // confirmed hosts clarify; an xs issue matches skipComplexities there.
+    const hasSkill = () => true;
+    const complexityMatches = (s: (typeof issueStatuses)[number]) => s === 'confirmed';
+    expect(resolveSkipTarget('confirmed', undefined, { hasSkill, complexityMatches })).toEqual({
+      to: 'clarified',
+      chain: ['clarified'],
+      hops: [{ to: 'clarified', reason: 'complexity_skip' }],
+    });
+  });
+
+  it('chains complexity_skip with stage_disabled in one walk', () => {
+    // confirmed (complexity match) → clarified (disabled) → approved anchor.
+    const hasSkill = () => true;
+    const complexityMatches = (s: (typeof issueStatuses)[number]) => s === 'confirmed';
+    const states: StagesConfig = { clarified: { enabled: false } };
+    expect(resolveSkipTarget('confirmed', states, { hasSkill, complexityMatches })).toEqual({
+      to: 'approved',
+      chain: ['clarified', 'approved'],
+      hops: [
+        { to: 'clarified', reason: 'complexity_skip' },
+        { to: 'approved', reason: 'stage_disabled' },
+      ],
+    });
+  });
+
+  it('disabled reason wins over complexity when both apply', () => {
+    const complexityMatches = () => true;
+    const states: StagesConfig = { confirmed: { enabled: false } };
+    const r = resolveSkipTarget('confirmed', states, { complexityMatches });
+    expect(r?.hops[0]?.reason).toBe('stage_disabled');
+  });
+
+  it('no predicate → enabled + skilled stage is not skipped', () => {
+    const hasSkill = () => true;
+    expect(resolveSkipTarget('confirmed', undefined, { hasSkill })).toBeNull();
+  });
+});
+
 describe('validateStatesConfig', () => {
   it('returns null on undefined config', () => {
     expect(validateStatesConfig(undefined)).toBeNull();

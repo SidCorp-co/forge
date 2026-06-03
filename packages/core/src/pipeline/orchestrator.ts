@@ -1,6 +1,13 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, type JobType, issues, jobs, projects } from '../db/schema.js';
+import {
+  type IssueComplexity,
+  type IssueStatus,
+  type JobType,
+  issues,
+  jobs,
+  projects,
+} from '../db/schema.js';
 import { type DeviceLite, applyStatusTransition } from '../issues/apply-transition.js';
 import { resolveMergeStates } from '../issues/merged-at.js';
 import { buildJobPromptString } from '../jobs/prompt-string.js';
@@ -31,7 +38,12 @@ import {
   resolveJobTypeForStatus,
 } from './skill-mapping.js';
 import { appendSkipChainEntry, postSkipChainCappedComment } from './skip-chain-log.js';
-import { SKIPPABLE_STAGES, STAGE_FORWARD, resolveSkipTarget } from './state-machine.js';
+import {
+  MAX_SKIP_CHAIN,
+  SKIPPABLE_STAGES,
+  STAGE_FORWARD,
+  resolveSkipTarget,
+} from './state-machine.js';
 
 export { ActiveJobConflictError } from './enqueue-helper.js';
 
@@ -452,10 +464,18 @@ async function considerEnqueue(args: {
 }
 
 /**
- * ISS-110 + ISS-239 — When a project's `pipelineConfig.states[stage].enabled
- * === false` OR no skill is registered for the stage, the orchestrator must
- * auto-transition issues past `stage` instead of dispatching (or stalling).
- * Chains of skippable stages collapse transitively (capped at MAX_SKIP_CHAIN).
+ * ISS-110 + ISS-239 + clarify-on-happy-path — When a project's
+ * `pipelineConfig.states[stage].enabled === false`, OR no skill is registered
+ * for the stage, OR the issue's sized `complexity` matches the stage's
+ * `skipComplexities` config, the orchestrator must auto-transition issues
+ * past `stage` instead of dispatching (or stalling). Chains of skippable
+ * stages collapse transitively (capped at MAX_SKIP_CHAIN); all three skip
+ * criteria share ONE resolver walk (`resolveSkipTarget`) and ONE hop loop so
+ * the breadcrumb / skipChain telemetry cannot drift between them.
+ *
+ * Returns true when at least one hop was applied — the caller must then skip
+ * considerEnqueue for the stage the issue just left (the re-emitted
+ * transition hook owns the new status).
  *
  * Each hop:
  *  - applies the transition with `skip: true`
@@ -479,9 +499,9 @@ async function autoSkipDisabledStages(
     ownerId: string | null;
     resolver: ProjectSkillResolver;
   },
-): Promise<void> {
+): Promise<boolean> {
   const { cfg, ownerId, resolver } = preloaded;
-  if (!cfg?.enabled) return;
+  if (!cfg?.enabled) return false;
 
   // ISS-239 — build the hasSkill predicate up-front so the resolver walks
   // skip stages with no registered skill as well as stages the operator
@@ -490,6 +510,23 @@ async function autoSkipDisabledStages(
   const skillStages = await resolver.stages();
   const hasSkill = (stage: IssueStatus) => skillStages.has(stage);
 
+  // Clarify-on-happy-path — when any stage reachable from `payload.to` along
+  // STAGE_FORWARD declares `skipComplexities`, the resolver needs the issue's
+  // sized `complexity`, so load the row up-front (it doubles as the race
+  // guard the post-resolve path otherwise performs). Projects without the
+  // knob never pay this fetch.
+  let issue: SkipIssueRow | null = null;
+  if (chainMayUseComplexity(payload.to, cfg)) {
+    issue = await loadIssueForSkip(payload.issueId);
+    if (!issue) return false;
+    if (issue.status !== payload.to) return false; // raced with another writer
+  }
+  const complexity = issue?.complexity ?? null;
+  const complexityMatches = complexity
+    ? (stage: IssueStatus) =>
+        stageConfigFor(cfg, stage)?.skipComplexities?.includes(complexity) === true
+    : undefined;
+
   // cfg.states is typed with the schema's narrower StageName keys; the
   // resolver accepts the wider IssueStatus shape, and reads only `.enabled`.
   // Cast through unknown to bridge the exactOptionalPropertyTypes mismatch
@@ -497,9 +534,9 @@ async function autoSkipDisabledStages(
   const skipResult = resolveSkipTarget(
     payload.to,
     cfg.states as unknown as Parameters<typeof resolveSkipTarget>[1],
-    { hasSkill },
+    { hasSkill, ...(complexityMatches ? { complexityMatches } : {}) },
   );
-  if (!skipResult) return;
+  if (!skipResult) return false;
 
   if (skipResult.capped) {
     // Chain exhausted MAX_SKIP_CHAIN without finding an anchor with a skill.
@@ -534,21 +571,14 @@ async function autoSkipDisabledStages(
       },
       'orchestrator: auto-skip chain capped without finding a skill anchor',
     );
-    return;
+    return false;
   }
 
-  const [issue] = await db
-    .select({
-      id: issues.id,
-      projectId: issues.projectId,
-      status: issues.status,
-      reopenCount: issues.reopenCount,
-    })
-    .from(issues)
-    .where(eq(issues.id, payload.issueId))
-    .limit(1);
-  if (!issue) return;
-  if (issue.status !== payload.to) return; // raced with another writer
+  if (!issue) {
+    issue = await loadIssueForSkip(payload.issueId);
+    if (!issue) return false;
+    if (issue.status !== payload.to) return false; // raced with another writer
+  }
 
   const device = resolveSkipDevice(payload.actor, ownerId);
   if (!device) {
@@ -556,7 +586,7 @@ async function autoSkipDisabledStages(
       { issueId: issue.id, projectId: issue.projectId },
       'orchestrator: skip-disabled requires a device principal; none available',
     );
-    return;
+    return false;
   }
 
   // Open the run once for the whole chain so per-hop metadata writes share
@@ -581,7 +611,7 @@ async function autoSkipDisabledStages(
         { err, issueId: current.id, from: current.status, to: nextStatus, reason: hop.reason },
         'orchestrator: auto-skip chain failed to advance',
       );
-      return;
+      return hopIndex > 0;
     }
 
     try {
@@ -599,17 +629,21 @@ async function autoSkipDisabledStages(
     }
 
     if (isSentryEnabled()) {
-      // Compat with ISS-110: existing dashboards key on this category.
+      // Compat with ISS-110: existing dashboards key on this category. The
+      // historical reason label is preserved for the config/skill cases;
+      // complexity hops carry their own reason.
+      const compatReason =
+        hop.reason === 'complexity_skip' ? 'complexity_skip' : 'skipped-disabled';
       Sentry.addBreadcrumb({
         category: 'pipeline_run.status_changed',
         level: 'info',
-        message: `${current.status} -> ${nextStatus} (skipped-disabled)`,
+        message: `${current.status} -> ${nextStatus} (${compatReason})`,
         data: {
           issueId: current.id,
           projectId: current.projectId,
           fromStatus: current.status,
           toStatus: nextStatus,
-          reason: 'skipped-disabled',
+          reason: compatReason,
           hop: hopIndex,
         },
       });
@@ -626,6 +660,7 @@ async function autoSkipDisabledStages(
           toStatus: nextStatus,
           reason: hop.reason,
           hop: hopIndex,
+          ...(hop.reason === 'complexity_skip' && complexity ? { complexity } : {}),
         },
       });
     }
@@ -633,35 +668,18 @@ async function autoSkipDisabledStages(
     current = { ...current, status: nextStatus };
     hopIndex++;
   }
+  return hopIndex > 0;
 }
 
-/**
- * Complexity-based auto-skip. When the stage the issue just landed on
- * declares `skipComplexities` and the issue's sized `complexity` is in that
- * list, advance one hop along STAGE_FORWARD with `skip: true` instead of
- * dispatching the stage's job. Primary use: clarify at `confirmed` —
- * `skipComplexities: ['xs','s']` lets trivially-sized issues bypass the
- * repro/validation pass and land directly on `clarified`.
- *
- * Single hop only — the applied transition re-emits the `transition` hook,
- * so disabled-stage chains after the hop are collapsed by
- * autoSkipDisabledStages on re-entry, and the next stage's job dispatches
- * through the normal considerEnqueue path.
- *
- * Returns true when the issue was advanced; the caller must then skip
- * considerEnqueue for the stage it just left.
- */
-async function autoSkipByComplexity(
-  payload: HookPayloads['transition'],
-  preloaded: { cfg: PipelineConfig | null; ownerId: string | null },
-): Promise<boolean> {
-  const { cfg, ownerId } = preloaded;
-  if (!cfg?.enabled) return false;
-  const skipList = stageConfigFor(cfg, payload.to)?.skipComplexities;
-  if (!skipList?.length) return false;
-  const forward = STAGE_FORWARD[payload.to];
-  if (!forward) return false;
+type SkipIssueRow = {
+  id: string;
+  projectId: string;
+  status: IssueStatus;
+  reopenCount: number;
+  complexity: IssueComplexity | null;
+};
 
+async function loadIssueForSkip(issueId: string): Promise<SkipIssueRow | null> {
   const [issue] = await db
     .select({
       id: issues.id,
@@ -671,83 +689,24 @@ async function autoSkipByComplexity(
       complexity: issues.complexity,
     })
     .from(issues)
-    .where(eq(issues.id, payload.issueId))
+    .where(eq(issues.id, issueId))
     .limit(1);
-  if (!issue) return false;
-  if (issue.status !== payload.to) return false; // raced with another writer
-  if (!issue.complexity || !skipList.includes(issue.complexity)) return false;
+  return issue ?? null;
+}
 
-  const device = resolveSkipDevice(payload.actor, ownerId);
-  if (!device) {
-    logger.warn(
-      { issueId: issue.id, projectId: issue.projectId },
-      'orchestrator: complexity-skip requires a device principal; none available',
-    );
-    return false;
+/**
+ * Cheap pure pre-check: does any stage reachable from `start` along
+ * STAGE_FORWARD (within the skip cap) declare `skipComplexities`? Decides
+ * whether autoSkipDisabledStages must load the issue row BEFORE resolving
+ * the skip chain (the complexity predicate is sync).
+ */
+function chainMayUseComplexity(start: IssueStatus, cfg: PipelineConfig): boolean {
+  let cursor: IssueStatus | undefined = start;
+  for (let hop = 0; hop <= MAX_SKIP_CHAIN && cursor; hop++) {
+    if (stageConfigFor(cfg, cursor)?.skipComplexities?.length) return true;
+    cursor = STAGE_FORWARD[cursor];
   }
-
-  const run = await openIssueRun({ projectId: issue.projectId, issueId: issue.id });
-
-  try {
-    await applyStatusTransition(issue, forward, device, { skip: true });
-  } catch (err) {
-    logger.warn(
-      { err, issueId: issue.id, from: payload.to, to: forward, complexity: issue.complexity },
-      'orchestrator: complexity-skip failed to advance',
-    );
-    return false;
-  }
-
-  try {
-    await appendSkipChainEntry(run.id, {
-      from: payload.to,
-      to: forward,
-      reason: 'complexity_skip',
-      at: new Date().toISOString(),
-    });
-  } catch (err) {
-    logger.warn(
-      { err, runId: run.id, from: payload.to, to: forward },
-      'orchestrator: failed to append skipChain metadata, continuing',
-    );
-  }
-
-  if (isSentryEnabled()) {
-    // Same two-breadcrumb shape as autoSkipDisabledStages (ISS-110 compat +
-    // typed auto_skip), so dashboards pick the hop up without new queries.
-    Sentry.addBreadcrumb({
-      category: 'pipeline_run.status_changed',
-      level: 'info',
-      message: `${payload.to} -> ${forward} (complexity_skip)`,
-      data: {
-        issueId: issue.id,
-        projectId: issue.projectId,
-        fromStatus: payload.to,
-        toStatus: forward,
-        reason: 'complexity_skip',
-      },
-    });
-    Sentry.addBreadcrumb({
-      category: 'pipeline_run.auto_skip',
-      level: 'info',
-      message: `${payload.to} -> ${forward} (complexity_skip)`,
-      data: {
-        runId: run.id,
-        issueId: issue.id,
-        projectId: issue.projectId,
-        fromStatus: payload.to,
-        toStatus: forward,
-        reason: 'complexity_skip',
-        complexity: issue.complexity,
-      },
-    });
-  }
-
-  logger.info(
-    { issueId: issue.id, from: payload.to, to: forward, complexity: issue.complexity },
-    'orchestrator: complexity-skip advanced issue',
-  );
-  return true;
+  return false;
 }
 
 function resolveSkipDevice(actor: Actor, ownerId: string | null): DeviceLite | null {
@@ -785,13 +744,11 @@ export function registerPipelineOrchestrator(bus: HooksBus): void {
       // ISS-239 — build the resolver once and thread it through both phases
       // so skill_registrations is read exactly once per transition hook.
       const resolver = createProjectSkillResolver(payload.projectId);
-      await autoSkipDisabledStages(payload, { cfg, ownerId, resolver });
-      // Complexity skip runs after the disabled-stage chain: if that chain
-      // already advanced the issue, the race-guard inside bails. When the
-      // skip fires, the re-emitted transition hook owns the next stage —
-      // do NOT considerEnqueue for the stage we just left.
-      const skippedByComplexity = await autoSkipByComplexity(payload, { cfg, ownerId });
-      if (skippedByComplexity) return;
+      // When the skip chain advanced the issue, the re-emitted transition
+      // hook owns the new status — do NOT considerEnqueue for the stage the
+      // issue just left (it would enqueue a job for a stage already skipped).
+      const advanced = await autoSkipDisabledStages(payload, { cfg, ownerId, resolver });
+      if (advanced) return;
       await considerEnqueue({
         projectId: payload.projectId,
         issueId: payload.issueId,
