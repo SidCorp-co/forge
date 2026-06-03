@@ -2,10 +2,11 @@
 // against core: `issues/routes.ts` (GET /:id), `comments/routes.ts`,
 // `issues/activity-routes.ts`, `tasks/routes.ts`, `issues/attachment-routes.ts`.
 
-import { apiClient } from "@/lib/api/client";
+import { apiClient, apiMultipart } from "@/lib/api/client";
 import type {
   ActivityItem,
   AttachmentRow,
+  CommentAttachment,
   CommentNode,
   IssueDetail,
   TaskRow,
@@ -29,6 +30,14 @@ export const issueDetailApi = {
       method: "POST",
       body: JSON.stringify(parentId ? { body, parentId } : { body }),
     }),
+
+  /** `POST /api/comments/:commentId/attachments` — multipart, one file per call.
+   *  Comments are created first (body only), then each staged file uploaded. */
+  uploadCommentAttachment: (commentId: string, file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return apiMultipart<CommentAttachment>(`/comments/${commentId}/attachments`, fd);
+  },
 
   /** `GET /api/issues/:id/activity` — reverse-chron timeline + `nextBefore`. */
   listActivity: (id: string, limit = 50) =>

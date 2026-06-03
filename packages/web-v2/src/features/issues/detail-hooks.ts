@@ -54,13 +54,37 @@ export function useAttachments(id: string | undefined) {
   });
 }
 
-/** Post a comment; invalidate the comment tree + activity feed on success. */
+/** Post a comment, then upload any staged files via per-file multipart
+ *  (`POST /api/comments/:commentId/attachments`). Create-then-upload mirrors v1:
+ *  the create endpoint takes only `body`/`parentId`. An upload failure does NOT
+ *  discard the already-created comment — we toast and still invalidate so the
+ *  comment (and any files that did upload) appears. Invalidate the comment tree
+ *  + activity feed on success. */
 export function useCreateComment(id: string) {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation({
-    mutationFn: (args: { body: string; parentId?: string }) =>
-      issueDetailApi.createComment(id, args.body, args.parentId),
+    mutationFn: async (args: { body: string; parentId?: string; files?: File[] }) => {
+      const created = await issueDetailApi.createComment(id, args.body, args.parentId);
+      const files = args.files ?? [];
+      if (files.length > 0) {
+        // Sequential upload keeps it simple and avoids server contention. On a
+        // failure the comment body is already posted, so surface a toast rather
+        // than throwing (which would mislabel it "Couldn't post comment").
+        for (const file of files) {
+          try {
+            await issueDetailApi.uploadCommentAttachment(created.id, file);
+          } catch (err) {
+            toast({
+              title: "Comment posted, but an attachment failed",
+              description: `${file.name}: ${formatApiError(err)}`,
+              tone: "error",
+            });
+          }
+        }
+      }
+      return created;
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["comments", id] });
       qc.invalidateQueries({ queryKey: ["activities", id] });

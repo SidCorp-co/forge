@@ -1,10 +1,10 @@
 import { zValidator } from '@hono/zod-validator';
-import { asc, count, eq } from 'drizzle-orm';
+import { asc, count, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { commentMentions, comments, issues } from '../db/schema.js';
+import { commentAttachments, commentMentions, comments, issues } from '../db/schema.js';
 import { paginationSchema, setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { logger } from '../logger.js';
@@ -12,7 +12,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { hooks } from '../pipeline/hooks.js';
 import { pgConstraintName, pgErrorCode } from './error-mapping.js';
 import { parseMentions, resolveMentions } from './mentions.js';
-import { type CommentRow, buildCommentTree } from './tree.js';
+import { type CommentAttachmentLite, type CommentRow, buildCommentTree } from './tree.js';
 
 const commentCreateSchema = z
   .object({
@@ -222,7 +222,39 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         .orderBy(asc(comments.createdAt))
         .limit(COMMENT_TREE_HARD_CAP);
 
-      const tree = buildCommentTree(rows);
+      // Join each comment's attachments in a single grouped query, keyed by
+      // commentId. Guard the empty-ids case so `inArray` never receives an
+      // empty list (which would build a malformed/`false` predicate).
+      const attachmentsByCommentId = new Map<string, CommentAttachmentLite[]>();
+      const commentIds = rows.map((r) => r.id);
+      if (commentIds.length > 0) {
+        const attachmentRows = await db
+          .select({
+            id: commentAttachments.id,
+            commentId: commentAttachments.commentId,
+            name: commentAttachments.name,
+            mime: commentAttachments.mime,
+            size: commentAttachments.size,
+            createdAt: commentAttachments.createdAt,
+          })
+          .from(commentAttachments)
+          .where(inArray(commentAttachments.commentId, commentIds))
+          .orderBy(asc(commentAttachments.createdAt));
+        for (const a of attachmentRows) {
+          const list = attachmentsByCommentId.get(a.commentId) ?? [];
+          list.push({
+            id: a.id,
+            name: a.name,
+            mime: a.mime,
+            size: a.size,
+            createdAt: a.createdAt,
+            url: `/api/comments/attachments/${a.id}`,
+          });
+          attachmentsByCommentId.set(a.commentId, list);
+        }
+      }
+
+      const tree = buildCommentTree(rows, attachmentsByCommentId);
       // Report the true total so paginating clients see the real comment
       // count even when the response payload was truncated to the cap.
       setTotalCount(c, Number(total));

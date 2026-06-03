@@ -75,6 +75,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Issue relationships now display clearly: the detail rail shows distinct Parent, Subtasks, Duplicates, and Related sections, and the Issues list/cards show epic (subtask count) and subtask markers alongside the blocked-by/blocks badges.**
   *Technical: web-v2: depCounts adds subtasks/hasParent from decompose edges; properties-rail splits the Related bucket and drops raw kind labels; IssueRefBadge gains an optional status tone dot.*
 
+- **You can now attach files to comments on the new issue-detail page: the comment and reply boxes accept a Choose-files button, drag-and-drop, and pasted screenshots (⌘/Ctrl+V), and each posted comment shows its attachments as image thumbnails or download links.**
+  *Technical: core GET /api/issues/:id/comments now joins comment_attachments into the tree (buildCommentTree takes an attachmentsByCommentId map; empty-ids guarded); web-v2 composer stages files against the comment allow-list (png/jpeg/gif/webp, pdf, text/plain, text/markdown — no video, ≤10 MB, ≤10/comment) then create-then-multipart-uploads each via POST /api/comments/:commentId/attachments; an upload failure toasts but keeps the posted comment. AttachmentGrid extracted to a shared AttachmentList used by both issue + comment attachments.*
+
 ### Removed
 
 ### Fixed
