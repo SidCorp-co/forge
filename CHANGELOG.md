@@ -69,6 +69,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **The new web app's navigation reads more clearly: breadcrumbs now reflect where you actually are instead of always starting with "Overview", the collapsed sidebar labels its Project and Workspace sections, and hovering the project switcher opens its panel cleanly without flicker. The Activity section is replaced by a new Usage screen that fills wide monitors with a full-width layout.**
   *Technical: web-v2 follow-up to ISS-358: breadcrumb root derived from route context (Workspace/Overview, Workspace/<Page>, Projects/<Project>/<Page>); RailKicker tier labels in nav-rail-compact; switcher click-away catcher scoped to left-[232px] to stop flyout flicker; new PageContainer wide-layout standard (max-w-[1720px]) exported from @/design; /activity route + workspace ActivityScreen removed, replaced by /usage UsageScreen (sample data behind preview banner). Merge 4f5c85d.*
 
+- **Redesigned the Issues and Agents screens (web-v2): the project nav is now Dashboard/Issues/Agents/Library/Automation, the Issues list is a wide table whose "All" filter includes drafts, the issue-detail view is restored with Run/Pause/Reopen actions, and agent/session status is now visually distinct from issue status.**
+  *Technical: web-v2 frontend only: PROJECT_ITEMS trimmed to 5 (Pipeline folds into Issues, /pipeline still reachable via ⌘K); IssueFilter collapsed to all/active/review/blocked with all→{} (reverses ISS-236); removed doubled in-page Breadcrumb on issue-detail (shell TopBar owns it) — the reported regression; StatusChip gains domain:issue|session. Merge 8a6b476.*
+
 ### Removed
 
 ### Fixed
