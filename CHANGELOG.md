@@ -87,6 +87,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Redesigned the project Issues screen with a Board / List / Insights view switcher: a pipeline kanban, the full-featured issues list, and a new analytics view (per-stage counts, durations, cost, and throughput). The active view is shareable via the URL.**
   *Technical: web-v2: issues-screen.tsx split into thin container + IssuesListView + new IssuesInsightsView; Board embeds PipelineBoard (new `embedded` prop); view state via useTabParam(?tab=); added median()/aggregateStageInsights() in pipeline/derive.ts. Frontend-only.*
 
+- **The Issues page now opens the redesigned interface with Board, List, and Insights views.**
+  *Technical: Legacy web /projects/:slug/issues routes (list, new, detail) now hand off to the web-v2 /v2 Issues experience (ISS-364 redesign). Merge 667a29d.*
+
 ### Removed
 
 ### Fixed
