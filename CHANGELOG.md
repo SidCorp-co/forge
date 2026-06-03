@@ -60,6 +60,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **The workspace landing page is now an Overview dashboard — KPIs, a needs-attention inbox, a work-distribution bar, spotlight projects, and recent activity — instead of a flat project list. The full project list moved to its own Projects page.**
   *Technical: Frontend-only redesign of the /v2 landing route in packages/web-v2; new features/overview module built from existing hooks (no API/core changes), full ProjectsConsole relocated to /v2/projects. Merge fd0c759.*
 
+- **Opening the classic Overview now takes you to the redesigned workspace Overview (v2). Other classic screens are unchanged for now — screens move to the new UI one at a time.**
+  *Technical: Added a V2_MIGRATED_PATHS exact-match map + redirect branch to packages/web middleware, placed after the auth gate. Authed hits on a migrated v1 path redirect to its /v2 equivalent (proxy routes /v2/* to web-v2). First entry: /dashboard -> /v2. Each future screen = one map entry.*
+
 ### Removed
 
 ### Fixed
