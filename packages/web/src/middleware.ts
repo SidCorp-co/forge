@@ -21,6 +21,15 @@ const PROTECTED_PREFIXES = [
   '/settings',
 ];
 
+// v1 paths whose canonical UI now lives in web-v2 (served at /v2 via the
+// reverse proxy). Strangler migration: add one entry per screen as it is cut
+// over to v2. Keys are matched exactly so unmigrated sibling routes are
+// untouched. The redirect below only fires for authenticated users, so the
+// auth gate still owns the unauthenticated case.
+const V2_MIGRATED_PATHS: Record<string, string> = {
+  '/dashboard': '/v2', // Overview — ISS-355 workspace dashboard
+};
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const jwt = request.cookies.get('forge_auth')?.value;
@@ -37,6 +46,15 @@ export function middleware(request: NextRequest) {
   );
   if (isProtected && !jwt) {
     return NextResponse.redirect(new URL('/login', request.url));
+  }
+
+  // Per-screen v1→v2 migration: authed hits on a migrated v1 path are sent to
+  // its /v2 equivalent (handed off to web-v2 by the reverse proxy). Placed
+  // after the auth gate so an unauthenticated /dashboard still goes to /login.
+  if (jwt && pathname in V2_MIGRATED_PATHS) {
+    return NextResponse.redirect(
+      new URL(V2_MIGRATED_PATHS[pathname], request.url),
+    );
   }
 
   return NextResponse.next();
