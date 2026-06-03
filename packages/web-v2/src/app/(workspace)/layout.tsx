@@ -42,7 +42,7 @@ const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
   // Overview = the all-projects home; the Attention queue is folded in here
   // (its live count rides on this row's badge).
   { key: "overview", label: "Overview", icon: "grid", href: "/" },
-  { key: "activity", label: "Activity", icon: "activity", href: "/activity" },
+  { key: "usage", label: "Usage", icon: "dollar", href: "/usage" },
   { key: "runners", label: "Runners", icon: "server", href: "/runners" },
 ];
 
@@ -207,28 +207,31 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     return ws?.key ?? "overview";
   }, [pathname, slug]);
 
-  // Breadcrumb trail for the top header (ISS-358): workspace root → project →
-  // page. Collapses to a single non-link "Overview" crumb on the landing route
-  // and on no-project workspace screens it stays workspace-rooted.
+  // Breadcrumb trail for the top header (ISS-358; ISS-359 fix). The root crumb
+  // is derived from context instead of hard-pinning "Overview" in front of every
+  // screen:
+  //   • landing `/`            → "Workspace / Overview" (you're on Overview)
+  //   • project-tier screens   → "Projects / <Project> / <Page>"
+  //   • other workspace screens→ "Workspace / <Page>"
   const crumbs = useMemo<Crumb[]>(() => {
-    const root: Crumb = { label: "Overview", href: "/" };
-    if (pathname === "/") return [{ label: "Overview" }];
+    const wsRoot: Crumb = { label: "Workspace", href: "/" };
+    if (pathname === "/") return [wsRoot, { label: "Overview" }];
 
     if (slug) {
       const page = PROJECT_ITEMS.find((it) => it.key === activeKey);
       return [
-        root,
+        { label: "Projects", href: "/projects" },
         { label: activeProject?.name ?? slug, href: `/projects/${slug}` },
         { label: page?.label ?? "Dashboard" },
       ];
     }
 
-    if (pathname.startsWith("/docs")) return [root, { label: "Docs" }];
+    if (pathname.startsWith("/docs")) return [wsRoot, { label: "Docs" }];
     // Resolve the page label from the rail destinations; longest href match wins.
     const hit = [...WORKSPACE_ITEMS, ...SECONDARY_DESTINATIONS]
       .filter((it) => it.href !== "/" && pathname.startsWith(it.href))
       .sort((a, b) => b.href.length - a.href.length)[0];
-    return hit ? [root, { label: hit.label }] : [{ label: "Overview" }];
+    return hit ? [wsRoot, { label: hit.label }] : [wsRoot, { label: "Overview" }];
   }, [pathname, slug, activeProject, activeKey]);
 
   // Project-tier glyph for the rail's switcher button — follows the rail project.
@@ -292,7 +295,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const compactWorkspaceItems = useMemo<RailItem[]>(
     () => [
       { key: "overview", label: "Overview", icon: "grid", badge: attentionCount },
-      { key: "activity", label: "Activity", icon: "activity" },
+      { key: "usage", label: "Usage", icon: "dollar" },
       { key: "runners", label: "Runners", icon: "server" },
     ],
     [attentionCount],
@@ -336,7 +339,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     () => [
       { key: "projects", label: "Projects", icon: "folder" },
       { key: "attention", label: "Attention", icon: "inbox", badge: attentionCount },
-      { key: "activity", label: "Activity", icon: "activity" },
+      { key: "usage", label: "Usage", icon: "dollar" },
       { key: "search", label: "Search", icon: "search" },
       { key: "you", label: "You", icon: "settings" },
     ],
@@ -348,7 +351,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     // Overview dashboard at `/` is reachable via the rail/⌘K, not a bottom tab.
     if (pathname.startsWith("/projects")) return "projects";
     if (pathname.startsWith("/attention")) return "attention";
-    if (pathname.startsWith("/activity")) return "activity";
+    if (pathname.startsWith("/usage")) return "usage";
     if (pathname.startsWith("/settings")) return "you";
     return "";
   }, [pathname]);
@@ -361,8 +364,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
       case "attention":
         router.push("/attention");
         break;
-      case "activity":
-        router.push("/activity");
+      case "usage":
+        router.push("/usage");
         break;
       case "search":
         setPaletteOpen(true);

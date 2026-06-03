@@ -56,6 +56,22 @@ export interface NavRailCompactProps {
   onExpand?: () => void;
 }
 
+/** Tiny centered tier label for the 76px rail (ISS-359). The faint hairline
+ *  alone read as ambiguous, so each tier (Project · Space) gets an uppercase
+ *  kicker scaled down to fit the narrow rail. */
+function RailKicker({ label, className }: { label: string; className?: string }) {
+  return (
+    <span
+      className={cn(
+        "select-none px-1 text-center text-[8.5px] font-semibold uppercase leading-none tracking-[0.08em] text-subtle",
+        className,
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
 function RailButton({
   item,
   active,
@@ -304,13 +320,14 @@ export function NavRailCompact({
           </div>
 
           {/* Project tier. */}
-          <div className="mt-1.5 flex flex-col items-center gap-[3px]">
+          <RailKicker label="Project" className="mt-1.5" />
+          <div className="mt-1 flex flex-col items-center gap-[3px]">
             {projectItems.map((it) => (
               <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
             ))}
           </div>
 
-          <div className="my-[11px] h-px w-[34px] bg-[color:var(--border-subtle)]" />
+          <div className="my-[9px] h-px w-[34px] bg-[color:var(--border-subtle)]" />
         </>
       )}
 
@@ -340,7 +357,8 @@ export function NavRailCompact({
       )}
 
       {/* Workspace tier — demoted below the project tier (project-first). */}
-      <div className="flex flex-col items-center gap-[3px]">
+      <RailKicker label="Space" />
+      <div className="mt-1 flex flex-col items-center gap-[3px]">
         {workspaceItems.map((it) => (
           <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
         ))}

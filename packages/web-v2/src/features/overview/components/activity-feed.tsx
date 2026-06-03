@@ -1,6 +1,8 @@
 // Compact recent cross-project activity — the last few agent Q&A turns from the
-// `useActivity` feed. Project slug · query snippet · relative time. Header links
-// to the full `/activity` feed. Presentational: rows + states are passed in.
+// `useActivity` feed. Project slug · query snippet · relative time.
+// Presentational: rows + states are passed in. (The standalone workspace
+// Activity page was removed in ISS-359, so `onViewAll` is optional now — when
+// omitted the header shows no "View all" link.)
 import { Card, CardContent, Icon, MonoTag } from '@/design';
 import { formatRelativeTime } from '@/features/projects/derive';
 import type { ChatLogRow } from '@/features/activity/types';
@@ -16,7 +18,7 @@ export function ActivityFeed({
   now: number;
   isLoading: boolean;
   onOpen: (slug: string) => void;
-  onViewAll: () => void;
+  onViewAll?: () => void;
 }) {
   return (
     <Card className="flex h-full flex-col">
@@ -25,14 +27,16 @@ export function ActivityFeed({
           <Icon name="activity" size={16} className="text-subtle" />
           <h3 className="fg-h3">Recent activity</h3>
         </div>
-        <button
-          type="button"
-          onClick={onViewAll}
-          className="fg-caption inline-flex items-center gap-1 rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-        >
-          View all
-          <Icon name="arrowRight" size={13} />
-        </button>
+        {onViewAll && (
+          <button
+            type="button"
+            onClick={onViewAll}
+            className="fg-caption inline-flex items-center gap-1 rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          >
+            View all
+            <Icon name="arrowRight" size={13} />
+          </button>
+        )}
       </div>
       <CardContent className="flex-1">
         {isLoading ? (

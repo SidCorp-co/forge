@@ -82,11 +82,15 @@ export function ProjectFlyout({
 
   return (
     <>
-      {/* Click-away catcher. */}
+      {/* Click-away catcher. Starts at the rail's right edge (left-[232px]) so it
+          never overlays the switcher trigger inside the rail — otherwise the
+          overlay steals the pointer the moment the flyout opens, firing the
+          trigger's mouseleave and flickering the panel closed/open (ISS-359).
+          The panel itself (z-50) still sits above this catcher. */}
       <button
         type="button"
         aria-label="Close project switcher"
-        className="fixed inset-0 z-40 cursor-default"
+        className="fixed inset-y-0 right-0 left-[232px] z-40 cursor-default"
         onClick={onClose}
       />
       <div
@@ -96,7 +100,9 @@ export function ProjectFlyout({
         aria-label="Switch project"
         onMouseEnter={onPanelEnter}
         onMouseLeave={onPanelLeave}
-        className="forge-slide fixed top-[60px] left-[68px] z-50 flex max-h-[70vh] w-[300px] flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-[var(--shadow-lg)] md:left-[240px]"
+        // Anchored flush to the expanded rail's right edge (rail is w-[232px]) so
+        // there is no dead gap for the pointer to cross between trigger and panel.
+        className="forge-slide fixed top-[60px] left-[232px] z-50 flex max-h-[70vh] w-[300px] flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-[var(--shadow-lg)]"
       >
         <div className="border-b border-line-subtle p-2">
           <Input
