@@ -63,6 +63,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Opening the classic Overview now takes you to the redesigned workspace Overview (v2). Other classic screens are unchanged for now — screens move to the new UI one at a time.**
   *Technical: Added a V2_MIGRATED_PATHS exact-match map + redirect branch to packages/web middleware, placed after the auth gate. Authed hits on a migrated v1 path redirect to its /v2 equivalent (proxy routes /v2/* to web-v2). First entry: /dashboard -> /v2. Each future screen = one map entry.*
 
+- **The new web app's navigation is now project-first: the project switcher is pinned at the top of the sidebar and opens on hover, click, or keyboard — with "View all" and "Create project" actions — and the project pages (Dashboard, Issues, Agents, Library, Automation) sit above the workspace links. The top bar now shows a breadcrumb (workspace → project → page) instead of a single title, while keeping ⌘K search, notifications, and New issue.**
+  *Technical: web-v2 nav-rail + nav-rail-compact reordered to project-first (PROJECT cluster above WORKSPACE); hover open/close timers lifted into WorkspaceShell and shared by the switcher + project-flyout; flyout gained View all + Create project (→ /projects, /projects?new=1) and re-anchored to the top; TopBar title replaced by the existing Breadcrumb primitive. Merge 1e6fb45 (ISS-358).*
+
 ### Removed
 
 ### Fixed
