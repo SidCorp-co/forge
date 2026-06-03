@@ -78,6 +78,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **You can now attach files to comments on the new issue-detail page: the comment and reply boxes accept a Choose-files button, drag-and-drop, and pasted screenshots (⌘/Ctrl+V), and each posted comment shows its attachments as image thumbnails or download links.**
   *Technical: core GET /api/issues/:id/comments now joins comment_attachments into the tree (buildCommentTree takes an attachmentsByCommentId map; empty-ids guarded); web-v2 composer stages files against the comment allow-list (png/jpeg/gif/webp, pdf, text/plain, text/markdown — no video, ≤10 MB, ≤10/comment) then create-then-multipart-uploads each via POST /api/comments/:commentId/attachments; an upload failure toasts but keeps the posted comment. AttachmentGrid extracted to a shared AttachmentList used by both issue + comment attachments.*
 
+- **Redesigned the project Issues screen with a Board / List / Insights view switcher: a pipeline kanban, the full-featured issues list, and a new analytics view (per-stage counts, durations, cost, and throughput). The active view is shareable via the URL.**
+  *Technical: web-v2: issues-screen.tsx split into thin container + IssuesListView + new IssuesInsightsView; Board embeds PipelineBoard (new `embedded` prop); view state via useTabParam(?tab=); added median()/aggregateStageInsights() in pipeline/derive.ts. Frontend-only.*
+
 ### Removed
 
 ### Fixed
