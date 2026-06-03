@@ -144,7 +144,6 @@ export function OverviewScreen() {
             now={now}
             isLoading={activity.isLoading}
             onOpen={openProject}
-            onViewAll={() => router.push('/activity')}
           />
         </div>
       </div>

@@ -9,8 +9,9 @@
 // `lib/ws/event-router.ts` invalidates `['chat-logs']` after a dropped socket
 // (ISS-314); (2) `refetchOnWindowFocus`; (3) the explicit Refresh action.
 // Pushing per-row in real time would need a `chat-log.created` broadcast in
-// core — recorded as a follow-up, deliberately out of scope for this UI
-// migration (see the decision comment in `components/activity-screen.tsx`).
+// core — recorded as a follow-up, deliberately out of scope. (Consumed by the
+// Overview "Recent activity" widget; the standalone Activity page was removed in
+// ISS-359.)
 import { useQuery } from "@tanstack/react-query";
 import { activityApi, type ListActivityOpts } from "./api";
 

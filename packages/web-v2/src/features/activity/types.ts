@@ -1,12 +1,13 @@
 // web-v2 feature module: activity — types + pure derive helpers.
 //
-// The Activity destination migrates v1's Chat Logs index into the workspace
-// tier: a cross-project feed of agent Q&A turns. Row shape mirrors the exact
+// A cross-project feed of agent Q&A turns. The standalone workspace Activity
+// page was removed in ISS-359 (replaced by Usage); these types + hooks now power
+// the "Recent activity" widget on the workspace Overview
+// (`features/overview/components/activity-feed.tsx`). Row shape mirrors the exact
 // projection `GET /api/chat-logs` returns (a drizzle `select()` over the
 // `chat_logs` table — camelCase keys), verified against
 // `packages/core/src/chat-logs/routes.ts` + `db/schema.ts` (do not guess
-// field names). Token throughput shown on the page is derived from these rows
-// (see the usage/cost decision in `components/activity-screen.tsx`).
+// field names).
 
 export const QA_RATINGS = ["good", "bad", "flagged"] as const;
 export type QaRating = (typeof QA_RATINGS)[number];

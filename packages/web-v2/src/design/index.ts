@@ -47,6 +47,7 @@ export { Banner, type BannerProps } from "./primitives/banner";
 export { Tooltip, type TooltipProps } from "./primitives/tooltip";
 export { Tabs, type TabsProps, type TabItem } from "./primitives/tabs";
 export { ScreenTabs, type ScreenTabsProps } from "./patterns/screen-tabs";
+export { PageContainer, type PageContainerProps } from "./patterns/page-container";
 export { Breadcrumb, type BreadcrumbProps, type Crumb } from "./primitives/breadcrumb";
 export { Pagination, type PaginationProps } from "./primitives/pagination";
 export { Collapsible, type CollapsibleProps } from "./primitives/collapsible";
