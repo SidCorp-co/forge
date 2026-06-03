@@ -2,7 +2,12 @@ import { randomBytes } from 'node:crypto';
 import { and, count, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
-import { type ProjectMemberRole, agentSessions, projectMembers, projects } from '../../db/schema.js';
+import {
+  type ProjectMemberRole,
+  agentSessions,
+  projectMembers,
+  projects,
+} from '../../db/schema.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../../lib/db-errors.js';
 import {
   type ContextScopedMcpToolFactory,
@@ -470,6 +475,12 @@ export const forgeProjectsArchiveTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(archiveInputSchema),
   handler: async (args) => {
     const input = archiveInputSchema.parse(args);
+    // Hard-delete is a mutation — require the `write` scope for PAT principals,
+    // matching forge_projects.create/.update. Without this a read-only PAT that
+    // owns/admins a project could delete it while being unable to update it.
+    if (ctx.principal.kind === 'pat' && !ctx.principal.scopes.includes('write')) {
+      throw new Error('FORBIDDEN_SCOPE: requires write scope on the PAT');
+    }
     if (!input.confirm) {
       throw new Error('BAD_REQUEST: archive requires confirm:true');
     }

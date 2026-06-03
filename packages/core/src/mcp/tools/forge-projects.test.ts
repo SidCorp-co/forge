@@ -748,6 +748,15 @@ describe('forge_projects.archive', () => {
     ).rejects.toThrow(/BAD_REQUEST: archive requires confirm/);
   });
 
+  it('a read-only PAT is refused with FORBIDDEN_SCOPE (parity with create/update)', async () => {
+    const tool = forgeProjectsArchiveTool(patCtx({ scopes: ['read'] }));
+    await expect(
+      tool.handler({ projectId: PROJECT_A, confirm: true }),
+    ).rejects.toThrow(/FORBIDDEN_SCOPE: requires write scope/);
+    // refused before any DB access
+    expect(selectImpl).not.toHaveBeenCalled();
+  });
+
   it('by a non-admin is refused', async () => {
     // caller is neither owner nor a member → assertPrincipalIsAdmin throws
     // before any delete.
