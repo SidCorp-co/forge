@@ -43,7 +43,7 @@ describe("aggregateStageInsights", () => {
   it("returns one row per stage in STAGES order with live counts", () => {
     const groups = groupIssuesByStage([
       issue({ id: "a", status: "open" }), // → triage
-      issue({ id: "b", status: "confirmed" }), // → triage
+      issue({ id: "b", status: "confirmed" }), // → clarify (hosts the clarify step)
       issue({ id: "c", status: "in_progress" }), // → code
     ]);
     const rows = aggregateStageInsights(groups, []);
@@ -56,7 +56,8 @@ describe("aggregateStageInsights", () => {
       "test",
       "release",
     ]);
-    expect(rows.find((r) => r.stage === "triage")?.count).toBe(2);
+    expect(rows.find((r) => r.stage === "triage")?.count).toBe(1);
+    expect(rows.find((r) => r.stage === "clarify")?.count).toBe(1);
     expect(rows.find((r) => r.stage === "code")?.count).toBe(1);
     // No durations → null median, zero cost.
     expect(rows.find((r) => r.stage === "triage")?.medianSec).toBeNull();
