@@ -2,7 +2,7 @@
 // shared `apiClient`/`apiClientList` (no raw fetch). Routes verified against
 // `packages/core/src/agent-sessions/routes.ts` for ISS-291.
 import { apiClient, apiClientList } from "@/lib/api/client";
-import type { QueueStats, SessionRow } from "./types";
+import type { QueueStats, SessionCost, SessionRow } from "./types";
 
 export const SESSIONS_PAGE_SIZE = 50;
 
@@ -36,6 +36,9 @@ export const sessionsApi = {
       `/agent-sessions/sweep-zombies?projectId=${encodeURIComponent(projectId)}`,
       { method: "POST" },
     ),
+
+  /** `GET /:id/cost` — per-session usage_records rollup (ISS-378 AC#6). */
+  cost: (id: string) => apiClient<SessionCost>(`/agent-sessions/${id}/cost`),
 
   /** `POST /:id/cancel` — queued/running/idle → failed (user_cancelled). */
   cancel: (id: string) =>

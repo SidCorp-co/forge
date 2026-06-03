@@ -11,15 +11,17 @@
 // "Sessions for this issue" list (sibling sessions via the existing list API).
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { HealthDot, Icon, MonoTag, PipelineTracker, Stat, StatusChip, useElapsed } from "@/design";
+import { Banner, HealthDot, Icon, MonoTag, PipelineTracker, Stat, StatusChip, useElapsed } from "@/design";
 import {
   deriveSessionDisplayStatus,
   deriveStage,
   statusToChip,
   statusToRun,
+  FAILURE_REASON_ACTION,
+  FAILURE_REASON_LABEL,
   type SessionRow,
 } from "@/features/sessions/types";
-import { useSessions } from "@/features/sessions/hooks";
+import { useSessionCost, useSessions } from "@/features/sessions/hooks";
 import { useDevices } from "@/features/runners/hooks";
 import { deviceHealth } from "@/features/runners/types";
 import { deriveAgentTasks, deriveFilesChanged, type ConversationItem } from "../types";
@@ -43,6 +45,12 @@ function fmtNum(n: number | undefined): string {
   if (n == null) return "—";
   if (n >= 1000) return `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k`;
   return String(n);
+}
+
+/** USD cost — sub-cent precision for tiny sessions, 2dp otherwise. */
+function fmtCost(usd: number): string {
+  if (usd > 0 && usd < 0.01) return "<$0.01";
+  return `$${usd.toFixed(2)}`;
 }
 
 /** Short absolute timestamp, or "—" when absent/invalid (older rows). */
@@ -119,6 +127,22 @@ export function ContextRail({
     );
   }, [siblingsQ.data, issueId, session.id]);
 
+  // Real per-session cost from usage_records (ISS-378 AC#6) — the session row
+  // itself carries no dollar cost/model.
+  const costQ = useSessionCost(session.id);
+  const cost = costQ.data;
+  const modelLabel =
+    cost && cost.models.length > 0
+      ? cost.models.length === 1
+        ? cost.models[0]!.model
+        : `${cost.models.length} models`
+      : null;
+
+  // On-failure blocker-card: concrete reason + a one-line suggested next action.
+  const failureReason = session.failureReason ?? null;
+  const showBlocker =
+    !!failureReason && (display === "failed" || display === "stalled" || display === "cancelled_stale");
+
   return (
     <div className="flex flex-col gap-6">
       {session.deviceId && (
@@ -187,12 +211,32 @@ export function ContextRail({
               {fmtNum(usage.cacheRead)} / {fmtNum(usage.cacheWrite)} cache
             </Stat>
           )}
-          {/* Per-session cost & model live in the separate usage_records table,
-              not joined into this row — documented backend follow-up (ISS-352),
-              shown as "—" rather than faked. */}
-          <Stat icon="dollar" title="Cost not tracked on this session">— cost</Stat>
+          {/* Real per-session cost + model, aggregated from usage_records via
+              GET /agent-sessions/:id/cost (ISS-378). "—" only while loading or
+              when no usage rows exist yet. */}
+          <Stat icon="dollar" title="Estimated cost (usage_records)">
+            {cost ? fmtCost(cost.estimatedCost) : "—"} cost
+          </Stat>
+          {modelLabel && (
+            <Stat icon="cpu" title="Model(s) billed against this session">
+              {modelLabel}
+            </Stat>
+          )}
         </div>
       </Section>
+
+      {showBlocker && (
+        <Section title="Blocked">
+          <Banner tone={failureReason === "user_cancelled" ? "attention" : "danger"}>
+            <span className="font-semibold">
+              {FAILURE_REASON_LABEL[failureReason] ?? failureReason}
+            </span>
+            {FAILURE_REASON_ACTION[failureReason] && (
+              <span className="mt-0.5 block">{FAILURE_REASON_ACTION[failureReason]}</span>
+            )}
+          </Banner>
+        </Section>
+      )}
 
       <Section title="Timing">
         <div className="flex flex-col gap-2.5">
@@ -231,6 +275,11 @@ export function ContextRail({
 
       {issueId && siblings.length > 0 && (
         <Section title={`Sessions for this issue · ${siblings.length}`}>
+          {/* ISS-378 link-out stub: the session-group / resumed-fresh continuity
+              view is owned by ISS-376 and not yet built. Until it lands, this
+              existing sibling-session rail IS the "all sessions for this issue"
+              surface — do NOT reimplement the resumed/fresh badge here.
+              TODO(ISS-376): link each sibling to the session-group timeline. */}
           <ul className="flex flex-col gap-1.5">
             {siblings.map((s) => (
               <SiblingRow

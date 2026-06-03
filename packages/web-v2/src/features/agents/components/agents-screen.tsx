@@ -4,13 +4,19 @@
 // Chat (the single-assistant thread) under one shell. Each renders its existing
 // scoped screen unchanged; this shell only arranges them.
 //
-// Desktop: list → detail — Sessions on the left, Chat on the right.
-// Mobile:  Tabs [Sessions | Chat], one pane at a time.
+// Desktop: full-width Sessions list with the Agent Chat as an on-demand dock
+//   (ISS-378 AC#7) — closed by default, opened via an explicit "Ask agent"
+//   header affordance, open/closed persisted per user. The interactive chat
+//   session surfaces as a row in the Sessions list, so a stalled chat is
+//   visible + cancellable there rather than living only as a permanent side
+//   card eating a third of the screen.
+// Mobile:  Tabs [Sessions | Chat], one pane at a time (already on-demand).
 // The active mobile tab is mirrored to `?tab=` (shallow replaceState, hydrated
 // from the URL on mount) so deep-links work without a Suspense boundary.
 import { useEffect, useState } from "react";
-import { ScreenTabs, type TabItem } from "@/design";
+import { Button, ScreenTabs, SlideOver, type TabItem } from "@/design";
 import { useTabParam } from "@/lib/utils/use-tab-param";
+import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { SessionsScreen } from "@/features/sessions/components/sessions-screen";
 import { ChatScreen } from "@/features/session/components/chat-screen";
 
@@ -39,6 +45,10 @@ export function AgentsScreen({ scope }: AgentsScreenProps) {
 
   const sessionsScope = { projectId: scope.projectId, ...(issueId ? { issueId } : {}) };
 
+  // Per-user open/closed state for the desktop chat dock — closed by default,
+  // persisted across reloads + tabs (ISS-378 AC#7).
+  const [chatOpen, setChatOpen] = usePersistedState("web-v2:agents-chat-open", false);
+
   return (
     <div className="flex min-h-full flex-col">
       {/* Mobile: single-pane tabs. */}
@@ -51,14 +61,29 @@ export function AgentsScreen({ scope }: AgentsScreenProps) {
         )}
       </div>
 
-      {/* Desktop: list → detail, two panes side-by-side. */}
-      <div className="hidden min-h-full md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
-        <div className="min-w-0 border-r border-line">
+      {/* Desktop: full-width Sessions list + on-demand chat dock. */}
+      <div className="hidden min-h-full flex-col md:flex">
+        <div className="flex items-center justify-end border-b border-line px-4 py-2">
+          <Button
+            variant={chatOpen ? "primary" : "secondary"}
+            size="sm"
+            icon="agent"
+            onClick={() => setChatOpen((v) => !v)}
+          >
+            Ask agent
+          </Button>
+        </div>
+        <div className="min-w-0 flex-1">
           <SessionsScreen scope={sessionsScope} />
         </div>
-        <div className="min-w-0">
+        <SlideOver
+          open={chatOpen}
+          onClose={() => setChatOpen(false)}
+          title="Agent chat"
+          width={560}
+        >
           <ChatScreen projectId={scope.projectId} />
-        </div>
+        </SlideOver>
       </div>
     </div>
   );

@@ -14,6 +14,8 @@ import {
   CardContent,
   EmptyState,
   ErrorState,
+  HealthDot,
+  Icon,
   IconButton,
   Menu,
   MonoTag,
@@ -32,11 +34,13 @@ import {
   type MenuItem,
   type SegmentOption,
 } from "@/design";
-import { useProjects } from "@/features/projects/hooks";
+import { useProject, useProjects } from "@/features/projects/hooks";
+import { useDevices } from "@/features/runners/hooks";
 import { IssueRefBadge } from "@/features/issues/components/issue-ref-badge";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
+import { FleetStrip } from "./fleet-strip";
 import {
   useAbortSession,
   useCancelSession,
@@ -46,10 +50,13 @@ import {
   useSweepZombies,
 } from "../hooks";
 import {
+  deriveLiveness,
   deriveSessionDisplayStatus,
   deriveStage,
   isRetryable,
+  sessionKind,
   statusToChip,
+  FAILURE_REASON_LABEL,
   type AgentSessionDisplayStatus,
   type SessionFilter,
   type SessionRow,
@@ -68,6 +75,14 @@ function formatDuration(ms: number): string {
   const m = Math.floor(s / 60);
   const h = Math.floor(m / 60);
   if (h > 0) return `${h}h ${String(m % 60).padStart(2, "0")}m`;
+  if (m > 0) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
+  return `${s}s`;
+}
+
+/** `m ss` / `s` countdown for the reap-window label. */
+function formatCountdown(ms: number): string {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(s / 60);
   if (m > 0) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
   return `${s}s`;
 }
@@ -114,6 +129,19 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
     return m;
   }, [projectsQ.data]);
   const slugFor = (row: SessionRow) => slugById.get(row.projectId);
+
+  // Resolve a device id → friendly name so each row can show WHERE it ran.
+  // Project tier: the project's devicePool (project-scoped). Workspace tier:
+  // fall back to the caller's owner-scoped device list. Unknown ids render as
+  // a short MonoTag (different owner's device).
+  const projectDetailQ = useProject(projectId);
+  const devicesQ = useDevices();
+  const deviceNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of projectDetailQ.data?.devicePool ?? []) m.set(d.id, d.name);
+    for (const d of devicesQ.data ?? []) if (!m.has(d.id)) m.set(d.id, d.name);
+    return m;
+  }, [projectDetailQ.data, devicesQ.data]);
 
   // Live updates: project tier subscribes to its room; workspace tier fans out
   // across every visible project. The event-router invalidates ['agent-sessions'].
@@ -221,9 +249,19 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
         )}
       </header>
 
+      {/* Fleet-runner rollup (ISS-378) — per-device chips + the no-runner
+          banner. Project tier only (needs a project-scoped device pool +
+          queue-stats); the workspace tier keeps the aggregate summary alone. */}
+      {projectId && (
+        <div className="mb-4">
+          <FleetStrip projectId={projectId} rows={rows} displays={displays} now={now} />
+        </div>
+      )}
+
       {/* Headline queue stats (draft "q-strip") — derived from the loaded list
           so they work at both tiers (queue-stats only returns per-device
-          queued/running). Active · Queued · Zombie jobs · Median wait. */}
+          queued/running). Active · Queued · Zombie jobs · Median wait. Kept as a
+          compact summary beneath the fleet strip. */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
         <StatCard label="Active" value={String(stats.active)} />
         <StatCard label="Queued" value={String(stats.queued)} />
@@ -275,6 +313,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
                 <TR>
                   <TH>Session</TH>
                   <TH>Issue · agent</TH>
+                  <TH>Runner</TH>
                   <TH className="text-right">Turns</TH>
                   <TH className="text-right">Duration</TH>
                   <TH>Status</TH>
@@ -283,7 +322,14 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
               </THead>
               <TBody>
                 {visibleRows.map((row) => (
-                  <SessionTableRow key={row.id} row={row} slug={slugFor(row)} now={now} actions={actions} />
+                  <SessionTableRow
+                    key={row.id}
+                    row={row}
+                    slug={slugFor(row)}
+                    deviceName={row.deviceId ? deviceNameById.get(row.deviceId) : undefined}
+                    now={now}
+                    actions={actions}
+                  />
                 ))}
               </TBody>
             </Table>
@@ -292,7 +338,14 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
           {/* Mobile: stacked cards — no horizontal page scroll. */}
           <div className="space-y-2.5 md:hidden">
             {visibleRows.map((row) => (
-              <SessionMobileCard key={row.id} row={row} slug={slugFor(row)} now={now} actions={actions} />
+              <SessionMobileCard
+                key={row.id}
+                row={row}
+                slug={slugFor(row)}
+                deviceName={row.deviceId ? deviceNameById.get(row.deviceId) : undefined}
+                now={now}
+                actions={actions}
+              />
             ))}
           </div>
         </>
@@ -395,8 +448,9 @@ function SessionIdentity({
   slug?: string;
   onOpen?: () => void;
 }) {
+  const router = useRouter();
   const issueId = row.metadata?.issueId;
-  const type = row.metadata?.type;
+  const kind = sessionKind(row);
   const title = row.title ?? "Untitled session";
   return (
     <div className="min-w-0">
@@ -412,14 +466,111 @@ function SessionIdentity({
         <p className="fg-body-sm truncate text-fg">{title}</p>
       )}
       <div className="mt-1 flex flex-wrap items-center gap-1.5">
-        {type && <MonoTag>{type}</MonoTag>}
+        {/* Pipeline (job-driven) vs interactive chat — a running chat spawns no
+            job, so it is NOT a wedged runner (ISS-378 AC#4). */}
+        <Tooltip
+          label={
+            kind === "chat"
+              ? "Interactive chat — spawns no pipeline job, so a running chat is not a wedged runner."
+              : "Pipeline session — driven by a pipeline job on a runner."
+          }
+        >
+          <MonoTag hue={kind === "chat" ? "flame" : "cobalt"}>{kind}</MonoTag>
+        </Tooltip>
         {issueId &&
           (slug ? (
             <IssueRefBadge id={issueId} slug={slug} />
           ) : (
             <span className="fg-caption truncate">{issueId}</span>
           ))}
+        {/* Jump to the pipeline-run timeline (ISS-378 AC#3). */}
+        {row.pipelineRunId && (
+          <Tooltip label="Open pipeline run timeline">
+            <button
+              type="button"
+              onClick={() => router.push(`/ops?run=${row.pipelineRunId}`)}
+              className="inline-flex items-center gap-1 focus-visible:outline-none"
+            >
+              <MonoTag hue="neutral">
+                <Icon name="pipeline" size={11} className="-mt-px inline" /> run
+              </MonoTag>
+            </button>
+          </Tooltip>
+        )}
       </div>
+    </div>
+  );
+}
+
+/** Runner/device cell: friendly name (or short id for an unknown owner's
+ *  device) + a shared-threshold alive/stale dot for live sessions. */
+function RunnerCell({
+  row,
+  deviceName,
+  display,
+  now,
+}: {
+  row: SessionRow;
+  deviceName?: string;
+  display: AgentSessionDisplayStatus;
+  now: number;
+}) {
+  if (!row.deviceId) return <span className="fg-caption text-subtle">—</span>;
+  const live = display === "running" || display === "stalled";
+  const liveness = live ? deriveLiveness(row, now) : null;
+  const health =
+    liveness?.state === "stale" || liveness?.state === "reaping"
+      ? "attention"
+      : liveness?.state === "alive"
+        ? "healthy"
+        : null;
+  return (
+    <div className="flex items-center gap-1.5 overflow-hidden">
+      {health && <HealthDot health={health} withLabel={false} />}
+      {deviceName ? (
+        <span className="truncate fg-body-sm text-muted" title={deviceName}>
+          {deviceName}
+        </span>
+      ) : (
+        <MonoTag hue="neutral">{row.deviceId.slice(0, 8)}</MonoTag>
+      )}
+    </div>
+  );
+}
+
+/** Concrete failure reason + (for live stalled rows) a countdown to the server
+ *  auto-reap, so "stalled (display)" never reads as "already reaped (server)". */
+function StatusCell({
+  row,
+  display,
+  stage,
+  now,
+}: {
+  row: SessionRow;
+  display: AgentSessionDisplayStatus;
+  stage: ReturnType<typeof deriveStage>;
+  now: number;
+}) {
+  const liveness = deriveLiveness(row, now);
+  const reason = row.failureReason ? FAILURE_REASON_LABEL[row.failureReason] ?? row.failureReason : null;
+  const showReason =
+    !!reason && (display === "failed" || display === "stalled" || display === "cancelled_stale");
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <StatusChip status={statusToChip(display)} stage={stage} domain="session" />
+      {showReason && (
+        <span className="fg-caption" style={{ color: "var(--amberw-600)" }}>
+          {reason}
+        </span>
+      )}
+      {liveness.state === "stale" && liveness.reapInMs != null && (
+        <span className="fg-caption text-subtle" title="Time until the server auto-recovers this session">
+          auto-recovers in {formatCountdown(liveness.reapInMs)}
+        </span>
+      )}
+      {liveness.state === "reaping" && (
+        <span className="fg-caption text-subtle">awaiting auto-recovery…</span>
+      )}
     </div>
   );
 }
@@ -436,11 +587,13 @@ function useRowDuration(row: SessionRow, display: AgentSessionDisplayStatus): st
 function SessionTableRow({
   row,
   slug,
+  deviceName,
   now,
   actions,
 }: {
   row: SessionRow;
   slug?: string;
+  deviceName?: string;
   now: number;
   actions: RowActions;
 }) {
@@ -463,10 +616,13 @@ function SessionTableRow({
       <TD className="max-w-[260px]">
         <SessionIdentity row={row} slug={slug} onOpen={open} />
       </TD>
+      <TD className="max-w-[160px]">
+        <RunnerCell row={row} deviceName={deviceName} display={display} now={now} />
+      </TD>
       <TD className="text-right font-mono text-muted">{row.usage?.turns ?? "—"}</TD>
       <TD className="text-right font-mono text-muted">{duration}</TD>
       <TD>
-        <StatusChip status={statusToChip(display)} stage={stage} domain="session" />
+        <StatusCell row={row} display={display} stage={stage} now={now} />
       </TD>
       <TD className="text-right">
         <RowActionsMenu row={row} display={display} actions={actions} />
@@ -478,11 +634,13 @@ function SessionTableRow({
 function SessionMobileCard({
   row,
   slug,
+  deviceName,
   now,
   actions,
 }: {
   row: SessionRow;
   slug?: string;
+  deviceName?: string;
   now: number;
   actions: RowActions;
 }) {
@@ -499,12 +657,17 @@ function SessionMobileCard({
           <RowActionsMenu row={row} display={display} actions={actions} />
         </div>
         <div className="mt-3 flex items-center justify-between gap-3">
-          <StatusChip status={statusToChip(display)} stage={stage} size="sm" domain="session" />
+          <StatusCell row={row} display={display} stage={stage} now={now} />
           <div className="flex items-center gap-3">
             <Badge tone="neutral">{row.usage?.turns ?? 0} turns</Badge>
             <span className="fg-mono text-muted">{duration}</span>
           </div>
         </div>
+        {row.deviceId && (
+          <div className="mt-2.5">
+            <RunnerCell row={row} deviceName={deviceName} display={display} now={now} />
+          </div>
+        )}
       </CardContent>
     </Card>
   );
