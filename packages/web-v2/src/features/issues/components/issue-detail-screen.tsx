@@ -33,7 +33,6 @@ import {
   type TabItem,
 } from "@/design";
 import type { StatusKey } from "@/design/status";
-import { coreFileUrl } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
@@ -48,8 +47,9 @@ import {
   useTransitionIssue,
 } from "../hooks";
 import { useActivity, useAttachments, useComments, useIssue, useTasks } from "../detail-hooks";
-import type { AttachmentRow, IssueStatus, TaskRow } from "../types";
+import type { IssueStatus, TaskRow } from "../types";
 import { ActivityFeed } from "./activity-feed";
+import { AttachmentList } from "./attachment-list";
 import { CommentThread } from "./comment-thread";
 import { PropertiesRail } from "./properties-rail";
 
@@ -293,7 +293,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
               ) : (attachmentsQ.data?.length ?? 0) === 0 ? (
                 <p className="fg-body-sm text-muted">No attachments.</p>
               ) : (
-                <AttachmentGrid rows={attachmentsQ.data ?? []} />
+                <AttachmentList rows={attachmentsQ.data ?? []} />
               )}
             </CardContent>
           </Card>
@@ -422,60 +422,6 @@ function TabLoading() {
         </div>
       ))}
     </div>
-  );
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
-/** Attachment list for the issue detail (ISS-351). Images render as clickable
- *  thumbnails (open full size in a new tab); everything else as a download
- *  link with name + size. */
-function AttachmentGrid({ rows }: { rows: AttachmentRow[] }) {
-  return (
-    <ul className="flex flex-wrap gap-3">
-      {rows.map((a) => {
-        const href = coreFileUrl(a.url);
-        const isImage = a.mime.startsWith("image/");
-        return (
-          <li key={a.id}>
-            {isImage ? (
-              <a
-                href={href}
-                target="_blank"
-                rel="noreferrer noopener"
-                title={`${a.name} · ${formatBytes(a.size)}`}
-                className="block overflow-hidden rounded-md border border-line hover:border-line-strong"
-              >
-                {/* biome-ignore lint/a11y/useAltText: alt is the file name */}
-                <img
-                  src={href}
-                  alt={a.name}
-                  className="h-28 w-28 object-cover"
-                  loading="lazy"
-                />
-              </a>
-            ) : (
-              <a
-                href={href}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="flex items-center gap-2 rounded-md border border-line bg-surface px-3 py-2 hover:bg-hover"
-              >
-                <Icon name="folder" size={16} className="flex-none text-subtle" />
-                <span className="fg-body-sm max-w-[14rem] truncate text-fg" title={a.name}>
-                  {a.name}
-                </span>
-                <span className="fg-caption flex-none">{formatBytes(a.size)}</span>
-              </a>
-            )}
-          </li>
-        );
-      })}
-    </ul>
   );
 }
 

@@ -185,6 +185,17 @@ export interface IssueDetail extends IssueRow {
   pipelineHealth?: { stage: string; [key: string]: unknown };
 }
 
+/** Attachment carried on a comment node (ISS-363) — `url` is the download path,
+ *  render through `coreFileUrl`. Mirrors core's `CommentAttachmentLite`. */
+export interface CommentAttachment {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+  url: string;
+  createdAt: string;
+}
+
 /** Comment node (tree) from `GET /api/issues/:id/comments`. */
 export interface CommentNode {
   id: string;
@@ -195,6 +206,7 @@ export interface CommentNode {
   createdAt: string;
   updatedAt: string;
   replies: CommentNode[];
+  attachments: CommentAttachment[];
 }
 
 /** Activity log entry from `GET /api/issues/:id/activity`. */
