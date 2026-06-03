@@ -5,7 +5,7 @@ exports[`renderHandoffSchemaPrompt > renders a stable prompt fragment for step=c
   "step": "clarify",
   "schema_version": 1,
   "outcome": <"reproduced" | "cannot_reproduce" | "ux_validated" | "ux_ambiguous" | "skipped">,
-  "environment": <string, 1-500 chars — URL or "local" + how you tested>,
+  "environment": <string ≤500 chars, optional — URL or "local" + how you tested>,
   "stepsVerified": [                        // max 15
     { "step": <string>, "observation": <string ≤500 chars> },
     ...
@@ -139,7 +139,7 @@ Required JSON shape for the \`payload\` (step="clarify"):
   "step": "clarify",
   "schema_version": 1,
   "outcome": <"reproduced" | "cannot_reproduce" | "ux_validated" | "ux_ambiguous" | "skipped">,
-  "environment": <string, 1-500 chars — URL or "local" + how you tested>,
+  "environment": <string ≤500 chars, optional — URL or "local" + how you tested>,
   "stepsVerified": [                        // max 15
     { "step": <string>, "observation": <string ≤500 chars> },
     ...

@@ -33,7 +33,10 @@ const clarifyHandoff = z.object({
   step: z.literal('clarify'),
   schema_version: z.literal(1),
   outcome: z.enum(['reproduced', 'cannot_reproduce', 'ux_validated', 'ux_ambiguous', 'skipped']),
-  environment: z.string().min(1).max(500),
+  // Optional: `skipped` / `cannot_reproduce` outcomes legitimately have no
+  // environment to report; don't force the agent to fabricate one (would
+  // bounce the handoff write on a Zod diff and burn a retry).
+  environment: z.string().max(500).optional(),
   stepsVerified: z
     .array(z.object({ step: z.string().min(1), observation: z.string().min(1).max(500) }))
     .max(15),
@@ -162,7 +165,7 @@ export function renderHandoffSchemaPrompt(step: HandoffStep): string {
         '  "step": "clarify",',
         '  "schema_version": 1,',
         '  "outcome": <"reproduced" | "cannot_reproduce" | "ux_validated" | "ux_ambiguous" | "skipped">,',
-        '  "environment": <string, 1-500 chars — URL or "local" + how you tested>,',
+        '  "environment": <string ≤500 chars, optional — URL or "local" + how you tested>,',
         '  "stepsVerified": [                        // max 15',
         '    { "step": <string>, "observation": <string ≤500 chars> },',
         '    ...',

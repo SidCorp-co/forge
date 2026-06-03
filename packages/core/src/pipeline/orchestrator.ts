@@ -628,6 +628,22 @@ async function autoSkipDisabledStages(
       );
     }
 
+    // Structured info log per hop — the breadcrumbs below are Sentry-only
+    // (opt-in, off in OSS/self-host builds), so plain log-based debugging
+    // would otherwise have no record of a silent auto-advance.
+    logger.info(
+      {
+        issueId: current.id,
+        projectId: current.projectId,
+        from: current.status,
+        to: nextStatus,
+        reason: hop.reason,
+        hop: hopIndex,
+        ...(hop.reason === 'complexity_skip' && complexity ? { complexity } : {}),
+      },
+      'orchestrator: auto-skip advanced issue',
+    );
+
     if (isSentryEnabled()) {
       // Compat with ISS-110: existing dashboards key on this category. The
       // historical reason label is preserved for the config/skill cases;

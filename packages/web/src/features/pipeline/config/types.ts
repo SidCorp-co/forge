@@ -48,6 +48,7 @@ export type StatesConfig = Partial<Record<StageName, StageConfig>>;
 export interface PipelineConfig {
   enabled?: boolean;
   autoTriage?: StepToggleValue;
+  autoClarify?: StepToggleValue;
   autoPlan?: StepToggleValue;
   autoCode?: StepToggleValue;
   autoReview?: StepToggleValue;

@@ -170,7 +170,7 @@ export async function decomposeParent(
   if (!parentAlreadyDecomposed && !ALLOWED_PARENT_STATUSES.has(preParent.status)) {
     throw new DecomposeError(
       'BAD_REQUEST',
-      `parent status must be confirmed or waiting (got ${preParent.status})`,
+      `parent status must be confirmed, clarified, or waiting (got ${preParent.status})`,
     );
   }
 

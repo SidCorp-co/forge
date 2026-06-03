@@ -11,6 +11,9 @@ interface Props {
 
 const DEFAULT_STEPS: Record<StepToggleKey, boolean> = {
   autoTriage: true,
+  // Clarify is opt-in: ships off so projects without a forge-clarify skill
+  // soft-skip confirmed → clarified (mirrors core BALANCED_PRESET).
+  autoClarify: false,
   autoPlan: true,
   autoCode: true,
   autoReview: true,
@@ -21,6 +24,7 @@ const DEFAULT_STEPS: Record<StepToggleKey, boolean> = {
 
 const STEP_LABELS: Record<StepToggleKey, string> = {
   autoTriage: 'Triage',
+  autoClarify: 'Clarify',
   autoPlan: 'Plan',
   autoCode: 'Code',
   autoReview: 'Review',

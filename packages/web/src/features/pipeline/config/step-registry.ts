@@ -7,13 +7,19 @@
  *   2. Add the toggle key to STEP_TOGGLE_KEYS in pipeline-config-schema.ts.
  *   3. Add a corresponding optional field in pipelineConfigSchema.
  *   4. Add the entry below.
- *
- * `clarified` is human-gated and intentionally not listed.
  */
 
 export interface StepDefinition {
   /** Pipeline-config key, e.g. 'autoTriage' */
-  toggleKey: 'autoTriage' | 'autoPlan' | 'autoCode' | 'autoReview' | 'autoTest' | 'autoFix' | 'autoRelease';
+  toggleKey:
+    | 'autoTriage'
+    | 'autoClarify'
+    | 'autoPlan'
+    | 'autoCode'
+    | 'autoReview'
+    | 'autoTest'
+    | 'autoFix'
+    | 'autoRelease';
   /** Human label for the row */
   label: string;
   /** One-sentence description shown under the label */
@@ -31,6 +37,13 @@ export const STEP_REGISTRY: readonly StepDefinition[] = [
     description: 'Validates completeness, classifies complexity, sets category and priority.',
     statusTransition: 'open → confirmed',
     jobType: 'triage',
+  },
+  {
+    toggleKey: 'autoClarify',
+    label: 'Clarify',
+    description: 'Reproduces bugs / validates UX in a live env before planning, captures evidence.',
+    statusTransition: 'confirmed → clarified',
+    jobType: 'clarify',
   },
   {
     toggleKey: 'autoPlan',
