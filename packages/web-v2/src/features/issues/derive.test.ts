@@ -132,10 +132,46 @@ describe("depCounts", () => {
     ],
   };
   it("counts blocks edges by direction, ignoring other kinds", () => {
-    expect(depCounts(deps)).toEqual({ blockedBy: 1, blocks: 1 });
+    expect(depCounts(deps)).toEqual({ blockedBy: 1, blocks: 1, subtasks: 0, hasParent: false });
   });
   it("returns zeros when undefined", () => {
-    expect(depCounts(undefined)).toEqual({ blockedBy: 0, blocks: 0 });
+    expect(depCounts(undefined)).toEqual({
+      blockedBy: 0,
+      blocks: 0,
+      subtasks: 0,
+      hasParent: false,
+    });
+  });
+  it("counts outgoing decomposes as subtasks (this issue is the epic)", () => {
+    const epic: IssueDependencies = {
+      outgoing: [
+        { id: "d1", fromIssueId: id, toIssueId: "c1", kind: "decomposes", reason: null, createdAt: "" },
+        { id: "d2", fromIssueId: id, toIssueId: "c2", kind: "decomposes", reason: null, createdAt: "" },
+        { id: "b1", fromIssueId: id, toIssueId: "x1", kind: "blocks", reason: null, createdAt: "" },
+      ],
+      incoming: [],
+    };
+    expect(depCounts(epic)).toEqual({ blockedBy: 0, blocks: 1, subtasks: 2, hasParent: false });
+  });
+  it("flags incoming decomposes as hasParent (this issue is a subtask)", () => {
+    const child: IssueDependencies = {
+      outgoing: [],
+      incoming: [
+        { id: "p1", fromIssueId: "epic", toIssueId: id, kind: "decomposes", reason: null, createdAt: "" },
+      ],
+    };
+    expect(depCounts(child)).toEqual({ blockedBy: 0, blocks: 0, subtasks: 0, hasParent: true });
+  });
+  it("treats the legacy parent kind like decomposes", () => {
+    const legacy: IssueDependencies = {
+      outgoing: [
+        { id: "p2", fromIssueId: id, toIssueId: "c3", kind: "parent", reason: null, createdAt: "" },
+      ],
+      incoming: [
+        { id: "p3", fromIssueId: "epic", toIssueId: id, kind: "parent", reason: null, createdAt: "" },
+      ],
+    };
+    expect(depCounts(legacy)).toEqual({ blockedBy: 0, blocks: 0, subtasks: 1, hasParent: true });
   });
 });
 

@@ -8,6 +8,9 @@
 // carries the issue UUID).
 import Link from "next/link";
 import { MonoTag } from "@/design";
+import { STATUS_META } from "@/design/status";
+import { statusToChip } from "../derive";
+import type { IssueStatus } from "../types";
 
 export interface IssueRefBadgeProps {
   /** Issue UUID — the routable id (`/projects/:slug/issues/:id`). */
@@ -18,15 +21,26 @@ export interface IssueRefBadgeProps {
   displayId?: string | null;
   /** Optional issue title, surfaced as the link tooltip. */
   title?: string | null;
+  /** Optional related-issue status — rendered as a small tone dot before the
+   *  pill (reuses the design-kit status tone, no new colors). */
+  status?: IssueStatus | null;
 }
 
-export function IssueRefBadge({ id, slug, displayId, title }: IssueRefBadgeProps) {
+export function IssueRefBadge({ id, slug, displayId, title, status }: IssueRefBadgeProps) {
+  const dot = status ? STATUS_META[statusToChip(status)].dot : null;
   return (
     <Link
       href={`/projects/${slug}/issues/${id}`}
       title={title ?? displayId ?? "Open issue"}
-      className="inline-flex max-w-full items-center transition-opacity hover:opacity-80 focus-visible:outline-none"
+      className="inline-flex max-w-full items-center gap-1 transition-opacity hover:opacity-80 focus-visible:outline-none"
     >
+      {dot && (
+        <span
+          aria-hidden
+          className="inline-block size-1.5 flex-none rounded-full"
+          style={{ background: dot }}
+        />
+      )}
       <MonoTag hue="cobalt">{displayId ?? "Issue"}</MonoTag>
     </Link>
   );

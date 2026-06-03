@@ -11,6 +11,7 @@ import type {
   IssueAgentStatus,
   IssueComplexity,
   IssueDependencies,
+  IssueDependencyEdge,
   IssueFilter,
   IssuePriority,
   IssueRow,
@@ -177,18 +178,29 @@ export function allowedTransitions(from: IssueStatus): IssueStatus[] {
 export interface DepCounts {
   blockedBy: number;
   blocks: number;
+  /** Outgoing `decomposes` edges — this issue is an epic with N subtasks. */
+  subtasks: number;
+  /** Any incoming `decomposes` edge — this issue is a subtask of an epic. */
+  hasParent: boolean;
 }
 
 /**
- * Dependency badge counts for an issue. `blocks` edges encode "from blocks to"
- * (dispatcher convention). For issue `id`: it is BLOCKED-BY each incoming
- * `blocks` edge, and it BLOCKS each outgoing `blocks` edge.
+ * Dependency badge counts for an issue. Edge `kind` encodes "from <verb> to":
+ * - `blocks`: for issue `id` it is BLOCKED-BY each incoming `blocks` edge and
+ *   BLOCKS each outgoing one.
+ * - `decomposes` (system-owned, core `decompose.ts`): the edge runs
+ *   parent→child, so an OUTGOING `decomposes` means `id` is the epic and the
+ *   other endpoint a subtask; an INCOMING one means `id` is a subtask of a
+ *   parent epic. (Legacy `parent` kind is treated the same, defensively.)
  */
 export function depCounts(deps: IssueDependencies | undefined): DepCounts {
-  if (!deps) return { blockedBy: 0, blocks: 0 };
+  if (!deps) return { blockedBy: 0, blocks: 0, subtasks: 0, hasParent: false };
   const blockedBy = deps.incoming.filter((e) => e.kind === "blocks").length;
   const blocks = deps.outgoing.filter((e) => e.kind === "blocks").length;
-  return { blockedBy, blocks };
+  const isParentEdge = (k: IssueDependencyEdge["kind"]) => k === "decomposes" || k === "parent";
+  const subtasks = deps.outgoing.filter((e) => isParentEdge(e.kind)).length;
+  const hasParent = deps.incoming.some((e) => isParentEdge(e.kind));
+  return { blockedBy, blocks, subtasks, hasParent };
 }
 
 /**

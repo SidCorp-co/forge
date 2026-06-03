@@ -46,9 +46,11 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-/** A relation list (Blocked by / Blocks / Related). Each edge renders the kind
- *  plus a clickable `ISS-X` badge for the OTHER endpoint — falling back to a
- *  short id only when the server didn't enrich the edge. */
+/** A relation section (Blocked by / Blocks / Parent / Subtasks / Duplicates /
+ *  Related). The section heading conveys the relationship, so each edge renders
+ *  only a clickable `ISS-X` badge for the OTHER endpoint (with a status tone
+ *  dot when enriched) — falling back to a short id when the server didn't
+ *  enrich the edge. Raw `kind` wire values are never shown (ISS-349). */
 function DepList({
   edges,
   self,
@@ -70,17 +72,36 @@ function DepList({
           const other = isFromSelf ? e.toIssueId : e.fromIssueId;
           const otherDisplayId = isFromSelf ? e.toDisplayId : e.fromDisplayId;
           const otherTitle = isFromSelf ? e.toTitle : e.fromTitle;
-          return (
-            <span key={e.id} className="inline-flex items-center gap-1.5">
-              <span className="fg-caption">{e.kind}</span>
-              {otherDisplayId ? (
-                <IssueRefBadge id={other} slug={slug} displayId={otherDisplayId} title={otherTitle} />
-              ) : (
-                <MonoTag hue={e.kind === "blocks" ? "flame" : "neutral"}>{other.slice(0, 8)}</MonoTag>
-              )}
-            </span>
+          const otherStatus = isFromSelf ? e.toStatus : e.fromStatus;
+          return otherDisplayId ? (
+            <IssueRefBadge
+              key={e.id}
+              id={other}
+              slug={slug}
+              displayId={otherDisplayId}
+              title={otherTitle}
+              status={otherStatus}
+            />
+          ) : (
+            <MonoTag key={e.id} hue={e.kind === "blocks" ? "flame" : "neutral"}>
+              {other.slice(0, 8)}
+            </MonoTag>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/** A standalone Parent row built from `issue.parentIssueId` when no enriched
+ *  incoming `decomposes` edge is available (the column is set by core's
+ *  decompose but the edge may be un-enriched). Falls back to a short-id tag. */
+function ParentFallback({ parentId, slug }: { parentId: string; slug: string }) {
+  return (
+    <div className="py-2">
+      <p className="fg-caption mb-1">Parent</p>
+      <div className="flex flex-col items-end gap-1.5">
+        <IssueRefBadge id={parentId} slug={slug} />
       </div>
     </div>
   );
@@ -108,11 +129,21 @@ export function PropertiesRail({
   onPatch,
   onTransition,
 }: PropertiesRailProps) {
-  const blockedBy = (deps?.incoming ?? []).filter((e) => e.kind === "blocks");
-  const blocks = (deps?.outgoing ?? []).filter((e) => e.kind === "blocks");
-  const relates = [...(deps?.incoming ?? []), ...(deps?.outgoing ?? [])].filter(
-    (e) => e.kind !== "blocks",
-  );
+  const incoming = deps?.incoming ?? [];
+  const outgoing = deps?.outgoing ?? [];
+  const isDecompose = (e: IssueDependencyEdge) => e.kind === "decomposes" || e.kind === "parent";
+  const blockedBy = incoming.filter((e) => e.kind === "blocks");
+  const blocks = outgoing.filter((e) => e.kind === "blocks");
+  // Decompose edges run parent→child: an incoming one points at this issue's
+  // epic (Parent), an outgoing one at a child (Subtasks). System-owned —
+  // display-only, no edit affordance.
+  const parents = incoming.filter(isDecompose);
+  const subtasks = outgoing.filter(isDecompose);
+  const duplicates = [...incoming, ...outgoing].filter((e) => e.kind === "duplicates");
+  const related = [...incoming, ...outgoing].filter((e) => e.kind === "relates");
+  // The column is authoritative for parentage; surface it even when no enriched
+  // decompose edge came back.
+  const showParentFallback = parents.length === 0 && issue.parentIssueId != null;
 
   return (
     <div className="divide-y divide-line-subtle">
@@ -192,7 +223,11 @@ export function PropertiesRail({
       </Row>
       <DepList edges={blockedBy} self={issue.id} slug={slug} label="Blocked by" />
       <DepList edges={blocks} self={issue.id} slug={slug} label="Blocks" />
-      <DepList edges={relates} self={issue.id} slug={slug} label="Related" />
+      <DepList edges={parents} self={issue.id} slug={slug} label="Parent" />
+      {showParentFallback && <ParentFallback parentId={issue.parentIssueId!} slug={slug} />}
+      <DepList edges={subtasks} self={issue.id} slug={slug} label="Subtasks" />
+      <DepList edges={duplicates} self={issue.id} slug={slug} label="Duplicates" />
+      <DepList edges={related} self={issue.id} slug={slug} label="Related" />
     </div>
   );
 }

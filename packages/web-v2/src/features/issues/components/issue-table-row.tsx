@@ -45,11 +45,11 @@ export function assigneeOptions(members: ProjectMember[] | undefined): SelectOpt
   ];
 }
 
-/** Lazy dependency badges (🔒 blocked-by · → blocks). */
+/** Lazy dependency badges (🔒 blocked-by · → blocks · ⌗ subtasks · ↳ subtask-of). */
 export function DepBadges({ id }: { id: string }) {
   const { data } = useIssueDeps(id);
-  const { blockedBy, blocks } = depCounts(data);
-  if (!blockedBy && !blocks) return null;
+  const { blockedBy, blocks, subtasks, hasParent } = depCounts(data);
+  if (!blockedBy && !blocks && !subtasks && !hasParent) return null;
   return (
     <span className="inline-flex items-center gap-1.5">
       {blockedBy > 0 && (
@@ -60,6 +60,19 @@ export function DepBadges({ id }: { id: string }) {
       {blocks > 0 && (
         <span className="fg-caption inline-flex items-center gap-0.5" title={`Blocks ${blocks}`}>
           → {blocks}
+        </span>
+      )}
+      {subtasks > 0 && (
+        <span
+          className="fg-caption inline-flex items-center gap-0.5"
+          title={`Epic · ${subtasks} subtask${subtasks === 1 ? "" : "s"}`}
+        >
+          ⌗ {subtasks}
+        </span>
+      )}
+      {hasParent && (
+        <span className="fg-caption inline-flex items-center gap-0.5" title="Subtask of an epic">
+          ↳
         </span>
       )}
     </span>
