@@ -33,6 +33,10 @@ import { RunDetail } from "./run-detail";
 
 interface PipelineBoardProps {
   scope: { projectId: string; slug: string };
+  /** When embedded inside another screen (the Issues Board tab, ISS-364) the
+   *  host renders the page header + view switcher, so the board hides its own
+   *  `<header>` and trims its top padding. */
+  embedded?: boolean;
 }
 
 interface Selection {
@@ -40,7 +44,7 @@ interface Selection {
   runId: string | null;
 }
 
-export function PipelineBoard({ scope }: PipelineBoardProps) {
+export function PipelineBoard({ scope, embedded = false }: PipelineBoardProps) {
   const { projectId, slug } = scope;
   const [selected, setSelected] = useState<Selection | null>(null);
 
@@ -54,8 +58,14 @@ export function PipelineBoard({ scope }: PipelineBoardProps) {
   const groups = useMemo(() => groupIssuesByStage(issuesQ.data?.items), [issuesQ.data]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col px-4 pb-4 pt-5 sm:px-6">
-      <header className="mb-3 flex flex-none items-center gap-3">
+    <div
+      className={
+        embedded
+          ? "flex h-full min-h-0 flex-col px-4 pb-4 sm:px-6"
+          : "flex h-full min-h-0 flex-col px-4 pb-4 pt-5 sm:px-6"
+      }
+    >
+      <header className={`mb-3 flex flex-none items-center gap-3${embedded ? " hidden" : ""}`}>
         <h1 className="fg-h2">Pipeline</h1>
         <p className="fg-body-sm hidden text-muted sm:block">
           Issues flow left → right; a stage starts once the previous finishes.
