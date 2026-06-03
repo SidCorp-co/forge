@@ -1,13 +1,13 @@
 ---
 name: forge-plan
-description: "Write implementation plans for confirmed Forge issues. Use this skill whenever an issue needs a plan before coding begins — exploring the codebase, identifying affected files, and writing step-by-step implementation instructions into the issue's plan field. Triggers on: /forge-plan, planning issues, writing implementation plans, exploring codebase for an issue, preparing issues for development, moving issues from confirmed to approved. Also use when the pipeline needs to advance an issue from confirmed status."
+description: "Write implementation plans for clarified Forge issues. Use this skill whenever an issue needs a plan before coding begins — exploring the codebase, identifying affected files, and writing step-by-step implementation instructions into the issue's plan field. Triggers on: /forge-plan, planning issues, writing implementation plans, exploring codebase for an issue, preparing issues for development, moving issues from clarified to approved. Also use when the pipeline needs to advance an issue from clarified status."
 user_invocable: true
 arguments: "documentId"
 ---
 
 # Forge Plan
 
-This is the second step in the issue pipeline: `confirmed → approved`. Its job is to turn a triaged issue into a concrete implementation plan that a coding agent (or developer) can follow without re-exploring the codebase.
+This is the planning step in the issue pipeline: `clarified → approved` (it runs after triage and clarify). Its job is to turn a triaged, reproduced issue into a concrete implementation plan that a coding agent (or developer) can follow without re-exploring the codebase.
 
 Planning is the highest-value step in the pipeline. A good plan saves the coding step from wasting tokens on exploration, wrong turns, and rework. A bad plan (or no plan) means the coding agent explores blindly, makes architectural mistakes, and produces code that needs heavy review.
 
@@ -43,9 +43,9 @@ forge_comments → list → { filters: { issue: "<documentId>" } }
 forge_config → get
 ```
 
-Verify status is `confirmed`. If the issue isn't confirmed yet, stop and explain — planning an untriaged issue skips the completeness check and risks wasting exploration time on an incomplete issue.
+Verify status is `clarified`. If the issue isn't clarified yet, stop and explain — planning before triage + clarify skips the completeness and reproduction checks and risks wasting exploration time on an incompletely-understood issue.
 
-Find the triage comment (starts with `**Triage**`) and extract the **complexity** classification. This determines both the planning depth and the exit behavior.
+Find the triage comment (starts with `**Triage**`) and extract the **complexity** classification — it sets both planning depth and exit behavior. Then read the **clarify** findings (comment + step handoff, present unless clarify was skipped for an xs/s issue): the reproduction outcome, the environment tested, and a code-level **root-cause hypothesis**. Trust clarify's verified behavior over re-deriving the problem from the description — plan the fix for the confirmed root cause, not the reported symptom.
 
 Checkout the latest baseBranch (from `forge_config`, see preamble for the detection rule) so exploration sees current production code.
 
