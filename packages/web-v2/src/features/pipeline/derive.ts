@@ -7,6 +7,7 @@ import type {
   PipelineIssueRow,
   PipelineRunListItem,
   PipelineRunStatus,
+  StepDurationRow,
 } from "./types";
 
 /** Tracker run-state vocabulary (see `PipelineTracker`). */
@@ -176,6 +177,61 @@ export function groupIssuesByStage(issues: PipelineIssueRow[] | undefined): Stag
     buckets.get(statusToStage(issue.status))?.push(issue);
   }
   return STAGES.map((s) => ({ stage: s.key, issues: buckets.get(s.key) ?? [] }));
+}
+
+/** Median of a numeric list (`null` for an empty list). Used by the Issues
+ *  Insights view's per-stage / where-time-goes aggregates. */
+export function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/** One per-stage row for the Issues Insights funnel. `count` is how many issues
+ *  currently sit in the stage; `medianSec`/`cost`/`samples` come from the
+ *  `step-durations` window (null median when the window has no rows for it). */
+export interface StageInsight {
+  stage: StageKey;
+  label: string;
+  color: string;
+  count: number;
+  medianSec: number | null;
+  cost: number;
+  samples: number;
+}
+
+/**
+ * Combine the per-stage issue counts (from `groupIssuesByStage`) with the
+ * `step-durations` window (median duration + summed cost per stage) into the 7
+ * ordered `STAGES` rows the Insights view renders. Step rows are folded onto a
+ * stage via `jobTypeToStage` (so `fix` rolls into `code`).
+ */
+export function aggregateStageInsights(
+  groups: StageGroup[],
+  durations: StepDurationRow[] | undefined,
+): StageInsight[] {
+  const byStage = new Map<StageKey, { secs: number[]; cost: number }>();
+  for (const r of durations ?? []) {
+    const stage = jobTypeToStage(r.step);
+    const cur = byStage.get(stage) ?? { secs: [], cost: 0 };
+    cur.secs.push(r.durationSeconds);
+    cur.cost += r.costUsd;
+    byStage.set(stage, cur);
+  }
+  const countByStage = new Map(groups.map((g) => [g.stage, g.issues.length]));
+  return STAGES.map((s) => {
+    const agg = byStage.get(s.key);
+    return {
+      stage: s.key,
+      label: s.label,
+      color: s.color,
+      count: countByStage.get(s.key) ?? 0,
+      medianSec: agg ? median(agg.secs) : null,
+      cost: agg?.cost ?? 0,
+      samples: agg?.secs.length ?? 0,
+    };
+  });
 }
 
 /** Two-letter avatar initials from an assignee id / email. */
