@@ -8,7 +8,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Badge,
-  Breadcrumb,
   Button,
   Card,
   CardContent,
@@ -24,21 +23,23 @@ import {
   Markdown,
   Menu,
   MonoTag,
+  PageContainer,
   PipelineTracker,
   ProjectLoader,
   Skeleton,
   StatusChip,
   Tabs,
+  type MenuItem,
   type TabItem,
 } from "@/design";
+import type { StatusKey } from "@/design/status";
 import { coreFileUrl } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
-import { useProjects } from "@/features/projects/hooks";
-import { parseChecklist, statusLabel, statusToChip, statusToRun, statusToStage } from "../derive";
+import { parseChecklist, statusToChip, statusToRun, statusToStage } from "../derive";
 import {
   usePatchIssue,
   useIssueCost,
@@ -93,12 +94,6 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
   const depsQ = useIssueDeps(id);
   const costQ = useIssueCost(id);
   const membersQ = useProjectMembers(projectId);
-  // Breadcrumb shows the friendly project name, not the raw slug. Reuses the
-  // already-cached `['projects']` list (loaded by the shell) — no extra fetch;
-  // falls back to the slug while the list is still loading (ISS-347 follow-up).
-  const projectsQ = useProjects();
-  const projectName =
-    projectsQ.data?.find((p) => p.id === projectId)?.name ?? slug;
 
   const patch = usePatchIssue();
   const transition = useTransitionIssue();
@@ -155,27 +150,58 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
   const onTransition = (toStatus: IssueStatus) => transition.mutate({ id, toStatus });
   const onPatch = (body: Parameters<typeof patch.mutate>[0]["body"]) => patch.mutate({ id, body });
 
+  // Header action set (ISS-360) — wired to EXISTING transition / nav endpoints
+  // only (no fabricated APIs). The contextual primary button depends on where
+  // the issue sits in its lifecycle; the rest live in the ⋯ menu.
+  const isTerminal = issue.status === "released" || issue.status === "closed";
+  const isParked = issue.status === "on_hold";
+  const isRunActive =
+    issue.agentStatus === "running" ||
+    issue.agentStatus === "queued" ||
+    issue.status === "in_progress" ||
+    issue.status === "reopen";
+  const openSessions = () => router.push(`/projects/${slug}/agents?issue=${id}`);
+  const openPipeline = () => router.push(`/projects/${slug}/pipeline`);
+
+  const moreItems: MenuItem[] = [
+    { label: "Open pipeline", icon: "pipeline", onSelect: openPipeline },
+    ...(isTerminal || isParked
+      ? []
+      : [{ label: "Pause (hold)", icon: "stop", onSelect: () => onTransition("on_hold") } as MenuItem]),
+    ...(isTerminal
+      ? []
+      : [{ label: "Reopen", icon: "rerun", onSelect: () => onTransition("reopen") } as MenuItem]),
+    { label: "Copy link", icon: "link", onSelect: copyLink },
+  ];
+
   const tabs: TabItem[] = [
     { value: "comments", label: "Comments", count: countComments(commentsQ.data) },
     { value: "activity", label: "Activity", count: activityQ.data?.items.length },
     { value: "tasks", label: "Tasks", count: tasksQ.data?.length },
   ];
 
-  return (
-    <div className="mx-auto min-h-dvh w-full max-w-[1600px] px-4 py-6 sm:px-8 sm:py-8 2xl:max-w-[1760px]">
-      <Breadcrumb
-        items={[
-          { label: projectName, href: `/projects/${slug}` },
-          { label: "Issues", href: `/projects/${slug}/issues` },
-          { label: issue.displayId },
-        ]}
-        onNavigate={(href) => router.push(href)}
-      />
+  // Live agent-run status for the header — shown as a SESSION-domain chip
+  // (squared + agent glyph) right next to the issue's lifecycle chip so the two
+  // status vocabularies are never confused (ISS-360, the reporter's core ask).
+  const runChip: StatusKey | null =
+    issue.agentStatus === "running"
+      ? "running"
+      : issue.agentStatus === "queued"
+        ? "queued"
+        : issue.agentStatus === "completed"
+          ? "done"
+          : issue.agentStatus === "failed"
+            ? "failed"
+            : null;
 
+  return (
+    <PageContainer width="wide" className="min-h-dvh">
       {/* Sticky action + state bar — keeps the id, live status, and the primary
-          actions reachable while scrolling a long issue (ISS-347). Full-bleed
-          via negative gutters so the backdrop spans the content width. */}
-      <div className="sticky top-0 z-20 -mx-4 mb-5 mt-3 flex items-start gap-3 border-b border-line-subtle bg-app/95 px-4 py-3 backdrop-blur sm:-mx-8 sm:px-8">
+          actions reachable while scrolling a long issue (ISS-347). The shell's
+          TopBar now carries the breadcrumb trail (ISS-358/359), so the in-page
+          breadcrumb was removed to stop the doubled header that hid the detail
+          (ISS-360 regression). Full-bleed via negative gutters. */}
+      <div className="sticky top-0 z-20 -mx-4 mb-5 flex items-start gap-3 border-b border-line-subtle bg-app/95 px-4 py-3 backdrop-blur sm:-mx-8 sm:px-8">
         <IconButton
           icon="arrowRight"
           aria-label="Back to issues"
@@ -185,8 +211,12 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <MonoTag hue="cobalt">{issue.displayId}</MonoTag>
-            <StatusChip status={statusToChip(issue.status, issue.agentStatus)} />
-            <span className="fg-caption">{statusLabel(issue.status)}</span>
+            {/* Issue lifecycle (pill) vs live agent run (squared, agent glyph). */}
+            <StatusChip status={statusToChip(issue.status)} />
+            {runChip && (
+              <StatusChip status={runChip} stage={runChip === "running" ? stage : undefined} domain="session" />
+            )}
+            <span className="fg-caption font-mono">{stage}</span>
           </div>
           <h1 className="fg-h3 mt-1.5 truncate">{issue.title}</h1>
         </div>
@@ -195,28 +225,30 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
             summary="The full record for one issue: pipeline progress, description, acceptance criteria, the agent plan, and Comments / Activity / Tasks."
             actions={[
               "Edit properties (status, priority, assignee) in the rail",
+              "Run / pause / reopen the pipeline from the header",
               "Jump to related sessions, pipeline, and runs",
             ]}
             shortcuts={[{ keys: "⌘K", desc: "Open the command palette" }]}
           />
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="agent"
-            onClick={() => router.push(`/projects/${slug}/agents?issue=${id}`)}
-          >
-            Open sessions
+          {isTerminal ? (
+            <Button variant="primary" size="sm" icon="rerun" loading={pending} onClick={() => onTransition("reopen")}>
+              Reopen
+            </Button>
+          ) : isRunActive ? (
+            <Button variant="secondary" size="sm" icon="stop" loading={pending} onClick={() => onTransition("on_hold")}>
+              Pause
+            </Button>
+          ) : (
+            <Button variant="primary" size="sm" icon="pipeline" onClick={openPipeline}>
+              Run pipeline
+            </Button>
+          )}
+          <Button variant="secondary" size="sm" icon="agent" onClick={openSessions}>
+            Open session
           </Button>
           <Menu
             align="right"
-            items={[
-              {
-                label: "Open pipeline",
-                icon: "pipeline",
-                onSelect: () => router.push(`/projects/${slug}/pipeline`),
-              },
-              { label: "Copy link", icon: "link", onSelect: copyLink },
-            ]}
+            items={moreItems}
             trigger={<IconButton icon="more" aria-label="Issue actions" />}
           />
         </div>
@@ -371,7 +403,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
           </Collapsible>
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }
 

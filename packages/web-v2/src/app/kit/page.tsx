@@ -466,11 +466,16 @@ export default function KitPage() {
             </div>
           </Section>
 
-          <Section id="status" title="Status & health" hint="Fixed status vocabulary. Running pulses and shows the active stage.">
+          <Section id="status" title="Status & health" hint="Two domains: issue lifecycle (pill, dot) vs agent/session execution (squared, agent glyph). Running pulses and shows the active stage.">
             <div className="flex flex-col gap-4">
               <Row>
                 {STATUSES.map((s) => (
                   <StatusChip key={s} status={s} stage={s === "running" ? "code" : undefined} />
+                ))}
+              </Row>
+              <Row>
+                {STATUSES.map((s) => (
+                  <StatusChip key={s} status={s} stage={s === "running" ? "code" : undefined} domain="session" />
                 ))}
               </Row>
               <Row>

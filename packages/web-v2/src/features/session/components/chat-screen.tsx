@@ -109,7 +109,7 @@ export function ChatScreen({ projectId }: { projectId: string }) {
         </div>
         {session && display && (
           <div className="ml-auto">
-            <StatusChip status={statusToChip(display)} stage={deriveStage(session.metadata)} size="sm" />
+            <StatusChip status={statusToChip(display)} stage={deriveStage(session.metadata)} size="sm" domain="session" />
           </div>
         )}
       </header>

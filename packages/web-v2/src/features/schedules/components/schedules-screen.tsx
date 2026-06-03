@@ -52,7 +52,7 @@ function LastResult({ status, at }: { status: ScheduleRow["lastStatus"]; at: str
   }
   return (
     <span className="inline-flex items-center gap-2">
-      <StatusChip status={chip} size="sm" />
+      <StatusChip status={chip} size="sm" domain="session" />
       {at && <span className="fg-caption text-subtle">{fmtTime(at)}</span>}
     </span>
   );

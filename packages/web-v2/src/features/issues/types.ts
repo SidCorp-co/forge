@@ -139,8 +139,10 @@ export interface IssueDependencies {
   incoming: IssueDependencyEdge[];
 }
 
-/** Client-side filter tabs → server `status`/`statusNot` arrays. */
-export type IssueFilter = "all" | "everything" | "active" | "review" | "blocked" | "drafts";
+/** Client-side filter tabs → server `status`/`statusNot` arrays. `all` means
+ *  literally every issue INCLUDING drafts (ISS-360 reverses the ISS-236 "All
+ *  excludes drafts" rule); there is no separate drafts tab. */
+export type IssueFilter = "all" | "active" | "review" | "blocked";
 
 /** Client-side grouping for the list. */
 export type GroupBy = "none" | "status" | "priority" | "assignee";

@@ -159,7 +159,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
               <MonoTag hue="cobalt">{session.id.slice(0, 8)}</MonoTag>
             </div>
             <div className="mt-1">
-              <StatusChip status={statusToChip(display)} stage={deriveStage(session.metadata)} size="sm" />
+              <StatusChip status={statusToChip(display)} stage={deriveStage(session.metadata)} size="sm" domain="session" />
             </div>
           </div>
           <div className="flex items-center gap-1.5">

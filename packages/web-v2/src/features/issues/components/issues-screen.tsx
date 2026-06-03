@@ -12,6 +12,7 @@ import {
   EmptyState,
   ErrorState,
   Input,
+  PageContainer,
   Pagination,
   SegmentedControl,
   Select,
@@ -35,14 +36,16 @@ import type { RowActions } from "./issue-table-row";
 import { IssueMobileCard, IssueTableRow } from "./issue-row-actions";
 import { NewIssueDialog } from "./new-issue-dialog";
 
+// ISS-360: four tabs only. "All" now includes drafts (no separate Drafts /
+// "All + drafts" tabs — that split was the confusing behaviour the reporter
+// flagged). Stale `?filter=everything|drafts` deep-links fall back to "all".
 const FILTERS: SegmentOption<IssueFilter>[] = [
   { value: "all", label: "All" },
-  { value: "everything", label: "All + drafts" },
   { value: "active", label: "Active" },
   { value: "review", label: "Review" },
   { value: "blocked", label: "Blocked" },
-  { value: "drafts", label: "Drafts" },
 ];
+const VALID_FILTERS: IssueFilter[] = ["all", "active", "review", "blocked"];
 
 const GROUP_OPTIONS: SelectOption[] = [
   { value: "none", label: "No grouping" },
@@ -89,7 +92,8 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
       const qv = sp.get("q") ?? "";
       setRawQ(qv);
       setQ(qv);
-      setFilter(decodeFilter<IssueFilter>(sp, "filter", "all"));
+      const decodedFilter = decodeFilter<IssueFilter>(sp, "filter", "all");
+      setFilter(VALID_FILTERS.includes(decodedFilter) ? decodedFilter : "all");
       setGroupBy(decodeFilter<GroupBy>(sp, "groupBy", "none"));
       setSort(decodeFilter<IssueSort>(sp, "sort", "createdAt:desc"));
       setPage(decodeNumber(sp, "page", 1));
@@ -162,10 +166,9 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
   const isFiltered = q !== "" || filter !== "all";
 
   return (
-    // Wider than the other workspace screens (max-w-7xl vs 6xl): the dense
-    // issues table has 9 columns and was clipping the Assignee/Actions cells off
-    // the right edge at ~1440px inside the narrower container (ISS-308 C1).
-    <div className="mx-auto w-full min-h-dvh max-w-7xl px-4 py-6 sm:px-8 sm:py-8">
+    // Wide draft layout (ISS-360): the dense issues table fills the full
+    // 1720px content column on large monitors instead of clipping at 1440px.
+    <PageContainer width="wide" className="min-h-dvh">
       <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="fg-h2">Issues</h1>
@@ -329,6 +332,6 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
       )}
 
       <NewIssueDialog open={newOpen} onClose={() => setNewOpen(false)} scope={scope} />
-    </div>
+    </PageContainer>
   );
 }

@@ -63,13 +63,15 @@ interface ProjItem extends NavItem {
   sub: string;
 }
 
-/** Concept C: exactly 6 flat project-tier items (no clusters). Agents merges
- *  Sessions+Chat; Library merges Knowledge+Memory+Skills; Automation merges
- *  Schedules+PM. */
+/** Concept C: exactly 5 flat project-tier items (no clusters), matching the
+ *  draft (ISS-360): Dashboard, Issues, Agents, Library, Automation. The
+ *  standalone Pipeline entry was dropped — the pipeline kanban folds into the
+ *  Issues views, and `/pipeline` stays reachable via issue-detail + ⌘K. Agents
+ *  merges Sessions+Chat; Library merges Knowledge+Memory+Skills; Automation
+ *  merges Schedules+PM. */
 const PROJECT_ITEMS: ProjItem[] = [
   { key: "proj-overview", label: "Dashboard", icon: "grid", sub: "" },
   { key: "proj-issues", label: "Issues", icon: "list", sub: "/issues" },
-  { key: "proj-pipeline", label: "Pipeline", icon: "pipeline", sub: "/pipeline" },
   { key: "proj-agents", label: "Agents", icon: "agent", sub: "/agents" },
   { key: "proj-library", label: "Library", icon: "book", sub: "/library" },
   { key: "proj-automation", label: "Automation", icon: "calendar", sub: "/automation" },

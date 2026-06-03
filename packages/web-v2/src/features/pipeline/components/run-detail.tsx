@@ -139,7 +139,7 @@ export function RunDetail({ open, onClose, issue, runId, slug }: RunDetailProps)
       title={
         <span className="flex items-center gap-2.5">
           <MonoTag>{label}</MonoTag>
-          <StatusChip status={chipStatus} stage={stage} size="sm" />
+          <StatusChip status={chipStatus} stage={stage} size="sm" domain="session" />
         </span>
       }
     >

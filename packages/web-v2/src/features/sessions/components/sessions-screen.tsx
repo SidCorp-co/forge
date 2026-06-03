@@ -17,6 +17,7 @@ import {
   IconButton,
   Menu,
   MonoTag,
+  PageContainer,
   SegmentedControl,
   SessionRowSkeleton,
   StatusChip,
@@ -140,14 +141,28 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
     let active = 0;
     let queued = 0;
     let zombies = 0;
+    const waits: number[] = [];
     rows.forEach((r, i) => {
       const d = displays[i];
       if (d === "running") active += 1;
-      if (r.status === "queued" || r.status === "idle") queued += 1;
+      if (r.status === "queued" || r.status === "idle") {
+        queued += 1;
+        // Time a still-queued session has been waiting for a runner.
+        const since = r.dispatchedAt ?? r.createdAt;
+        const ms = since ? now - new Date(since).getTime() : NaN;
+        if (Number.isFinite(ms) && ms >= 0) waits.push(ms);
+      }
       if (d === "stalled" || r.status === "cancelled_stale") zombies += 1;
     });
-    return { active, queued, zombies };
-  }, [rows, displays]);
+    // Median wait across queued sessions (draft "Median wait" metric).
+    let medianWaitMs = 0;
+    if (waits.length > 0) {
+      waits.sort((a, b) => a - b);
+      const mid = Math.floor(waits.length / 2);
+      medianWaitMs = waits.length % 2 ? waits[mid] : Math.round((waits[mid - 1] + waits[mid]) / 2);
+    }
+    return { active, queued, zombies, medianWaitMs };
+  }, [rows, displays, now]);
 
   const counts = useMemo(() => {
     const c: Record<SessionFilter, number> = { all: rows.length, running: 0, queued: 0, attention: 0 };
@@ -172,7 +187,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   const actions = { cancel, retry, rerun, abort };
 
   return (
-    <div className="mx-auto w-full min-h-dvh max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
+    <PageContainer width="wide" className="min-h-dvh">
       {/* Workspace tier: subscribe to every visible project room for live updates. */}
       {!projectId && projectsQ.data?.map((p) => <RoomSub key={p.id} projectId={p.id} />)}
 
@@ -206,12 +221,14 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
         )}
       </header>
 
-      {/* Headline queue stats — derived from the loaded list so they work at
-          both tiers (queue-stats only returns per-device queued/running). */}
-      <div className="grid grid-cols-3 gap-3 sm:gap-4">
+      {/* Headline queue stats (draft "q-strip") — derived from the loaded list
+          so they work at both tiers (queue-stats only returns per-device
+          queued/running). Active · Queued · Zombie jobs · Median wait. */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
         <StatCard label="Active" value={String(stats.active)} />
         <StatCard label="Queued" value={String(stats.queued)} />
-        <StatCard label="Zombies" value={String(stats.zombies)} tone={stats.zombies > 0 ? "alert" : "default"} />
+        <StatCard label="Zombie jobs" value={String(stats.zombies)} tone={stats.zombies > 0 ? "alert" : "default"} />
+        <StatCard label="Median wait" value={stats.queued > 0 ? formatDuration(stats.medianWaitMs) : "—"} />
       </div>
 
       <div className="mt-6 mb-4 overflow-x-auto">
@@ -280,7 +297,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
           </div>
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }
 
@@ -449,7 +466,7 @@ function SessionTableRow({
       <TD className="text-right font-mono text-muted">{row.usage?.turns ?? "—"}</TD>
       <TD className="text-right font-mono text-muted">{duration}</TD>
       <TD>
-        <StatusChip status={statusToChip(display)} stage={stage} />
+        <StatusChip status={statusToChip(display)} stage={stage} domain="session" />
       </TD>
       <TD className="text-right">
         <RowActionsMenu row={row} display={display} actions={actions} />
@@ -482,7 +499,7 @@ function SessionMobileCard({
           <RowActionsMenu row={row} display={display} actions={actions} />
         </div>
         <div className="mt-3 flex items-center justify-between gap-3">
-          <StatusChip status={statusToChip(display)} stage={stage} size="sm" />
+          <StatusChip status={statusToChip(display)} stage={stage} size="sm" domain="session" />
           <div className="flex items-center gap-3">
             <Badge tone="neutral">{row.usage?.turns ?? 0} turns</Badge>
             <span className="fg-mono text-muted">{duration}</span>

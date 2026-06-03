@@ -140,14 +140,8 @@ describe("depCounts", () => {
 });
 
 describe("filterToStatusParams", () => {
-  it("all excludes only drafts (closed/released shown)", () => {
-    expect(filterToStatusParams("all")).toEqual({ statusNot: ["draft"] });
-  });
-  it("drafts targets only the AI-proposal drafts", () => {
-    expect(filterToStatusParams("drafts")).toEqual({ status: ["draft"] });
-  });
-  it("everything applies no filter (every issue incl. drafts + closed)", () => {
-    expect(filterToStatusParams("everything")).toEqual({});
+  it("all applies no filter — every issue incl. drafts + closed (ISS-360)", () => {
+    expect(filterToStatusParams("all")).toEqual({});
   });
   it("review targets the verification band", () => {
     expect(filterToStatusParams("review").status).toContain("developed");

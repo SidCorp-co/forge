@@ -193,36 +193,28 @@ export function depCounts(deps: IssueDependencies | undefined): DepCounts {
 
 /**
  * Translate a filter tab into server `status`/`statusNot` arrays.
- * - all: every issue except drafts — closed/released INCLUDED so terminal work
- *   is discoverable. Drafts stay hidden by default (ISS-236: drafts are
- *   AI-generated proposals awaiting human review); the dedicated "drafts" tab
- *   is the explicit opt-in to view them (ISS-354).
- * - everything: literally every issue INCLUDING drafts + closed — no filter at
- *   all (the search endpoint applies no default draft exclusion, verified
- *   core/issues/search.ts). This is the explicit one-click "view all incl.
- *   drafts" the reporter asked for; it is NOT the default, so ISS-236 holds.
+ * - all: literally EVERY issue, INCLUDING drafts + closed/released — no filter
+ *   at all (the search endpoint applies no default draft exclusion, verified
+ *   core/issues/search.ts). ISS-360: "all issues" means all issues, drafts
+ *   included; this intentionally reverses the ISS-236 "All excludes drafts"
+ *   rule and removes the separate Drafts tab the reporter flagged as confusing.
  * - active: the in-flight lifecycle band
  * - review: developed/deploying/testing/tested
  * - blocked: on_hold + needs_info (work parked / waiting on input)
- * - drafts: only the AI-proposal drafts
  */
 export function filterToStatusParams(filter: IssueFilter): {
   status?: IssueStatus[];
   statusNot?: IssueStatus[];
 } {
   switch (filter) {
-    case "everything":
-      return {};
     case "active":
       return { status: ["open", "confirmed", "waiting", "approved", "in_progress", "reopen"] };
     case "review":
       return { status: ["developed", "deploying", "testing", "tested", "pass", "staging"] };
     case "blocked":
       return { status: ["on_hold", "needs_info"] };
-    case "drafts":
-      return { status: ["draft"] };
     default:
-      return { statusNot: ["draft"] };
+      return {};
   }
 }
 
