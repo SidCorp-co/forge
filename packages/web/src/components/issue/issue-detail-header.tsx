@@ -15,6 +15,7 @@ export const STATUS_TAB_MAP: Record<IssueStatus, IssueDetailTabKey> = {
   open: 'overview',
   needs_info: 'overview',
   confirmed: 'overview',
+  clarified: 'plan',
   waiting: 'plan',
   approved: 'plan',
   in_progress: 'activity',

@@ -26,7 +26,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus, JobType } from '../db/schema.js';
-import { issues, jobs } from '../db/schema.js';
+import { issues, type jobs } from '../db/schema.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
@@ -43,7 +43,7 @@ export type RecoveryVerdict = 'advanced' | 'pending' | 'reverted';
  */
 export const JOB_TYPE_EXPECTED_EXIT_STATUS: Record<JobType, readonly IssueStatus[]> = {
   triage: ['needs_info', 'confirmed'],
-  clarify: ['confirmed'],
+  clarify: ['clarified', 'needs_info'],
   plan: ['approved'],
   code: ['developed'],
   review: ['testing', 'reopen'],
@@ -66,8 +66,8 @@ const TERMINAL_STATUSES: ReadonlySet<IssueStatus> = new Set(['released', 'closed
  */
 const JOB_TYPE_ENTRY_STATUS: Partial<Record<JobType, IssueStatus>> = {
   triage: 'open',
-  clarify: 'needs_info',
-  plan: 'confirmed',
+  clarify: 'confirmed',
+  plan: 'clarified',
   code: 'approved',
   review: 'developed',
   test: 'testing',
@@ -81,7 +81,9 @@ const JOB_TYPE_ENTRY_STATUS: Partial<Record<JobType, IssueStatus>> = {
  * mapping) so the caller stays on the retry path rather than silently
  * dropping work.
  */
-export async function verifyRecovery(job: Pick<JobRow, 'issueId' | 'type'>): Promise<RecoveryVerdict> {
+export async function verifyRecovery(
+  job: Pick<JobRow, 'issueId' | 'type'>,
+): Promise<RecoveryVerdict> {
   if (!job.issueId) return 'pending';
 
   const [row] = await db

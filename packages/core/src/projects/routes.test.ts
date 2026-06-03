@@ -768,9 +768,7 @@ describe('POST /api/projects/:id/runners (ISS-172)', () => {
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
       .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
       .mockResolvedValueOnce([{ role: 'owner' }])
-      .mockResolvedValueOnce([
-        { id: DID, name: 'laptop', status: 'online', lastSeenAt },
-      ]);
+      .mockResolvedValueOnce([{ id: DID, name: 'laptop', status: 'online', lastSeenAt }]);
     insertReturning.mockResolvedValueOnce([
       { id: RID, projectId: PID, deviceId: DID, status: 'online' },
     ]);
@@ -802,9 +800,7 @@ describe('POST /api/projects/:id/runners (ISS-172)', () => {
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
       .mockResolvedValueOnce([{ id: 'p1', ownerId: 'uuid-owner' }])
       .mockResolvedValueOnce([{ role: 'owner' }])
-      .mockResolvedValueOnce([
-        { id: DID, name: 'laptop', status: 'offline', lastSeenAt: null },
-      ]);
+      .mockResolvedValueOnce([{ id: DID, name: 'laptop', status: 'offline', lastSeenAt: null }]);
     insertReturning.mockResolvedValueOnce([
       { id: RID, projectId: PID, deviceId: DID, status: 'offline' },
     ]);
@@ -817,9 +813,7 @@ describe('POST /api/projects/:id/runners (ISS-172)', () => {
     expect(res.status).toBe(201);
     const body = (await res.json()) as { status: string };
     expect(body.status).toBe('offline');
-    expect(insertValues).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'offline' }),
-    );
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ status: 'offline' }));
   });
 
   it('400 BAD_REQUEST when deviceId is not a uuid', async () => {
@@ -1023,8 +1017,19 @@ describe('POST /api/projects/:id/api-key/rotate', () => {
 describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
   const PID = '11111111-1111-4111-8111-111111111111';
   const EXPECTED_DEFAULT_STAGES = [
-    'approved', 'confirmed', 'deploying', 'developed', 'needs_info', 'open',
-    'pass', 'released', 'reopen', 'staging', 'tested', 'testing',
+    'approved',
+    'clarified',
+    'confirmed',
+    'deploying',
+    'developed',
+    'needs_info',
+    'open',
+    'pass',
+    'released',
+    'reopen',
+    'staging',
+    'tested',
+    'testing',
   ].sort();
   const SKILL_IDS = {
     triage: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -1099,16 +1104,21 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     const inserted = insertValues.mock.calls[0]?.[0] as Array<{ stage: string; skillId: string }>;
     expect(inserted).toHaveLength(7);
     const stages = inserted.map((r) => r.stage).sort();
+    // `confirmed` (clarify) is absent: the mocked global-skills lookup has no
+    // forge-clarify row, so that stage is skipped. Plan binds at `clarified`.
     expect(stages).toEqual(
-      ['approved', 'confirmed', 'developed', 'open', 'released', 'reopen', 'testing'].sort(),
+      ['approved', 'clarified', 'developed', 'open', 'released', 'reopen', 'testing'].sort(),
     );
 
     // The Balanced preset write went through update().set(...).where(...).
     expect(updateSet).toHaveBeenCalledTimes(1);
-    const setArg = updateSet.mock.calls[0]?.[0] as { agentConfig: { pipelineConfig: Record<string, unknown> } };
+    const setArg = updateSet.mock.calls[0]?.[0] as {
+      agentConfig: { pipelineConfig: Record<string, unknown> };
+    };
     expect(setArg.agentConfig.pipelineConfig).toMatchObject({
       enabled: true,
       autoTriage: true,
+      autoClarify: false,
       autoPlan: true,
       autoCode: false,
       autoReview: true,
@@ -1118,7 +1128,8 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     });
 
     // ISS-108 — bootstrap seeds the per-stage states config alongside the preset.
-    const states = (setArg.agentConfig.pipelineConfig as { states: Record<string, unknown> }).states;
+    const states = (setArg.agentConfig.pipelineConfig as { states: Record<string, unknown> })
+      .states;
     expect(Object.keys(states).sort()).toEqual(EXPECTED_DEFAULT_STAGES);
     for (const key of Object.keys(states)) {
       expect(states[key]).toEqual({ enabled: true, mode: 'auto' });
@@ -1167,7 +1178,9 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
       [{ agentConfig: { pipelineConfig: { states: Record<string, unknown> } } }]
     >;
     const patched = updateCalls[0]![0];
-    expect(Object.keys(patched.agentConfig.pipelineConfig.states).sort()).toEqual(EXPECTED_DEFAULT_STAGES);
+    expect(Object.keys(patched.agentConfig.pipelineConfig.states).sort()).toEqual(
+      EXPECTED_DEFAULT_STAGES,
+    );
   });
 
   it('preserves an existing pipelineConfig.enabled flag (does not clobber user choice)', async () => {
@@ -1179,9 +1192,7 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
       .mockResolvedValueOnce([{ id: PID, ownerId: 'uuid-owner' }])
       .mockResolvedValueOnce([{ role: 'owner' }])
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        { agentConfig: { pipelineConfig: { enabled: false } } },
-      ]);
+      .mockResolvedValueOnce([{ agentConfig: { pipelineConfig: { enabled: false } } }]);
 
     selectWhere
       .mockReturnValueOnce({ limit: selectLimit })

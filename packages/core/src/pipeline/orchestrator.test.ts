@@ -60,18 +60,17 @@ const applyTransitionMock = vi.fn<
 >(async () => undefined);
 vi.mock('../issues/apply-transition.js', () => ({
   applyStatusTransition: (...a: unknown[]) =>
-    applyTransitionMock(
-      a[0],
-      a[1] as string,
-      a[2],
-      a[3] as { skip?: boolean } | undefined,
-    ),
+    applyTransitionMock(a[0], a[1] as string, a[2], a[3] as { skip?: boolean } | undefined),
 }));
 
 // ISS-110 — verify Sentry breadcrumb emission per skip hop.
-const sentryAddBreadcrumb = vi.fn<(crumb: { category: string; data: Record<string, unknown> }) => void>();
+const sentryAddBreadcrumb =
+  vi.fn<(crumb: { category: string; data: Record<string, unknown> }) => void>();
 vi.mock('../observability/sentry.js', () => ({
-  Sentry: { addBreadcrumb: (...a: unknown[]) => sentryAddBreadcrumb(a[0] as { category: string; data: Record<string, unknown> }) },
+  Sentry: {
+    addBreadcrumb: (...a: unknown[]) =>
+      sentryAddBreadcrumb(a[0] as { category: string; data: Record<string, unknown> }),
+  },
   isSentryEnabled: () => true,
 }));
 
@@ -98,11 +97,8 @@ vi.mock('./missing-skill-guard.js', () => ({
   PAUSE_REASON_PREFIX: 'missing_skill:',
   buildMissingSkillReason: (stage: string) => `missing_skill:${stage}`,
   buildMissingSkillCommentBody: (stage: string) => `body:${stage}`,
-  pausePipelineRunMissingSkill: (
-    ...a: unknown[]
-  ) => pauseMissingSkillMock(...(a as [])),
-  postMissingSkillComment: (...a: unknown[]) =>
-    postMissingSkillCommentMock(...(a as [])),
+  pausePipelineRunMissingSkill: (...a: unknown[]) => pauseMissingSkillMock(...(a as [])),
+  postMissingSkillComment: (...a: unknown[]) => postMissingSkillCommentMock(...(a as [])),
 }));
 
 const queryPreventiveMock = vi.fn(async () => []);
@@ -120,21 +116,23 @@ const resolverResolve = vi.fn();
 // ISS-110 tests (which don't set up stage registrations) keep their original
 // expectations — the skip predicate then degrades to the original
 // `enabled === false` behaviour. Individual ISS-239 tests override this.
-const resolverStagesMock = vi.fn<() => Promise<ReadonlySet<string>>>(async () =>
-  new Set<string>([
-    'open',
-    'needs_info',
-    'confirmed',
-    'approved',
-    'developed',
-    'testing',
-    'tested',
-    'pass',
-    'staging',
-    'deploying',
-    'reopen',
-    'released',
-  ]),
+const resolverStagesMock = vi.fn<() => Promise<ReadonlySet<string>>>(
+  async () =>
+    new Set<string>([
+      'open',
+      'needs_info',
+      'confirmed',
+      'clarified',
+      'approved',
+      'developed',
+      'testing',
+      'tested',
+      'pass',
+      'staging',
+      'deploying',
+      'reopen',
+      'released',
+    ]),
 );
 const createProjectSkillResolverMock = vi.fn((_projectId: string) => ({
   resolve: resolverResolve,
@@ -151,10 +149,7 @@ vi.mock('./skill-mapping.js', async () => {
 // ISS-239 — stub skip-chain logging so unit tests don't model the
 // pipeline_runs UPDATE / comments INSERT side effects.
 const appendSkipChainEntryMock = vi.fn<
-  (
-    runId: string,
-    entry: { from: string; to: string; reason: string; at: string },
-  ) => Promise<void>
+  (runId: string, entry: { from: string; to: string; reason: string; at: string }) => Promise<void>
 >(async () => undefined);
 const postSkipChainCappedCommentMock = vi.fn<
   (args: {
@@ -263,6 +258,7 @@ beforeEach(() => {
       'open',
       'needs_info',
       'confirmed',
+      'clarified',
       'approved',
       'developed',
       'testing',
@@ -284,14 +280,14 @@ beforeEach(() => {
 });
 
 describe('pipeline/orchestrator', () => {
-  it('enqueues a plan job on open→confirmed when autoPlan is true', async () => {
+  it('enqueues a plan job on confirmed→clarified when autoPlan is true', async () => {
     cfgResolved({ enabled: true, autoPlan: true });
     skillRegistered('forge-plan', 'plan', 'autoPlan');
     nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
     insertReturning.mockResolvedValueOnce([{ id: 'new-job' }]);
 
     const bus = makeBus();
-    await bus.emit('transition', transition() as never);
+    await bus.emit('transition', transition({ from: 'confirmed', to: 'clarified' }) as never);
 
     expect(dbInsert).toHaveBeenCalledTimes(1);
     expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'new-job' }));
@@ -307,7 +303,7 @@ describe('pipeline/orchestrator', () => {
     dbInsert.mockImplementationOnce(() => ({ values: valuesSpy }));
 
     const bus = makeBus();
-    await bus.emit('transition', transition() as never);
+    await bus.emit('transition', transition({ from: 'confirmed', to: 'clarified' }) as never);
 
     expect(valuesSpy).toHaveBeenCalledTimes(1);
     const calls = valuesSpy.mock.calls as unknown as Array<[{ payload: { skillName: string } }]>;
@@ -328,7 +324,7 @@ describe('pipeline/orchestrator', () => {
     cfgResolved({ enabled: true, autoPlan: false });
 
     const bus = makeBus();
-    await bus.emit('transition', transition() as never);
+    await bus.emit('transition', transition({ from: 'confirmed', to: 'clarified' }) as never);
 
     expect(dbInsert).not.toHaveBeenCalled();
   });
@@ -362,7 +358,7 @@ describe('pipeline/orchestrator', () => {
   });
 
   it('refuses + pauses the run when no skill is registered for the auto stage (ISS-238)', async () => {
-    cfgResolved({ enabled: true, autoPlan: true });
+    cfgResolved({ enabled: true, autoClarify: true });
     noSkillRegistered();
 
     const bus = makeBus();
@@ -383,7 +379,7 @@ describe('pipeline/orchestrator', () => {
   });
 
   it('does not post a duplicate comment when the run is already paused with the same reason (ISS-238)', async () => {
-    cfgResolved({ enabled: true, autoPlan: true });
+    cfgResolved({ enabled: true, autoClarify: true });
     noSkillRegistered();
     pauseMissingSkillMock.mockResolvedValueOnce({ paused: false, alreadyPaused: true });
 
@@ -418,7 +414,7 @@ describe('pipeline/orchestrator', () => {
     nextSelect.mockResolvedValueOnce([{ id: 'existing-job' }]); // findActiveJob
 
     const bus = makeBus();
-    await bus.emit('transition', transition() as never);
+    await bus.emit('transition', transition({ from: 'confirmed', to: 'clarified' }) as never);
 
     expect(dbInsert).not.toHaveBeenCalled();
     expect(enqueueMock).not.toHaveBeenCalled();
@@ -431,7 +427,7 @@ describe('pipeline/orchestrator', () => {
     insertReturning.mockRejectedValueOnce(Object.assign(new Error('dup'), { code: '23505' }));
 
     const bus = makeBus();
-    await bus.emit('transition', transition() as never);
+    await bus.emit('transition', transition({ from: 'confirmed', to: 'clarified' }) as never);
 
     expect(enqueueMock).not.toHaveBeenCalled();
   });
@@ -456,32 +452,106 @@ describe('pipeline/orchestrator', () => {
     expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'job-x' }));
   });
 
-  it('enqueues a clarify job on open→needs_info when autoClarify is true (ISS-171)', async () => {
+  it('enqueues a clarify job on open→confirmed when autoClarify is true (clarify-on-happy-path)', async () => {
     cfgResolved({ enabled: true, autoClarify: true });
     skillRegistered('forge-clarify', 'clarify', 'autoClarify');
     nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
     insertReturning.mockResolvedValueOnce([{ id: 'clarify-job' }]);
 
     const bus = makeBus();
-    await bus.emit(
-      'transition',
-      transition({ from: 'open', to: 'needs_info' }) as never,
-    );
+    await bus.emit('transition', transition() as never);
 
     expect(dbInsert).toHaveBeenCalledTimes(1);
     expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'clarify-job' }));
   });
 
-  it('does not enqueue on open→needs_info when autoClarify is false', async () => {
+  it('does not enqueue on open→confirmed when autoClarify is false', async () => {
     cfgResolved({ enabled: true, autoClarify: false });
 
     const bus = makeBus();
-    await bus.emit(
-      'transition',
-      transition({ from: 'open', to: 'needs_info' }) as never,
-    );
+    await bus.emit('transition', transition() as never);
 
     expect(dbInsert).not.toHaveBeenCalled();
+    expect(resolverResolve).not.toHaveBeenCalled();
+  });
+
+  it('complexity-skip: xs issue at confirmed advances to clarified without a clarify job', async () => {
+    cfgResolved({
+      enabled: true,
+      autoClarify: true,
+      states: { confirmed: { skipComplexities: ['xs', 's'] } },
+    });
+    // autoSkipByComplexity issue fetch
+    nextSelect.mockResolvedValueOnce([
+      { id: 'iss-1', projectId: 'proj-1', status: 'confirmed', reopenCount: 0, complexity: 'xs' },
+    ]);
+
+    const bus = makeBus();
+    await bus.emit('transition', transition() as never);
+
+    expect(applyTransitionMock).toHaveBeenCalledTimes(1);
+    expect(applyTransitionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'iss-1', status: 'confirmed' }),
+      'clarified',
+      expect.anything(),
+      { skip: true },
+    );
+    expect(appendSkipChainEntryMock).toHaveBeenCalledWith(
+      'mock-run-id',
+      expect.objectContaining({ from: 'confirmed', to: 'clarified', reason: 'complexity_skip' }),
+    );
+    // No clarify job for the stage we just left.
+    expect(dbInsert).not.toHaveBeenCalled();
+    expect(enqueueMock).not.toHaveBeenCalled();
+  });
+
+  it('complexity-skip: m issue at confirmed still dispatches clarify', async () => {
+    cfgResolved({
+      enabled: true,
+      autoClarify: true,
+      states: { confirmed: { skipComplexities: ['xs', 's'] } },
+    });
+    skillRegistered('forge-clarify', 'clarify', 'autoClarify');
+    nextSelect.mockResolvedValueOnce([
+      { id: 'iss-1', projectId: 'proj-1', status: 'confirmed', reopenCount: 0, complexity: 'm' },
+    ]); // autoSkipByComplexity issue fetch — m not in skip list
+    nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+    insertReturning.mockResolvedValueOnce([{ id: 'clarify-job' }]);
+
+    const bus = makeBus();
+    await bus.emit('transition', transition() as never);
+
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+    expect(dbInsert).toHaveBeenCalledTimes(1);
+    expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'clarify-job' }));
+  });
+
+  it('complexity-skip: unsized issue (complexity null) is never skipped', async () => {
+    cfgResolved({
+      enabled: true,
+      autoClarify: true,
+      states: { confirmed: { skipComplexities: ['xs', 's'] } },
+    });
+    skillRegistered('forge-clarify', 'clarify', 'autoClarify');
+    nextSelect.mockResolvedValueOnce([
+      { id: 'iss-1', projectId: 'proj-1', status: 'confirmed', reopenCount: 0, complexity: null },
+    ]);
+    nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+    insertReturning.mockResolvedValueOnce([{ id: 'clarify-job' }]);
+
+    const bus = makeBus();
+    await bus.emit('transition', transition() as never);
+
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+    expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'clarify-job' }));
+  });
+
+  it('does not enqueue on →needs_info (human-gated bounce state)', async () => {
+    const bus = makeBus();
+    await bus.emit('transition', transition({ from: 'confirmed', to: 'needs_info' }) as never);
+
+    expect(dbInsert).not.toHaveBeenCalled();
+    expect(nextSelect).not.toHaveBeenCalled();
     expect(resolverResolve).not.toHaveBeenCalled();
   });
 
@@ -548,10 +618,7 @@ describe('pipeline/orchestrator soft-skip (ISS-110)', () => {
     ]);
 
     const bus = makeBus();
-    await bus.emit(
-      'transition',
-      transition({ from: 'in_progress', to: 'developed' }) as never,
-    );
+    await bus.emit('transition', transition({ from: 'in_progress', to: 'developed' }) as never);
 
     expect(applyTransitionMock).toHaveBeenCalledTimes(1);
     expect(applyTransitionMock.mock.calls[0]?.[1]).toBe('testing');
@@ -595,10 +662,7 @@ describe('pipeline/orchestrator soft-skip (ISS-110)', () => {
     ]);
 
     const bus = makeBus();
-    await bus.emit(
-      'transition',
-      transition({ from: 'in_progress', to: 'developed' }) as never,
-    );
+    await bus.emit('transition', transition({ from: 'in_progress', to: 'developed' }) as never);
 
     // Per-hop emission gives downstream subscribers (and Sentry) the full
     // status history — AC #4 requires a breadcrumb per skip transition.
@@ -638,10 +702,7 @@ describe('pipeline/orchestrator soft-skip (ISS-110)', () => {
     insertReturning.mockResolvedValueOnce([{ id: 'review-job' }]);
 
     const bus = makeBus();
-    await bus.emit(
-      'transition',
-      transition({ from: 'in_progress', to: 'developed' }) as never,
-    );
+    await bus.emit('transition', transition({ from: 'in_progress', to: 'developed' }) as never);
 
     expect(applyTransitionMock).not.toHaveBeenCalled();
     expect(dbInsert).toHaveBeenCalledTimes(1);
@@ -658,10 +719,7 @@ describe('pipeline/orchestrator soft-skip (ISS-110)', () => {
     ]);
 
     const bus = makeBus();
-    await bus.emit(
-      'transition',
-      transition({ from: 'in_progress', to: 'developed' }) as never,
-    );
+    await bus.emit('transition', transition({ from: 'in_progress', to: 'developed' }) as never);
 
     expect(applyTransitionMock).not.toHaveBeenCalled();
     expect(dbInsert).not.toHaveBeenCalled();
@@ -704,10 +762,7 @@ describe('pipeline/orchestrator auto-skip missing skill (ISS-239)', () => {
     insertReturning.mockResolvedValueOnce([{ id: 'test-job' }]);
 
     const bus = makeBus();
-    await bus.emit(
-      'transition',
-      transition({ from: 'developed', to: 'deploying' }) as never,
-    );
+    await bus.emit('transition', transition({ from: 'developed', to: 'deploying' }) as never);
 
     expect(applyTransitionMock).toHaveBeenCalledTimes(1);
     expect(applyTransitionMock.mock.calls[0]?.[1]).toBe('testing');
@@ -741,10 +796,7 @@ describe('pipeline/orchestrator auto-skip missing skill (ISS-239)', () => {
     ]);
 
     const bus = makeBus();
-    await bus.emit(
-      'transition',
-      transition({ from: 'testing', to: 'pass' }) as never,
-    );
+    await bus.emit('transition', transition({ from: 'testing', to: 'pass' }) as never);
 
     expect(applyTransitionMock).toHaveBeenCalledTimes(3);
     expect(applyTransitionMock.mock.calls.map((c) => c[1])).toEqual([
@@ -766,10 +818,7 @@ describe('pipeline/orchestrator auto-skip missing skill (ISS-239)', () => {
     insertReturning.mockResolvedValueOnce([{ id: 'test-job' }]);
 
     const bus = makeBus();
-    await bus.emit(
-      'transition',
-      transition({ from: 'deploying', to: 'testing' }) as never,
-    );
+    await bus.emit('transition', transition({ from: 'deploying', to: 'testing' }) as never);
 
     expect(applyTransitionMock).not.toHaveBeenCalled();
     expect(appendSkipChainEntryMock).not.toHaveBeenCalled();

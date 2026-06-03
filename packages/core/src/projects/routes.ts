@@ -16,7 +16,6 @@ import {
   skillRegistrations,
   skills,
 } from '../db/schema.js';
-import { defaultRunnerCapabilities } from '../runners/select.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -29,6 +28,7 @@ import {
 } from '../pipeline/pipeline-config-schema.js';
 import { PipelineConfigError, updatePipelineConfig } from '../pipeline/pipeline-config-service.js';
 import { STATUS_TO_JOB_TYPE } from '../pipeline/skill-mapping.js';
+import { defaultRunnerCapabilities } from '../runners/select.js';
 import { mergeStateContext, stateContextSchema } from './state-context.js';
 
 function generateApiKey(): string {
@@ -199,9 +199,7 @@ projectRoutes.get('/', async (c) => {
   // explicit "Archived" view. `archivedAt` must be in the select projection or
   // the UI can't render archived state (see memory
   // `web:useProjectBySlug-omits-branch-fields`).
-  const includeArchived = ['1', 'true'].includes(
-    (c.req.query('archived') ?? '').toLowerCase(),
-  );
+  const includeArchived = ['1', 'true'].includes((c.req.query('archived') ?? '').toLowerCase());
   const rows = await db
     .select({
       id: projects.id,
@@ -875,6 +873,10 @@ const bootstrapParamSchema = z.object({ id: z.uuid() });
 const BALANCED_PRESET = {
   enabled: true,
   autoTriage: true,
+  // Clarify opt-in is explicit: the builtin seed ships no forge-clarify
+  // global skill, so the `confirmed` stage soft-skips (missing_skill) to
+  // `clarified` until a project registers one AND flips this toggle.
+  autoClarify: false,
   autoPlan: true,
   autoCode: false,
   autoReview: true,

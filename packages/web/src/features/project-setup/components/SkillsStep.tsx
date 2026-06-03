@@ -14,7 +14,7 @@ interface Props {
 
 const DEFAULT_BINDINGS: Array<{ stage: string; skillName: string; label: string }> = [
   { stage: 'open', skillName: 'forge-triage', label: 'Open → Triage' },
-  { stage: 'confirmed', skillName: 'forge-plan', label: 'Confirmed → Plan' },
+  { stage: 'clarified', skillName: 'forge-plan', label: 'Clarified → Plan' },
   { stage: 'approved', skillName: 'forge-code', label: 'Approved → Code' },
   { stage: 'developed', skillName: 'forge-review', label: 'Developed → Review' },
   { stage: 'testing', skillName: 'forge-test', label: 'Testing → Test' },

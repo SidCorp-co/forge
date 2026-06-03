@@ -4,15 +4,15 @@ import type { JobType } from '../db/schema.js';
 /**
  * Step-handoff payload schema (proposal: docs/proposals/step-handoff-memory.md).
  *
- * Each pipeline state that emits a handoff (triage/plan/code/review/test/fix)
- * has a discriminator branch below. The same schema is:
+ * Each pipeline state that emits a handoff (triage/clarify/plan/code/review/
+ * test/fix) has a discriminator branch below. The same schema is:
  *   1. Embedded into the user prompt as prose (see `renderHandoffSchemaPrompt`)
  *      so the agent knows the exact shape to send to `forge_memory.write`.
  *   2. Used to validate the payload at the MCP boundary — if the agent emits
  *      malformed JSON, the tool returns a Zod diff so the agent can retry.
  *
- * Steps NOT in this union (clarify, release, custom, pm) do not produce a
- * structured handoff. They terminate normally without a memory write.
+ * Steps NOT in this union (release, custom, pm) do not produce a structured
+ * handoff. They terminate normally without a memory write.
  */
 
 const triageHandoff = z.object({
@@ -23,6 +23,22 @@ const triageHandoff = z.object({
   complexity: z.enum(['xs', 's', 'm', 'l', 'xl']),
   risks: z.array(z.string().min(1)).max(5),
   affectedAreas: z.array(z.string().min(1)).max(10),
+});
+
+// Clarify-on-happy-path: clarify reproduces bugs / validates UX between
+// triage and plan. Its handoff carries the repro evidence + root-cause
+// hypothesis so plan starts from verified behavior instead of re-deriving
+// the problem from the issue description.
+const clarifyHandoff = z.object({
+  step: z.literal('clarify'),
+  schema_version: z.literal(1),
+  outcome: z.enum(['reproduced', 'cannot_reproduce', 'ux_validated', 'ux_ambiguous', 'skipped']),
+  environment: z.string().min(1).max(500),
+  stepsVerified: z
+    .array(z.object({ step: z.string().min(1), observation: z.string().min(1).max(500) }))
+    .max(15),
+  rootCauseHypothesis: z.string().max(2000).optional(),
+  openQuestions: z.array(z.string().min(1)).max(10),
 });
 
 const planHandoff = z.object({
@@ -45,9 +61,7 @@ const codeHandoff = z.object({
       }),
     )
     .max(50),
-  decisions: z
-    .array(z.object({ what: z.string().min(1), why: z.string().min(1) }))
-    .max(10),
+  decisions: z.array(z.object({ what: z.string().min(1), why: z.string().min(1) })).max(10),
   verificationCommands: z.array(z.string().min(1)).max(10),
   knownLimitations: z.array(z.string().min(1)).max(5),
   commitSha: z.string().optional(),
@@ -73,9 +87,7 @@ const testHandoff = z.object({
   step: z.literal('test'),
   schema_version: z.literal(1),
   result: z.enum(['pass', 'fail']),
-  failures: z
-    .array(z.object({ test: z.string().min(1), trace: z.string().max(500) }))
-    .max(20),
+  failures: z.array(z.object({ test: z.string().min(1), trace: z.string().max(500) })).max(20),
   flakyTests: z.array(z.string().min(1)).max(10),
 });
 
@@ -90,15 +102,14 @@ const fixHandoff = z.object({
       }),
     )
     .max(50),
-  decisions: z
-    .array(z.object({ what: z.string().min(1), why: z.string().min(1) }))
-    .max(10),
+  decisions: z.array(z.object({ what: z.string().min(1), why: z.string().min(1) })).max(10),
   reviewItemsResolved: z.array(z.string().min(1)).max(20),
   knownLimitations: z.array(z.string().min(1)).max(5),
 });
 
 export const stepHandoffSchema = z.discriminatedUnion('step', [
   triageHandoff,
+  clarifyHandoff,
   planHandoff,
   codeHandoff,
   reviewHandoff,
@@ -109,6 +120,7 @@ export type StepHandoffPayload = z.infer<typeof stepHandoffSchema>;
 
 export const HANDOFF_STEPS = [
   'triage',
+  'clarify',
   'plan',
   'code',
   'review',
@@ -142,6 +154,21 @@ export function renderHandoffSchemaPrompt(step: HandoffStep): string {
         '  "complexity": <"xs" | "s" | "m" | "l" | "xl">,',
         '  "risks": [<string>, ...]                  // max 5',
         '  "affectedAreas": [<string>, ...]          // max 10',
+        '}',
+      ].join('\n');
+    case 'clarify':
+      return [
+        '{',
+        '  "step": "clarify",',
+        '  "schema_version": 1,',
+        '  "outcome": <"reproduced" | "cannot_reproduce" | "ux_validated" | "ux_ambiguous" | "skipped">,',
+        '  "environment": <string, 1-500 chars — URL or "local" + how you tested>,',
+        '  "stepsVerified": [                        // max 15',
+        '    { "step": <string>, "observation": <string ≤500 chars> },',
+        '    ...',
+        '  ],',
+        '  "rootCauseHypothesis": <string ≤2000 chars, optional — code-level guess>,',
+        '  "openQuestions": [<string>, ...]          // max 10',
         '}',
       ].join('\n');
     case 'plan':

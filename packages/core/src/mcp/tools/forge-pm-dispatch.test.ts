@@ -23,8 +23,7 @@ chain.returning = () => chain;
 chain.onConflictDoNothing = () => chain;
 chain.set = () => chain;
 // biome-ignore lint/suspicious/noExplicitAny: thenable bridge
-chain.then = (resolve: any, reject: any) =>
-  Promise.resolve(queue.shift()).then(resolve, reject);
+chain.then = (resolve: any, reject: any) => Promise.resolve(queue.shift()).then(resolve, reject);
 
 const insertSpy = vi.fn(() => chain);
 
@@ -173,9 +172,7 @@ describe('forge_pm.dispatch', () => {
     expect(result.ok).toBe(true);
     expect(result.jobId).toBe(JOB_ID);
     expect(result.jobType).toBe('code');
-    expect(enqueueJobSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ jobId: JOB_ID }),
-    );
+    expect(enqueueJobSpy).toHaveBeenCalledWith(expect.objectContaining({ jobId: JOB_ID }));
     expect(result.pipelineRun).toEqual({ id: 'run-1', status: 'running' });
   });
 
@@ -186,7 +183,7 @@ describe('forge_pm.dispatch', () => {
     queue.push([
       {
         agentConfig: {
-          pipelineConfig: { states: { confirmed: { enabled: true, mode: 'manual' } } },
+          pipelineConfig: { states: { clarified: { enabled: true, mode: 'manual' } } },
         },
       },
     ]);
@@ -247,8 +244,7 @@ describe('forge_pm.dispatch', () => {
     // jobs insert throws 23505
     insertSpy.mockReturnValueOnce({
       values: () => ({
-        returning: () =>
-          Promise.reject(Object.assign(new Error('dup'), { code: '23505' })),
+        returning: () => Promise.reject(Object.assign(new Error('dup'), { code: '23505' })),
       }),
       // biome-ignore lint/suspicious/noExplicitAny: partial chain
     } as any);

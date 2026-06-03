@@ -1,12 +1,13 @@
-import { describe, expect, it } from 'vitest';
 import {
-  pipelineRegistryResponseSchema,
   REGISTRY_ISSUE_STATUSES,
   REGISTRY_JOB_TYPES,
   REGISTRY_RUNNER_TYPES,
   REGISTRY_STEP_TOGGLE_KEYS,
+  pipelineRegistryResponseSchema,
 } from '@forge/contracts';
+import { describe, expect, it } from 'vitest';
 import { issueStatuses, jobTypes, runnerTypes } from '../db/schema.js';
+import { STEP_TOGGLE_KEYS } from './pipeline-config-schema.js';
 import {
   MANUAL_ONLY_JOB_TYPES,
   PIPELINE_REGISTRY_VERSION,
@@ -17,7 +18,6 @@ import {
   getPipelineRegistry,
 } from './registry.js';
 import { STATUS_TO_JOB_TYPE as MAPPING_RE_EXPORT } from './skill-mapping.js';
-import { STEP_TOGGLE_KEYS } from './pipeline-config-schema.js';
 
 describe('PIPELINE_STEPS literal sanity', () => {
   it('skillName always follows the forge-${jobType} convention', () => {
@@ -29,14 +29,21 @@ describe('PIPELINE_STEPS literal sanity', () => {
   it('has the eight automatable steps in the expected order', () => {
     expect(PIPELINE_STEPS.map((s) => s.status)).toEqual([
       'open',
-      'needs_info',
       'confirmed',
+      'clarified',
       'approved',
       'developed',
       'testing',
       'reopen',
       'released',
     ]);
+  });
+
+  it('clarify sits on the happy path: confirmed → clarify, clarified → plan', () => {
+    expect(STATUS_TO_JOB_TYPE['confirmed']?.type).toBe('clarify');
+    expect(STATUS_TO_JOB_TYPE['clarified']?.type).toBe('plan');
+    // needs_info is a human-gated bounce state — nothing dispatches there.
+    expect(STATUS_TO_JOB_TYPE['needs_info']).toBeUndefined();
   });
 
   it('MANUAL_ONLY_JOB_TYPES is empty after clarify promotion (ISS-171)', () => {
@@ -113,10 +120,10 @@ describe('contracts ↔ core enum parity', () => {
 });
 
 describe('getPipelineRegistry()', () => {
-  it('returns the four-key payload with version 1', () => {
+  it('returns the four-key payload with version 2', () => {
     const payload = getPipelineRegistry();
     expect(payload.version).toBe(PIPELINE_REGISTRY_VERSION);
-    expect(payload.version).toBe(1);
+    expect(payload.version).toBe(2);
     expect(payload.steps).toBe(PIPELINE_STEPS);
     expect(payload.runnerCapabilities).toBe(RUNNER_CAPABILITIES);
     expect(payload.manualOnlyJobTypes).toBe(MANUAL_ONLY_JOB_TYPES);
@@ -126,7 +133,7 @@ describe('getPipelineRegistry()', () => {
     const payload = getPipelineRegistry();
     const json = JSON.parse(JSON.stringify(payload));
     const parsed = pipelineRegistryResponseSchema.parse(json);
-    expect(parsed.version).toBe(1);
+    expect(parsed.version).toBe(2);
     expect(parsed.steps).toHaveLength(8);
     expect(parsed.manualOnlyJobTypes).toEqual([]);
   });
@@ -146,7 +153,7 @@ describe('GET /api/pipeline/registry', () => {
     const body = await res.json();
     const parsed = pipelineRegistryResponseSchema.parse(body);
     expect(parsed.steps).toHaveLength(8);
-    expect(parsed.version).toBe(1);
+    expect(parsed.version).toBe(2);
     expect(parsed.manualOnlyJobTypes).toEqual([]);
     expect(parsed.runnerCapabilities['claude-code']).toEqual([
       'plan',

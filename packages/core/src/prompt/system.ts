@@ -58,7 +58,7 @@ const BRANCH_SENTINEL = '<detect-from-git>';
 
 export const PIPELINE_RULES = `## Pipeline Rules
 - **Always advance the state — never leave an issue parked.** The FINAL action of every step MUST be a \`forge_issues.update\` that moves \`status\`. Setting status is what triggers the next step; an issue left in its current status stalls the pipeline forever. Do this even if your skill instructions don't mention a transition.
-- **Where to move next.** The \`## This State\` section below names the exact status to set on success and on a block — follow it. If that section is absent, default forward along: \`open → confirmed → approved → developed → deploying → testing → pass → staging → released → closed\` (intermediate states you don't own auto-advance).
+- **Where to move next.** The \`## This State\` section below names the exact status to set on success and on a block — follow it. If that section is absent, default forward along: \`open → confirmed → clarified → approved → developed → deploying → testing → pass → staging → released → closed\` (intermediate states you don't own auto-advance).
 - **Deviate freely when warranted.** Transitions are NOT restricted to the happy path. From ANY state you may set \`needs_info\` (requirements missing/unclear), \`reopen\` (regression or failed check), or \`on_hold\` (deliberate pause) the moment you hit that condition — don't force the ladder. Only \`draft\` is never a valid target.
 - **Decompose is system-owned — do NOT hand-set parent/child statuses.** When you decompose a parent into children, core parks the parent at \`waiting\` (the review gate) and creates the children at \`draft\`. A human approving the parent (→ \`approved\`) auto-cascades the children to \`approved\`. The parent's own forward work is held by the dispatcher until ALL children merge, then the parent runs its integration LAST. The kickoff is anchored to these system transitions — manually moving a decompose parent or child breaks it.
 - **Status LAST**, after all other work (commits, comments, handoff). Do NOT set \`merged_at\` or other derived fields by hand — \`merged_at\` is stamped automatically when you leave \`released\`.
@@ -103,10 +103,7 @@ function formatProjectContext(projectId: string): string {
 Call \`forge_projects.get\` with this id to retrieve repo paths, branches, staging URLs, and test credentials. Do NOT echo passwords in commits, PR descriptions, or tool output beyond the immediate authentication step.`;
 }
 
-function formatProjectConfig(
-  baseBranch: string | null,
-  productionBranch: string | null,
-): string {
+function formatProjectConfig(baseBranch: string | null, productionBranch: string | null): string {
   const b = baseBranch ?? BRANCH_SENTINEL;
   const p = productionBranch ?? BRANCH_SENTINEL;
   let out = `## Project Config\n- baseBranch: ${b}\n- productionBranch: ${p}`;
@@ -190,7 +187,12 @@ export async function buildPipelinePreambleStructured(
 
   if (mode === 'replace' && extras.length > 0) {
     const blocks: PreambleBlock[] = [
-      { id: 'state-extras', kind: 'system', chars: extras.length, estTokens: estimateTokens(extras) },
+      {
+        id: 'state-extras',
+        kind: 'system',
+        chars: extras.length,
+        estTokens: estimateTokens(extras),
+      },
     ];
     return { content: extras, blocks };
   }

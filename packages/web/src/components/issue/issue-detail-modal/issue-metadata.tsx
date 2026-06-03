@@ -25,6 +25,7 @@ function statusActionLabel(status: string): string {
     case 'open':
       return 'Triage';
     case 'confirmed':
+    case 'clarified':
       return 'Plan';
     case 'approved':
     case 'in_progress':

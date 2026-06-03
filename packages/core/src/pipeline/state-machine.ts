@@ -9,8 +9,12 @@ export type { IssueStatus };
 // triage.
 export const transitions: Record<IssueStatus, readonly IssueStatus[]> = {
   open: ['confirmed', 'needs_info', 'on_hold'],
-  confirmed: ['waiting', 'approved', 'needs_info', 'on_hold'],
-  waiting: ['approved', 'confirmed', 'on_hold'],
+  // Clarify-on-happy-path: confirmed dispatches clarify, which exits to
+  // `clarified` (reproduced / UX-validated) where plan picks up, or bounces
+  // to needs_info when it cannot reproduce.
+  confirmed: ['clarified', 'needs_info', 'on_hold'],
+  clarified: ['waiting', 'approved', 'needs_info', 'on_hold'],
+  waiting: ['approved', 'clarified', 'on_hold'],
   approved: ['in_progress', 'on_hold'],
   in_progress: ['developed', 'deploying', 'reopen', 'on_hold'],
   developed: ['deploying', 'reopen', 'on_hold'],
@@ -42,9 +46,7 @@ export function canTransition(from: IssueStatus, to: IssueStatus): boolean {
  * AI-proposal ingress state (issues are created as draft, then promoted to
  * open/closed) — nothing in the live lifecycle transitions INTO draft.
  */
-export const NON_TARGETABLE_STATUSES: ReadonlySet<IssueStatus> = new Set([
-  'draft',
-]);
+export const NON_TARGETABLE_STATUSES: ReadonlySet<IssueStatus> = new Set(['draft']);
 
 /**
  * Permissive runtime transition guard. The strict `transitions` matrix above
@@ -84,7 +86,10 @@ export function isReopenEntry(from: IssueStatus, to: IssueStatus): boolean {
 // so the resolver is guaranteed to terminate.
 export const STAGE_FORWARD: Partial<Record<IssueStatus, IssueStatus>> = {
   open: 'confirmed',
-  confirmed: 'approved',
+  // confirmed hosts the clarify step; skipping it lands on clarified, where
+  // plan dispatches. Skipping clarified (plan disabled) lands on approved.
+  confirmed: 'clarified',
+  clarified: 'approved',
   developed: 'testing',
   testing: 'pass',
   tested: 'pass',
@@ -131,7 +136,7 @@ export type StagesConfig = Partial<
  * operator-initiated config disablement from runtime "no skill registered"
  * gaps.
  */
-export type SkipReason = 'stage_disabled' | 'missing_skill';
+export type SkipReason = 'stage_disabled' | 'missing_skill' | 'complexity_skip';
 
 export interface SkipHop {
   /** The destination stage of this hop. */

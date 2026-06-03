@@ -47,7 +47,14 @@ import { hooks } from '../pipeline/hooks.js';
 import { applyStatusTransition } from './apply-transition.js';
 
 const MAX_BRANCH_SUFFIX = 10;
-const ALLOWED_PARENT_STATUSES: ReadonlySet<IssueStatus> = new Set(['confirmed', 'waiting']);
+// Plan (the step that decides to decompose) runs at `clarified`; `confirmed`
+// is tolerated for manual decompose before clarify, `waiting` for re-splits
+// from the review gate.
+const ALLOWED_PARENT_STATUSES: ReadonlySet<IssueStatus> = new Set([
+  'confirmed',
+  'clarified',
+  'waiting',
+]);
 
 export interface DecomposeChildSpec {
   title?: string | undefined;
@@ -253,10 +260,7 @@ export async function decomposeParent(
         continue;
       }
       if (!spec.title || spec.title.trim().length === 0) {
-        throw new DecomposeError(
-          'BAD_REQUEST',
-          'each new child must have a non-empty title',
-        );
+        throw new DecomposeError('BAD_REQUEST', 'each new child must have a non-empty title');
       }
       const [inserted] = await tx
         .insert(issues)
@@ -561,4 +565,3 @@ export async function parentHasIntegrationBranch(
       typeof meta.useIntegrationBranch === 'boolean' ? meta.useIntegrationBranch : null,
   };
 }
-

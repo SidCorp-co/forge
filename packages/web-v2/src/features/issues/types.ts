@@ -16,6 +16,7 @@ import type { StatusKey } from "@/design/status";
 export type IssueStatus =
   | "open"
   | "confirmed"
+  | "clarified"
   | "waiting"
   | "approved"
   | "in_progress"
@@ -38,7 +39,7 @@ export type IssueComplexity = "xs" | "s" | "m" | "l" | "xl";
 /** Runtime arrays for inline-edit option lists — kept in lockstep with the
  *  unions above (the source of truth is `db/schema.ts`). */
 export const ISSUE_STATUSES: IssueStatus[] = [
-  "open", "confirmed", "waiting", "approved", "in_progress", "developed",
+  "open", "confirmed", "clarified", "waiting", "approved", "in_progress", "developed",
   "deploying", "testing", "tested", "pass", "staging", "released", "closed",
   "reopen", "on_hold", "needs_info", "draft",
 ];

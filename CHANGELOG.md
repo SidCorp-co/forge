@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **The pipeline now reproduces bugs before planning: a new `clarified` status sits between `confirmed` and `approved`, and the clarify step runs on the happy path — it reproduces the bug (or validates the UX) in a live environment, attaches evidence and a root-cause hypothesis, and only then hands the issue to planning. Trivially-sized issues (per-stage `skipComplexities`, e.g. xs/s) skip clarify automatically, and projects that never enabled clarify keep their exact previous flow.**
+  *Technical: `clarified` added to `issueStatuses` (migration 0093: CHECK constraint, `skill_registrations` stage moves confirmed→clarified + needs_info→confirmed, and a behavior-preserving `states.confirmed.enabled=false` backfill for projects without `autoClarify`). PIPELINE_STEPS re-wired (confirmed→clarify, clarified→plan; needs_info is human-gated again, registry v2). New `StageConfig.skipComplexities` + orchestrator `autoSkipByComplexity` (skip reason `complexity_skip`, breadcrumb + skipChain parity with ISS-110/239). clarify promoted to a handoff-emitting step (`clarifyHandoff` schema; plan injects `[triage, clarify]`). Status added across contracts, web, web-v2 status maps.*
+
 - **Project Settings now has a Testing tab where project owners can set the staging URL, staging API URL, named testing links, and test login credentials (passwords masked with a reveal toggle) — no database access needed.**
   *Technical: Frontend-only web-v2 Testing tab editing project.previewDeploy via existing owner-gated PATCH /api/projects/:id; preserves unknown jsonb keys, client-side URL/label validation mirrors previewDeployPatchSchema. Merge 105be93.*
 

@@ -4,6 +4,7 @@ import type { ReleaseNotes } from '@forge/contracts';
 export type IssueStatus =
   | 'open'
   | 'confirmed'
+  | 'clarified'
   | 'waiting'
   | 'approved'
   | 'in_progress'

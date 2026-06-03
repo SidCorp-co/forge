@@ -37,11 +37,11 @@ beforeEach(() => {
 describe('resolveJobTypeForStatus', () => {
   it('maps every automatable status to a jobType + toggle', () => {
     expect(resolveJobTypeForStatus('open')).toEqual({ type: 'triage', toggle: 'autoTriage' });
-    expect(resolveJobTypeForStatus('needs_info')).toEqual({
+    expect(resolveJobTypeForStatus('confirmed')).toEqual({
       type: 'clarify',
       toggle: 'autoClarify',
     });
-    expect(resolveJobTypeForStatus('confirmed')).toEqual({ type: 'plan', toggle: 'autoPlan' });
+    expect(resolveJobTypeForStatus('clarified')).toEqual({ type: 'plan', toggle: 'autoPlan' });
     expect(resolveJobTypeForStatus('approved')).toEqual({ type: 'code', toggle: 'autoCode' });
     expect(resolveJobTypeForStatus('developed')).toEqual({ type: 'review', toggle: 'autoReview' });
     expect(resolveJobTypeForStatus('testing')).toEqual({ type: 'test', toggle: 'autoTest' });
@@ -50,7 +50,8 @@ describe('resolveJobTypeForStatus', () => {
   });
 
   it('returns null for human-gated statuses', () => {
-    for (const s of ['waiting', 'staging', 'on_hold', 'closed'] as const) {
+    // needs_info is human-gated again — clarify moved to the happy path.
+    for (const s of ['waiting', 'staging', 'on_hold', 'closed', 'needs_info'] as const) {
       expect(resolveJobTypeForStatus(s)).toBeNull();
     }
   });
@@ -60,9 +61,9 @@ describe('resolveJobTypeForStatus', () => {
     expect(mapped).toEqual(
       [
         'approved',
+        'clarified',
         'confirmed',
         'developed',
-        'needs_info',
         'open',
         'released',
         'reopen',
@@ -78,8 +79,8 @@ describe('resolveJobTypeForStatus', () => {
 describe('inverseJobTypeToStatus', () => {
   it('maps each jobType back to its source status', () => {
     expect(inverseJobTypeToStatus('triage')).toBe('open');
-    expect(inverseJobTypeToStatus('clarify')).toBe('needs_info');
-    expect(inverseJobTypeToStatus('plan')).toBe('confirmed');
+    expect(inverseJobTypeToStatus('clarify')).toBe('confirmed');
+    expect(inverseJobTypeToStatus('plan')).toBe('clarified');
     expect(inverseJobTypeToStatus('code')).toBe('approved');
     expect(inverseJobTypeToStatus('review')).toBe('developed');
     expect(inverseJobTypeToStatus('test')).toBe('testing');
@@ -132,8 +133,8 @@ describe('createProjectSkillResolver', () => {
 
 describe('resolveSkillForStatus (single-shot wrapper)', () => {
   it('reads from the registration table for the given project', async () => {
-    queue.push([{ stage: 'confirmed', name: 'planner-skill' }]);
-    const out = await resolveSkillForStatus('confirmed', PROJECT_ID);
+    queue.push([{ stage: 'clarified', name: 'planner-skill' }]);
+    const out = await resolveSkillForStatus('clarified', PROJECT_ID);
     expect(out).toEqual({ type: 'plan', toggle: 'autoPlan', skillName: 'planner-skill' });
   });
 

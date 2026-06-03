@@ -17,6 +17,7 @@ const DESTRUCTIVE_STAGES = new Set<PipelineStage>(['release']);
 const STATUS_TO_LABEL: Record<string, string> = {
   open: 'Triage',
   confirmed: 'Clarify',
+  clarified: 'Plan Implementation',
   waiting: 'Plan Implementation',
   approved: 'Start Coding',
   in_progress: 'Continue Coding',

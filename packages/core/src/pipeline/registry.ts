@@ -10,12 +10,16 @@
 
 import type { IssueStatus, JobType, RunnerType } from '../db/schema.js';
 
-export const PIPELINE_REGISTRY_VERSION = 1;
+export const PIPELINE_REGISTRY_VERSION = 2;
 
 export const PIPELINE_STEPS = [
   { status: 'open', jobType: 'triage', toggle: 'autoTriage', skillName: 'forge-triage' },
-  { status: 'needs_info', jobType: 'clarify', toggle: 'autoClarify', skillName: 'forge-clarify' },
-  { status: 'confirmed', jobType: 'plan', toggle: 'autoPlan', skillName: 'forge-plan' },
+  // Clarify-on-happy-path: clarify runs AFTER triage confirms the issue
+  // (reproduce the bug / verify UX before planning) and exits to `clarified`,
+  // where plan picks up. needs_info is a human-gated bounce state again — no
+  // pipeline step dispatches there.
+  { status: 'confirmed', jobType: 'clarify', toggle: 'autoClarify', skillName: 'forge-clarify' },
+  { status: 'clarified', jobType: 'plan', toggle: 'autoPlan', skillName: 'forge-plan' },
   { status: 'approved', jobType: 'code', toggle: 'autoCode', skillName: 'forge-code' },
   { status: 'developed', jobType: 'review', toggle: 'autoReview', skillName: 'forge-review' },
   { status: 'testing', jobType: 'test', toggle: 'autoTest', skillName: 'forge-test' },
@@ -35,16 +39,14 @@ export type PipelineStep = (typeof PIPELINE_STEPS)[number];
 // enum tuple it needs.
 export type StepToggleKey = PipelineStep['toggle'];
 
-// Human-gated job types with no auto-dispatch path. Empty after ISS-171
-// promoted 'clarify' to a first-class step; kept exported because the FE
-// renders this list.
+// Human-gated job types with no auto-dispatch path. Empty since ISS-171
+// promoted 'clarify' to a first-class step (now on the happy path at
+// `confirmed`); kept exported because the FE renders this list.
 export const MANUAL_ONLY_JOB_TYPES: readonly JobType[] = [];
 
 // ISS-196 — statuses that auto-dispatch a job. Derived from PIPELINE_STEPS
 // so adding a step here automatically expands the reconciler's rescue set.
-export const AUTO_DISPATCH_STATUSES: readonly IssueStatus[] = PIPELINE_STEPS.map(
-  (s) => s.status,
-);
+export const AUTO_DISPATCH_STATUSES: readonly IssueStatus[] = PIPELINE_STEPS.map((s) => s.status);
 
 // Mirrors the static map historically duplicated in
 // `packages/web/src/features/pipeline/runner-capabilities.ts`. The web copy
@@ -60,10 +62,9 @@ export interface JobTypeMapping {
   toggle: StepToggleKey;
 }
 
-export const STATUS_TO_JOB_TYPE: Partial<Record<IssueStatus, JobTypeMapping>> =
-  Object.fromEntries(
-    PIPELINE_STEPS.map((s) => [s.status, { type: s.jobType, toggle: s.toggle }]),
-  ) as Partial<Record<IssueStatus, JobTypeMapping>>;
+export const STATUS_TO_JOB_TYPE: Partial<Record<IssueStatus, JobTypeMapping>> = Object.fromEntries(
+  PIPELINE_STEPS.map((s) => [s.status, { type: s.jobType, toggle: s.toggle }]),
+) as Partial<Record<IssueStatus, JobTypeMapping>>;
 
 export const STATUS_TO_SKILL: Partial<Record<IssueStatus, string>> = Object.fromEntries(
   PIPELINE_STEPS.map((s) => [s.status, s.skillName]),

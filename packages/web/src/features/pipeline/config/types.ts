@@ -24,6 +24,7 @@ export interface RecoveryByKind {
 export const STAGE_NAMES = [
   'open',
   'confirmed',
+  'clarified',
   'approved',
   'developed',
   'testing',

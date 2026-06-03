@@ -52,7 +52,7 @@ export const lifecycleStages: LifecycleStage[] = [
   { name: 'Maintain', status: 'today', description: 'Webhook → issue → pipeline. Sentry, Stripe, GitHub events become work' },
 ];
 
-// Pipeline visualization steps (default 14-status; landing shows the 5 most
+// Pipeline visualization steps (default 14-status; landing shows the 6 most
 // recognizable transitions). Keeps the section honest without rendering all 14.
 export interface PipelineStep {
   stage: string;
@@ -64,10 +64,11 @@ export interface PipelineStep {
 
 export const pipelineSteps: PipelineStep[] = [
   { stage: 'triage', from: 'open', to: 'confirmed', delay: 0.0 },
-  { stage: 'plan', from: 'confirmed', to: 'approved', delay: 0.12 },
-  { stage: 'code', from: 'approved', to: 'developed', delay: 0.24 },
-  { stage: 'review', from: 'developed', to: 'pass', delay: 0.36, glyph: '✓' },
-  { stage: 'release', from: 'pass', to: 'main', delay: 0.48 },
+  { stage: 'clarify', from: 'confirmed', to: 'clarified', delay: 0.1 },
+  { stage: 'plan', from: 'clarified', to: 'approved', delay: 0.2 },
+  { stage: 'code', from: 'approved', to: 'developed', delay: 0.3 },
+  { stage: 'review', from: 'developed', to: 'pass', delay: 0.4, glyph: '✓' },
+  { stage: 'release', from: 'pass', to: 'main', delay: 0.5 },
 ];
 
 // Architecture diagram nodes (used by landing-architecture).

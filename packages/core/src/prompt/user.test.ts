@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildJobPromptString, injectTurnLevelRules, type IssueSnapshot } from './user.js';
+import { type IssueSnapshot, buildJobPromptString, injectTurnLevelRules } from './user.js';
 
 const SAMPLE: IssueSnapshot = {
   title: 'Add rate limiting',
@@ -316,9 +316,9 @@ describe('buildJobPromptString — step-handoff (proposal Y)', () => {
     expect(out).toContain('DONE');
   });
 
-  it('omits ## Termination protocol for non-handoff steps (clarify/release/pm)', () => {
+  it('omits ## Termination protocol for non-handoff steps (release/pm)', () => {
     const out = buildJobPromptString({
-      jobType: 'clarify',
+      jobType: 'release',
       issueId: 'iss-1',
       issueSnapshot: snapshot,
       policy: { handoffs: { enabled: true, injectFromSteps: [] } },

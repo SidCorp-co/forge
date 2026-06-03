@@ -25,6 +25,7 @@ interface Props {
 const STAGE_LABELS: Record<StageName, string> = {
   open: 'Open',
   confirmed: 'Confirmed',
+  clarified: 'Clarified',
   approved: 'Approved',
   developed: 'Developed',
   testing: 'Testing',

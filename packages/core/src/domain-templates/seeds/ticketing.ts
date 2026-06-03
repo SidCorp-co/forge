@@ -21,7 +21,11 @@ export const ticketingTemplate: BuiltinTemplate = {
     },
     skillRegistrations: [
       { skillName: 'forge-triage', stage: 'open' },
-      { skillName: 'forge-plan', stage: 'confirmed' },
+      // `confirmed` hosts the clarify step (clarify-on-happy-path). The
+      // template deliberately registers no skill there — the missing-skill
+      // soft-skip advances confirmed → clarified, so template projects get
+      // the classic triage → plan flow until they opt into forge-clarify.
+      { skillName: 'forge-plan', stage: 'clarified' },
       { skillName: 'forge-code', stage: 'approved' },
       { skillName: 'forge-review', stage: 'developed' },
       { skillName: 'forge-fix', stage: 'reopen' },

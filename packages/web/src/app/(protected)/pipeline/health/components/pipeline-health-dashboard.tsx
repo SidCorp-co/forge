@@ -20,6 +20,7 @@ import { useThroughput } from '@/features/pipeline/hooks/use-pipeline';
 const ACTIVE_STATUSES = [
   'open',
   'confirmed',
+  'clarified',
   'approved',
   'in_progress',
   'developed',
@@ -31,7 +32,8 @@ const ACTIVE_STATUSES = [
 const STATUS_COLORS: Record<string, string> = {
   open: '#94a3b8',
   confirmed: '#60a5fa',
-  approved: '#3b82f6',
+  clarified: '#3b82f6',
+  approved: '#2563eb',
   in_progress: '#8b5cf6',
   developed: '#a78bfa',
   testing: '#facc15',

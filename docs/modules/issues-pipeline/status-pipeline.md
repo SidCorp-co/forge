@@ -1,39 +1,41 @@
 # Issue Status Pipeline
 
-Issue lifecycle: 17 statuses, skill mapping, transitions. Per-project `pipelineConfig.auto*` gates auto-run.
+Issue lifecycle: 18 statuses, skill mapping, transitions. Per-project `pipelineConfig.auto*` gates auto-run.
 
 ## Statuses
 
-Source of truth: [`packages/core/src/db/schema.ts`](../../../packages/core/src/db/schema.ts) (`issueStatuses`, 17 entries). Keep this table in lockstep.
+Source of truth: [`packages/core/src/db/schema.ts`](../../../packages/core/src/db/schema.ts) (`issueStatuses`, 18 entries). Keep this table in lockstep.
 
 | # | Status | Meaning | Set by |
 |---|--------|---------|--------|
 | 1 | `open` | New, untriaged | Issue created |
-| 2 | `confirmed` | Triaged, ready to plan | forge-triage |
-| 3 | `waiting` | Plan written, awaiting human approval (gate) | forge-plan (Complex) |
-| 4 | `approved` | Plan approved, ready to code | forge-plan (Simple/Medium) or human |
-| 5 | `in_progress` | Being coded + built | forge-code start |
-| 6 | `developed` | Code pushed, awaiting review | forge-code |
-| 7 | `deploying` | Deploy in progress (reserved — projects with an external deploy step) | external deploy trigger |
-| 8 | `testing` | Verify gate after review | forge-review (APPROVE) |
-| 9 | `tested` | Verification passed (auto-advance step) | forge-test |
-| 10 | `pass` | Auto-advance step toward release | forge-test |
-| 11 | `staging` | Final gate before release (no-op / human in most projects) | forge-test |
-| 12 | `released` | Cleared for release — triggers release note + close | forge-test |
-| 13 | `closed` | Done / archived | forge-release or manual |
-| 14 | `reopen` | Rejected, needs fix | Rejection at review/test |
-| 15 | `on_hold` | Paused / blocked | Manual or infra failure |
-| 16 | `needs_info` | Blocked on clarification — triggers forge-clarify | forge-triage or manual |
-| 17 | `draft` | AI-proposed issue awaiting human confirm (Dream / Doc-Sync schedules) | scheduled agent |
+| 2 | `confirmed` | Triaged — clarify validates/reproduces next | forge-triage |
+| 3 | `clarified` | Repro/UX validated (or auto-skipped), ready to plan | forge-clarify, or auto-skip |
+| 4 | `waiting` | Plan written, awaiting human approval (gate) | forge-plan (Complex) |
+| 5 | `approved` | Plan approved, ready to code | forge-plan (Simple/Medium) or human |
+| 6 | `in_progress` | Being coded + built | forge-code start |
+| 7 | `developed` | Code pushed, awaiting review | forge-code |
+| 8 | `deploying` | Deploy in progress (reserved — projects with an external deploy step) | external deploy trigger |
+| 9 | `testing` | Verify gate after review | forge-review (APPROVE) |
+| 10 | `tested` | Verification passed (auto-advance step) | forge-test |
+| 11 | `pass` | Auto-advance step toward release | forge-test |
+| 12 | `staging` | Final gate before release (no-op / human in most projects) | forge-test |
+| 13 | `released` | Cleared for release — triggers release note + close | forge-test |
+| 14 | `closed` | Done / archived | forge-release or manual |
+| 15 | `reopen` | Rejected, needs fix | Rejection at review/test |
+| 16 | `on_hold` | Paused / blocked | Manual or infra failure |
+| 17 | `needs_info` | Human-gated bounce: blocked on reporter clarification (no auto-dispatch) | forge-triage, forge-clarify, or manual |
+| 18 | `draft` | AI-proposed issue awaiting human confirm (Dream / Doc-Sync schedules) | scheduled agent |
 
 ## Flow
 
 Happy path driven by pipeline registry ([`packages/core/src/pipeline/registry.ts`](../../../packages/core/src/pipeline/registry.ts) → `PIPELINE_STEPS`) — the single place the status × jobType × toggle × skill mapping lives:
 
 ```
-open ──forge-triage──▶ confirmed ──forge-plan──▶ approved (S/M)
-   │                                            └─▶ waiting ──human──▶ approved (Complex)
-   └─(needs more info)─▶ needs_info ──forge-clarify──▶ confirmed
+open ──forge-triage──▶ confirmed ──forge-clarify──▶ clarified ──forge-plan──▶ approved (S/M)
+   │                       │ skipComplexities ▲  │                          └─▶ waiting ──human──▶ approved (Complex)
+   │                       └─(xs/s auto-skip)──┘  └─(cannot reproduce)─▶ needs_info ──human──▶ confirmed
+   └─(needs more info)─▶ needs_info ──human answers──▶ open/confirmed
 
 approved ──forge-code──▶ in_progress ──▶ developed ──forge-review──▶ testing
                                                                        │ APPROVE
@@ -47,8 +49,19 @@ approved ──forge-code──▶ in_progress ──▶ developed ──forge-r
 
 Rejection at review/test  ──▶ reopen ──forge-fix──▶ developed
 Infra failure / unknown hang ──▶ on_hold (manual)
-Triage needs clarification   ──▶ needs_info ──forge-clarify──▶ confirmed
+Missing info (any stage)     ──▶ needs_info — human-gated bounce, no auto-dispatch
 ```
+
+- **Clarify-on-happy-path**: `confirmed` dispatches forge-clarify (reproduce the bug
+  in a live env / validate UX vs mockups, write a root-cause hypothesis) and exits to
+  `clarified`, where forge-plan picks up. Cannot-reproduce/ambiguous → `needs_info`.
+- **Complexity auto-skip**: a stage with `states.<stage>.skipComplexities` (e.g.
+  `states.confirmed.skipComplexities: ["xs","s"]`) auto-advances issues whose sized
+  `complexity` matches, one hop along `STAGE_FORWARD`, skip reason `complexity_skip`
+  (breadcrumb + `pipeline_runs.metadata.skipChain`). Unsized issues never skip.
+- Projects that don't want clarify: leave no skill registered at `confirmed`
+  (missing-skill soft-skip) or set `states.confirmed.enabled: false`. The 0093
+  migration backfilled `enabled: false` for every project without `autoClarify`.
 
 - `waiting` and `staging` are human/no-op gates — no skill auto-runs there.
 - `forge-test` auto-advances `tested → pass → staging → released` once its merge + live-verify gate passes (see Verification); those statuses are traversed automatically, not gated.
@@ -94,15 +107,15 @@ Watches issue status changes, dispatches the matching skill. Mapping derived fro
 | Status | Skill | Per-project toggle |
 |--------|-------|--------------------|
 | `open` | forge-triage | `autoTriage` |
-| `needs_info` | forge-clarify | `autoClarify` |
-| `confirmed` | forge-plan | `autoPlan` |
+| `confirmed` | forge-clarify | `autoClarify` |
+| `clarified` | forge-plan | `autoPlan` |
 | `approved` | forge-code | `autoCode` |
 | `developed` | forge-review | `autoReview` |
 | `testing` | forge-test | `autoTest` |
 | `reopen` | forge-fix | `autoFix` |
 | `released` | forge-release | `autoRelease` |
 
-No-auto-dispatch statuses (`waiting`, `deploying`, `tested`, `pass`, `staging`, `on_hold`, `draft`) are human gates or auto-advance steps `forge-test` walks through.
+No-auto-dispatch statuses (`waiting`, `needs_info`, `deploying`, `tested`, `pass`, `staging`, `on_hold`, `draft`) are human gates or auto-advance steps `forge-test` walks through.
 
 ### Execution modes
 
@@ -132,9 +145,9 @@ Top-level `enabled: false` (default) disables all automation — every transitio
 
 | Skill | Trigger status | Exit status | What it does |
 |-------|---------------|-------------|--------------|
-| **forge-triage** | `open` | `confirmed` / `needs_info` | Validate completeness, classify complexity, set category/priority |
-| **forge-clarify** | `needs_info` | `confirmed` | Resolve missing info, then re-enter the plan path |
-| **forge-plan** | `confirmed` | `approved` (S/M) / `waiting` (C) | Explore code, write implementation plan + QA scenarios |
+| **forge-triage** | `open` | `confirmed` / `needs_info` | Validate completeness, classify complexity, detect relations, set category/priority |
+| **forge-clarify** | `confirmed` | `clarified` / `needs_info` | Reproduce bug / validate UX in live env, evidence + root-cause hypothesis |
+| **forge-plan** | `clarified` | `approved` (S/M) / `waiting` (C) | Explore code, write implementation plan + QA scenarios |
 | **forge-code** | `approved` | `developed` | Implement, build, tiered review, commit, push ISS-* branch |
 | **forge-review** | `developed` | `testing` / `reopen` | Independent fresh-context code review + diff smoke |
 | **forge-test** | `testing` | `released` (via tested/pass/staging) / `reopen` | Merge ISS-* + deploy beta + full live E2E gate |

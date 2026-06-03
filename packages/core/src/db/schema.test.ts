@@ -805,6 +805,7 @@ describe('db/schema — issues', () => {
     expect(issueStatuses).toEqual([
       'open',
       'confirmed',
+      'clarified',
       'waiting',
       'approved',
       'in_progress',

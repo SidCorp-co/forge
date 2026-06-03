@@ -189,9 +189,7 @@ describe('POST /api/issues/:id/enrich', () => {
     expect(res.status).toBe(202);
     const body = (await res.json()) as { issueId: string; jobId: string; status: string };
     expect(body).toEqual({ issueId: ISSUE_ID, jobId: JOB_ID, status: 'queued' });
-    expect(enqueueJobMock).toHaveBeenCalledWith(
-      expect.objectContaining({ jobId: JOB_ID }),
-    );
+    expect(enqueueJobMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: JOB_ID }));
   });
 });
 
@@ -217,8 +215,8 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
     enqueueJobMock.mockResolvedValueOnce(undefined);
   }
 
-  it('202 default-stage from issue status (confirmed → plan)', async () => {
-    setupHappyPath({ status: 'confirmed' });
+  it('202 default-stage from issue status (clarified → plan)', async () => {
+    setupHappyPath({ status: 'clarified' });
 
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/run-pipeline-step`, {
       method: 'POST',
@@ -241,9 +239,7 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
       stage: 'plan',
       status: 'queued',
     });
-    expect(enqueueJobMock).toHaveBeenCalledWith(
-      expect.objectContaining({ jobId: JOB_ID }),
-    );
+    expect(enqueueJobMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: JOB_ID }));
   });
 
   it('202 explicit stage override', async () => {
@@ -291,9 +287,7 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
 
   it('400 when issue status has no skill mapping and no explicit stage', async () => {
     authVerified();
-    selectLimit.mockResolvedValueOnce([
-      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'on_hold' },
-    ]);
+    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID, status: 'on_hold' }]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
       ownerId: USER_ID,
@@ -317,9 +311,7 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
 
 describe('GET /api/issues/pipeline-timing', () => {
   it('401 without token', async () => {
-    const res = await buildApp().request(
-      `/api/issues/pipeline-timing?projectId=${PROJECT_ID}`,
-    );
+    const res = await buildApp().request(`/api/issues/pipeline-timing?projectId=${PROJECT_ID}`);
     expect(res.status).toBe(401);
   });
 
@@ -334,10 +326,9 @@ describe('GET /api/issues/pipeline-timing', () => {
   it('403 when not a project member', async () => {
     authVerified();
     projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: 'other', role: null });
-    const res = await buildApp().request(
-      `/api/issues/pipeline-timing?projectId=${PROJECT_ID}`,
-      { headers: { authorization: `Bearer ${await token()}` } },
-    );
+    const res = await buildApp().request(`/api/issues/pipeline-timing?projectId=${PROJECT_ID}`, {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
     expect(res.status).toBe(403);
   });
 
@@ -360,10 +351,9 @@ describe('GET /api/issues/pipeline-timing', () => {
       { issueId: issueA, payload: { from: 'approved', to: 'in_progress' }, createdAt: t2 },
     ]);
 
-    const res = await buildApp().request(
-      `/api/issues/pipeline-timing?projectId=${PROJECT_ID}`,
-      { headers: { authorization: `Bearer ${await token()}` } },
-    );
+    const res = await buildApp().request(`/api/issues/pipeline-timing?projectId=${PROJECT_ID}`, {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       projectId: string;
@@ -419,9 +409,7 @@ describe('PATCH /api/issues/:id/manual-hold', () => {
 
   it('403 when not a project member', async () => {
     authVerified();
-    selectLimit.mockResolvedValueOnce([
-      { id: ISSUE_ID, projectId: PROJECT_ID, manualHold: false },
-    ]);
+    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID, manualHold: false }]);
     projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: 'other', role: null });
     const res = await buildApp().request(url, {
       method: 'PATCH',
@@ -434,9 +422,7 @@ describe('PATCH /api/issues/:id/manual-hold', () => {
 
   it('200 toggles on, writes activity log, returns new state', async () => {
     authVerified();
-    selectLimit.mockResolvedValueOnce([
-      { id: ISSUE_ID, projectId: PROJECT_ID, manualHold: false },
-    ]);
+    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID, manualHold: false }]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
       ownerId: USER_ID,
@@ -452,9 +438,7 @@ describe('PATCH /api/issues/:id/manual-hold', () => {
     expect(await res.json()).toEqual({ issueId: ISSUE_ID, manualHold: true });
     // Transactional write + activity log entry both ran.
     expect(transactionMock).toHaveBeenCalledTimes(1);
-    expect(txUpdateSet).toHaveBeenCalledWith(
-      expect.objectContaining({ manualHold: true }),
-    );
+    expect(txUpdateSet).toHaveBeenCalledWith(expect.objectContaining({ manualHold: true }));
     expect(txInsertValues).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'issue.manualHold.set' }),
     );
@@ -464,9 +448,7 @@ describe('PATCH /api/issues/:id/manual-hold', () => {
 
   it('200 toggles off and writes the cleared activity action', async () => {
     authVerified();
-    selectLimit.mockResolvedValueOnce([
-      { id: ISSUE_ID, projectId: PROJECT_ID, manualHold: true },
-    ]);
+    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID, manualHold: true }]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
       ownerId: USER_ID,
@@ -491,9 +473,7 @@ describe('PATCH /api/issues/:id/manual-hold', () => {
 
   it('200 no-op when value matches current state (no write, no activity)', async () => {
     authVerified();
-    selectLimit.mockResolvedValueOnce([
-      { id: ISSUE_ID, projectId: PROJECT_ID, manualHold: true },
-    ]);
+    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID, manualHold: true }]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
       ownerId: USER_ID,

@@ -4,6 +4,7 @@ import type { TaskStatus } from '@/features/task/types';
 export const ALL_ISSUE_COLS: { status: IssueStatus; label: string; color: string; bg: string }[] = [
   { status: 'open', label: 'Open', color: 'border-outline-variant', bg: 'bg-surface-container-low' },
   { status: 'confirmed', label: 'Confirmed', color: 'border-info', bg: 'bg-info-surface/20' },
+  { status: 'clarified', label: 'Clarified', color: 'border-info', bg: 'bg-info-surface/20' },
   { status: 'waiting', label: 'Waiting', color: 'border-warning', bg: 'bg-warning-dim/10' },
   { status: 'approved', label: 'Approved', color: 'border-info', bg: 'bg-info-surface/20' },
   { status: 'in_progress', label: 'In Progress', color: 'border-warning', bg: 'bg-warning-dim/10' },
@@ -34,6 +35,7 @@ export const TASK_COLS: { status: TaskStatus; label: string; color: string; bg: 
 export const DEFAULT_VISIBLE: Record<IssueStatus, boolean> = {
   open: true,
   confirmed: true,
+  clarified: false,
   waiting: false,
   approved: true,
   in_progress: true,

@@ -106,12 +106,19 @@ describe('stepHandoffSchema', () => {
 });
 
 describe('HANDOFF_STEPS + isHandoffStep', () => {
-  it('lists the 6 expected handoff-emitting steps', () => {
-    expect([...HANDOFF_STEPS]).toEqual(['triage', 'plan', 'code', 'review', 'test', 'fix']);
+  it('lists the 7 expected handoff-emitting steps', () => {
+    expect([...HANDOFF_STEPS]).toEqual([
+      'triage',
+      'clarify',
+      'plan',
+      'code',
+      'review',
+      'test',
+      'fix',
+    ]);
   });
 
-  it('rejects non-handoff steps (clarify/release/custom/pm)', () => {
-    expect(isHandoffStep('clarify')).toBe(false);
+  it('rejects non-handoff steps (release/custom/pm)', () => {
     expect(isHandoffStep('release')).toBe(false);
     expect(isHandoffStep('custom')).toBe(false);
     expect(isHandoffStep('pm')).toBe(false);

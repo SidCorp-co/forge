@@ -40,7 +40,7 @@ export const BOARD_COLUMNS: {
   bg: string;
 }[] = [
   { key: 'open', label: 'Open', statuses: ['open', 'reopen', 'needs_info'], color: 'border-outline', bg: 'bg-surface' },
-  { key: 'triage', label: 'Triage', statuses: ['confirmed', 'approved'], color: 'border-on-surface-variant', bg: 'bg-surface' },
+  { key: 'triage', label: 'Triage', statuses: ['confirmed', 'clarified', 'approved'], color: 'border-on-surface-variant', bg: 'bg-surface' },
   { key: 'in_progress', label: 'In Progress', statuses: ['in_progress', 'on_hold'], color: 'border-primary', bg: 'bg-surface' },
   { key: 'deploying', label: 'Deploying', statuses: ['deploying', 'testing', 'staging'], color: 'border-secondary-dim', bg: 'bg-surface' },
   { key: 'done', label: 'Done', statuses: ['released', 'closed'], color: 'border-outline-variant', bg: 'bg-surface' },

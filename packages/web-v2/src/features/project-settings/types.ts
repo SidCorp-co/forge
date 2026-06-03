@@ -101,8 +101,8 @@ export interface PipelineConfig {
 
 export const STEP_TOGGLE_LABELS: Record<StepToggleKey, { label: string; hint: string }> = {
   autoTriage: { label: "Auto triage", hint: "open → confirmed" },
-  autoClarify: { label: "Auto clarify", hint: "needs_info → confirmed" },
-  autoPlan: { label: "Auto plan", hint: "confirmed → approved" },
+  autoClarify: { label: "Auto clarify", hint: "confirmed → clarified" },
+  autoPlan: { label: "Auto plan", hint: "clarified → approved" },
   autoCode: { label: "Auto code", hint: "approved → developed" },
   autoReview: { label: "Auto review", hint: "developed → testing" },
   autoTest: { label: "Auto test", hint: "testing → released" },

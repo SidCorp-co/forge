@@ -719,6 +719,7 @@ export const runnersRelations = relations(runners, ({ one, many }) => ({
 export const issueStatuses = [
   'open',
   'confirmed',
+  'clarified',
   'waiting',
   'approved',
   'in_progress',

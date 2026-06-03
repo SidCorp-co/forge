@@ -187,17 +187,20 @@ describe('soft-skip resolver (ISS-110)', () => {
     const states: StagesConfig = {
       open: { enabled: false },
       confirmed: { enabled: false },
+      clarified: { enabled: false },
       developed: { enabled: false },
       testing: { enabled: false },
       reopen: { enabled: false },
       released: { enabled: false },
     };
-    // open → confirmed (disabled) → approved (non-skippable, stops here).
+    // open → confirmed (disabled) → clarified (disabled) → approved
+    // (non-skippable, stops here).
     expect(resolveSkipTarget('open', states)).toEqual({
       to: 'approved',
-      chain: ['confirmed', 'approved'],
+      chain: ['confirmed', 'clarified', 'approved'],
       hops: [
         { to: 'confirmed', reason: 'stage_disabled' },
+        { to: 'clarified', reason: 'stage_disabled' },
         { to: 'approved', reason: 'stage_disabled' },
       ],
     });
@@ -211,7 +214,7 @@ describe('soft-skip resolver — missing-skill predicate (ISS-239)', () => {
 
   it('skips when hasSkill returns false for the source stage', () => {
     // STAGE_FORWARD['deploying'] = 'testing'. hasSkill: only testing is registered.
-    const hasSkill = (s: typeof issueStatuses[number]) => s === 'testing';
+    const hasSkill = (s: (typeof issueStatuses)[number]) => s === 'testing';
     expect(resolveSkipTarget('deploying', undefined, { hasSkill })).toEqual({
       to: 'testing',
       chain: ['testing'],
@@ -221,7 +224,7 @@ describe('soft-skip resolver — missing-skill predicate (ISS-239)', () => {
 
   it('walks past consecutive missing-skill stages to the first anchor with a skill', () => {
     // pass → staging → released → closed. hasSkill registers only released.
-    const hasSkill = (s: typeof issueStatuses[number]) => s === 'released';
+    const hasSkill = (s: (typeof issueStatuses)[number]) => s === 'released';
     expect(resolveSkipTarget('pass', undefined, { hasSkill })).toEqual({
       to: 'released',
       chain: ['staging', 'released'],
@@ -237,7 +240,7 @@ describe('soft-skip resolver — missing-skill predicate (ISS-239)', () => {
     // testing skippable + no skill → continue to pass. pass no skill →
     // continue to staging. staging no skill → continue to released. released
     // is registered → anchor.
-    const hasSkill = (s: typeof issueStatuses[number]) => s === 'released';
+    const hasSkill = (s: (typeof issueStatuses)[number]) => s === 'released';
     const states: StagesConfig = { developed: { enabled: false } };
     const r = resolveSkipTarget('developed', states, { hasSkill });
     expect(r?.to).toBe('released');

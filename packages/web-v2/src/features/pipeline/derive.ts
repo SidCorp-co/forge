@@ -21,9 +21,10 @@ export type TrackerRunState = "running" | "done" | "failed" | "blocked" | "queue
 export const STATUS_TO_STAGE: Record<string, StageKey> = {
   open: "triage",
   needs_info: "triage",
-  confirmed: "triage",
+  confirmed: "clarify",
+  clarified: "plan",
   draft: "triage",
-  waiting: "clarify",
+  waiting: "plan",
   approved: "plan",
   in_progress: "code",
   reopen: "code",

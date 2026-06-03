@@ -22,7 +22,7 @@ export interface PipelineStage {
 
 export const PIPELINE_STAGES: PipelineStage[] = [
   { key: 'intake', label: 'Intake', statuses: ['open', 'needs_info'], icon: Inbox, color: 'border-blue-500', bg: 'bg-blue-500/5' },
-  { key: 'triage', label: 'Triage', statuses: ['confirmed', 'waiting'], icon: Filter, color: 'border-indigo-500', bg: 'bg-indigo-500/5' },
+  { key: 'triage', label: 'Triage', statuses: ['confirmed', 'clarified', 'waiting'], icon: Filter, color: 'border-indigo-500', bg: 'bg-indigo-500/5' },
   { key: 'approved', label: 'Ready', statuses: ['approved'], icon: CheckCircle, color: 'border-cyan-500', bg: 'bg-cyan-500/5' },
   { key: 'development', label: 'Development', statuses: ['in_progress', 'developed'], icon: Code, color: 'border-yellow-500', bg: 'bg-yellow-500/5' },
   { key: 'deploy_test', label: 'Deploy & Test', statuses: ['deploying', 'testing', 'tested', 'pass'], icon: Rocket, color: 'border-orange-500', bg: 'bg-orange-500/5' },
@@ -34,8 +34,9 @@ export const PIPELINE_STAGES: PipelineStage[] = [
 
 export const STEP_LABELS: Record<string, string> = {
   'open→confirmed': 'Triage',
+  'confirmed→clarified': 'Clarify',
   'waiting→approved': 'Approval',
-  'confirmed→approved': 'Approval',
+  'clarified→approved': 'Approval',
   'approved→in_progress': 'Start Dev',
   'in_progress→developed': 'Development',
   'developed→deploying': 'Deploy',

@@ -110,6 +110,7 @@ function DecompositionChildRow({ childIssueId, projectSlug }: DecompositionChild
 const STATUS_COLOR: Record<string, string> = {
   open: 'bg-outline',
   confirmed: 'bg-outline',
+  clarified: 'bg-violet-500',
   waiting: 'bg-amber-500',
   approved: 'bg-blue-500',
   in_progress: 'bg-blue-500',

@@ -37,14 +37,14 @@ export interface WorkBucket {
 }
 
 /**
- * Workspace work buckets, in pipeline order. We deliberately fold the 17 issue
+ * Workspace work buckets, in pipeline order. We deliberately fold the 18 issue
  * statuses into 6 meaningful "where does the work sit" buckets and EXCLUDE the
  * terminal `closed`/`draft` statuses — including them would let long-closed work
  * dominate the bar and drown out the in-flight signal the overview is for.
  */
 const BUCKET_DEFS: ReadonlyArray<Omit<WorkBucket, 'count'>> = [
   { key: 'backlog', label: 'Backlog', color: 'var(--ink-400)', statuses: ['open', 'confirmed'] },
-  { key: 'planning', label: 'Planning', color: 'var(--cobalt-500)', statuses: ['waiting', 'approved'] },
+  { key: 'planning', label: 'Planning', color: 'var(--cobalt-500)', statuses: ['clarified', 'waiting', 'approved'] },
   { key: 'progress', label: 'In progress', color: 'var(--accent)', statuses: ['in_progress', 'reopen'] },
   { key: 'review', label: 'Review & QA', color: 'var(--amberw-500)', statuses: ['developed', 'deploying', 'testing', 'tested'] },
   { key: 'ready', label: 'Ready to ship', color: 'var(--green-500)', statuses: ['pass', 'staging', 'released'] },

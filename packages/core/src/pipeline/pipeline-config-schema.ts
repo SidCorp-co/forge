@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { issueComplexities } from '../db/schema.js';
 import { PIPELINE_STEPS, type StepToggleKey } from './registry.js';
 
 export type { StepToggleKey };
@@ -31,9 +32,9 @@ export type StepToggle = z.infer<typeof stepToggleSchema>;
 /**
  * Authoritative list of step toggle keys exposed to projects. Derived from
  * `PIPELINE_STEPS` in `./registry.ts` so a new step is added in exactly one
- * place. Includes `autoClarify` (ISS-171) for the `needs_info → clarify`
- * auto-dispatch path; the legacy `clarified` status was never reified — the
- * stage status is `needs_info`.
+ * place. Includes `autoClarify` (ISS-171, re-homed to the happy path): the
+ * `confirmed → clarify` auto-dispatch gate; clarify exits to the (now
+ * reified) `clarified` status, where plan dispatches.
  *
  * Cast to the explicit tuple literal because Zod's `z.enum` requires a
  * `readonly [string, ...string[]]` shape that the wider `string[]` type of
@@ -67,6 +68,7 @@ export const STAGE_NAMES = [
   'open',
   'needs_info',
   'confirmed',
+  'clarified',
   'approved',
   'developed',
   'testing',
@@ -165,9 +167,7 @@ export const userPromptPolicySchema = z
       .object({
         enabled: z.boolean().default(false),
         injectFromSteps: z
-          .array(
-            z.enum(['triage', 'clarify', 'plan', 'code', 'review', 'test', 'release', 'fix']),
-          )
+          .array(z.enum(['triage', 'clarify', 'plan', 'code', 'review', 'test', 'release', 'fix']))
           .default([]),
         fallbackToRawIssueFieldIfMissing: z.boolean().default(true),
         requireHandoffWrite: z.boolean().default(true),
@@ -227,6 +227,12 @@ export const stageConfigSchema = z.object({
   // Session-group membership (PR-5). Joins this stage to a named group whose
   // members share a Claude CLI session via --resume across the group.
   sessionGroup: z.string().min(1).max(64).optional(),
+  // Complexity-based auto-skip. When the issue landing on this stage has a
+  // `complexity` in this list, the orchestrator advances it one hop along
+  // STAGE_FORWARD (skip reason `complexity_skip`) instead of dispatching the
+  // stage's job. Primary use: `states.confirmed.skipComplexities=['xs','s']`
+  // lets trivially-sized issues bypass the clarify step. Unset = never skip.
+  skipComplexities: z.array(z.enum(issueComplexities)).max(issueComplexities.length).optional(),
 });
 
 export type StageConfig = z.infer<typeof stageConfigSchema>;

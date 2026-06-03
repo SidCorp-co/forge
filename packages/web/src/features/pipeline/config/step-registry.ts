@@ -36,7 +36,7 @@ export const STEP_REGISTRY: readonly StepDefinition[] = [
     toggleKey: 'autoPlan',
     label: 'Plan',
     description: 'Explores codebase, writes implementation plan with QA scenarios.',
-    statusTransition: 'confirmed → approved',
+    statusTransition: 'clarified → approved',
     jobType: 'plan',
   },
   {

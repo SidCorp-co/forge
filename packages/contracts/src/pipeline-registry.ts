@@ -14,6 +14,7 @@ import { z } from 'zod';
 export const REGISTRY_ISSUE_STATUSES = [
   'open',
   'confirmed',
+  'clarified',
   'waiting',
   'approved',
   'in_progress',

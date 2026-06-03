@@ -21,8 +21,20 @@ describe('classifyVerdict (pure)', () => {
     expect(classifyVerdict('needs_info', 'triage')).toBe('advanced');
   });
 
-  it('plan job, issue at confirmed → pending', () => {
-    expect(classifyVerdict('confirmed', 'plan')).toBe('pending');
+  it('clarify job, issue at confirmed → pending (still at entry)', () => {
+    expect(classifyVerdict('confirmed', 'clarify')).toBe('pending');
+  });
+
+  it('clarify job, issue at clarified → advanced', () => {
+    expect(classifyVerdict('clarified', 'clarify')).toBe('advanced');
+  });
+
+  it('clarify job, issue at needs_info → advanced (cannot-reproduce bounce)', () => {
+    expect(classifyVerdict('needs_info', 'clarify')).toBe('advanced');
+  });
+
+  it('plan job, issue at clarified → pending', () => {
+    expect(classifyVerdict('clarified', 'plan')).toBe('pending');
   });
 
   it('plan job, issue at approved → advanced', () => {

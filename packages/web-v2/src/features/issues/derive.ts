@@ -28,6 +28,7 @@ import type {
 export const STATUS_LABELS: Record<IssueStatus, string> = {
   open: "Open",
   confirmed: "Confirmed",
+  clarified: "Clarified",
   waiting: "Waiting",
   approved: "Approved",
   in_progress: "In progress",
@@ -74,9 +75,10 @@ export const complexityLabel = (c: IssueComplexity | null | undefined): string =
 export const STATUS_TO_STAGE: Record<IssueStatus, StageKey> = {
   open: "triage",
   needs_info: "triage",
-  confirmed: "triage",
+  confirmed: "clarify",
+  clarified: "plan",
   draft: "triage",
-  waiting: "clarify",
+  waiting: "plan",
   approved: "plan",
   in_progress: "code",
   reopen: "code",
@@ -137,6 +139,7 @@ export function statusToChip(status: IssueStatus, agentStatus?: IssueAgentStatus
       return "running";
     case "open":
     case "confirmed":
+    case "clarified":
     case "approved":
     case "draft":
       return "queued";
@@ -220,7 +223,7 @@ export function filterToStatusParams(filter: IssueFilter): {
 } {
   switch (filter) {
     case "active":
-      return { status: ["open", "confirmed", "waiting", "approved", "in_progress", "reopen"] };
+      return { status: ["open", "confirmed", "clarified", "waiting", "approved", "in_progress", "reopen"] };
     case "review":
       return { status: ["developed", "deploying", "testing", "tested", "pass", "staging"] };
     case "blocked":

@@ -11,11 +11,11 @@ interface DecomposeButtonProps {
   status: string;
 }
 
-const ELIGIBLE_STATUSES = new Set(['confirmed', 'waiting']);
+const ELIGIBLE_STATUSES = new Set(['confirmed', 'clarified', 'waiting']);
 
 /**
  * ISS-138 (PR-D) — surfaces a `Decompose…` action for parent epics. Hidden
- * unless the issue is in `confirmed` or `waiting` AND has no existing
+ * unless the issue is in `confirmed`, `clarified` or `waiting` AND has no existing
  * outgoing `decomposes` edges (so the human flow always lands on the first
  * decomposition; subsequent children get added through the relations modal
  * once the integration branch exists).

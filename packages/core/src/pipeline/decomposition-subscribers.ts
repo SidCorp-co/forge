@@ -27,7 +27,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, comments, issues, projects } from '../db/schema.js';
-import { applyStatusTransition, type DeviceLite } from '../issues/apply-transition.js';
+import { type DeviceLite, applyStatusTransition } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import {
@@ -69,23 +69,21 @@ async function resolveDeviceForProject(projectId: string): Promise<DeviceLite | 
  * auto-dispatches them before the cascade fires. Children that have already
  * moved past parking (e.g. promoted manually) are skipped.
  */
-const CASCADE_APPROVE_FROM_STATUSES: ReadonlySet<IssueStatus> = new Set([
-  'draft',
-  'on_hold',
-]);
+const CASCADE_APPROVE_FROM_STATUSES: ReadonlySet<IssueStatus> = new Set(['draft', 'on_hold']);
 
 /**
  * Parent statuses from which entering `approved` should fire the cascade.
  * `waiting` is the canonical review-gate (set by `decomposeParent`). We also
- * tolerate `on_hold` and `confirmed` so a skill that parked the parent off the
- * happy path can't break the kickoff — the cascade is anchored to the
- * system-defined event (parent ENTERS `approved`), not to the skill having set
- * exactly one prior status.
+ * tolerate `on_hold`, `confirmed` and `clarified` so a skill that parked the
+ * parent off the happy path can't break the kickoff — the cascade is anchored
+ * to the system-defined event (parent ENTERS `approved`), not to the skill
+ * having set exactly one prior status.
  */
 const CASCADE_APPROVE_PARENT_FROM: ReadonlySet<IssueStatus> = new Set([
   'waiting',
   'on_hold',
   'confirmed',
+  'clarified',
 ]);
 
 async function handleCascadeApprove(payload: HookPayloads['transition']): Promise<void> {
@@ -104,10 +102,7 @@ async function handleCascadeApprove(payload: HookPayloads['transition']): Promis
   let cascaded = 0;
   for (const child of children) {
     if (child.manualHold) {
-      await db
-        .update(issues)
-        .set({ manualHold: false })
-        .where(eq(issues.id, child.id));
+      await db.update(issues).set({ manualHold: false }).where(eq(issues.id, child.id));
     }
     if (!CASCADE_APPROVE_FROM_STATUSES.has(child.status)) continue;
     try {
@@ -161,12 +156,7 @@ async function handleWatcherChildrenReady(payload: HookPayloads['transition']): 
   const [prior] = await db
     .select({ id: comments.id })
     .from(comments)
-    .where(
-      and(
-        eq(comments.issueId, parent.id),
-        sql`${comments.body} ILIKE ${`%${sentinel}%`}`,
-      ),
-    )
+    .where(and(eq(comments.issueId, parent.id), sql`${comments.body} ILIKE ${`%${sentinel}%`}`))
     .limit(1);
   if (prior) return;
 

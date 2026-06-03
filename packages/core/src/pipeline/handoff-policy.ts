@@ -13,12 +13,16 @@ import type { UserPromptPolicyConfig } from './pipeline-config-schema.js';
  * The default `injectFromSteps` follows the canonical pipeline order so each
  * downstream state automatically receives every prior step's handoff:
  *
- *   triage → []                              (root — no prior)
- *   plan   → [triage]
- *   code   → [triage, plan]
- *   review → [triage, plan, code]
- *   test   → [triage, plan, code]            (review verdict drives test scope)
- *   fix    → [triage, plan, code, review]
+ *   triage  → []                             (root — no prior)
+ *   clarify → [triage]
+ *   plan    → [triage, clarify]              (repro evidence + root-cause hypothesis)
+ *   code    → [triage, plan]
+ *   review  → [triage, plan, code]
+ *   test    → [triage, plan, code]           (review verdict drives test scope)
+ *   fix     → [triage, plan, code, review]
+ *
+ * clarify's findings flow to plan only — plan distills them into its own
+ * handoff, so code/review/test stay lean.
  */
 export interface ResolvedHandoffsPolicy {
   enabled: boolean;
@@ -30,7 +34,8 @@ export interface ResolvedHandoffsPolicy {
 
 const DEFAULT_INJECT_BY_STEP: Record<HandoffStep, HandoffStep[]> = {
   triage: [],
-  plan: ['triage'],
+  clarify: ['triage'],
+  plan: ['triage', 'clarify'],
   code: ['triage', 'plan'],
   review: ['triage', 'plan', 'code'],
   test: ['triage', 'plan', 'code'],
@@ -57,8 +62,8 @@ export function resolveHandoffsPolicy(
 ): ResolvedHandoffsPolicy {
   const explicit = policy?.handoffs;
   // Narrow explicit `injectFromSteps` (Zod accepts any pipeline step incl.
-  // non-emitting ones like `release` / `clarify`) down to actual handoff
-  // steps so downstream code never has to re-check.
+  // non-emitting ones like `release`) down to actual handoff steps so
+  // downstream code never has to re-check.
   const explicitInject = explicit?.injectFromSteps?.filter((s): s is HandoffStep =>
     isHandoffStep(s as JobType),
   );
