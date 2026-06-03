@@ -72,6 +72,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Redesigned the Issues and Agents screens (web-v2): the project nav is now Dashboard/Issues/Agents/Library/Automation, the Issues list is a wide table whose "All" filter includes drafts, the issue-detail view is restored with Run/Pause/Reopen actions, and agent/session status is now visually distinct from issue status.**
   *Technical: web-v2 frontend only: PROJECT_ITEMS trimmed to 5 (Pipeline folds into Issues, /pipeline still reachable via ⌘K); IssueFilter collapsed to all/active/review/blocked with all→{} (reverses ISS-236); removed doubled in-page Breadcrumb on issue-detail (shell TopBar owns it) — the reported regression; StatusChip gains domain:issue|session. Merge 8a6b476.*
 
+- **Issue relationships now display clearly: the detail rail shows distinct Parent, Subtasks, Duplicates, and Related sections, and the Issues list/cards show epic (subtask count) and subtask markers alongside the blocked-by/blocks badges.**
+  *Technical: web-v2: depCounts adds subtasks/hasParent from decompose edges; properties-rail splits the Related bucket and drops raw kind labels; IssueRefBadge gains an optional status tone dot.*
+
 ### Removed
 
 ### Fixed
