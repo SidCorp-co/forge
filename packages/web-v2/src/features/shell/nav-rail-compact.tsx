@@ -179,17 +179,10 @@ export function NavRailCompact({
         )}
       </button>
 
-      {/* Workspace tier. */}
-      <div className="flex flex-col items-center gap-[3px]">
-        {workspaceItems.map((it) => (
-          <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
-        ))}
-      </div>
-
+      {/* Project-first (ISS-358): the switcher + project tier sit directly under
+          the brand, above the WORKSPACE tier (divider between the two). */}
       {projectItems && projectItems.length > 0 && activeProject && (
         <>
-          <div className="my-[11px] h-px w-[34px] bg-[color:var(--border-subtle)]" />
-
           {/* Project mark — hover opens the switcher flyout. */}
           <div className="relative" onMouseEnter={show} onMouseLeave={hide}>
             <button
@@ -296,7 +289,7 @@ export function NavRailCompact({
                   className="flex w-full items-center gap-2.5 rounded-sm p-2 text-[13px] font-medium text-fg hover:bg-hover"
                 >
                   <Icon name="folder" size={16} className="text-subtle" />
-                  All projects
+                  View all
                 </button>
                 <button
                   type="button"
@@ -316,15 +309,17 @@ export function NavRailCompact({
               <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
             ))}
           </div>
+
+          <div className="my-[11px] h-px w-[34px] bg-[color:var(--border-subtle)]" />
         </>
       )}
 
       {/* Zero projects → an "Add project" button sits in the project-mark slot
           (ISS-355): there is no project context to switch into yet, so the
-          switcher is replaced by the one action that matters. */}
+          switcher is replaced by the one action that matters. Project-first, it
+          stays above the WORKSPACE tier with a divider between. */}
       {!activeProject && switcherProjects.length === 0 && (
         <>
-          <div className="my-[11px] h-px w-[34px] bg-[color:var(--border-subtle)]" />
           <button
             type="button"
             onClick={onNewProject}
@@ -339,8 +334,17 @@ export function NavRailCompact({
             </span>
             <span className="text-[9.5px] font-semibold tracking-[-0.01em] text-muted">Add</span>
           </button>
+
+          <div className="my-[11px] h-px w-[34px] bg-[color:var(--border-subtle)]" />
         </>
       )}
+
+      {/* Workspace tier — demoted below the project tier (project-first). */}
+      <div className="flex flex-col items-center gap-[3px]">
+        {workspaceItems.map((it) => (
+          <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
+        ))}
+      </div>
 
       {/* Footer — account menu only (Devices dropped per product decision). */}
       <div className="mt-auto flex flex-col items-center gap-1.5">

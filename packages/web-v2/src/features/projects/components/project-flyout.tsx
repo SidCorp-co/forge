@@ -1,10 +1,11 @@
 "use client";
 
-// Searchable project switcher (Concept C, ISS-307). Opened from the rail's
-// project mark (NavRail `onProjectSwitch`). A self-contained floating panel:
-// search input + pinned-first project list with per-row pin toggle + an
-// "All projects" escape hatch. Closes on click-away or Esc. Controlled by the
-// workspace layout via `open` / `onClose`.
+// Searchable project switcher (Concept C, ISS-307; project-first ISS-358).
+// Opened from the rail's project mark (NavRail `onProjectSwitch`) on click or
+// hover. A self-contained floating panel anchored to the top of the rail:
+// search input + pinned-first project list with per-row pin toggle + "View all"
+// and "Create project" actions. Closes on mouse-leave, click-away, or Esc.
+// Controlled by the workspace layout via `open` / `onClose`.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon, Input, ProjectMark } from "@/design";
@@ -17,10 +18,22 @@ export function ProjectFlyout({
   open,
   onClose,
   activeSlug,
+  onPanelEnter,
+  onPanelLeave,
+  onViewAll,
+  onCreateProject,
 }: {
   open: boolean;
   onClose: () => void;
   activeSlug?: string | null;
+  /** Hover handlers so the panel keeps the switcher's flyout open while the
+   *  pointer is over it, and schedules close on leave. */
+  onPanelEnter?: () => void;
+  onPanelLeave?: () => void;
+  /** "View all" → workspace overview / all-projects page. */
+  onViewAll?: () => void;
+  /** "Create project" → create-project flow. */
+  onCreateProject?: () => void;
 }) {
   const router = useRouter();
   const { data: projects } = useProjects();
@@ -81,7 +94,9 @@ export function ProjectFlyout({
         role="dialog"
         aria-modal="true"
         aria-label="Switch project"
-        className="forge-slide fixed bottom-4 left-[68px] z-50 flex max-h-[70vh] w-[300px] flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-[var(--shadow-lg)] md:left-[240px]"
+        onMouseEnter={onPanelEnter}
+        onMouseLeave={onPanelLeave}
+        className="forge-slide fixed top-[60px] left-[68px] z-50 flex max-h-[70vh] w-[300px] flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-[var(--shadow-lg)] md:left-[240px]"
       >
         <div className="border-b border-line-subtle p-2">
           <Input
@@ -94,20 +109,6 @@ export function ProjectFlyout({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
-          <button
-            type="button"
-            onClick={() => {
-              onClose();
-              router.push("/");
-            }}
-            className="flex min-h-[40px] w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13.5px] font-semibold text-muted transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-          >
-            <span className="inline-flex size-6 flex-none items-center justify-center rounded-sm bg-sunken text-subtle">
-              <Icon name="grid" size={15} />
-            </span>
-            <span className="flex-1">All projects</span>
-          </button>
-
           {rows.map((p) => {
             const g = projectGlyph(p.id);
             const active = p.slug === activeSlug;
@@ -163,6 +164,38 @@ export function ProjectFlyout({
           {rows.length === 0 && (
             <p className="fg-body-sm px-2.5 py-3 text-muted">No projects match.</p>
           )}
+        </div>
+
+        {/* Actions pinned below the list (mirrors the compact rail). */}
+        <div className="flex flex-col gap-0.5 border-t border-line-subtle p-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              if (onViewAll) onViewAll();
+              else router.push("/projects");
+            }}
+            className="flex min-h-[40px] w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13.5px] font-semibold text-muted transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          >
+            <span className="inline-flex size-6 flex-none items-center justify-center rounded-sm bg-sunken text-subtle">
+              <Icon name="folder" size={15} />
+            </span>
+            <span className="flex-1">View all</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              if (onCreateProject) onCreateProject();
+              else router.push("/projects?new=1");
+            }}
+            className="flex min-h-[40px] w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13.5px] font-semibold text-muted transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          >
+            <span className="inline-flex size-6 flex-none items-center justify-center rounded-sm bg-sunken text-subtle">
+              <Icon name="plus" size={15} />
+            </span>
+            <span className="flex-1">Create project</span>
+          </button>
         </div>
       </div>
     </>
