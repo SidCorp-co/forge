@@ -233,8 +233,9 @@ export function principalUserId(principal: McpPrincipal): string {
  * The set of project ids a principal can see: projects the underlying user
  * owns OR is a member of, intersected with the PAT's `projectIds` allowlist
  * when present. There is no cross-tenant bypass — every principal is scoped
- * to its own projects. Used by the formerly system-admin `forge_admin_*` and
- * cross-project metrics tools to bound their result sets to the caller.
+ * to its own projects. Used by the project-scoped fleet tools (`forge_runners`,
+ * `forge_collaborators`, `forge_ops_health`) and the cross-project metrics tool
+ * to bound their result sets to the caller.
  *
  * Mirrors the REST `loadVisibleProjectIds` (pipeline/analytics-routes.ts).
  */

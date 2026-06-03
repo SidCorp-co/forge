@@ -11,7 +11,7 @@ import {
 
 const stepEnum = z.enum(jobTypes);
 
-const adminInputSchema = z
+const stepDurationsInputSchema = z
   .object({
     days: z.number().int().min(1).max(90).optional().default(30),
     step: stepEnum.optional(),
@@ -42,13 +42,13 @@ function num(x: number | string | null | undefined): number {
   return typeof x === 'number' ? x : Number(x);
 }
 
-export const forgeMetricsAdminStepDurationsTool: ContextScopedMcpToolFactory = (ctx) => ({
-  name: 'forge_metrics.admin_step_durations',
+export const forgeMetricsStepDurationsTool: ContextScopedMcpToolFactory = (ctx) => ({
+  name: 'forge_metrics.step_durations',
   description:
     'Aggregated pipeline-step durations (p50/p95/avg/cost/sample size) over `pipeline_run_step_durations` across the projects you can access (projects you own or are a member of). Filterable by `days` (1..90, default 30) and `step` (job type). Returns `{ rows: [{ projectId, projectSlug, step, p50, p95, avg, totalCostUsd, n }], windowDays }`.',
-  inputSchema: zodToMcpSchema(adminInputSchema),
+  inputSchema: zodToMcpSchema(stepDurationsInputSchema),
   handler: async (args) => {
-    const input = adminInputSchema.parse(args);
+    const input = stepDurationsInputSchema.parse(args);
     const visibleIds = await loadVisibleProjectIdsForPrincipal(ctx.principal);
     if (visibleIds.length === 0) {
       return { rows: [], windowDays: input.days };

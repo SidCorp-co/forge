@@ -202,16 +202,16 @@ function CreateTokenForm({
               <p>Admin</p>
               <p className="font-mono text-[10px] text-outline">{"['admin']"}</p>
               <p className="text-[10px] text-outline">
-                Grants cross-tenant admin tools (forge_admin_*). Requires system admin on this
-                account.
+                Legacy elevated scope, kept for compatibility. MCP tool access is governed by your
+                role on each project (owner/admin/member) — this scope grants no extra cross-tenant
+                access.
               </p>
             </div>
           </label>
         </div>
         {scope === 'admin' && (
           <p className="mt-2 text-[10px] text-outline">
-            Admin tools are cross-tenant; the project allowlist below still narrows project-scoped
-            tools.
+            The project allowlist below still narrows which projects this token can access.
           </p>
         )}
       </fieldset>

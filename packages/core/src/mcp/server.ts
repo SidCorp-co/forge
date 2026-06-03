@@ -2,18 +2,16 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import pkg from '../../package.json' with { type: 'json' };
 import { type AuditResultCode, digestArgs, writeMcpAudit } from '../auth/mcp-audit.js';
-import { forgeAdminHealthTool } from './tools/forge-admin-health.js';
-import { forgeAdminProjectsTool } from './tools/forge-admin-projects.js';
-import { forgeAdminRunnersTool } from './tools/forge-admin-runners.js';
-import { forgeAdminUsersTool } from './tools/forge-admin-users.js';
 import {
   forgeAgentSessionsGetTool,
   forgeAgentSessionsListTool,
 } from './tools/forge-agent-sessions.js';
+import { forgeCollaboratorsTool } from './tools/forge-collaborators.js';
 import { forgeCommentsTool } from './tools/forge-comments.js';
 import { forgeConfigTool } from './tools/forge-config.js';
 import { forgeCoolifyDeployTool } from './tools/forge-coolify-deploy.js';
 import { forgeHealthTool } from './tools/forge-health.js';
+import { forgeOpsHealthTool } from './tools/forge-ops-health.js';
 import { forgeIssuesTool } from './tools/forge-issues.js';
 import { forgeJobsEventsTool, forgeJobsGetTool, forgeJobsListTool } from './tools/forge-jobs.js';
 import {
@@ -28,8 +26,8 @@ import {
   forgeStepHandoffWriteTool,
 } from './tools/forge-step-handoff.js';
 import {
-  forgeMetricsAdminStepDurationsTool,
   forgeMetricsProjectStepDurationsTool,
+  forgeMetricsStepDurationsTool,
 } from './tools/forge-metrics.js';
 import {
   forgePipelineRunsCancelTool,
@@ -47,7 +45,9 @@ import { forgePmWriteDecisionTool } from './tools/forge-pm-write-decision.js';
 import { forgePostmanTargetTool } from './tools/forge-postman-target.js';
 import { forgeProjectPipelineRunsTool } from './tools/forge-project-pipeline-runs.js';
 import { forgeProjectPmTool } from './tools/forge-project-pm.js';
+import { forgeRunnersTool } from './tools/forge-runners.js';
 import {
+  forgeProjectsArchiveTool,
   forgeProjectsCreateTool,
   forgeProjectsGetTool,
   forgeProjectsListTool,
@@ -100,9 +100,9 @@ import type { McpContext } from './tools/lib.js';
  *    lives on `write_decision.escalate`).
  *  - `forge_projects.list` — enumerate projects visible to the device owner
  *    (ISS-7, pre-req for ISS-9).
- *  - `forge_projects.create` / `.update` — user-facing project provisioning
- *    over MCP for non-CEO PAT principals (cross-tenant create stays on
- *    `forge_admin_projects.create`).
+ *  - `forge_projects.create` / `.update` / `.archive` — user-facing project
+ *    provisioning over MCP. The caller always becomes owner of a created
+ *    project; there is no cross-tenant create path.
  *  - `forge_coolify_deploy` — action dispatcher (list/deploy/status) for the
  *    Coolify deploy step the stock pipeline skills invoke (ISS-242). Input:
  *    `{ action: 'list'|'deploy'|'status', projectId?, issueId?, integrationId? }`.
@@ -193,12 +193,11 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeSkillsOverrideSetTool(ctx),
     forgeSkillsOverrideDeleteTool(ctx),
     forgeSkillsPushTool(ctx),
-    forgeMetricsAdminStepDurationsTool(ctx),
+    forgeMetricsStepDurationsTool(ctx),
     forgeMetricsProjectStepDurationsTool(ctx),
-    forgeAdminProjectsTool(ctx),
-    forgeAdminRunnersTool(ctx),
-    forgeAdminUsersTool(ctx),
-    forgeAdminHealthTool(ctx),
+    forgeRunnersTool(ctx),
+    forgeCollaboratorsTool(ctx),
+    forgeOpsHealthTool(ctx),
     forgeIssuesTool(ctx),
     forgeCommentsTool(ctx),
     forgeUploadsTool(ctx),
@@ -223,6 +222,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeProjectsCreateTool(ctx),
     forgeProjectsUpdateTool(ctx),
     forgeProjectsGetTool(ctx),
+    forgeProjectsArchiveTool(ctx),
     forgeProjectPmTool(ctx),
     forgePmSnapshotTool(ctx),
     forgePmGraphTool(ctx),

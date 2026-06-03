@@ -18,7 +18,7 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
-const { forgeAdminUsersTool } = await import('./forge-admin-users.js');
+const { forgeCollaboratorsTool } = await import('./forge-collaborators.js');
 
 const OWNER_ID = '11111111-1111-4111-8111-111111111111';
 const USER_A = '22222222-2222-4222-8222-222222222222';
@@ -87,7 +87,7 @@ beforeEach(() => {
   selectDistinctImpl.mockReset();
 });
 
-describe('forge_admin_users', () => {
+describe('forge_collaborators', () => {
   it('list returns memberships matrix and never exposes passwordHash', async () => {
     mockVisible([PROJECT_ID]);
     mockDistinctIds([OWNER_ID]); // owners of visible projects
@@ -133,7 +133,7 @@ describe('forge_admin_users', () => {
       }),
     }));
 
-    const tool = forgeAdminUsersTool(buildCtx());
+    const tool = forgeCollaboratorsTool(buildCtx());
     const res = (await tool.handler({ action: 'list' })) as {
       users: Array<{ id: string; memberships: Array<{ role: string }> }>;
       total: number;
@@ -162,7 +162,7 @@ describe('forge_admin_users', () => {
         }),
       }),
     }));
-    const tool = forgeAdminUsersTool(buildCtx());
+    const tool = forgeCollaboratorsTool(buildCtx());
     const res = (await tool.handler({ action: 'list', search: 'nomatch' })) as {
       users: unknown[];
       total: number;
@@ -173,7 +173,7 @@ describe('forge_admin_users', () => {
 
   it('returns empty when the caller has no visible projects', async () => {
     mockVisible([]);
-    const tool = forgeAdminUsersTool(buildCtx());
+    const tool = forgeCollaboratorsTool(buildCtx());
     const res = (await tool.handler({ action: 'list' })) as { users: unknown[]; total: number };
     expect(res.users).toEqual([]);
     expect(res.total).toBe(0);
@@ -183,7 +183,7 @@ describe('forge_admin_users', () => {
     // selectDistinct returns a project the user owns, but the PAT allowlist is
     // empty so the visible set intersects to nothing.
     mockVisible([PROJECT_ID]);
-    const tool = forgeAdminUsersTool(buildPatCtx(['read'], []));
+    const tool = forgeCollaboratorsTool(buildPatCtx(['read'], []));
     const res = (await tool.handler({ action: 'list' })) as { users: unknown[]; total: number };
     expect(res.users).toEqual([]);
     expect(res.total).toBe(0);

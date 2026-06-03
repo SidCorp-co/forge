@@ -20,8 +20,8 @@ const inputSchema = z
 
 type RunnerRow = typeof runners.$inferSelect;
 
-export const forgeAdminHealthTool: ContextScopedMcpToolFactory = (ctx) => ({
-  name: 'forge_admin_health',
+export const forgeOpsHealthTool: ContextScopedMcpToolFactory = (ctx) => ({
+  name: 'forge_ops_health',
   description:
     "Health snapshot scoped to your projects (projects you own or are a member of). Returns `{ version, uptimeSeconds, db, queue, ws, runners: [{ id, name, projectId, status, lastSeenAt, inFlightCount }], projects: [{ id, slug, activeJobCount }], stuckJobs: [{ jobId, type, runnerId, dispatchedAt, ageSeconds }] }` — `runners`, `projects`, and `stuckJobs` are limited to your visible projects; `version`/`uptimeSeconds`/`db`/`queue`/`ws` are global status indicators. `staleJobThresholdSeconds` (60..86400, default 600) controls the stuckJobs cutoff.",
   inputSchema: zodToMcpSchema(inputSchema),

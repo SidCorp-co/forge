@@ -85,7 +85,11 @@ export function TokenRow({ token, projects, onRevoke, onOpenAudit }: Props) {
               ? 'bg-error/15 text-error'
               : 'bg-surface-container-highest text-primary'
           }`}
-          title={hasAdmin ? 'Grants cross-tenant admin tools (forge_admin_*)' : undefined}
+          title={
+            hasAdmin
+              ? 'Legacy elevated scope — MCP tool access is governed by your project role'
+              : undefined
+          }
         >
           {scopeSummary}
         </span>

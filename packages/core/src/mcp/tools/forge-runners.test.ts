@@ -24,7 +24,7 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
-const { forgeAdminRunnersTool } = await import('./forge-admin-runners.js');
+const { forgeRunnersTool } = await import('./forge-runners.js');
 
 const OWNER_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_OWNER_ID = '22222222-2222-4222-8222-222222222222';
@@ -98,7 +98,7 @@ beforeEach(() => {
   executeImpl.mockReset();
 });
 
-describe('forge_admin_runners', () => {
+describe('forge_runners', () => {
   it('list attaches inFlightCount per runner, scoped to visible projects', async () => {
     mockVisible([PROJECT_ID]);
     // primary list query
@@ -131,7 +131,7 @@ describe('forge_admin_runners', () => {
         }),
       }),
     }));
-    const tool = forgeAdminRunnersTool(buildCtx());
+    const tool = forgeRunnersTool(buildCtx());
     const res = (await tool.handler({ action: 'list' })) as {
       runners: Array<{ inFlightCount: number; config: { apiKey: string } }>;
     };
@@ -141,7 +141,7 @@ describe('forge_admin_runners', () => {
 
   it('list returns empty when caller has no visible projects', async () => {
     mockVisible([]);
-    const tool = forgeAdminRunnersTool(buildCtx());
+    const tool = forgeRunnersTool(buildCtx());
     const res = (await tool.handler({ action: 'list' })) as { runners: unknown[] };
     expect(res.runners).toEqual([]);
   });
@@ -169,7 +169,7 @@ describe('forge_admin_runners', () => {
           ]),
       }),
     }));
-    const tool = forgeAdminRunnersTool(buildCtx());
+    const tool = forgeRunnersTool(buildCtx());
     const res = (await tool.handler({
       action: 'register',
       data: {
@@ -187,7 +187,7 @@ describe('forge_admin_runners', () => {
   it('register by a non-admin on the target project is refused', async () => {
     mockLimitOnce([{ ownerId: OTHER_OWNER_ID }]); // not owner
     mockLimitOnce([]); // projectMembers → no row
-    const tool = forgeAdminRunnersTool(buildCtx());
+    const tool = forgeRunnersTool(buildCtx());
     await expect(
       tool.handler({
         action: 'register',
@@ -198,7 +198,7 @@ describe('forge_admin_runners', () => {
 
   it('register rejects invalid capability shape with INVALID_CAPABILITIES', async () => {
     mockLimitOnce([{ ownerId: OWNER_ID }]); // admin passes; caps validation fails next
-    const tool = forgeAdminRunnersTool(buildCtx());
+    const tool = forgeRunnersTool(buildCtx());
     await expect(
       tool.handler({
         action: 'register',
@@ -217,7 +217,7 @@ describe('forge_admin_runners', () => {
     mockLimitOnce([{ projectId: PROJECT_ID }]); // runner project lookup
     mockLimitOnce([{ ownerId: OWNER_ID }]); // assertPrincipalIsAdmin → owner
     executeImpl.mockResolvedValueOnce([{ count: '2' }]); // countInFlightForRunner
-    const tool = forgeAdminRunnersTool(buildCtx());
+    const tool = forgeRunnersTool(buildCtx());
     await expect(tool.handler({ action: 'retire', runnerId: RUNNER_ID })).rejects.toThrow(
       /RUNNER_BUSY/,
     );
@@ -239,7 +239,7 @@ describe('forge_admin_runners', () => {
         }),
       }),
     }));
-    const tool = forgeAdminRunnersTool(buildCtx());
+    const tool = forgeRunnersTool(buildCtx());
     const res = (await tool.handler({
       action: 'retire',
       runnerId: RUNNER_ID,
@@ -259,7 +259,7 @@ describe('forge_admin_runners', () => {
         }),
       }),
     }));
-    const tool = forgeAdminRunnersTool(buildCtx());
+    const tool = forgeRunnersTool(buildCtx());
     const res = (await tool.handler({
       action: 'update_capabilities',
       runnerId: RUNNER_ID,

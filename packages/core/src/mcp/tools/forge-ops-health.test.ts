@@ -28,7 +28,7 @@ vi.mock('../../ws/server.js', () => ({
   isWsListening: () => true,
 }));
 
-const { forgeAdminHealthTool } = await import('./forge-admin-health.js');
+const { forgeOpsHealthTool } = await import('./forge-ops-health.js');
 
 const OWNER_ID = '11111111-1111-4111-8111-111111111111';
 const RUNNER_ID = '55555555-5555-4555-8555-555555555555';
@@ -99,7 +99,7 @@ function collectSqlFragments(sqlArg: unknown): string {
   return fragments.join(' ');
 }
 
-describe('forge_admin_health', () => {
+describe('forge_ops_health', () => {
   it('returns health snapshot scoped to visible projects', async () => {
     mockVisible([PROJECT_ID]);
     // db.execute(`select 1`) → succeeds
@@ -161,7 +161,7 @@ describe('forge_admin_health', () => {
       },
     ]);
 
-    const tool = forgeAdminHealthTool(buildCtx());
+    const tool = forgeOpsHealthTool(buildCtx());
     const res = (await tool.handler({ action: 'get' })) as {
       runners: Array<{ inFlightCount: number }>;
       projects: Array<{ activeJobCount: number }>;
@@ -216,7 +216,7 @@ describe('forge_admin_health', () => {
       }),
     }));
     executeImpl.mockResolvedValueOnce([]);
-    const tool = forgeAdminHealthTool(buildCtx());
+    const tool = forgeOpsHealthTool(buildCtx());
     const res = (await tool.handler({
       action: 'get',
       staleJobThresholdSeconds: 60,
@@ -227,7 +227,7 @@ describe('forge_admin_health', () => {
   it('returns global status but no tenant data when caller has no visible projects', async () => {
     mockVisible([]);
     executeImpl.mockResolvedValueOnce([{ '?column?': 1 }]); // select 1
-    const tool = forgeAdminHealthTool(buildCtx());
+    const tool = forgeOpsHealthTool(buildCtx());
     const res = (await tool.handler({ action: 'get' })) as {
       db: string;
       runners: unknown[];

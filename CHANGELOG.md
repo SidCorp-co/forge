@@ -39,6 +39,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **The Forge MCP tools that were prefixed `forge_admin_*` have been renamed to reflect what they actually are — ordinary project-scoped tools, not system-admin tools. `forge_admin_runners` → `forge_runners`, `forge_admin_users` → `forge_collaborators`, `forge_admin_health` → `forge_ops_health`; project archive moved onto `forge_projects.archive`; and the cross-your-projects metrics tool is now `forge_metrics.step_durations`. Access is unchanged — every one stays gated by your role on each project. The token-creation dialog no longer claims the `admin` scope grants "cross-tenant admin tools".**
+  *Technical: renamed forge-admin-{runners,users,health}.ts → forge-{runners,collaborators,ops-health}.ts (tool names + exports + tests); folded forge_admin_projects' `archive` action into a new `forge_projects.archive` (forgeProjectsArchiveTool) and dropped its duplicate list/create; `forge_metrics.admin_step_durations` → `forge_metrics.step_durations`. server.ts registration + lib.ts/forge-projects.ts comments + web token copy (CreateTokenModal/TokenRow) updated. No auth change — all tools remain project-membership/role gated; no client referenced the old names. Follow-up: ISS-365 retires the now-vestigial PAT `admin` scope.*
+
 - **You can now configure a project directly in the new web app — name & description, repository path, base/production branches, pipeline stages, labels, and members — reached from the project dashboard's gear icon or the ⌘K command palette, with no new sidebar item. Edits persist immediately and project secrets are never shown.**
   *Technical: web-v2 features/project-settings: nested /projects/[slug]/settings route (Basics/Repository/Pipeline/Labels/Members/Integrations tabs) wired to PATCH /projects/:id, GET|PATCH pipeline-config, and labels + members REST; owner-gated edits, secrets never rendered. Merge b62e3ef (ISS-316).*
 

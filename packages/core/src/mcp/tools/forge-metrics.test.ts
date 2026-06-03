@@ -18,7 +18,7 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
-const { forgeMetricsAdminStepDurationsTool } = await import('./forge-metrics.js');
+const { forgeMetricsStepDurationsTool } = await import('./forge-metrics.js');
 
 const OWNER_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
@@ -87,10 +87,10 @@ beforeEach(() => {
   executeImpl.mockReset();
 });
 
-describe('forge_metrics.admin_step_durations', () => {
+describe('forge_metrics.step_durations', () => {
   it('returns empty without querying when caller has no visible projects', async () => {
     mockVisible([]);
-    const tool = forgeMetricsAdminStepDurationsTool(buildCtx());
+    const tool = forgeMetricsStepDurationsTool(buildCtx());
     const res = (await tool.handler({ days: 30 })) as { rows: unknown[]; windowDays: number };
     expect(res.rows).toEqual([]);
     expect(res.windowDays).toBe(30);
@@ -100,7 +100,7 @@ describe('forge_metrics.admin_step_durations', () => {
   it('scopes to visible projects with IN (...) — not ANY(::uuid[]) (array-binding regression)', async () => {
     mockVisible([PROJECT_ID]);
     executeImpl.mockResolvedValueOnce([]);
-    const tool = forgeMetricsAdminStepDurationsTool(buildCtx());
+    const tool = forgeMetricsStepDurationsTool(buildCtx());
     await tool.handler({ days: 30 });
 
     expect(executeImpl).toHaveBeenCalledTimes(1);

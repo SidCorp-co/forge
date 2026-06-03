@@ -78,8 +78,8 @@ function parseCapabilitiesOrThrow(input: unknown): Record<string, unknown> {
   return parsed.data as Record<string, unknown>;
 }
 
-export const forgeAdminRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
-  name: 'forge_admin_runners',
+export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
+  name: 'forge_runners',
   description:
     "Manage runners for projects in your scope (projects you own or are a member of). Actions: `list` (optional projectId/status/type filters, restricted to your projects; returns inFlightCount per runner), `register` (insert with default status=offline; requires owner/admin on the target project), `retire` (sets status=disabled; requires owner/admin; refuses with RUNNER_BUSY unless force:true), `update_capabilities` (replaces capabilities jsonb after server-side validation; requires owner/admin).",
   inputSchema: zodToMcpSchema(inputSchema),

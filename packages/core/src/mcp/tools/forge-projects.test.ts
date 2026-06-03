@@ -11,6 +11,7 @@ vi.mock('../../config/env.js', () => ({
 const selectImpl = vi.fn();
 const insertImpl = vi.fn();
 const updateImpl = vi.fn();
+const deleteImpl = vi.fn();
 const transactionImpl = vi.fn();
 
 vi.mock('../../db/client.js', () => ({
@@ -18,11 +19,13 @@ vi.mock('../../db/client.js', () => ({
     select: (...args: unknown[]) => selectImpl(...args),
     insert: (...args: unknown[]) => insertImpl(...args),
     update: (...args: unknown[]) => updateImpl(...args),
+    delete: (...args: unknown[]) => deleteImpl(...args),
     transaction: (...args: unknown[]) => transactionImpl(...args),
   },
 }));
 
 const {
+  forgeProjectsArchiveTool,
   forgeProjectsCreateTool,
   forgeProjectsGetTool,
   forgeProjectsListTool,
@@ -55,6 +58,7 @@ beforeEach(() => {
   selectImpl.mockReset();
   insertImpl.mockReset();
   updateImpl.mockReset();
+  deleteImpl.mockReset();
   transactionImpl.mockReset();
 });
 
@@ -725,5 +729,67 @@ describe('forge_projects.get', () => {
     const tool = forgeProjectsGetTool(deviceCtx());
     await expect(tool.handler({ projectId: 'not-a-uuid' })).rejects.toThrow();
     expect(selectImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe('forge_projects.archive', () => {
+  // assertPrincipalIsAdmin → loadDeviceProjectRole/loadUserProjectRole:
+  // db.select({ownerId}).from(projects).where().limit(1).
+  function mockOwnerLookup(ownerId: string) {
+    selectImpl.mockImplementationOnce(() => ({
+      from: () => ({ where: () => ({ limit: () => Promise.resolve([{ ownerId }]) }) }),
+    }));
+  }
+
+  it('without confirm:true throws BAD_REQUEST', async () => {
+    const tool = forgeProjectsArchiveTool(deviceCtx());
+    await expect(
+      tool.handler({ projectId: PROJECT_A, confirm: false }),
+    ).rejects.toThrow(/BAD_REQUEST: archive requires confirm/);
+  });
+
+  it('by a non-admin is refused', async () => {
+    // caller is neither owner nor a member → assertPrincipalIsAdmin throws
+    // before any delete.
+    selectImpl.mockImplementationOnce(() => ({
+      from: () => ({ where: () => ({ limit: () => Promise.resolve([{ ownerId: OTHER_OWNER_ID }]) }) }),
+    }));
+    // projectMembers lookup → no row
+    selectImpl.mockImplementationOnce(() => ({
+      from: () => ({ where: () => ({ limit: () => Promise.resolve([]) }) }),
+    }));
+    const tool = forgeProjectsArchiveTool(deviceCtx());
+    await expect(
+      tool.handler({ projectId: PROJECT_A, confirm: true }),
+    ).rejects.toThrow(/FORBIDDEN/);
+  });
+
+  it('with in-flight sessions throws PROJECT_BUSY', async () => {
+    mockOwnerLookup(OWNER_ID); // caller is owner → admin
+    selectImpl.mockImplementationOnce(() => ({
+      from: () => ({ where: () => Promise.resolve([{ active: 2 }]) }),
+    }));
+    const tool = forgeProjectsArchiveTool(deviceCtx());
+    await expect(
+      tool.handler({ projectId: PROJECT_A, confirm: true }),
+    ).rejects.toThrow(/PROJECT_BUSY/);
+  });
+
+  it('happy path deletes and returns archived:true', async () => {
+    mockOwnerLookup(OWNER_ID); // caller is owner → admin
+    selectImpl.mockImplementationOnce(() => ({
+      from: () => ({ where: () => Promise.resolve([{ active: 0 }]) }),
+    }));
+    deleteImpl.mockImplementationOnce(() => ({
+      where: () => ({
+        returning: () => Promise.resolve([{ id: PROJECT_A }]),
+      }),
+    }));
+    const tool = forgeProjectsArchiveTool(deviceCtx());
+    const res = (await tool.handler({
+      projectId: PROJECT_A,
+      confirm: true,
+    })) as { archived: boolean };
+    expect(res.archived).toBe(true);
   });
 });

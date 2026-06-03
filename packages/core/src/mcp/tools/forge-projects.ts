@@ -1,10 +1,15 @@
 import { randomBytes } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, count, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
-import { type ProjectMemberRole, projectMembers, projects } from '../../db/schema.js';
+import { type ProjectMemberRole, agentSessions, projectMembers, projects } from '../../db/schema.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../../lib/db-errors.js';
-import { type ContextScopedMcpToolFactory, principalUserId, zodToMcpSchema } from './lib.js';
+import {
+  type ContextScopedMcpToolFactory,
+  assertPrincipalIsAdmin,
+  principalUserId,
+  zodToMcpSchema,
+} from './lib.js';
 
 /**
  * MCP Phase 1 (ISS-7) — enumerate projects visible to the device's owner.
@@ -121,8 +126,8 @@ const createInputSchema = z
 
 /**
  * User-facing project creation over MCP (Issue: PAT users had no non-browser
- * path to provision a project — `forge_admin_projects.create` makes the
- * caller the owner, and the REST `POST /api/projects` is session-JWT only).
+ * path to provision a project — the caller becomes the owner, and the REST
+ * `POST /api/projects` is session-JWT only).
  *
  * Surface superset of REST: REST `createProjectSchema` (projects/routes.ts)
  * accepts only slug+name and forces description/repoPath/baseBranch/
@@ -143,8 +148,8 @@ const createInputSchema = z
  * so they need the key to install the embeddable widget or pair an MCP
  * device. REST POST /api/projects also returns apiKey (routes.ts:148-154).
  *
- * The created project is always owned by the principal's underlying user —
- * cross-tenant ownership transfer stays on `forge_admin_projects.create`.
+ * The created project is always owned by the principal's underlying user;
+ * there is no cross-tenant create path over MCP.
  */
 export const forgeProjectsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.create',
@@ -440,6 +445,63 @@ export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
         previewDeploy,
         createdAt: proj.createdAt,
       },
+    };
+  },
+});
+
+const archiveInputSchema = z
+  .object({
+    projectId: z.uuid(),
+    confirm: z.boolean().optional(),
+  })
+  .strict();
+
+/**
+ * Hard-delete a project. Authorization is owner/admin on the project (via
+ * `assertPrincipalIsAdmin`), matching the gate the action carried while it
+ * lived on the now-removed `forge_admin_projects` dispatcher. Requires
+ * `confirm:true` and refuses with PROJECT_BUSY if any agent_sessions are
+ * queued/running, so an archive can't strand in-flight work.
+ */
+export const forgeProjectsArchiveTool: ContextScopedMcpToolFactory = (ctx) => ({
+  name: 'forge_projects.archive',
+  description:
+    'Hard-delete a project. Requires owner/admin on the project and `confirm:true`. Refuses with PROJECT_BUSY if the project has any queued/running agent sessions. Returns `{ archived: true, projectId, actorUserId }`.',
+  inputSchema: zodToMcpSchema(archiveInputSchema),
+  handler: async (args) => {
+    const input = archiveInputSchema.parse(args);
+    if (!input.confirm) {
+      throw new Error('BAD_REQUEST: archive requires confirm:true');
+    }
+    const projectId = input.projectId;
+    // Only an owner/admin of the project may archive it.
+    await assertPrincipalIsAdmin(ctx.principal, projectId);
+    const activeRows = await db
+      .select({ active: count() })
+      .from(agentSessions)
+      .where(
+        and(
+          eq(agentSessions.projectId, projectId),
+          inArray(agentSessions.status, ['queued', 'running']),
+        ),
+      );
+    const activeCount = Number(activeRows[0]?.active ?? 0);
+    if (activeCount > 0) {
+      throw new Error(
+        `BAD_REQUEST: PROJECT_BUSY: project has ${activeCount} in-flight agent session(s)`,
+      );
+    }
+    const deleted = await db
+      .delete(projects)
+      .where(eq(projects.id, projectId))
+      .returning({ id: projects.id });
+    if (deleted.length === 0) {
+      throw new Error('NOT_FOUND: project not found');
+    }
+    return {
+      archived: true,
+      projectId,
+      actorUserId: principalUserId(ctx.principal),
     };
   },
 });
