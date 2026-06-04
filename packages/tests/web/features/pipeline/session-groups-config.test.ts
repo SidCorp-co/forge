@@ -10,12 +10,15 @@ import type { PipelineConfig, StatesConfig } from '@/features/pipeline/config/ty
 // Server fixture: two groups, with one stage carrying an extra per-stage
 // field (`model`) the form does not model — used to prove a full-states
 // rebuild preserves it.
+// Mirrors the real-world doc shape: most stages store ONLY sessionGroup (no
+// enabled/mode), which is exactly the case the 409 bug hit — re-emitting
+// mode:'auto' for them tripped AUTO_STAGE_NEEDS_SKILL on skill-less projects.
 const serverCfg: PipelineConfig = {
   enabled: true,
   states: {
-    open: { enabled: true, mode: 'auto', sessionGroup: 'build' },
-    confirmed: { enabled: true, mode: 'auto', sessionGroup: 'build', model: 'opus' },
-    developed: { enabled: true, mode: 'auto', sessionGroup: 'verify' },
+    open: { sessionGroup: 'build' },
+    confirmed: { enabled: true, sessionGroup: 'build', model: 'opus' },
+    developed: { sessionGroup: 'verify' },
   },
   sessionGroups: { build: ['open', 'confirmed'], verify: ['developed'] },
 };
@@ -62,7 +65,7 @@ describe('buildPipelinePatch — session groups', () => {
     expect(patch.states).toBeUndefined();
   });
 
-  it('writes the FULL sessionGroups map and a FULL states map on change', () => {
+  it('writes the FULL sessionGroups map and updates states without materializing defaults', () => {
     const initial = initialState();
     const next = clone(initial);
     next.sessionGroups.assignment.confirmed = 'verify'; // move build → verify
@@ -72,8 +75,9 @@ describe('buildPipelinePatch — session groups', () => {
     // Full map, wholesale (build keeps its remaining member; sibling retained).
     expect(patch.sessionGroups).toEqual({ build: ['open'], verify: ['confirmed', 'developed'] });
 
-    // Full states map: every stage present, per-state sessionGroup written.
-    expect(Object.keys(patch.states ?? {}).length).toBe(13);
+    // States patch only carries stages that had stored config or a group —
+    // never the full 13 (materializing mode:'auto' on skill-less stages 409s).
+    expect(Object.keys(patch.states ?? {}).sort()).toEqual(['confirmed', 'developed', 'open']);
     expect(patch.states?.open?.sessionGroup).toBe('build');
     expect(patch.states?.confirmed?.sessionGroup).toBe('verify');
     expect(patch.states?.developed?.sessionGroup).toBe('verify');
@@ -81,9 +85,14 @@ describe('buildPipelinePatch — session groups', () => {
     // Untouched per-stage field preserved from the authoritative server config.
     expect((patch.states?.confirmed as { model?: string }).model).toBe('opus');
 
-    // Ungrouped stages carry no sessionGroup pointer.
-    expect(patch.states?.clarified?.sessionGroup).toBeUndefined();
-    expect(patch.states?.needs_info?.sessionGroup).toBeUndefined();
+    // No enabled/mode defaults are injected onto stages that lacked them
+    // (open had only sessionGroup in the stored doc).
+    expect(patch.states?.open?.mode).toBeUndefined();
+    expect(patch.states?.open?.enabled).toBeUndefined();
+
+    // Stages with neither stored config nor a group assignment are omitted.
+    expect(patch.states?.clarified).toBeUndefined();
+    expect(patch.states?.needs_info).toBeUndefined();
   });
 
   it('drops a group once its last member leaves, without touching siblings', () => {
