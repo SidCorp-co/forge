@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import {
   type IssueStepContextKind,
+  type StepVerdict,
   issueStepContextKinds,
   issueStepContexts,
 } from '../db/schema.js';
@@ -10,6 +11,18 @@ import {
   type StepHandoffPayload,
   stepHandoffSchema,
 } from '../memory/step-handoff-schema.js';
+
+/**
+ * ISS-381 (2.1) — derive the unified verdict column value from a handoff
+ * payload. Review handoffs carry `verdict` (pass/needs_fix/no_change); test
+ * handoffs carry `result` (pass/fail). Every other step has no verdict (null),
+ * which on a re-run upsert intentionally clears any prior value.
+ */
+export function extractVerdict(payload: StepHandoffPayload): StepVerdict | null {
+  if (payload.step === 'review') return payload.verdict;
+  if (payload.step === 'test') return payload.result;
+  return null;
+}
 
 /**
  * Repository for `issue_step_contexts` — per-issue per-pipeline-run structured
@@ -76,6 +89,11 @@ export async function writeIssueContext(
         `writeIssueContext: payload.step (${validated.payload.step}) does not match scope.step (${validated.step})`,
       );
     }
+    // ISS-381 (2.1) — promote the structured verdict out of the payload so it is
+    // aggregate-queryable. Written for every step (null for non-review/test) so a
+    // corrected re-run of the same attempt clears a stale value rather than
+    // leaving a phantom verdict.
+    const verdict = extractVerdict(validated.payload);
     const [row] = await db
       .insert(issueStepContexts)
       .values({
@@ -86,6 +104,7 @@ export async function writeIssueContext(
         step: validated.step,
         attempt: validated.attempt,
         payload: validated.payload,
+        verdict,
       })
       .onConflictDoUpdate({
         // Match the partial unique index defined in db/schema.ts. Drizzle
@@ -96,6 +115,7 @@ export async function writeIssueContext(
         targetWhere: sql`${issueStepContexts.kind} = 'handoff'`,
         set: {
           payload: sql`excluded.payload`,
+          verdict: sql`excluded.verdict`,
           updatedAt: sql`now()`,
         },
       })

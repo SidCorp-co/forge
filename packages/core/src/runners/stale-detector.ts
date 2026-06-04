@@ -4,6 +4,7 @@ import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
 import { roomManager } from '../ws/server.js';
 import { projectRoom, runnerRoom } from '../ws/rooms.js';
+import { insertRunnerEvent } from './runner-events.js';
 
 export const RUNNER_STALE_DETECTOR_QUEUE = 'runner-status-detector';
 // ISS-198 — tightened from 90s → 30s so the UI's `status='offline'` flip
@@ -40,6 +41,16 @@ export async function runRunnerStaleSweep(): Promise<{
   );
 
   for (const row of rows) {
+    // ISS-381 (2.3) — audit the online→offline transition. The WHERE clause
+    // gates on status='online', so every returned row is a real transition
+    // (old_status is always 'online') — no extra change-check needed.
+    await insertRunnerEvent(db, {
+      runnerId: row.id,
+      projectId: row.project_id,
+      oldStatus: 'online',
+      newStatus: 'offline',
+      reason: 'stale',
+    });
     roomManager.publish(runnerRoom(row.id), {
       event: 'runner.status',
       data: { runnerId: row.id, status: 'offline', reason: 'stale' },

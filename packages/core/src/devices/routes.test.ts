@@ -55,6 +55,10 @@ const dbTransaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
   fn({ update: txUpdate, delete: txDelete }),
 );
 
+// ISS-381 (2.3) — the heartbeat now mirrors runner status via a change-gated
+// CTE `db.execute`; default to no transitions (empty result).
+const dbExecute = vi.fn(async () => [] as Array<Record<string, unknown>>);
+
 vi.mock('../db/client.js', () => ({
   db: {
     insert: dbInsert,
@@ -62,6 +66,7 @@ vi.mock('../db/client.js', () => ({
     select: dbSelect,
     delete: dbDelete,
     transaction: dbTransaction,
+    execute: dbExecute,
   },
 }));
 
