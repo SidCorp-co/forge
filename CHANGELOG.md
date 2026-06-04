@@ -104,6 +104,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **The Agents screen now shows a per-runner fleet overview with queue depth, surfaces each session's runner, live/stale state and failure reason with clickable issue and run links, warns when work is queued but no runner is online, and makes the Agent Chat panel collapsible so the session list can use the full width.**
   *Technical: Reworked packages/web-v2 agents feature (agents-screen, sessions-screen) with a FleetRunnerStrip from queue-stats×useDevices, a unified deriveLiveness threshold aligned to the server zombie-sweep heartbeat bound, an on-demand chat dock persisted per user, and a new read-only GET /api/agent-sessions/:id/cost usage_records rollup.*
 
+- **The pipeline run timeline now makes Pause vs. Stop unambiguous — Pause shows it's finishing the current step before halting, a separate Stop control aborts the running agent immediately, and each step shows whether it resumed the same agent session or started fresh.**
+  *Technical: Pure frontend rework of RunDetail (web-v2 run-detail.tsx): transitional/halted pause states + distinct Stop wired to existing cancel; TimelineTab derives session-group continuity (resumed/fresh, group labels, connectors, operator detail) from agent_sessions metadata.sessionGroup + claudeSessionId + deviceId + status.*
+
 ### Removed
 
 ### Fixed
