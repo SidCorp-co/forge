@@ -240,13 +240,20 @@ function buildPipelinePatch(
 
   if (sessionGroupsDirty) {
     patch.sessionGroups = buildSessionGroupsMap(state.sessionGroups);
+    // Rebuild the states map faithfully from the authoritative stored config,
+    // touching ONLY `sessionGroup`. Do NOT materialize `enabled`/`mode`
+    // defaults: the backend re-validates the merged states on every PATCH and
+    // rejects it (409 AUTO_STAGE_NEEDS_SKILL) when an `auto`-mode stage has no
+    // registered skill. Injecting `mode:'auto'` onto stages the user never
+    // touched would trip that check on skill-less projects and block the save
+    // entirely (ISS-382 live E2E). Stages that have neither stored config nor
+    // a group assignment are omitted so we never invent an auto stage.
     const fullStates: StatesConfig = {};
     for (const stage of STAGE_NAMES) {
-      const base: StageConfig = { ...(rawStates[stage] ?? {}) };
-      // Apply the form's enabled/mode (parity with the touched-only path).
-      base.enabled = state.states[stage].enabled;
-      base.mode = state.states[stage].mode;
+      const stored = rawStates[stage];
       const group = state.sessionGroups.assignment[stage];
+      if (!stored && !group) continue;
+      const base: StageConfig = { ...(stored ?? {}) };
       if (group) base.sessionGroup = group;
       else delete base.sessionGroup;
       fullStates[stage] = base;
