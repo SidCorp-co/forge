@@ -163,6 +163,11 @@ export const userPreferences = pgTable('user_preferences', {
   // only user-initiated notification type currently produced, so it is the only
   // honest opt-out we expose — no fake controls for unimplemented channels.
   notifyOnMention: boolean('notify_on_mention').notNull().default(true),
+  // Identity of the newest "What's New" entry this user has seen (the changelog
+  // version, or `unreleased:<hash>` for the moving [Unreleased] section). Drives
+  // the nav badge: shown while this differs from the current top entry. Nullable
+  // — absent means the user has never opened the feed (ISS-384).
+  lastSeenWhatsNew: text('last_seen_whats_new'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

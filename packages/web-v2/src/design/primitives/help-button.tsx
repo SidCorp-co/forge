@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils/cn";
 import { Icon } from "@/design/icons/icon";
 import { Kbd } from "@/design/primitives/kbd";
@@ -18,6 +19,11 @@ export interface HelpContent {
   actions?: string[];
   /** Keyboard shortcuts (keys + what they do). */
   shortcuts?: HelpShortcut[];
+  /** Repo-relative doc path (e.g. `docs/guides/pipeline.md`). When set, the
+   *  popover shows a "Learn more" link that opens the Docs hub on that file. */
+  docPath?: string;
+  /** Override label for the docs deep-link (default "Learn more in docs"). */
+  docLabel?: string;
 }
 
 export interface HelpButtonProps extends HelpContent {
@@ -29,7 +35,14 @@ export interface HelpButtonProps extends HelpContent {
  *  popover describing the page, its primary actions, and keyboard shortcuts.
  *  Composed from kit primitives + semantic tokens; a11y wired (aria-haspopup /
  *  aria-expanded, Esc + click-away close, focus returns to the trigger). */
-export function HelpButton({ label = "Help", summary, actions, shortcuts }: HelpButtonProps) {
+export function HelpButton({
+  label = "Help",
+  summary,
+  actions,
+  shortcuts,
+  docPath,
+  docLabel = "Learn more in docs",
+}: HelpButtonProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -128,6 +141,18 @@ export function HelpButton({ label = "Help", summary, actions, shortcuts }: Help
                   ))}
                 </ul>
               </div>
+            )}
+
+            {docPath && (
+              <Link
+                href={`/docs?path=${encodeURIComponent(docPath)}`}
+                onClick={() => setOpen(false)}
+                className="fg-body-sm inline-flex items-center gap-1.5 font-semibold text-[color:var(--link)] hover:underline"
+              >
+                <Icon name="book" size={14} />
+                {docLabel}
+                <Icon name="chevronRight" size={14} />
+              </Link>
             )}
           </div>
         </div>

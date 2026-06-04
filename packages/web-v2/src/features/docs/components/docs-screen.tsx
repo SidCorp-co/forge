@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -132,10 +133,15 @@ function TreeNode({
 
 export function DocsScreen() {
   const projects = useProjects();
+  // Deep-link target: `?path=docs/foo.md` (e.g. from a HelpButton "Learn more").
+  // Seeds the initial selection so the linked doc opens directly.
+  const searchParams = useSearchParams();
+  const initialPath = searchParams.get("path");
   const [projectId, setProjectId] = useState<string>("");
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(initialPath);
   const [query, setQuery] = useState("");
   const contentRef = useRef<HTMLDivElement>(null);
+  const prevProjectId = useRef<string>("");
 
   useEffect(() => {
     if (!projectId && projects.data && projects.data.length > 0) {
@@ -143,9 +149,13 @@ export function DocsScreen() {
     }
   }, [projects.data, projectId]);
 
-  // Reset the selected doc when the project changes.
+  // Reset the selected doc when the user switches project — but NOT on the
+  // initial project resolution, so a `?path=` deep-link survives first load.
   useEffect(() => {
-    setSelected(null);
+    if (prevProjectId.current && prevProjectId.current !== projectId) {
+      setSelected(null);
+    }
+    prevProjectId.current = projectId;
   }, [projectId]);
 
   const tree = useDocsTree(projectId || undefined);

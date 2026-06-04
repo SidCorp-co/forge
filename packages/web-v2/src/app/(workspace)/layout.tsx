@@ -25,6 +25,7 @@ import { usePinnedProjects } from "@/features/projects/pins";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import { ProjectFlyout } from "@/features/projects/components/project-flyout";
 import { useAttention } from "@/features/attention/hooks";
+import { useWhatsNewStatus } from "@/features/whats-new/hooks";
 import {
   useSidebar,
   useRecents,
@@ -109,6 +110,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const { pinnedIds } = usePinnedProjects();
   // Rail + bottom-bar Attention badge. `total` already folds in offline runners.
   const { total: attentionCount } = useAttention();
+  // What's New nav badge — shown when the newest changelog entry is unseen.
+  const { hasUnseen: whatsNewUnseen } = useWhatsNewStatus();
 
   // Auth gate: once /auth/me has resolved, an unauthenticated visitor is sent
   // to /login (which also makes logout() "return here" effective). While the
@@ -196,6 +199,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   // light the matching `proj-*` key by matching the project-relative remainder
   // (mirrors the old tab bar's matchesSub). Docs is lit on its own route.
   const activeKey = useMemo(() => {
+    if (pathname.startsWith("/whats-new")) return "whats-new";
     if (pathname.startsWith("/docs")) return "docs";
     if (slug) {
       const base = `/projects/${slug}`;
@@ -228,6 +232,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
       ];
     }
 
+    if (pathname.startsWith("/whats-new")) return [wsRoot, { label: "What's New" }];
     if (pathname.startsWith("/docs")) return [wsRoot, { label: "Docs" }];
     // Resolve the page label from the rail destinations; longest href match wins.
     const hit = [...WORKSPACE_ITEMS, ...SECONDARY_DESTINATIONS]
@@ -319,6 +324,10 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   );
 
   function navigate(key: string) {
+    if (key === "whats-new") {
+      router.push("/whats-new");
+      return;
+    }
     if (key === "docs") {
       router.push("/docs");
       return;
@@ -421,6 +430,20 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     for (const it of SECONDARY_DESTINATIONS) {
       out.push({ label: it.label, icon: it.icon, group: "navigate", keywords: "go to", onRun: () => router.push(it.href) });
     }
+    out.push({
+      label: "What's New",
+      icon: "bell",
+      group: "navigate",
+      keywords: "changelog release notes updates go to",
+      onRun: () => router.push("/whats-new"),
+    });
+    out.push({
+      label: "Docs",
+      icon: "book",
+      group: "navigate",
+      keywords: "help documentation guides go to",
+      onRun: () => router.push("/docs"),
+    });
     // The project list moved off the landing route to /projects (ISS-355) — keep
     // it reachable from ⌘K (the rail flyout/mobile drawer cover the pointer path).
     out.push({
@@ -518,6 +541,9 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             onSignOut={logout}
             userInitials={userInitials}
             onExpand={sidebar.toggleCollapsed}
+            onWhatsNew={() => router.push("/whats-new")}
+            whatsNewBadge={whatsNewUnseen ? 1 : 0}
+            onDocs={() => router.push("/docs")}
           />
         ) : (
           <>
@@ -531,6 +557,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
               activeKey={activeKey}
               onNavigate={navigate}
               onDocs={() => router.push("/docs")}
+              onWhatsNew={() => router.push("/whats-new")}
+              whatsNewBadge={whatsNewUnseen ? 1 : 0}
               onAccount={() => router.push("/settings")}
               onSignOut={logout}
               user={userInitials ? { initials: userInitials } : undefined}
