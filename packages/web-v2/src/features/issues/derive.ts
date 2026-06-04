@@ -385,7 +385,7 @@ export function heartbeatState(
   return nowMs - t <= HEARTBEAT_STALE_MS ? "alive" : "stale";
 }
 
-export type BlockerCtaKind = "approve" | "provide-info" | "resume" | "open-blocker" | "none";
+export type BlockerCtaKind = "approve" | "provide-info" | "resume" | "unhold" | "open-blocker" | "none";
 
 /** A blocking dependency endpoint, ready to render as a clickable ISS-x chip. */
 export interface BlockingRef {
@@ -495,12 +495,28 @@ export function deriveBlockerState(
     };
   }
 
-  // 4. on_hold / manual_hold — deliberately paused.
-  if (issue.status === "on_hold" || issue.manualHold) {
+  // 4a. manual_hold — the dispatcher is blocked from picking up new jobs.
+  // Checked BEFORE on_hold because manualHold silently stalls an issue even
+  // when its status looks normal (the ISS-22 case). Its CTA clears the flag via
+  // the standalone /manual-hold endpoint (kind "unhold") — NOT a status
+  // transition, which would conflate the two concepts (ISS-22 stall risk).
+  if (issue.manualHold) {
     const until = issue.manualHoldUntil ? ` until ${issue.manualHoldUntil.slice(0, 10)}` : "";
     return {
       tone: "attention",
-      reason: `The issue is paused${until}.`,
+      reason: `Dispatch is on manual hold${until}.`,
+      whoMustAct:
+        "An operator must unhold it before the dispatcher picks up new jobs. In-flight jobs are not cancelled.",
+      cta: { label: "Unhold", kind: "unhold" },
+      ...(blockingRefs.length ? { blockingRefs } : {}),
+    };
+  }
+
+  // 4b. on_hold status — deliberately paused via the state machine.
+  if (issue.status === "on_hold") {
+    return {
+      tone: "attention",
+      reason: "The issue is paused.",
       whoMustAct: "An operator must resume it.",
       cta: { label: "Resume", kind: "resume" },
       ...(blockingRefs.length ? { blockingRefs } : {}),

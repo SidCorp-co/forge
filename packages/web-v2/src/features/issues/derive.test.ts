@@ -356,14 +356,33 @@ describe("deriveBlockerState", () => {
     expect(b?.cta.kind).toBe("approve");
   });
 
-  it("on_hold / manualHold → resume action with hold-until detail", () => {
+  it("manualHold → unhold action (NOT a status transition) with hold-until detail", () => {
+    // manualHold is its own dispatcher block — surfaced even when the status
+    // looks active (in_progress), with an `unhold` CTA so the screen clears the
+    // flag via /manual-hold instead of doing a status transition (ISS-386/22).
     const b = deriveBlockerState(
       blockerIssue({ status: "in_progress", manualHold: true, manualHoldUntil: "2026-07-01T00:00:00.000Z" }),
       undefined,
       undefined,
     );
-    expect(b?.cta.kind).toBe("resume");
+    expect(b?.cta.kind).toBe("unhold");
+    expect(b?.reason).toContain("manual hold");
     expect(b?.reason).toContain("2026-07-01");
+  });
+
+  it("on_hold status (no manualHold) → resume action", () => {
+    const b = deriveBlockerState(blockerIssue({ status: "on_hold" }), undefined, undefined);
+    expect(b?.cta.kind).toBe("resume");
+    expect(b?.reason).toContain("paused");
+  });
+
+  it("manualHold takes precedence over on_hold status (unhold wins)", () => {
+    const b = deriveBlockerState(
+      blockerIssue({ status: "on_hold", manualHold: true }),
+      undefined,
+      undefined,
+    );
+    expect(b?.cta.kind).toBe("unhold");
   });
 
   it("maps each pipelineHealth.waitingOn reason", () => {

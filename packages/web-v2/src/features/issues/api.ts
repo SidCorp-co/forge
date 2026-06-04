@@ -102,4 +102,15 @@ export const issuesApi = {
       method: "POST",
       body: JSON.stringify(stage ? { stage } : {}),
     }),
+
+  /** `PATCH /api/issues/:id/manual-hold` — toggle the dispatcher manual-hold
+   *  flag (membership-gated). This is a STANDALONE call; it is NEVER bundled
+   *  into a status `transition` (combining them stalls the pipeline — ISS-22).
+   *  Distinct from the `on_hold` status: manualHold blocks the dispatcher from
+   *  picking up NEW jobs but does not cancel an in-flight one. */
+  manualHold: (id: string, value: boolean) =>
+    apiClient<{ issueId: string; manualHold: boolean }>(`/issues/${id}/manual-hold`, {
+      method: "PATCH",
+      body: JSON.stringify({ value }),
+    }),
 };

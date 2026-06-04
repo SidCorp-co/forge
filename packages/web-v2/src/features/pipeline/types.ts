@@ -92,6 +92,9 @@ export interface PipelineIssueRow {
   status: string;
   priority: string;
   assigneeId: string | null;
+  /** Manual-hold flag — the search endpoint returns the full issues row, so
+   *  this is present at runtime (ISS-386). Drives the board hold badge. */
+  manualHold?: boolean;
   /** Derived by the search hydrator with `?withAgentSessions=true`. */
   agentStatus?: "running" | "queued" | "completed" | "failed" | null;
   metadata?: ({ branchConfig?: { branch?: string } | null } & Record<string, unknown>) | null;
