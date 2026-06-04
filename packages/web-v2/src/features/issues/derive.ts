@@ -8,6 +8,7 @@ import { ISSUE_STATUSES } from "./types";
 import type {
   CommentKind,
   GroupBy,
+  IssueAgentSession,
   IssueAgentStatus,
   IssueComplexity,
   IssueDependencies,
@@ -662,6 +663,158 @@ export function deriveStageOutcomes(
   }
   return cells;
 }
+
+// ─── ISS-376: session-group continuity (resumed / fresh) ────────────────────
+
+/** Known session-group keys → humanized labels. The label set is data-driven:
+ *  any unknown key (a project may define its own groups) gets a Title-Case
+ *  fallback so the raw `sessionGroup` value never reaches the UI (AC8). */
+const SESSION_GROUP_LABELS: Record<string, string> = {
+  build: "Build",
+  planning: "Planning",
+  verify: "Verify",
+};
+
+/** Title-case a raw group key as a fallback (`new-group` → "New Group"). */
+function titleCase(key: string): string {
+  return key
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((w) => w[0].toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+export function humanizeSessionGroup(key: string | null | undefined): string {
+  if (!key) return "Session";
+  return SESSION_GROUP_LABELS[key] ?? titleCase(key);
+}
+
+/** Whether a step reused the prior same-group Claude session, started a new one,
+ *  or carries too little metadata to tell (legacy rows → no badge). */
+export type SessionContinuity = "resumed" | "fresh" | "unknown";
+
+/** Why a step is `fresh` rather than `resumed` — surfaced in operator detail. */
+export type FreshReason =
+  | "first-in-group"
+  | "different-device"
+  | "prior-failed"
+  | "new-session";
+
+/** One row of the session-continuity timeline — a pure projection of an
+ *  `IssueAgentSession`. Holds both the humanized labels (default view) and the
+ *  short raw ids (operator expand); the component decides what to show. */
+export interface SessionTimelineEntry {
+  id: string;
+  /** Pipeline step label (`metadata.jobType`), e.g. `plan` / `review`. */
+  jobType: string | null;
+  /** Raw group key (`metadata.sessionGroup`) — for keys, never rendered. */
+  group: string | null;
+  /** Humanized group label (`Build` / `Verify` / …). */
+  groupLabel: string | null;
+  claudeSessionId: string | null;
+  claudeShort: string | null;
+  deviceId: string | null;
+  deviceShort: string | null;
+  status: string;
+  startedAt: string | null;
+  continuity: SessionContinuity;
+  /** Set only when `continuity === 'fresh'`. */
+  freshReason: FreshReason | null;
+  /** True when this entry shares a Claude session with the entry directly above
+   *  it (drives the solid connector); false at a `fresh session` break. */
+  connectedToPrev: boolean;
+}
+
+function metaString(meta: Record<string, unknown> | null, key: string): string | null {
+  const v = meta?.[key];
+  return typeof v === "string" && v.trim() ? v : null;
+}
+
+/** Best chronological timestamp for ordering. The hydrator returns sessions
+ *  `updatedAt desc`; we sort ascending by the earliest available start time. */
+function startMs(s: IssueAgentSession): number {
+  const iso = s.startedAt ?? s.createdAt ?? s.updatedAt;
+  const t = iso ? Date.parse(iso) : NaN;
+  return Number.isNaN(t) ? 0 : t;
+}
+
+/**
+ * Derive the session-continuity timeline (AC6/7/8/9). Pure FE over
+ * `issue.agentSessions`: walks sessions chronologically, comparing each
+ * session's `claudeSessionId` to the prior session in the SAME group to mark it
+ * `resumed` (same id) or `fresh` (different / first). Rows missing `group` or
+ * `claudeSessionId` degrade to `unknown` (rendered without a badge) so older
+ * sessions never throw.
+ */
+export function deriveSessionTimeline(
+  sessions: IssueAgentSession[] | null | undefined,
+): SessionTimelineEntry[] {
+  if (!sessions || sessions.length === 0) return [];
+  const ordered = [...sessions].sort((a, b) => startMs(a) - startMs(b));
+
+  const lastByGroup = new Map<string, { claude: string; deviceId: string | null; status: string }>();
+  let prevClaude: string | null = null;
+  const entries: SessionTimelineEntry[] = [];
+
+  for (const s of ordered) {
+    const group = metaString(s.metadata, "sessionGroup");
+    const jobType = metaString(s.metadata, "jobType");
+    const claude = s.claudeSessionId ?? null;
+    const deviceId = s.deviceId ?? null;
+
+    let continuity: SessionContinuity;
+    let freshReason: FreshReason | null = null;
+
+    if (!group || !claude) {
+      continuity = "unknown";
+    } else {
+      const prior = lastByGroup.get(group);
+      if (!prior) {
+        continuity = "fresh";
+        freshReason = "first-in-group";
+      } else if (prior.claude === claude) {
+        continuity = "resumed";
+      } else {
+        continuity = "fresh";
+        freshReason =
+          prior.deviceId !== deviceId
+            ? "different-device"
+            : prior.status === "failed"
+              ? "prior-failed"
+              : "new-session";
+      }
+      lastByGroup.set(group, { claude, deviceId, status: s.status });
+    }
+
+    entries.push({
+      id: s.id,
+      jobType,
+      group,
+      groupLabel: group ? humanizeSessionGroup(group) : null,
+      claudeSessionId: claude,
+      claudeShort: claude ? claude.slice(0, 8) : null,
+      deviceId,
+      deviceShort: deviceId ? deviceId.slice(0, 8) : null,
+      status: s.status,
+      startedAt: s.startedAt ?? s.createdAt ?? null,
+      continuity,
+      freshReason,
+      connectedToPrev: !!claude && claude === prevClaude,
+    });
+
+    prevClaude = claude;
+  }
+
+  return entries;
+}
+
+/** Human copy for a fresh-reason (operator detail, AC8). */
+export const FRESH_REASON_COPY: Record<FreshReason, string> = {
+  "first-in-group": "First step in this session group",
+  "different-device": "Ran on a different device (device-pin drift)",
+  "prior-failed": "Prior session in this group failed",
+  "new-session": "Started a new Claude session",
+};
 
 /** Display metadata for each comment kind badge. */
 export const COMMENT_KIND_META: Record<
