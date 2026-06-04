@@ -49,7 +49,10 @@ export const ISSUE_COMPLEXITIES: IssueComplexity[] = ["xs", "s", "m", "l", "xl"]
 /** Agent run status hydrated by the search endpoint (`withAgentSessions=1`). */
 export type IssueAgentStatus = "running" | "queued" | "completed" | "failed" | null;
 
-/** Hydrated agent session summary (search endpoint, `withAgentSessions`). */
+/** Hydrated agent session summary (search endpoint, `withAgentSessions`). The
+ *  runner/heartbeat fields (ISS-377) are optional for back-compat — an older
+ *  server that predates the hydrator extension simply omits them, and the
+ *  live-agent panel degrades (hides device, falls back to `updatedAt`). */
 export interface IssueAgentSession {
   id: string;
   status: string;
@@ -57,6 +60,11 @@ export interface IssueAgentSession {
   createdAt: string;
   updatedAt: string;
   title: string | null;
+  deviceId?: string | null;
+  startedAt?: string | null;
+  lastHeartbeatAt?: string | null;
+  pipelineRunId?: string | null;
+  claudeSessionId?: string | null;
 }
 
 /**
@@ -183,7 +191,76 @@ export interface IssueDetail extends IssueRow {
   suggestedSolution: string | null;
   labels?: IssueLabel[];
   metadata: Record<string, unknown> | null;
-  pipelineHealth?: { stage: string; [key: string]: unknown };
+  pipelineHealth?: PipelineHealth;
+  // ISS-377 — already on the wire (GET /api/issues/:id spreads the full row via
+  // `db.select().from(issues)`); just untyped before. Drives the blocker banner.
+  failureContext?: IssueFailureContext | null;
+  manualHoldUntil?: string | null;
+}
+
+/** Why the dispatcher hasn't picked up the issue's next step. Mirrors core
+ *  `PipelineWaitingReason` (`issues/pipeline-health.ts`). */
+export type WaitingReason =
+  | "issue_busy"
+  | "manual_hold"
+  | "waiting_on_dep"
+  | "waiting_on_decomp_parent"
+  | "project_full"
+  | "runner_full";
+
+/** Server-derived pipeline health for one issue. Mirrors core `PipelineHealth`
+ *  (`issues/pipeline-health.ts:69-79`); `stage` is the single status→stage
+ *  projection (do not re-derive a second mapping). */
+export interface PipelineHealth {
+  stage: string;
+  activeSession?: { id: string; status: "queued" | "running"; skill: string };
+  waitingOn?: { reason: WaitingReason; since: string; details: Record<string, unknown> };
+  queuedAt?: string;
+  lastTickAt?: string;
+}
+
+/** The failure card core writes when a step is blocked after exhausted retries.
+ *  Mirrors core `IssueFailureContext` (`pipeline/manual-hold.ts:40-64`). */
+export interface IssueFailureContext {
+  step: string;
+  trigger: "job_failed" | "session_lost" | "adapter_error";
+  classification?: {
+    kind: "transient_network" | "permanent_invalid" | "unknown";
+    reason: string;
+    evidence?: Record<string, unknown>;
+  };
+  attempts?: number;
+  lastFailureAt?: string;
+  suggestedActions?: Array<"resume" | "skip-step" | "close">;
+  holdUntil?: string | null;
+}
+
+/** One step-handoff row from `GET /api/issue-step-contexts` (kind=handoff).
+ *  `payload` is free-form jsonb — render defensively. */
+export interface StepHandoffRow {
+  id: string;
+  projectId: string;
+  issueId: string;
+  pipelineRunId: string | null;
+  kind: string;
+  step: string;
+  attempt: number;
+  payload: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** One row from `GET /api/pipeline/step-durations` (project-window, filtered to
+ *  this issue client-side). Per-stage duration + cost source (ISS-377 gap E). */
+export interface StepDurationRow {
+  runId: string;
+  issueId: string | null;
+  projectId: string;
+  step: string;
+  startedAt: string;
+  finishedAt: string;
+  durationSeconds: number;
+  costUsd: number;
 }
 
 /** Attachment carried on a comment node (ISS-363) — `url` is the download path,

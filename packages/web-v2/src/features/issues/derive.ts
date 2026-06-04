@@ -2,7 +2,7 @@
 // `derive.test.ts`). No React, no IO: status → stage / chip / run, dependency
 // counts, filter → server params, client grouping, comment-kind heuristic.
 
-import type { StageKey } from "@/design/stages";
+import { STAGES, STAGE_INDEX, type StageKey } from "@/design/stages";
 import type { StatusKey } from "@/design/status";
 import { ISSUE_STATUSES } from "./types";
 import type {
@@ -12,10 +12,15 @@ import type {
   IssueComplexity,
   IssueDependencies,
   IssueDependencyEdge,
+  IssueDetail,
   IssueFilter,
   IssuePriority,
   IssueRow,
   IssueStatus,
+  PipelineHealth,
+  StepDurationRow,
+  StepHandoffRow,
+  WaitingReason,
 } from "./types";
 
 /**
@@ -353,6 +358,309 @@ export function parseChecklist(text: string | null | undefined): ChecklistItem[]
     items.push({ text: line, checked: false });
   }
   return items;
+}
+
+// ─── ISS-377: blocker banner · live-agent heartbeat · per-stage outcomes ─────
+
+/** Heartbeat staleness threshold. Mirrors core's sweeper
+ *  `HEARTBEAT_TIMEOUT_MS_DEFAULT = 3*60_000` (`pipeline/sweeper.ts`, env
+ *  `PIPELINE_HEARTBEAT_TIMEOUT_MS`). Not env-readable from the FE, so kept in
+ *  lockstep here; a session whose last heartbeat is older than this is the same
+ *  "stale" the server uses before marking it failed. */
+export const HEARTBEAT_STALE_MS = 3 * 60_000;
+
+export type HeartbeatState = "alive" | "stale" | "unknown";
+
+/** Alive vs stale from a session's `lastHeartbeatAt` (AC#3). `unknown` when the
+ *  field is absent (older server) or unparseable — the caller then hides the
+ *  dot rather than lying about liveness. `nowMs` is injectable for tests. */
+export function heartbeatState(
+  lastHeartbeatAt: string | null | undefined,
+  nowMs: number = Date.now(),
+): HeartbeatState {
+  if (!lastHeartbeatAt) return "unknown";
+  const t = Date.parse(lastHeartbeatAt);
+  if (Number.isNaN(t)) return "unknown";
+  return nowMs - t <= HEARTBEAT_STALE_MS ? "alive" : "stale";
+}
+
+export type BlockerCtaKind = "approve" | "provide-info" | "resume" | "open-blocker" | "none";
+
+/** A blocking dependency endpoint, ready to render as a clickable ISS-x chip. */
+export interface BlockingRef {
+  id: string;
+  displayId: string;
+  title: string | null;
+  status: IssueStatus | null;
+}
+
+/** Single server-derived "why is it stuck" verdict for the blocker banner
+ *  (AC#1/#2). Computed in ONE place from failureContext / status /
+ *  manualHold(Until) / pipelineHealth.waitingOn / blocks edges — the component
+ *  never re-joins those sources. `null` ⇒ not blocked ⇒ render nothing. */
+export interface BlockerState {
+  tone: "danger" | "attention" | "info";
+  reason: string;
+  whoMustAct: string;
+  cta: { label: string; kind: BlockerCtaKind };
+  /** The actual question to answer, for `needs_info`. */
+  question?: string;
+  /** Open `blocks` issues this one is waiting on. */
+  blockingRefs?: BlockingRef[];
+  /** Extra context (failure classification, hold-until), Tier-2 detail. */
+  detail?: string;
+}
+
+const TERMINAL_STATUSES: ReadonlySet<IssueStatus> = new Set(["released", "closed"]);
+
+/** Incoming `blocks` edges whose blocker isn't terminal — i.e. this issue is
+ *  genuinely blocked-by an open issue. */
+function openBlockingRefs(deps: IssueDependencies | undefined): BlockingRef[] {
+  if (!deps) return [];
+  return deps.incoming
+    .filter((e) => e.kind === "blocks" && !(e.fromStatus && TERMINAL_STATUSES.has(e.fromStatus)))
+    .map((e) => ({
+      id: e.fromIssueId,
+      displayId: e.fromDisplayId ?? `ISS-${e.fromIssueId.slice(0, 6)}`,
+      title: e.fromTitle ?? null,
+      status: e.fromStatus ?? null,
+    }));
+}
+
+const WAITING_REASON_COPY: Record<WaitingReason, { reason: string; who: string }> = {
+  issue_busy: { reason: "Another job is already active on this issue.", who: "Wait for the active run to finish." },
+  manual_hold: { reason: "The issue is on a manual hold.", who: "An operator must resume it." },
+  waiting_on_dep: { reason: "Blocked by an unfinished dependency.", who: "Finish the blocking issue first." },
+  waiting_on_decomp_parent: { reason: "Waiting on its parent epic to finish releasing.", who: "The parent epic must complete." },
+  project_full: { reason: "The project's concurrency cap is reached.", who: "No action — dispatches when a slot frees." },
+  runner_full: { reason: "The pinned runner is at capacity.", who: "No action — dispatches when the runner frees." },
+};
+
+/**
+ * Derive the single blocker verdict for an issue, or `null` when it is actively
+ * progressing. Precedence (richest signal first): agent failure card →
+ * needs_info → waiting-for-approve → on_hold/manual_hold → pipelineHealth
+ * capacity/dep waits → open `blocks` edges. `needsInfoQuestion` is supplied by
+ * the screen (which can read the latest comment); kept as an arg so this stays
+ * pure + unit-testable.
+ */
+export function deriveBlockerState(
+  issue: Pick<IssueDetail, "status" | "manualHold" | "manualHoldUntil" | "failureContext">,
+  pipelineHealth: PipelineHealth | undefined,
+  deps: IssueDependencies | undefined,
+  opts: { needsInfoQuestion?: string } = {},
+): BlockerState | null {
+  const blockingRefs = openBlockingRefs(deps);
+
+  // 1. Agent failure card — an exhausted-retry hold with suggested actions.
+  const fc = issue.failureContext;
+  if (fc) {
+    const actions = fc.suggestedActions ?? [];
+    const cta: BlockerState["cta"] = actions.includes("resume")
+      ? { label: "Resume", kind: "resume" }
+      : actions.includes("skip-step")
+        ? { label: "Resume / skip step", kind: "resume" }
+        : { label: "Review failure", kind: "none" };
+    return {
+      tone: "danger",
+      reason: `The ${fc.step} step failed (${fc.trigger.replace(/_/g, " ")}) after ${fc.attempts ?? "several"} attempt(s).`,
+      whoMustAct: "An operator must resume, skip, or close the issue.",
+      cta,
+      detail: fc.classification?.reason,
+      ...(blockingRefs.length ? { blockingRefs } : {}),
+    };
+  }
+
+  // 2. needs_info — a human owes an answer.
+  if (issue.status === "needs_info") {
+    return {
+      tone: "attention",
+      reason: "The pipeline needs more information before it can continue.",
+      whoMustAct: "The reporter (or a maintainer) must answer and re-open.",
+      cta: { label: "Provide info", kind: "provide-info" },
+      question: opts.needsInfoQuestion?.trim() || undefined,
+      ...(blockingRefs.length ? { blockingRefs } : {}),
+    };
+  }
+
+  // 3. waiting — a plan is awaiting human approval before coding.
+  if (issue.status === "waiting") {
+    return {
+      tone: "attention",
+      reason: "The plan is written and awaiting human approval before coding starts.",
+      whoMustAct: "A maintainer must approve (or reopen) the issue.",
+      cta: { label: "Approve", kind: "approve" },
+      ...(blockingRefs.length ? { blockingRefs } : {}),
+    };
+  }
+
+  // 4. on_hold / manual_hold — deliberately paused.
+  if (issue.status === "on_hold" || issue.manualHold) {
+    const until = issue.manualHoldUntil ? ` until ${issue.manualHoldUntil.slice(0, 10)}` : "";
+    return {
+      tone: "attention",
+      reason: `The issue is paused${until}.`,
+      whoMustAct: "An operator must resume it.",
+      cta: { label: "Resume", kind: "resume" },
+      ...(blockingRefs.length ? { blockingRefs } : {}),
+    };
+  }
+
+  // 5. pipelineHealth capacity / dependency waits.
+  const waitingOn = pipelineHealth?.waitingOn;
+  if (waitingOn && WAITING_REASON_COPY[waitingOn.reason]) {
+    const copy = WAITING_REASON_COPY[waitingOn.reason];
+    const isDep = waitingOn.reason === "waiting_on_dep" || waitingOn.reason === "waiting_on_decomp_parent";
+    return {
+      tone: "info",
+      reason: copy.reason,
+      whoMustAct: copy.who,
+      cta:
+        isDep && blockingRefs.length
+          ? { label: "Open blocking issue", kind: "open-blocker" }
+          : { label: "", kind: "none" },
+      ...(blockingRefs.length ? { blockingRefs } : {}),
+    };
+  }
+
+  // 6. Open `blocks` edge with no health signal — still blocked-by an open issue.
+  if (blockingRefs.length) {
+    return {
+      tone: "info",
+      reason: `Blocked by ${blockingRefs.length} open issue${blockingRefs.length > 1 ? "s" : ""}.`,
+      whoMustAct: "Finish the blocking issue(s) first.",
+      cta: { label: "Open blocking issue", kind: "open-blocker" },
+      blockingRefs,
+    };
+  }
+
+  return null;
+}
+
+/** Pipeline step name (job type) → one of the 7 design stages. `fix` folds into
+ *  `code`; `pm`/`custom` have no stage and are dropped. */
+const STEP_TO_STAGE: Record<string, StageKey> = {
+  triage: "triage",
+  clarify: "clarify",
+  plan: "plan",
+  code: "code",
+  fix: "code",
+  review: "review",
+  test: "test",
+  release: "release",
+};
+
+export function stepToStage(step: string): StageKey | null {
+  return STEP_TO_STAGE[step] ?? null;
+}
+
+export type StageCellState = "done" | "current" | "pending" | "error";
+
+/** One stage's rolled-up view for the tracker spine + artifact card (AC#4/#5). */
+export interface StageCell {
+  state: StageCellState;
+  outcomeLabel?: string;
+  durationSeconds?: number;
+  costUsd?: number;
+  handoff?: StepHandoffRow;
+}
+
+function truncate(s: string, max: number): string {
+  const t = s.replace(/\s+/g, " ").trim();
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+}
+
+/** Pull a short, human one-liner from a free-form handoff payload. Tries the
+ *  stable fields first, then any string field; never throws on a missing/odd
+ *  shape (AC#4 graceful fallback). */
+export function handoffOutcomeLabel(payload: Record<string, unknown> | null | undefined): string | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const preferred = ["outcome", "summary", "verdict", "result", "planSummary", "rootCauseHypothesis"];
+  for (const k of preferred) {
+    const v = payload[k];
+    if (typeof v === "string" && v.trim()) return truncate(v, 90);
+  }
+  for (const v of Object.values(payload)) {
+    if (typeof v === "string" && v.trim()) return truncate(v, 90);
+  }
+  return undefined;
+}
+
+/**
+ * Build the per-stage cells for all 7 stages. Stage state derives from the
+ * SINGLE `statusToStage` projection (passed in as `currentStage`) — no second
+ * mapping (AC#5). Durations/cost are summed across attempts of that stage from
+ * the step-durations rows (AC#6); the latest-attempt handoff is attached.
+ */
+export function deriveStageOutcomes(
+  currentStage: StageKey,
+  runStatus: "running" | "done" | "failed" | "blocked" | "queued" | "review",
+  handoffs: StepHandoffRow[] | undefined,
+  durations: StepDurationRow[] | undefined,
+  failureStep?: string | null,
+): Record<StageKey, StageCell> {
+  const currentIdx = STAGE_INDEX[currentStage] ?? 0;
+  const allDone = runStatus === "done";
+  const failureStage = failureStep ? stepToStage(failureStep) : null;
+
+  // Latest-attempt handoff per stage.
+  const handoffByStage = new Map<StageKey, StepHandoffRow>();
+  for (const row of handoffs ?? []) {
+    const stage = stepToStage(row.step);
+    if (!stage) continue;
+    const prev = handoffByStage.get(stage);
+    if (!prev || row.attempt > prev.attempt) handoffByStage.set(stage, row);
+  }
+
+  // Duration + cost per stage, scoped to the MOST-RECENT run for that stage so a
+  // reopened issue (multiple runs of the same step) doesn't double-count. Within
+  // the chosen run, sum across attempts. ISS-377 review fix.
+  const byStageRun = new Map<StageKey, Map<string, { durationSeconds: number; costUsd: number; latest: string }>>();
+  for (const row of durations ?? []) {
+    const stage = stepToStage(row.step);
+    if (!stage) continue;
+    const runs = byStageRun.get(stage) ?? new Map();
+    const acc = runs.get(row.runId) ?? { durationSeconds: 0, costUsd: 0, latest: "" };
+    acc.durationSeconds += row.durationSeconds ?? 0;
+    acc.costUsd += row.costUsd ?? 0;
+    if ((row.finishedAt ?? row.startedAt ?? "") > acc.latest) acc.latest = row.finishedAt ?? row.startedAt ?? "";
+    runs.set(row.runId, acc);
+    byStageRun.set(stage, runs);
+  }
+  const durByStage = new Map<StageKey, { durationSeconds: number; costUsd: number }>();
+  for (const [stage, runs] of byStageRun) {
+    let pick: { durationSeconds: number; costUsd: number; latest: string } | undefined;
+    for (const acc of runs.values()) {
+      if (!pick || acc.latest > pick.latest) pick = acc;
+    }
+    if (pick) durByStage.set(stage, { durationSeconds: pick.durationSeconds, costUsd: pick.costUsd });
+  }
+
+  const cells = {} as Record<StageKey, StageCell>;
+  for (const { key } of STAGES) {
+    const i = STAGE_INDEX[key];
+    let state: StageCellState;
+    if (failureStage === key && (runStatus === "failed" || runStatus === "blocked")) {
+      state = "error";
+    } else if (allDone) {
+      state = "done";
+    } else if (i < currentIdx) {
+      state = "done";
+    } else if (i === currentIdx) {
+      state = runStatus === "failed" || runStatus === "blocked" ? "error" : "current";
+    } else {
+      state = "pending";
+    }
+    const handoff = handoffByStage.get(key);
+    const dur = durByStage.get(key);
+    cells[key] = {
+      state,
+      ...(handoff ? { handoff, outcomeLabel: handoffOutcomeLabel(handoff.payload) } : {}),
+      ...(dur && dur.durationSeconds > 0 ? { durationSeconds: dur.durationSeconds } : {}),
+      ...(dur && dur.costUsd > 0 ? { costUsd: dur.costUsd } : {}),
+    };
+  }
+  return cells;
 }
 
 /** Display metadata for each comment kind badge. */

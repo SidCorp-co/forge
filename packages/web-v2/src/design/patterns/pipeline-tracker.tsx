@@ -37,15 +37,47 @@ function Bead({ state, size = 26 }: { state: BeadState; size?: number }) {
   );
 }
 
+/** Per-stage override cell (ISS-377). When `cells` is supplied, each bead's
+ *  state comes from `cells[key].state` (done/current/pending/error mapped to the
+ *  bead vocabulary) instead of being inferred from `stage` + `status`, and the
+ *  short `outcomeLabel` renders under the label in the `full` variant. */
+export interface PipelineTrackerCell {
+  state: "done" | "current" | "pending" | "error";
+  outcomeLabel?: string;
+}
+
+const CELL_TO_BEAD: Record<PipelineTrackerCell["state"], BeadState> = {
+  done: "done",
+  current: "active",
+  pending: "todo",
+  error: "error",
+};
+
 export interface PipelineTrackerProps {
   stage: StageKey;
   status?: RunStatus;
   /** full = labeled beads (run header) · compact = beads only (board rows) ·
       mini = "4 / 7" + thin bar (dense lists). */
   variant?: "full" | "compact" | "mini";
+  /** ISS-377 — per-stage state + short outcome, when the caller has richer
+   *  signal than `stage`/`status` (issue-detail spine). Optional; omitting it
+   *  keeps the original inferred-state behavior for every existing call-site. */
+  cells?: Partial<Record<StageKey, PipelineTrackerCell>>;
+  /** Makes beads interactive: clicking stage `s` calls `onSelect(s)` (used to
+   *  focus/expand the matching artifact card). `full` variant only. */
+  onSelect?: (stage: StageKey) => void;
+  /** Currently-focused stage, highlighted when `onSelect` is set. */
+  selected?: StageKey;
 }
 
-export function PipelineTracker({ stage, status = "running", variant = "full" }: PipelineTrackerProps) {
+export function PipelineTracker({
+  stage,
+  status = "running",
+  variant = "full",
+  cells,
+  onSelect,
+  selected,
+}: PipelineTrackerProps) {
   const currentIdx = STAGE_INDEX[stage] ?? 0;
 
   if (variant === "mini") {
@@ -74,36 +106,65 @@ export function PipelineTracker({ stage, status = "running", variant = "full" }:
   }
 
   const size = variant === "compact" ? 16 : 26;
+  const interactive = variant === "full" && !!onSelect;
   return (
     <div className="flex w-full items-start">
       {STAGES.map((s, i) => {
-        const st = stageState(i, currentIdx, status);
+        const cell = cells?.[s.key];
+        const st: BeadState = cell ? CELL_TO_BEAD[cell.state] : stageState(i, currentIdx, status);
         const last = i === STAGES.length - 1;
+        const isSelected = selected === s.key;
+        const label = (
+          <span
+            className="font-mono"
+            style={{
+              fontSize: 11,
+              letterSpacing: "0.02em",
+              fontWeight: st === "active" || isSelected ? 700 : 500,
+              color:
+                st === "active"
+                  ? "var(--accent-text)"
+                  : st === "done"
+                    ? "var(--green-600)"
+                    : st === "error"
+                      ? "var(--red-600)"
+                      : "var(--fg-subtle)",
+            }}
+          >
+            {s.label}
+          </span>
+        );
+        const column = (
+          <div className="flex flex-col items-center" style={{ gap: variant === "compact" ? 0 : 8 }}>
+            <Bead state={st} size={size} />
+            {variant === "full" && label}
+            {variant === "full" && cell?.outcomeLabel && (
+              <span
+                className="max-w-[88px] truncate text-center"
+                style={{ fontSize: 10, lineHeight: 1.25, color: "var(--fg-subtle)" }}
+                title={cell.outcomeLabel}
+              >
+                {cell.outcomeLabel}
+              </span>
+            )}
+          </div>
+        );
         return (
           <Fragment key={s.key}>
-            <div className="flex flex-col items-center" style={{ gap: variant === "compact" ? 0 : 8 }}>
-              <Bead state={st} size={size} />
-              {variant === "full" && (
-                <span
-                  className="font-mono"
-                  style={{
-                    fontSize: 11,
-                    letterSpacing: "0.02em",
-                    fontWeight: st === "active" ? 700 : 500,
-                    color:
-                      st === "active"
-                        ? "var(--accent-text)"
-                        : st === "done"
-                          ? "var(--green-600)"
-                          : st === "error"
-                            ? "var(--red-600)"
-                            : "var(--fg-subtle)",
-                  }}
-                >
-                  {s.label}
-                </span>
-              )}
-            </div>
+            {interactive ? (
+              <button
+                type="button"
+                onClick={() => onSelect?.(s.key)}
+                aria-label={`${s.label}: ${cell?.outcomeLabel ?? cell?.state ?? "stage"}`}
+                aria-pressed={isSelected}
+                className="flex flex-none rounded-md px-1 py-0.5 outline-none transition-colors hover:bg-[var(--paper-100)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                style={isSelected ? { background: "var(--paper-100)" } : undefined}
+              >
+                {column}
+              </button>
+            ) : (
+              column
+            )}
             {!last && (
               <div
                 className="h-0.5 flex-1 transition-[background] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
