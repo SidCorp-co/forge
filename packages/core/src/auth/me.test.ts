@@ -164,6 +164,7 @@ describe('GET /api/auth/me/preferences', () => {
       theme: 'system',
       language: 'en',
       notifyOnMention: true,
+      lastSeenWhatsNew: null,
       updatedAt: null,
     });
   });
@@ -218,6 +219,22 @@ describe('PATCH /api/auth/me/preferences', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.notifyOnMention).toBe(false);
+    expect(dbInsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('upserts the lastSeenWhatsNew marker', async () => {
+    const token = await signUserToken('00000000-0000-0000-0000-000000000003');
+    insertReturning.mockResolvedValueOnce([
+      { theme: 'system', language: 'en', notifyOnMention: true, lastSeenWhatsNew: '0.2.14', updatedAt: null },
+    ]);
+    const res = await buildApp().request('/api/auth/me/preferences', {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ lastSeenWhatsNew: '0.2.14' }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.lastSeenWhatsNew).toBe('0.2.14');
     expect(dbInsert).toHaveBeenCalledTimes(1);
   });
 

@@ -44,6 +44,10 @@ export interface NavRailProps {
   onSwitcherLeave?: () => void;
   /** Jump to the Docs page (pinned bottom-left). */
   onDocs?: () => void;
+  /** Jump to the What's New feed (pinned bottom-left, above Docs). */
+  onWhatsNew?: () => void;
+  /** Unread count for the What's New row — `1` shows the "new" dot/pill, 0/undefined hides it. */
+  whatsNewBadge?: number;
   /** Footer user-menu actions. When set, the user chip becomes an actionable
    *  menu (Account / Settings, Sign out) instead of a dead element. */
   onAccount?: () => void;
@@ -192,6 +196,8 @@ export function NavRail({
   onSwitcherEnter,
   onSwitcherLeave,
   onDocs,
+  onWhatsNew,
+  whatsNewBadge,
   onAccount,
   onSignOut,
   project,
@@ -361,8 +367,16 @@ export function NavRail({
         </div>
       </div>
 
-      {/* Footer block: Docs pinned bottom-left, then the user chip. */}
+      {/* Footer block: What's New + Docs pinned bottom-left, then the user chip. */}
       <div className="mt-auto flex flex-col gap-1 border-t border-line-subtle pt-3">
+        {onWhatsNew && (
+          <NavRow
+            item={{ key: "whats-new", label: "What's New", icon: "bell", badge: whatsNewBadge }}
+            active={activeKey === "whats-new"}
+            collapsed={collapsed}
+            onClick={onWhatsNew}
+          />
+        )}
         {onDocs && (
           <NavRow
             item={{ key: "docs", label: "Docs", icon: "book" }}

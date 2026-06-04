@@ -66,6 +66,9 @@ const preferencesSchema = z
     theme: z.enum(themes).optional(),
     language: z.enum(languages).optional(),
     notifyOnMention: z.boolean().optional(),
+    // Identity of the newest "What's New" entry the user has seen (changelog
+    // version or `unreleased:<hash>`). Opaque to the server (ISS-384).
+    lastSeenWhatsNew: z.string().max(200).optional(),
   })
   .strict();
 
@@ -73,6 +76,7 @@ const DEFAULT_PREFS = {
   theme: 'system' as const,
   language: 'en' as const,
   notifyOnMention: true,
+  lastSeenWhatsNew: null as string | null,
 };
 
 meRoutes.get('/me/preferences', async (c) => {
@@ -82,6 +86,7 @@ meRoutes.get('/me/preferences', async (c) => {
       theme: userPreferences.theme,
       language: userPreferences.language,
       notifyOnMention: userPreferences.notifyOnMention,
+      lastSeenWhatsNew: userPreferences.lastSeenWhatsNew,
       updatedAt: userPreferences.updatedAt,
     })
     .from(userPreferences)
@@ -122,6 +127,7 @@ meRoutes.patch(
         theme: patch.theme ?? DEFAULT_PREFS.theme,
         language: patch.language ?? DEFAULT_PREFS.language,
         notifyOnMention: patch.notifyOnMention ?? DEFAULT_PREFS.notifyOnMention,
+        lastSeenWhatsNew: patch.lastSeenWhatsNew ?? DEFAULT_PREFS.lastSeenWhatsNew,
       })
       .onConflictDoUpdate({
         target: userPreferences.userId,
@@ -131,6 +137,9 @@ meRoutes.patch(
           ...(patch.notifyOnMention !== undefined
             ? { notifyOnMention: patch.notifyOnMention }
             : {}),
+          ...(patch.lastSeenWhatsNew !== undefined
+            ? { lastSeenWhatsNew: patch.lastSeenWhatsNew }
+            : {}),
           updatedAt: new Date(),
         },
       })
@@ -138,6 +147,7 @@ meRoutes.patch(
         theme: userPreferences.theme,
         language: userPreferences.language,
         notifyOnMention: userPreferences.notifyOnMention,
+        lastSeenWhatsNew: userPreferences.lastSeenWhatsNew,
         updatedAt: userPreferences.updatedAt,
       });
 

@@ -22,7 +22,10 @@ import {
   Sun,
   Moon,
   LifeBuoy,
+  Bell,
+  BookOpen,
 } from 'lucide-react';
+import { useWhatsNewStatus } from '@/features/whats-new/hooks';
 import { useThemePreference } from '@/hooks/use-theme-preference';
 import { useMounted } from '@/hooks/use-mounted';
 import Image from 'next/image';
@@ -213,6 +216,7 @@ export function SidebarNav({ onClose }: SidebarNavProps) {
   const { data: projectsData } = useProjects();
   const { user, logout } = useAuth();
   const { connected } = useWebSocket();
+  const { hasUnseen: whatsNewUnseen } = useWhatsNewStatus();
   const [projectsOpen, setProjectsOpen] = useState(true);
 
   const projects: Project[] = projectsData ?? [];
@@ -315,6 +319,35 @@ export function SidebarNav({ onClose }: SidebarNavProps) {
             <span>Chat Logs</span>
           </Link>
         )}
+
+        <Link
+          href="/whats-new"
+          className={cn(
+            'flex items-center gap-3 px-3 py-2 transition-all duration-150',
+            pathname.startsWith('/whats-new') ? 'bg-surface-variant text-primary font-semibold border-l-2 border-primary' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface border-l-2 border-transparent'
+          )}
+        >
+          <Bell className="h-[18px] w-[18px]" />
+          <span>What&apos;s New</span>
+          {whatsNewUnseen && (
+            <span
+              className="ml-auto h-2 w-2 rounded-full bg-primary"
+              aria-label="New updates"
+              title="New updates"
+            />
+          )}
+        </Link>
+
+        <Link
+          href="/docs"
+          className={cn(
+            'flex items-center gap-3 px-3 py-2 transition-all duration-150',
+            pathname.startsWith('/docs') ? 'bg-surface-variant text-primary font-semibold border-l-2 border-primary' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface border-l-2 border-transparent'
+          )}
+        >
+          <BookOpen className="h-[18px] w-[18px]" />
+          <span>Help &amp; Docs</span>
+        </Link>
 
         <div className="pt-2">
           <button

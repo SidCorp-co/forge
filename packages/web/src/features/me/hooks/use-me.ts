@@ -26,7 +26,7 @@ export function useMePreferences() {
 export function useUpdateMePreferences() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (patch: Partial<Pick<MePreferences, 'theme' | 'language'>>) =>
+    mutationFn: (patch: Partial<Pick<MePreferences, 'theme' | 'language' | 'lastSeenWhatsNew'>>) =>
       meApi.updatePreferences(patch),
     onSuccess: (data) => {
       qc.setQueryData(PREFS_KEY, data);

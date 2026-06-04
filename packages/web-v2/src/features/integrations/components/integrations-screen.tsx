@@ -171,6 +171,7 @@ export function IntegrationsScreen() {
               "Switch project with the selector to inspect another project",
               "Open repo — jump to the GitHub remote (HTTPS remotes only)",
             ]}
+            docPath="docs/guides/integrations.md"
           />
         </div>
       </div>

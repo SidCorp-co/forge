@@ -54,6 +54,11 @@ export interface NavRailCompactProps {
   userInitials?: string;
   /** Switch to the expanded (labeled, 232px) rail. */
   onExpand?: () => void;
+  /** Footer: jump to the What's New feed. `whatsNewBadge` shows a "new" dot. */
+  onWhatsNew?: () => void;
+  whatsNewBadge?: number;
+  /** Footer: jump to the Docs hub. */
+  onDocs?: () => void;
 }
 
 /** Tiny centered tier label for the 76px rail (ISS-359). The faint hairline
@@ -139,6 +144,9 @@ export function NavRailCompact({
   onSignOut,
   userInitials,
   onExpand,
+  onWhatsNew,
+  whatsNewBadge,
+  onDocs,
 }: NavRailCompactProps) {
   const [flyOpen, setFlyOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -364,8 +372,37 @@ export function NavRailCompact({
         ))}
       </div>
 
-      {/* Footer — account menu only (Devices dropped per product decision). */}
+      {/* Footer — What's New + Docs, then the account menu. */}
       <div className="mt-auto flex flex-col items-center gap-1.5">
+        {onWhatsNew && (
+          <button
+            type="button"
+            onClick={onWhatsNew}
+            aria-label={
+              whatsNewBadge && whatsNewBadge > 0 ? "What's New, new updates" : "What's New"
+            }
+            className="relative inline-flex size-8 items-center justify-center rounded-md text-subtle transition-colors hover:bg-hover hover:text-fg"
+          >
+            <Icon name="bell" size={18} />
+            {whatsNewBadge && whatsNewBadge > 0 ? (
+              <span
+                aria-hidden
+                className="absolute right-1.5 top-1.5 size-2 rounded-pill"
+                style={{ background: "var(--accent)", border: "1.5px solid var(--bg-surface)" }}
+              />
+            ) : null}
+          </button>
+        )}
+        {onDocs && (
+          <button
+            type="button"
+            onClick={onDocs}
+            aria-label="Docs"
+            className="inline-flex size-8 items-center justify-center rounded-md text-subtle transition-colors hover:bg-hover hover:text-fg"
+          >
+            <Icon name="book" size={18} />
+          </button>
+        )}
         <Menu
           trigger={
             // A real button (not a span) so the account menu is reachable by

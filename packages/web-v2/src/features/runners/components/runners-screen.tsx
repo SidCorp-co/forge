@@ -178,6 +178,7 @@ export function RunnersScreen() {
             "Pair a device — start the browser-approve login flow",
             "Revoke — cut off a device's token and unbind its runners",
           ]}
+          docPath="docs/guides/runners.md"
         />
       </div>
 

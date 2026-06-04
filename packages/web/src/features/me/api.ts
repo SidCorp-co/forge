@@ -6,7 +6,9 @@ export const meApi = {
 
   getPreferences: () => apiClient<MePreferences>('/auth/me/preferences'),
 
-  updatePreferences: (patch: Partial<Pick<MePreferences, 'theme' | 'language'>>) =>
+  updatePreferences: (
+    patch: Partial<Pick<MePreferences, 'theme' | 'language' | 'lastSeenWhatsNew'>>,
+  ) =>
     apiClient<MePreferences>('/auth/me/preferences', {
       method: 'PATCH',
       body: JSON.stringify(patch),
