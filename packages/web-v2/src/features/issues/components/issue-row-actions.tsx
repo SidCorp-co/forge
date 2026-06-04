@@ -43,7 +43,7 @@ import {
   type IssueRow,
   type ProjectMember,
 } from "../types";
-import { CostCell, DepBadges, type RowActions } from "./issue-table-row";
+import { CostCell, DepBadges, HoldBadge, type RowActions } from "./issue-table-row";
 
 // Priority badge tone — quiet for low/none, warm for the urgent end.
 const PRIORITY_TONE: Record<IssuePriority, "red" | "amber" | "neutral"> = {
@@ -176,6 +176,7 @@ export function IssueTableRow({
         </button>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
           {row.category && <MonoTag>{row.category}</MonoTag>}
+          <HoldBadge held={row.manualHold} />
           <DepBadges id={row.id} />
         </div>
       </TD>
@@ -242,6 +243,7 @@ export function IssueMobileCard({
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {row.category && <MonoTag>{row.category}</MonoTag>}
+          <HoldBadge held={row.manualHold} />
           <DepBadges id={row.id} />
         </div>
 

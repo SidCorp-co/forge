@@ -29,6 +29,7 @@ import {
   Skeleton,
   StatusChip,
   Tabs,
+  Tooltip,
   type MenuItem,
   type TabItem,
 } from "@/design";
@@ -52,6 +53,7 @@ import {
   useIssueCost,
   useIssueDeps,
   useProjectMembers,
+  useToggleManualHold,
   useTransitionIssue,
 } from "../hooks";
 import {
@@ -122,7 +124,8 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
 
   const patch = usePatchIssue();
   const transition = useTransitionIssue();
-  const pending = patch.isPending || transition.isPending;
+  const toggleHold = useToggleManualHold();
+  const pending = patch.isPending || transition.isPending || toggleHold.isPending;
 
   const issue = issueQ.data;
   const checklist = useMemo(() => {
@@ -220,11 +223,33 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
   const openSessions = () => router.push(`/projects/${slug}/agents?issue=${id}`);
   const openPipeline = () => router.push(`/projects/${slug}/pipeline`);
 
+  // Manual-hold toggle (ISS-386). DISTINCT from "Pause (hold)" above, which is
+  // the on_hold STATUS transition. This flips `issues.manualHold` via its own
+  // /manual-hold call — never bundled with a transition (ISS-22 stall risk).
+  // When enabling a hold while a job is in flight, warn that hold only blocks
+  // FUTURE dispatch; it does not cancel the running/queued job.
+  const onToggleHold = (next: boolean = !issue.manualHold) => {
+    if (next && isRunActive) {
+      toast({
+        title: "Hold set — future dispatch paused",
+        description:
+          "A job is currently queued or running. Manual hold blocks the dispatcher from picking up NEW jobs; it does not cancel the active one.",
+        tone: "info",
+      });
+    }
+    toggleHold.mutate({ id, value: next });
+  };
+
   const moreItems: MenuItem[] = [
     { label: "Open pipeline", icon: "pipeline", onSelect: openPipeline },
     ...(isTerminal || isParked
       ? []
       : [{ label: "Pause (hold)", icon: "stop", onSelect: () => onTransition("on_hold") } as MenuItem]),
+    {
+      label: issue.manualHold ? "Unhold dispatch" : "Hold dispatch",
+      icon: issue.manualHold ? "play" : "pause",
+      onSelect: () => onToggleHold(),
+    },
     ...(isTerminal
       ? []
       : [{ label: "Reopen", icon: "rerun", onSelect: () => onTransition("reopen") } as MenuItem]),
@@ -272,6 +297,18 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
             <StatusChip status={statusToChip(issue.status)} />
             {runChip && (
               <StatusChip status={runChip} stage={runChip === "running" ? stage : undefined} domain="session" />
+            )}
+            {/* Manual-hold indicator (ISS-386) — dispatcher won't pick up new
+                jobs while held. Distinct from the on_hold status chip. */}
+            {issue.manualHold && (
+              <Tooltip label="Manual hold — dispatcher won't pick up new jobs. In-flight jobs are not cancelled.">
+                <Badge tone="amber">
+                  <span className="inline-flex items-center gap-1">
+                    <Icon name="pause" size={11} />
+                    Hold
+                  </span>
+                </Badge>
+              </Tooltip>
             )}
             <span className="fg-caption font-mono">{stage}</span>
           </div>
@@ -323,6 +360,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
               onApprove={() => onTransition("approved")}
               onResume={() => onTransition("reopen")}
               onProvideInfo={() => setTab("comments")}
+              onUnhold={() => onToggleHold(false)}
             />
           )}
 

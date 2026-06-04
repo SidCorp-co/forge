@@ -79,6 +79,23 @@ export function DepBadges({ id }: { id: string }) {
   );
 }
 
+/** Inline "on manual hold" indicator (ISS-386). When `manualHold` is set the
+ *  dispatcher won't pick up new jobs for the issue; surface it on list/board
+ *  rows so a stalled issue is diagnosable at a glance. Native-title tooltip,
+ *  matching the dependency-badge inline style above. */
+export function HoldBadge({ held }: { held: boolean | undefined }) {
+  if (!held) return null;
+  return (
+    <span
+      className="fg-caption inline-flex items-center gap-0.5 rounded-pill px-1.5 font-semibold"
+      style={{ color: "var(--amberw-600)", background: "var(--amberw-50)" }}
+      title="On manual hold — dispatcher won't pick up new jobs"
+    >
+      ⏸ Hold
+    </span>
+  );
+}
+
 /** Lazy per-issue cost. */
 export function CostCell({ id }: { id: string }) {
   const { data, isLoading } = useIssueCost(id);

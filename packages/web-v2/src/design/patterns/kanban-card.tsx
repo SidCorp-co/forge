@@ -11,20 +11,34 @@ export interface KanbanCardProps {
   stage: StageKey;
   status: StatusKey;
   cost?: string;
+  /** When true, render a small amber "hold" glyph — the issue is on manual
+   *  hold so the dispatcher won't pick up new jobs (ISS-386). */
+  held?: boolean;
   assignee?: { initials: string; hue?: AvatarHue };
   onClick?: () => void;
 }
 
-export function KanbanCard({ id, title, stage, status, cost, assignee, onClick }: KanbanCardProps) {
+export function KanbanCard({ id, title, stage, status, cost, held, assignee, onClick }: KanbanCardProps) {
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={`Open ${id} — ${title}`}
+      aria-label={`Open ${id} — ${title}${held ? " (on manual hold)" : ""}`}
       className="flex w-full flex-col gap-2.5 rounded-md border border-line bg-surface p-3 text-left shadow-xs transition-colors duration-[120ms] hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
     >
       <div className="flex items-center justify-between gap-2">
-        <MonoTag>{id}</MonoTag>
+        <span className="inline-flex items-center gap-1.5">
+          <MonoTag>{id}</MonoTag>
+          {held && (
+            <span
+              className="inline-flex items-center rounded-pill px-1.5 font-semibold"
+              style={{ fontSize: 11, lineHeight: "16px", color: "var(--amberw-600)", background: "var(--amberw-50)" }}
+              title="On manual hold — dispatcher won't pick up new jobs"
+            >
+              ⏸ Hold
+            </span>
+          )}
+        </span>
         {assignee && <Avatar initials={assignee.initials} hue={assignee.hue} size={20} />}
       </div>
       <p className="fg-body-sm line-clamp-2 text-fg" style={{ fontWeight: 500 }}>

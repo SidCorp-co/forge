@@ -16,6 +16,7 @@ interface BlockerBannerProps {
   onApprove: () => void;
   onResume: () => void;
   onProvideInfo: () => void;
+  onUnhold: () => void;
 }
 
 export function BlockerBanner({
@@ -25,6 +26,7 @@ export function BlockerBanner({
   onApprove,
   onResume,
   onProvideInfo,
+  onUnhold,
 }: BlockerBannerProps) {
   const { cta } = blocker;
 
@@ -38,6 +40,12 @@ export function BlockerBanner({
   } else if (cta.kind === "resume") {
     action = (
       <Button variant="secondary" size="sm" icon="rerun" loading={pending} onClick={onResume}>
+        {cta.label}
+      </Button>
+    );
+  } else if (cta.kind === "unhold") {
+    action = (
+      <Button variant="secondary" size="sm" icon="play" loading={pending} onClick={onUnhold}>
         {cta.label}
       </Button>
     );
