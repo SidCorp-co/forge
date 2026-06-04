@@ -37,6 +37,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Project owners can now archive a project from Project Settings → Advanced (type-to-confirm the project name). Archived projects disappear from the project list and stop running new pipeline jobs, but keep all their issues, comments, runs, and sessions — and can be unarchived at any time to restore them.**
   *Technical: Nullable projects.archived_at (migration 0092) + owner-gated POST /api/projects/:id/archive|unarchive; GET /api/projects excludes archived by default (?archived=1 to include); orchestrator.loadPipelineConfig returns cfg=null when archived. UI in web (Settings→Advanced) and web-v2 (Settings→Advanced tab).*
 
+- **The issue detail page now surfaces why an issue is stuck and who must act, shows live agent progress with a heartbeat indicator, and gives a per-stage summary of what each pipeline step produced along with its time and cost.**
+  *Technical: Adds BlockerBanner, LiveAgentPanel and per-stage StepArtifactCard components plus a clickable PipelineTracker spine to the web-v2 issue-detail screen, fed by existing pipelineHealth/failureContext/step-duration signals and the GET /api/issue-step-contexts handoff surface (ISS-377).*
+
 ### Changed
 
 - **The Forge MCP tools that were prefixed `forge_admin_*` have been renamed to reflect what they actually are — ordinary project-scoped tools, not system-admin tools. `forge_admin_runners` → `forge_runners`, `forge_admin_users` → `forge_collaborators`, `forge_admin_health` → `forge_ops_health`; project archive moved onto `forge_projects.archive`; and the cross-your-projects metrics tool is now `forge_metrics.step_durations`. Access is unchanged — every one stays gated by your role on each project. The token-creation dialog no longer claims the `admin` scope grants "cross-tenant admin tools".**
