@@ -48,6 +48,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **The issue detail page now surfaces why an issue is stuck and who must act, shows live agent progress with a heartbeat indicator, and gives a per-stage summary of what each pipeline step produced along with its time and cost.**
   *Technical: Adds BlockerBanner, LiveAgentPanel and per-stage StepArtifactCard components plus a clickable PipelineTracker spine to the web-v2 issue-detail screen, fed by existing pipelineHealth/failureContext/step-duration signals and the GET /api/issue-step-contexts handoff surface (ISS-377).*
 
+- **You can now hold or unhold an issue directly from the issue detail page, with a clear badge showing when an issue is on manual hold (dispatcher paused from picking up new jobs).**
+  *Technical: web-v2 issue detail: standalone manual-hold toggle in the Issue actions menu + manualHold badge, calling /issues/:id/manual-hold via the apiClient (separate from on_hold status transitions). Merge ef7902e.*
+
 ### Changed
 
 - **The Forge MCP tools that were prefixed `forge_admin_*` have been renamed to reflect what they actually are — ordinary project-scoped tools, not system-admin tools. `forge_admin_runners` → `forge_runners`, `forge_admin_users` → `forge_collaborators`, `forge_admin_health` → `forge_ops_health`; project archive moved onto `forge_projects.archive`; and the cross-your-projects metrics tool is now `forge_metrics.step_durations`. Access is unchanged — every one stays gated by your role on each project. The token-creation dialog no longer claims the `admin` scope grants "cross-tenant admin tools".**
