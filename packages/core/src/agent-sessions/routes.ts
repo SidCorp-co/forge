@@ -13,6 +13,7 @@ import {
   issues,
   projectMembers,
   projects,
+  usageRecords,
 } from '../db/schema.js';
 import {
   broadcastSession,
@@ -867,6 +868,80 @@ agentSessionRoutes.post(
     });
 
     return c.json({ ok: true, issueId: issue.id });
+  },
+);
+
+// GET /api/agent-sessions/:id/cost
+// Per-session cost + token rollup from usage_records (ISS-378 AC#6). The session
+// row itself carries no dollar cost/model, so the detail rail showed "—"; this
+// aggregates usage_records WHERE session_id = this session id and groups by model
+// for the per-model breakdown. usage_records.session_id is a uuid-shaped text
+// column — guard the cast (mirrors issues/extras-routes.ts cost-summary) so a
+// stray non-uuid value can't 500 the rollup. Mounted before `:id` GET; the extra
+// path segment means no validator collision with the single-segment `/:id`.
+agentSessionRoutes.get(
+  '/:id/cost',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const [session] = await db
+      .select({ id: agentSessions.id, projectId: agentSessions.projectId })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, id))
+      .limit(1);
+    if (!session) throw notFound('agent session not found');
+
+    const access = await loadProjectAccess(session.projectId, userId);
+    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+
+    const sessionMatch = sql`${usageRecords.sessionId} ~ '^[0-9a-fA-F-]{36}$' AND ${usageRecords.sessionId}::uuid = ${id}`;
+
+    const [totals] = await db
+      .select({
+        estimatedCost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
+        inputTokens: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
+        outputTokens: sql<number>`coalesce(sum(${usageRecords.outputTokens}), 0)`.mapWith(Number),
+        cacheReadTokens:
+          sql<number>`coalesce(sum(${usageRecords.cacheReadTokens}), 0)`.mapWith(Number),
+        cacheCreationTokens:
+          sql<number>`coalesce(sum(${usageRecords.cacheCreationTokens}), 0)`.mapWith(Number),
+        requests: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
+        sampleCount: sql<number>`count(${usageRecords.id})`.mapWith(Number),
+      })
+      .from(usageRecords)
+      .where(sessionMatch);
+
+    // Per-model breakdown for the detail rail's "Model" stat (one row per model
+    // this session billed against), ordered by spend.
+    const models = await db
+      .select({
+        model: usageRecords.model,
+        cost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
+        requests: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
+      })
+      .from(usageRecords)
+      .where(sessionMatch)
+      .groupBy(usageRecords.model)
+      .orderBy(desc(sql`sum(${usageRecords.estimatedCost})`));
+
+    return c.json({
+      sessionId: id,
+      projectId: session.projectId,
+      ...(totals ?? {
+        estimatedCost: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        requests: 0,
+        sampleCount: 0,
+      }),
+      models,
+    });
   },
 );
 

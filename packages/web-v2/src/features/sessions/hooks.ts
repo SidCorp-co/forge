@@ -29,6 +29,16 @@ export function useQueueStats(projectId: string | undefined) {
   });
 }
 
+/** Per-session cost rollup. Keyed `['agent-sessions',id,'cost']` — WS-invalidated
+ *  on session updates so cost refreshes as usage_records land (ISS-378). */
+export function useSessionCost(sessionId: string | undefined) {
+  return useQuery({
+    queryKey: ["agent-sessions", sessionId, "cost"],
+    queryFn: () => sessionsApi.cost(sessionId as string),
+    enabled: !!sessionId,
+  });
+}
+
 /** Shared mutation factory: invalidate the list on success, toast on error. */
 function useSessionMutation<TArgs, TData>(
   fn: (args: TArgs) => Promise<TData>,
