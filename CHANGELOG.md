@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **A pipeline could silently stall for about an hour when a job was dispatched to a runner that never picked it up — the dead job held the runner's only slot and blocked the next stage. The system now detects an unclaimed dispatch within a few minutes and recovers automatically (re-dispatching the work, or moving the issue on if it had already completed elsewhere).**
+  *Technical: new `reconcileNeverClaimedDispatches` pass in `pipeline/sweeper.ts`, run every minute inside `runPipelineSweep`. Reaps `jobs` in `status='dispatched'` with zero `job_events` (no `started` ack) older than `PIPELINE_NEVER_CLAIMED_MS` (default 3min), routing them through the shared `finalizeFailedJob` verify-first path. Closes the gap between `reconcileOrphanedJobs` (session-driven; blind to an unclaimed dispatch whose inherited `agent_session_id` is non-terminal) and `runStaleSweep`'s 60-min backstop — which let an orphan hold the cap=1 slot + block strict-sequential for ~4h (ISS-378).*
+
+- **A runner that genuinely finished its work no longer loses that work when its completion report races a server hiccup. If the job had been auto-failed by a timeout sweep in the meantime, the late "success" is now reconciled instead of rejected.**
+  *Technical: `POST /jobs/:id/complete` (lifecycle-routes.ts) — when an `exitCode=0` arrives for a job already `failed` with a server-written reap marker (`session_lost` / `dispatch_unclaimed` / `stale`) and NO retry descendant is queued/dispatched/running/done, CAS-flip `failed→done` and run the normal success side-effects instead of `409 INVALID_STATE`. The active-retry guard prevents double-advance; verify-first on any scheduled retry already no-ops once the issue advances (ISS-378; the ISS-360 outage discarded a merged PR this way).*
+
 ### Added
 
 - **The pipeline now reproduces bugs before planning: a new `clarified` status sits between `confirmed` and `approved`, and the clarify step runs on the happy path — it reproduces the bug (or validates the UX) in a live environment, attaches evidence and a root-cause hypothesis, and only then hands the issue to planning. Trivially-sized issues (per-stage `skipComplexities`, e.g. xs/s) skip clarify automatically, and projects that never enabled clarify keep their exact previous flow.**

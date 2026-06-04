@@ -70,7 +70,12 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-const { runPipelineSweep, sweepExpiredHolds, reconcileOrphanedJobs } = await import('./sweeper.js');
+const {
+  runPipelineSweep,
+  sweepExpiredHolds,
+  reconcileOrphanedJobs,
+  reconcileNeverClaimedDispatches,
+} = await import('./sweeper.js');
 
 /** Flatten a drizzle `sql` template into its raw text for fragment assertions. */
 function sqlText(arg: unknown): string {
@@ -251,5 +256,49 @@ describe('reconcileOrphanedJobs (ISS-280)', () => {
     // finalize threw but was swallowed so the second still ran.
     expect(result.reconciled).toBe(2);
     expect(finalizeFailedJobMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('reconcileNeverClaimedDispatches (ISS-378)', () => {
+  it('candidate SELECT targets dispatched jobs with zero events past the grace cutoff', async () => {
+    dbExecute.mockResolvedValueOnce([]); // no candidates
+    const result = await reconcileNeverClaimedDispatches(new Date('2026-06-04T00:00:00Z'));
+
+    expect(result.reconciled).toBe(0);
+    const text = sqlText(dbExecute.mock.calls[0]?.[0]);
+    expect(text).toMatch(/j\.status\s*=\s*'dispatched'/);
+    expect(text).toMatch(/dispatched_at\s+IS\s+NOT\s+NULL/);
+    expect(text).toMatch(/dispatched_at\s*</);
+    // Zero events of ANY kind — NOT scoped to result events (that is the
+    // session-driven sibling pass's job).
+    expect(text).toMatch(/NOT\s+EXISTS[\s\S]*job_events/);
+    expect(text).not.toMatch(/kind\s*=\s*'result'/);
+    expect(finalizeFailedJobMock).not.toHaveBeenCalled();
+  });
+
+  it('reaps an unclaimed dispatch through finalizeFailedJob with the dispatch_unclaimed error', async () => {
+    dbExecute.mockResolvedValueOnce([{ id: 'unclaimed-1' }]);
+    sessionsWhere.mockResolvedValueOnce([
+      { id: 'unclaimed-1', projectId: 'p1', issueId: 'i1', status: 'failed' },
+    ]);
+
+    const result = await reconcileNeverClaimedDispatches(new Date('2026-06-04T00:00:00Z'));
+
+    expect(result.reconciled).toBe(1);
+    expect(finalizeFailedJobMock).toHaveBeenCalledTimes(1);
+    expect(finalizeFailedJobMock).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'unclaimed-1' }),
+      expect.objectContaining({ error: 'dispatch_unclaimed' }),
+    );
+  });
+
+  it('skips a dispatch that lost the CAS race (runner claimed it the same instant)', async () => {
+    dbExecute.mockResolvedValueOnce([{ id: 'unclaimed-2' }]);
+    sessionsWhere.mockResolvedValueOnce([]); // CAS returned no row
+
+    const result = await reconcileNeverClaimedDispatches(new Date('2026-06-04T00:00:00Z'));
+
+    expect(result.reconciled).toBe(0);
+    expect(finalizeFailedJobMock).not.toHaveBeenCalled();
   });
 });
