@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -7,6 +7,7 @@ import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { loadProjectAccess } from '../lib/project-access.js';
+import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -50,6 +51,13 @@ const failBodySchema = z
 const ACTIVE_STATUSES = new Set(['queued', 'dispatched', 'running']);
 const RUNNABLE_STATUSES = new Set(['dispatched', 'running']);
 
+// ISS-378 — `jobs.error` markers written by the SERVER-side reapers (never by
+// a real runner /fail): the orphan reconcilers + stale-detector. A successful
+// late /complete for a job carrying one of these means the runner actually
+// finished but its report was lost (e.g. to a core outage) and a sweep reaped
+// the row first — so the success is reconcilable, not a conflict.
+const SYNTHETIC_REAP_ERRORS = new Set(['session_lost', 'dispatch_unclaimed', 'stale']);
+
 async function loadJob(jobId: string) {
   const [row] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
   if (!row) throw notFound('job not found');
@@ -74,16 +82,82 @@ jobLifecycleDeviceRoutes.post(
 
     const job = await loadJob(id);
     if (job.deviceId !== device.id) throw forbidden('job is not dispatched to this device');
+
+    // ISS-378 — idempotent late completion. A runner that finished real work
+    // but whose /complete was lost to a core outage finds its job already
+    // reaped to `failed` by a timeout/orphan sweep (server-side, not a runner
+    // /fail). If it retries with success and no retry attempt has taken over,
+    // accept it: flip failed→done and run the success side-effects, instead of
+    // 409-discarding real work (ISS-360 lost a merged PR this way). Guarded so
+    // it can't double-advance: if any retry descendant is queued/dispatched/
+    // running/done, that attempt owns the outcome and we fall through to 409.
+    if (
+      !RUNNABLE_STATUSES.has(job.status) &&
+      input.exitCode === 0 &&
+      job.status === 'failed' &&
+      typeof job.error === 'string' &&
+      SYNTHETIC_REAP_ERRORS.has(job.error)
+    ) {
+      const activeRetry = await db
+        .select({ id: jobs.id })
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.retryOf, job.id),
+            inArray(jobs.status, ['queued', 'dispatched', 'running', 'done']),
+          ),
+        )
+        .limit(1);
+      if (activeRetry.length === 0) {
+        const [reclaimed] = await db
+          .update(jobs)
+          .set({ status: 'done', exitCode: 0, error: null, finishedAt: new Date() })
+          .where(and(eq(jobs.id, id), eq(jobs.status, 'failed'), eq(jobs.error, job.error)))
+          .returning();
+        if (reclaimed) {
+          logger.warn(
+            { jobId: reclaimed.id, reapedError: job.error },
+            'lifecycle: reconciled a late successful completion — job had been reaped (work would otherwise be lost)',
+          );
+          if (reclaimed.agentSessionId) {
+            void deriveSessionFinal(reclaimed.id, reclaimed.agentSessionId);
+          }
+          await syncAgentSessionLifecycle(reclaimed, 'done');
+          roomManager.publish(projectRoom(reclaimed.projectId), {
+            event: 'job.completed',
+            data: { jobId: reclaimed.id, status: 'done', exitCode: 0 },
+          });
+          await hooks.emit('jobCompleted', {
+            jobId: reclaimed.id,
+            projectId: reclaimed.projectId,
+            issueId: reclaimed.issueId,
+            type: reclaimed.type,
+          });
+          void dispatchTickForProject(reclaimed.projectId);
+          if (reclaimed.issueId) {
+            await publishPipelineHealthChanged(reclaimed.projectId, [reclaimed.issueId]);
+          }
+          return c.json({
+            jobId: reclaimed.id,
+            status: 'done',
+            exitCode: 0,
+            retry: null,
+            reconciled: true,
+          });
+        }
+      }
+    }
+
     if (!RUNNABLE_STATUSES.has(job.status)) {
       throw conflict('job is not in a runnable state', 'INVALID_STATE');
     }
 
-    let status: 'done' | 'cancelled' | 'failed' =
+    const status: 'done' | 'cancelled' | 'failed' =
       input.exitCode === 0 ? 'done' : input.exitCode === -1 ? 'cancelled' : 'failed';
     // Mutable companion to `input.error` for the failure paths below
     // (resume-fail / retry) that refine the reason without reassigning the
     // validated input object.
-    let effectiveError: string | null = input.error ?? null;
+    const effectiveError: string | null = input.error ?? null;
 
     let [updated] = await db
       .update(jobs)

@@ -62,8 +62,7 @@ vi.mock('./retry.js', () => ({
 
 const setManualHoldBlockMock = vi.fn(async () => undefined);
 vi.mock('../pipeline/manual-hold.js', () => ({
-  setManualHoldBlock: (...args: unknown[]) =>
-    setManualHoldBlockMock(...(args as [never])),
+  setManualHoldBlock: (...args: unknown[]) => setManualHoldBlockMock(...(args as [never])),
 }));
 
 const publishMock = vi.fn(() => 0);
@@ -216,6 +215,69 @@ describe('POST /:id/complete (device)', () => {
   });
 });
 
+describe('POST /:id/complete — idempotent late reconcile (ISS-378)', () => {
+  it('reconciles a late success for a server-reaped job (no active retry) → done', async () => {
+    const reaped = { ...jobRow, status: 'failed', error: 'session_lost' };
+    selectLimit.mockResolvedValueOnce([reaped]); // loadJob
+    selectLimit.mockResolvedValueOnce([]); // activeRetry probe → none
+    updateReturning.mockResolvedValueOnce([
+      { ...reaped, status: 'done', exitCode: 0, error: null },
+    ]);
+
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/complete`, {
+        method: 'POST',
+        deviceToken: 'dev-1-token',
+        body: JSON.stringify({ exitCode: 0 }),
+      }),
+    );
+    expect(r.status).toBe(200);
+    const json = (await r.json()) as { status: string; reconciled?: boolean };
+    expect(json.status).toBe('done');
+    expect(json.reconciled).toBe(true);
+    expect(scheduleRetryMock).not.toHaveBeenCalled();
+    expect(publishMock).toHaveBeenCalledWith(
+      'project:p1',
+      expect.objectContaining({ event: 'job.completed' }),
+    );
+  });
+
+  it('does NOT reconcile when a retry descendant is active → 409', async () => {
+    const reaped = { ...jobRow, status: 'failed', error: 'session_lost' };
+    selectLimit.mockResolvedValueOnce([reaped]); // loadJob
+    selectLimit.mockResolvedValueOnce([{ id: 'retry-1' }]); // activeRetry probe → in flight
+
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/complete`, {
+        method: 'POST',
+        deviceToken: 'dev-1-token',
+        body: JSON.stringify({ exitCode: 0 }),
+      }),
+    );
+    expect(r.status).toBe(409);
+    expect(updateReturning).not.toHaveBeenCalled();
+  });
+
+  it('does NOT reconcile a real failure (non-synthetic error marker) → 409', async () => {
+    // A runner /fail (or exitCode≠0 /complete) sets a free-form error, never a
+    // synthetic-reap marker — so a later success POST must not silently flip it.
+    selectLimit.mockResolvedValueOnce([{ ...jobRow, status: 'failed', error: 'crashed' }]);
+
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/complete`, {
+        method: 'POST',
+        deviceToken: 'dev-1-token',
+        body: JSON.stringify({ exitCode: 0 }),
+      }),
+    );
+    expect(r.status).toBe(409);
+    expect(updateReturning).not.toHaveBeenCalled();
+  });
+});
+
 describe('POST /:id/fail (device)', () => {
   it('transitions to failed and schedules retry', async () => {
     selectLimit.mockResolvedValueOnce([jobRow]);
@@ -325,9 +387,7 @@ describe('jobFailed / jobCompleted hook emits', () => {
 
   it('emits jobCompleted exactly once on exitCode=0, never jobFailed', async () => {
     selectLimit.mockResolvedValueOnce([jobRow]);
-    updateReturning.mockResolvedValueOnce([
-      { ...jobRow, status: 'done', exitCode: 0 },
-    ]);
+    updateReturning.mockResolvedValueOnce([{ ...jobRow, status: 'done', exitCode: 0 }]);
     const app = buildApp();
     const r = await app.fetch(
       req(`/api/jobs/${validJobId}/complete`, {
@@ -375,9 +435,7 @@ describe('jobFailed / jobCompleted hook emits', () => {
 
   it('emits neither on exitCode=-1 (cancelled)', async () => {
     selectLimit.mockResolvedValueOnce([jobRow]);
-    updateReturning.mockResolvedValueOnce([
-      { ...jobRow, status: 'cancelled', exitCode: -1 },
-    ]);
+    updateReturning.mockResolvedValueOnce([{ ...jobRow, status: 'cancelled', exitCode: -1 }]);
     const app = buildApp();
     const r = await app.fetch(
       req(`/api/jobs/${validJobId}/complete`, {
