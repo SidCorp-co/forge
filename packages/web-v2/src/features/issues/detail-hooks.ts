@@ -54,6 +54,34 @@ export function useAttachments(id: string | undefined) {
   });
 }
 
+/** Step-handoff rows for the issue (per-stage artifact cards, ISS-377). Keyed
+ *  under the `['issue', id, …]` prefix so the event-router's `['issue', id]`
+ *  invalidation (issue.updated / pipelineHealth.changed) refreshes it for free.
+ */
+export function useStepHandoffs(projectId: string | undefined, id: string | undefined) {
+  return useQuery({
+    queryKey: ["issue", id, "handoffs"],
+    queryFn: () => issueDetailApi.listHandoffs(projectId as string, id as string),
+    enabled: !!id && !!projectId,
+    staleTime: 30_000,
+    select: (data) => data.rows,
+  });
+}
+
+/** Per-stage duration + cost for the issue (ISS-377 gap E). The REST view is
+ *  project-scoped with no issueId filter, so we fetch the 90-day window and
+ *  filter to this issue in `select`. Same `['issue', id, …]` prefix for free
+ *  WS invalidation. */
+export function useStepDurations(projectId: string | undefined, id: string | undefined) {
+  return useQuery({
+    queryKey: ["issue", id, "step-durations"],
+    queryFn: () => issueDetailApi.stepDurations(projectId as string),
+    enabled: !!id && !!projectId,
+    staleTime: 30_000,
+    select: (rows) => rows.filter((r) => r.issueId === id),
+  });
+}
+
 /** Post a comment, then upload any staged files via per-file multipart
  *  (`POST /api/comments/:commentId/attachments`). Create-then-upload mirrors v1:
  *  the create endpoint takes only `body`/`parentId`. An upload failure does NOT

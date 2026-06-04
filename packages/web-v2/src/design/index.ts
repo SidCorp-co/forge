@@ -57,7 +57,11 @@ export {
 } from "./primitives/help-button";
 
 // patterns
-export { PipelineTracker, type PipelineTrackerProps } from "./patterns/pipeline-tracker";
+export {
+  PipelineTracker,
+  type PipelineTrackerProps,
+  type PipelineTrackerCell,
+} from "./patterns/pipeline-tracker";
 export { KanbanCard, type KanbanCardProps } from "./patterns/kanban-card";
 export { KanbanBoard, type KanbanBoardProps } from "./patterns/kanban-board";
 export { KanbanColumn, type KanbanColumnProps } from "./patterns/kanban-column";

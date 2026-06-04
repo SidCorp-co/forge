@@ -2,14 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
   COMMENT_KIND_META,
   COMPLEXITY_LABELS,
+  HEARTBEAT_STALE_MS,
   PRIORITY_LABELS,
   STATUS_LABELS,
   allowedTransitions,
   complexityLabel,
+  deriveBlockerState,
   deriveCommentKind,
+  deriveStageOutcomes,
   depCounts,
   filterToStatusParams,
   groupRows,
+  heartbeatState,
   initials,
   memberLabel,
   parseChecklist,
@@ -20,7 +24,14 @@ import {
   statusToStage,
 } from "./derive";
 import { ISSUE_COMPLEXITIES, ISSUE_PRIORITIES, ISSUE_STATUSES } from "./types";
-import type { IssueDependencies, IssueRow } from "./types";
+import type {
+  IssueDependencies,
+  IssueDependencyEdge,
+  IssueDetail,
+  IssueRow,
+  StepDurationRow,
+  StepHandoffRow,
+} from "./types";
 
 function row(over: Partial<IssueRow> & { id: string }): IssueRow {
   return {
@@ -261,5 +272,202 @@ describe("deriveCommentKind", () => {
     for (const [, kind] of cases) {
       expect(COMMENT_KIND_META[kind as keyof typeof COMMENT_KIND_META]).toBeDefined();
     }
+  });
+});
+
+// ─── ISS-377 ────────────────────────────────────────────────────────────────
+
+function blockerIssue(
+  over: Partial<Pick<IssueDetail, "status" | "manualHold" | "manualHoldUntil" | "failureContext">> = {},
+): Pick<IssueDetail, "status" | "manualHold" | "manualHoldUntil" | "failureContext"> {
+  return {
+    status: over.status ?? "in_progress",
+    manualHold: over.manualHold ?? false,
+    manualHoldUntil: over.manualHoldUntil ?? null,
+    failureContext: over.failureContext ?? null,
+  };
+}
+
+function incomingBlocks(over: Partial<IssueDependencyEdge> = {}): IssueDependencies {
+  const edge: IssueDependencyEdge = {
+    id: over.id ?? "e1",
+    fromIssueId: over.fromIssueId ?? "blk-1",
+    toIssueId: over.toIssueId ?? "me",
+    kind: "blocks",
+    reason: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    fromDisplayId: over.fromDisplayId ?? "ISS-9",
+    fromTitle: over.fromTitle ?? "Blocker",
+    fromStatus: over.fromStatus ?? "in_progress",
+  };
+  return { incoming: [edge], outgoing: [] };
+}
+
+describe("heartbeatState", () => {
+  const now = Date.parse("2026-06-04T12:00:00.000Z");
+  it("returns unknown when no/invalid timestamp", () => {
+    expect(heartbeatState(undefined, now)).toBe("unknown");
+    expect(heartbeatState(null, now)).toBe("unknown");
+    expect(heartbeatState("not-a-date", now)).toBe("unknown");
+  });
+  it("alive within the stale window, stale beyond it", () => {
+    expect(heartbeatState(new Date(now - 30_000).toISOString(), now)).toBe("alive");
+    expect(heartbeatState(new Date(now - (HEARTBEAT_STALE_MS + 1_000)).toISOString(), now)).toBe("stale");
+  });
+});
+
+describe("deriveBlockerState", () => {
+  it("returns null when actively progressing", () => {
+    expect(deriveBlockerState(blockerIssue({ status: "in_progress" }), undefined, undefined)).toBeNull();
+    expect(deriveBlockerState(blockerIssue({ status: "reopen" }), undefined, undefined)).toBeNull();
+  });
+
+  it("surfaces a failure card with a resume action", () => {
+    const b = deriveBlockerState(
+      blockerIssue({
+        status: "on_hold",
+        failureContext: {
+          step: "code",
+          trigger: "job_failed",
+          attempts: 3,
+          suggestedActions: ["resume", "skip-step", "close"],
+          classification: { kind: "transient_network", reason: "network blip" },
+        },
+      }),
+      undefined,
+      undefined,
+    );
+    expect(b?.tone).toBe("danger");
+    expect(b?.cta.kind).toBe("resume");
+    expect(b?.reason).toContain("code");
+    expect(b?.detail).toBe("network blip");
+  });
+
+  it("needs_info shows the supplied question and a provide-info action", () => {
+    const b = deriveBlockerState(blockerIssue({ status: "needs_info" }), undefined, undefined, {
+      needsInfoQuestion: "Which environment?",
+    });
+    expect(b?.cta.kind).toBe("provide-info");
+    expect(b?.question).toBe("Which environment?");
+  });
+
+  it("waiting → approve action", () => {
+    const b = deriveBlockerState(blockerIssue({ status: "waiting" }), undefined, undefined);
+    expect(b?.cta.kind).toBe("approve");
+  });
+
+  it("on_hold / manualHold → resume action with hold-until detail", () => {
+    const b = deriveBlockerState(
+      blockerIssue({ status: "in_progress", manualHold: true, manualHoldUntil: "2026-07-01T00:00:00.000Z" }),
+      undefined,
+      undefined,
+    );
+    expect(b?.cta.kind).toBe("resume");
+    expect(b?.reason).toContain("2026-07-01");
+  });
+
+  it("maps each pipelineHealth.waitingOn reason", () => {
+    for (const reason of [
+      "issue_busy",
+      "manual_hold",
+      "waiting_on_dep",
+      "waiting_on_decomp_parent",
+      "project_full",
+      "runner_full",
+    ] as const) {
+      const b = deriveBlockerState(
+        blockerIssue({ status: "in_progress" }),
+        { stage: "code", waitingOn: { reason, since: "x", details: {} } },
+        undefined,
+      );
+      expect(b).not.toBeNull();
+      expect(b?.reason.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("falls back to open blocks edges with a link action", () => {
+    const b = deriveBlockerState(blockerIssue({ status: "in_progress" }), undefined, incomingBlocks());
+    expect(b?.cta.kind).toBe("open-blocker");
+    expect(b?.blockingRefs?.[0]?.displayId).toBe("ISS-9");
+  });
+
+  it("ignores a blocks edge whose blocker is already released", () => {
+    const b = deriveBlockerState(
+      blockerIssue({ status: "in_progress" }),
+      undefined,
+      incomingBlocks({ fromStatus: "released" }),
+    );
+    expect(b).toBeNull();
+  });
+});
+
+describe("deriveStageOutcomes", () => {
+  const handoff = (step: string, attempt: number, payload: Record<string, unknown>): StepHandoffRow => ({
+    id: `${step}-${attempt}`,
+    projectId: "p1",
+    issueId: "me",
+    pipelineRunId: "run-1",
+    kind: "handoff",
+    step,
+    attempt,
+    payload,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  });
+  const dur = (step: string, durationSeconds: number, costUsd: number): StepDurationRow => ({
+    runId: "run-1",
+    issueId: "me",
+    projectId: "p1",
+    step,
+    startedAt: "2026-01-01T00:00:00.000Z",
+    finishedAt: "2026-01-01T00:05:00.000Z",
+    durationSeconds,
+    costUsd,
+  });
+
+  it("marks done / current / pending around the current stage", () => {
+    const cells = deriveStageOutcomes("plan", "running", [], []);
+    expect(cells.triage.state).toBe("done");
+    expect(cells.clarify.state).toBe("done");
+    expect(cells.plan.state).toBe("current");
+    expect(cells.code.state).toBe("pending");
+    expect(cells.release.state).toBe("pending");
+  });
+
+  it("pulls a short outcome label + sums duration/cost from a full payload", () => {
+    const cells = deriveStageOutcomes(
+      "code",
+      "running",
+      [handoff("plan", 1, { summary: "wrote the plan" })],
+      [dur("plan", 120, 0.25), dur("plan", 60, 0.1)],
+    );
+    expect(cells.plan.outcomeLabel).toBe("wrote the plan");
+    expect(cells.plan.durationSeconds).toBe(180);
+    expect(cells.plan.costUsd).toBeCloseTo(0.35);
+    expect(cells.plan.handoff?.step).toBe("plan");
+  });
+
+  it("keeps the latest attempt and never throws on an empty/odd payload", () => {
+    const cells = deriveStageOutcomes(
+      "review",
+      "running",
+      [handoff("plan", 1, {}), handoff("plan", 2, { outcome: "v2" })],
+      undefined,
+    );
+    expect(cells.plan.handoff?.attempt).toBe(2);
+    expect(cells.plan.outcomeLabel).toBe("v2");
+    // empty payload at the current stage → no label, no crash
+    const empty = deriveStageOutcomes("plan", "running", [handoff("plan", 1, {})], []);
+    expect(empty.plan.outcomeLabel).toBeUndefined();
+  });
+
+  it("marks the failing stage as error", () => {
+    const cells = deriveStageOutcomes("code", "failed", [], [], "code");
+    expect(cells.code.state).toBe("error");
+  });
+
+  it("folds fix handoffs into the code stage", () => {
+    const cells = deriveStageOutcomes("review", "running", [handoff("fix", 1, { summary: "patched" })], []);
+    expect(cells.code.outcomeLabel).toBe("patched");
   });
 });

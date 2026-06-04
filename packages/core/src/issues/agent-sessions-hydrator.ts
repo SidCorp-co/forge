@@ -11,6 +11,15 @@ export interface HydratedAgentSession {
   createdAt: Date;
   updatedAt: Date;
   title: string | null;
+  // ISS-377 — live-agent detail on the issue page needs the runner/device, a
+  // start anchor for elapsed time, and the session heartbeat for the
+  // alive-vs-stale signal (vs the sweeper's ~3-min timeout). Purely additive;
+  // list/search/detail all surface these now.
+  deviceId: string | null;
+  startedAt: Date | null;
+  lastHeartbeatAt: Date | null;
+  pipelineRunId: string | null;
+  claudeSessionId: string | null;
 }
 
 export interface HydratedAgentAttachment {
@@ -49,6 +58,11 @@ export async function hydrateAgentSessionsForIssues(
       createdAt: agentSessions.createdAt,
       updatedAt: agentSessions.updatedAt,
       title: agentSessions.title,
+      deviceId: agentSessions.deviceId,
+      startedAt: agentSessions.startedAt,
+      lastHeartbeatAt: agentSessions.lastHeartbeatAt,
+      pipelineRunId: agentSessions.pipelineRunId,
+      claudeSessionId: agentSessions.claudeSessionId,
     })
     .from(agentSessions)
     .where(
@@ -77,6 +91,11 @@ export async function hydrateAgentSessionsForIssues(
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
       title: r.title,
+      deviceId: r.deviceId,
+      startedAt: r.startedAt,
+      lastHeartbeatAt: r.lastHeartbeatAt,
+      pipelineRunId: r.pipelineRunId,
+      claudeSessionId: r.claudeSessionId,
     });
   }
 

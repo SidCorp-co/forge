@@ -38,7 +38,15 @@ import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
-import { parseChecklist, statusToChip, statusToRun, statusToStage } from "../derive";
+import { STAGES, type StageKey } from "@/design/stages";
+import {
+  deriveBlockerState,
+  deriveStageOutcomes,
+  parseChecklist,
+  statusToChip,
+  statusToRun,
+  statusToStage,
+} from "../derive";
 import {
   usePatchIssue,
   useIssueCost,
@@ -46,12 +54,23 @@ import {
   useProjectMembers,
   useTransitionIssue,
 } from "../hooks";
-import { useActivity, useAttachments, useComments, useIssue, useTasks } from "../detail-hooks";
-import type { IssueStatus, TaskRow } from "../types";
+import {
+  useActivity,
+  useAttachments,
+  useComments,
+  useIssue,
+  useStepDurations,
+  useStepHandoffs,
+  useTasks,
+} from "../detail-hooks";
+import type { IssueAgentSession, IssueStatus, TaskRow } from "../types";
 import { ActivityFeed } from "./activity-feed";
 import { AttachmentList } from "./attachment-list";
+import { BlockerBanner } from "./blocker-banner";
 import { CommentThread } from "./comment-thread";
+import { LiveAgentPanel } from "./live-agent-panel";
 import { PropertiesRail } from "./properties-rail";
+import { StepArtifactCard } from "./step-artifact-card";
 
 const TASK_STATUS_TONE: Record<TaskRow["status"], "neutral" | "cobalt" | "amber" | "green"> = {
   backlog: "neutral",
@@ -83,6 +102,9 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
   const { toast } = useToast();
   const { push: pushRecent } = useRecents();
   const [tab, setTab] = useState("comments");
+  // ISS-377 — which stage's artifact card is expanded (driven by tracker clicks
+  // + manual toggles). `null` = all collapsed.
+  const [expandedStage, setExpandedStage] = useState<StageKey | null>(null);
 
   useRoom(projectRoom(projectId));
 
@@ -94,6 +116,8 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
   const depsQ = useIssueDeps(id);
   const costQ = useIssueCost(id);
   const membersQ = useProjectMembers(projectId);
+  const handoffsQ = useStepHandoffs(projectId, id);
+  const durationsQ = useStepDurations(projectId, id);
 
   const patch = usePatchIssue();
   const transition = useTransitionIssue();
@@ -149,6 +173,35 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
   const stage = statusToStage(issue.status);
   const onTransition = (toStatus: IssueStatus) => transition.mutate({ id, toStatus });
   const onPatch = (body: Parameters<typeof patch.mutate>[0]["body"]) => patch.mutate({ id, body });
+
+  // ISS-377 — these are pure derivations (not hooks), so they sit safely after
+  // the loading/error early-returns. `deriveBlockerState` is the SINGLE join of
+  // failureContext / status / manualHold / pipelineHealth.waitingOn / blocks
+  // edges (AC#2); for needs_info the newest comment is the question to answer.
+  const runStatus = statusToRun(issue.status, issue.agentStatus);
+  const needsInfoQuestion =
+    issue.status === "needs_info" ? commentsQ.data?.[0]?.body : undefined;
+  const blocker = deriveBlockerState(issue, issue.pipelineHealth, depsQ.data, {
+    ...(needsInfoQuestion ? { needsInfoQuestion } : {}),
+  });
+  const stageCells = deriveStageOutcomes(
+    stage,
+    runStatus,
+    handoffsQ.data,
+    durationsQ.data,
+    issue.failureContext?.step ?? null,
+  );
+  const liveSession = pickActiveSession(issue.agentSessions);
+  const liveStep = issue.pipelineHealth?.activeSession?.skill ?? stage;
+
+  const focusStage = (s: StageKey) => {
+    setExpandedStage(s);
+    if (typeof window !== "undefined") {
+      requestAnimationFrame(() =>
+        document.getElementById(`stage-card-${s}`)?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      );
+    }
+  };
 
   // Header action set (ISS-360) — wired to EXISTING transition / nav endpoints
   // only (no fabricated APIs). The contextual primary button depends on where
@@ -257,13 +310,58 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
         {/* Main column */}
         <div className="min-w-0 space-y-4">
+          {/* Tier-1: "why is it stuck" — shown only when blocked (ISS-377 AC#1). */}
+          {blocker && (
+            <BlockerBanner
+              blocker={blocker}
+              slug={slug}
+              pending={pending}
+              onApprove={() => onTransition("approved")}
+              onResume={() => onTransition("reopen")}
+              onProvideInfo={() => setTab("comments")}
+            />
+          )}
+
           <Card>
             <CardContent>
+              {/* Tracker is the spine: per-stage state + outcome, click to focus
+                  the matching artifact card (ISS-377 AC#5). */}
               <PipelineTracker
                 stage={stage}
-                status={statusToRun(issue.status, issue.agentStatus)}
+                status={runStatus}
                 variant="full"
+                cells={stageCells}
+                selected={expandedStage ?? undefined}
+                onSelect={focusStage}
               />
+            </CardContent>
+          </Card>
+
+          {/* Tier-1: live-agent detail — only when an agent is active (AC#3). */}
+          {liveSession && (
+            <LiveAgentPanel session={liveSession} step={liveStep} slug={slug} issueId={id} />
+          )}
+
+          {/* Tier-2: per-stage artifact cards (AC#4/#6). */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Pipeline stages</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {STAGES.map((s) => (
+                  <StepArtifactCard
+                    key={s.key}
+                    stage={s.key}
+                    label={s.label}
+                    cell={stageCells[s.key]}
+                    open={expandedStage === s.key}
+                    onToggle={() =>
+                      setExpandedStage((cur) => (cur === s.key ? null : s.key))
+                    }
+                  />
+                ))}
+              </div>
             </CardContent>
           </Card>
 
@@ -422,6 +520,17 @@ function TabLoading() {
         </div>
       ))}
     </div>
+  );
+}
+
+/** Pick the agent session to surface in the live-agent panel: a running one
+ *  wins, else a queued one. Returns null when none is active (no false signal). */
+function pickActiveSession(sessions: IssueAgentSession[] | undefined): IssueAgentSession | null {
+  if (!sessions || sessions.length === 0) return null;
+  return (
+    sessions.find((s) => s.status === "running") ??
+    sessions.find((s) => s.status === "queued") ??
+    null
   );
 }
 
