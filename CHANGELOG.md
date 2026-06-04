@@ -19,6 +19,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **CLI runners now pull skill updates pushed from Forge instead of silently running stale on-disk skills.**
   *Technical: Cut runner-v0.2.15 to publish the already-present skill.sync WS handler (forge-runner-core daemon/dispatch + workspace/skill_sync) past the stale v0.2.14 channel; bumped Cargo workspace version 0.2.11→0.2.15 + lock regen so update --check (CURRENT_VERSION=env!(CARGO_PKG_VERSION)) settles. Tag runner-v0.2.15 + dev1 live verify are out-of-band. Merge a033c16.*
 
+- **Fixed the Issues screen so the top navigation progress bar no longer gets stuck part-way, list rows show each issue's real status, and linked/related issues are shown clearly instead of just an icon and a number.**
+  *Technical: route-progress.tsx must not gate completion on the global useIsFetching count or self-fire on replaceState URL-sync; list rows should render the true lifecycle status instead of the collapsed statusToChip bucket; DepBadges should surface linked issue IDs, not emoji+count only.*
+
 ### Added
 
 - **The pipeline now reproduces bugs before planning: a new `clarified` status sits between `confirmed` and `approved`, and the clarify step runs on the happy path — it reproduces the bug (or validates the UX) in a live environment, attaches evidence and a root-cause hypothesis, and only then hands the issue to planning. Trivially-sized issues (per-stage `skipComplexities`, e.g. xs/s) skip clarify automatically, and projects that never enabled clarify keep their exact previous flow.**
