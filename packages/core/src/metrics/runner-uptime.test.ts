@@ -41,6 +41,19 @@ describe('computeRunnerUptime (ISS-381 2.3)', () => {
     expect(series[0]?.onlinePct).toBe(1);
   });
 
+  it('the carried-in latest pre-window state drives the leading edge until the next event', () => {
+    // Carry-in row (the latest pre-window event the SQL selects) is `online`,
+    // then an in-window `offline` flip at the bucket midpoint → first half online.
+    const buckets = ['2026-06-02T00:00:00.000Z'];
+    const now = new Date('2026-06-03T00:00:00.000Z');
+    const rows = [
+      { runner_id: 'r1', new_status: 'online', ts: '2026-06-01T00:00:00.000Z' }, // carry-in
+      { runner_id: 'r1', new_status: 'offline', ts: '2026-06-02T12:00:00.000Z' }, // in-window
+    ];
+    const series = computeRunnerUptime(buckets, rows, DAY_MS, now);
+    expect(series[0]?.onlinePct).toBeCloseTo(0.5);
+  });
+
   it('separates runners and sorts them deterministically', () => {
     const buckets = ['2026-06-01T00:00:00.000Z'];
     const now = new Date('2026-06-02T00:00:00.000Z');

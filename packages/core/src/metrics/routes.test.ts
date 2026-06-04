@@ -365,6 +365,11 @@ describe('GET …/metrics/timeseries — series shape', () => {
     expect(body.series).toHaveLength(2); // one runner × 2 buckets
     expect(body.series.every((p) => p.runnerId === RUNNER_ID)).toBe(true);
     expect(body.series.every((p) => p.onlinePct >= 0 && p.onlinePct <= 1)).toBe(true);
-    expect(JSON.stringify(executedSql)).toContain('runner_events');
+    const serialized = JSON.stringify(executedSql);
+    expect(serialized).toContain('runner_events');
+    // Regression guard: the pre-window carry-in DISTINCT ON must sit in its own
+    // ordered subquery (else Postgres returns an arbitrary pre-cutoff event).
+    expect(serialized).toContain('DISTINCT ON (runner_id)');
+    expect(serialized).toContain(') carry');
   });
 });

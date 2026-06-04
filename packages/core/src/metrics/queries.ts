@@ -393,13 +393,22 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
       // latest pre-window event per runner (the state entering the window), then
       // clip each online segment to bucket boundaries in JS — mirrors how
       // `throughput` computes its cumulative in JS rather than SQL.
+      // The pre-window carry-in MUST be the LATEST event before the cutoff.
+      // DISTINCT ON (runner_id) keeps the first row per runner only when the
+      // query's OWN leftmost ORDER BY matches the DISTINCT ON expressions — a
+      // trailing ORDER BY on the UNION does NOT bind to the sub-SELECT. So the
+      // DISTINCT ON lives in its own ordered subquery; otherwise Postgres keeps
+      // an arbitrary pre-cutoff event and the leading-edge onlinePct is wrong.
       const rows = (await db.execute(sql`
         SELECT runner_id, new_status, ts FROM runner_events
         WHERE project_id = ${projectId} AND ts >= ${cutoff}
         UNION ALL
-        SELECT DISTINCT ON (runner_id) runner_id, new_status, ts FROM runner_events
-        WHERE project_id = ${projectId} AND ts < ${cutoff}
-        ORDER BY runner_id, ts DESC
+        SELECT runner_id, new_status, ts FROM (
+          SELECT DISTINCT ON (runner_id) runner_id, new_status, ts
+          FROM runner_events
+          WHERE project_id = ${projectId} AND ts < ${cutoff}
+          ORDER BY runner_id, ts DESC
+        ) carry
       `)) as unknown as Array<Record<string, unknown>>;
       series = computeRunnerUptime(buckets, rows, BUCKET_MS[bucket], params.now ?? new Date());
       break;
