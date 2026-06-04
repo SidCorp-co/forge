@@ -8,7 +8,9 @@ import { RecoveryPolicyCard } from '@/features/pipeline/config/components/recove
 // primary → standby with no project-wide type-chain; per-step `runner`
 // overrides on the StepToggleList still work.
 import { StepToggleList } from '@/features/pipeline/config/components/step-toggle-list';
+import { SessionGroupsCard } from '@/features/pipeline/config/components/session-groups-card';
 import { usePipelineConfig } from '@/features/pipeline/config/hooks/use-pipeline-config';
+import { useProjectSkillRegistrations } from '@/features/skill/hooks/use-skills';
 import { useFocusOnMount } from '../hooks/use-focus-on-mount';
 
 interface Props {
@@ -24,6 +26,14 @@ const KNOWN_RUNNER_TYPES = ['claude-code', 'antigravity'];
 
 export function PipelineConfigSection({ projectId }: Props) {
   const cfg = usePipelineConfig(projectId, KNOWN_RUNNER_TYPES);
+  // ISS-382 — annotate each stage in the session-groups editor with the skill
+  // currently registered for it (e.g. `clarified · forge-plan`). Read-only and
+  // non-blocking: if it fails to load the editor still works (no labels).
+  const registrations = useProjectSkillRegistrations(projectId);
+  const skillByStage: Record<string, string> = {};
+  for (const r of registrations.data?.registrations ?? []) {
+    skillByStage[r.stage] = r.skillName;
+  }
   useFocusOnMount();
 
   if (cfg.flagDisabled) {
@@ -65,6 +75,16 @@ export function PipelineConfigSection({ projectId }: Props) {
         onChange={cfg.setStep}
         availableRunners={cfg.availableRunners}
         masterEnabled={cfg.state.enabled}
+      />
+
+      <SessionGroupsCard
+        value={cfg.state.sessionGroups}
+        skillByStage={skillByStage}
+        onAddGroup={cfg.addSessionGroup}
+        onRenameGroup={cfg.renameSessionGroup}
+        onRemoveGroup={cfg.removeSessionGroup}
+        onAssign={cfg.assignStateToGroup}
+        disabled={cfg.isSaving}
       />
 
       <RecoveryPolicyCard
