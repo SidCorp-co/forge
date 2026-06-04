@@ -23,6 +23,7 @@ export interface RecoveryByKind {
 
 export const STAGE_NAMES = [
   'open',
+  'needs_info',
   'confirmed',
   'clarified',
   'approved',
@@ -41,6 +42,20 @@ export type StageName = (typeof STAGE_NAMES)[number];
 export interface StageConfig {
   enabled?: boolean;
   mode?: 'auto' | 'manual';
+  /**
+   * Session-group membership for this stage. The dispatcher reads continuity
+   * from this per-state pointer (`pipeline-config-schema.ts` cross-field
+   * refine requires it to be a key declared in the top-level `sessionGroups`
+   * map). The session-groups editor keeps both in sync.
+   */
+  sessionGroup?: string;
+  /**
+   * The backend `StageConfig` carries additional per-stage overrides
+   * (model, systemPrompt, allowedTools, mcpServers, budget, …) that the v1
+   * settings form does not edit. They are passed through verbatim — see the
+   * index signature — so a full-states write never drops them.
+   */
+  [key: string]: unknown;
 }
 
 export type StatesConfig = Partial<Record<StageName, StageConfig>>;
@@ -59,6 +74,13 @@ export interface PipelineConfig {
   recoveryWindowHours?: number;
   recoveryByFailureKind?: RecoveryByKind;
   states?: StatesConfig;
+  /**
+   * Declares the session groups: `groupName → states[]`. A state listed here
+   * reuses one agent CLI session across the grouped (adjacent) stages. Sent
+   * wholesale on save (the backend PATCH replaces the key, never merges
+   * per-group). Mirror of the per-state `StageConfig.sessionGroup` pointer.
+   */
+  sessionGroups?: Record<string, StageName[]>;
 }
 
 // ISS-232 Phase 3 — the sibling `runnerFallback` field was dropped from
