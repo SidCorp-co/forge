@@ -52,7 +52,7 @@ open → confirmed → approved → in_progress
 
 Merge/deploy/live-verify run at `testing` (`/forge-test`) — the live walk must run on **merged** code. `/forge-release` is a thin release-note + close step. `tested → pass → staging` are auto-advanced by `forge-test`, not human gates.
 
-> The old VPS staging-deploy step (`/forge-staging`) was retired 2026-05-12 — now a no-op kept only so the dispatcher doesn't error on a legacy `staging`-status job. Skill manifests live under [`.claude/skills/<skill-name>/SKILL.md`](../../.claude/skills/) (no `packages/core/skills/`).
+> The old VPS staging-deploy step (`/forge-staging`) was retired 2026-05-12 — now a no-op kept only so the dispatcher doesn't error on a legacy `staging`-status job. Skill manifests live under [`packages/core/skills/<skill-name>/SKILL.md`](../../packages/core/skills/README.md).
 
 ### Branch naming — dual scheme
 

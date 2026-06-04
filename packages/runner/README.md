@@ -4,7 +4,7 @@ Lightweight pure-Rust CLI daemon that brokers between Forge **core** and the loc
 machine: pairs as a device, receives jobs over WebSocket, runs them with the Claude
 Code CLI (future: codex / antigravity), and streams events back.
 
-Replaces the Tauri desktop app (`packages/dev`). Design: [`docs/proposals/forge-runner-cli.md`](../../docs/proposals/forge-runner-cli.md).
+Replaces the Tauri desktop app (`packages/dev`). Design: [`docs/architecture/runner-daemon.md`](../../docs/architecture/runner-daemon.md).
 
 ## Layout
 

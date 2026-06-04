@@ -83,7 +83,7 @@ Missing info (any stage)     ──▶ needs_info — human-gated bounce, no aut
 4. Run full Playwright E2E (`forge-verify-live`) against live beta.
 5. **PASS** → auto-advance `tested → pass → staging → released`; forge-release writes release note + deletes branch + closes. **FAIL on live** → `reopen` + handoff (no revert). **Merge conflict** → halt at `testing` with a comment.
 
-**No external CI / staging-VPS deploy path.** Legacy VPS staging deploy retired 2026-05-12; `forge-staging` is now a thin no-op kept only so the dispatcher does not error on a legacy `staging`-status job. See [`.claude/skills/forge-staging/SKILL.md`](../../../.claude/skills/forge-staging/SKILL.md) and [`.claude/skills/forge-test/SKILL.md`](../../../.claude/skills/forge-test/SKILL.md).
+**No external CI / staging-VPS deploy path.** Legacy VPS staging deploy retired 2026-05-12; `forge-staging` is now a thin no-op kept only so the dispatcher does not error on a legacy `staging`-status job. See [`packages/core/skills/forge-staging/SKILL.md`](../../../packages/core/skills/forge-staging/SKILL.md) and [`packages/core/skills/forge-test/SKILL.md`](../../../packages/core/skills/forge-test/SKILL.md).
 
 ## What Happens Inside `in_progress`
 

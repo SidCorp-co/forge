@@ -221,6 +221,48 @@ jobs:
           use-quiet-mode: yes
           config-file: .github/mlc-config.json
 
+  # ───────────────────────────────────────────────────────────────────────
+  # Single aggregate gate. Branch protection should require ONLY this check
+  # (drop the lone `changes` requirement). Requiring the individual jobs
+  # directly does NOT work: the package jobs are path-gated with `if:` and
+  # report `skipped` on PRs that don't touch them, which a required check
+  # treats as "pending" → blocks merge forever. This job depends on all of
+  # them with `if: always()` and fails only when a dependency genuinely
+  # `failure`d or was `cancelled` (a `skipped` path-filtered job passes). It
+  # makes CI — not the local pre-push hook, which contributors may not have
+  # installed and can bypass — the authoritative merge gate. The blocking
+  # signals it enforces today: install-check, lang-check, the affected
+  # package build(s)+test(s), and markdown-link integrity. (`core build` runs
+  # `tsc -p tsconfig.build.json`, so prod typecheck is gated here; the
+  # test-inclusive `typecheck`/`lint` stay non-blocking debt for now.)
+  ci-passed:
+    if: always()
+    needs: [install-check, lang-check, changes, web, dev, dev-bundle-smoke, core, docs]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every CI job to have passed or been skipped
+        run: |
+          for r in \
+            "install-check:${{ needs.install-check.result }}" \
+            "lang-check:${{ needs.lang-check.result }}" \
+            "changes:${{ needs.changes.result }}" \
+            "web:${{ needs.web.result }}" \
+            "dev:${{ needs.dev.result }}" \
+            "dev-bundle-smoke:${{ needs.dev-bundle-smoke.result }}" \
+            "core:${{ needs.core.result }}" \
+            "docs:${{ needs.docs.result }}"; do
+            echo "$r"
+            result="${r##*:}"
+            if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+              echo "::error::CI gate: job '${r%%:*}' did not pass (result=$result)"
+              FAILED=1
+            fi
+          done
+          if [ "${FAILED:-0}" = "1" ]; then
+            exit 1
+          fi
+          echo "CI gate: all jobs passed or were skipped."
+
   # e2e-web removed for v0.1 alpha. Browser e2e was brittle on a
   # single-spec happy-path; cost > value at this stage. Reinstate when the
   # surface stabilises and there's a reason to gate PRs on UI flows.

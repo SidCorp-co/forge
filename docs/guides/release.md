@@ -80,7 +80,7 @@ Without these: builds succeed but SmartScreen shows *"Windows protected your PC"
 - Tags must match `v*.*.*` exactly (workflow trigger pattern).
 - Pre-release suffix (`v0.1.16-rc.1`) marks GitHub Release as pre-release automatically.
 
-Whole monorepo shares one version. `cut-release.sh` bumps these in lockstep — canonical set ([`.claude/skills/forge-cut-release/scripts/cut-release.sh`](../../.claude/skills/forge-cut-release/scripts/cut-release.sh)):
+Whole monorepo shares one version. The `cut-release.sh` script (in the maintainer's `forge-cut-release` skill, not shipped in this repo) bumps these in lockstep — canonical set:
 
 | File | Field |
 |---|---|
