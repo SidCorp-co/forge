@@ -414,13 +414,19 @@ describe("deriveStageOutcomes", () => {
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   });
-  const dur = (step: string, durationSeconds: number, costUsd: number): StepDurationRow => ({
-    runId: "run-1",
+  const dur = (
+    step: string,
+    durationSeconds: number,
+    costUsd: number,
+    runId = "run-1",
+    finishedAt = "2026-01-01T00:05:00.000Z",
+  ): StepDurationRow => ({
+    runId,
     issueId: "me",
     projectId: "p1",
     step,
     startedAt: "2026-01-01T00:00:00.000Z",
-    finishedAt: "2026-01-01T00:05:00.000Z",
+    finishedAt,
     durationSeconds,
     costUsd,
   });
@@ -464,6 +470,20 @@ describe("deriveStageOutcomes", () => {
   it("marks the failing stage as error", () => {
     const cells = deriveStageOutcomes("code", "failed", [], [], "code");
     expect(cells.code.state).toBe("error");
+  });
+
+  it("uses only the most-recent run's duration/cost (no double-count on reopen)", () => {
+    const cells = deriveStageOutcomes(
+      "code",
+      "running",
+      [],
+      [
+        dur("plan", 100, 1.0, "run-old", "2026-01-01T00:05:00.000Z"),
+        dur("plan", 200, 2.0, "run-new", "2026-02-01T00:05:00.000Z"),
+      ],
+    );
+    expect(cells.plan.durationSeconds).toBe(200);
+    expect(cells.plan.costUsd).toBeCloseTo(2.0);
   });
 
   it("folds fix handoffs into the code stage", () => {

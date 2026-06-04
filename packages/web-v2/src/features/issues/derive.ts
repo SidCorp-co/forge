@@ -612,15 +612,28 @@ export function deriveStageOutcomes(
     if (!prev || row.attempt > prev.attempt) handoffByStage.set(stage, row);
   }
 
-  // Summed duration + cost per stage (across attempts/runs).
-  const durByStage = new Map<StageKey, { durationSeconds: number; costUsd: number }>();
+  // Duration + cost per stage, scoped to the MOST-RECENT run for that stage so a
+  // reopened issue (multiple runs of the same step) doesn't double-count. Within
+  // the chosen run, sum across attempts. ISS-377 review fix.
+  const byStageRun = new Map<StageKey, Map<string, { durationSeconds: number; costUsd: number; latest: string }>>();
   for (const row of durations ?? []) {
     const stage = stepToStage(row.step);
     if (!stage) continue;
-    const acc = durByStage.get(stage) ?? { durationSeconds: 0, costUsd: 0 };
+    const runs = byStageRun.get(stage) ?? new Map();
+    const acc = runs.get(row.runId) ?? { durationSeconds: 0, costUsd: 0, latest: "" };
     acc.durationSeconds += row.durationSeconds ?? 0;
     acc.costUsd += row.costUsd ?? 0;
-    durByStage.set(stage, acc);
+    if ((row.finishedAt ?? row.startedAt ?? "") > acc.latest) acc.latest = row.finishedAt ?? row.startedAt ?? "";
+    runs.set(row.runId, acc);
+    byStageRun.set(stage, runs);
+  }
+  const durByStage = new Map<StageKey, { durationSeconds: number; costUsd: number }>();
+  for (const [stage, runs] of byStageRun) {
+    let pick: { durationSeconds: number; costUsd: number; latest: string } | undefined;
+    for (const acc of runs.values()) {
+      if (!pick || acc.latest > pick.latest) pick = acc;
+    }
+    if (pick) durByStage.set(stage, { durationSeconds: pick.durationSeconds, costUsd: pick.costUsd });
   }
 
   const cells = {} as Record<StageKey, StageCell>;

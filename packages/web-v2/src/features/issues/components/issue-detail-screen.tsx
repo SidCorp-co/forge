@@ -179,8 +179,11 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
   // failureContext / status / manualHold / pipelineHealth.waitingOn / blocks
   // edges (AC#2); for needs_info the newest comment is the question to answer.
   const runStatus = statusToRun(issue.status, issue.agentStatus);
+  // The needs_info question is the MOST RECENT comment (the API returns the
+  // comment tree oldest-first, so the triggering question is the last top-level
+  // node, not index 0). ISS-377 review fix.
   const needsInfoQuestion =
-    issue.status === "needs_info" ? commentsQ.data?.[0]?.body : undefined;
+    issue.status === "needs_info" ? commentsQ.data?.at(-1)?.body : undefined;
   const blocker = deriveBlockerState(issue, issue.pipelineHealth, depsQ.data, {
     ...(needsInfoQuestion ? { needsInfoQuestion } : {}),
   });
