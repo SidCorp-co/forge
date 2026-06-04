@@ -21,6 +21,7 @@ import {
 } from './tools/forge-memory.js';
 import {
   forgeMetricsProjectStepDurationsTool,
+  forgeMetricsProjectTimeseriesTool,
   forgeMetricsStepDurationsTool,
 } from './tools/forge-metrics.js';
 import { forgeOpsHealthTool } from './tools/forge-ops-health.js';
@@ -199,6 +200,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeSkillFactsGetTool(ctx),
     forgeMetricsStepDurationsTool(ctx),
     forgeMetricsProjectStepDurationsTool(ctx),
+    forgeMetricsProjectTimeseriesTool(ctx),
     forgeRunnersTool(ctx),
     forgeCollaboratorsTool(ctx),
     forgeOpsHealthTool(ctx),

@@ -83,6 +83,7 @@ import { registerMemoryIndexer } from './memory/indexer.js';
 import { memoryListRoutes } from './memory/list-routes.js';
 import { memorySearchRoutes } from './memory/search-routes.js';
 import { memoryWriteRoutes } from './memory/write-routes.js';
+import { projectMetricsRoutes } from './metrics/routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
@@ -293,6 +294,10 @@ app.route('/api/auth', pairingRoutes);
 // projectRoutes which has GET /:id with a z.uuid() validator that would
 // 400-reject the literal "health" segment.
 app.route('/api/projects', projectHealthRoutes);
+// ISS-380 — project time-series metrics. The deep `/:id/metrics/*` path does
+// not collide with projectRoutes' `GET /:id`, but mount before it to mirror the
+// health-routes precedent and keep the static-before-param ordering intent.
+app.route('/api/projects', projectMetricsRoutes);
 app.route('/api/projects', projectRoutes);
 app.route('/api/projects', integrationsRoutes);
 app.route('/api/projects', docsRoutes);

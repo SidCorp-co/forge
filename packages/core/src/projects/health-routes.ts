@@ -140,9 +140,13 @@ projectHealthRoutes.get('/health', async (c) => {
     )
     .groupBy(issues.projectId);
 
-  // Avg cycle time (days) = mean(resolved_at - created_at) over issues that
+  // Avg cycle time (days) = mean(resolved_at - work_start) over issues that
   // transitioned to closed/released in the same trailing-7d window as
   // throughput. Was hardcoded 0 (ISS-308 B1: surfaced as a misleading "0d").
+  // ISS-380 (AC #3): work_start is now the FIRST transition into
+  // in_progress/approved (true cycle time), not issues.createdAt (which was
+  // lead time from creation and overstated the number). Falls back to
+  // issues.createdAt for issues that predate those transitions via COALESCE.
   // Same SQL-side `now() - interval` cutoff as throughput (postgres-js can't
   // bind a JS Date — see the throughput note above).
   const cycleRows = await db
@@ -150,7 +154,12 @@ projectHealthRoutes.get('/health', async (c) => {
       projectId: issues.projectId,
       avgDays: sql<
         number | null
-      >`avg(extract(epoch from (${activityLog.createdAt} - ${issues.createdAt})) / 86400.0)`,
+      >`avg(extract(epoch from (${activityLog.createdAt} - COALESCE((
+        SELECT min(al2.created_at) FROM activity_log al2
+        WHERE al2.issue_id = ${activityLog.issueId}
+          AND al2.action = 'issue.statusChanged'
+          AND al2.payload ->> 'to' IN ('in_progress','approved')
+      ), ${issues.createdAt}))) / 86400.0)`,
     })
     .from(activityLog)
     .innerJoin(issues, eq(issues.id, activityLog.issueId))

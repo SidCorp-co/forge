@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { jobTypes } from '../../db/schema.js';
+import { BUCKETS, METRICS, runTimeseries } from '../../metrics/queries.js';
 import {
   type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
@@ -130,5 +131,33 @@ export const forgeMetricsProjectStepDurationsTool: ContextScopedMcpToolFactory =
       }),
     );
     return { rows, windowDays: input.days, projectId: input.projectId };
+  },
+});
+
+const timeseriesInputSchema = z
+  .object({
+    projectId: z.uuid(),
+    metric: z.enum(METRICS),
+    days: z.number().int().min(1).max(90).optional().default(30),
+    bucket: z.enum(BUCKETS).optional().default('day'),
+    groupBy: z.literal('step').optional(),
+  })
+  .strict();
+
+export const forgeMetricsProjectTimeseriesTool: ContextScopedMcpToolFactory = (ctx) => ({
+  name: 'forge_metrics.project_timeseries',
+  description:
+    'Project time-series trend for the v2 dashboard charts (ISS-380). Returns a dense (gap-filled) bucketed series for one `metric` of cost | throughput | cycle_time | queue_wait | runner_utilization | cache_hit_rate, derived entirely from existing tables. Requires project membership. Params: `projectId`, `metric`, `days` (1..90, default 30), `bucket` (day|hour, default day), and `groupBy=step` (cost only). Returns `{ metric, bucket, days, groupBy, series }`.',
+  inputSchema: zodToMcpSchema(timeseriesInputSchema),
+  handler: async (args) => {
+    const input = timeseriesInputSchema.parse(args);
+    await assertPrincipalIsMember(ctx.principal, input.projectId);
+    return runTimeseries({
+      projectId: input.projectId,
+      metric: input.metric,
+      days: input.days,
+      bucket: input.bucket,
+      groupByStep: input.groupBy === 'step',
+    });
   },
 });
