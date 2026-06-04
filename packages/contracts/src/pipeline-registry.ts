@@ -63,6 +63,8 @@ export const pipelineStepSchema = z.object({
   jobType: z.enum(REGISTRY_JOB_TYPES),
   toggle: z.enum(REGISTRY_STEP_TOGGLE_KEYS),
   skillName: z.string().min(1),
+  /** In-flight status the step's agent flips to at start (sparse; registry v3). */
+  workingStatus: z.enum(REGISTRY_ISSUE_STATUSES).nullable(),
 });
 export type PipelineStep = z.infer<typeof pipelineStepSchema>;
 

@@ -14,9 +14,7 @@ import { agentSessionRoutes } from './agent-sessions/routes.js';
 import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cron.js';
 import { agentRoutes } from './agents/routes.js';
 import { appConfigRoutes } from './app-config/routes.js';
-import { docsRoutes } from './docs/routes.js';
 import { pairingRoutes } from './auth/desktop/pairing-routes.js';
-import { deviceLoginRoutes } from './devices/login-routes.js';
 import { devForceVerifyRoutes } from './auth/dev-force-verify.js';
 import { loginRoutes } from './auth/login.js';
 import { logoutRoutes } from './auth/logout.js';
@@ -35,6 +33,8 @@ import { commentRoutes } from './comments/routes.js';
 import { commentUploadRoutes } from './comments/upload.js';
 import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
+import { deviceLoginRoutes } from './devices/login-routes.js';
+import { registerDevicePrune } from './devices/prune.js';
 import {
   deviceAuthRoutes,
   deviceOwnerRoutes,
@@ -42,14 +42,14 @@ import {
   deviceUserRoutes,
 } from './devices/routes.js';
 import { deviceSkillRoutes, deviceSkillStatusRoutes } from './devices/skills-routes.js';
-import { registerDevicePrune } from './devices/prune.js';
 import { registerDeviceStaleDetector } from './devices/stale-detector.js';
+import { docsRoutes } from './docs/routes.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { seedDomainTemplates } from './domain-templates/seed.js';
+import { installRoutes } from './install/routes.js';
 import { registerCoolifyAdapter } from './integrations/coolify/adapter.js';
 import { registerPostmanAdapter } from './integrations/postman/adapter.js';
 import { registerIntegrationsWorker } from './integrations/queue.js';
-import { installRoutes } from './install/routes.js';
 import { integrationsRoutes } from './integrations/routes.js';
 import { assertVaultBootSafety } from './integrations/vault.js';
 import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-routes.js';
@@ -83,7 +83,6 @@ import { registerMemoryIndexer } from './memory/indexer.js';
 import { memoryListRoutes } from './memory/list-routes.js';
 import { memorySearchRoutes } from './memory/search-routes.js';
 import { memoryWriteRoutes } from './memory/write-routes.js';
-import { stepHandoffRoutes } from './pipeline/step-handoff-routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
@@ -109,6 +108,7 @@ import { registerReleaseCompletedSubscriber } from './pipeline/release-coolify.j
 import { pipelineRunProjectRoutes, pipelineRunReadRoutes } from './pipeline/runs-read-routes.js';
 import { pipelineRunRoutes } from './pipeline/runs-routes.js';
 import { registerPipelineSentryBreadcrumbs } from './pipeline/sentry-breadcrumbs.js';
+import { stepHandoffRoutes } from './pipeline/step-handoff-routes.js';
 import { registerActivitySubscribers } from './pipeline/subscribers.js';
 import { registerPipelineSweeper } from './pipeline/sweeper.js';
 import { registerPmCadenceTicker, unregisterPmCadenceTicker } from './pm/cadence.js';
@@ -130,6 +130,7 @@ import { runnerCallbackRoutes, runnerRoutes } from './runners/routes.js';
 import { registerRunnerStaleDetector } from './runners/stale-detector.js';
 import { scheduleRoutes } from './schedules/routes.js';
 import { registerScheduleTicker, unregisterScheduleTicker } from './schedules/runner.js';
+import { skillFactsRoutes } from './skill-facts/routes.js';
 import { seedBuiltinSkills } from './skills/builtin-seed.js';
 import { skillCrudRoutes } from './skills/crud-routes.js';
 import { skillOverrideRoutes } from './skills/override-routes.js';
@@ -340,6 +341,7 @@ app.route('/api/memory', memoryListRoutes);
 app.route('/api/memory', memoryWriteRoutes);
 app.route('/api/issue-step-contexts', stepHandoffRoutes);
 app.route('/api/prompts', promptRoutes);
+app.route('/api/skill-facts', skillFactsRoutes);
 app.route('/api/notifications', notificationRoutes);
 app.route('/api/me', meAttentionRoutes);
 app.route('/api/agents', agentRoutes);

@@ -91,6 +91,7 @@ describe('buildPipelinePreambleStructured', () => {
       'tool-reference',
       'project-config',
       'project-context',
+      'forge-facts',
       'state-block',
     ]);
     expect(built.content).toContain('## This State — Review');
@@ -129,6 +130,7 @@ describe('buildPipelinePreambleStructured', () => {
       'tool-reference',
       'project-config',
       'project-context',
+      'forge-facts',
       'state-block',
       'state-extras',
     ]);

@@ -174,6 +174,8 @@ describe('POST /api/prompts/preview', () => {
 
   it('404 when issueId is provided but does not exist', async () => {
     queueAuth();
+    // One projects read on the step path: loadProjectFactInputs supplies both
+    // the Project Config branches and the facts block.
     limitResults.push([{ baseBranch: 'main', productionBranch: 'release' }]);
     limitResults.push([]); // loadIssueSnapshot — no row
 
@@ -191,6 +193,7 @@ describe('POST /api/prompts/preview', () => {
 
   it('includes issueSnapshot in userPrompt when issueId provided + issue exists', async () => {
     queueAuth();
+    // One projects read on the step path (loadProjectFactInputs), then the issue.
     limitResults.push([{ baseBranch: 'main', productionBranch: 'release' }]);
     limitResults.push([
       {

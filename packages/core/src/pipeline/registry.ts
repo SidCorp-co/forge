@@ -10,26 +10,82 @@
 
 import type { IssueStatus, JobType, RunnerType } from '../db/schema.js';
 
-export const PIPELINE_REGISTRY_VERSION = 2;
+export const PIPELINE_REGISTRY_VERSION = 3;
 
+// `workingStatus` — the in-flight status the step's agent flips the issue to
+// when it BEGINS work (via `forge_step_start`), so the board shows in-flight
+// progress without inventing new enum values. Sparse by design: only steps
+// whose in-flight state already exists in `issueStatuses` get one; null means
+// the trigger status doubles as the in-flight signal (short steps — visibility
+// comes from `pipeline_runs.currentStep`). `test` stays null because its
+// trigger `testing` IS the in-flight status already.
 export const PIPELINE_STEPS = [
-  { status: 'open', jobType: 'triage', toggle: 'autoTriage', skillName: 'forge-triage' },
+  {
+    status: 'open',
+    jobType: 'triage',
+    toggle: 'autoTriage',
+    skillName: 'forge-triage',
+    workingStatus: null,
+  },
   // Clarify-on-happy-path: clarify runs AFTER triage confirms the issue
   // (reproduce the bug / verify UX before planning) and exits to `clarified`,
   // where plan picks up. needs_info is a human-gated bounce state again — no
   // pipeline step dispatches there.
-  { status: 'confirmed', jobType: 'clarify', toggle: 'autoClarify', skillName: 'forge-clarify' },
-  { status: 'clarified', jobType: 'plan', toggle: 'autoPlan', skillName: 'forge-plan' },
-  { status: 'approved', jobType: 'code', toggle: 'autoCode', skillName: 'forge-code' },
-  { status: 'developed', jobType: 'review', toggle: 'autoReview', skillName: 'forge-review' },
-  { status: 'testing', jobType: 'test', toggle: 'autoTest', skillName: 'forge-test' },
-  { status: 'reopen', jobType: 'fix', toggle: 'autoFix', skillName: 'forge-fix' },
-  { status: 'released', jobType: 'release', toggle: 'autoRelease', skillName: 'forge-release' },
+  {
+    status: 'confirmed',
+    jobType: 'clarify',
+    toggle: 'autoClarify',
+    skillName: 'forge-clarify',
+    workingStatus: null,
+  },
+  {
+    status: 'clarified',
+    jobType: 'plan',
+    toggle: 'autoPlan',
+    skillName: 'forge-plan',
+    workingStatus: null,
+  },
+  {
+    status: 'approved',
+    jobType: 'code',
+    toggle: 'autoCode',
+    skillName: 'forge-code',
+    workingStatus: 'in_progress',
+  },
+  {
+    status: 'developed',
+    jobType: 'review',
+    toggle: 'autoReview',
+    skillName: 'forge-review',
+    workingStatus: null,
+  },
+  {
+    status: 'testing',
+    jobType: 'test',
+    toggle: 'autoTest',
+    skillName: 'forge-test',
+    workingStatus: null,
+  },
+  {
+    status: 'reopen',
+    jobType: 'fix',
+    toggle: 'autoFix',
+    skillName: 'forge-fix',
+    workingStatus: 'in_progress',
+  },
+  {
+    status: 'released',
+    jobType: 'release',
+    toggle: 'autoRelease',
+    skillName: 'forge-release',
+    workingStatus: null,
+  },
 ] as const satisfies readonly {
   status: IssueStatus;
   jobType: JobType;
   toggle: string;
   skillName: string;
+  workingStatus: IssueStatus | null;
 }[];
 
 export type PipelineStep = (typeof PIPELINE_STEPS)[number];
@@ -69,6 +125,16 @@ export const STATUS_TO_JOB_TYPE: Partial<Record<IssueStatus, JobTypeMapping>> = 
 export const STATUS_TO_SKILL: Partial<Record<IssueStatus, string>> = Object.fromEntries(
   PIPELINE_STEPS.map((s) => [s.status, s.skillName]),
 ) as Partial<Record<IssueStatus, string>>;
+
+/** Per-step in-flight status (sparse — see PIPELINE_STEPS.workingStatus). */
+export const WORKING_STATUS_BY_JOB_TYPE: Partial<Record<JobType, IssueStatus>> = Object.fromEntries(
+  PIPELINE_STEPS.filter((s) => s.workingStatus !== null).map((s) => [s.jobType, s.workingStatus]),
+) as Partial<Record<JobType, IssueStatus>>;
+
+/** Trigger status for a step (the status whose transition dispatches it). */
+export const TRIGGER_STATUS_BY_JOB_TYPE: Partial<Record<JobType, IssueStatus>> = Object.fromEntries(
+  PIPELINE_STEPS.map((s) => [s.jobType, s.status]),
+) as Partial<Record<JobType, IssueStatus>>;
 
 export interface PipelineRegistryPayload {
   version: number;

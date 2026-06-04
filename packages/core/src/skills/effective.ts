@@ -53,7 +53,10 @@ export interface SkillBodyRow {
  * `skill_md = NULL`). Shared so the override route and the resolver derive the
  * global body identically.
  */
-export function globalEffectiveMd(skill: { skillMd: string | null; prompt: string | null }): string {
+export function globalEffectiveMd(skill: {
+  skillMd: string | null;
+  prompt: string | null;
+}): string {
   if (skill.skillMd != null && skill.skillMd.trim() !== '') return skill.skillMd;
   return skill.prompt ?? '';
 }
@@ -127,13 +130,9 @@ const skillBodyProjection = {
   files: skills.files,
 } as const;
 
-/**
- * Every skill visible to a project (its own project-scoped skills + all
- * globals), with overrides merged and the effective hash computed.
- */
-export async function resolveEffectiveSkillsForProject(
-  projectId: string,
-): Promise<EffectiveSkill[]> {
+/** Raw effective skills (no fact-variable expansion) — used internally so the
+ *  two public resolvers expand with the right per-skill stage context. */
+async function resolveRawEffectiveSkillsForProject(projectId: string): Promise<EffectiveSkill[]> {
   const rows = (await db
     .select(skillBodyProjection)
     .from(skills)
@@ -154,6 +153,19 @@ export async function resolveEffectiveSkillsForProject(
 }
 
 /**
+ * Every skill visible to a project (its own project-scoped skills + all
+ * globals), with overrides merged and the effective hash computed. Skill bodies
+ * are NOT templated: Forge facts + project context are injected into the system
+ * prompt at dispatch (`prompt/system.ts`), so a synced SKILL.md is exactly what
+ * the author wrote — no var expansion, no fact-driven re-sync churn.
+ */
+export async function resolveEffectiveSkillsForProject(
+  projectId: string,
+): Promise<EffectiveSkill[]> {
+  return resolveRawEffectiveSkillsForProject(projectId);
+}
+
+/**
  * The device-sync manifest set: effective skills intersected with the skills
  * registered to ANY stage of the project. Scope is intentionally limited to
  * registered skills (expanding beyond that is out of scope for ISS-278).
@@ -169,7 +181,7 @@ export async function resolveRegisteredEffectiveSkills(
   const registeredIds = new Set(regs.map((r) => r.skillId));
   if (registeredIds.size === 0) return [];
 
-  const all = await resolveEffectiveSkillsForProject(projectId);
+  const all = await resolveRawEffectiveSkillsForProject(projectId);
   return all.filter((s) => registeredIds.has(s.skillId));
 }
 
@@ -346,7 +358,12 @@ export async function loadProjectSkillSyncStatus(
       r.lastSeenAt instanceof Date ? r.lastSeenAt.toISOString() : (r.lastSeenAt ?? null);
     const existing = deviceById.get(r.deviceId);
     if (!existing || (lastSeenAt && (!existing.lastSeenAt || lastSeenAt > existing.lastSeenAt))) {
-      deviceById.set(r.deviceId, { deviceId: r.deviceId, name: r.name, status: r.status, lastSeenAt });
+      deviceById.set(r.deviceId, {
+        deviceId: r.deviceId,
+        name: r.name,
+        status: r.status,
+        lastSeenAt,
+      });
     }
   }
   const deviceList = [...deviceById.values()];

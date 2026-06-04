@@ -24,6 +24,8 @@ import { db } from '../db/client.js';
 import { type JobType, projects } from '../db/schema.js';
 import { estimateTokens } from '../lib/token-estimator.js';
 import type { SystemPromptOverrideConfig } from '../pipeline/pipeline-config-schema.js';
+import { renderFact } from './facts/registry.js';
+import { loadProjectFactInputs, renderStageFactsText } from './facts/resolve.js';
 import { getStatePrompt } from './state-prompts/index.js';
 
 export type PreambleBlockId =
@@ -31,6 +33,7 @@ export type PreambleBlockId =
   | 'tool-reference'
   | 'project-config'
   | 'project-context'
+  | 'forge-facts'
   | 'state-block'
   | 'state-extras';
 
@@ -56,40 +59,14 @@ export type SystemPromptOverride = SystemPromptOverrideConfig;
 
 const BRANCH_SENTINEL = '<detect-from-git>';
 
-export const PIPELINE_RULES = `## Pipeline Rules
-- **Always advance the state — never leave an issue parked.** The FINAL action of every step MUST be a \`forge_issues.update\` that moves \`status\`. Setting status is what triggers the next step; an issue left in its current status stalls the pipeline forever. Do this even if your skill instructions don't mention a transition.
-- **Where to move next.** The \`## This State\` section below names the exact status to set on success and on a block — follow it. If that section is absent, default forward along: \`open → confirmed → clarified → approved → developed → deploying → testing → pass → staging → released → closed\` (intermediate states you don't own auto-advance).
-- **Deviate freely when warranted.** Transitions are NOT restricted to the happy path. From ANY state you may set \`needs_info\` (requirements missing/unclear), \`reopen\` (regression or failed check), or \`on_hold\` (deliberate pause) the moment you hit that condition — don't force the ladder. Only \`draft\` is never a valid target.
-- **Decompose is system-owned — do NOT hand-set parent/child statuses.** When you decompose a parent into children, core parks the parent at \`waiting\` (the review gate) and creates the children at \`draft\`. A human approving the parent (→ \`approved\`) auto-cascades the children to \`approved\`. The parent's own forward work is held by the dispatcher until ALL children merge, then the parent runs its integration LAST. The kickoff is anchored to these system transitions — manually moving a decompose parent or child breaks it.
-- **Status LAST**, after all other work (commits, comments, handoff). Do NOT set \`merged_at\` or other derived fields by hand — \`merged_at\` is stamped automatically when you leave \`released\`.
-- **Branch discipline.** Run \`git branch --show-current\` + \`git status\` before any checkout. Branch from \`baseBranch\`: \`git checkout <baseBranch> && git pull && git checkout -b ISS-XX-short-title\`. Never switch branches mid-work.
-- **ISS-* branch is source of truth.** Kept alive through the pipeline. Squash-merges to \`productionBranch\` at release.
-- **Fetch issue first.** Never assume data from the prompt — always fetch via \`forge_issues.get\` for the full body.
+// Canonical text for these two mandatory blocks now lives in the Forge Facts
+// registry (`./facts/registry.ts`) so author-time surfaces and the runtime
+// preamble share one source. Re-exported here unchanged for existing callers
+// (chat-preamble shim, schedules, agent-sessions); a parity test in
+// system.test.ts pins the rendered text.
+export const PIPELINE_RULES = renderFact('pipeline-rules') ?? '';
 
-## Capture Learnings
-Only when you hit a reusable lesson — a project convention, a non-obvious gotcha, or a fix pattern that will help a DIFFERENT agent on a DIFFERENT issue. If it's specific to this issue, it belongs in \`sessionContext\`, not memory.
-1. Search first: \`forge_memory.search({ projectId, query, topK: 3, sourceFilter: ['knowledge'] })\`.
-2. If nothing comes back scoring > 0.8, write it: \`forge_memory.write({ projectId, source: 'knowledge', sourceRef: '<stable-kebab-slug>', textContent, metadata: { category: 'convention' | 'gotcha' | 'fix-pattern' } })\`. Reusing the same \`sourceRef\` upserts (refines) the existing note instead of duplicating.
-\`projectId\` comes from \`forge_issues.get\`. Keep \`textContent\` tight — one lesson, no issue-specific detail.
-
-## Session Context (coding / fix / review tasks)
-Before your final status update, update \`issues.sessionContext\` via \`forge_issues.update\`:
-\`{ currentState, decisions, filesModified, errorsResolved, reviewFeedback, sessionCount, lastUpdated }\`
-Merge with existing: increment sessionCount, append to arrays (skip duplicates), replace currentState. Cap arrays at 20.
-
-## Output Rules
-- Zero narration. Tool calls are self-documenting.
-- Code only while implementing. No explanations between edits.
-- Never repeat file contents after reading — just edit.
-- One-line status at the end (e.g. "Plan written, set approved." or "Fix applied, pushed, set deploying.").
-- Comments go to \`forge_comments.create\`, not to chat output.`;
-
-export const TOOL_REFERENCE = `## Tool Reference
-- **forge_issues** — list/get/create/update issues. update.documentId is required. Writable: title, description, status, priority, category, complexity, acceptanceCriteria, plan, sessionContext, relations.
-- **forge_comments** — create requires issueDocumentId + body. list returns actor, body, isAI, timestamps.
-- **forge_memory** — per-project semantic memory. \`.search({projectId, query, topK, sourceFilter?})\` → scored hits; \`.write({projectId, source, sourceRef, textContent, metadata?})\` upserts on (projectId, source, sourceRef); \`.get\` for natural-key lookups, \`.delete\` to remove. Sources: issue, comment, job, note, knowledge, decision, policy.
-- **forge_config** — read/write per-project settings: baseBranch, repoPath, productionBranch, agentPrompt, enabledSkills, conventions, knowledgeIndex.
-- **forge_skills** — list available skills + per-project enable/disable.`;
+export const TOOL_REFERENCE = renderFact('mcp-tool-reference') ?? '';
 
 const CHAT_NUDGE = `## Project Orientation
 You are working in a Forge-managed project. Forge MCP tools are available for project management — \`forge_issues\`, \`forge_comments\`, \`forge_config\`, \`forge_memory\`, \`forge_pm_*\`. Use them when the request relates to issues, tasks, status, or project memory.
@@ -197,7 +174,14 @@ export async function buildPipelinePreambleStructured(
     return { content: extras, blocks };
   }
 
-  const project = await loadProjectBranches(projectId);
+  // On a pipeline step the facts resolver reads the `projects` row anyway
+  // (branches + agentConfig + previewDeploy + integrations), so reuse its
+  // branches for the Project Config block instead of reading `projects` a
+  // second time. With no step (chat / generic preview) there is no facts
+  // block, so just read the branches.
+  const step = opts?.step ?? null;
+  const factInputs = step ? await loadProjectFactInputs(projectId) : null;
+  const project = factInputs?.branches ?? (await loadProjectBranches(projectId));
   const sections: Array<{ id: PreambleBlockId; body: string }> = [
     { id: 'pipeline-rules', body: PIPELINE_RULES },
     { id: 'tool-reference', body: TOOL_REFERENCE },
@@ -216,6 +200,16 @@ export async function buildPipelinePreambleStructured(
     id: 'project-context',
     body: formatProjectContext(projectId),
   });
+  // Forge facts for this stage — the project-resolved contextual facts (status
+  // ladder, complexity, decompose, handoff, …) + connected integrations + a
+  // fetch-on-demand index of the author's projectFacts guides (values are NOT
+  // inlined — the agent fetches via `forge_config` when needed). Injecting them
+  // here keeps skill bodies pure business logic ("write the skill however you
+  // want") and stays current without re-syncing skill files.
+  if (step && factInputs) {
+    const factsBlock = renderStageFactsText(factInputs, projectId, step);
+    if (factsBlock) sections.push({ id: 'forge-facts', body: factsBlock });
+  }
   // Built-in per-state depth. After the shared prefix (so cross-state cache on
   // the prefix is preserved) and before any operator override (so the override
   // remains the last word).

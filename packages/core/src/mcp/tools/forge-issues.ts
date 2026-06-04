@@ -147,7 +147,7 @@ const inputSchema = z
 
 type Input = z.infer<typeof inputSchema>;
 
-type IssueRow = {
+export type IssueRow = {
   id: string;
   projectId: string;
   issSeq: number;
@@ -179,7 +179,9 @@ type IssueRow = {
   updatedAt: Date;
 };
 
-function serialize(row: IssueRow): Record<string, unknown> {
+// Exported for reuse by forge-step-start (same issue payload shape in its
+// bundle as `forge_issues.get` returns — agents see one serialization).
+export function serialize(row: IssueRow): Record<string, unknown> {
   return {
     documentId: row.id,
     issueId: `ISS-${row.issSeq}`,
@@ -208,7 +210,7 @@ function serialize(row: IssueRow): Record<string, unknown> {
   };
 }
 
-async function loadIssue(documentId: string): Promise<IssueRow> {
+export async function loadIssue(documentId: string): Promise<IssueRow> {
   const [row] = await db.select().from(issues).where(eq(issues.id, documentId)).limit(1);
   if (!row) throw new Error('NOT_FOUND: issue not found');
   return row as IssueRow;

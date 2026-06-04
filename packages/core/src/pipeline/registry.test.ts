@@ -15,8 +15,10 @@ import {
   RUNNER_CAPABILITIES,
   STATUS_TO_JOB_TYPE,
   STATUS_TO_SKILL,
+  WORKING_STATUS_BY_JOB_TYPE,
   getPipelineRegistry,
 } from './registry.js';
+import { transitions } from './state-machine.js';
 import { STATUS_TO_JOB_TYPE as MAPPING_RE_EXPORT } from './skill-mapping.js';
 
 describe('PIPELINE_STEPS literal sanity', () => {
@@ -120,10 +122,10 @@ describe('contracts ↔ core enum parity', () => {
 });
 
 describe('getPipelineRegistry()', () => {
-  it('returns the four-key payload with version 2', () => {
+  it('returns the four-key payload with version 3', () => {
     const payload = getPipelineRegistry();
     expect(payload.version).toBe(PIPELINE_REGISTRY_VERSION);
-    expect(payload.version).toBe(2);
+    expect(payload.version).toBe(3);
     expect(payload.steps).toBe(PIPELINE_STEPS);
     expect(payload.runnerCapabilities).toBe(RUNNER_CAPABILITIES);
     expect(payload.manualOnlyJobTypes).toBe(MANUAL_ONLY_JOB_TYPES);
@@ -133,9 +135,36 @@ describe('getPipelineRegistry()', () => {
     const payload = getPipelineRegistry();
     const json = JSON.parse(JSON.stringify(payload));
     const parsed = pipelineRegistryResponseSchema.parse(json);
-    expect(parsed.version).toBe(2);
+    expect(parsed.version).toBe(3);
     expect(parsed.steps).toHaveLength(8);
     expect(parsed.manualOnlyJobTypes).toEqual([]);
+  });
+});
+
+describe('workingStatus (registry v3, sparse by design)', () => {
+  it('only code + fix flip to an in-flight status; both reuse in_progress', () => {
+    const withWorking = PIPELINE_STEPS.filter((s) => s.workingStatus !== null);
+    expect(withWorking.map((s) => s.jobType).sort()).toEqual(['code', 'fix']);
+    for (const step of withWorking) expect(step.workingStatus).toBe('in_progress');
+  });
+
+  it('workingStatus never equals the trigger status and is a known IssueStatus', () => {
+    for (const step of PIPELINE_STEPS) {
+      if (step.workingStatus === null) continue;
+      expect(step.workingStatus).not.toBe(step.status);
+      expect(issueStatuses).toContain(step.workingStatus);
+    }
+  });
+
+  it('the strict transition matrix allows trigger → working for every pair', () => {
+    for (const step of PIPELINE_STEPS) {
+      if (step.workingStatus === null) continue;
+      expect(transitions[step.status]).toContain(step.workingStatus);
+    }
+  });
+
+  it('WORKING_STATUS_BY_JOB_TYPE derives from PIPELINE_STEPS', () => {
+    expect(WORKING_STATUS_BY_JOB_TYPE).toEqual({ code: 'in_progress', fix: 'in_progress' });
   });
 });
 
@@ -153,7 +182,7 @@ describe('GET /api/pipeline/registry', () => {
     const body = await res.json();
     const parsed = pipelineRegistryResponseSchema.parse(body);
     expect(parsed.steps).toHaveLength(8);
-    expect(parsed.version).toBe(2);
+    expect(parsed.version).toBe(3);
     expect(parsed.manualOnlyJobTypes).toEqual([]);
     expect(parsed.runnerCapabilities['claude-code']).toEqual([
       'plan',

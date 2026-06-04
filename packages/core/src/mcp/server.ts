@@ -48,6 +48,8 @@ import {
   forgeProjectsUpdateTool,
 } from './tools/forge-projects.js';
 import { forgeRunnersTool } from './tools/forge-runners.js';
+import { forgeSkillFactsGetTool, forgeSkillFactsListTool } from './tools/forge-skill-facts.js';
+import { forgeStepStartTool } from './tools/forge-step-start.js';
 import {
   forgeSkillsCreateTool,
   forgeSkillsDeleteTool,
@@ -193,12 +195,15 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeSkillsOverrideSetTool(ctx),
     forgeSkillsOverrideDeleteTool(ctx),
     forgeSkillsPushTool(ctx),
+    forgeSkillFactsListTool(ctx),
+    forgeSkillFactsGetTool(ctx),
     forgeMetricsStepDurationsTool(ctx),
     forgeMetricsProjectStepDurationsTool(ctx),
     forgeRunnersTool(ctx),
     forgeCollaboratorsTool(ctx),
     forgeOpsHealthTool(ctx),
     forgeIssuesTool(ctx),
+    forgeStepStartTool(ctx),
     forgeCommentsTool(ctx),
     forgeUploadsTool(ctx),
     forgeConfigTool(ctx),
