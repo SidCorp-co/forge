@@ -2,37 +2,41 @@
 
 import { useParams, useRouter } from "next/navigation";
 import {
-  Card,
-  CardContent,
-  ProjectMark,
-  MonoTag,
   Badge,
-  Stat,
-  Kicker,
-  IconButton,
-  ProjectLoader,
   EmptyState,
   ErrorState,
-  type IconName,
+  Icon,
+  IconButton,
+  MonoTag,
+  ProjectLoader,
+  ProjectMark,
 } from "@/design";
-import { STAGES, stageColor, type StageKey } from "@/design/stages";
-import { statusToStage } from "@/features/issues/derive";
-import type { IssueStatus } from "@/features/issues/types";
-import { useProjects, useProjectHealth } from "@/features/projects/hooks";
-import { formatCycleTime } from "@/features/projects/derive";
+import { AttentionQueue } from "@/features/project-dashboard/components/attention-queue";
+import { KpiBand } from "@/features/project-dashboard/components/kpi-band";
+import { LiveRunsCard } from "@/features/project-dashboard/components/live-runs-card";
+import { RunnersCard } from "@/features/project-dashboard/components/runners-card";
+import { SchedulesCard } from "@/features/project-dashboard/components/schedules-card";
+import { SpendCard } from "@/features/project-dashboard/components/spend-card";
+import { StatusDonut } from "@/features/project-dashboard/components/status-donut";
+import {
+  inFlightSpend,
+  liveRuns,
+  projectAttention,
+  runnersSummary,
+  spendByStage,
+  statusDonut,
+  upcomingSchedules,
+} from "@/features/project-dashboard/derive";
+import { useAttention } from "@/features/attention/hooks";
+import { useProjectRuns, useStepDurations } from "@/features/pipeline/hooks";
+import { useProjectHealth, useProjects } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
+import { useDevices } from "@/features/runners/hooks";
+import { useSchedules } from "@/features/schedules/hooks";
+import { useQueueStats } from "@/features/sessions/hooks";
 import { formatApiError } from "@/lib/api/error";
-
-/** Fold a status→count distribution into the 7 pipeline stages (A4: reuse the
- *  single `statusToStage` source of truth instead of a duplicated local map). */
-function stageDistribution(dist: Record<string, number>): { stage: StageKey; count: number }[] {
-  const byStage = new Map<StageKey, number>(STAGES.map((s) => [s.key, 0]));
-  for (const [status, count] of Object.entries(dist)) {
-    const stage = statusToStage(status as IssueStatus);
-    byStage.set(stage, (byStage.get(stage) ?? 0) + count);
-  }
-  return STAGES.map((s) => ({ stage: s.key, count: byStage.get(s.key) ?? 0 }));
-}
+import { projectRoom } from "@/lib/ws/rooms";
+import { useRoom } from "@/lib/ws/use-room";
 
 export default function ProjectOverviewPage() {
   const params = useParams<{ slug: string }>();
@@ -41,6 +45,21 @@ export default function ProjectOverviewPage() {
 
   const projectsQ = useProjects();
   const healthQ = useProjectHealth();
+  const project = projectsQ.data?.find((p) => p.slug === slug);
+  const projectId = project?.id;
+
+  // All cards key onto WS-invalidated prefixes already; the page just needs to
+  // subscribe to THIS project's room so cross-project events arrive (ISS-379).
+  useRoom(projectId ? projectRoom(projectId) : null);
+
+  // Card data — every hook reuses an existing source. Project-scoped hooks gate
+  // on `projectId` so they no-op until the slug resolves.
+  const attentionQ = useAttention();
+  const runsQ = useProjectRuns(projectId);
+  const durationsQ = useStepDurations({ days: 7, projectId });
+  const devicesQ = useDevices();
+  const queueQ = useQueueStats(projectId);
+  const schedulesQ = useSchedules(projectId);
 
   const isLoading = projectsQ.isLoading || healthQ.isLoading;
   const isError = projectsQ.isError || healthQ.isError;
@@ -68,9 +87,6 @@ export default function ProjectOverviewPage() {
     );
   }
 
-  const project = projectsQ.data?.find((p) => p.slug === slug);
-  const health = healthQ.data?.find((h) => h.projectSlug === slug);
-
   if (!project) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
@@ -83,38 +99,18 @@ export default function ProjectOverviewPage() {
     );
   }
 
+  const health = healthQ.data?.find((h) => h.projectSlug === slug);
   const glyph = projectGlyph(project.id);
-  const stages = health ? stageDistribution(health.statusDistribution) : [];
-  const stageTotal = stages.reduce((n, s) => n + s.count, 0);
+  const now = Date.now();
 
-  // Caption clarifies the timeframe / definition behind each number so the
-  // workspace, card, and overview all read consistently (ISS-308 B2/B3).
-  const metrics: Array<{ icon: IconName; label: string; value: string; caption?: string }> = [
-    {
-      icon: "inbox",
-      label: "Active issues",
-      value: String(health?.totalActive ?? 0),
-      caption: "in-flight (not closed)",
-    },
-    {
-      icon: "activity",
-      label: "Throughput",
-      value: String(health?.throughput ?? 0),
-      caption: "resolved · last 7 days",
-    },
-    {
-      icon: "clock",
-      label: "Avg cycle time",
-      value: formatCycleTime(health?.avgCycleTimeDays),
-      caption: "created → resolved · 7d",
-    },
-    {
-      icon: "alert",
-      label: "Escalations",
-      value: String(health?.pendingEscalations ?? 0),
-      caption: "awaiting info",
-    },
-  ];
+  const attention = projectAttention(attentionQ.view, project.slug, health?.blockers);
+  const runItems = runsQ.data?.items;
+  const runsLive = liveRuns(runItems);
+  const inFlight = inFlightSpend(runItems);
+  const runners = runnersSummary(devicesQ.data, queueQ.data);
+  const donut = statusDonut(health?.statusDistribution);
+  const spend = spendByStage(durationsQ.data);
+  const schedules = upcomingSchedules(schedulesQ.data);
 
   return (
     <div className="mx-auto w-full min-h-dvh max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
@@ -122,14 +118,30 @@ export default function ProjectOverviewPage() {
         <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={projectInitials(project.name)} size={48} />
         <div className="flex-1">
           <h1 className="fg-h2">{project.name}</h1>
-          <div className="mt-1.5 flex items-center gap-2">
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <MonoTag>{project.slug}</MonoTag>
             <Badge tone={project.role === "owner" ? "accent" : "neutral"}>{project.role}</Badge>
+            {runsLive.length > 0 && (
+              <span
+                className="fg-caption inline-flex items-center gap-1.5 font-semibold"
+                style={{ color: "var(--cobalt-700)" }}
+              >
+                <span className="size-1.5 rounded-full bg-[var(--cobalt-500)] forge-pulse" />
+                {runsLive.length} {runsLive.length === 1 ? "run" : "runs"} live
+              </span>
+            )}
+            {attention.length > 0 && (
+              <span
+                className="fg-caption inline-flex items-center gap-1 font-semibold"
+                style={{ color: "var(--accent-text)" }}
+              >
+                <Icon name="inbox" size={13} />
+                needs attention {attention.length}
+              </span>
+            )}
           </div>
         </div>
-        {/* Gear affordance → per-project settings (ISS-316). The project tier is
-            fixed at 6 flat rail items, so settings attaches here (and ⌘K) rather
-            than as a 7th rail row. */}
+        {/* Gear affordance → per-project settings (ISS-316). */}
         <IconButton
           icon="settings"
           aria-label="Project settings"
@@ -137,62 +149,27 @@ export default function ProjectOverviewPage() {
         />
       </header>
 
-      <div className="space-y-6">
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {metrics.map((m) => (
-            <Card key={m.label}>
-              <CardContent>
-                <Stat icon={m.icon} mono={false}>
-                  {m.label}
-                </Stat>
-                <p className="mt-2 font-mono text-2xl font-bold tabular-nums text-fg">{m.value}</p>
-                {m.caption && <p className="fg-caption mt-0.5 text-subtle">{m.caption}</p>}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+      <div className="space-y-4">
+        <KpiBand
+          liveRuns={runsLive.length}
+          busyRunners={runners.busyCount}
+          onlineRunners={runners.onlineCount}
+          needsYou={attention.length}
+          openIssues={health?.totalActive ?? donut.total}
+          activeStages={donut.activeStageCount}
+          spendTodayUsd={health?.spend24hUsd ?? 0}
+          inFlightUsd={inFlight}
+        />
 
-        {/* Work distribution — how the project's issues are spread across the
-            seven stages RIGHT NOW. Deliberately NOT the sequential
-            PipelineTracker (ISS-308 A3): a static status snapshot rendered as a
-            run timeline read as "the pipeline finished" (e.g. closed-heavy
-            projects showed triage→release all green). A labelled bar per stage
-            can't be mistaken for one completed run. */}
-        <Card>
-          <CardContent>
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <Kicker>Work distribution</Kicker>
-              <Stat icon="list" mono={false}>
-                {stageTotal} issue{stageTotal === 1 ? "" : "s"} by stage
-              </Stat>
-            </div>
-            {stageTotal === 0 ? (
-              <p className="fg-body-sm text-muted">No issues to distribute yet.</p>
-            ) : (
-              <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
-                {stages.map((s) => {
-                  const pct = stageTotal > 0 ? (s.count / stageTotal) * 100 : 0;
-                  return (
-                    <div key={s.stage}>
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="fg-caption font-mono lowercase text-muted">{s.stage}</span>
-                        <span className="font-mono text-sm font-bold tabular-nums text-fg">
-                          {s.count}
-                        </span>
-                      </div>
-                      <div className="mt-1 h-1.5 overflow-hidden rounded-pill bg-[var(--paper-200)]">
-                        <div
-                          className="h-full rounded-pill"
-                          style={{ width: `${pct}%`, background: stageColor(s.stage) }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <AttentionQueue items={attention} now={now} />
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <LiveRunsCard runs={runsLive} slug={project.slug} />
+          <StatusDonut data={donut} />
+          <SpendCard data={spend} inFlightUsd={inFlight} />
+          <RunnersCard summary={runners} slug={project.slug} />
+          <SchedulesCard rows={schedules} now={now} />
+        </div>
       </div>
     </div>
   );
