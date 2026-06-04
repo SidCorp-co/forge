@@ -93,6 +93,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **The Issues page now opens the redesigned interface with Board, List, and Insights views.**
   *Technical: Legacy web /projects/:slug/issues routes (list, new, detail) now hand off to the web-v2 /v2 Issues experience (ISS-364 redesign). Merge 667a29d.*
 
+- **The Agents screen now shows a per-runner fleet overview with queue depth, surfaces each session's runner, live/stale state and failure reason with clickable issue and run links, warns when work is queued but no runner is online, and makes the Agent Chat panel collapsible so the session list can use the full width.**
+  *Technical: Reworked packages/web-v2 agents feature (agents-screen, sessions-screen) with a FleetRunnerStrip from queue-stats×useDevices, a unified deriveLiveness threshold aligned to the server zombie-sweep heartbeat bound, an on-demand chat dock persisted per user, and a new read-only GET /api/agent-sessions/:id/cost usage_records rollup.*
+
 ### Removed
 
 ### Fixed
