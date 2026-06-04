@@ -45,6 +45,13 @@ import {
 } from "../types";
 import { CostCell, DepBadges, HoldBadge, type RowActions } from "./issue-table-row";
 
+// A live agent state (running/queued/failed) takes over the chip — show the
+// execution status, not the static lifecycle label (ISS-366 D2). When idle we
+// pass the issue's TRUE lifecycle label so an Approved/Confirmed/Developed issue
+// no longer all read as the collapsed "Queued"/"Review" bucket.
+const hasLiveAgent = (s: IssueRow["agentStatus"]): boolean =>
+  s === "running" || s === "queued" || s === "failed";
+
 // Priority badge tone — quiet for low/none, warm for the urgent end.
 const PRIORITY_TONE: Record<IssuePriority, "red" | "amber" | "neutral"> = {
   critical: "red",
@@ -177,14 +184,17 @@ export function IssueTableRow({
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
           {row.category && <MonoTag>{row.category}</MonoTag>}
           <HoldBadge held={row.manualHold} />
-          <DepBadges id={row.id} />
+          <DepBadges id={row.id} slug={slug} />
         </div>
       </TD>
       <TD>
         <PipelineTracker stage={stage} status={statusToRun(row.status, row.agentStatus)} variant="mini" />
       </TD>
       <TD>
-        <StatusChip status={statusToChip(row.status, row.agentStatus)} />
+        <StatusChip
+          status={statusToChip(row.status, row.agentStatus)}
+          label={hasLiveAgent(row.agentStatus) ? undefined : statusLabel(row.status)}
+        />
       </TD>
       <TD>
         <PriorityCell priority={row.priority} />
@@ -244,7 +254,7 @@ export function IssueMobileCard({
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {row.category && <MonoTag>{row.category}</MonoTag>}
           <HoldBadge held={row.manualHold} />
-          <DepBadges id={row.id} />
+          <DepBadges id={row.id} slug={slug} />
         </div>
 
         <div className="mt-3">
@@ -252,7 +262,11 @@ export function IssueMobileCard({
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <StatusChip status={statusToChip(row.status, row.agentStatus)} size="sm" />
+          <StatusChip
+            status={statusToChip(row.status, row.agentStatus)}
+            size="sm"
+            label={hasLiveAgent(row.agentStatus) ? undefined : statusLabel(row.status)}
+          />
           <PriorityCell priority={row.priority} />
           <ComplexityCell complexity={row.complexity} />
           <span className="ml-auto">
