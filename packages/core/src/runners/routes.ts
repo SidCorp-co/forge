@@ -21,6 +21,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { roomManager } from '../ws/server.js';
 import { projectRoom } from '../ws/rooms.js';
 import { normalizeAntigravityEvent } from './event-normalizer.js';
+import { setRunnerStatus } from './runner-events.js';
 import { getRunnerAdapter, listRunnerTypes } from './registry.js';
 import { defaultRunnerCapabilities } from './select.js';
 import type { Runner } from './types.js';
@@ -227,10 +228,17 @@ runnerRoutes.patch(
     if (input.labels !== undefined) update.labels = input.labels;
     if (input.capabilities !== undefined) update.capabilities = input.capabilities;
     if (input.config) update.config = nextConfig;
-    if (input.status !== undefined) update.status = input.status;
 
-    const [row] = await db.update(runners).set(update).where(eq(runners.id, id)).returning();
-    if (!row) throw notFound();
+    const [updated] = await db.update(runners).set(update).where(eq(runners.id, id)).returning();
+    if (!updated) throw notFound();
+
+    // ISS-381 (2.3) — route the status mutation through the audited, change-gated
+    // writer (appends a runner_events row only on an actual transition).
+    let row = updated;
+    if (input.status !== undefined) {
+      await setRunnerStatus({ runnerId: id, newStatus: input.status, reason: 'operator_patch' });
+      row = { ...updated, status: input.status };
+    }
 
     roomManager.publish(projectRoom(row.projectId), {
       event: 'runner.updated',
@@ -327,7 +335,7 @@ runnerRoutes.post(
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
     if (!access.role) throw forbidden('not a project member');
-    await db.update(runners).set({ status: 'disabled', updatedAt: new Date() }).where(eq(runners.id, id));
+    await setRunnerStatus({ runnerId: id, newStatus: 'disabled', reason: 'operator_exclude' });
     return c.json({ ok: true });
   },
 );
@@ -344,10 +352,7 @@ runnerRoutes.post(
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
     if (!access.role) throw forbidden('not a project member');
-    await db
-      .update(runners)
-      .set({ status: 'offline', updatedAt: new Date() })
-      .where(eq(runners.id, id));
+    await setRunnerStatus({ runnerId: id, newStatus: 'offline', reason: 'operator_include' });
     return c.json({ ok: true });
   },
 );

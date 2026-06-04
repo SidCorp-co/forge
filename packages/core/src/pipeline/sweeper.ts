@@ -101,6 +101,7 @@ export interface SweepResult {
   neverClaimedDispatches: OrphanReconcileResult;
   expiredHolds: ExpiredHoldsSweepResult;
   backstopProjects: number;
+  queueSnapshots: number;
 }
 
 export async function runPipelineSweep(now: Date = new Date()): Promise<SweepResult> {
@@ -118,6 +119,9 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const neverClaimedDispatches = await reconcileNeverClaimedDispatches(now);
   const expiredHolds = await sweepExpiredHolds(now);
   const backstopProjects = await runDispatcherBackstop();
+  // ISS-381 (2.2) — snapshot per-project queue depth. Best-effort: a failure
+  // here must never abort the tick or block the heartbeat below.
+  const queueSnapshots = await recordQueueSnapshots();
   // Record the heartbeat ONLY after every pass succeeded. Recording at the
   // top would leave `pgboss-health` blind to a silent backstop failure
   // (lastTickAt fresh, dispatcher.tick_missing never fires). Letting either
@@ -130,7 +134,44 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     neverClaimedDispatches,
     expiredHolds,
     backstopProjects,
+    queueSnapshots,
   };
+}
+
+/**
+ * ISS-381 (2.2) — write one `queue_snapshots` row per project that currently has
+ * at least one active job (queued/dispatched/running). One grouped
+ * INSERT...SELECT per tick; projects with no active jobs get no row (the read
+ * gap-fills missing buckets as 0). Best-effort: never throws — a snapshot is
+ * observability, not part of the dispatch path. Returns the rows written.
+ *
+ * `avg_wait_ms` is the mean current wait (now - queued_at) over jobs still
+ * `queued` (NULL when none are queued). `queue_depth` counts `queued`;
+ * `running_count` counts `dispatched`+`running`.
+ */
+async function recordQueueSnapshots(): Promise<number> {
+  try {
+    const rows = await db.execute<{ project_id: string }>(sql`
+      INSERT INTO queue_snapshots (project_id, queue_depth, running_count, avg_wait_ms)
+      SELECT project_id,
+             count(*) FILTER (WHERE status = 'queued')::int AS queue_depth,
+             count(*) FILTER (WHERE status IN ('dispatched', 'running'))::int AS running_count,
+             avg(extract(epoch from (now() - queued_at)) * 1000.0)
+               FILTER (WHERE status = 'queued')::bigint AS avg_wait_ms
+      FROM jobs
+      WHERE status IN ('queued', 'dispatched', 'running')
+      GROUP BY project_id
+      RETURNING project_id
+    `);
+    const written = Array.isArray(rows) ? rows.length : 0;
+    if (written > 0) {
+      logger.info({ written }, 'pipeline-sweeper: queue snapshots written');
+    }
+    return written;
+  } catch (err) {
+    logger.error({ err }, 'pipeline-sweeper: queue snapshot pass failed (skipped)');
+    return 0;
+  }
 }
 
 /**

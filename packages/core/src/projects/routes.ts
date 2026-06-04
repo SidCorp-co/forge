@@ -28,6 +28,7 @@ import {
 } from '../pipeline/pipeline-config-schema.js';
 import { PipelineConfigError, updatePipelineConfig } from '../pipeline/pipeline-config-service.js';
 import { STATUS_TO_JOB_TYPE } from '../pipeline/skill-mapping.js';
+import { insertRunnerEvent } from '../runners/runner-events.js';
 import { defaultRunnerCapabilities } from '../runners/select.js';
 import { mergeStateContext, stateContextSchema } from './state-context.js';
 
@@ -513,6 +514,24 @@ projectRoutes.post(
         branch: runners.branch,
         status: runners.status,
       });
+
+    if (!runner) {
+      throw new HTTPException(500, {
+        message: 'runner upsert returned no row',
+        cause: { code: 'RUNNER_UPSERT_FAILED' },
+      });
+    }
+
+    // ISS-381 (2.3) — audit the bind as the runner's initial status event
+    // (old_status null). Bind is an infrequent operator action, so an event per
+    // bind is informative, not noisy (unlike the per-tick heartbeat site).
+    await insertRunnerEvent(db, {
+      runnerId: runner.id,
+      projectId: runner.projectId,
+      oldStatus: null,
+      newStatus: runner.status,
+      reason: 'bind',
+    });
 
     return c.json(runner, 201);
   },

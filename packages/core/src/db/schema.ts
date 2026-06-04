@@ -1,6 +1,7 @@
 import { relations, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
+  bigint,
   boolean,
   customType,
   foreignKey,
@@ -2166,6 +2167,13 @@ export const uploadTickets = pgTable(
 export const issueStepContextKinds = ['handoff'] as const;
 export type IssueStepContextKind = (typeof issueStepContextKinds)[number];
 
+// ISS-381 (2.1) — unified structured verdict promoted out of the handoff
+// payload. Maps the review handoff `verdict` (pass/needs_fix/no_change) and the
+// test handoff `result` (pass/fail) onto one queryable enum; `abstain` is
+// reserved for a review that could not run.
+export const stepVerdicts = ['pass', 'fail', 'needs_fix', 'no_change', 'abstain'] as const;
+export type StepVerdict = (typeof stepVerdicts)[number];
+
 export const issueStepContexts = pgTable(
   'issue_step_contexts',
   {
@@ -2183,6 +2191,9 @@ export const issueStepContexts = pgTable(
     step: text('step'),
     attempt: integer('attempt').notNull().default(1),
     payload: jsonb('payload').notNull(),
+    // ISS-381 (2.1) — nullable; set only for review/test handoffs. Powers the
+    // pass_rate / approve_rate timeseries reads (migration 0094).
+    verdict: text('verdict', { enum: stepVerdicts }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -2192,5 +2203,52 @@ export const issueStepContexts = pgTable(
       .where(sql`${t.kind} = 'handoff'`),
     issueKindIdx: index('issue_step_contexts_issue_kind_idx').on(t.issueId, t.kind),
     runIdx: index('issue_step_contexts_run_idx').on(t.pipelineRunId),
+    verdictIdx: index('issue_step_contexts_verdict_idx')
+      .on(t.projectId, t.step, t.createdAt)
+      .where(sql`${t.verdict} IS NOT NULL`),
+  }),
+);
+
+// ISS-381 (2.2) — per-project queue-depth snapshots written once per pipeline
+// sweeper tick (runPipelineSweep) for projects with active jobs. Sparse: a tick
+// with no active jobs for a project writes no row; the read gap-fills as 0.
+export const queueSnapshots = pgTable(
+  'queue_snapshots',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    ts: timestamp('ts', { withTimezone: true }).notNull().defaultNow(),
+    queueDepth: integer('queue_depth').notNull(),
+    runningCount: integer('running_count').notNull(),
+    avgWaitMs: bigint('avg_wait_ms', { mode: 'number' }),
+  },
+  (t) => ({
+    projectTsIdx: index('queue_snapshots_project_ts_idx').on(t.projectId, t.ts),
+  }),
+);
+
+// ISS-381 (2.3) — runner status-change audit. One row per actual transition,
+// written change-gated at every runners.status mutation site. old_status is
+// nullable for the initial bind/create event.
+export const runnerEvents = pgTable(
+  'runner_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    runnerId: uuid('runner_id')
+      .notNull()
+      .references((): AnyPgColumn => runners.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    oldStatus: text('old_status'),
+    newStatus: text('new_status').notNull(),
+    reason: text('reason'),
+    ts: timestamp('ts', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    runnerTsIdx: index('runner_events_runner_ts_idx').on(t.runnerId, t.ts),
+    projectTsIdx: index('runner_events_project_ts_idx').on(t.projectId, t.ts),
   }),
 );

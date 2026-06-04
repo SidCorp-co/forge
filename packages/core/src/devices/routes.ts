@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { zValidator } from '@hono/zod-validator';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -12,6 +12,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { rateLimit } from '../middleware/rate-limit.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { requireFreshAuth } from '../middleware/require-fresh-auth.js';
+import { insertRunnerEvent } from '../runners/runner-events.js';
 import { redeemPairingCode } from './pair.js';
 
 const badRequest = (details: unknown) =>
@@ -337,10 +338,37 @@ deviceAuthRoutes.post(
     // stale-detector doesn't flip them offline. After ISS-172 Slice A a
     // single device may have one runner per project, so this update fans
     // out across every binding.
-    await db
-      .update(runners)
-      .set({ lastSeenAt: new Date(), status: 'online', updatedAt: new Date() })
-      .where(eq(runners.deviceId, device.id));
+    //
+    // ISS-381 (2.3) — change-gated audit: the `prev` CTE snapshots the status
+    // BEFORE the UPDATE, so we can record a runner_events row only for runners
+    // that were not already online (the offline→online transition). A
+    // steady-state heartbeat updates last_seen_at for all bindings but emits no
+    // event, keeping the audit table free of per-tick noise.
+    const transitioned = (await db.execute(sql`
+      WITH prev AS (
+        SELECT id, project_id, status AS old_status
+        FROM runners
+        WHERE device_id = ${device.id}
+      ),
+      upd AS (
+        UPDATE runners
+        SET last_seen_at = now(), status = 'online', updated_at = now()
+        WHERE device_id = ${device.id}
+        RETURNING id
+      )
+      SELECT id, project_id, old_status
+      FROM prev
+      WHERE old_status <> 'online'
+    `)) as unknown as Array<{ id: string; project_id: string; old_status: string }> | undefined;
+    for (const r of transitioned ?? []) {
+      await insertRunnerEvent(db, {
+        runnerId: r.id,
+        projectId: r.project_id,
+        oldStatus: r.old_status,
+        newStatus: 'online',
+        reason: 'device_heartbeat',
+      });
+    }
 
     if (wasOffline) {
       // Best-effort broadcast — import lazily to avoid circular deps at module init.

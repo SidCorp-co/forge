@@ -302,3 +302,36 @@ describe('reconcileNeverClaimedDispatches (ISS-378)', () => {
     expect(finalizeFailedJobMock).not.toHaveBeenCalled();
   });
 });
+
+describe('runPipelineSweep — queue snapshots (ISS-381 2.2)', () => {
+  it('emits a grouped per-project INSERT into queue_snapshots each tick', async () => {
+    const result = await runPipelineSweep();
+    expect(result.queueSnapshots).toBe(0); // default mock returns []
+    const insertCall = dbExecute.mock.calls.find((c) =>
+      sqlText(c[0]).includes('queue_snapshots'),
+    );
+    expect(insertCall).toBeDefined();
+    const text = sqlText(insertCall?.[0]);
+    expect(text).toContain('INSERT INTO queue_snapshots');
+    expect(text).toContain('GROUP BY project_id');
+    expect(text).toMatch(/FILTER\s*\(WHERE\s+status\s*=\s*'queued'\)/);
+  });
+
+  it('counts the rows written', async () => {
+    dbExecute.mockImplementation(async (q: unknown) =>
+      sqlText(q).includes('queue_snapshots') ? [{ project_id: 'p1' }, { project_id: 'p2' }] : [],
+    );
+    const result = await runPipelineSweep();
+    expect(result.queueSnapshots).toBe(2);
+  });
+
+  it('is best-effort — a snapshot failure never aborts the tick', async () => {
+    dbExecute.mockImplementation(async (q: unknown) => {
+      if (sqlText(q).includes('queue_snapshots')) throw new Error('insert boom');
+      return [];
+    });
+    const result = await runPipelineSweep();
+    expect(result.queueSnapshots).toBe(0);
+    expect(result).toHaveProperty('backstopProjects');
+  });
+});

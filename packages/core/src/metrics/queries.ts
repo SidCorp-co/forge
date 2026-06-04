@@ -22,6 +22,11 @@ export const METRICS = [
   'queue_wait',
   'runner_utilization',
   'cache_hit_rate',
+  // ISS-381 (Part 2) — backed by the new collection tables:
+  'pass_rate', // issue_step_contexts.verdict, step='test'
+  'approve_rate', // issue_step_contexts.verdict, step='review'
+  'queue_depth', // queue_snapshots (sweeper-written)
+  'runner_uptime', // runner_events (status-change audit)
 ] as const;
 export type Metric = (typeof METRICS)[number];
 
@@ -326,7 +331,150 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
       );
       break;
     }
+
+    case 'pass_rate':
+    case 'approve_rate': {
+      // ISS-381 (2.1) — verdict promoted onto issue_step_contexts. pass_rate is
+      // over test handoffs (verdict pass/fail); approve_rate over review handoffs
+      // (verdict pass = APPROVE). `rate` is null for empty buckets so a chart can
+      // distinguish "no runs" from "0% pass".
+      const step = metric === 'pass_rate' ? 'test' : 'review';
+      const rows = (await db.execute(sql`
+        SELECT date_trunc(${bucket}, created_at) AS bucket,
+               (count(*) FILTER (WHERE verdict = 'pass')::float / count(*)) AS rate,
+               count(*)::int AS n
+        FROM issue_step_contexts
+        WHERE project_id = ${projectId}
+          AND step = ${step}
+          AND verdict IS NOT NULL
+          AND created_at >= ${cutoff}
+        GROUP BY 1
+        ORDER BY 1
+      `)) as unknown as Array<Record<string, unknown>>;
+      series = densifyScalar(
+        buckets,
+        rows,
+        (r) => ({ rate: r.rate == null ? null : num(r.rate), n: num(r.n) }),
+        { rate: null, n: 0 },
+      );
+      break;
+    }
+
+    case 'queue_depth': {
+      // ISS-381 (2.2) — sweeper-written snapshots. Average the per-tick depth /
+      // running count within each bucket; gaps fill as 0 (no active jobs).
+      const rows = (await db.execute(sql`
+        SELECT date_trunc(${bucket}, ts) AS bucket,
+               avg(queue_depth)::float AS queue_depth,
+               avg(running_count)::float AS running_count,
+               avg(avg_wait_ms)::float AS avg_wait_ms
+        FROM queue_snapshots
+        WHERE project_id = ${projectId}
+          AND ts >= ${cutoff}
+        GROUP BY 1
+        ORDER BY 1
+      `)) as unknown as Array<Record<string, unknown>>;
+      series = densifyScalar(
+        buckets,
+        rows,
+        (r) => ({
+          queueDepth: num(r.queue_depth),
+          runningCount: num(r.running_count),
+          avgWaitMs: r.avg_wait_ms == null ? null : num(r.avg_wait_ms),
+        }),
+        { queueDepth: 0, runningCount: 0, avgWaitMs: null },
+      );
+      break;
+    }
+
+    case 'runner_uptime': {
+      // ISS-381 (2.3) — reconstruct each runner's online fraction per bucket from
+      // the runner_events transition log. We fetch in-window events plus the
+      // latest pre-window event per runner (the state entering the window), then
+      // clip each online segment to bucket boundaries in JS — mirrors how
+      // `throughput` computes its cumulative in JS rather than SQL.
+      // The pre-window carry-in MUST be the LATEST event before the cutoff.
+      // DISTINCT ON (runner_id) keeps the first row per runner only when the
+      // query's OWN leftmost ORDER BY matches the DISTINCT ON expressions — a
+      // trailing ORDER BY on the UNION does NOT bind to the sub-SELECT. So the
+      // DISTINCT ON lives in its own ordered subquery; otherwise Postgres keeps
+      // an arbitrary pre-cutoff event and the leading-edge onlinePct is wrong.
+      const rows = (await db.execute(sql`
+        SELECT runner_id, new_status, ts FROM runner_events
+        WHERE project_id = ${projectId} AND ts >= ${cutoff}
+        UNION ALL
+        SELECT runner_id, new_status, ts FROM (
+          SELECT DISTINCT ON (runner_id) runner_id, new_status, ts
+          FROM runner_events
+          WHERE project_id = ${projectId} AND ts < ${cutoff}
+          ORDER BY runner_id, ts DESC
+        ) carry
+      `)) as unknown as Array<Record<string, unknown>>;
+      series = computeRunnerUptime(buckets, rows, BUCKET_MS[bucket], params.now ?? new Date());
+      break;
+    }
   }
 
   return { metric, bucket, days, groupBy: groupByStep ? 'step' : null, series };
+}
+
+/**
+ * ISS-381 (2.3) — compute per-(bucket × runner) online fraction from the raw
+ * runner_events rows. Each row is `{ runner_id, new_status, ts }`; a runner holds
+ * `new_status` from its `ts` until the next event (or `now`). Online segments are
+ * clipped to each bucket window and summed; `onlinePct` is online-ms / bucket-ms,
+ * clamped 0..1. Runners with no events in or before the window do not appear.
+ */
+export function computeRunnerUptime(
+  buckets: string[],
+  rows: Array<Record<string, unknown>>,
+  bucketMs: number,
+  now: Date,
+): TimeseriesPoint[] {
+  const nowMs = now.getTime();
+  // Group events by runner, preserving ascending ts order.
+  const byRunner = new Map<string, Array<{ status: string; ts: number }>>();
+  for (const r of rows) {
+    const runnerId = String(r.runner_id);
+    const ts = r.ts instanceof Date ? r.ts.getTime() : new Date(r.ts as string).getTime();
+    const list = byRunner.get(runnerId) ?? [];
+    list.push({ status: String(r.new_status), ts });
+    byRunner.set(runnerId, list);
+  }
+
+  const bucketStarts = buckets.map((b) => new Date(b).getTime());
+  const out: TimeseriesPoint[] = [];
+
+  for (const runnerId of [...byRunner.keys()].sort()) {
+    const events = (byRunner.get(runnerId) ?? []).sort((a, b) => a.ts - b.ts);
+    const onlineMs: number[] = new Array(bucketStarts.length).fill(0);
+
+    for (let i = 0; i < events.length; i++) {
+      const ev = events[i];
+      if (!ev || ev.status !== 'online') continue;
+      const segStart = ev.ts;
+      const next = events[i + 1];
+      const segEnd = next ? next.ts : nowMs;
+      if (segEnd <= segStart) continue;
+      for (let b = 0; b < bucketStarts.length; b++) {
+        const bStart = bucketStarts[b];
+        if (bStart === undefined) continue;
+        const bEnd = bStart + bucketMs;
+        const overlap = Math.min(segEnd, bEnd) - Math.max(segStart, bStart);
+        if (overlap > 0) onlineMs[b] = (onlineMs[b] ?? 0) + overlap;
+      }
+    }
+
+    for (let b = 0; b < bucketStarts.length; b++) {
+      const ts = buckets[b];
+      if (ts === undefined) continue;
+      out.push({
+        ts,
+        runnerId,
+        onlinePct: Math.min(1, Math.max(0, (onlineMs[b] ?? 0) / bucketMs)),
+      });
+    }
+  }
+
+  return out;
 }

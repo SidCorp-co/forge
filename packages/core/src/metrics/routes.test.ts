@@ -294,4 +294,82 @@ describe('GET …/metrics/timeseries — series shape', () => {
     expect(body.bucket).toBe('hour');
     expect(body.series).toHaveLength(48);
   });
+
+  // ── ISS-381 (Part 2) new-collection metrics ──────────────────────────────
+
+  it('pass_rate: ratio of test verdict=pass over issue_step_contexts', async () => {
+    authVerified();
+    accessAsOwner();
+    const buckets = bucketTimestamps(7, 'day', new Date());
+    queryQueue.push([{ bucket: buckets[6], rate: 0.75, n: 4 }]);
+    const res = await buildApp().request(url('pass_rate', '&days=7'), {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { series: Array<{ ts: string; rate: number | null; n: number }> };
+    expect(body.series).toHaveLength(7);
+    expect(body.series.find((p) => p.ts === buckets[6])?.rate).toBeCloseTo(0.75);
+    // empty buckets are null (distinguish "no runs" from "0% pass")
+    expect(body.series[0]?.rate).toBeNull();
+    const serialized = JSON.stringify(executedSql);
+    expect(serialized).toContain('issue_step_contexts');
+    expect(serialized).toContain('verdict');
+    expect(serialized).toContain("step = ");
+  });
+
+  it('approve_rate: targets review handoffs', async () => {
+    authVerified();
+    accessAsOwner();
+    queryQueue.push([]);
+    const res = await buildApp().request(url('approve_rate', '&days=3'), {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { series: Array<{ rate: number | null; n: number }> };
+    expect(body.series).toHaveLength(3);
+    expect(body.series.every((p) => p.rate === null && p.n === 0)).toBe(true);
+    // review step is bound as a parameter; assert the verdict source table.
+    expect(JSON.stringify(executedSql)).toContain('issue_step_contexts');
+  });
+
+  it('queue_depth: averages sweeper snapshots, gaps fill 0', async () => {
+    authVerified();
+    accessAsOwner();
+    const buckets = bucketTimestamps(5, 'day', new Date());
+    queryQueue.push([{ bucket: buckets[4], queue_depth: 3.5, running_count: 1, avg_wait_ms: 1200 }]);
+    const res = await buildApp().request(url('queue_depth', '&days=5'), {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    const body = (await res.json()) as {
+      series: Array<{ ts: string; queueDepth: number; runningCount: number; avgWaitMs: number | null }>;
+    };
+    expect(body.series).toHaveLength(5);
+    expect(body.series.find((p) => p.ts === buckets[4])?.queueDepth).toBeCloseTo(3.5);
+    expect(body.series[0]?.queueDepth).toBe(0);
+    expect(JSON.stringify(executedSql)).toContain('queue_snapshots');
+  });
+
+  it('runner_uptime: per-runner dense series from runner_events', async () => {
+    authVerified();
+    accessAsOwner();
+    const buckets = bucketTimestamps(2, 'day', new Date());
+    // one online event at the first bucket start → online across the window
+    queryQueue.push([{ runner_id: RUNNER_ID, new_status: 'online', ts: buckets[0] }]);
+    const res = await buildApp().request(url('runner_uptime', '&days=2'), {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      series: Array<{ ts: string; runnerId: string; onlinePct: number }>;
+    };
+    expect(body.series).toHaveLength(2); // one runner × 2 buckets
+    expect(body.series.every((p) => p.runnerId === RUNNER_ID)).toBe(true);
+    expect(body.series.every((p) => p.onlinePct >= 0 && p.onlinePct <= 1)).toBe(true);
+    const serialized = JSON.stringify(executedSql);
+    expect(serialized).toContain('runner_events');
+    // Regression guard: the pre-window carry-in DISTINCT ON must sit in its own
+    // ordered subquery (else Postgres returns an arbitrary pre-cutoff event).
+    expect(serialized).toContain('DISTINCT ON (runner_id)');
+    expect(serialized).toContain(') carry');
+  });
 });
