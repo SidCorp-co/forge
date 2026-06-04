@@ -59,14 +59,20 @@ Full rationale + status-pipeline diagram + staging deploy details: [Trunk-Based 
 
 1. Fork the repo and create a branch from `main`. Pick a name from the
    [Branch naming](#branch-naming--pick-one-scheme) table above.
-2. Write code + tests. The pre-push hook runs them locally — keep `main` green.
+2. Write code + tests. The pre-push hook gives fast local feedback (runs
+   `build` for the packages you touched; set `PREPUSH_FULL=1` to also run their
+   test suites). It is convenience, **not** the gate — CI is.
 3. Commit using [Conventional Commits](https://www.conventionalcommits.org/):
    - `feat: add X` — new feature
    - `fix: Y` — bug fix
    - `docs: Z` — docs only
    - `refactor:`, `test:`, `chore:`, `perf:`
    - Reference issue ID in the body (`ISS-279`), not the subject — keeps subjects under 72 chars.
-4. Open a PR and fill out the template. Same-day merge is the target; if it stretches past a day, gate the work behind a feature flag and merge anyway.
+4. Open a PR and fill out the template. CI runs automatically; the **`ci-passed`**
+   check is the single required gate (it aggregates install + language + the
+   affected packages' build/test + markdown-link integrity) and must be green
+   before merge. Same-day merge is the target; if it stretches past a day, gate
+   the work behind a feature flag and merge anyway.
 5. A maintainer reviews within 3 business days. Reverts are cheap — don't fight them.
 
 ## Coding standards

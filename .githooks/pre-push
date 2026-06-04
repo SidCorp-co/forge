@@ -1,13 +1,17 @@
 #!/bin/bash
-# pre-push hook — Trunk-Based Development discipline.
+# pre-push hook — fast local feedback for Trunk-Based Development.
 #
-# Runs build + tests on the pnpm workspace packages that have files changed
-# in the commits being pushed. Aborts the push on any failure so main stays
-# green.
+# CI (.github/workflows/ci.yml, aggregated by the `ci-passed` required check)
+# is the AUTHORITATIVE merge gate. This hook just catches a build break before
+# you push — contributors may not have it installed and can bypass it, so it
+# must never be the only thing standing between a bad commit and main.
 #
-# Skip mechanisms (use sparingly):
-#   - SKIP_PREPUSH=1 git push     — bypass entirely (e.g. emergency revert)
-#   - PREPUSH_SKIP_TESTS=1        — build only, no tests (faster, less safe)
+# By default it runs the cheap guards + `pnpm build` for the affected packages
+# (no DB needed, ~couple min). The full package test suites are opt-in.
+#
+# Controls:
+#   - SKIP_PREPUSH=1 git push   — bypass entirely (e.g. emergency revert)
+#   - PREPUSH_FULL=1 git push   — also run the affected packages' test suites
 
 set -e
 
@@ -127,8 +131,8 @@ for pkg in $packages; do
     echo "[pre-push] FAIL: $pkg build broke. Push aborted."
     exit 1
   }
-  if [ "$PREPUSH_SKIP_TESTS" = "1" ]; then
-    echo "[pre-push] $pkg → tests skipped (PREPUSH_SKIP_TESTS=1)"
+  if [ "$PREPUSH_FULL" != "1" ]; then
+    echo "[pre-push] $pkg → tests skipped (build-only default; CI gates tests — use PREPUSH_FULL=1 to run them locally)"
     continue
   fi
   # `dev` and `contracts` may not have a meaningful test command — skip if absent
