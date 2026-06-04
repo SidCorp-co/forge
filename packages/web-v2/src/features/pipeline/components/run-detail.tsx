@@ -23,6 +23,7 @@ import {
   StatusChip,
   SlideOver,
   Tabs,
+  Tooltip,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
@@ -99,6 +100,32 @@ export function RunDetail({ open, onClose, issue, runId, slug }: RunDetailProps)
     ? runStatusToStatusKey(run.status)
     : issueStatusToStatusKey(issue?.status ?? "open");
   const isActive = run?.status === "running" || run?.status === "paused";
+  // Pause is a "finish the in-flight step, then halt" gate (it does NOT abort
+  // the running agent — only Cancel does). So a paused run with a step still
+  // `running` is transitional ("Pausing…"); once that step clears it is fully
+  // halted. `useRun` is WS-live, so the UI flips pausing→halted on its own.
+  const activeStep = run?.steps.find((s) => s.status === "running") ?? null;
+  const isPausing = run?.status === "paused" && !!activeStep;
+  const isHalted = run?.status === "paused" && !activeStep;
+
+  // "Stop now" is the only abort path (wired to the existing cancel mutation).
+  // Guard the destructive click with a lightweight inline two-step confirm —
+  // there is no Dialog primitive in the kit and Stop is terminal.
+  const [confirmStop, setConfirmStop] = useState(false);
+  useEffect(() => {
+    if (!confirmStop) return;
+    const t = setTimeout(() => setConfirmStop(false), 3000);
+    return () => clearTimeout(t);
+  }, [confirmStop]);
+  function onStopClick() {
+    if (!runId) return;
+    if (!confirmStop) {
+      setConfirmStop(true);
+      return;
+    }
+    setConfirmStop(false);
+    cancel.mutate(runId);
+  }
 
   const notSupported = (action: string) =>
     toast({ tone: "info", title: `${action} isn't supported yet` });
@@ -122,14 +149,8 @@ export function RunDetail({ open, onClose, issue, runId, slug }: RunDetailProps)
     { label: "Rerun", icon: "rerun", onSelect: () => notSupported("Rerun") },
     { label: "Fork", icon: "fork", onSelect: () => notSupported("Fork") },
   );
-  if (isActive && runId) {
-    menuItems.push({
-      label: "Cancel run",
-      icon: "stop",
-      danger: true,
-      onSelect: () => cancel.mutate(runId),
-    });
-  }
+  // NOTE: abort lives on the first-class "Stop now" control below (ISS-376), so
+  // there is exactly one abort affordance — no duplicate "Cancel run" here.
 
   return (
     <SlideOver
@@ -161,35 +182,72 @@ export function RunDetail({ open, onClose, issue, runId, slug }: RunDetailProps)
             </div>
           </div>
 
-          {/* Controls */}
-          <div className="flex flex-wrap items-center gap-2">
-            {run?.status === "running" && (
-              <Button
-                variant="primary"
-                icon="pause"
-                loading={pause.isPending}
-                onClick={() => runId && pause.mutate(runId)}
+          {/* Controls — Pause (finish-then-halt) and Stop now (abort) are
+              visually + verbally distinct: a primary Pause vs a danger Stop. */}
+          <div className="flex flex-col gap-2.5">
+            <div className="flex flex-wrap items-center gap-2">
+              {run?.status === "running" && (
+                <Tooltip label="Finishes the in-flight step, then halts before the next step. Does NOT stop the running agent.">
+                  <Button
+                    variant="primary"
+                    icon="pause"
+                    loading={pause.isPending}
+                    onClick={() => runId && pause.mutate(runId)}
+                  >
+                    Pause run
+                  </Button>
+                </Tooltip>
+              )}
+              {run?.status === "paused" && (
+                <Button
+                  variant="primary"
+                  icon="play"
+                  loading={resume.isPending}
+                  onClick={() => runId && resume.mutate(runId)}
+                >
+                  Resume run
+                </Button>
+              )}
+              {/* Distinct destructive abort — present whenever an agent could
+                  still be running (running, or the finishing step while pausing). */}
+              {runId && (run?.status === "running" || isPausing) && (
+                <Tooltip label="Aborts the running agent immediately (cancellationRequested + agent:abort). Terminal — the run cannot be resumed.">
+                  <Button
+                    variant="danger"
+                    icon="stop"
+                    loading={cancel.isPending}
+                    onClick={onStopClick}
+                  >
+                    {confirmStop ? "Confirm stop" : "Stop now"}
+                  </Button>
+                </Tooltip>
+              )}
+              <Menu
+                align="left"
+                trigger={
+                  <Button variant="ghost" icon="more" aria-label="More run actions" className="px-2.5" />
+                }
+                items={menuItems}
+              />
+            </div>
+
+            {/* Transitional vs fully-halted state for a paused run (ISS-376). */}
+            {isPausing && (
+              <p
+                className="fg-body-sm inline-flex items-center gap-2"
+                style={{ color: "var(--amber-600)" }}
               >
-                Pause run
-              </Button>
+                <span
+                  aria-hidden
+                  className="forge-pulse inline-block size-2 flex-none rounded-full"
+                  style={{ background: "var(--amber-500)" }}
+                />
+                Pausing — finishing current step: {activeStep?.jobType ?? "the in-flight step"}…
+              </p>
             )}
-            {run?.status === "paused" && (
-              <Button
-                variant="primary"
-                icon="play"
-                loading={resume.isPending}
-                onClick={() => runId && resume.mutate(runId)}
-              >
-                Resume run
-              </Button>
+            {isHalted && (
+              <p className="fg-body-sm text-muted">Run halted — no active session.</p>
             )}
-            <Menu
-              align="left"
-              trigger={
-                <Button variant="ghost" icon="more" aria-label="More run actions" className="px-2.5" />
-              }
-              items={menuItems}
-            />
           </div>
 
           {/* Full tracker */}

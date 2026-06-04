@@ -70,6 +70,7 @@ import { BlockerBanner } from "./blocker-banner";
 import { CommentThread } from "./comment-thread";
 import { LiveAgentPanel } from "./live-agent-panel";
 import { PropertiesRail } from "./properties-rail";
+import { SessionGroupTimeline } from "./session-group-timeline";
 import { StepArtifactCard } from "./step-artifact-card";
 
 const TASK_STATUS_TONE: Record<TaskRow["status"], "neutral" | "cobalt" | "amber" | "green"> = {
@@ -344,6 +345,10 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
           {liveSession && (
             <LiveAgentPanel session={liveSession} step={liveStep} slug={slug} issueId={id} />
           )}
+
+          {/* Session-group continuity (ISS-376) — resumed/fresh per step. Self-
+              hides when no session carries group metadata. */}
+          <SessionGroupTimeline sessions={issue.agentSessions ?? []} />
 
           {/* Tier-2: per-stage artifact cards (AC#4/#6). */}
           <Card>
