@@ -52,6 +52,15 @@ const QUEUE_TIMEOUT_MS_DEFAULT = 120_000;
 const HEARTBEAT_TIMEOUT_MS_DEFAULT = 3 * 60_000;
 const MIN_TIMEOUT_MS = 30_000;
 
+// ISS-378 — a `dispatched` job that NEVER received a runner ack (zero
+// job_events, not even `started`) past this grace window is reaped fast. This
+// is distinct from runStaleSweep's 60-min quiet backstop, which covers a job
+// that DID start and went silent between event emissions (legit heavy work can
+// pause >5min). A `dispatched` job with zero events means the assigned runner
+// never claimed it, and a live runner claims within seconds — so 60min is far
+// too slow. Clamped at MIN_TIMEOUT_MS like the zombie thresholds.
+const NEVER_CLAIMED_MS_DEFAULT = 3 * 60_000;
+
 const PIPELINE_METADATA_TYPES = sql`('pipeline','pm')`;
 
 function readTimeoutEnv(name: string, fallback: number): number {
@@ -66,6 +75,10 @@ export function getZombieThresholds(): { queueMs: number; heartbeatMs: number } 
     queueMs: readTimeoutEnv('PIPELINE_QUEUE_TIMEOUT_MS', QUEUE_TIMEOUT_MS_DEFAULT),
     heartbeatMs: readTimeoutEnv('PIPELINE_HEARTBEAT_TIMEOUT_MS', HEARTBEAT_TIMEOUT_MS_DEFAULT),
   };
+}
+
+function neverClaimedThresholdMs(): number {
+  return readTimeoutEnv('PIPELINE_NEVER_CLAIMED_MS', NEVER_CLAIMED_MS_DEFAULT);
 }
 
 export interface ZombieSweepResult {
@@ -85,6 +98,7 @@ export interface SweepResult {
   durationMs: number;
   zombieSessions: ZombieSweepResult;
   orphanedJobs: OrphanReconcileResult;
+  neverClaimedDispatches: OrphanReconcileResult;
   expiredHolds: ExpiredHoldsSweepResult;
   backstopProjects: number;
 }
@@ -96,6 +110,12 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   // flipped to `failed` (heartbeat_timeout) immediately propagates to its
   // still-`dispatched`/`running` job, freeing the runner slot in one tick.
   const orphanedJobs = await reconcileOrphanedJobs(now);
+  // ISS-378 — reap `dispatched` jobs no runner ever claimed (zero job_events).
+  // reconcileOrphanedJobs above is session-driven and cannot see these (its
+  // candidate JOINs agent_sessions and requires a terminal session); without
+  // this pass they sit until runStaleSweep's 60-min backstop — long enough to
+  // hold the cap=1 slot and block the next stage for hours.
+  const neverClaimedDispatches = await reconcileNeverClaimedDispatches(now);
   const expiredHolds = await sweepExpiredHolds(now);
   const backstopProjects = await runDispatcherBackstop();
   // Record the heartbeat ONLY after every pass succeeded. Recording at the
@@ -107,6 +127,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     durationMs: Date.now() - t0,
     zombieSessions,
     orphanedJobs,
+    neverClaimedDispatches,
     expiredHolds,
     backstopProjects,
   };
@@ -167,10 +188,7 @@ export async function sweepZombieSessions(
         eq(agentSessions.status, 'queued'),
         or(
           and(isNotNull(agentSessions.dispatchedAt), lt(agentSessions.dispatchedAt, queueCutoff)),
-          and(
-            sql`${agentSessions.dispatchedAt} IS NULL`,
-            lt(agentSessions.createdAt, queueCutoff),
-          ),
+          and(sql`${agentSessions.dispatchedAt} IS NULL`, lt(agentSessions.createdAt, queueCutoff)),
         ),
         sql`${agentSessions.metadata}->>'type' IN ${PIPELINE_METADATA_TYPES}`,
         ...(projectFilter ? [projectFilter] : []),
@@ -327,6 +345,87 @@ export async function reconcileOrphanedJobs(
   return { reconciled };
 }
 
+/**
+ * ISS-378 — reap `dispatched` jobs that NO runner ever claimed.
+ *
+ * The wedge: an auto-retry job was dispatched but its assigned runner never
+ * acked it (no `job_events` at all, not even `started`, so `started_at` stays
+ * NULL). `reconcileOrphanedJobs` can't see it — that pass JOINs
+ * `agent_sessions` and only fires when the SESSION is terminal, but an
+ * auto-retry inherits the prior attempt's `agent_session_id` (retry.ts), which
+ * may be `completed`/`running`, so the JOIN never matches. The only other net
+ * was `runStaleSweep` at 60min. In between, the unclaimed `dispatched` row kept
+ * counting toward the cap=1 runner gate (parent run still `running`) AND held
+ * the prior stage non-terminal under strict-sequential — wedging the queue for
+ * ~4h (ISS-378, web-v2 agents console).
+ *
+ * Candidate = `dispatched` + `dispatched_at` older than the grace window +
+ * ZERO job_events (an event of any kind means the runner DID claim it; that
+ * case is the 60-min quiet backstop's job, not this one). The `result`-event
+ * exclusion the sibling passes carry is implied by "zero events".
+ *
+ * Reaping routes through the SAME `finalizeFailedJob` path, so the verify-first
+ * retry resolves a moot orphan whose issue already advanced
+ * (`completed_via_recovery`) instead of spawning a duplicate, retries onto
+ * another runner when the work is genuinely still pending, or manual-holds when
+ * the budget is exhausted. CAS on `status='dispatched'` so a runner that claims
+ * (emits `started`) in the same instant wins the race.
+ */
+export async function reconcileNeverClaimedDispatches(
+  now: Date = new Date(),
+  scope: SweepScope = {},
+): Promise<OrphanReconcileResult> {
+  const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
+  // postgres-js rejects raw Date params (Buffer.byteLength expects
+  // string/Buffer/ArrayBuffer); serialise to ISO before binding — same as
+  // sweepExpiredHolds.
+  const cutoffIso = new Date(now.getTime() - neverClaimedThresholdMs()).toISOString();
+  const candidates = await db.execute<{ id: string }>(sql`
+    SELECT j.id
+    FROM jobs j
+    WHERE j.status = 'dispatched'
+      AND j.dispatched_at IS NOT NULL
+      AND j.dispatched_at < ${cutoffIso}
+      AND NOT EXISTS (
+        SELECT 1 FROM job_events e WHERE e.job_id = j.id
+      )
+      ${projectClause}
+  `);
+
+  let reconciled = 0;
+  for (const row of candidates) {
+    try {
+      const [updated] = await db
+        .update(jobs)
+        .set({
+          status: 'failed',
+          error: 'dispatch_unclaimed',
+          finishedAt: new Date(),
+          failureKind: 'transient',
+          failureReason:
+            'dispatch never claimed by a runner (no started event within grace window)',
+          classifierVersion: 1,
+        })
+        .where(and(eq(jobs.id, row.id), eq(jobs.status, 'dispatched')))
+        .returning();
+      if (!updated) continue; // lost the CAS race — the runner just claimed it
+      reconciled++;
+      await finalizeFailedJob(updated, { error: 'dispatch_unclaimed' });
+    } catch (err) {
+      logger.error(
+        { err, jobId: row.id },
+        'pipeline-sweeper: never-claimed dispatch reconcile failed (row skipped)',
+      );
+    }
+  }
+
+  if (reconciled > 0) {
+    logger.info({ reconciled }, 'pipeline-sweeper: never-claimed dispatches reaped to failed');
+  }
+
+  return { reconciled };
+}
+
 function broadcastZombieTransition(
   sessionId: string,
   projectId: string,
@@ -357,9 +456,7 @@ export async function sweepExpiredHolds(
   now: Date,
   scope: SweepScope = {},
 ): Promise<ExpiredHoldsSweepResult> {
-  const projectClause = scope.projectId
-    ? sql`AND issues.project_id = ${scope.projectId}`
-    : sql``;
+  const projectClause = scope.projectId ? sql`AND issues.project_id = ${scope.projectId}` : sql``;
   // postgres-js driver rejects raw Date params (Buffer.byteLength expects
   // string/Buffer/ArrayBuffer). Serialise to ISO before binding.
   const nowIso = now.toISOString();
