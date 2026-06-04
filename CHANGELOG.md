@@ -16,6 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **A runner that genuinely finished its work no longer loses that work when its completion report races a server hiccup. If the job had been auto-failed by a timeout sweep in the meantime, the late "success" is now reconciled instead of rejected.**
   *Technical: `POST /jobs/:id/complete` (lifecycle-routes.ts) — when an `exitCode=0` arrives for a job already `failed` with a server-written reap marker (`session_lost` / `dispatch_unclaimed` / `stale`) and NO retry descendant is queued/dispatched/running/done, CAS-flip `failed→done` and run the normal success side-effects instead of `409 INVALID_STATE`. The active-retry guard prevents double-advance; verify-first on any scheduled retry already no-ops once the issue advances (ISS-378; the ISS-360 outage discarded a merged PR this way).*
 
+- **CLI runners now pull skill updates pushed from Forge instead of silently running stale on-disk skills.**
+  *Technical: Cut runner-v0.2.15 to publish the already-present skill.sync WS handler (forge-runner-core daemon/dispatch + workspace/skill_sync) past the stale v0.2.14 channel; bumped Cargo workspace version 0.2.11→0.2.15 + lock regen so update --check (CURRENT_VERSION=env!(CARGO_PKG_VERSION)) settles. Tag runner-v0.2.15 + dev1 live verify are out-of-band. Merge a033c16.*
+
 ### Added
 
 - **The pipeline now reproduces bugs before planning: a new `clarified` status sits between `confirmed` and `approved`, and the clarify step runs on the happy path — it reproduces the bug (or validates the UX) in a live environment, attaches evidence and a root-cause hypothesis, and only then hands the issue to planning. Trivially-sized issues (per-stage `skipComplexities`, e.g. xs/s) skip clarify automatically, and projects that never enabled clarify keep their exact previous flow.**
