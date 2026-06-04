@@ -102,6 +102,53 @@ describe('updatePipelineConfig — MISSING_SKILL_FOR_ENABLED_STAGE (ISS-238)', (
   });
 });
 
+describe('updatePipelineConfig — AUTO_STAGE_NEEDS_SKILL delta-validation (ISS-382)', () => {
+  it('accepts a session-groups save that re-asserts mode:auto for skill-less stages (no transition)', async () => {
+    // The session-groups editor wholesale-replaces `states`, and GET
+    // read-normalizes every stage to enabled:true/mode:'auto'. The stored
+    // config has no per-state overrides and the project has NO skills.
+    pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
+    // No AUTO_STAGE_NEEDS_SKILL query expected (needRegistration is empty —
+    // every stage was already effectively auto+enabled before). No toggle
+    // query either (no autoX toggles enabled). Just the post-update re-read.
+    pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
+
+    const result = await updatePipelineConfig({
+      projectId: '00000000-0000-0000-0000-000000000001',
+      patch: {
+        sessionGroups: { build: ['open', 'confirmed'] },
+        states: {
+          open: { enabled: true, mode: 'auto', sessionGroup: 'build' },
+          confirmed: { enabled: true, mode: 'auto', sessionGroup: 'build' },
+          developed: { enabled: true, mode: 'auto' },
+        },
+      },
+    });
+    expect(result.pipelineConfig).toBeDefined();
+    expect(dbExecute).toHaveBeenCalledTimes(1);
+  });
+
+  it('still flags a stage this patch transitions from disabled into enabled+auto without a skill', async () => {
+    // current: developed explicitly disabled. Patch flips it to enabled+auto.
+    pushSelect([
+      { agentConfig: { pipelineConfig: { states: { developed: { enabled: false } } } } },
+    ]);
+    // AUTO_STAGE_NEEDS_SKILL registrations query → no skill for `developed`.
+    pushSelect([]);
+
+    await expect(
+      updatePipelineConfig({
+        projectId: '00000000-0000-0000-0000-000000000001',
+        patch: { states: { developed: { enabled: true, mode: 'auto' } } },
+      }),
+    ).rejects.toMatchObject({
+      name: 'PipelineConfigError',
+      code: 'AUTO_STAGE_NEEDS_SKILL',
+      details: { stagesMissingSkill: expect.arrayContaining(['developed']) },
+    });
+  });
+});
+
 describe('PipelineConfigError', () => {
   it('exposes a stable code union including the ISS-238 code', () => {
     // Compile-time assertion via runtime construction (the union widens on

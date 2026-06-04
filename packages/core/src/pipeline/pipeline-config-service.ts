@@ -131,12 +131,30 @@ export async function updatePipelineConfig(
         }
 
         const mergedStatesForRule3 = (nextPipeline as { states?: StagesConfig }).states ?? {};
+        // ISS-382 — delta-validation. Only require a skill for a stage this
+        // patch actually TRANSITIONS into enabled+auto. A patch that merely
+        // re-asserts an already-auto stage must not trip this rule — the
+        // session-groups editor resends the full `states` map (states is
+        // wholesale-replaced, and GET read-normalizes every stage to
+        // enabled:true/mode:'auto'), so without the delta a sessionGroup-only
+        // save would 409 on any project lacking skills for some auto stage.
+        // The symmetric top-level autoX toggle rule below still guards the
+        // enable-without-skill failure mode on every patch.
+        const currentStates = (currentPipeline as { states?: StagesConfig }).states ?? {};
+        // Treat an absent/partial stage as the runtime default (enabled+auto),
+        // so a stage with no stored override is NOT seen as transitioning into
+        // auto when the patch spells out the defaults explicitly.
+        const isAutoEnabled = (sc?: { enabled?: boolean; mode?: 'auto' | 'manual' }) =>
+          (sc?.enabled ?? true) !== false && (sc?.mode ?? 'auto') === 'auto';
         const needRegistration = (
           Object.entries(mergedStatesForRule3) as Array<
             [string, { enabled?: boolean; mode?: 'auto' | 'manual' } | undefined]
           >
         )
-          .filter(([, v]) => v && v.enabled !== false && v.mode === 'auto')
+          .filter(
+            ([stage, v]) =>
+              isAutoEnabled(v) && !isAutoEnabled(currentStates[stage as IssueStatus]),
+          )
           .map(([stage]) => stage as IssueStatus);
         if (needRegistration.length > 0) {
           const regs = await db
