@@ -16,6 +16,11 @@ export interface StatusChipProps {
   size?: "sm" | "md";
   /** Status vocabulary this chip belongs to. Defaults to `issue`. */
   domain?: StatusDomain;
+  /** Override the chip text with an exact label (e.g. the issue's TRUE
+   *  lifecycle status — "Approved" / "Confirmed" / …) while keeping the bucket
+   *  colour + dot for at-a-glance grouping. Ignored for the `session` domain and
+   *  whenever the live `running · stage` band is showing. ISS-366 D2. */
+  label?: string;
 }
 
 /** Execution-vocabulary overrides for the `session` domain so an agent run reads
@@ -28,11 +33,11 @@ const SESSION_LABELS: Partial<Record<StatusKey, string>> = {
   passed: "Verified",
 };
 
-export function StatusChip({ status, stage, size = "md", domain = "issue" }: StatusChipProps) {
+export function StatusChip({ status, stage, size = "md", domain = "issue", label }: StatusChipProps) {
   const m = STATUS_META[status] ?? STATUS_META.queued;
   const isRunning = status === "running";
   const isSession = domain === "session";
-  const baseLabel = isSession ? (SESSION_LABELS[status] ?? m.label) : m.label;
+  const baseLabel = isSession ? (SESSION_LABELS[status] ?? m.label) : (label ?? m.label);
   const text = stage && isRunning ? `running · ${stage}` : baseLabel;
   // Session chips always read in mono (execution telemetry); issue chips use the
   // sans label unless they're showing the live `running · stage` band.
