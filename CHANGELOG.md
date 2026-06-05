@@ -69,6 +69,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Forge now has an in-app What's New feed and a browsable Help/Docs hub, with a nav badge that flags release notes you haven't seen yet — so you can follow changes and learn how to use Forge without leaving the app.**
   *Technical: What's New feed (product-global release source + per-user last-seen nav badge) and Help/Docs hub reusing the ISS-305 docs API, help-button.tsx, and github-releases.ts; nav entry points wired in web and web-v2 (v2 docs hub already present).*
 
+- **Headless CLI runners can now host interactive chat sessions, so you no longer need the desktop app open to chat with an agent on a server.**
+  *Technical: Runner daemon handles the agent:start device-room frame and streams replies via PATCH /agent-sessions/:id, mirroring the desktop device-room contract; chat stays off the jobs table and the pipeline cap=1.*
+
 ### Changed
 
 - **The Forge MCP tools that were prefixed `forge_admin_*` have been renamed to reflect what they actually are — ordinary project-scoped tools, not system-admin tools. `forge_admin_runners` → `forge_runners`, `forge_admin_users` → `forge_collaborators`, `forge_admin_health` → `forge_ops_health`; project archive moved onto `forge_projects.archive`; and the cross-your-projects metrics tool is now `forge_metrics.step_durations`. Access is unchanged — every one stays gated by your role on each project. The token-creation dialog no longer claims the `admin` scope grants "cross-tenant admin tools".**
