@@ -354,11 +354,30 @@ agentSessionRoutes.post(
     if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
 
     let deviceId: string | null = null;
+    // Whether an ONLINE Claude-capable client (desktop or a chat-capable
+    // runner) was found. `findAvailableDeviceForProject` only returns an online
+    // device; the `defaultDeviceId` fallback below may point at an offline one.
+    let onlineClient = false;
     if (input.origin !== 'desktop') {
       deviceId = await findAvailableDeviceForProject(project.id);
+      onlineClient = deviceId !== null;
     }
     if (!deviceId && project.defaultDeviceId) {
       deviceId = project.defaultDeviceId;
+    }
+
+    // ISS-321 — a user-driven chat needs a live Claude-capable client to run
+    // it (the desktop app or a chat-capable CLI runner). If none is online, the
+    // session would be created `running` but no `agent:start` listener exists,
+    // so it sits silent until the user gives up. Fail fast with a clear message
+    // instead. Agent sessions (review/reindex) and desktop-origin sessions —
+    // where the desktop runs Claude locally — are exempt.
+    if (!isAgentSession && input.origin !== 'desktop' && !onlineClient) {
+      throw new HTTPException(409, {
+        message:
+          'No online Claude client for this project. Open the desktop app or bring a chat-capable runner online, then try again.',
+        cause: { code: 'NO_CLAUDE_CLIENT' },
+      });
     }
 
     const agentName = input.type ?? 'agent';

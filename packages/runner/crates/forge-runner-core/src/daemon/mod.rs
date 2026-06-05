@@ -2,19 +2,22 @@
 //!
 //! Loop: connect WS → subscribe `device:<id>` (+ `runner:register` when
 //! enabled) → heartbeat every 30s → on `job.assigned` dispatch a job and stream
-//! its events back; on `job.cancel` abort the matching process.
+//! its events back; on `job.cancel` abort the matching process. Interactive
+//! chat (`agent:start` / `agent:send` / `agent:abort`) is handled out-of-band
+//! by `chat`, off the jobs path and under its own concurrency budget (ISS-321).
 
+pub mod chat;
 pub mod dispatch;
 
 use std::sync::Arc;
 
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, watch, Semaphore};
 
 use crate::config::Config;
 use crate::error::Result;
 use crate::runner::claude_code::ClaudeCodeRunner;
 use crate::runner::Runner;
-use crate::transport::frames::{job_id_of, Frame};
+use crate::transport::frames::{job_id_of, session_id_of, Frame};
 use crate::transport::runners;
 use crate::transport::ws::{self, RunnerRegistration, WsConfig};
 use crate::transport::{heartbeat, CoreClient};
@@ -195,6 +198,13 @@ pub async fn run(
         cfg.bindings.len()
     );
 
+    // Interactive-chat concurrency budget — separate from the pipeline
+    // `job.assigned` path so a long chat never consumes a pipeline cap slot and
+    // a burst of chats can't exhaust the box (ISS-321). Clamp to >= 1.
+    let chat_sem = Arc::new(Semaphore::new(
+        (cfg.runner.chat_max_concurrent as usize).max(1),
+    ));
+
     let cfg = Arc::new(cfg);
     let mut cancel_rx = cancel_rx.clone();
     loop {
@@ -214,6 +224,31 @@ pub async fn run(
                         if let Some(jid) = job_id_of(&frame.data) {
                             tracing::info!("[cancel] job={jid}");
                             let _ = runner.abort(&jid).await;
+                        }
+                    }
+                    "agent:start" => {
+                        let (client, runner, cfg, sem) =
+                            (client.clone(), runner.clone(), cfg.clone(), chat_sem.clone());
+                        tokio::spawn(async move {
+                            if let Err(e) = chat::handle_start(&client, runner, &cfg, sem, frame.data).await {
+                                tracing::error!("[chat] start: {e}");
+                            }
+                        });
+                    }
+                    "agent:send" => {
+                        let (client, runner, cfg, sem) =
+                            (client.clone(), runner.clone(), cfg.clone(), chat_sem.clone());
+                        tokio::spawn(async move {
+                            if let Err(e) = chat::handle_send(&client, runner, &cfg, sem, frame.data).await {
+                                tracing::error!("[chat] send: {e}");
+                            }
+                        });
+                    }
+                    "agent:abort" => {
+                        if let Some(sid) = session_id_of(&frame.data) {
+                            tracing::info!("[chat] abort session={sid}");
+                            let runner = runner.clone();
+                            tokio::spawn(async move { chat::handle_abort(runner, &sid).await });
                         }
                     }
                     "skill.sync" => {

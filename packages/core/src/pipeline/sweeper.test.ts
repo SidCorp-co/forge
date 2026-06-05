@@ -12,6 +12,9 @@ vi.mock('../jobs/dispatch-tick.js', () => ({
 
 const dbExecute = vi.fn(async (..._args: unknown[]) => [] as Array<Record<string, unknown>>);
 const sessionsWhere = vi.fn();
+// Captures the WHERE expression of each agent_sessions UPDATE so a test can
+// assert the metadata-type guard that keeps interactive chat off the sweeper.
+const sweepWhereArgs: unknown[] = [];
 const queuedProjectsRows: Array<{ projectId: string }> = [];
 
 vi.mock('../db/client.js', () => ({
@@ -19,9 +22,10 @@ vi.mock('../db/client.js', () => ({
     execute: (...args: unknown[]) => dbExecute(...(args as [])),
     update: () => ({
       set: () => ({
-        where: () => ({
-          returning: () => sessionsWhere(),
-        }),
+        where: (arg: unknown) => {
+          sweepWhereArgs.push(arg);
+          return { returning: () => sessionsWhere() };
+        },
       }),
     }),
     selectDistinct: () => ({
@@ -75,6 +79,7 @@ const {
   sweepExpiredHolds,
   reconcileOrphanedJobs,
   reconcileNeverClaimedDispatches,
+  sweepZombieSessions,
 } = await import('./sweeper.js');
 
 /** Flatten a drizzle `sql` template into its raw text for fragment assertions. */
@@ -107,9 +112,29 @@ beforeEach(() => {
   sessionsWhere.mockReset();
   sessionsWhere.mockResolvedValue([]); // no zombies by default
   queuedProjectsRows.length = 0;
+  sweepWhereArgs.length = 0;
   dbExecute.mockResolvedValue([]);
   finalizeFailedJobMock.mockClear();
   finalizeFailedJobMock.mockResolvedValue({ scheduled: false });
+});
+
+describe('sweepZombieSessions — interactive chat exemption (ISS-321)', () => {
+  it('scopes BOTH the queue-timeout and heartbeat-timeout passes to pipeline/pm sessions', async () => {
+    sessionsWhere.mockResolvedValue([]); // no zombies
+
+    await sweepZombieSessions(new Date('2026-06-05T00:00:00Z'), {});
+
+    // Two UPDATE passes: queued-past-timeout + running-with-stale-heartbeat.
+    expect(sweepWhereArgs.length).toBe(2);
+    // Both passes must carry `metadata->>'type' IN ('pipeline','pm')` so a plain
+    // chat session (created with metadata = {}) is never reaped while it sits
+    // idle waiting on the user. This guards the AC that the stale-detector must
+    // not kill a waiting chat — chat lives entirely off this predicate.
+    for (const arg of sweepWhereArgs) {
+      const text = sqlText(arg);
+      expect(text).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
+    }
+  });
 });
 
 describe('runPipelineSweep — dispatcher backstop', () => {

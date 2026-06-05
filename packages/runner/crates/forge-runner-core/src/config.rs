@@ -56,6 +56,12 @@ pub struct RunnerSettings {
     /// Cap on total concurrent jobs across the whole device. 0 = unlimited.
     #[serde(default)]
     pub device_max_concurrent: u32,
+    /// Max concurrent interactive chat turns on this device. Chat runs OFF the
+    /// jobs table and OUTSIDE the pipeline cap, so it gets its own budget — a
+    /// long chat must never consume a pipeline `job.assigned` slot, and a burst
+    /// of chats must never exhaust the box (ISS-321). Clamped to >= 1 at use.
+    #[serde(default = "default_chat_max_concurrent")]
+    pub chat_max_concurrent: u32,
     /// Send `runner:register` (gated behind core `runnerFramework` flag).
     #[serde(default)]
     pub register_enabled: bool,
@@ -66,6 +72,7 @@ impl Default for RunnerSettings {
         Self {
             max_concurrent: default_max_concurrent(),
             device_max_concurrent: 0,
+            chat_max_concurrent: default_chat_max_concurrent(),
             register_enabled: false,
         }
     }
@@ -73,6 +80,10 @@ impl Default for RunnerSettings {
 
 fn default_max_concurrent() -> u32 {
     1
+}
+
+fn default_chat_max_concurrent() -> u32 {
+    3
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
