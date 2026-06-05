@@ -13,6 +13,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **The project dashboard now uses the full screen width so cards fill wide displays instead of sitting in a narrow centered column, cutting down how far you have to scroll.**
   *Technical: Removed the max-w-6xl centered clamp on `(workspace)/projects/[slug]/page.tsx` (now `PageContainer width="wide"`, 1720px) and reflowed the card grid `lg:grid-cols-2 → xl:grid-cols-3` at wide breakpoints to match the full-width Issues/board screens. Tablet/mobile single-column stack unchanged (ISS-389). Merge e372184b.*
 
+- **Pipeline steps that were automatically cleaned up when a run finished are now shown as a neutral "cleaned up" state instead of looking like failures, so a cleanly-completed issue no longer appears to have failed.**
+  *Technical: Adds a shared job-status classifier (success / failed / benign-cleanup / stale-or-manual-cancel) and surfaces failureKind/failureReason on the pipeline read models; cancelled-cleanup renders muted with an explanatory tooltip instead of error-red across web-v2.*
+
 ### Fixed
 
 - **A pipeline could silently stall for about an hour when a job was dispatched to a runner that never picked it up — the dead job held the runner's only slot and blocked the next stage. The system now detects an unclaimed dispatch within a few minutes and recovers automatically (re-dispatching the work, or moving the issue on if it had already completed elsewhere).**
@@ -138,6 +141,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **In Skill Studio, built-in skills are now read-only templates; to customize one for a project you create a project copy that shadows the built-in. The old per-project override/fork mechanism has been removed.**
   *Technical: Removed forge_skills.override_set/override_delete MCP tools, the skills override REST routes, the project_skill_overrides table (+ drop migration), and the override-merge branch / isOverridden flag in effective.ts. forge_skills.list & effective now dedup by name (project shadows global, one row per name + shadowsGlobal marker).*
+
+- **Pipeline steps that were automatically cleaned up when a run finished are now shown as a neutral "cleaned up" state instead of looking like failures, so a cleanly-completed issue no longer appears to have failed.**
+  *Technical: Adds a shared job-status classifier (success / failed / benign-cleanup / stale-or-manual-cancel) and surfaces failureKind/failureReason on the pipeline read models; cancelled-cleanup renders muted with an explanatory tooltip instead of error-red across web-v2.*
 
 ### Removed
 
