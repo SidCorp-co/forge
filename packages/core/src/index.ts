@@ -134,7 +134,7 @@ import { registerScheduleTicker, unregisterScheduleTicker } from './schedules/ru
 import { skillFactsRoutes } from './skill-facts/routes.js';
 import { seedBuiltinSkills } from './skills/builtin-seed.js';
 import { skillCrudRoutes } from './skills/crud-routes.js';
-import { skillOverrideRoutes } from './skills/override-routes.js';
+import { skillStudioRoutes } from './skills/studio-routes.js';
 import { skillRegisterRoutes, skillSyncRoutes } from './skills/routes.js';
 import { taskIssueRoutes, taskRoutes } from './tasks/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
@@ -304,7 +304,7 @@ app.route('/api/projects', docsRoutes);
 app.route('/api/projects', memberRoutes);
 app.route('/api/projects', skillSyncRoutes);
 app.route('/api/projects', skillRegisterRoutes);
-app.route('/api/projects', skillOverrideRoutes);
+app.route('/api/projects', skillStudioRoutes);
 app.route('/api/invitations', invitationRoutes);
 app.route('/api/projects', issueProjectRoutes);
 app.route('/api/projects', searchRoutes);

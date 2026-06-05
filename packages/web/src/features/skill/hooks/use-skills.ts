@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { deviceApi } from '@/features/device/api';
 import { skillApi, skillRegistrationApi } from '../api';
-import type { Skill, SkillFile } from '../types';
+import type { Skill } from '../types';
 
 export function useSkills(projectDocumentId?: string) {
   return useQuery({
@@ -117,7 +117,7 @@ export function useDeviceSkillStatus(
   });
 }
 
-// EPIC 6 (ISS-278/290) — effective skills + per-project override mutations.
+// ISS-388 — Skill Studio listing + apply-default.
 export function useEffectiveSkills(projectId?: string) {
   return useQuery({
     queryKey: ['skills-effective', projectId],
@@ -126,28 +126,17 @@ export function useEffectiveSkills(projectId?: string) {
   });
 }
 
-export function useUpsertSkillOverride() {
+// Apply default — create a same-name project skill copied from a global
+// template (it then shadows the global). Invalidate the effective + global
+// lists so the new project copy + shadow relation render immediately.
+export function useApplyDefault() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ projectId, skillId, skillMdOverride, files }: {
-      projectId: string;
-      skillId: string;
-      skillMdOverride: string;
-      files?: SkillFile[];
-    }) => skillApi.upsertOverride(projectId, skillId, skillMdOverride, files),
+    mutationFn: ({ projectId, globalSkillId }: { projectId: string; globalSkillId: string }) =>
+      skillApi.applyDefault(projectId, globalSkillId),
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['skills-effective', vars.projectId] });
-    },
-  });
-}
-
-export function useDeleteSkillOverride() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ projectId, skillId }: { projectId: string; skillId: string }) =>
-      skillApi.deleteOverride(projectId, skillId),
-    onSuccess: (_data, vars) => {
-      queryClient.invalidateQueries({ queryKey: ['skills-effective', vars.projectId] });
+      queryClient.invalidateQueries({ queryKey: ['skills'] });
     },
   });
 }

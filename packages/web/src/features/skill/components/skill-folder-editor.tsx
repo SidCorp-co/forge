@@ -29,11 +29,11 @@ interface SkillFolderEditorProps {
   onSave: (data: SkillFolderSavePayload) => void;
   onCancel: () => void;
   saving?: boolean;
-  /** When this is an override of a global, the global SKILL.md enables the diff. */
-  globalSkillMd?: string | null;
+  /** Globals are immutable templates — render read-only (no save, disabled editors). */
+  readOnly?: boolean;
 }
 
-type DiffMode = 'none' | 'global' | 'saved';
+type DiffMode = 'none' | 'saved';
 
 /**
  * Folder-first Skill Studio editor — replaces the legacy single-textarea
@@ -51,9 +51,11 @@ export function SkillFolderEditor({
   onSave,
   onCancel,
   saving,
-  globalSkillMd,
+  readOnly = false,
 }: SkillFolderEditorProps) {
   const isEdit = !!skill;
+  // Globals are read-only templates: lock every editor + hide save.
+  const locked = saving || readOnly;
 
   const parsed = useMemo(() => parseFrontmatter(skill?.skillMd ?? ''), [skill]);
 
@@ -101,8 +103,11 @@ export function SkillFolderEditor({
   // On edit, block save when nothing changed vs baseline — a no-op PUT would
   // otherwise version-bump + write a changelog entry for an identical body.
   const canSave =
-    !!fields.name.trim() && !!fields.description.trim() && !!body.trim() && (!isEdit || isDirty);
-  const canDiffGlobal = !!globalSkillMd && globalSkillMd !== currentSkillMd;
+    !readOnly &&
+    !!fields.name.trim() &&
+    !!fields.description.trim() &&
+    !!body.trim() &&
+    (!isEdit || isDirty);
   const canDiffSaved = isEdit && currentSkillMd !== baseline;
 
   function updateFileContent(content: string) {
@@ -126,7 +131,9 @@ export function SkillFolderEditor({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-on-surface">{isEdit ? 'Edit Skill' : 'New Skill'}</h3>
+        <h3 className="text-sm font-semibold text-on-surface">
+          {readOnly ? 'Reference default' : isEdit ? 'Edit Skill' : 'New Skill'}
+        </h3>
         <button type="button" onClick={onCancel} className="text-outline hover:text-on-surface-variant">
           <X className="h-4 w-4" />
         </button>
@@ -136,10 +143,10 @@ export function SkillFolderEditor({
         fields={fields}
         onChange={setFields}
         isEdit={isEdit}
-        showGlobalToggle={!isEdit}
+        showGlobalToggle={!isEdit && !readOnly}
         isGlobal={isGlobal}
         onIsGlobalChange={setIsGlobal}
-        disabled={saving}
+        disabled={locked}
       />
 
       {(fields.target === 'cloud' || fields.target === 'all') && (
@@ -159,7 +166,7 @@ export function SkillFolderEditor({
           selectedPath={effectivePath}
           onSelectPath={setSelectedPath}
           onFilesChange={setFiles}
-          readOnly={saving}
+          readOnly={locked}
         />
         {effectivePath === SKILL_MD_PATH ? (
           <SkillFileEditor
@@ -167,7 +174,7 @@ export function SkillFolderEditor({
             content={body}
             encoding="utf8"
             onChange={setBody}
-            readOnly={saving}
+            readOnly={locked}
           />
         ) : selectedFile ? (
           <SkillFileEditor
@@ -175,38 +182,23 @@ export function SkillFolderEditor({
             content={selectedFile.content}
             encoding={selectedFile.encoding}
             onChange={updateFileContent}
-            readOnly={saving}
+            readOnly={locked}
           />
         ) : null}
       </div>
 
-      {(canDiffGlobal || canDiffSaved) && (
+      {canDiffSaved && (
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            {canDiffGlobal && (
-              <button
-                type="button"
-                onClick={() => setDiffMode((m) => (m === 'global' ? 'none' : 'global'))}
-                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-info hover:bg-info-surface/20"
-              >
-                <FileDiff className="h-3 w-3" />
-                {diffMode === 'global' ? 'Hide diff' : 'Diff vs global'}
-              </button>
-            )}
-            {canDiffSaved && (
-              <button
-                type="button"
-                onClick={() => setDiffMode((m) => (m === 'saved' ? 'none' : 'saved'))}
-                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-info hover:bg-info-surface/20"
-              >
-                <FileDiff className="h-3 w-3" />
-                {diffMode === 'saved' ? 'Hide diff' : 'Diff vs last saved'}
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setDiffMode((m) => (m === 'saved' ? 'none' : 'saved'))}
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-info hover:bg-info-surface/20"
+            >
+              <FileDiff className="h-3 w-3" />
+              {diffMode === 'saved' ? 'Hide diff' : 'Diff vs last saved'}
+            </button>
           </div>
-          {diffMode === 'global' && globalSkillMd && (
-            <SkillDiffView base={globalSkillMd} current={currentSkillMd} />
-          )}
           {diffMode === 'saved' && (
             <SkillDiffView base={baseline} current={currentSkillMd} />
           )}
@@ -219,16 +211,18 @@ export function SkillFolderEditor({
           onClick={onCancel}
           className="rounded px-3 py-1.5 text-xs text-primary-fixed hover:bg-surface-container-high"
         >
-          Cancel
+          {readOnly ? 'Close' : 'Cancel'}
         </button>
-        <button
-          type="submit"
-          disabled={!canSave || saving}
-          className="inline-flex items-center gap-1 rounded bg-on-primary px-3 py-1.5 text-xs text-on-surface hover:bg-surface-container disabled:opacity-50"
-        >
-          <Save className="h-3 w-3" />
-          {saving ? 'Saving...' : isEdit ? 'Update' : 'Create'}
-        </button>
+        {!readOnly && (
+          <button
+            type="submit"
+            disabled={!canSave || saving}
+            className="inline-flex items-center gap-1 rounded bg-on-primary px-3 py-1.5 text-xs text-on-surface hover:bg-surface-container disabled:opacity-50"
+          >
+            <Save className="h-3 w-3" />
+            {saving ? 'Saving...' : isEdit ? 'Update' : 'Create'}
+          </button>
+        )}
       </div>
     </form>
   );

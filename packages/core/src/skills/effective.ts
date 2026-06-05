@@ -1,9 +1,8 @@
-import { and, eq, or } from 'drizzle-orm';
+import { and, eq, inArray, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   deviceSkills,
   devices,
-  projectSkillOverrides,
   runners,
   skillRegistrations,
   skills,
@@ -11,13 +10,12 @@ import {
 import { hashSkillBody } from './hash.js';
 
 /**
- * Shared, override-aware effective-skill resolution for Skill Studio 4
- * (ISS-278). The web-facing `/skills/effective` endpoint
- * (`override-routes.ts`) keeps its own response shape; this module is the
- * single source of truth for the **device sync manifest**, which must hash
- * uniformly via `hashSkillBody(effectiveMd, files)` for every entry —
- * including overridden globals (the override row's own `contentHash` omits
- * `files`, so it cannot be trusted for freshness).
+ * Shared effective-skill resolution for Skill Studio (ISS-278/388). Global
+ * skills are immutable templates; the only per-project customization is a
+ * project-scoped skill with the SAME NAME, which SHADOWS the same-name global.
+ * This module dedups by name (project wins) and is the single source of truth
+ * for the **device sync manifest**, which must hash uniformly via
+ * `hashSkillBody(effectiveMd, files)` for every entry.
  */
 
 export interface SkillFile {
@@ -33,7 +31,10 @@ export interface EffectiveSkill {
   skillMd: string;
   files: SkillFile[];
   effectiveHash: string;
-  isOverridden: boolean;
+  /** True when this project skill shadows a same-name global template. */
+  shadowsGlobal: boolean;
+  /** The shadowed global's skill id (null when not shadowing). */
+  shadowedGlobalSkillId: string | null;
 }
 
 /** The skill columns the resolver needs — a subset of the `skills` row. */
@@ -62,52 +63,21 @@ export function globalEffectiveMd(skill: {
 }
 
 /**
- * The current effective hash of a global skill's folder (`md + files`). This is
- * the single source of truth for the fork-time `globalContentHash` snapshot AND
- * for the live drift comparison, so the two never diverge in how they hash
- * legacy (`prompt`-only) skills.
- */
-export function globalEffectiveHash(skill: {
-  skillMd: string | null;
-  prompt: string | null;
-  files: unknown;
-}): string {
-  return hashSkillBody(globalEffectiveMd(skill), skill.files);
-}
-
-/**
- * Resolve the effective body + hash for one skill, applying a project
- * override when present. Pure — no DB access — so the merge/hash rules are
- * unit-testable in isolation.
+ * Resolve the effective body + hash for one skill. Pure — no DB access — so the
+ * hash rule is unit-testable in isolation.
  *
- * - Overrides apply to **global** skills only and now fork the whole folder:
- *   the effective files come from the override's `files`, falling back to the
- *   base `skills.files` when the override carries none (legacy markdown-only
- *   rows backfilled with `files = []`).
  * - Legacy skills (seeded pre-v0.1) have `skill_md = NULL` and only `prompt`
  *   populated; fall back to `prompt` so the device never installs a 0-byte
  *   SKILL.md.
  * - `effectiveHash` is ALWAYS recomputed from the effective body so it matches
  *   exactly what the runner echoes back as `installedHash`.
+ *
+ * Shadow fields default to "not shadowing"; `resolveRawEffectiveSkillsForProject`
+ * sets them when a project skill shadows a same-name global.
  */
-export function computeEffectiveSkill(
-  skill: SkillBodyRow,
-  override: { skillMdOverride: string; files?: unknown } | undefined,
-): EffectiveSkill {
-  const baseFiles = (Array.isArray(skill.files) ? skill.files : []) as SkillFile[];
-
-  let md: string;
-  let files: SkillFile[];
-  let isOverridden = false;
-  if (skill.scope === 'global' && override) {
-    md = override.skillMdOverride;
-    const overrideFiles = (Array.isArray(override.files) ? override.files : []) as SkillFile[];
-    files = overrideFiles.length > 0 ? overrideFiles : baseFiles;
-    isOverridden = true;
-  } else {
-    files = baseFiles;
-    md = globalEffectiveMd(skill);
-  }
+export function computeEffectiveSkill(skill: SkillBodyRow): EffectiveSkill {
+  const files = (Array.isArray(skill.files) ? skill.files : []) as SkillFile[];
+  const md = globalEffectiveMd(skill);
 
   return {
     skillId: skill.id,
@@ -116,7 +86,8 @@ export function computeEffectiveSkill(
     skillMd: md,
     files,
     effectiveHash: hashSkillBody(md, files),
-    isOverridden,
+    shadowsGlobal: false,
+    shadowedGlobalSkillId: null,
   };
 }
 
@@ -130,34 +101,61 @@ const skillBodyProjection = {
   files: skills.files,
 } as const;
 
-/** Raw effective skills (no fact-variable expansion) — used internally so the
- *  two public resolvers expand with the right per-skill stage context. */
+/**
+ * Dedup raw skill rows by NAME — a project-scoped skill shadows the same-name
+ * global template (project wins, one row per name). Pure (no DB) so the dedup
+ * rule is unit-testable in isolation. A project skill that shadows a global
+ * carries `shadowsGlobal=true` + the shadowed global's id; a global that is
+ * shadowed is dropped; everything else is unflagged.
+ */
+export function dedupEffectiveSkills(rows: SkillBodyRow[]): EffectiveSkill[] {
+  // Index globals by name so a same-name project skill can shadow them.
+  const globalByName = new Map<string, SkillBodyRow>();
+  for (const r of rows) if (r.scope === 'global') globalByName.set(r.name, r);
+
+  const result: EffectiveSkill[] = [];
+  const shadowedNames = new Set<string>();
+
+  // Project skills win. Each marks the same-name global (if any) as shadowed.
+  for (const r of rows) {
+    if (r.scope !== 'project') continue;
+    shadowedNames.add(r.name);
+    const shadowed = globalByName.get(r.name);
+    const eff = computeEffectiveSkill(r);
+    eff.shadowsGlobal = shadowed != null;
+    eff.shadowedGlobalSkillId = shadowed?.id ?? null;
+    result.push(eff);
+  }
+
+  // Globals NOT shadowed by a same-name project skill.
+  for (const r of rows) {
+    if (r.scope !== 'global') continue;
+    if (shadowedNames.has(r.name)) continue;
+    result.push(computeEffectiveSkill(r));
+  }
+
+  return result;
+}
+
+/** Raw effective skills, deduped by NAME (project shadows same-name global).
+ *  Used internally so the two public resolvers expand with the right per-skill
+ *  stage context. */
 async function resolveRawEffectiveSkillsForProject(projectId: string): Promise<EffectiveSkill[]> {
   const rows = (await db
     .select(skillBodyProjection)
     .from(skills)
     .where(or(eq(skills.scope, 'global'), eq(skills.projectId, projectId)))) as SkillBodyRow[];
 
-  const overrides = await db
-    .select({
-      skillId: projectSkillOverrides.skillId,
-      skillMdOverride: projectSkillOverrides.skillMdOverride,
-      files: projectSkillOverrides.files,
-    })
-    .from(projectSkillOverrides)
-    .where(eq(projectSkillOverrides.projectId, projectId));
-
-  const overrideBySkillId = new Map(overrides.map((o) => [o.skillId, o]));
-
-  return rows.map((r) => computeEffectiveSkill(r, overrideBySkillId.get(r.id)));
+  return dedupEffectiveSkills(rows);
 }
 
 /**
  * Every skill visible to a project (its own project-scoped skills + all
- * globals), with overrides merged and the effective hash computed. Skill bodies
- * are NOT templated: Forge facts + project context are injected into the system
- * prompt at dispatch (`prompt/system.ts`), so a synced SKILL.md is exactly what
- * the author wrote — no var expansion, no fact-driven re-sync churn.
+ * globals), deduped by name (project shadows same-name global) with the
+ * effective hash computed. Skill bodies are NOT templated: Forge facts +
+ * project context are injected into the system prompt at dispatch
+ * (`prompt/system.ts`), so a synced SKILL.md is exactly what the author wrote —
+ * no var expansion, no fact-driven re-sync churn.
  */
 export async function resolveEffectiveSkillsForProject(
   projectId: string,
@@ -178,11 +176,22 @@ export async function resolveRegisteredEffectiveSkills(
     .from(skillRegistrations)
     .where(eq(skillRegistrations.projectId, projectId));
 
-  const registeredIds = new Set(regs.map((r) => r.skillId));
-  if (registeredIds.size === 0) return [];
+  const registeredIds = [...new Set(regs.map((r) => r.skillId))];
+  if (registeredIds.length === 0) return [];
+
+  // Filter by NAME, not skillId: a registration may point at a global that is
+  // now shadowed by a same-name project skill. The deduped list carries the
+  // project skill's id under that name, so matching by id would drop the
+  // shadow. Resolve registered ids → names, then keep effective rows by name.
+  const nameRows = await db
+    .select({ name: skills.name })
+    .from(skills)
+    .where(inArray(skills.id, registeredIds));
+  const registeredNames = new Set(nameRows.map((n) => n.name));
+  if (registeredNames.size === 0) return [];
 
   const all = await resolveRawEffectiveSkillsForProject(projectId);
-  return all.filter((s) => registeredIds.has(s.skillId));
+  return all.filter((s) => registeredNames.has(s.name));
 }
 
 export type DeviceSkillStatusValue = 'synced' | 'outdated' | 'missing';

@@ -3,7 +3,6 @@ import { db } from '../db/client.js';
 import {
   type IssueStatus,
   type SkillTarget,
-  projectSkillOverrides,
   projects,
   runners,
   skillRegistrations,
@@ -11,7 +10,6 @@ import {
 } from '../db/schema.js';
 import { hooks } from '../pipeline/hooks.js';
 import { PIPELINE_STEPS } from '../pipeline/registry.js';
-import { globalEffectiveHash } from './effective.js';
 import { hashSkillBody } from './hash.js';
 
 export interface SkillFileInput {
@@ -359,6 +357,44 @@ export async function deleteProjectSkill(skillId: string): Promise<void> {
 }
 
 /**
+ * Copy a global skill template into a new project-scoped skill of the same name
+ * (Skill Studio "apply default", ISS-388). The project skill then SHADOWS the
+ * global for this project. Caller validates that `global` is a global skill and
+ * authorizes owner/admin; this enforces the one-shadow-per-name rule.
+ */
+export async function applyGlobalSkillDefault(input: {
+  projectId: string;
+  global: { name: string; description: string; skillMd: string | null; prompt: string; target: SkillTarget | null; files: unknown };
+}): Promise<SkillRow> {
+  const { projectId, global } = input;
+  const [existing] = await db
+    .select({ id: skills.id })
+    .from(skills)
+    .where(and(eq(skills.scope, 'project'), eq(skills.projectId, projectId), eq(skills.name, global.name)))
+    .limit(1);
+  if (existing) {
+    throw new SkillAlreadyShadowedError(global.name);
+  }
+  const files = (Array.isArray(global.files) ? global.files : []) as SkillFileInput[];
+  return createProjectSkill({
+    projectId,
+    name: global.name,
+    description: global.description,
+    skillMd: global.skillMd ?? global.prompt ?? '',
+    target: global.target,
+    files,
+  });
+}
+
+export class SkillAlreadyShadowedError extends Error {
+  readonly code = 'ALREADY_SHADOWED';
+  constructor(name: string) {
+    super(`ALREADY_SHADOWED: a project skill named '${name}' already exists`);
+    this.name = 'SkillAlreadyShadowedError';
+  }
+}
+
+/**
  * Resolve the device-bound runners for a project to a distinct set of device
  * ids, optionally narrowed to one device. Remote (host='remote') runners have
  * no device and are excluded — skills sync to a filesystem, which only a
@@ -421,97 +457,4 @@ export async function requestSkillSync(
     });
   }
   return { projectId: input.projectId, deviceIds };
-}
-
-/**
- * Override CRUD shared by the REST override routes and the MCP override tools.
- * `skill` is the already-loaded GLOBAL skill row (caller validates scope +
- * authorization). Hashes are derived here so no client can drift them, and the
- * `skillUpdated` hook is emitted for web cache-invalidation.
- */
-export interface UpsertSkillOverrideInput {
-  projectId: string;
-  skill: { id: string; name: string; files: unknown; skillMd: string | null; prompt: string | null };
-  skillMdOverride: string;
-  files?: SkillFileInput[] | undefined;
-  actorUserId: string;
-}
-
-export async function upsertSkillOverride(input: UpsertSkillOverrideInput) {
-  const { projectId, skill, skillMdOverride, files, actorUserId } = input;
-  const [existing] = await db
-    .select({ id: projectSkillOverrides.id, files: projectSkillOverrides.files })
-    .from(projectSkillOverrides)
-    .where(
-      and(
-        eq(projectSkillOverrides.projectId, projectId),
-        eq(projectSkillOverrides.skillId, skill.id),
-      ),
-    )
-    .limit(1);
-
-  let row;
-  if (existing) {
-    const effectiveFiles = files ?? (Array.isArray(existing.files) ? existing.files : []);
-    const contentHash = hashSkillBody(skillMdOverride, effectiveFiles);
-    [row] = await db
-      .update(projectSkillOverrides)
-      .set({ skillMdOverride, files: effectiveFiles as never, contentHash, updatedAt: new Date() })
-      .where(eq(projectSkillOverrides.id, existing.id))
-      .returning();
-  } else {
-    const forkedFiles = files ?? (Array.isArray(skill.files) ? skill.files : []);
-    const contentHash = hashSkillBody(skillMdOverride, forkedFiles);
-    const globalContentHash = globalEffectiveHash(skill);
-    [row] = await db
-      .insert(projectSkillOverrides)
-      .values({
-        projectId,
-        skillId: skill.id,
-        skillMdOverride,
-        files: forkedFiles as never,
-        contentHash,
-        globalContentHash,
-      })
-      .returning();
-  }
-  if (!row) throw new Error('project_skill_overrides: upsert returned no row');
-
-  await hooks.emit('skillUpdated', {
-    projectId,
-    skillId: skill.id,
-    name: skill.name,
-    action: 'upsert',
-    contentHash: row.contentHash,
-    actorUserId,
-  });
-  return row;
-}
-
-export async function deleteSkillOverride(input: {
-  projectId: string;
-  skill: { id: string; name: string };
-  actorUserId: string;
-}): Promise<boolean> {
-  const { projectId, skill, actorUserId } = input;
-  const result = await db
-    .delete(projectSkillOverrides)
-    .where(
-      and(
-        eq(projectSkillOverrides.projectId, projectId),
-        eq(projectSkillOverrides.skillId, skill.id),
-      ),
-    )
-    .returning({ id: projectSkillOverrides.id });
-  if (result.length === 0) return false;
-
-  await hooks.emit('skillUpdated', {
-    projectId,
-    skillId: skill.id,
-    name: skill.name,
-    action: 'delete',
-    contentHash: null,
-    actorUserId,
-  });
-  return true;
 }
