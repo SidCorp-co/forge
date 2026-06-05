@@ -131,6 +131,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **The pipeline run timeline now makes Pause vs. Stop unambiguous — Pause shows it's finishing the current step before halting, a separate Stop control aborts the running agent immediately, and each step shows whether it resumed the same agent session or started fresh.**
   *Technical: Pure frontend rework of RunDetail (web-v2 run-detail.tsx): transitional/halted pause states + distinct Stop wired to existing cancel; TimelineTab derives session-group continuity (resumed/fresh, group labels, connectors, operator detail) from agent_sessions metadata.sessionGroup + claudeSessionId + deviceId + status.*
 
+- **In Skill Studio, built-in skills are now read-only templates; to customize one for a project you create a project copy that shadows the built-in. The old per-project override/fork mechanism has been removed.**
+  *Technical: Removed forge_skills.override_set/override_delete MCP tools, the skills override REST routes, the project_skill_overrides table (+ drop migration), and the override-merge branch / isOverridden flag in effective.ts. forge_skills.list & effective now dedup by name (project shadows global, one row per name + shadowsGlobal marker).*
+
 ### Removed
 
 ### Fixed
