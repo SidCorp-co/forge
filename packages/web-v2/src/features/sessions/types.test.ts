@@ -6,6 +6,9 @@ import {
   deriveSessionDisplayStatus,
   isInteractiveSession,
   sessionKind,
+  statusToChip,
+  classifySessionOutcome,
+  isRealFailure,
   type SessionRow,
 } from "./types";
 
@@ -93,6 +96,98 @@ describe("deriveSessionDisplayStatus (single-sourced on deriveLiveness)", () => 
 
   it("passes through non-running statuses", () => {
     expect(deriveSessionDisplayStatus(running(0, { status: "failed" }), NOW)).toBe("failed");
+  });
+});
+
+describe("statusToChip (ISS-322 — cancelled_stale is neutral, not red)", () => {
+  it("maps cancelled_stale → swept (neutral), NOT zombie (red)", () => {
+    expect(statusToChip("cancelled_stale")).toBe("swept");
+  });
+
+  it("keeps a LIVE stalled session as zombie (attention)", () => {
+    expect(statusToChip("stalled")).toBe("zombie");
+  });
+
+  it("keeps genuine + success states unchanged", () => {
+    expect(statusToChip("failed")).toBe("failed");
+    expect(statusToChip("completed")).toBe("done");
+    expect(statusToChip("completed_via_recovery")).toBe("done");
+    expect(statusToChip("running")).toBe("running");
+  });
+});
+
+describe("classifySessionOutcome (ISS-322 four-bucket classifier)", () => {
+  it("classifies clean completions as success/done", () => {
+    expect(classifySessionOutcome("completed").bucket).toBe("success");
+    expect(classifySessionOutcome("completed_via_recovery").statusKey).toBe("done");
+  });
+
+  it("classifies cancelled_stale as a neutral swept cleanup", () => {
+    const o = classifySessionOutcome("cancelled_stale");
+    expect(o.bucket).toBe("swept");
+    expect(o.statusKey).toBe("swept");
+    expect(o.tooltip).toMatch(/not a failure/i);
+  });
+
+  it("classifies a genuine job_failed as a red failure", () => {
+    const o = classifySessionOutcome("failed", "job_failed");
+    expect(o.bucket).toBe("failed");
+    expect(o.statusKey).toBe("failed");
+  });
+
+  it("classifies a failed row with no reason as a red failure (don't hide it)", () => {
+    expect(classifySessionOutcome("failed", null).bucket).toBe("failed");
+    expect(classifySessionOutcome("failed").statusKey).toBe("failed");
+  });
+
+  it("demotes lifecycle/capacity cancels on a failed row to neutral swept", () => {
+    for (const reason of [
+      "queue_timeout",
+      "heartbeat_timeout",
+      "no_worker_online",
+      "user_cancelled",
+      "issue_busy",
+      "waiting_on_dep",
+      "project_full",
+      "runner_full",
+    ]) {
+      const o = classifySessionOutcome("failed", reason);
+      expect(o.bucket, reason).toBe("swept");
+      expect(o.statusKey, reason).toBe("swept");
+    }
+  });
+
+  it("treats legacy pipeline_* / migration cleanup reasons as benign cleanup", () => {
+    for (const reason of [
+      "pipeline_completed",
+      "pipeline_failed",
+      "pipeline_cancelled",
+      "migration_zombie_cleanup",
+    ]) {
+      const o = classifySessionOutcome("failed", reason);
+      expect(o.bucket, reason).toBe("cleanup");
+      expect(o.statusKey, reason).toBe("swept");
+    }
+  });
+
+  it("returns active (deferring to statusToChip) for non-terminal states", () => {
+    expect(classifySessionOutcome("running").bucket).toBe("active");
+    expect(classifySessionOutcome("stalled").statusKey).toBe("zombie");
+    expect(classifySessionOutcome("queued").statusKey).toBe("queued");
+  });
+});
+
+describe("isRealFailure (only genuine failures count as attention)", () => {
+  it("is true only for job_failed / unknown-reason failed rows", () => {
+    expect(isRealFailure("failed", "job_failed")).toBe(true);
+    expect(isRealFailure("failed", null)).toBe(true);
+  });
+
+  it("is false for swept / cleanup / success / cancelled_stale", () => {
+    expect(isRealFailure("failed", "user_cancelled")).toBe(false);
+    expect(isRealFailure("failed", "pipeline_completed")).toBe(false);
+    expect(isRealFailure("cancelled_stale")).toBe(false);
+    expect(isRealFailure("completed")).toBe(false);
   });
 });
 

@@ -56,6 +56,8 @@ import {
   isRetryable,
   sessionKind,
   statusToChip,
+  classifySessionOutcome,
+  isRealFailure,
   FAILURE_REASON_LABEL,
   type AgentSessionDisplayStatus,
   type SessionFilter,
@@ -102,7 +104,10 @@ function matchesFilter(filter: SessionFilter, row: SessionRow, display: AgentSes
     case "queued":
       return row.status === "queued" || row.status === "idle";
     case "attention":
-      return display === "failed" || display === "stalled" || display === "cancelled_stale";
+      // ISS-322 — only GENUINE failures + live-stalled (about-to-be-reaped)
+      // sessions need attention. A terminal `cancelled_stale`/lifecycle cancel
+      // is benign cleanup (`swept`), so it no longer lands here.
+      return isRealFailure(display, row.failureReason) || display === "stalled";
     default:
       return true;
   }
@@ -180,7 +185,10 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
         const ms = since ? now - new Date(since).getTime() : NaN;
         if (Number.isFinite(ms) && ms >= 0) waits.push(ms);
       }
-      if (d === "stalled" || r.status === "cancelled_stale") zombies += 1;
+      // ISS-322 — "Zombie jobs" counts only LIVE stalled sessions (heartbeat
+      // overdue, pending auto-recovery). A terminal `cancelled_stale` is benign
+      // swept cleanup and no longer inflates this alert.
+      if (d === "stalled") zombies += 1;
     });
     // Median wait across queued sessions (draft "Median wait" metric).
     let medianWaitMs = 0;
@@ -552,14 +560,27 @@ function StatusCell({
   now: number;
 }) {
   const liveness = deriveLiveness(row, now);
+  // ISS-322 — classify terminal sessions so benign cleanup / lifecycle cancels
+  // render with the neutral `swept` token (NOT red), with an explanatory
+  // tooltip. Genuine failures keep the red `failed` token + amber reason.
+  const outcome = classifySessionOutcome(display, row.failureReason);
+  const chipStatus = outcome.bucket === "active" ? statusToChip(display) : outcome.statusKey;
   const reason = row.failureReason ? FAILURE_REASON_LABEL[row.failureReason] ?? row.failureReason : null;
   const showReason =
     !!reason && (display === "failed" || display === "stalled" || display === "cancelled_stale");
+  // Red reason text only for a genuine failure; swept/cleanup reads subtle.
+  const reasonColor = outcome.bucket === "failed" ? "var(--amberw-600)" : "var(--fg-subtle)";
   return (
     <div className="flex flex-col items-start gap-1">
-      <StatusChip status={statusToChip(display)} stage={stage} domain="session" />
+      {outcome.tooltip ? (
+        <Tooltip label={outcome.tooltip}>
+          <StatusChip status={chipStatus} stage={stage} domain="session" />
+        </Tooltip>
+      ) : (
+        <StatusChip status={chipStatus} stage={stage} domain="session" />
+      )}
       {showReason && (
-        <span className="fg-caption" style={{ color: "var(--amberw-600)" }}>
+        <span className="fg-caption" style={{ color: reasonColor }}>
           {reason}
         </span>
       )}

@@ -14,7 +14,8 @@ export type StatusKey =
   | "paused"
   | "done"
   | "review"
-  | "zombie";
+  | "zombie"
+  | "swept";
 
 export interface ColorMeta {
   label: string;
@@ -34,6 +35,10 @@ export const STATUS_META: Record<StatusKey, ColorMeta> = {
   done: { label: "Done", fg: "var(--green-600)", bg: "var(--green-50)", dot: "var(--green-500)" },
   review: { label: "In review", fg: "var(--amberw-600)", bg: "var(--amberw-50)", dot: "var(--amberw-500)" },
   zombie: { label: "Zombie", fg: "var(--red-600)", bg: "var(--red-50)", dot: "var(--red-500)" },
+  // ISS-322 — benign auto-cleanup / stale-sweep: a neutral (NOT red) bucket so a
+  // session reaped when its run finished, or swept after going stale, never
+  // reads as a real failure.
+  swept: { label: "Swept", fg: "var(--ink-600)", bg: "var(--paper-100)", dot: "var(--ink-400)" },
 };
 
 export type HealthKey = "healthy" | "attention" | "down" | "idle";
