@@ -18,11 +18,11 @@ import {
 import { loadProjectAccess } from '../lib/project-access.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { roomManager } from '../ws/server.js';
 import { projectRoom } from '../ws/rooms.js';
+import { roomManager } from '../ws/server.js';
 import { normalizeAntigravityEvent } from './event-normalizer.js';
-import { setRunnerStatus } from './runner-events.js';
 import { getRunnerAdapter, listRunnerTypes } from './registry.js';
+import { setRunnerStatus } from './runner-events.js';
 import { defaultRunnerCapabilities } from './select.js';
 import type { Runner } from './types.js';
 
@@ -95,16 +95,13 @@ export const runnerRoutes = new Hono<{ Variables: AuthVars }>();
 
 runnerRoutes.use('*', requireAuth(), assertEmailVerified());
 
-runnerRoutes.get(
-  '/types',
-  async (c) => {
-    const types = listRunnerTypes().map((a) => ({
-      type: a.type,
-      configSchema: 'configSchema' in a && a.configSchema ? '<zod>' : null,
-    }));
-    return c.json({ types });
-  },
-);
+runnerRoutes.get('/types', async (c) => {
+  const types = listRunnerTypes().map((a) => ({
+    type: a.type,
+    configSchema: 'configSchema' in a && a.configSchema ? '<zod>' : null,
+  }));
+  return c.json({ types });
+});
 
 runnerRoutes.get(
   '/',
@@ -312,7 +309,11 @@ runnerRoutes.post(
       const config = (existing.config ?? {}) as Record<string, unknown>;
       const next = {
         ...config,
-        quota: { ...(config['quota'] as object | undefined), ...result, refreshedAt: new Date().toISOString() },
+        quota: {
+          ...(config['quota'] as object | undefined),
+          ...result,
+          refreshedAt: new Date().toISOString(),
+        },
       };
       await db
         .update(runners)
@@ -377,6 +378,32 @@ const eventsBody = z
 
 export const runnerCallbackRoutes = new Hono();
 
+// ISS-387 — public skills bundle download for `host='remote'` runners. The URL
+// is a capability: gated by the unguessable content hash (sha256 prefix), no
+// session — the remote service GETs it after dispatch, like the events
+// callback. Unknown/cold hash → 404 (the dispatch omits skills_zip and the
+// remote falls back to its own copy).
+runnerCallbackRoutes.get('/skills-zip/:hash', async (c) => {
+  const hash = c.req.param('hash');
+  if (!/^[a-f0-9]{16,64}$/.test(hash)) {
+    throw new HTTPException(400, { message: 'invalid hash', cause: { code: 'BAD_REQUEST' } });
+  }
+  const { readSkillsZipByHash } = await import('./skills-zip.js');
+  const buf = await readSkillsZipByHash(hash);
+  if (!buf)
+    throw new HTTPException(404, {
+      message: 'skills bundle not found',
+      cause: { code: 'NOT_FOUND' },
+    });
+  return new Response(Uint8Array.from(buf), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="skills-${hash}.zip"`,
+    },
+  });
+});
+
 // In-memory replay shield: per-runner LRU of recently-seen signatures within
 // the 5-min skew window. Multi-instance deployments would need redis here, but
 // for v1 a per-process map is acceptable (worst case: replay across instances
@@ -425,7 +452,10 @@ runnerCallbackRoutes.post(
     if (!cfg.callbackSecret) throw new HTTPException(401, { message: 'no callback secret' });
 
     const raw = await c.req.text();
-    const expected = createHmac('sha256', cfg.callbackSecret).update(raw).update(tsHeader).digest('hex');
+    const expected = createHmac('sha256', cfg.callbackSecret)
+      .update(raw)
+      .update(tsHeader)
+      .digest('hex');
     const expectedHeader = `sha256=${expected}`;
     const a = Buffer.from(sigHeader);
     const b = Buffer.from(expectedHeader);
