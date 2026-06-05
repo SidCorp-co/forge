@@ -673,6 +673,13 @@
 			"when": 1782345600000,
 			"tag": "0097_user_last_seen_whats_new",
 			"breakpoints": true
+		},
+		{
+			"idx": 98,
+			"version": "7",
+			"when": 1782432000000,
+			"tag": "0098_add_project_kind",
+			"breakpoints": true
 		}
 	]
 }

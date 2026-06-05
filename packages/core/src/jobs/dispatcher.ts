@@ -2,12 +2,18 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs, projects, runners } from '../db/schema.js';
 import type { JobType, RunnerType } from '../db/schema.js';
+import { applyEpodsystemMcpServers } from '../integrations/epodsystem/resolver.js';
 import { applyPostmanMcpServers } from '../integrations/postman/resolver.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
 import { logger } from '../logger.js';
-import { hooks } from '../pipeline/hooks.js';
+import {
+  recordDispatchBarrierSkip,
+  recordRunnerDeathDetection,
+} from '../observability/hold-metrics.js';
+import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { computeHoldUntil } from '../pipeline/hold-policy.js';
+import { hooks } from '../pipeline/hooks.js';
 import { setManualHoldBlock } from '../pipeline/manual-hold.js';
 import { resolveRunnerChainForJob } from '../pipeline/resolve-step-runner.js';
 import { injectTurnLevelRules } from '../prompt/user.js';
@@ -16,11 +22,6 @@ import { getRunnerAdapter } from '../runners/registry.js';
 import { getTrippedDeviceIds, selectRunnerForJob } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
-import {
-  recordDispatchBarrierSkip,
-  recordRunnerDeathDetection,
-} from '../observability/hold-metrics.js';
-import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { checkMonthlyBudget, postBudgetExhaustedComment, shouldEmitWarn } from './budget-check.js';
 import { assertDispatchable, runnerSupportsJobType } from './dispatch-gates.js';
 import { persistPromptSnapshot } from './prompt-snapshot.js';
@@ -423,6 +424,13 @@ async function dispatchViaRunner(
   // --mcp-config file); it is never persisted. active=false/deleted → the
   // resolver returns null and the next dispatch drops the entry.
   runnerStageOverrides.mcpServers = await applyPostmanMcpServers(
+    job.projectId,
+    runnerStageOverrides.mcpServers,
+  );
+  // ISS-387 — chain the Epodsystem MCP inject right after Postman. Same
+  // contract: active-only resolver, non-mutating merge, crmk_ key only in the
+  // dispatch payload. active=false/deleted → next dispatch drops the entry.
+  runnerStageOverrides.mcpServers = await applyEpodsystemMcpServers(
     job.projectId,
     runnerStageOverrides.mcpServers,
   );

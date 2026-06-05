@@ -10,6 +10,7 @@ import { ChatAgentSection } from './components/chat-agent-section';
 import { ChannelsSection } from './components/channels-section';
 import { CoolifySection } from './components/coolify-section';
 import { DevicesSection } from './components/devices-section';
+import { EpodsystemSection } from './components/epodsystem-section';
 import { GitlabWebhookSection } from './components/gitlab-webhook-section';
 import { LabelsSection } from './components/labels-section';
 import { MembersSection } from './components/members-section';
@@ -76,6 +77,7 @@ export default function ProjectSettingsPage() {
       items: [
         { id: 'int.antigravity', label: 'Antigravity', tag: 'INT_ATG', render: () => <AntigravitySection previewMode /> },
         { id: 'int.coolify', label: 'Coolify', tag: 'INT_CLF', render: () => <CoolifySection projectId={projectId} /> },
+        { id: 'int.epodsystem', label: 'Epodsystem', tag: 'INT_EPD', render: () => <EpodsystemSection projectId={projectId} /> },
         { id: 'int.sentry', label: 'Sentry', tag: 'INT_SNT', render: () => <SentrySection previewMode /> },
         { id: 'int.gitlab', label: 'GitLab Webhook', tag: 'INT_GLB', render: () => <GitlabWebhookSection previewMode /> },
         { id: 'int.channels', label: 'Channels', tag: 'INT_CHN', render: () => <ChannelsSection previewMode /> },

@@ -39,6 +39,7 @@ import { forgePmSetDependencyTool } from './tools/forge-pm-set-dependency.js';
 import { forgePmSnapshotTool } from './tools/forge-pm-snapshot.js';
 import { forgePmWriteDecisionTool } from './tools/forge-pm-write-decision.js';
 import { forgePostmanTargetTool } from './tools/forge-postman-target.js';
+import { forgeStorefrontTargetTool } from './tools/forge-storefront-target.js';
 import { forgeProjectPipelineRunsTool } from './tools/forge-project-pipeline-runs.js';
 import { forgeProjectPmTool } from './tools/forge-project-pm.js';
 import {
@@ -211,6 +212,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeConfigTool(ctx),
     forgeCoolifyDeployTool(ctx),
     forgePostmanTargetTool(ctx),
+    forgeStorefrontTargetTool(ctx),
     forgeJobsListTool(ctx.device),
     forgeJobsGetTool(ctx),
     forgeJobsEventsTool(ctx),

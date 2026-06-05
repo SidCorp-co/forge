@@ -10,6 +10,7 @@ import {
   devices,
   issues,
   labels,
+  projectKinds,
   projectMembers,
   projects,
   runners,
@@ -47,6 +48,9 @@ export const createProjectSchema = z.object({
   // ISS-273 — `projects.description` already exists; the create path now
   // persists it instead of silently dropping the field the modal collects.
   description: z.string().trim().max(2000).nullable().optional(),
+  // ISS-387 — project kind. `standard` (default) = code repo project;
+  // `website` = an Epodsystem storefront project (git repo optional).
+  kind: z.enum(projectKinds).optional(),
 });
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
@@ -137,7 +141,7 @@ projectRoutes.post(
     }
   }),
   async (c) => {
-    const { slug, name, description } = c.req.valid('json');
+    const { slug, name, description, kind } = c.req.valid('json');
     const userId = c.get('userId');
 
     try {
@@ -157,6 +161,7 @@ projectRoutes.post(
             baseBranch: 'main',
             productionBranch: 'main',
             ...(description !== undefined ? { description } : {}),
+            ...(kind !== undefined ? { kind } : {}),
           })
           .returning({
             id: projects.id,
