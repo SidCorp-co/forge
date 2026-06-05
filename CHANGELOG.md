@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **The project dashboard now uses the full screen width so cards fill wide displays instead of sitting in a narrow centered column, cutting down how far you have to scroll.**
+  *Technical: Removed the max-w-6xl centered clamp on `(workspace)/projects/[slug]/page.tsx` (now `PageContainer width="wide"`, 1720px) and reflowed the card grid `lg:grid-cols-2 → xl:grid-cols-3` at wide breakpoints to match the full-width Issues/board screens. Tablet/mobile single-column stack unchanged (ISS-389). Merge e372184b.*
+
 ### Fixed
 
 - **A pipeline could silently stall for about an hour when a job was dispatched to a runner that never picked it up — the dead job held the runner's only slot and blocked the next stage. The system now detects an unclaimed dispatch within a few minutes and recovers automatically (re-dispatching the work, or moving the issue on if it had already completed elsewhere).**
