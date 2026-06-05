@@ -39,7 +39,6 @@ import { forgePmSetDependencyTool } from './tools/forge-pm-set-dependency.js';
 import { forgePmSnapshotTool } from './tools/forge-pm-snapshot.js';
 import { forgePmWriteDecisionTool } from './tools/forge-pm-write-decision.js';
 import { forgePostmanTargetTool } from './tools/forge-postman-target.js';
-import { forgeStorefrontTargetTool } from './tools/forge-storefront-target.js';
 import { forgeProjectPipelineRunsTool } from './tools/forge-project-pipeline-runs.js';
 import { forgeProjectPmTool } from './tools/forge-project-pm.js';
 import {
@@ -51,7 +50,6 @@ import {
 } from './tools/forge-projects.js';
 import { forgeRunnersTool } from './tools/forge-runners.js';
 import { forgeSkillFactsGetTool, forgeSkillFactsListTool } from './tools/forge-skill-facts.js';
-import { forgeStepStartTool } from './tools/forge-step-start.js';
 import {
   forgeSkillsCreateTool,
   forgeSkillsDeleteTool,
@@ -71,6 +69,8 @@ import {
   forgeStepHandoffGetTool,
   forgeStepHandoffWriteTool,
 } from './tools/forge-step-handoff.js';
+import { forgeStepStartTool } from './tools/forge-step-start.js';
+import { forgeStorefrontTargetTool } from './tools/forge-storefront-target.js';
 import { forgeUploadsTool } from './tools/forge-uploads.js';
 import { type McpTool, forgeVersionTool } from './tools/forge-version.js';
 import type { McpContext } from './tools/lib.js';

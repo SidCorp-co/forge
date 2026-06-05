@@ -90,7 +90,19 @@ export const epodsystemAdapter: IntegrationAdapter<EpodsystemConfig, EpodsystemS
       }
 
       const sctx = body.data?.apiKeyContext ?? {};
+      // Persist the resolved store identity back into config (non-secret) so the
+      // settings badge + Theme panel and `forge_storefront_target` show the real
+      // store/theme without re-running the healthcheck (AC#1). Only overwrite a
+      // field when the backend actually returned it, so a partial response never
+      // wipes previously-resolved values. The crmk_ key is NEVER written here.
+      const resolved: Record<string, unknown> = { ...(ctx.config ?? {}) };
+      if (sctx.storeSlug != null) resolved.storeSlug = sctx.storeSlug;
+      if (sctx.storeName != null) resolved.storeName = sctx.storeName;
+      if (sctx.themeId != null) resolved.themeId = sctx.themeId;
+      if (sctx.draftThemeId != null) resolved.draftThemeId = sctx.draftThemeId;
+      if (sctx.commerceEnabled != null) resolved.commerceEnabled = sctx.commerceEnabled;
       await updateIntegration(ctx.integrationId, {
+        config: resolved,
         lastHealthStatus: 'ok',
         lastHealthAt: new Date(),
       });
