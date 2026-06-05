@@ -102,32 +102,15 @@ export interface DeviceSkillStatusEntry {
   status: DeviceSkillSyncState;
 }
 
-// EPIC 6 (ISS-278/290) — per-project skill override response shape from
-// /api/projects/:projectId/skills/effective. The list merges global skills
-// with their project-specific overrides; `isOverridden` flags rows where the
-// project's `skill_md_override` replaces the global `skill_md`.
+// ISS-388 — Skill Studio listing response from
+// /api/projects/:projectId/skills/effective. Globals (read-only templates) +
+// this project's project skills, NOT deduped. `editable` is true for project
+// skills; the shadow relation links a project skill to the same-name global it
+// shadows (`shadowsGlobal` + `shadowedGlobalSkillId`) and a global to the
+// project skill shadowing it (`shadowedByProjectSkillId`).
 export interface EffectiveSkill extends Skill {
-  isOverridden: boolean;
-  globalSkillId?: string;
-  // Skill Studio 2 (ISS-276): `globalContentHash` is the global's *current*
-  // effective hash; `forkedFromHash` is the snapshot taken when the override
-  // was forked; `driftFromGlobal` is true once the global moved since the fork.
-  globalContentHash?: string | null;
-  forkedFromHash?: string | null;
-  driftFromGlobal?: boolean;
-  globalSkillMd?: string | null;
-}
-
-export interface SkillOverride {
-  id: string;
-  projectId: string;
-  skillId: string;
-  skillMdOverride: string;
-  // Skill Studio 2 (ISS-276): forked copy of the global folder's files +
-  // fork-time snapshot of the global's effective hash.
-  files: SkillFile[];
-  contentHash: string;
-  globalContentHash?: string | null;
-  createdAt: string;
-  updatedAt: string;
+  editable: boolean;
+  shadowsGlobal?: boolean;
+  shadowedGlobalSkillId?: string | null;
+  shadowedByProjectSkillId?: string | null;
 }

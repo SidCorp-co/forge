@@ -39,7 +39,8 @@ const resolveRegisteredEffectiveSkills = vi.fn(async () => [
     skillMd: '# md',
     files: [],
     effectiveHash: 'h1',
-    isOverridden: false,
+    shadowsGlobal: false,
+    shadowedGlobalSkillId: null,
   },
 ]);
 vi.mock('../skills/effective.js', () => ({

@@ -3,16 +3,15 @@ import { issueStatuses, skillTargets } from '../../db/schema.js';
 import { loadProjectSkillSyncStatus, resolveEffectiveSkillsForProject } from '../../skills/effective.js';
 import {
   SkillDeleteBlockedError,
+  type SkillRow,
   createProjectSkill,
   deleteProjectSkill,
-  deleteSkillOverride,
   getSkillForProject,
   listProjectSkills,
   listSkillRegistrations,
   registerSkillForProject,
   requestSkillSync,
   updateProjectSkill,
-  upsertSkillOverride,
 } from '../../skills/service.js';
 import {
   assertDeviceOwnerIsAdmin,
@@ -67,15 +66,6 @@ const updateInputSchema = z
   .strict()
   .refine((o) => Object.keys(o).length > 2, { message: 'no fields to update' });
 
-const overrideSetInputSchema = z
-  .object({
-    projectId: z.uuid(),
-    skillId: z.uuid(),
-    skillMdOverride: z.string().min(1).max(200_000),
-    files: z.array(skillFileMcpSchema).max(500).optional(),
-  })
-  .strict();
-
 const effectiveInputSchema = z.object({ projectId: z.uuid() }).strict();
 const pushInputSchema = z
   .object({
@@ -85,15 +75,52 @@ const pushInputSchema = z
   })
   .strict();
 
+/** Skill row with the shadow marker added by the agent-facing dedup. */
+type SkillListRow = SkillRow & {
+  shadowsGlobal: boolean;
+  shadowedGlobalSkillId: string | null;
+};
+
+/**
+ * Dedup the project-visible skills by NAME: a project-scoped skill shadows the
+ * same-name global template (project wins, one row per name). Returns one row
+ * per name with a `shadowsGlobal` marker so the agent knows which skill body
+ * actually applies. Keeps the underlying REST crud GET untouched — only this
+ * agent-facing surface dedups.
+ */
+function dedupSkillsByName(rows: SkillRow[]): SkillListRow[] {
+  const globalByName = new Map<string, SkillRow>();
+  for (const r of rows) if (r.scope === 'global') globalByName.set(r.name, r);
+
+  const out: SkillListRow[] = [];
+  const shadowedNames = new Set<string>();
+  for (const r of rows) {
+    if (r.scope !== 'project') continue;
+    shadowedNames.add(r.name);
+    const shadowed = globalByName.get(r.name);
+    out.push({
+      ...r,
+      shadowsGlobal: shadowed != null,
+      shadowedGlobalSkillId: shadowed?.id ?? null,
+    });
+  }
+  for (const r of rows) {
+    if (r.scope !== 'global') continue;
+    if (shadowedNames.has(r.name)) continue;
+    out.push({ ...r, shadowsGlobal: false, shadowedGlobalSkillId: null });
+  }
+  return out;
+}
+
 export const forgeSkillsListTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_skills.list',
   description:
-    'List skills visible to a project (global skills + project-scoped skills). Requires device owner to be a project member.',
+    'List skills visible to a project, deduped by name: a project-scoped skill shadows the same-name global template (one row per name). Each row carries `shadowsGlobal` + `shadowedGlobalSkillId`. Requires device owner to be a project member.',
   inputSchema: zodToMcpSchema(listInputSchema),
   handler: async (args) => {
     const { projectId } = listInputSchema.parse(args);
     await assertDeviceOwnerIsMember(device, projectId);
-    const skills = await listProjectSkills(projectId);
+    const skills = dedupSkillsByName(await listProjectSkills(projectId));
     return { skills };
   },
 });
@@ -173,7 +200,7 @@ export const forgeSkillsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
 export const forgeSkillsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_skills.update',
   description:
-    'Update a project-scoped skill (name/description/skillMd/target/files/localGuide). Bumps version + recomputes contentHash when the body or files change. Requires owner/admin. Global skills cannot be updated here (use override_set to fork a global for this project).',
+    'Update a project-scoped skill (name/description/skillMd/target/files/localGuide). Bumps version + recomputes contentHash when the body or files change. Requires owner/admin. Global skills are immutable templates and cannot be updated; create a same-name project skill to shadow one for this project.',
   inputSchema: zodToMcpSchema(updateInputSchema),
   handler: async (args) => {
     const { projectId, skillId, ...patch } = updateInputSchema.parse(args);
@@ -181,7 +208,7 @@ export const forgeSkillsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
     const row = await getSkillForProject(skillId, projectId);
     if (!row) throw new Error('NOT_FOUND: skill not found');
     if (row.scope !== 'project') {
-      throw new Error('BAD_REQUEST: only project-scoped skills can be updated; use override_set for globals');
+      throw new Error('BAD_REQUEST: global skills are immutable templates; create a same-name project skill to shadow one');
     }
     const skill = await updateProjectSkill(row, { ...patch, target: patch.target ?? undefined });
     return { skill };
@@ -207,7 +234,7 @@ export const forgeSkillsDeleteTool: ContextScopedMcpToolFactory = (ctx) => ({
 export const forgeSkillsEffectiveTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_skills.effective',
   description:
-    "The project's effective skills — every global skill with this project's overrides merged in, plus project-scoped skills. Each row carries the resolved skillMd, files, effectiveHash, and isOverridden. This is exactly what a device installs on sync. Requires project membership.",
+    "The project's effective skills — deduped by name, where a project-scoped skill shadows the same-name global template (one row per name). Each row carries the resolved skillMd, files, effectiveHash, and shadowsGlobal + shadowedGlobalSkillId. This is exactly what a device installs on sync. Requires project membership.",
   inputSchema: zodToMcpSchema(effectiveInputSchema),
   handler: async (args) => {
     const { projectId } = effectiveInputSchema.parse(args);
@@ -227,51 +254,6 @@ export const forgeSkillsSyncStatusTool: ContextScopedMcpToolFactory = (ctx) => (
     await assertPrincipalIsMember(ctx.principal, projectId);
     const status = await loadProjectSkillSyncStatus(projectId);
     return status;
-  },
-});
-
-export const forgeSkillsOverrideSetTool: ContextScopedMcpToolFactory = (ctx) => ({
-  name: 'forge_skills.override_set',
-  description:
-    "Fork a GLOBAL skill for this project (full-folder override): replaces the global skillMd + files for this project only. Omit files to fork the global folder as the starting point. Requires owner/admin. Use forge_skills.create instead for a brand-new project skill.",
-  inputSchema: zodToMcpSchema(overrideSetInputSchema),
-  handler: async (args) => {
-    const input = overrideSetInputSchema.parse(args);
-    await assertPrincipalIsAdmin(ctx.principal, input.projectId);
-    const skill = await getSkillForProject(input.skillId, input.projectId);
-    if (!skill) throw new Error('NOT_FOUND: skill not found');
-    if (skill.scope !== 'global') {
-      throw new Error('BAD_REQUEST: override target must be a global skill');
-    }
-    const override = await upsertSkillOverride({
-      projectId: input.projectId,
-      skill,
-      skillMdOverride: input.skillMdOverride,
-      files: input.files,
-      actorUserId: principalUserId(ctx.principal),
-    });
-    return { override };
-  },
-});
-
-export const forgeSkillsOverrideDeleteTool: ContextScopedMcpToolFactory = (ctx) => ({
-  name: 'forge_skills.override_delete',
-  description:
-    'Remove this project\'s override of a global skill (revert to the global body). Requires owner/admin.',
-  inputSchema: zodToMcpSchema(getInputSchema),
-  handler: async (args) => {
-    const { projectId, skillId } = getInputSchema.parse(args);
-    await assertPrincipalIsAdmin(ctx.principal, projectId);
-    const skill = await getSkillForProject(skillId, projectId);
-    if (!skill) throw new Error('NOT_FOUND: skill not found');
-    if (skill.scope !== 'global') throw new Error('BAD_REQUEST: not a global skill');
-    const deleted = await deleteSkillOverride({
-      projectId,
-      skill,
-      actorUserId: principalUserId(ctx.principal),
-    });
-    if (!deleted) throw new Error('NOT_FOUND: override not found');
-    return { deleted: true, skillId };
   },
 });
 

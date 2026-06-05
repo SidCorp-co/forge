@@ -24,9 +24,32 @@ interface SkillListProps {
   onFilterChange: (value: string) => void;
 }
 
-function isOverridden(s: Skill | EffectiveSkill): boolean {
-  return (s as EffectiveSkill).isOverridden === true;
+type ScopeKind = 'default' | 'shadow' | 'project';
+
+// ISS-388 — a row is a read-only built-in default (global), an editable project
+// skill, or a project skill that shadows a same-name built-in default.
+function scopeKind(s: Skill | EffectiveSkill): ScopeKind {
+  if (s.scope === 'global') return 'default';
+  return (s as EffectiveSkill).shadowsGlobal ? 'shadow' : 'project';
 }
+
+const SCOPE_BADGE: Record<ScopeKind, { label: string; title: string; className: string }> = {
+  default: {
+    label: 'Default',
+    title: 'Built-in template (read-only). Apply default to create an editable project copy.',
+    className: 'bg-warning-dim/20 text-warning',
+  },
+  shadow: {
+    label: 'Shadows default',
+    title: 'Project skill shadowing a same-name built-in default for this project.',
+    className: 'bg-info-surface/30 text-info',
+  },
+  project: {
+    label: 'Project',
+    title: 'Project-scoped skill.',
+    className: 'bg-surface-variant text-tertiary',
+  },
+};
 
 function SortIcon({ field, activeField, direction }: { field: SortField; activeField: SortField; direction: SortDirection }) {
   if (field !== activeField) return <ArrowUpDown className="h-3 w-3 text-outline" />;
@@ -81,7 +104,7 @@ export function SkillList({ skills, onSelect, onDelete, selectedId, sortField, s
                 </span>
               </th>
               <th className="px-4 py-2.5 font-medium">Target</th>
-              <th className="px-4 py-2.5 font-medium">Global</th>
+              <th className="px-4 py-2.5 font-medium">Scope</th>
               <th className="px-4 py-2.5 font-medium">
                 <span className="sr-only">Actions</span>
               </th>
@@ -123,26 +146,27 @@ export function SkillList({ skills, onSelect, onDelete, selectedId, sortField, s
                       </span>
                     </td>
                     <td className="px-4 py-2.5">
-                      {isOverridden(skill) ? (
-                        <span
-                          title="Project-specific override active for this skill"
-                          className="rounded bg-info-surface/30 px-1.5 py-0.5 text-[10px] font-medium text-info"
-                        >
-                          Override
-                        </span>
-                      ) : skill.isGlobal ? (
-                        <span className="rounded bg-warning-dim/20 px-1.5 py-0.5 text-[10px] font-medium text-warning">
-                          Global
-                        </span>
-                      ) : null}
+                      {(() => {
+                        const badge = SCOPE_BADGE[scopeKind(skill)];
+                        return (
+                          <span
+                            title={badge.title}
+                            className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${badge.className}`}
+                          >
+                            {badge.label}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-2.5">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onDelete(skill); }}
-                        className="rounded p-1 text-outline hover:bg-danger-surface hover:text-danger"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      {skill.scope !== 'global' && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onDelete(skill); }}
+                          className="rounded p-1 text-outline hover:bg-danger-surface hover:text-danger"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
