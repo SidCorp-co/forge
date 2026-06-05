@@ -306,7 +306,9 @@ describe('POST /api/agent-sessions/start', () => {
     expect(reindexCall).toBeDefined();
   });
 
-  it('still creates session when no device is available (UI surfaces no-device)', async () => {
+  it('409 NO_CLAUDE_CLIENT when no online Claude client is available (ISS-321)', async () => {
+    // Previously this created a session that sat silent (no agent:start
+    // listener). ISS-321 fails fast instead so the user gets clear feedback.
     const token = await signUserToken(USER_ID);
     mockAuthVerified();
     selectLimit
@@ -322,9 +324,6 @@ describe('POST /api/agent-sessions/start', () => {
       .mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: USER_ID }])
       .mockResolvedValueOnce([{ role: 'owner' }]);
     findAvailableDeviceForProject.mockResolvedValueOnce(null);
-    insertReturning.mockResolvedValueOnce([
-      { id: SESSION_ID, projectId: PROJECT_ID, deviceId: null, status: 'running' },
-    ]);
 
     const app = buildApp();
     const res = await app.fetch(
@@ -334,8 +333,11 @@ describe('POST /api/agent-sessions/start', () => {
         body: JSON.stringify({ projectSlug: 'apiflow', prompt: 'hi' }),
       }),
     );
-    expect(res.status).toBe(201);
-    // No device → no agent:start publish to a deviceRoom
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code?: string };
+    expect(body.code).toBe('NO_CLAUDE_CLIENT');
+    // The session must NOT be created and no agent:start must be published.
+    expect(insertReturning).not.toHaveBeenCalled();
     expect(
       publishSpy.mock.calls.find(
         ([_room, env]) => (env as any).event === 'agent:start',

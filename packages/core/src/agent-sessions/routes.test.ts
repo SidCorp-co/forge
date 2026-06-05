@@ -46,6 +46,15 @@ vi.mock('../ws/server.js', () => ({
   roomManager: { publish: publishSpy },
 }));
 
+// ISS-321 — POST /start resolves a Claude-capable device via device-pool.
+// Mock it so the no-online-client guard can be exercised deterministically.
+const findAvailableDeviceMock = vi.fn(async (_projectId: string) => null as string | null);
+vi.mock('../lib/device-pool.js', () => ({
+  findAvailableDeviceForProject: (projectId: string) => findAvailableDeviceMock(projectId),
+  resolveRepoPath: (override: string | null | undefined, projectRepoPath: string | null) =>
+    (override ?? projectRepoPath ?? '').trim() || null,
+}));
+
 const safeRecordActivitySpy = vi.fn(async () => {});
 vi.mock('../pipeline/activity.js', () => ({
   safeRecordActivity: safeRecordActivitySpy,
@@ -151,6 +160,38 @@ describe('POST /api/agent-sessions', () => {
     const rooms = publishSpy.mock.calls.map((c) => c[0]);
     expect(rooms).toContain(`project:${PROJECT_ID}`);
     expect(rooms).toContain(`device:${DEVICE_ID}`);
+  });
+});
+
+describe('POST /api/agent-sessions/start — no-online-client guard (ISS-321)', () => {
+  it('returns 409 NO_CLAUDE_CLIENT when no online Claude client is available', async () => {
+    authVerified();
+    // loadProjectBySlug → a project with no default device.
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: PROJECT_ID,
+        slug: 'app',
+        ownerId: USER_ID,
+        repoPath: '/repo',
+        defaultDeviceId: null,
+      },
+    ]);
+    projectAccessAsMember();
+    findAvailableDeviceMock.mockResolvedValueOnce(null); // nobody online
+
+    const res = await buildApp().request('/api/agent-sessions/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ projectSlug: 'app', prompt: 'hello' }),
+    });
+
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code?: string };
+    expect(body.code).toBe('NO_CLAUDE_CLIENT');
+    // The session must NOT be created and no agent:start must be published.
+    expect(insertReturning).not.toHaveBeenCalled();
+    const events = publishSpy.mock.calls.map((c) => (c[1] as { event?: string } | undefined)?.event);
+    expect(events).not.toContain('agent:start');
   });
 });
 
