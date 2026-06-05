@@ -8,6 +8,7 @@ import {
   Icon,
   IconButton,
   MonoTag,
+  PageContainer,
   ProjectLoader,
   ProjectMark,
 } from "@/design";
@@ -113,7 +114,7 @@ export default function ProjectOverviewPage() {
   const schedules = upcomingSchedules(schedulesQ.data);
 
   return (
-    <div className="mx-auto w-full min-h-dvh max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
+    <PageContainer width="wide" className="min-h-dvh">
       <header className="mb-6 flex items-center gap-4">
         <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={projectInitials(project.name)} size={48} />
         <div className="flex-1">
@@ -163,7 +164,7 @@ export default function ProjectOverviewPage() {
 
         <AttentionQueue items={attention} now={now} />
 
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
           <LiveRunsCard runs={runsLive} slug={project.slug} />
           <StatusDonut data={donut} />
           <SpendCard data={spend} inFlightUsd={inFlight} />
@@ -171,6 +172,6 @@ export default function ProjectOverviewPage() {
           <SchedulesCard rows={schedules} now={now} />
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }
