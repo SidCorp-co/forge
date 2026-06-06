@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Opening an issue from the board now shows its key details and the most-used actions — status, priority, assignee, and "Open issue" — pinned at the top of the quick-open drawer, so you can review and act on it without scrolling.**
+  *Technical: New `IssueQuickActions` row composed from the issues-list inline-edit primitives (`StatusEdit`/`InlineSelect`) + the shared `usePatchIssue`/`useTransitionIssue` hooks, rendered sticky at the top of the web-v2 `RunDetail` SlideOver; `pipeline-board` re-derives the open drawer's issue from the live `['issues']` cache so an inline edit reflects immediately. Frontend-only, no API/contracts change (ISS-390). Merge 888b0ddd.*
+
 - **The project dashboard now uses the full screen width so cards fill wide displays instead of sitting in a narrow centered column, cutting down how far you have to scroll.**
   *Technical: Removed the max-w-6xl centered clamp on `(workspace)/projects/[slug]/page.tsx` (now `PageContainer width="wide"`, 1720px) and reflowed the card grid `lg:grid-cols-2 → xl:grid-cols-3` at wide breakpoints to match the full-width Issues/board screens. Tablet/mobile single-column stack unchanged (ISS-389). Merge e372184b.*
 
