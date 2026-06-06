@@ -13,24 +13,34 @@ import type { IntegrationEnvironment } from '../../db/schema.js';
 /**
  * Non-secret Epodsystem target — stored in `project_integrations.config` (jsonb).
  * This is the "store context" a skill reads via `forge_storefront_target`; it
- * intentionally carries NO API key. `environment` mirrors the row column.
+ * intentionally carries NO API key and NO endpoint (the endpoint is fixed
+ * platform config from `EPODSYSTEM_ENDPOINT`, not per-store). `environment`
+ * mirrors the row column.
  *
  * Decision (ISS-387): ONE store per project. staging ↔ theme draft,
  * prod ↔ theme main; publish promotes draft → main on the same store.
  */
 export interface EpodsystemConfig extends Record<string, unknown> {
-  /** GraphQL/admin endpoint of the store backend (e.g. https://<store>.epodsystem.com). */
-  endpoint: string;
-  /** Store slug; resolved by the healthcheck from `apiKeyContext.stores[0].slug`. */
+  /** Organization id; from `apiKeyContext.organization_id`. */
+  orgId?: string;
+  /** Granted key scopes; from `apiKeyContext.scopes` (e.g. `["products:write", ...]` or `["*"]`). */
+  scopes?: string[];
+  /** Store id; from `apiKeyContext.stores[0].id`. */
+  storeId?: string;
+  /** Store slug; from `apiKeyContext.stores[0].slug`. */
   storeSlug?: string;
   /** Human-readable store name; from `apiKeyContext.stores[0].name`. */
   storeName?: string;
   /** Live (main) theme id; from `apiKeyContext.stores[0].active_theme_id`. */
   themeId?: string;
-  /** Draft theme id used as the build target (staging); resolved via the MCP layer, NOT apiKeyContext. */
+  /** Live (main) theme name; resolved (best-effort) via `storeThemes`. */
+  themeName?: string;
+  /** Draft theme id used as the build target (staging); created build-time by `customize_theme`, NOT at healthcheck. */
   draftThemeId?: string;
   /** Whether the store has commerce features enabled (ecommerce vs blog/landing). */
   commerceEnabled?: boolean;
+  /** Primary published domain; resolved (best-effort) via `storeDomains`. Draft preview = this domain + `?preview_token=<token>`. */
+  domain?: string;
   /** Mirror of project_integrations.environment; convenience for adapter logic. */
   environment: IntegrationEnvironment;
 }
@@ -66,6 +76,24 @@ export interface ApiKeyContextResponse {
       scopes?: string[] | null;
       stores?: ApiKeyStore[] | null;
     } | null;
+  } | null;
+  errors?: Array<{ message?: string }> | null;
+}
+
+/**
+ * Best-effort enrichment reply: `storeThemes` (to name the active theme) +
+ * `storeDomains` (to get the real primary domain). Optional throughout so a
+ * partial/failed enrichment never throws — it just leaves fields unresolved.
+ */
+export interface StoreContextResponse {
+  data?: {
+    storeThemes?: Array<{
+      id?: string | number | null;
+      name?: string | null;
+      role?: string | null;
+      is_active?: boolean | null;
+    }> | null;
+    storeDomains?: Array<{ domain?: string | null; is_primary?: boolean | null }> | null;
   } | null;
   errors?: Array<{ message?: string }> | null;
 }

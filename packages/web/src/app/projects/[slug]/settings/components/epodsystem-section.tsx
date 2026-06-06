@@ -21,10 +21,11 @@ interface EpodsystemSectionProps {
  * ISS-387 — Epodsystem storefront integration settings.
  *
  * One store per project (no staging/prod env toggle — staging ↔ theme draft,
- * prod ↔ theme main on the same store). Operator pastes the store endpoint +
- * `crmk_` API key, hits Test connection, and the healthcheck fills in the
- * store identity (name/slug/themes) surfaced in the Theme panel. Publish /
- * rollback run through the website pipeline (release stage), not from here.
+ * prod ↔ theme main on the same store). The operator pastes ONLY the `crmk_`
+ * API key (the endpoint is fixed platform config — EPODSYSTEM_ENDPOINT env),
+ * hits Test connection, and the healthcheck fills in the store identity
+ * (name/slug/themes) surfaced in the Theme panel. Publish / rollback run
+ * through the website pipeline (release stage), not from here.
  */
 export function EpodsystemSection({ projectId, previewMode = false }: EpodsystemSectionProps) {
   if (previewMode || !projectId) {
@@ -79,7 +80,6 @@ function StorePanel({ projectId, existing, onSaved }: StorePanelProps) {
   const del = useDeleteIntegration(projectId);
   const test = useTestIntegration(projectId);
 
-  const [endpoint, setEndpoint] = useState(existing?.config.endpoint ?? '');
   const [apiKey, setApiKey] = useState('');
   const [testResult, setTestResult] = useState<{ status: string; message?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -92,9 +92,9 @@ function StorePanel({ projectId, existing, onSaved }: StorePanelProps) {
     setError(null);
     try {
       if (existing) {
-        const patch: Parameters<typeof update.mutateAsync>[0]['body'] = {
-          config: { endpoint },
-        };
+        // Endpoint is fixed platform config (EPODSYSTEM_ENDPOINT) — the only
+        // thing to update here is the API key.
+        const patch: Parameters<typeof update.mutateAsync>[0]['body'] = {};
         if (apiKey.trim().length > 0) {
           patch.secrets = { apiKey };
         }
@@ -106,7 +106,7 @@ function StorePanel({ projectId, existing, onSaved }: StorePanelProps) {
         }
         await create.mutateAsync({
           provider: 'epodsystem',
-          config: { endpoint },
+          config: {},
           secrets: { apiKey },
         });
       }
@@ -168,16 +168,6 @@ function StorePanel({ projectId, existing, onSaved }: StorePanelProps) {
 
       <form onSubmit={handleSave} className="space-y-4">
         <div>
-          <Label>Store endpoint</Label>
-          <Input
-            type="url"
-            value={endpoint}
-            onChange={(e) => setEndpoint(e.target.value)}
-            placeholder="https://your-store.epodsystem.com"
-            required
-          />
-        </div>
-        <div>
           <Label>{existing ? 'API key (leave blank to keep existing)' : 'API key'}</Label>
           <Input
             type="password"
@@ -238,22 +228,50 @@ function StorePanel({ projectId, existing, onSaved }: StorePanelProps) {
  * driven by the website pipeline's release stage (shop-publish skill), not a
  * direct button here in v1.
  */
+// Scopes a website build needs to publish themes + toggle commerce/cache.
+const REQUIRED_SCOPES = ['products:write', 'webstore:write', 'settings:write'];
+
 function ThemePanel({ config }: { config: IntegrationSummary['config'] | undefined }) {
   if (!config) return null;
-  const storefrontUrl = config.endpoint ?? null;
+  // The real published domain (resolved at healthcheck); fall back to the slug
+  // subdomain only if the domain wasn't resolved yet.
+  const storefrontUrl = config.domain
+    ? `https://${config.domain}`
+    : config.storeSlug
+      ? `https://${config.storeSlug}.epodsystem.com`
+      : null;
+  const scopes = config.scopes ?? null;
+  const hasWildcard = scopes?.includes('*') ?? false;
+  const missingScopes = scopes && !hasWildcard ? REQUIRED_SCOPES.filter((s) => !scopes.includes(s)) : [];
   return (
     <div className="rounded-sm border border-outline-variant/20 bg-surface-container/40 p-3 text-xs space-y-2 text-on-surface-variant">
       <div className="font-bold uppercase tracking-wider text-outline">Store &amp; themes</div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-[11px]">
         <dt className="text-outline">Store</dt>
-        <dd>{config.storeName ?? config.storeSlug ?? '— (run Test connection)'}</dd>
+        <dd>
+          {config.storeName ?? config.storeSlug ?? '— (run Test connection)'}
+          {config.storeId && <span className="text-outline"> · #{config.storeId}</span>}
+          {config.orgId && <span className="text-outline"> · org {config.orgId}</span>}
+        </dd>
+        <dt className="text-outline">Domain</dt>
+        <dd>{config.domain ?? '—'}</dd>
         <dt className="text-outline">Theme (main / prod)</dt>
-        <dd>{config.themeId ?? '—'}</dd>
+        <dd>
+          {config.themeId ?? '—'}
+          {config.themeName && <span className="text-outline"> · {config.themeName}</span>}
+        </dd>
         <dt className="text-outline">Theme (draft / staging)</dt>
-        <dd>{config.draftThemeId ?? '—'}</dd>
+        <dd>{config.draftThemeId ?? '— (created at build time)'}</dd>
         <dt className="text-outline">Commerce</dt>
         <dd>{config.commerceEnabled == null ? '—' : config.commerceEnabled ? 'enabled' : 'disabled'}</dd>
+        <dt className="text-outline">Scopes</dt>
+        <dd>{scopes ? (hasWildcard ? 'full (*)' : scopes.join(', ')) : '—'}</dd>
       </dl>
+      {missingScopes.length > 0 && (
+        <div className="rounded-sm border border-warning/30 bg-warning/10 p-2 text-[11px] text-warning">
+          Key is missing scope(s): <b>{missingScopes.join(', ')}</b> — builds/publish may fail.
+        </div>
+      )}
       {storefrontUrl && (
         <a
           href={storefrontUrl}
@@ -265,8 +283,8 @@ function ThemePanel({ config }: { config: IntegrationSummary['config'] | undefin
         </a>
       )}
       <div className="text-[10px] text-outline">
-        Publish (draft → live) and rollback run through the website pipeline&apos;s release
-        stage.
+        Builds run on a draft theme (previewed via a token on this domain); publish (draft → live)
+        and rollback run through the website pipeline&apos;s release stage.
       </div>
     </div>
   );

@@ -117,12 +117,11 @@ const postmanSecretsSchema = z.object({
 
 // ISS-387 — Epodsystem provider. One store per project; staging↔theme draft,
 // prod↔theme main. Config is the non-secret store context; the `crmk_` API key
-// is the only secret and is vault-encrypted like coolify/postman. Store
-// identity fields (slug/name/theme ids) are filled by the healthcheck, so they
-// are optional on input. `epodsystemConfigBase` carries no defaults so PATCH
-// `.partial()` stays a true partial.
+// is the only secret and is vault-encrypted like coolify/postman. The endpoint
+// is NOT user config — it is fixed platform config (EPODSYSTEM_ENDPOINT env).
+// Store identity fields (slug/name/theme ids) are filled by the healthcheck, so
+// every config field is optional on input — the operator only supplies the key.
 const epodsystemConfigBase = z.object({
-  endpoint: z.string().url().max(500),
   storeSlug: z.string().min(1).max(200).optional(),
   storeName: z.string().min(1).max(200).optional(),
   themeId: z.string().min(1).max(200).optional(),
