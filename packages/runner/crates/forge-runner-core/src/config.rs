@@ -38,14 +38,31 @@ pub struct Config {
     pub bindings: HashMap<String, Binding>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateSettings {
-    /// Release manifest URL. Defaults to `{core_url}/install/latest.json`.
+    /// Release manifest URL. Defaults to `{core_url}/api/install/latest.json`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub manifest_url: Option<String>,
     /// When true, the daemon downloads + applies updates and restarts itself.
-    #[serde(default)]
+    /// Defaults to ON (ISS-392) so releases reach the fleet without anyone
+    /// editing TOML; the drain guard keeps the restart from interrupting work,
+    /// and `forge-runner config set update.auto false` opts a device out.
+    /// Absent `[update]`/`auto =` ⇒ ON; an explicit `auto = false` still wins.
+    #[serde(default = "default_auto")]
     pub auto: bool,
+}
+
+fn default_auto() -> bool {
+    true
+}
+
+impl Default for UpdateSettings {
+    fn default() -> Self {
+        Self {
+            manifest_url: None,
+            auto: default_auto(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

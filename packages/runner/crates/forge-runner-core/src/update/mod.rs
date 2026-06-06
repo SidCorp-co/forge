@@ -44,7 +44,12 @@ pub fn manifest_url(configured: Option<&str>, core_url: Option<&str>) -> Option<
     if let Some(u) = configured.filter(|s| !s.is_empty()) {
         return Some(u.to_string());
     }
-    core_url.map(|c| format!("{}/install/latest.json", c.trim_end_matches('/')))
+    // The install routes are reachable under `/api` so the manifest rides the
+    // same proxied channel as every other transport call (ISS-392): the hosted
+    // edge forwards only `/api/*` to core, and a root `/install/latest.json`
+    // 404s into the web app. Self-hosters who expose core directly also serve
+    // `/api/install/latest.json` (core dual-mounts the routes).
+    core_url.map(|c| format!("{}/api/install/latest.json", c.trim_end_matches('/')))
 }
 
 pub async fn fetch_manifest(url: &str) -> Result<Manifest> {
@@ -154,7 +159,7 @@ mod tests {
         );
         assert_eq!(
             manifest_url(None, Some("https://core/")),
-            Some("https://core/install/latest.json".into())
+            Some("https://core/api/install/latest.json".into())
         );
         assert_eq!(manifest_url(None, None), None);
     }

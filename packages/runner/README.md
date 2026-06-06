@@ -31,3 +31,23 @@ cargo build --release
 ./target/release/forge-runner bind <slug> --path <dir> --project-id <uuid>
 ./target/release/forge-runner start
 ```
+
+## Auto-update (ISS-392)
+
+The daemon checks `{core}/api/install/latest.json` ~30s after start and every 6h.
+When a newer release is published it downloads the matching binary, verifies its
+sha256, swaps the executable, and restarts the systemd service.
+
+Auto-update is **ON by default**. The restart **drains to idle first** — it waits
+for in-flight pipeline jobs and chat sessions to finish (up to 30 min) before
+restarting, so an update never kills running work. Control it without editing
+TOML:
+
+```bash
+forge-runner config set update.auto false   # opt this device out
+forge-runner config set update.auto true    # opt back in
+forge-runner config set update.manifest-url https://<core>/api/install/latest.json
+```
+
+The installer enables it by default; pass `--no-auto-update` to opt out at install
+time: `curl -fsSL https://<core>/api/install.sh | sh -s -- --no-auto-update`.

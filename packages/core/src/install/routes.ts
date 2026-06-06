@@ -15,6 +15,16 @@ import { Hono } from 'hono';
  *   <dir>/forge-runner-aarch64-apple-darwin
  *
  * The CI release workflow builds these; the deploy populates the dir.
+ *
+ * Mounting (ISS-392): these routes are mounted at BOTH the core root (`/…`, for
+ * self-hosters who expose core directly) AND under `/api/…` (in `index.ts`). On
+ * the hosted deploy the edge proxy forwards only `/api/*` to core, so a runner
+ * reaching `{core}/install/latest.json` at the root 404s into the web app — the
+ * runner therefore fetches `{core}/api/install/latest.json`. The generated
+ * download URLs (manifest asset `url`, install.sh's `curl`) are PREFIX-AWARE:
+ * they echo back whichever prefix the request arrived on, so a request through
+ * `/api/...` yields `/api/install/bin/...` (proxy-reachable) while a direct
+ * root request keeps the root paths.
  */
 export const installRoutes = new Hono();
 
@@ -25,11 +35,42 @@ function origin(reqUrl: string): string {
   return new URL(reqUrl).origin;
 }
 
+/**
+ * The mount prefix the request arrived through: `/api` when reached via the
+ * proxied `/api/install/...` channel, else `''` (direct root mount). Keeps the
+ * URLs we hand back on the same channel the caller already reached us on.
+ */
+function mountPrefix(path: string): string {
+  return path.startsWith('/api/') ? '/api' : '';
+}
+
+/**
+ * Latest published runner version (the `VERSION` file in `RUNNER_RELEASE_DIR`),
+ * or null when nothing is published / the dir is unset. Exported so the devices
+ * routes can flag runners that lag the latest release (ISS-392).
+ */
+export async function getLatestRunnerVersion(): Promise<string | null> {
+  if (!RELEASE_DIR) return null;
+  try {
+    return (await readFile(join(RELEASE_DIR, 'VERSION'), 'utf8')).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 // No `${}` in this template — it must survive verbatim to the shell. Only the
-// __BASE__ placeholder is substituted with the core origin.
+// __BASE__ + __PREFIX__ placeholders are substituted (origin + mount prefix).
 const INSTALL_SH = `#!/bin/sh
 set -e
 BASE="__BASE__"
+PREFIX="__PREFIX__"
+# Auto-update defaults ON (ISS-392). Pass --no-auto-update to opt this device out.
+AUTO_UPDATE=1
+for arg in "$@"; do
+  case "$arg" in
+    --no-auto-update) AUTO_UPDATE=0;;
+  esac
+done
 os=$(uname -s); arch=$(uname -m)
 case "$os" in
   Linux) plat="unknown-linux-gnu";;
@@ -45,10 +86,16 @@ target="$cpu-$plat"
 dest="$HOME/.local/bin"
 mkdir -p "$dest"
 echo "Downloading forge-runner ($target)..."
-curl -fsSL "$BASE/install/bin/$target" -o "$dest/forge-runner.new"
+curl -fsSL "$BASE$PREFIX/install/bin/$target" -o "$dest/forge-runner.new"
 chmod +x "$dest/forge-runner.new"
 mv "$dest/forge-runner.new" "$dest/forge-runner"
 echo "Installed to $dest/forge-runner"
+if [ "$AUTO_UPDATE" = "0" ]; then
+  "$dest/forge-runner" config set update.auto false || true
+  echo "Auto-update disabled for this device."
+else
+  echo "Auto-update is ON (disable later with: forge-runner config set update.auto false)"
+fi
 case ":$PATH:" in
   *":$dest:"*) ;;
   *) echo "Add to PATH:  export PATH=\\"$dest:\\$PATH\\"";;
@@ -67,7 +114,12 @@ exit 1
 
 installRoutes.get('/install.sh', (c) =>
   c.body(
-    RELEASE_DIR ? INSTALL_SH.replace(/__BASE__/g, origin(c.req.url)) : INSTALL_SH_UNPUBLISHED,
+    RELEASE_DIR
+      ? INSTALL_SH.replace(/__BASE__/g, origin(c.req.url)).replace(
+          /__PREFIX__/g,
+          mountPrefix(c.req.path),
+        )
+      : INSTALL_SH_UNPUBLISHED,
     200,
     { 'content-type': 'text/x-shellscript; charset=utf-8' },
   ),
@@ -82,6 +134,7 @@ installRoutes.get('/install/latest.json', async (c) => {
     return c.json({ error: 'no release published' }, 404);
   }
   const base = origin(c.req.url);
+  const prefix = mountPrefix(c.req.path);
   const files = await readdir(RELEASE_DIR).catch(() => [] as string[]);
   const assets: Record<string, { url: string; sha256: string }> = {};
   for (const f of files) {
@@ -89,7 +142,7 @@ installRoutes.get('/install/latest.json', async (c) => {
     const target = f.slice(ASSET_PREFIX.length);
     const buf = await readFile(join(RELEASE_DIR, f));
     assets[target] = {
-      url: `${base}/install/bin/${target}`,
+      url: `${base}${prefix}/install/bin/${target}`,
       sha256: createHash('sha256').update(buf).digest('hex'),
     };
   }

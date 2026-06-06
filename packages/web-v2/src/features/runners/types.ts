@@ -9,6 +9,10 @@ export interface DeviceRow {
   name: string;
   platform: "macos" | "linux" | "windows";
   agentVersion: string | null;
+  /** Latest published runner version (server-read VERSION), null if none. */
+  latestAgentVersion: string | null;
+  /** True when this device's agentVersion lags `latestAgentVersion` (ISS-392). */
+  agentOutdated: boolean;
   status: "online" | "offline" | "revoked";
   lastSeenAt: string | null;
   pairedAt: string | null;
