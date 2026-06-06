@@ -30,6 +30,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Fixed the Issues screen so the top navigation progress bar no longer gets stuck part-way, list rows show each issue's real status, and linked/related issues are shown clearly instead of just an icon and a number.**
   *Technical: route-progress.tsx must not gate completion on the global useIsFetching count or self-fire on replaceState URL-sync; list rows should render the true lifecycle status instead of the collapsed statusToChip bucket; DepBadges should surface linked issue IDs, not emoji+count only.*
 
+- **Pipeline jobs that fail mechanically (crash or non-zero exit) now automatically retry from the stage's entry point instead of getting stuck waiting for manual intervention.**
+  *Technical: Removed the manual-hold/on_hold-as-block model: finalizeFailedJob reverts issue.status to JOB_TYPE_ENTRY_STATUS so the orchestrator re-dispatches; budget-exhausted/non-retryable failures park at `waiting` + close the stuck pipeline_run; classifyVerdict treats in_progress as pending for code/fix (the ISS-34 no-op fix). manual_hold/manual_hold_until/failure_context columns dropped (migration 0099). Merge 25d1ad13.*
+
 ### Added
 
 - **The pipeline now reproduces bugs before planning: a new `clarified` status sits between `confirmed` and `approved`, and the clarify step runs on the happy path — it reproduces the bug (or validates the UX) in a live environment, attaches evidence and a root-cause hypothesis, and only then hands the issue to planning. Trivially-sized issues (per-stage `skipComplexities`, e.g. xs/s) skip clarify automatically, and projects that never enabled clarify keep their exact previous flow.**
