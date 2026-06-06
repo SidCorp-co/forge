@@ -21,13 +21,13 @@ import type { IntegrationEnvironment } from '../../db/schema.js';
 export interface EpodsystemConfig extends Record<string, unknown> {
   /** GraphQL/admin endpoint of the store backend (e.g. https://<store>.epodsystem.com). */
   endpoint: string;
-  /** Store slug; resolved by the healthcheck `apiKeyContext` query. */
+  /** Store slug; resolved by the healthcheck from `apiKeyContext.stores[0].slug`. */
   storeSlug?: string;
-  /** Human-readable store name; resolved by the healthcheck. */
+  /** Human-readable store name; from `apiKeyContext.stores[0].name`. */
   storeName?: string;
-  /** Live (main) theme id. */
+  /** Live (main) theme id; from `apiKeyContext.stores[0].active_theme_id`. */
   themeId?: string;
-  /** Draft theme id used as the build target (staging). */
+  /** Draft theme id used as the build target (staging); resolved via the MCP layer, NOT apiKeyContext. */
   draftThemeId?: string;
   /** Whether the store has commerce features enabled (ecommerce vs blog/landing). */
   commerceEnabled?: boolean;
@@ -42,18 +42,29 @@ export interface EpodsystemSecrets extends Record<string, unknown> {
 }
 
 /**
- * Shape of the GraphQL `apiKeyContext` reply (only the non-secret identity
- * fields we surface as healthcheck diagnostics + config). Field names are kept
- * optional so a partial backend response never throws.
+ * One store entry under `apiKeyContext.stores` (snake_case, per the Epodsystem
+ * GraphQL schema). `active_theme_id` is the live (main) theme. There is NO
+ * draft-theme id on this type — the draft is resolved later via the MCP layer.
+ */
+export interface ApiKeyStore {
+  id?: string | null;
+  slug?: string | null;
+  name?: string | null;
+  commerce_enabled?: boolean | null;
+  active_theme_id?: string | null;
+}
+
+/**
+ * Shape of the GraphQL `apiKeyContext` reply. The org's store(s) live under
+ * `stores` (a list); ISS-387 is one-store-per-project, so the adapter reads
+ * `stores[0]`. Fields are optional so a partial backend response never throws.
  */
 export interface ApiKeyContextResponse {
   data?: {
     apiKeyContext?: {
-      storeSlug?: string | null;
-      storeName?: string | null;
-      themeId?: string | null;
-      draftThemeId?: string | null;
-      commerceEnabled?: boolean | null;
+      organization_id?: string | null;
+      scopes?: string[] | null;
+      stores?: ApiKeyStore[] | null;
     } | null;
   } | null;
   errors?: Array<{ message?: string }> | null;

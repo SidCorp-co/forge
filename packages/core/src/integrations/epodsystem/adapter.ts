@@ -19,8 +19,10 @@ import type { ApiKeyContextResponse, EpodsystemConfig, EpodsystemSecrets } from 
 const CONTEXT_TIMEOUT_MS = 15_000;
 
 // The non-secret store identity query. NEVER selects or echoes the key.
+// `apiKeyContext` exposes org + scopes + a `stores` list (snake_case fields);
+// ISS-387 is one-store-per-project, so we read `stores[0]`.
 const API_KEY_CONTEXT_QUERY =
-  'query ForgeApiKeyContext { apiKeyContext { storeSlug storeName themeId draftThemeId commerceEnabled } }';
+  'query ForgeApiKeyContext { apiKeyContext { organization_id scopes stores { id slug name commerce_enabled active_theme_id } } }';
 
 const notSupported = (op: string): never => {
   // Epodsystem is MCP-injection-only; no webhook/dispatch surface exists.
@@ -89,18 +91,20 @@ export const epodsystemAdapter: IntegrationAdapter<EpodsystemConfig, EpodsystemS
         return { status: 'error', message: 'invalid Epodsystem API key' };
       }
 
-      const sctx = body.data?.apiKeyContext ?? {};
+      // One-store-per-project (ISS-387): take the first store. A valid key with
+      // no store yet leaves `store` undefined → key-valid, identity unresolved.
+      const store = body.data?.apiKeyContext?.stores?.[0];
       // Persist the resolved store identity back into config (non-secret) so the
       // settings badge + Theme panel and `forge_storefront_target` show the real
       // store/theme without re-running the healthcheck (AC#1). Only overwrite a
       // field when the backend actually returned it, so a partial response never
       // wipes previously-resolved values. The crmk_ key is NEVER written here.
+      // `themeId` is the live (main) theme; `draftThemeId` is not on apiKeyContext.
       const resolved: Record<string, unknown> = { ...(ctx.config ?? {}) };
-      if (sctx.storeSlug != null) resolved.storeSlug = sctx.storeSlug;
-      if (sctx.storeName != null) resolved.storeName = sctx.storeName;
-      if (sctx.themeId != null) resolved.themeId = sctx.themeId;
-      if (sctx.draftThemeId != null) resolved.draftThemeId = sctx.draftThemeId;
-      if (sctx.commerceEnabled != null) resolved.commerceEnabled = sctx.commerceEnabled;
+      if (store?.slug != null) resolved.storeSlug = store.slug;
+      if (store?.name != null) resolved.storeName = store.name;
+      if (store?.active_theme_id != null) resolved.themeId = store.active_theme_id;
+      if (store?.commerce_enabled != null) resolved.commerceEnabled = store.commerce_enabled;
       await updateIntegration(ctx.integrationId, {
         config: resolved,
         lastHealthStatus: 'ok',
@@ -108,14 +112,13 @@ export const epodsystemAdapter: IntegrationAdapter<EpodsystemConfig, EpodsystemS
       });
       return {
         status: 'ok',
-        message: sctx.storeName ? `Connected to ${sctx.storeName}` : 'Epodsystem API key is valid',
+        message: store?.name ? `Connected to ${store.name}` : 'Epodsystem API key is valid',
         // Only non-secret store identity — never the key.
         diagnostics: {
-          storeSlug: sctx.storeSlug ?? null,
-          storeName: sctx.storeName ?? null,
-          themeId: sctx.themeId ?? null,
-          draftThemeId: sctx.draftThemeId ?? null,
-          commerceEnabled: sctx.commerceEnabled ?? null,
+          storeSlug: store?.slug ?? null,
+          storeName: store?.name ?? null,
+          themeId: store?.active_theme_id ?? null,
+          commerceEnabled: store?.commerce_enabled ?? null,
         },
       };
     } catch (err) {
