@@ -43,6 +43,7 @@ import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
+import { finalizeJobDone, hasTerminalHandoffForAttempt } from './finalize-done.js';
 import type { RetryOutcome } from './retry.js';
 import { scheduleAutoRetryWithVerify } from './retry.js';
 
@@ -172,6 +173,19 @@ export async function finalizeFailedJob(
   updated: JobRow,
   opts: FinalizeFailedJobOptions,
 ): Promise<RetryOutcome> {
+  // False-failure override (see finalize-done.ts): the runner reports `failed`
+  // when it misses the Claude CLI `result` event even though the agent ran the
+  // step to completion. If the agent wrote a terminal handoff for this attempt,
+  // that authoritative signal beats the runner's exit detection — mark the job
+  // `done` instead of retrying / parking at `waiting`. Covers both the
+  // "Agent completed with errors" (null-exit) and the silent-death-after-work
+  // classes. Runs BEFORE scheduleAutoRetryWithVerify so no retry is queued.
+  if (updated.issueId && (await hasTerminalHandoffForAttempt(updated))) {
+    const flipped = await finalizeJobDone(updated, 'completed_via_handoff');
+    if (flipped) return { scheduled: false, reason: 'completed_via_handoff' };
+    // CAS lost (a concurrent terminal write won) → fall through to normal path.
+  }
+
   const retry: RetryOutcome =
     opts.precomputedRetry ?? (await scheduleAutoRetryWithVerify(updated, opts.error));
 
