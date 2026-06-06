@@ -48,7 +48,6 @@ function row(over: Partial<IssueRow> & { id: string }): IssueRow {
     assigneeId: over.assigneeId ?? null,
     parentIssueId: over.parentIssueId ?? null,
     reopenCount: over.reopenCount ?? 0,
-    manualHold: over.manualHold ?? false,
     mergedAt: over.mergedAt ?? null,
     createdAt: over.createdAt ?? "2026-01-01T00:00:00.000Z",
     updatedAt: over.updatedAt ?? "2026-01-01T00:00:00.000Z",
@@ -278,13 +277,10 @@ describe("deriveCommentKind", () => {
 // ─── ISS-377 ────────────────────────────────────────────────────────────────
 
 function blockerIssue(
-  over: Partial<Pick<IssueDetail, "status" | "manualHold" | "manualHoldUntil" | "failureContext">> = {},
-): Pick<IssueDetail, "status" | "manualHold" | "manualHoldUntil" | "failureContext"> {
+  over: Partial<Pick<IssueDetail, "status">> = {},
+): Pick<IssueDetail, "status"> {
   return {
     status: over.status ?? "in_progress",
-    manualHold: over.manualHold ?? false,
-    manualHoldUntil: over.manualHoldUntil ?? null,
-    failureContext: over.failureContext ?? null,
   };
 }
 
@@ -322,27 +318,6 @@ describe("deriveBlockerState", () => {
     expect(deriveBlockerState(blockerIssue({ status: "reopen" }), undefined, undefined)).toBeNull();
   });
 
-  it("surfaces a failure card with a resume action", () => {
-    const b = deriveBlockerState(
-      blockerIssue({
-        status: "on_hold",
-        failureContext: {
-          step: "code",
-          trigger: "job_failed",
-          attempts: 3,
-          suggestedActions: ["resume", "skip-step", "close"],
-          classification: { kind: "transient_network", reason: "network blip" },
-        },
-      }),
-      undefined,
-      undefined,
-    );
-    expect(b?.tone).toBe("danger");
-    expect(b?.cta.kind).toBe("resume");
-    expect(b?.reason).toContain("code");
-    expect(b?.detail).toBe("network blip");
-  });
-
   it("needs_info shows the supplied question and a provide-info action", () => {
     const b = deriveBlockerState(blockerIssue({ status: "needs_info" }), undefined, undefined, {
       needsInfoQuestion: "Which environment?",
@@ -356,39 +331,15 @@ describe("deriveBlockerState", () => {
     expect(b?.cta.kind).toBe("approve");
   });
 
-  it("manualHold → unhold action (NOT a status transition) with hold-until detail", () => {
-    // manualHold is its own dispatcher block — surfaced even when the status
-    // looks active (in_progress), with an `unhold` CTA so the screen clears the
-    // flag via /manual-hold instead of doing a status transition (ISS-386/22).
-    const b = deriveBlockerState(
-      blockerIssue({ status: "in_progress", manualHold: true, manualHoldUntil: "2026-07-01T00:00:00.000Z" }),
-      undefined,
-      undefined,
-    );
-    expect(b?.cta.kind).toBe("unhold");
-    expect(b?.reason).toContain("manual hold");
-    expect(b?.reason).toContain("2026-07-01");
-  });
-
-  it("on_hold status (no manualHold) → resume action", () => {
+  it("on_hold status → resume action", () => {
     const b = deriveBlockerState(blockerIssue({ status: "on_hold" }), undefined, undefined);
     expect(b?.cta.kind).toBe("resume");
     expect(b?.reason).toContain("paused");
   });
 
-  it("manualHold takes precedence over on_hold status (unhold wins)", () => {
-    const b = deriveBlockerState(
-      blockerIssue({ status: "on_hold", manualHold: true }),
-      undefined,
-      undefined,
-    );
-    expect(b?.cta.kind).toBe("unhold");
-  });
-
   it("maps each pipelineHealth.waitingOn reason", () => {
     for (const reason of [
       "issue_busy",
-      "manual_hold",
       "waiting_on_dep",
       "waiting_on_decomp_parent",
       "project_full",

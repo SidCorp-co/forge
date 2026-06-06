@@ -114,7 +114,6 @@ export function PipelineBoard({ scope, embedded = false }: PipelineBoardProps) {
                     title={issue.title}
                     stage={group.stage}
                     status={status}
-                    held={issue.manualHold}
                     assignee={initials ? { initials } : undefined}
                     onClick={() => setSelected({ issue, runId: run?.id ?? null })}
                   />

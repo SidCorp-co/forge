@@ -385,7 +385,7 @@ export function heartbeatState(
   return nowMs - t <= HEARTBEAT_STALE_MS ? "alive" : "stale";
 }
 
-export type BlockerCtaKind = "approve" | "provide-info" | "resume" | "unhold" | "open-blocker" | "none";
+export type BlockerCtaKind = "approve" | "provide-info" | "resume" | "open-blocker" | "none";
 
 /** A blocking dependency endpoint, ready to render as a clickable ISS-x chip. */
 export interface BlockingRef {
@@ -396,9 +396,9 @@ export interface BlockingRef {
 }
 
 /** Single server-derived "why is it stuck" verdict for the blocker banner
- *  (AC#1/#2). Computed in ONE place from failureContext / status /
- *  manualHold(Until) / pipelineHealth.waitingOn / blocks edges — the component
- *  never re-joins those sources. `null` ⇒ not blocked ⇒ render nothing. */
+ *  (AC#1/#2). Computed in ONE place from status / pipelineHealth.waitingOn /
+ *  blocks edges — the component never re-joins those sources. `null` ⇒ not
+ *  blocked ⇒ render nothing. */
 export interface BlockerState {
   tone: "danger" | "attention" | "info";
   reason: string;
@@ -430,7 +430,6 @@ function openBlockingRefs(deps: IssueDependencies | undefined): BlockingRef[] {
 
 const WAITING_REASON_COPY: Record<WaitingReason, { reason: string; who: string }> = {
   issue_busy: { reason: "Another job is already active on this issue.", who: "Wait for the active run to finish." },
-  manual_hold: { reason: "The issue is on a manual hold.", who: "An operator must resume it." },
   waiting_on_dep: { reason: "Blocked by an unfinished dependency.", who: "Finish the blocking issue first." },
   waiting_on_decomp_parent: { reason: "Waiting on its parent epic to finish releasing.", who: "The parent epic must complete." },
   project_full: { reason: "The project's concurrency cap is reached.", who: "No action — dispatches when a slot frees." },
@@ -439,40 +438,24 @@ const WAITING_REASON_COPY: Record<WaitingReason, { reason: string; who: string }
 
 /**
  * Derive the single blocker verdict for an issue, or `null` when it is actively
- * progressing. Precedence (richest signal first): agent failure card →
- * needs_info → waiting-for-approve → on_hold/manual_hold → pipelineHealth
- * capacity/dep waits → open `blocks` edges. `needsInfoQuestion` is supplied by
- * the screen (which can read the latest comment); kept as an arg so this stays
- * pure + unit-testable.
+ * progressing. Precedence (richest signal first): needs_info →
+ * waiting-for-approve → on_hold → pipelineHealth capacity/dep waits → open
+ * `blocks` edges. `needsInfoQuestion` is supplied by the screen (which can read
+ * the latest comment); kept as an arg so this stays pure + unit-testable.
+ *
+ * ISS-393 removed the manual-hold failure card: a mechanically-failed job now
+ * reverts the issue to its stage entry-status (auto re-dispatch) or parks it at
+ * `waiting` for human review — both already covered by the branches below.
  */
 export function deriveBlockerState(
-  issue: Pick<IssueDetail, "status" | "manualHold" | "manualHoldUntil" | "failureContext">,
+  issue: Pick<IssueDetail, "status">,
   pipelineHealth: PipelineHealth | undefined,
   deps: IssueDependencies | undefined,
   opts: { needsInfoQuestion?: string } = {},
 ): BlockerState | null {
   const blockingRefs = openBlockingRefs(deps);
 
-  // 1. Agent failure card — an exhausted-retry hold with suggested actions.
-  const fc = issue.failureContext;
-  if (fc) {
-    const actions = fc.suggestedActions ?? [];
-    const cta: BlockerState["cta"] = actions.includes("resume")
-      ? { label: "Resume", kind: "resume" }
-      : actions.includes("skip-step")
-        ? { label: "Resume / skip step", kind: "resume" }
-        : { label: "Review failure", kind: "none" };
-    return {
-      tone: "danger",
-      reason: `The ${fc.step} step failed (${fc.trigger.replace(/_/g, " ")}) after ${fc.attempts ?? "several"} attempt(s).`,
-      whoMustAct: "An operator must resume, skip, or close the issue.",
-      cta,
-      detail: fc.classification?.reason,
-      ...(blockingRefs.length ? { blockingRefs } : {}),
-    };
-  }
-
-  // 2. needs_info — a human owes an answer.
+  // 1. needs_info — a human owes an answer.
   if (issue.status === "needs_info") {
     return {
       tone: "attention",
@@ -495,24 +478,7 @@ export function deriveBlockerState(
     };
   }
 
-  // 4a. manual_hold — the dispatcher is blocked from picking up new jobs.
-  // Checked BEFORE on_hold because manualHold silently stalls an issue even
-  // when its status looks normal (the ISS-22 case). Its CTA clears the flag via
-  // the standalone /manual-hold endpoint (kind "unhold") — NOT a status
-  // transition, which would conflate the two concepts (ISS-22 stall risk).
-  if (issue.manualHold) {
-    const until = issue.manualHoldUntil ? ` until ${issue.manualHoldUntil.slice(0, 10)}` : "";
-    return {
-      tone: "attention",
-      reason: `Dispatch is on manual hold${until}.`,
-      whoMustAct:
-        "An operator must unhold it before the dispatcher picks up new jobs. In-flight jobs are not cancelled.",
-      cta: { label: "Unhold", kind: "unhold" },
-      ...(blockingRefs.length ? { blockingRefs } : {}),
-    };
-  }
-
-  // 4b. on_hold status — deliberately paused via the state machine.
+  // 4. on_hold status — deliberately paused via the state machine.
   if (issue.status === "on_hold") {
     return {
       tone: "attention",

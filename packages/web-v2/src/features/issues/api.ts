@@ -1,7 +1,7 @@
 // web-v2 feature module: issues — REST surface. Every call goes through the
 // shared `apiClient`/`apiClientList` (no raw fetch). Paths verified against
 // core: `issues/search.ts`, `issues/routes.ts` (PATCH), `issues/transition.ts`,
-// `issues/extras-routes.ts` (cost-summary, run-pipeline-step, manual-hold),
+// `issues/extras-routes.ts` (cost-summary, run-pipeline-step),
 // `issues/dependency-routes.ts`, `projects/members-routes.ts`.
 
 import { apiClient, apiClientList } from "@/lib/api/client";
@@ -101,16 +101,5 @@ export const issuesApi = {
     apiClient<unknown>(`/issues/${id}/run-pipeline-step`, {
       method: "POST",
       body: JSON.stringify(stage ? { stage } : {}),
-    }),
-
-  /** `PATCH /api/issues/:id/manual-hold` — toggle the dispatcher manual-hold
-   *  flag (membership-gated). This is a STANDALONE call; it is NEVER bundled
-   *  into a status `transition` (combining them stalls the pipeline — ISS-22).
-   *  Distinct from the `on_hold` status: manualHold blocks the dispatcher from
-   *  picking up NEW jobs but does not cancel an in-flight one. */
-  manualHold: (id: string, value: boolean) =>
-    apiClient<{ issueId: string; manualHold: boolean }>(`/issues/${id}/manual-hold`, {
-      method: "PATCH",
-      body: JSON.stringify({ value }),
     }),
 };
