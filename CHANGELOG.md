@@ -16,6 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Pipeline steps that were automatically cleaned up when a run finished are now shown as a neutral "cleaned up" state instead of looking like failures, so a cleanly-completed issue no longer appears to have failed.**
   *Technical: Adds a shared job-status classifier (success / failed / benign-cleanup / stale-or-manual-cancel) and surfaces failureKind/failureReason on the pipeline read models; cancelled-cleanup renders muted with an explanatory tooltip instead of error-red across web-v2.*
 
+- **The agent Sessions list now has a more compact header and richer session rows (start time and cost), with the session detail showing an elevated task list.**
+  *Technical: Reworked web-v2 sessions-screen header (4 StatCards -> inline metric strip) + added Started/Cost columns (cost via a bounded per-page usage_records rollup in GET /api/agent-sessions); elevated the Agents & tasks section + task-count badge in the session detail.*
+
 ### Fixed
 
 - **A pipeline could silently stall for about an hour when a job was dispatched to a runner that never picked it up — the dead job held the runner's only slot and blocked the next stage. The system now detects an unclaimed dispatch within a few minutes and recovers automatically (re-dispatching the work, or moving the issue on if it had already completed elsewhere).**
@@ -150,6 +153,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Pipeline steps that were automatically cleaned up when a run finished are now shown as a neutral "cleaned up" state instead of looking like failures, so a cleanly-completed issue no longer appears to have failed.**
   *Technical: Adds a shared job-status classifier (success / failed / benign-cleanup / stale-or-manual-cancel) and surfaces failureKind/failureReason on the pipeline read models; cancelled-cleanup renders muted with an explanatory tooltip instead of error-red across web-v2.*
+
+- **The agent Sessions list now has a more compact header and richer session rows (start time and cost), with the session detail showing an elevated task list.**
+  *Technical: Reworked web-v2 sessions-screen header (4 StatCards -> inline metric strip) + added Started/Cost columns (cost via a bounded per-page usage_records rollup in GET /api/agent-sessions); elevated the Agents & tasks section + task-count badge in the session detail.*
 
 ### Removed
 
