@@ -200,6 +200,11 @@ export const projects = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
     description: text('description'),
+    // ISS-387 — project kind. `standard` = code repo project (default);
+    // `website` = an Epodsystem-backed storefront (the store is the source of
+    // truth, so a git repo is optional). Free-text column gated by the
+    // `projectKinds` app-level enum; default keeps every existing row valid.
+    kind: text('kind').notNull().default('standard'),
     repoPath: text('repo_path'),
     baseBranch: text('base_branch'),
     productionBranch: text('production_branch'),
@@ -223,6 +228,11 @@ export const projects = pgTable(
     archivedAtIdx: index('projects_archived_at_idx').on(t.archivedAt),
   }),
 );
+
+/** ISS-387 — allowed project kinds. `standard` = code repo project; `website`
+ *  = Epodsystem storefront project (git repo optional). */
+export const projectKinds = ['standard', 'website'] as const;
+export type ProjectKind = (typeof projectKinds)[number];
 
 export const projectMemberRoles = ['owner', 'admin', 'member'] as const;
 export type ProjectMemberRole = (typeof projectMemberRoles)[number];

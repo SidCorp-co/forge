@@ -49,6 +49,7 @@ import { seedDomainTemplates } from './domain-templates/seed.js';
 import { registerRunnerReleaseRefetch } from './install/fetch-release.js';
 import { installRoutes } from './install/routes.js';
 import { registerCoolifyAdapter } from './integrations/coolify/adapter.js';
+import { registerEpodsystemAdapter } from './integrations/epodsystem/adapter.js';
 import { registerPostmanAdapter } from './integrations/postman/adapter.js';
 import { registerIntegrationsWorker } from './integrations/queue.js';
 import { integrationsRoutes } from './integrations/routes.js';
@@ -405,6 +406,7 @@ if (isMain) {
   await assertVaultBootSafety();
   registerCoolifyAdapter();
   registerPostmanAdapter();
+  registerEpodsystemAdapter();
   await registerIntegrationsWorker();
   registerReleaseCompletedSubscriber(hooks);
   const skillSeed = await seedBuiltinSkills(db);

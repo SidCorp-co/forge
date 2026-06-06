@@ -1,16 +1,16 @@
+import { execFile } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import { promisify } from 'node:util';
 import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { execFile } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
-import { promisify } from 'node:util';
 import { db } from '../db/client.js';
 import {
+  type IntegrationEnvironment,
   devices,
   integrationDeliveries,
-  type IntegrationEnvironment,
   integrationEnvironments,
   projectIntegrations,
   projectMembers,
@@ -55,7 +55,10 @@ const notFound = (entity = 'integration') =>
 
 const ROTATION_WINDOW_MS = 24 * 60 * 60_000;
 
-async function assertProjectMember(projectId: string, userId: string): Promise<'owner' | 'admin' | 'member'> {
+async function assertProjectMember(
+  projectId: string,
+  userId: string,
+): Promise<'owner' | 'admin' | 'member'> {
   const [project] = await db
     .select({ id: projects.id, ownerId: projects.ownerId })
     .from(projects)
@@ -112,6 +115,25 @@ const postmanSecretsSchema = z.object({
   apiKey: z.string().min(8).max(2000),
 });
 
+// ISS-387 — Epodsystem provider. One store per project; staging↔theme draft,
+// prod↔theme main. Config is the non-secret store context; the `crmk_` API key
+// is the only secret and is vault-encrypted like coolify/postman. Store
+// identity fields (slug/name/theme ids) are filled by the healthcheck, so they
+// are optional on input. `epodsystemConfigBase` carries no defaults so PATCH
+// `.partial()` stays a true partial.
+const epodsystemConfigBase = z.object({
+  endpoint: z.string().url().max(500),
+  storeSlug: z.string().min(1).max(200).optional(),
+  storeName: z.string().min(1).max(200).optional(),
+  themeId: z.string().min(1).max(200).optional(),
+  draftThemeId: z.string().min(1).max(200).optional(),
+  commerceEnabled: z.boolean().optional(),
+});
+
+const epodsystemSecretsSchema = z.object({
+  apiKey: z.string().min(8).max(2000),
+});
+
 // Discriminated on `provider` so each provider validates its own config +
 // secrets shape. `environment` defaults to 'prod' for postman (it has no
 // staging/prod split, but the table column + unique index require a value).
@@ -128,6 +150,12 @@ const createSchema = z.discriminatedUnion('provider', [
     config: postmanConfigSchema,
     secrets: postmanSecretsSchema,
   }),
+  z.object({
+    provider: z.literal('epodsystem'),
+    environment: environmentSchema.default('prod'),
+    config: epodsystemConfigBase,
+    secrets: epodsystemSecretsSchema,
+  }),
 ]);
 
 // PATCH carries no provider, so config/secrets are validated loosely here and
@@ -141,9 +169,9 @@ const updateSchema = z.object({
 /** Per-provider partial config schema for PATCH validation. Uses the
  *  no-default base for postman so a partial patch never re-emits defaults. */
 function configSchemaForProvider(provider: string): z.ZodTypeAny {
-  return provider === 'postman'
-    ? postmanConfigBase.partial()
-    : coolifyConfigSchema.partial();
+  if (provider === 'postman') return postmanConfigBase.partial();
+  if (provider === 'epodsystem') return epodsystemConfigBase.partial();
+  return coolifyConfigSchema.partial();
 }
 
 function summarize(row: typeof projectIntegrations.$inferSelect) {
@@ -247,13 +275,16 @@ integrationsRoutes.patch(
     if (patch.config) {
       const parsed = configSchemaForProvider(existing.provider).safeParse(patch.config);
       if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-      mergedConfig = { ...(existing.config as object), ...(parsed.data as Record<string, unknown>) };
+      mergedConfig = {
+        ...(existing.config as object),
+        ...(parsed.data as Record<string, unknown>),
+      };
     }
 
     let mergedSecrets: Record<string, unknown> | null | undefined = undefined;
-    if (existing.provider === 'postman') {
-      // Postman has a single non-rotating secret: the API key. Replace it
-      // wholesale when present.
+    if (existing.provider === 'postman' || existing.provider === 'epodsystem') {
+      // Postman + Epodsystem both have a single non-rotating secret: the API
+      // key. Replace it wholesale when present.
       const parsed = postmanSecretsSchema.partial().safeParse(patch.secrets ?? {});
       if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
       if (parsed.data.apiKey) {
@@ -537,14 +568,43 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
     });
   }
 
+  // --- Epodsystem (ISS-387) — one card; reflects the active integration's
+  // last test-connection health, or 'not_configured' when absent. Carries only
+  // non-secret store identity in meta — never the crmk_ key. ---
+  const epodsystemRow = integrationRows.find((r) => r.provider === 'epodsystem');
+  if (!epodsystemRow) {
+    cards.push({
+      key: 'epodsystem',
+      label: 'Epodsystem',
+      status: 'not_configured',
+      detail: 'no Epodsystem integration configured',
+      lastSyncAt: null,
+      configured: false,
+    });
+  } else {
+    const epCfg = (epodsystemRow.config ?? {}) as { storeSlug?: string; storeName?: string };
+    cards.push({
+      key: 'epodsystem',
+      label: 'Epodsystem',
+      status: coolifyHealthToStatus(epodsystemRow.lastHealthStatus, epodsystemRow.active),
+      detail: !epodsystemRow.active
+        ? 'integration disabled'
+        : epodsystemRow.lastHealthStatus
+          ? `last health: ${epodsystemRow.lastHealthStatus}`
+          : 'never test-connected',
+      lastSyncAt: toIso(epodsystemRow.lastHealthAt),
+      configured: true,
+      meta: { storeSlug: epCfg.storeSlug ?? null, storeName: epCfg.storeName ?? null },
+    });
+  }
+
   // --- Runners / devices online ---
   const totalRunners = runnerRows.length;
   const onlineRunners = runnerRows.filter((r) => r.status === 'online').length;
   cards.push({
     key: 'runners',
     label: 'Runners',
-    status:
-      totalRunners === 0 ? 'not_configured' : onlineRunners > 0 ? 'connected' : 'attention',
+    status: totalRunners === 0 ? 'not_configured' : onlineRunners > 0 ? 'connected' : 'attention',
     detail:
       totalRunners === 0
         ? 'no runners bound to this project'

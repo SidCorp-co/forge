@@ -58,7 +58,10 @@ export interface SeedOptions {
   skillsRoot?: string;
 }
 
-const BUILTIN_SKILL_PREFIX = 'forge-';
+// Builtin skill directories are seeded by name prefix. `forge-` = the core
+// pipeline skills; `shop-` = the ISS-387 Epodsystem storefront skills wired
+// into the `website` domain templates.
+const BUILTIN_SKILL_PREFIXES = ['forge-', 'shop-'] as const;
 
 function defaultSkillsRoot(): string {
   // Resolves to `<pkg-root>/skills` whether running from `src/skills/` (dev,
@@ -160,7 +163,7 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    if (!entry.name.startsWith(BUILTIN_SKILL_PREFIX)) continue;
+    if (!BUILTIN_SKILL_PREFIXES.some((p) => entry.name.startsWith(p))) continue;
 
     const skillMdPath = path.join(root, entry.name, 'SKILL.md');
     let raw: Buffer;

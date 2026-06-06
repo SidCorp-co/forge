@@ -687,6 +687,13 @@
 			"when": 1782518400000,
 			"tag": "0099_drop_manual_hold",
 			"breakpoints": true
+		},
+		{
+			"idx": 100,
+			"version": "7",
+			"when": 1782604800000,
+			"tag": "0100_add_project_kind",
+			"breakpoints": true
 		}
 	]
 }

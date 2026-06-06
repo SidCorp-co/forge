@@ -169,6 +169,7 @@ describe('db/schema — projects', () => {
         'default_device_id',
         'description',
         'id',
+        'kind',
         'name',
         'owner_id',
         'preview_deploy',

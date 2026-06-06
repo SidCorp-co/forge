@@ -64,6 +64,8 @@ const INTEGRATION_USAGE: Record<string, string> = {
   coolify: 'Deploy / redeploy and poll deployment status via the `forge_coolify_deploy` tool.',
   postman:
     'Run API collections / target requests via `forge_postman_target` and the `mcp__postman__*` tools.',
+  epodsystem:
+    'Read store + theme context via `forge_storefront_target` and customize the storefront via the `mcp__epodsystem__*` shop tools. Always build on the DRAFT theme; publishing promotes draft → main.',
 };
 
 function renderIntegrations(rows: IntegrationRow[]): string {

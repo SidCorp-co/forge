@@ -50,7 +50,6 @@ import {
 } from './tools/forge-projects.js';
 import { forgeRunnersTool } from './tools/forge-runners.js';
 import { forgeSkillFactsGetTool, forgeSkillFactsListTool } from './tools/forge-skill-facts.js';
-import { forgeStepStartTool } from './tools/forge-step-start.js';
 import {
   forgeSkillsCreateTool,
   forgeSkillsDeleteTool,
@@ -68,6 +67,8 @@ import {
   forgeStepHandoffGetTool,
   forgeStepHandoffWriteTool,
 } from './tools/forge-step-handoff.js';
+import { forgeStepStartTool } from './tools/forge-step-start.js';
+import { forgeStorefrontTargetTool } from './tools/forge-storefront-target.js';
 import { forgeUploadsTool } from './tools/forge-uploads.js';
 import { type McpTool, forgeVersionTool } from './tools/forge-version.js';
 import type { McpContext } from './tools/lib.js';
@@ -207,6 +208,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeConfigTool(ctx),
     forgeCoolifyDeployTool(ctx),
     forgePostmanTargetTool(ctx),
+    forgeStorefrontTargetTool(ctx),
     forgeJobsListTool(ctx.device),
     forgeJobsGetTool(ctx),
     forgeJobsEventsTool(ctx),
