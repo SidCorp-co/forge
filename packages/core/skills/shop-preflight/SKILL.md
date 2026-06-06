@@ -45,9 +45,14 @@ Forge-discovered, **pending upstream** (report so they fold into `shop-core-rule
 Treat as "degrade, don't hard-fail"; re-verify each before trusting — they may be
 fixed already. When a quirk is gone, delete its line here.
 - **`screenshot_preview` unreliable → IGNORE it.** Verified live: it returns
-  "404 page not found" on both main and draft. **Do not block on it.** Verify via
-  the **live storefront URL + Playwright** instead (this overrides
-  `shop-core-rules` §D's screenshot step for the Forge pipeline).
+  "404 page not found" on both main and draft. **Do not block on it.** The
+  *preview itself works* — only the screenshot tool is broken. Verify with
+  Playwright against the real URL instead (overrides `shop-core-rules` §D's
+  screenshot step for the Forge pipeline):
+  - **Draft (pre-publish):** `create_theme_preview(draftThemeId)` → token, then
+    **`https://<domain>/?preview_token=<token>`** (verified rendering the draft).
+    `domain` = `forge_storefront_target.domain` (real primary domain). Token TTL ~1h.
+  - **Live (post-publish):** `https://<domain>/` (no token).
 - **Publish consumes the prior main** → §2.2 backup-before-publish (already handled).
 - **Menus go stale** → after mutating a menu, re-query `storeMenu(id){ items }`;
   don't trust the mutation response.

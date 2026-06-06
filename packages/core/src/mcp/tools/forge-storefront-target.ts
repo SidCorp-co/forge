@@ -41,12 +41,14 @@ export const forgeStorefrontTargetTool: ContextScopedMcpToolFactory = ({
   description:
     "Return the project's Epodsystem storefront target so a shop skill knows WHICH store " +
     'and theme to build against. Resolves the single active epodsystem integration for the ' +
-    'project and returns { configured, storeSlug, storeName, themeId, draftThemeId, ' +
-    'commerceEnabled, endpoint }. Returns { configured: false } when no active epodsystem ' +
-    'integration exists. NEVER returns the API key — the crmk_ key is injected into the ' +
-    'runner only via the mcpServers.epodsystem entry. Build on the DRAFT theme; publishing ' +
-    'promotes draft → main. Project scope comes from the X-Forge-Project-Slug header (or an ' +
-    'explicit projectId). Authorization: project membership.',
+    'project and returns { configured, orgId, scopes, storeId, storeSlug, storeName, themeId, ' +
+    'themeName, draftThemeId, commerceEnabled, domain, endpoint }. `domain` is the real primary ' +
+    'published domain — use it for the live URL (https://<domain>/) and, with a preview token ' +
+    'from create_theme_preview, for the DRAFT preview URL (https://<domain>/?preview_token=<token>). ' +
+    'Returns { configured: false } when no active epodsystem integration exists. NEVER returns ' +
+    'the API key — the crmk_ key is injected into the runner only via the mcpServers.epodsystem ' +
+    'entry. Build on the DRAFT theme; publishing promotes draft → main. Project scope comes from ' +
+    'the X-Forge-Project-Slug header (or an explicit projectId). Authorization: project membership.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args) as Input;
@@ -70,11 +72,18 @@ export const forgeStorefrontTargetTool: ContextScopedMcpToolFactory = ({
     const config = (row.config ?? {}) as EpodsystemConfig;
     return {
       configured: true,
+      orgId: config.orgId ?? null,
+      scopes: config.scopes ?? null,
+      storeId: config.storeId ?? null,
       storeSlug: config.storeSlug ?? null,
       storeName: config.storeName ?? null,
       themeId: config.themeId ?? null,
+      themeName: config.themeName ?? null,
       draftThemeId: config.draftThemeId ?? null,
       commerceEnabled: config.commerceEnabled ?? null,
+      // Real primary published domain (best-effort resolved at healthcheck).
+      // Live URL = https://<domain>/ ; draft preview = +?preview_token=<token>.
+      domain: config.domain ?? null,
       // Fixed platform endpoint (EPODSYSTEM_ENDPOINT env), not per-store config.
       endpoint: epodsystemEndpoint(),
     };

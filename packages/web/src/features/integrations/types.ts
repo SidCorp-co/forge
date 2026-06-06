@@ -39,11 +39,16 @@ export interface IntegrationConfig {
   resourceUuid?: string;
   branch?: string;
   // epodsystem
+  orgId?: string;
+  scopes?: string[];
+  storeId?: string;
   storeSlug?: string;
   storeName?: string;
   themeId?: string;
+  themeName?: string;
   draftThemeId?: string;
   commerceEnabled?: boolean;
+  domain?: string;
   environment?: IntegrationEnvironment;
 }
 

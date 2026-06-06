@@ -228,24 +228,50 @@ function StorePanel({ projectId, existing, onSaved }: StorePanelProps) {
  * driven by the website pipeline's release stage (shop-publish skill), not a
  * direct button here in v1.
  */
+// Scopes a website build needs to publish themes + toggle commerce/cache.
+const REQUIRED_SCOPES = ['products:write', 'webstore:write', 'settings:write'];
+
 function ThemePanel({ config }: { config: IntegrationSummary['config'] | undefined }) {
   if (!config) return null;
-  // Storefront lives at the store subdomain; the admin/GraphQL endpoint is fixed
-  // platform config and not shown here.
-  const storefrontUrl = config.storeSlug ? `https://${config.storeSlug}.epodsystem.com` : null;
+  // The real published domain (resolved at healthcheck); fall back to the slug
+  // subdomain only if the domain wasn't resolved yet.
+  const storefrontUrl = config.domain
+    ? `https://${config.domain}`
+    : config.storeSlug
+      ? `https://${config.storeSlug}.epodsystem.com`
+      : null;
+  const scopes = config.scopes ?? null;
+  const hasWildcard = scopes?.includes('*') ?? false;
+  const missingScopes = scopes && !hasWildcard ? REQUIRED_SCOPES.filter((s) => !scopes.includes(s)) : [];
   return (
     <div className="rounded-sm border border-outline-variant/20 bg-surface-container/40 p-3 text-xs space-y-2 text-on-surface-variant">
       <div className="font-bold uppercase tracking-wider text-outline">Store &amp; themes</div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-[11px]">
         <dt className="text-outline">Store</dt>
-        <dd>{config.storeName ?? config.storeSlug ?? '— (run Test connection)'}</dd>
+        <dd>
+          {config.storeName ?? config.storeSlug ?? '— (run Test connection)'}
+          {config.storeId && <span className="text-outline"> · #{config.storeId}</span>}
+          {config.orgId && <span className="text-outline"> · org {config.orgId}</span>}
+        </dd>
+        <dt className="text-outline">Domain</dt>
+        <dd>{config.domain ?? '—'}</dd>
         <dt className="text-outline">Theme (main / prod)</dt>
-        <dd>{config.themeId ?? '—'}</dd>
+        <dd>
+          {config.themeId ?? '—'}
+          {config.themeName && <span className="text-outline"> · {config.themeName}</span>}
+        </dd>
         <dt className="text-outline">Theme (draft / staging)</dt>
-        <dd>{config.draftThemeId ?? '—'}</dd>
+        <dd>{config.draftThemeId ?? '— (created at build time)'}</dd>
         <dt className="text-outline">Commerce</dt>
         <dd>{config.commerceEnabled == null ? '—' : config.commerceEnabled ? 'enabled' : 'disabled'}</dd>
+        <dt className="text-outline">Scopes</dt>
+        <dd>{scopes ? (hasWildcard ? 'full (*)' : scopes.join(', ')) : '—'}</dd>
       </dl>
+      {missingScopes.length > 0 && (
+        <div className="rounded-sm border border-warning/30 bg-warning/10 p-2 text-[11px] text-warning">
+          Key is missing scope(s): <b>{missingScopes.join(', ')}</b> — builds/publish may fail.
+        </div>
+      )}
       {storefrontUrl && (
         <a
           href={storefrontUrl}
@@ -257,8 +283,8 @@ function ThemePanel({ config }: { config: IntegrationSummary['config'] | undefin
         </a>
       )}
       <div className="text-[10px] text-outline">
-        Publish (draft → live) and rollback run through the website pipeline&apos;s release
-        stage.
+        Builds run on a draft theme (previewed via a token on this domain); publish (draft → live)
+        and rollback run through the website pipeline&apos;s release stage.
       </div>
     </div>
   );
