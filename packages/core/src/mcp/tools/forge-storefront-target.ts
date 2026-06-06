@@ -16,6 +16,7 @@ import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { projectIntegrations } from '../../db/schema.js';
+import { epodsystemEndpoint } from '../../integrations/epodsystem/endpoints.js';
 import type { EpodsystemConfig } from '../../integrations/epodsystem/types.js';
 import {
   type ContextScopedMcpToolFactory,
@@ -74,7 +75,8 @@ export const forgeStorefrontTargetTool: ContextScopedMcpToolFactory = ({
       themeId: config.themeId ?? null,
       draftThemeId: config.draftThemeId ?? null,
       commerceEnabled: config.commerceEnabled ?? null,
-      endpoint: config.endpoint ?? null,
+      // Fixed platform endpoint (EPODSYSTEM_ENDPOINT env), not per-store config.
+      endpoint: epodsystemEndpoint(),
     };
   },
 });

@@ -12,10 +12,10 @@ export interface CoolifySecretsInput {
 }
 
 // ISS-387 — Epodsystem storefront integration. One store per project; the
-// `crmk_` key is the only secret. Store identity fields are filled by the
-// test-connection healthcheck, so they are optional on input.
+// `crmk_` key is the only secret. The endpoint is fixed platform config
+// (EPODSYSTEM_ENDPOINT env), NOT user input. Store identity fields are filled
+// by the test-connection healthcheck, so every config field is optional.
 export interface EpodsystemConfigInput {
-  endpoint: string;
   storeSlug?: string;
   storeName?: string;
   themeId?: string;
@@ -39,7 +39,6 @@ export interface IntegrationConfig {
   resourceUuid?: string;
   branch?: string;
   // epodsystem
-  endpoint?: string;
   storeSlug?: string;
   storeName?: string;
   themeId?: string;

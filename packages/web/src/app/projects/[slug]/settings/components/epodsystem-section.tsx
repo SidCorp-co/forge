@@ -21,10 +21,11 @@ interface EpodsystemSectionProps {
  * ISS-387 — Epodsystem storefront integration settings.
  *
  * One store per project (no staging/prod env toggle — staging ↔ theme draft,
- * prod ↔ theme main on the same store). Operator pastes the store endpoint +
- * `crmk_` API key, hits Test connection, and the healthcheck fills in the
- * store identity (name/slug/themes) surfaced in the Theme panel. Publish /
- * rollback run through the website pipeline (release stage), not from here.
+ * prod ↔ theme main on the same store). The operator pastes ONLY the `crmk_`
+ * API key (the endpoint is fixed platform config — EPODSYSTEM_ENDPOINT env),
+ * hits Test connection, and the healthcheck fills in the store identity
+ * (name/slug/themes) surfaced in the Theme panel. Publish / rollback run
+ * through the website pipeline (release stage), not from here.
  */
 export function EpodsystemSection({ projectId, previewMode = false }: EpodsystemSectionProps) {
   if (previewMode || !projectId) {
@@ -79,7 +80,6 @@ function StorePanel({ projectId, existing, onSaved }: StorePanelProps) {
   const del = useDeleteIntegration(projectId);
   const test = useTestIntegration(projectId);
 
-  const [endpoint, setEndpoint] = useState(existing?.config.endpoint ?? '');
   const [apiKey, setApiKey] = useState('');
   const [testResult, setTestResult] = useState<{ status: string; message?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -92,9 +92,9 @@ function StorePanel({ projectId, existing, onSaved }: StorePanelProps) {
     setError(null);
     try {
       if (existing) {
-        const patch: Parameters<typeof update.mutateAsync>[0]['body'] = {
-          config: { endpoint },
-        };
+        // Endpoint is fixed platform config (EPODSYSTEM_ENDPOINT) — the only
+        // thing to update here is the API key.
+        const patch: Parameters<typeof update.mutateAsync>[0]['body'] = {};
         if (apiKey.trim().length > 0) {
           patch.secrets = { apiKey };
         }
@@ -106,7 +106,7 @@ function StorePanel({ projectId, existing, onSaved }: StorePanelProps) {
         }
         await create.mutateAsync({
           provider: 'epodsystem',
-          config: { endpoint },
+          config: {},
           secrets: { apiKey },
         });
       }
@@ -167,16 +167,6 @@ function StorePanel({ projectId, existing, onSaved }: StorePanelProps) {
       </div>
 
       <form onSubmit={handleSave} className="space-y-4">
-        <div>
-          <Label>Store endpoint</Label>
-          <Input
-            type="url"
-            value={endpoint}
-            onChange={(e) => setEndpoint(e.target.value)}
-            placeholder="https://your-store.epodsystem.com"
-            required
-          />
-        </div>
         <div>
           <Label>{existing ? 'API key (leave blank to keep existing)' : 'API key'}</Label>
           <Input
@@ -240,7 +230,9 @@ function StorePanel({ projectId, existing, onSaved }: StorePanelProps) {
  */
 function ThemePanel({ config }: { config: IntegrationSummary['config'] | undefined }) {
   if (!config) return null;
-  const storefrontUrl = config.endpoint ?? null;
+  // Storefront lives at the store subdomain; the admin/GraphQL endpoint is fixed
+  // platform config and not shown here.
+  const storefrontUrl = config.storeSlug ? `https://${config.storeSlug}.epodsystem.com` : null;
   return (
     <div className="rounded-sm border border-outline-variant/20 bg-surface-container/40 p-3 text-xs space-y-2 text-on-surface-variant">
       <div className="font-bold uppercase tracking-wider text-outline">Store &amp; themes</div>

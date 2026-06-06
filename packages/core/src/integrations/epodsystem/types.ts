@@ -13,14 +13,14 @@ import type { IntegrationEnvironment } from '../../db/schema.js';
 /**
  * Non-secret Epodsystem target — stored in `project_integrations.config` (jsonb).
  * This is the "store context" a skill reads via `forge_storefront_target`; it
- * intentionally carries NO API key. `environment` mirrors the row column.
+ * intentionally carries NO API key and NO endpoint (the endpoint is fixed
+ * platform config from `EPODSYSTEM_ENDPOINT`, not per-store). `environment`
+ * mirrors the row column.
  *
  * Decision (ISS-387): ONE store per project. staging ↔ theme draft,
  * prod ↔ theme main; publish promotes draft → main on the same store.
  */
 export interface EpodsystemConfig extends Record<string, unknown> {
-  /** GraphQL/admin endpoint of the store backend (e.g. https://<store>.epodsystem.com). */
-  endpoint: string;
   /** Store slug; resolved by the healthcheck from `apiKeyContext.stores[0].slug`. */
   storeSlug?: string;
   /** Human-readable store name; from `apiKeyContext.stores[0].name`. */

@@ -42,16 +42,10 @@ export const epodsystemAdapter: IntegrationAdapter<EpodsystemConfig, EpodsystemS
       return { status: 'error', message: 'no Epodsystem API key configured' };
     }
 
-    const endpoint = ctx.config?.endpoint;
-    if (!endpoint) {
-      await updateIntegration(ctx.integrationId, {
-        lastHealthStatus: 'error',
-        lastHealthAt: new Date(),
-      });
-      return { status: 'error', message: 'no Epodsystem endpoint configured' };
-    }
-
-    const url = epodsystemGraphqlBase(endpoint);
+    // The endpoint is fixed platform config (EPODSYSTEM_ENDPOINT env, default
+    // the prod admin host) — not per-store, not user-supplied. The crmk_ key
+    // resolves the org/store on its own.
+    const url = epodsystemGraphqlBase();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), CONTEXT_TIMEOUT_MS);
     try {
