@@ -83,17 +83,16 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
   async function insertIssue(
     projectId: string,
     ownerId: string,
-    overrides: { status?: string; issSeq?: number; manualHold?: boolean } = {},
+    overrides: { status?: string; issSeq?: number } = {},
   ): Promise<string> {
     const id = randomUUID();
     const status = overrides.status ?? 'open';
     const issSeq = overrides.issSeq ?? Math.floor(Math.random() * 100000);
-    const manualHold = overrides.manualHold ?? false;
     await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, priority, manual_hold, created_by_id)
+      INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
       VALUES (
         ${id}, ${projectId}, ${issSeq}, ${'Issue ' + issSeq}, ${status},
-        'medium', ${manualHold}, ${ownerId}
+        'medium', ${ownerId}
       )
     `);
     return id;
@@ -171,13 +170,6 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
       SELECT status FROM issues WHERE id = ${id}
     `);
     return rows[0]?.status ?? '';
-  }
-
-  async function readManualHold(id: string): Promise<boolean> {
-    const rows = await harness.db.execute<{ manual_hold: boolean }>(sql`
-      SELECT manual_hold FROM issues WHERE id = ${id}
-    `);
-    return rows[0]?.manual_hold ?? false;
   }
 
   async function readCommentCount(issueId: string): Promise<number> {
@@ -337,7 +329,7 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
       const parent = await insertIssue(project.id, owner.id, { status: 'waiting', issSeq: 81 });
       const childA = await insertIssue(project.id, owner.id, { status: 'open', issSeq: 82 });
       const childB = await insertIssue(project.id, owner.id, { status: 'open', issSeq: 83 });
-      const childC = await insertIssue(project.id, owner.id, { status: 'open', issSeq: 84, manualHold: true });
+      const childC = await insertIssue(project.id, owner.id, { status: 'open', issSeq: 84 });
       await insertDecomposesEdge(project.id, parent, childA);
       await insertDecomposesEdge(project.id, parent, childB);
       await insertDecomposesEdge(project.id, parent, childC);
@@ -351,7 +343,6 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
       expect(await readIssueStatus(childA)).toBe('approved');
       expect(await readIssueStatus(childB)).toBe('approved');
       expect(await readIssueStatus(childC)).toBe('approved');
-      expect(await readManualHold(childC)).toBe(false);
     });
   });
 

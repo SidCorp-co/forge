@@ -182,4 +182,4 @@ Keep it concise — this comment is read by both humans and downstream pipeline 
 
 ## Pitfalls
 
-- **Do not set `manualHold: true` at create time.** The dispatcher's L1 gate skips `manual_hold`-gated jobs cleanly, but pairing `manualHold:true` with the `confirmed`-status transition can still trip downstream skills that expect a normal pipeline handoff. Safer idiom: either (a) leave `manualHold` false at creation and toggle it after the issue settles, or (b) use `status: on_hold` for an explicit, deliberate pause.
+- **To deliberately park an issue, use `status: on_hold`** (an explicit pause) rather than pairing a pause with the `confirmed`-status transition. The legacy `manualHold` flag was removed (ISS-393): mechanically-failed jobs now revert to the stage entry-status and auto-retry, or park at `waiting` when the retry budget is exhausted — the system handles failure parking, so triage never needs a hold flag.
