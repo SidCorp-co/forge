@@ -93,7 +93,21 @@ function DeviceSummary({ device }: { device: DeviceRow }) {
           <MonoTag>{device.platform}</MonoTag>
         </MetaRow>
         <MetaRow label="Agent version">
-          {device.agentVersion ? `v${device.agentVersion}` : "—"}
+          <span className="inline-flex items-center gap-2">
+            {device.agentVersion ? `v${device.agentVersion}` : "—"}
+            {device.agentOutdated && (
+              <span
+                className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40"
+                title={
+                  device.latestAgentVersion
+                    ? `Update pending — latest is v${device.latestAgentVersion}`
+                    : "Update pending"
+                }
+              >
+                update pending
+              </span>
+            )}
+          </span>
         </MetaRow>
         <MetaRow label="Git push">
           {device.gitCredentialRef ? (

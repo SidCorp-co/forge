@@ -9,6 +9,7 @@
 pub mod chat;
 pub mod dispatch;
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use tokio::sync::{mpsc, watch, Semaphore};
@@ -23,6 +24,33 @@ use crate::transport::ws::{self, RunnerRegistration, WsConfig};
 use crate::transport::{heartbeat, CoreClient};
 
 use dispatch::resolve_repo;
+
+/// RAII counter for in-flight work (pipeline jobs + interactive chat turns).
+/// Incremented when a unit of work is spawned, decremented on drop — so the
+/// auto-update loop can drain to idle before restarting the service (ISS-392),
+/// rather than killing a job or chat session mid-flight. Drop fires on both the
+/// success and error paths, so a panicking task still releases its slot.
+struct InflightGuard(Arc<AtomicUsize>);
+
+impl InflightGuard {
+    fn enter(counter: &Arc<AtomicUsize>) -> Self {
+        counter.fetch_add(1, Ordering::AcqRel);
+        Self(counter.clone())
+    }
+}
+
+impl Drop for InflightGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+/// Auto-update restart drains to idle, but cap the wait so a stuck/long job
+/// can't pin a runner on a stale binary forever. The binary is already swapped
+/// on disk by `apply()`, so giving up this cycle just defers the restart to the
+/// next idle window or the next 6h tick.
+const DRAIN_TIMEOUT_SECS: u64 = 30 * 60;
+const DRAIN_POLL_SECS: u64 = 30;
 
 /// Run the daemon until Ctrl-C. `device_token` comes from the cred store.
 pub async fn run(
@@ -115,12 +143,18 @@ pub async fn run(
         tokio::spawn(async move { ws::connect(ws_cfg, frame_tx, cancel_rx).await });
     }
 
+    // In-flight work counter (pipeline jobs + chat turns). The update loop
+    // drains this to zero before restarting so auto-update never kills running
+    // work (ISS-392). Created before any spawn so every worker can register.
+    let inflight = Arc::new(AtomicUsize::new(0));
+
     // Update check loop: warn when a newer release exists; auto-apply +
     // restart when `update.auto` is set. Checks ~30s after start, then every 6h.
     if let Some(url) =
         crate::update::manifest_url(cfg.update.manifest_url.as_deref(), Some(&core_url))
     {
         let auto = cfg.update.auto;
+        let inflight = inflight.clone();
         let mut cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
@@ -138,14 +172,38 @@ pub async fn run(
                         if auto {
                             match crate::update::apply(&m).await {
                                 Ok(Some(o)) => {
+                                    // The new binary is already swapped on disk;
+                                    // drain in-flight jobs/chat to idle before
+                                    // restarting so we never kill running work.
                                     tracing::warn!(
-                                        "[update] applied {} → {} — restarting service",
+                                        "[update] applied {} → {} — draining before restart",
                                         o.from,
                                         o.to
                                     );
-                                    let _ = std::process::Command::new("systemctl")
-                                        .args(["--user", "restart", "forge-runner"])
-                                        .status();
+                                    let mut waited = 0u64;
+                                    loop {
+                                        let busy = inflight.load(Ordering::Acquire);
+                                        if busy == 0 {
+                                            break;
+                                        }
+                                        if waited >= DRAIN_TIMEOUT_SECS {
+                                            tracing::warn!(
+                                                "[update] still busy ({busy} in-flight) after {waited}s — deferring restart to next idle window"
+                                            );
+                                            break;
+                                        }
+                                        tokio::time::sleep(std::time::Duration::from_secs(
+                                            DRAIN_POLL_SECS,
+                                        ))
+                                        .await;
+                                        waited += DRAIN_POLL_SECS;
+                                    }
+                                    if inflight.load(Ordering::Acquire) == 0 {
+                                        tracing::warn!("[update] idle — restarting service");
+                                        let _ = std::process::Command::new("systemctl")
+                                            .args(["--user", "restart", "forge-runner"])
+                                            .status();
+                                    }
                                 }
                                 Ok(None) => {}
                                 Err(e) => tracing::warn!("[update] apply failed: {e}"),
@@ -214,7 +272,9 @@ pub async fn run(
                 match frame.event.as_str() {
                     "job.assigned" => {
                         let (client, runner, cfg) = (client.clone(), runner.clone(), cfg.clone());
+                        let guard = InflightGuard::enter(&inflight);
                         tokio::spawn(async move {
+                            let _guard = guard; // released when the job finishes (drain gate)
                             if let Err(e) = dispatch::handle(&client, runner, &cfg, frame.data).await {
                                 tracing::error!("[dispatch] {e}");
                             }
@@ -229,7 +289,9 @@ pub async fn run(
                     "agent:start" => {
                         let (client, runner, cfg, sem) =
                             (client.clone(), runner.clone(), cfg.clone(), chat_sem.clone());
+                        let guard = InflightGuard::enter(&inflight);
                         tokio::spawn(async move {
+                            let _guard = guard; // released when the chat turn finishes (drain gate)
                             if let Err(e) = chat::handle_start(&client, runner, &cfg, sem, frame.data).await {
                                 tracing::error!("[chat] start: {e}");
                             }
@@ -238,7 +300,9 @@ pub async fn run(
                     "agent:send" => {
                         let (client, runner, cfg, sem) =
                             (client.clone(), runner.clone(), cfg.clone(), chat_sem.clone());
+                        let guard = InflightGuard::enter(&inflight);
                         tokio::spawn(async move {
+                            let _guard = guard; // released when the chat turn finishes (drain gate)
                             if let Err(e) = chat::handle_send(&client, runner, &cfg, sem, frame.data).await {
                                 tracing::error!("[chat] send: {e}");
                             }

@@ -13,6 +13,8 @@ import { rateLimit } from '../middleware/rate-limit.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { requireFreshAuth } from '../middleware/require-fresh-auth.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
+import { cmpVersion } from '../install/fetch-release.js';
+import { getLatestRunnerVersion } from '../install/routes.js';
 import { redeemPairingCode } from './pair.js';
 
 const badRequest = (details: unknown) =>
@@ -114,7 +116,20 @@ deviceOwnerRoutes.get('/me/devices', async (c) => {
     .from(devices)
     .where(eq(devices.ownerId, userId))
     .orderBy(desc(devices.pairedAt));
-  return c.json(rows);
+  // ISS-392 — annotate each device with the latest published runner version so
+  // the dashboard can flag devices lagging behind. `latestAgentVersion` is null
+  // when no release is published (RUNNER_RELEASE_DIR unset / empty); in that
+  // case `agentOutdated` is always false (nothing to compare against).
+  const latestAgentVersion = await getLatestRunnerVersion();
+  const enriched = rows.map((r) => ({
+    ...r,
+    latestAgentVersion,
+    agentOutdated:
+      latestAgentVersion !== null &&
+      r.agentVersion !== null &&
+      cmpVersion(r.agentVersion, latestAgentVersion) < 0,
+  }));
+  return c.json(enriched);
 });
 
 const deviceIdParamSchema = z.object({ id: z.uuid() });

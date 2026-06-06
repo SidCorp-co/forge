@@ -83,7 +83,7 @@ async function latestRunnerRelease(): Promise<Release | null> {
   return pickLatestRunnerTag(all);
 }
 
-async function run(): Promise<void> {
+export async function run(): Promise<void> {
   const dir = process.env.RUNNER_RELEASE_DIR;
   if (!dir) {
     console.log('[runner-release] RUNNER_RELEASE_DIR unset — skipping runner asset fetch');
@@ -129,6 +129,28 @@ async function run(): Promise<void> {
   // Write VERSION last — the install route keys "published?" off this file.
   await writeFile(join(dir, 'VERSION'), `${version}\n`, 'utf8');
   console.log(`[runner-release] published runner ${version} to ${dir}`);
+}
+
+/**
+ * Periodic re-ingest (ISS-392). `run()` otherwise fires only once at boot (the
+ * Dockerfile CMD), so a freshly cut `runner-v*` release is not served — and
+ * therefore not auto-pulled by runners — until the next core restart. Schedule
+ * a low-frequency re-fetch so auto-update delivery does not depend on a manual
+ * redeploy. No-op when RUNNER_RELEASE_DIR is unset. The timer is unref'd so it
+ * never keeps the process alive on shutdown; each tick is best-effort (a failed
+ * fetch logs and is retried next interval, never throwing into the caller).
+ */
+export function registerRunnerReleaseRefetch(intervalMs = 30 * 60_000): NodeJS.Timeout | null {
+  if (!process.env.RUNNER_RELEASE_DIR) return null;
+  const timer = setInterval(() => {
+    void run().catch((err) => {
+      console.warn(
+        `[runner-release] periodic refetch skipped: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+  }, intervalMs);
+  timer.unref?.();
+  return timer;
 }
 
 // Only run when invoked directly (`node dist/install/fetch-release.js`), not
