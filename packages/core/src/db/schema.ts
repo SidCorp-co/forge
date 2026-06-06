@@ -783,17 +783,6 @@ export const issues = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
     parentIssueId: uuid('parent_issue_id'),
-    // ISS-42 C1 — when true the dispatcher's Layer 1 short-circuits with
-    // skip-reason 'manual_hold' so no new automation jobs spawn for this
-    // issue. In-flight jobs are not killed.
-    manualHold: boolean('manual_hold').notNull().default(false),
-    // ISS-198 — auto-clear horizon for manualHold. NULL while held = the hold
-    // is indefinite (permission/permanent failures); only the operator can
-    // clear it. A timestamp means the pipeline sweeper will drop the hold
-    // once now() crosses it (subject to anti-ping-pong: no fresh failure in
-    // the prior 5 minutes). See pipeline/hold-policy.ts for the policy that
-    // computes this value.
-    manualHoldUntil: timestamp('manual_hold_until', { withTimezone: true }),
     // ISS-232 — git-aware Layer-2 dependency gate. Set by the state-machine
     // (see `issues/merged-at.ts`) when an issue transitions OUT of
     // `pipelineConfig.mergeStates.baseBranch` (default `"released"`). NULL =
@@ -821,12 +810,6 @@ export const issues = pgTable(
     aiSuggestedSolution: text('ai_suggested_solution'),
     aiAcceptanceCriteria: jsonb('ai_acceptance_criteria').$type<string[]>(),
     aiConfidence: real('ai_confidence'),
-    // manualHold-block model. Populated by setManualHoldBlock() when a job /
-    // watchdog / dispatcher hits an unrecoverable failure point. Operator UI
-    // reads this to render the failure card + suggested actions. Cleared
-    // when operator resumes (clears manualHold). Shape typed in TS via
-    // IssueFailureContext but stored generic for forward-compat.
-    failureContext: jsonb('failure_context'),
     // ISS-199 — user-facing release notes. Written by forge-clarify per
     // issue, read by forge-release at close time to append a CHANGELOG.md
     // `## [Unreleased]` bullet. Shape validated at the app layer; see

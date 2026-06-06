@@ -42,7 +42,6 @@ export const DECOMP_PARENT_RELEASED_STATUSES: ReadonlySet<IssueStatus> = new Set
 export interface DecompositionChild {
   id: string;
   status: IssueStatus;
-  manualHold: boolean;
   projectId: string;
 }
 
@@ -65,7 +64,6 @@ export async function findDecompositionChildren(
     .select({
       id: issues.id,
       status: issues.status,
-      manualHold: issues.manualHold,
       projectId: issues.projectId,
     })
     .from(issueDependencies)

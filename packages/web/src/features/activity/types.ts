@@ -8,8 +8,6 @@ export type ActivityType =
   | 'complexity_change'
   | 'title_change'
   | 'assignee_change'
-  | 'manual_hold_set'
-  | 'manual_hold_cleared'
   | 'label_added'
   | 'label_removed'
   | 'edited'

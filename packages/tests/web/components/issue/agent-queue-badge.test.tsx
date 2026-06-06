@@ -89,7 +89,7 @@ describe('AgentQueueBadge — pipelineHealth', () => {
   it('aria-label includes skill name and waiting state', () => {
     const ph = health({
       waitingOn: {
-        reason: 'manual_hold',
+        reason: 'issue_busy',
         since: new Date(NOW - 60_000).toISOString(),
         details: {},
       },
@@ -102,7 +102,7 @@ describe('AgentQueueBadge — pipelineHealth', () => {
       />,
     );
     const statusEl = screen.getByRole('status');
-    expect(statusEl.getAttribute('aria-label')).toMatch(/Manual hold/);
+    expect(statusEl.getAttribute('aria-label')).toMatch(/another job is active/);
     expect(statusEl.getAttribute('aria-label')).toMatch(/forge-code/);
   });
 });

@@ -64,7 +64,7 @@ const TERMINAL_STATUSES: ReadonlySet<IssueStatus> = new Set(['released', 'closed
  * the const so the verifier stays decoupled from registry layout changes;
  * the registry test asserts the mapping stays in sync.
  */
-const JOB_TYPE_ENTRY_STATUS: Partial<Record<JobType, IssueStatus>> = {
+export const JOB_TYPE_ENTRY_STATUS: Partial<Record<JobType, IssueStatus>> = {
   triage: 'open',
   clarify: 'confirmed',
   plan: 'clarified',
@@ -73,6 +73,21 @@ const JOB_TYPE_ENTRY_STATUS: Partial<Record<JobType, IssueStatus>> = {
   test: 'testing',
   fix: 'reopen',
   release: 'released',
+};
+
+/**
+ * In-flight marker a job moves the issue to WHILE it runs (ISS-393). `code`
+ * and `fix` flip the issue to `in_progress` at `forge_step_start`; the issue
+ * is therefore neither at its entry status nor at any exit status while the
+ * job is mid-flight. Without this map `classifyVerdict('in_progress','code')`
+ * returns `reverted` → the retry engine marks the session `cancelled_stale`
+ * and SKIPS the retry → a code/fix failure no-ops (the ISS-34 wedge). Treating
+ * the in-flight marker as `pending` keeps the retry path live. Other job types
+ * keep their entry status for the whole job, so they need no entry here.
+ */
+const JOB_TYPE_INFLIGHT_STATUS: Partial<Record<JobType, IssueStatus>> = {
+  code: 'in_progress',
+  fix: 'in_progress',
 };
 
 /**
@@ -102,6 +117,10 @@ export async function verifyRecovery(
 export function classifyVerdict(currentStatus: IssueStatus, jobType: JobType): RecoveryVerdict {
   const entry = JOB_TYPE_ENTRY_STATUS[jobType];
   if (entry && currentStatus === entry) return 'pending';
+
+  // The job is still mid-flight at its in-flight marker (code/fix →
+  // in_progress) — not advanced, not stale; the retry path stays live.
+  if (JOB_TYPE_INFLIGHT_STATUS[jobType] === currentStatus) return 'pending';
 
   const exits = JOB_TYPE_EXPECTED_EXIT_STATUS[jobType] ?? [];
   if (exits.includes(currentStatus)) return 'advanced';

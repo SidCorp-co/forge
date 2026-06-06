@@ -67,8 +67,6 @@ export interface IssueDetailBodyProps {
   onSelectSession: (sid: string | null) => void;
   onPatch: (issueId: string, patch: IssuePatchInput) => void;
   onStatusUpdate: (issueId: string, data: { status: IssueStatus }) => void;
-  onSetManualHold: (value: boolean) => void;
-  manualHoldPending: boolean;
 }
 
 export function IssueDetailBody({
@@ -83,8 +81,6 @@ export function IssueDetailBody({
   onSelectSession,
   onPatch,
   onStatusUpdate,
-  onSetManualHold,
-  manualHoldPending,
 }: IssueDetailBodyProps) {
   const issueId = issue.id;
   return (
@@ -136,11 +132,7 @@ export function IssueDetailBody({
           onPatch={onPatch}
         />
         <BranchConfigCard issue={issue} projectSlug={projectSlug} onPatch={onPatch} />
-        <PipelineCard
-          issue={issue}
-          manualHoldPending={manualHoldPending}
-          onSetManualHold={onSetManualHold}
-        />
+        <PipelineCard issue={issue} />
         <LinkedCard issue={issue} projectSlug={projectSlug} />
       </aside>
     </div>

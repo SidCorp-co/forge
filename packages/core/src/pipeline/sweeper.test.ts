@@ -65,18 +65,12 @@ vi.mock('../observability/sentry.js', () => ({
   isSentryEnabled: () => true,
 }));
 
-const recordHoldAutoClearMock = vi.fn();
-vi.mock('../observability/hold-metrics.js', () => ({
-  recordHoldAutoClear: (...args: unknown[]) => recordHoldAutoClearMock(...args),
-}));
-
 vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
 const {
   runPipelineSweep,
-  sweepExpiredHolds,
   reconcileOrphanedJobs,
   reconcileNeverClaimedDispatches,
   sweepZombieSessions,
@@ -170,53 +164,6 @@ describe('runPipelineSweep — dispatcher backstop', () => {
     } finally {
       (db as unknown as { selectDistinct: typeof original }).selectDistinct = original;
     }
-  });
-});
-
-describe('sweepExpiredHolds', () => {
-  it('clears no rows when the UPDATE finds none', async () => {
-    dbExecute.mockResolvedValueOnce([]);
-    const result = await sweepExpiredHolds(new Date('2026-05-23T00:00:00Z'));
-    expect(result.cleared).toBe(0);
-    expect(wsPublish).not.toHaveBeenCalled();
-    expect(addBreadcrumbMock).not.toHaveBeenCalled();
-  });
-
-  it('emits WS + Sentry breadcrumb + counter for each cleared row', async () => {
-    dbExecute.mockResolvedValueOnce([
-      {
-        id: 'i1',
-        project_id: 'p1',
-        held_at: new Date('2026-05-23T00:00:00Z'),
-        failure_kind: 'transient_network',
-      },
-      {
-        id: 'i2',
-        project_id: 'p1',
-        held_at: new Date('2026-05-23T00:00:00Z'),
-        failure_kind: null,
-      },
-    ]);
-    const result = await sweepExpiredHolds(new Date('2026-05-23T00:30:00Z'));
-
-    expect(result.cleared).toBe(2);
-    expect(wsPublish).toHaveBeenCalledTimes(2);
-    const [room, envelope] = wsPublish.mock.calls[0] as [
-      string,
-      { event: string; data: Record<string, unknown> },
-    ];
-    expect(room).toBe('project:p1');
-    expect(envelope.event).toBe('issue.holdCleared');
-    expect(envelope.data).toMatchObject({ issueId: 'i1', reason: 'auto_clear' });
-
-    expect(addBreadcrumbMock).toHaveBeenCalledTimes(2);
-    expect(addBreadcrumbMock.mock.calls[0]?.[0]).toMatchObject({
-      category: 'pipeline.reconciler.hold_auto_cleared',
-    });
-
-    expect(recordHoldAutoClearMock).toHaveBeenCalledTimes(2);
-    expect(recordHoldAutoClearMock).toHaveBeenNthCalledWith(1, { kind: 'transient_network' });
-    expect(recordHoldAutoClearMock).toHaveBeenNthCalledWith(2, { kind: 'unknown_no_context' });
   });
 });
 

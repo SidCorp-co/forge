@@ -9,10 +9,10 @@ import { spawnPmSession } from './spawner.js';
  *    to the three-strikes auto-disable guard instead, never to a new spawn
  *    (would loop on a misbehaving PM model).
  *  - `transition` → filter to `needs_info` and spawn with that cause.
- *    (`pipeline_failed` was the old recovery-exhausted signal; the new
- *    failure model blocks via manualHold without mutating status, so this
- *    branch is gone. A `pipelineBlocked` hook may be added in a follow-up
- *    if PM should auto-engage on operator-blocked issues.)
+ *    (`pipeline_failed` was the old recovery-exhausted signal; the failure
+ *    model now reverts to the stage entry-status or parks at `waiting`
+ *    (ISS-393), so this branch is gone. A `waiting`-targeted spawn may be
+ *    added in a follow-up if PM should auto-engage on parked issues.)
  *  - `dependencyChanged` → spawn with `cause='graph-changed'`.
  *
  * Note: `jobCompleted` is intentionally NOT subscribed in v1. The payload

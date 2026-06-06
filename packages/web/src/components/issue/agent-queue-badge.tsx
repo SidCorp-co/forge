@@ -97,8 +97,6 @@ function describeWaiting(
         ? `Waiting on parent epic: ${parent}.`
         : 'Waiting on parent epic.';
     }
-    case 'manual_hold':
-      return 'Manual hold — automation paused.';
     case 'issue_busy':
       return 'Waiting: another job is active on this issue.';
     default:

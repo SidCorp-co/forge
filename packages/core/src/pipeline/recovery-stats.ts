@@ -1,8 +1,9 @@
 /**
  * ISS-198 — minimal recovery-stats helper.
  *
- * Counts an issue's recent failures by classification so {@link computeHoldUntil}
- * can decide between an indefinite hold and a 30-min auto-clear horizon.
+ * Counts an issue's recent failures by classification. Legacy helper from the
+ * manual-hold era (ISS-198); retained for any external caller but no longer
+ * consumed by the failure path after ISS-393 removed the hold model.
  *
  * This is intentionally a thin query over `jobs.failure_kind` — ISS-197
  * lands a richer recovery subsystem that supersedes this helper. We keep the

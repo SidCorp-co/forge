@@ -109,11 +109,6 @@ export interface Issue {
   createdAt: string;
   relations?: { type: string; targetDocumentId: string; reason?: string; targetId?: number; targetTitle?: string; targetStatus?: string }[];
   releaseNotes?: ReleaseNotes | null;
-  manualHold?: boolean;
-  // ISS-198 — auto-clear horizon for manualHold. Mirrors the web type so
-  // cross-app payloads round-trip without losing fields. Desktop UI does
-  // not surface a badge yet; the field is here for parity + future use.
-  manualHoldUntil?: string | null;
   updatedAt: string;
 }
 

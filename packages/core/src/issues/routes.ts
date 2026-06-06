@@ -106,8 +106,6 @@ export type IssueCreateInput = z.infer<typeof issueCreateSchema>;
 // ISS-130 — `status` is accepted at create only for the narrow allow-list
 // {open, on_hold}; all post-creation status changes still go through the F4
 // transition endpoint (state-machine guard + activity entry).
-// manualHold is NOT accepted here either — see PATCH /:id/manual-hold so the
-// toggle has its own activity entry + WS event.
 export const issuePatchSchema = z
   .object({
     title: z.string().trim().min(1).max(500).optional(),
@@ -164,7 +162,6 @@ type IssueRow = {
   category: string | null;
   reportedBy: string | null;
   complexity: string | null;
-  manualHold: boolean;
   plan: string | null;
   acceptanceCriteria: string | null;
   suggestedSolution: string | null;
