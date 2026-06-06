@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **The project dashboard now uses the full screen width so cards fill wide displays instead of sitting in a narrow centered column, cutting down how far you have to scroll.**
+  *Technical: Removed the max-w-6xl centered clamp on `(workspace)/projects/[slug]/page.tsx` (now `PageContainer width="wide"`, 1720px) and reflowed the card grid `lg:grid-cols-2 → xl:grid-cols-3` at wide breakpoints to match the full-width Issues/board screens. Tablet/mobile single-column stack unchanged (ISS-389). Merge e372184b.*
+
+- **Pipeline steps that were automatically cleaned up when a run finished are now shown as a neutral "cleaned up" state instead of looking like failures, so a cleanly-completed issue no longer appears to have failed.**
+  *Technical: Adds a shared job-status classifier (success / failed / benign-cleanup / stale-or-manual-cancel) and surfaces failureKind/failureReason on the pipeline read models; cancelled-cleanup renders muted with an explanatory tooltip instead of error-red across web-v2.*
+
+- **The agent Sessions list now has a more compact header and richer session rows (start time and cost), with the session detail showing an elevated task list.**
+  *Technical: Reworked web-v2 sessions-screen header (4 StatCards -> inline metric strip) + added Started/Cost columns (cost via a bounded per-page usage_records rollup in GET /api/agent-sessions); elevated the Agents & tasks section + task-count badge in the session detail.*
+
 ### Fixed
 
 - **A pipeline could silently stall for about an hour when a job was dispatched to a runner that never picked it up — the dead job held the runner's only slot and blocked the next stage. The system now detects an unclaimed dispatch within a few minutes and recovers automatically (re-dispatching the work, or moving the issue on if it had already completed elsewhere).**
@@ -21,6 +32,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Fixed the Issues screen so the top navigation progress bar no longer gets stuck part-way, list rows show each issue's real status, and linked/related issues are shown clearly instead of just an icon and a number.**
   *Technical: route-progress.tsx must not gate completion on the global useIsFetching count or self-fire on replaceState URL-sync; list rows should render the true lifecycle status instead of the collapsed statusToChip bucket; DepBadges should surface linked issue IDs, not emoji+count only.*
+
+- **Pipeline jobs that fail mechanically (crash or non-zero exit) now automatically retry from the stage's entry point instead of getting stuck waiting for manual intervention.**
+  *Technical: Removed the manual-hold/on_hold-as-block model: finalizeFailedJob reverts issue.status to JOB_TYPE_ENTRY_STATUS so the orchestrator re-dispatches; budget-exhausted/non-retryable failures park at `waiting` + close the stuck pipeline_run; classifyVerdict treats in_progress as pending for code/fix (the ISS-34 no-op fix). manual_hold/manual_hold_until/failure_context columns dropped (migration 0099). Merge 25d1ad13.*
 
 ### Added
 
@@ -71,6 +85,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Headless CLI runners can now host interactive chat sessions, so you no longer need the desktop app open to chat with an agent on a server.**
   *Technical: Runner daemon handles the agent:start device-room frame and streams replies via PATCH /agent-sessions/:id, mirroring the desktop device-room contract; chat stays off the jobs table and the pipeline cap=1.*
+
+- **forge-runner devices now keep themselves up to date automatically — new releases are pulled and applied without anyone running an update command on each machine, and any in-flight job or chat finishes before the runner restarts.**
+  *Technical: Fixed the runner-distribution route so the self-updater manifest is reachable through the /api edge proxy (dual-mount + prefix-aware asset/install.sh URLs); manifest_url now derives {core}/api/install/latest.json. Auto-update defaults ON (serde default_auto) with config set update.auto + install.sh --no-auto-update opt-out; drain-to-idle (InflightGuard) before systemctl restart; periodic fetch-release re-ingest; /me/devices surfaces latestAgentVersion + agentOutdated with a web-v2 lagging badge. Merge 8d52bd4e.*
 
 ### Changed
 
@@ -130,6 +147,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **The pipeline run timeline now makes Pause vs. Stop unambiguous — Pause shows it's finishing the current step before halting, a separate Stop control aborts the running agent immediately, and each step shows whether it resumed the same agent session or started fresh.**
   *Technical: Pure frontend rework of RunDetail (web-v2 run-detail.tsx): transitional/halted pause states + distinct Stop wired to existing cancel; TimelineTab derives session-group continuity (resumed/fresh, group labels, connectors, operator detail) from agent_sessions metadata.sessionGroup + claudeSessionId + deviceId + status.*
+
+- **In Skill Studio, built-in skills are now read-only templates; to customize one for a project you create a project copy that shadows the built-in. The old per-project override/fork mechanism has been removed.**
+  *Technical: Removed forge_skills.override_set/override_delete MCP tools, the skills override REST routes, the project_skill_overrides table (+ drop migration), and the override-merge branch / isOverridden flag in effective.ts. forge_skills.list & effective now dedup by name (project shadows global, one row per name + shadowsGlobal marker).*
+
+- **Pipeline steps that were automatically cleaned up when a run finished are now shown as a neutral "cleaned up" state instead of looking like failures, so a cleanly-completed issue no longer appears to have failed.**
+  *Technical: Adds a shared job-status classifier (success / failed / benign-cleanup / stale-or-manual-cancel) and surfaces failureKind/failureReason on the pipeline read models; cancelled-cleanup renders muted with an explanatory tooltip instead of error-red across web-v2.*
+
+- **The agent Sessions list now has a more compact header and richer session rows (start time and cost), with the session detail showing an elevated task list.**
+  *Technical: Reworked web-v2 sessions-screen header (4 StatCards -> inline metric strip) + added Started/Cost columns (cost via a bounded per-page usage_records rollup in GET /api/agent-sessions); elevated the Agents & tasks section + task-count badge in the session detail.*
 
 ### Removed
 

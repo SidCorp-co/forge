@@ -2,7 +2,7 @@
 
 import { Suspense, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { Plus } from 'lucide-react';
+import { Plus, Copy } from 'lucide-react';
 import { useProjectBySlug } from '@/features/project/hooks/use-projects';
 import {
   useCreateSkill,
@@ -11,8 +11,7 @@ import {
   useProjectSkillSyncStatus,
   useBulkPushSkills,
   useEffectiveSkills,
-  useUpsertSkillOverride,
-  useDeleteSkillOverride,
+  useApplyDefault,
 } from '@/features/skill/hooks/use-skills';
 import {
   SkillList,
@@ -29,7 +28,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useSetPageTitle } from '@/hooks/use-page-title';
 import { formatApiError } from '@/lib/api/error';
 import type { Skill, EffectiveSkill } from '@/features/skill/types';
-import { RotateCcw } from 'lucide-react';
 
 function SkillsPageInner() {
   useSetPageTitle('Skills');
@@ -38,16 +36,15 @@ function SkillsPageInner() {
   const project = useProjectBySlug(slug);
   const projectId = project?.id;
 
-  // EPIC 6 (ISS-290) — `/effective` returns globals merged with this project's
-  // overrides. Each row carries `isOverridden` + `globalSkillMd` for diff view.
+  // ISS-388 — `/effective` returns globals (read-only built-in defaults) + this
+  // project's project skills, annotated with `editable` + the shadow relation.
   const skillsQuery = useEffectiveSkills(projectId);
   const syncQuery = useProjectSkillSyncStatus(projectId);
   const createSkill = useCreateSkill();
   const updateSkill = useUpdateSkill();
   const deleteSkill = useDeleteSkill();
   const bulkPush = useBulkPushSkills();
-  const upsertOverride = useUpsertSkillOverride();
-  const deleteOverride = useDeleteSkillOverride();
+  const applyDefault = useApplyDefault();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -112,37 +109,24 @@ function SkillsPageInner() {
 
   function handleSave(data: SkillFolderSavePayload) {
     setInteracted(true);
-    if (selected) {
-      // Editing a global skill in a project context = create/update an override
-      // (server stores in `project_skill_overrides`, not the global `skills` row).
-      const isGlobalRow = selected.scope === 'global';
-      if (isGlobalRow && projectId) {
-        upsertOverride.mutate(
-          {
-            projectId,
-            skillId: selected.id,
-            skillMdOverride: data.skillMd,
+    // Globals are immutable read-only templates — the editor is read-only for
+    // them, so a save can only originate from a project skill or a new skill.
+    if (selected && selected.scope !== 'global') {
+      updateSkill.mutate(
+        {
+          documentId: selected.documentId ?? selected.id,
+          data: {
+            name: data.name,
+            description: data.description,
+            skillMd: data.skillMd,
+            target: data.target,
+            isGlobal: data.isGlobal,
             files: data.files,
           },
-          { onSuccess: () => setSelectedId(null) },
-        );
-      } else {
-        updateSkill.mutate(
-          {
-            documentId: selected.documentId ?? selected.id,
-            data: {
-              name: data.name,
-              description: data.description,
-              skillMd: data.skillMd,
-              target: data.target,
-              isGlobal: data.isGlobal,
-              files: data.files,
-            },
-          },
-          { onSuccess: () => setSelectedId(null) },
-        );
-      }
-    } else if (projectId) {
+        },
+        { onSuccess: () => setSelectedId(null) },
+      );
+    } else if (!selected && projectId) {
       createSkill.mutate(
         {
           name: data.name,
@@ -165,18 +149,8 @@ function SkillsPageInner() {
   }
 
   function handleDelete(skill: Skill) {
-    // Don't allow deleting a global builtin from a project page; prompt for
-    // "reset to global" instead via handleResetOverride.
-    if (skill.scope === 'global') {
-      if (
-        (skill as EffectiveSkill).isOverridden &&
-        projectId &&
-        confirm(`Reset override for "${skill.name}" back to the global skill?`)
-      ) {
-        handleResetOverride(skill);
-      }
-      return;
-    }
+    // Globals are immutable built-in defaults — never deletable from a project.
+    if (skill.scope === 'global') return;
     if (!confirm(`Delete skill "${skill.name}"?`)) return;
     const id = skill.documentId ?? skill.id;
     deleteSkill.mutate(id, {
@@ -189,16 +163,17 @@ function SkillsPageInner() {
     });
   }
 
-  function handleResetOverride(skill: Skill) {
+  // Apply default — copy the selected global template into a new same-name
+  // project skill (it then shadows the global) and select the editable copy.
+  function handleApplyDefault(skill: Skill) {
     if (!projectId) return;
-    deleteOverride.mutate(
-      { projectId, skillId: skill.id },
+    applyDefault.mutate(
+      { projectId, globalSkillId: skill.id },
       {
-        onSuccess: () => {
-          if (activeSelectedId === (skill.documentId ?? skill.id)) {
-            setInteracted(true);
-            setSelectedId(null);
-          }
+        onSuccess: (res) => {
+          setInteracted(true);
+          const created = res?.data;
+          if (created) setSelectedId(created.documentId ?? created.id);
         },
       },
     );
@@ -221,16 +196,12 @@ function SkillsPageInner() {
     );
   }
 
-  const saving =
-    createSkill.isPending || updateSkill.isPending || upsertOverride.isPending;
+  const saving = createSkill.isPending || updateSkill.isPending;
   const editorOpen = creating || !!selected;
-  const saveError =
-    createSkill.error || updateSkill.error || upsertOverride.error;
+  const saveError = createSkill.error || updateSkill.error || applyDefault.error;
   const selectedEffective = selected as EffectiveSkill | null;
-  const editorGlobalSkillMd =
-    selectedEffective?.isOverridden && selectedEffective.globalSkillMd
-      ? selectedEffective.globalSkillMd
-      : null;
+  // Globals are read-only built-in defaults; only project skills are editable.
+  const selectedIsGlobal = selected?.scope === 'global';
 
   return (
     <div className="space-y-4 p-6">
@@ -303,25 +274,30 @@ function SkillsPageInner() {
             <div className="space-y-3">
               {editorOpen ? (
                 <div className="rounded-lg border border-outline-variant/30 bg-surface-container-low p-4">
-                  {selectedEffective?.isOverridden && projectId && (
-                    <div className="mb-3 flex items-center justify-between rounded border border-info/30 bg-info-surface/20 px-3 py-2 text-xs text-info">
+                  {selectedIsGlobal && (
+                    <div className="mb-3 flex items-center justify-between gap-2 rounded border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-xs text-on-surface-variant">
                       <span>
-                        <strong>Override active.</strong> This project replaces the global skill content.
+                        <strong>Built-in default</strong> (read-only).
+                        {selectedEffective?.shadowedByProjectSkillId
+                          ? ' A project copy already shadows this default.'
+                          : ' Apply default to create an editable project copy.'}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => handleResetOverride(selected!)}
-                        disabled={deleteOverride.isPending}
-                        className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium text-info hover:bg-info-surface/30 disabled:opacity-50"
-                      >
-                        <RotateCcw className="h-3 w-3" />
-                        Reset to global
-                      </button>
+                      {projectId && !selectedEffective?.shadowedByProjectSkillId && (
+                        <button
+                          type="button"
+                          onClick={() => handleApplyDefault(selected!)}
+                          disabled={applyDefault.isPending}
+                          className="inline-flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium text-info hover:bg-info-surface/30 disabled:opacity-50"
+                        >
+                          <Copy className="h-3 w-3" />
+                          Apply default
+                        </button>
+                      )}
                     </div>
                   )}
-                  {selected?.scope === 'global' && !selectedEffective?.isOverridden && (
-                    <p className="mb-3 rounded border border-outline-variant/30 bg-surface-container-low p-3 text-xs text-on-surface-variant">
-                      Editing this <strong>global</strong> skill creates a per-project override. The original global skill is unaffected.
+                  {!selectedIsGlobal && selectedEffective?.shadowsGlobal && (
+                    <p className="mb-3 rounded border border-info/30 bg-info-surface/20 p-3 text-xs text-info">
+                      Shadows built-in <strong>{selected?.name}</strong> for this project.
                     </p>
                   )}
                   <SkillFolderEditor
@@ -330,7 +306,7 @@ function SkillsPageInner() {
                     key={selected?.documentId ?? selected?.id ?? 'new'}
                     skill={selected}
                     projectDocumentId={projectId}
-                    globalSkillMd={editorGlobalSkillMd}
+                    readOnly={selectedIsGlobal}
                     onSave={handleSave}
                     onCancel={() => {
                       setInteracted(true);

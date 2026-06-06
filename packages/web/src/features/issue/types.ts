@@ -29,7 +29,6 @@ export type IssueComplexity = 'xs' | 's' | 'm' | 'l' | 'xl';
 
 export type PipelineWaitingReason =
   | 'issue_busy'
-  | 'manual_hold'
   | 'waiting_on_dep'
   | 'waiting_on_decomp_parent'
   | 'project_full'
@@ -82,11 +81,6 @@ export interface Issue extends BaseEntity {
   labels?: { id: number; documentId: string; name: string; color: string }[];
   relations?: { type: string; targetDocumentId: string; reason?: string; targetId?: number; targetTitle?: string; targetStatus?: string }[];
   complexity?: IssueComplexity | null;
-  manualHold?: boolean;
-  // ISS-198 — auto-clear horizon for manualHold. ISO string when present,
-  // null = indefinite hold (operator-clear only). The UI renders an
-  // "Auto-resume in N min" countdown when this is in the future.
-  manualHoldUntil?: string | null;
   pipelineHealth?: PipelineHealth;
   releaseNotes?: ReleaseNotes | null;
 }

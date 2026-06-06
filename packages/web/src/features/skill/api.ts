@@ -1,11 +1,9 @@
 import { apiClient } from '@/lib/api/client';
 import type {
   Skill,
-  SkillFile,
   SkillSyncStatus,
   BulkPushResult,
   EffectiveSkill,
-  SkillOverride,
   ProjectSkillSyncStatus,
 } from './types';
 
@@ -72,34 +70,20 @@ export const skillApi = {
       body: JSON.stringify({ targets, projectId, skillNames, deviceId }),
     }).then((res) => ({ data: res })),
 
-  // EPIC 6 (ISS-278/290) — per-project skill override CRUD.
+  // ISS-388 — Skill Studio listing: globals (read-only templates) + this
+  // project's project skills, annotated with editable + shadow relation.
   getEffective: (projectId: string) =>
     apiClient<EffectiveSkill[]>(
       `/projects/${encodeURIComponent(projectId)}/skills/effective`,
     ).then((data) => ({ data })),
 
-  upsertOverride: (
-    projectId: string,
-    skillId: string,
-    skillMdOverride: string,
-    files?: SkillFile[],
-  ) =>
-    apiClient<SkillOverride>(
-      `/projects/${encodeURIComponent(projectId)}/skills/${encodeURIComponent(skillId)}/override`,
-      {
-        method: 'PUT',
-        // The route forks the whole global folder when `files` is omitted on
-        // create; sending the editor's files[] makes the override carry the
-        // authored folder (Skill Studio 3).
-        body: JSON.stringify(files ? { skillMdOverride, files } : { skillMdOverride }),
-      },
+  // Apply default — copy a global template into a new same-name project skill
+  // that shadows the global for this project. Returns the created project skill.
+  applyDefault: (projectId: string, globalSkillId: string) =>
+    apiClient<Skill>(
+      `/projects/${encodeURIComponent(projectId)}/skills/apply-default`,
+      { method: 'POST', body: JSON.stringify({ globalSkillId }) },
     ).then((data) => ({ data })),
-
-  deleteOverride: (projectId: string, skillId: string) =>
-    apiClient<null>(
-      `/projects/${encodeURIComponent(projectId)}/skills/${encodeURIComponent(skillId)}/override`,
-      { method: 'DELETE' },
-    ),
 };
 
 // ISS-109 — per-project skill-registration CRUD (bind a skill to a stage,

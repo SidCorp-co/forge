@@ -77,17 +77,16 @@ describe('ISS-162 stateless-gates picker E2E', () => {
 
   async function insertIssue(
     projectId: string,
-    overrides: { status?: string; priority?: string; issSeq?: number; manualHold?: boolean } = {},
+    overrides: { status?: string; priority?: string; issSeq?: number } = {},
   ): Promise<string> {
     const id = randomUUID();
     const status = overrides.status ?? 'open';
     const priority = overrides.priority ?? 'medium';
     const issSeq = overrides.issSeq ?? Math.floor(Math.random() * 100000);
-    const manualHold = overrides.manualHold ?? false;
     await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, priority, manual_hold, created_by_id)
+      INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
       VALUES (
-        ${id}, ${projectId}, ${issSeq}, ${'Issue ' + issSeq}, ${status}, ${priority}, ${manualHold},
+        ${id}, ${projectId}, ${issSeq}, ${'Issue ' + issSeq}, ${status}, ${priority},
         (SELECT owner_id FROM projects WHERE id = ${projectId})
       )
     `);
@@ -283,16 +282,6 @@ describe('ISS-162 stateless-gates picker E2E', () => {
       await insertBlocksEdge(project.id, parent, blocked);
       await insertJob(project.id, { issueId: blocked });
       const jFree = await insertJob(project.id, { issueId: free });
-      const result = await mods.pickNextDispatchableJobForProject(project.id);
-      expect(result?.id).toBe(jFree);
-    });
-
-    it('skips jobs whose issue is manual_hold (L1 inline)', async () => {
-      const { project } = await seedProject({ maxConcurrentIssues: 10 });
-      const heldIssue = await insertIssue(project.id, { manualHold: true });
-      const freeIssue = await insertIssue(project.id);
-      await insertJob(project.id, { issueId: heldIssue });
-      const jFree = await insertJob(project.id, { issueId: freeIssue });
       const result = await mods.pickNextDispatchableJobForProject(project.id);
       expect(result?.id).toBe(jFree);
     });

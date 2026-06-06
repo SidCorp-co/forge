@@ -12,7 +12,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { type CreateIssueInput, type PatchIssueInput, issuesApi } from "./api";
-import type { IssueDetail, IssueRow, IssueSearchOpts, IssueStatus } from "./types";
+import type { IssueRow, IssueSearchOpts, IssueStatus } from "./types";
 
 /**
  * Create an issue in `projectId`. On success invalidates `['issues']` so the
@@ -118,40 +118,4 @@ export function useTransitionIssue() {
 export function useRunPipelineStep() {
   return useIssueMutation((args: { id: string; stage?: string }) =>
     issuesApi.runPipelineStep(args.id, args.stage), { successMessage: "Pipeline step queued" });
-}
-
-/** Toggle the issue's manual-hold flag (`PATCH /issues/:id/manual-hold`).
- *  STANDALONE — never combined with a status transition (ISS-22 stall risk).
- *  Optimistically flips `manualHold` on the `['issue', id]` cache so the badge
- *  + banner update instantly, then invalidates the issue, its activity feed
- *  (the toggle writes an activity row), and the list (`['issues']`) so the
- *  list/board hold badges refresh. Rolls back + toasts on error. */
-export function useToggleManualHold() {
-  const qc = useQueryClient();
-  const { toast } = useToast();
-  return useMutation({
-    mutationFn: (args: { id: string; value: boolean }) =>
-      issuesApi.manualHold(args.id, args.value),
-    onMutate: async ({ id, value }) => {
-      await qc.cancelQueries({ queryKey: ["issue", id] });
-      const previous = qc.getQueryData<IssueDetail>(["issue", id]);
-      if (previous) {
-        qc.setQueryData<IssueDetail>(["issue", id], {
-          ...previous,
-          manualHold: value,
-          manualHoldUntil: null,
-        });
-      }
-      return { previous, id };
-    },
-    onError: (err, _args, ctx) => {
-      if (ctx?.previous) qc.setQueryData(["issue", ctx.id], ctx.previous);
-      toast({ title: "Update failed", description: formatApiError(err), tone: "error" });
-    },
-    onSettled: (_data, _err, { id }) => {
-      qc.invalidateQueries({ queryKey: ["issue", id] });
-      qc.invalidateQueries({ queryKey: ["activities", id] });
-      qc.invalidateQueries({ queryKey: ["issues"] });
-    },
-  });
 }

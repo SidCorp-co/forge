@@ -85,15 +85,15 @@ describe('allChildrenReady', () => {
 });
 
 describe('findDecompositionChildren', () => {
-  it('returns the joined rows as children with status + manualHold + projectId', async () => {
+  it('returns the joined rows as children with status + projectId', async () => {
     selectJoinChainOnce([
-      { id: 'c-1', status: 'draft', manualHold: false, projectId: 'p-1' },
-      { id: 'c-2', status: 'open', manualHold: true, projectId: 'p-1' },
+      { id: 'c-1', status: 'draft', projectId: 'p-1' },
+      { id: 'c-2', status: 'open', projectId: 'p-1' },
     ]);
     const children = await findDecompositionChildren('parent-1');
     expect(children).toHaveLength(2);
-    expect(children[0]).toMatchObject({ id: 'c-1', status: 'draft', manualHold: false });
-    expect(children[1]).toMatchObject({ id: 'c-2', manualHold: true });
+    expect(children[0]).toMatchObject({ id: 'c-1', status: 'draft', projectId: 'p-1' });
+    expect(children[1]).toMatchObject({ id: 'c-2', status: 'open', projectId: 'p-1' });
   });
 
   it('returns [] when there are no decomposition edges', async () => {

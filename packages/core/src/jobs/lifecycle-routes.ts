@@ -208,8 +208,9 @@ jobLifecycleDeviceRoutes.post(
         if (reclassified) updated = reclassified;
         precomputedRetry = { scheduled: false };
       }
-      // ISS-280 — shared finalize path: auto-retry → manual-hold fallback →
-      // session sync → broadcast → hooks → dispatch re-tick → health refresh.
+      // ISS-280 / ISS-393 — shared finalize path: auto-retry → revert to
+      // entry-status (or park at `waiting` when exhausted) → session sync →
+      // broadcast → hooks → dispatch re-tick → health refresh.
       const retry = await finalizeFailedJob(updated, {
         error: effectiveError ?? 'exit nonzero',
         exitCode: input.exitCode,

@@ -793,17 +793,6 @@ export const issues = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
     parentIssueId: uuid('parent_issue_id'),
-    // ISS-42 C1 — when true the dispatcher's Layer 1 short-circuits with
-    // skip-reason 'manual_hold' so no new automation jobs spawn for this
-    // issue. In-flight jobs are not killed.
-    manualHold: boolean('manual_hold').notNull().default(false),
-    // ISS-198 — auto-clear horizon for manualHold. NULL while held = the hold
-    // is indefinite (permission/permanent failures); only the operator can
-    // clear it. A timestamp means the pipeline sweeper will drop the hold
-    // once now() crosses it (subject to anti-ping-pong: no fresh failure in
-    // the prior 5 minutes). See pipeline/hold-policy.ts for the policy that
-    // computes this value.
-    manualHoldUntil: timestamp('manual_hold_until', { withTimezone: true }),
     // ISS-232 — git-aware Layer-2 dependency gate. Set by the state-machine
     // (see `issues/merged-at.ts`) when an issue transitions OUT of
     // `pipelineConfig.mergeStates.baseBranch` (default `"released"`). NULL =
@@ -831,12 +820,6 @@ export const issues = pgTable(
     aiSuggestedSolution: text('ai_suggested_solution'),
     aiAcceptanceCriteria: jsonb('ai_acceptance_criteria').$type<string[]>(),
     aiConfidence: real('ai_confidence'),
-    // manualHold-block model. Populated by setManualHoldBlock() when a job /
-    // watchdog / dispatcher hits an unrecoverable failure point. Operator UI
-    // reads this to render the failure card + suggested actions. Cleared
-    // when operator resumes (clears manualHold). Shape typed in TS via
-    // IssueFailureContext but stored generic for forward-compat.
-    failureContext: jsonb('failure_context'),
     // ISS-199 — user-facing release notes. Written by forge-clarify per
     // issue, read by forge-release at close time to append a CHANGELOG.md
     // `## [Unreleased]` bullet. Shape validated at the app layer; see
@@ -1171,47 +1154,6 @@ export const skillRegistrations = pgTable(
   }),
 );
 
-// v1 EPIC 6 / Skill Studio 2 (ISS-276) — per-project **fork** of a global
-// skill's whole folder. The override row stores `skill_md_override` + `files`
-// (the editable copy of the global folder) + its own `content_hash`
-// (`hashSkillBody(skillMd, files)`), and snapshots the parent global's
-// effective hash as `global_content_hash` at fork time so the effective view
-// can flag *drift vs global* once the global is updated afterwards. The CRUD
-// surface is `/api/projects/:projectId/skills/:skillId/override`; the merged
-// view is exposed via `/api/projects/:projectId/skills/effective`. The unique
-// (project_id, skill_id) constraint enforces "at most one override per
-// (project, global skill)" — clients PUT to upsert, DELETE to revert.
-export const projectSkillOverrides = pgTable(
-  'project_skill_overrides',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    skillId: uuid('skill_id')
-      .notNull()
-      .references(() => skills.id, { onDelete: 'cascade' }),
-    skillMdOverride: text('skill_md_override').notNull(),
-    // Forked copy of the global folder's files (SkillFile[]). Empty for legacy
-    // markdown-only rows; the resolver falls back to the base global files.
-    files: jsonb('files').notNull().default([]),
-    contentHash: text('content_hash').notNull(),
-    // Fork-time snapshot of the global's effective hash. NULL for legacy rows
-    // (no drift baseline until re-forked). Drives the drift-vs-global badge.
-    globalContentHash: text('global_content_hash'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    projectSkillUq: uniqueIndex('project_skill_overrides_project_skill_uq').on(
-      t.projectId,
-      t.skillId,
-    ),
-    projectIdx: index('project_skill_overrides_project_id_idx').on(t.projectId),
-    skillIdx: index('project_skill_overrides_skill_id_idx').on(t.skillId),
-  }),
-);
-
 // Skill Studio 4 (ISS-278) — tracks which skill version each device holds for
 // each project. The server is the source of truth (`skills` + overrides +
 // registrations); a row here records the `installedHash` the runner last
@@ -1302,14 +1244,6 @@ export const skillRegistrationsRelations = relations(skillRegistrations, ({ one 
     fields: [skillRegistrations.registeredBy],
     references: [users.id],
   }),
-}));
-
-export const projectSkillOverridesRelations = relations(projectSkillOverrides, ({ one }) => ({
-  project: one(projects, {
-    fields: [projectSkillOverrides.projectId],
-    references: [projects.id],
-  }),
-  skill: one(skills, { fields: [projectSkillOverrides.skillId], references: [skills.id] }),
 }));
 
 export const memoriesRelations = relations(memories, ({ one }) => ({

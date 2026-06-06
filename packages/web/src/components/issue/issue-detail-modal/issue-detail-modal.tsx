@@ -8,7 +8,6 @@ import {
   useIssue,
   usePatchIssue,
   useTransitionIssue,
-  useSetManualHold,
 } from '@/features/issue/hooks/use-issues';
 import { useProjectMembers } from '@/features/project/hooks/use-project-members';
 import { useMeProfile } from '@/features/me/hooks/use-me';
@@ -38,7 +37,6 @@ export function IssueDetailModal({ open, issueId, projectSlug, onClose }: IssueD
   const { data: meProfile } = useMeProfile();
   const patchIssue = usePatchIssue();
   const transitionIssue = useTransitionIssue();
-  const setManualHold = useSetManualHold();
   const { toasts, addToast } = useToast();
 
   const [tab, setTab] = useState<IssueDetailTabKey>('overview');
@@ -102,8 +100,6 @@ export function IssueDetailModal({ open, issueId, projectSlug, onClose }: IssueD
                 onSelectSession={setSessionId}
                 onPatch={handlePatch}
                 onStatusUpdate={handleStatusUpdate}
-                onSetManualHold={(v) => setManualHold.mutate({ id: issue.id, value: v })}
-                manualHoldPending={setManualHold.isPending}
               />
             </div>
 

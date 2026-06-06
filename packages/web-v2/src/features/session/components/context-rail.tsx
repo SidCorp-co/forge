@@ -225,6 +225,32 @@ export function ContextRail({
         </div>
       </Section>
 
+      {/* Agents & tasks — elevated directly under Run stats (ISS-391) so a
+          session's task breakdown is the first thing seen after the headline
+          stats. Renders only when the transcript yielded Task/Skill blocks. */}
+      {agentTasks.length > 0 && (
+        <Section title={`Agents & tasks · ${agentTasks.length}`}>
+          <ul className="flex flex-col gap-1.5">
+            {agentTasks.map((t, i) => (
+              <li key={`${t.id}-${i}`} className="flex items-center gap-2 overflow-hidden">
+                <Icon
+                  name={t.tool === "Skill" ? "command" : "agent"}
+                  size={13}
+                  className="flex-none text-subtle"
+                />
+                <span className="flex-1 truncate fg-body-sm" title={t.label}>
+                  {t.label}
+                </span>
+                {t.isError && (
+                  <Icon name="alert" size={12} className="flex-none" style={{ color: "var(--red-600)" }} />
+                )}
+                <MonoTag hue={t.tool === "Skill" ? "flame" : "cobalt"}>{t.tool}</MonoTag>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
       {showBlocker && (
         <Section title="Blocked">
           <Banner tone={failureReason === "user_cancelled" ? "attention" : "danger"}>
@@ -249,29 +275,6 @@ export function ContextRail({
           </Stat>
         </div>
       </Section>
-
-      {agentTasks.length > 0 && (
-        <Section title={`Agents & tasks · ${agentTasks.length}`}>
-          <ul className="flex flex-col gap-1.5">
-            {agentTasks.map((t, i) => (
-              <li key={`${t.id}-${i}`} className="flex items-center gap-2 overflow-hidden">
-                <Icon
-                  name={t.tool === "Skill" ? "command" : "agent"}
-                  size={13}
-                  className="flex-none text-subtle"
-                />
-                <span className="flex-1 truncate fg-body-sm" title={t.label}>
-                  {t.label}
-                </span>
-                {t.isError && (
-                  <Icon name="alert" size={12} className="flex-none" style={{ color: "var(--red-600)" }} />
-                )}
-                <MonoTag hue={t.tool === "Skill" ? "flame" : "cobalt"}>{t.tool}</MonoTag>
-              </li>
-            ))}
-          </ul>
-        </Section>
-      )}
 
       {issueId && siblings.length > 0 && (
         <Section title={`Sessions for this issue · ${siblings.length}`}>

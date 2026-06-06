@@ -15,7 +15,8 @@ pub enum Action {
     Show,
     /// Print the config file path.
     Path,
-    /// Set a config value: `core-url` or `projects-root`.
+    /// Set a config value: `core-url`, `projects-root`, `update.auto`, or
+    /// `update.manifest-url`.
     Set { key: String, value: String },
 }
 
@@ -31,7 +32,18 @@ pub async fn run(_ctx: Ctx, args: Args) -> anyhow::Result<()> {
             match key.as_str() {
                 "core-url" | "core_url" => cfg.core_url = Some(value),
                 "projects-root" | "projects_root" => cfg.projects_root = Some(value.into()),
-                other => anyhow::bail!("unknown key `{other}` (try: core-url | projects-root)"),
+                // ISS-392 — flip auto-update without hand-editing TOML.
+                "update.auto" | "update-auto" => {
+                    cfg.update.auto = value.parse::<bool>().map_err(|_| {
+                        anyhow::anyhow!("`update.auto` expects `true` or `false`, got `{value}`")
+                    })?;
+                }
+                "update.manifest-url" | "update.manifest_url" => {
+                    cfg.update.manifest_url = Some(value);
+                }
+                other => anyhow::bail!(
+                    "unknown key `{other}` (try: core-url | projects-root | update.auto | update.manifest-url)"
+                ),
             }
             cfg.save()?;
             println!("✔ saved {}", Config::path()?.display());

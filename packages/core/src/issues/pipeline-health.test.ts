@@ -35,7 +35,7 @@ const TICK_AT = new Date('2026-05-17T08:01:00.000Z');
 
 function baseInput(over: Partial<ClassifyInput> = {}): ClassifyInput {
   return {
-    issue: { id: 'iss-1', status: 'approved', manualHold: false },
+    issue: { id: 'iss-1', status: 'approved' },
     sessions: [],
     jobs: [],
     deps: [],
@@ -94,17 +94,6 @@ describe('classifyPipelineHealthForIssue', () => {
       status: 'running',
       skill: 'forge-code',
     });
-  });
-
-  it('classifies manual_hold (L1)', () => {
-    const out = classifyPipelineHealthForIssue(
-      baseInput({
-        issue: { id: 'iss-1', status: 'approved', manualHold: true },
-        jobs: [job()],
-      }),
-    );
-    expect(out.waitingOn?.reason).toBe('manual_hold');
-    expect(out.waitingOn?.since).toBe(QUEUED_AT.toISOString());
   });
 
   it('classifies issue_busy when a sibling session is running', () => {
@@ -206,17 +195,6 @@ describe('classifyPipelineHealthForIssue', () => {
     expect(out.waitingOn?.details).toEqual({ runnerId: 'rnr-1', cap: 1, inFlight: 1 });
   });
 
-  it('manual_hold wins over a blocks parent (L1 before L2)', () => {
-    const out = classifyPipelineHealthForIssue(
-      baseInput({
-        issue: { id: 'iss-1', status: 'approved', manualHold: true },
-        jobs: [job()],
-        deps: [{ fromIssueId: 'iss-blocker', kind: 'blocks', fromStatus: 'open' }],
-      }),
-    );
-    expect(out.waitingOn?.reason).toBe('manual_hold');
-  });
-
   it('reports queuedAt for queued-and-unblocked jobs', () => {
     const out = classifyPipelineHealthForIssue(baseInput({ jobs: [job()] }));
     expect(out.queuedAt).toBe(QUEUED_AT.toISOString());
@@ -228,8 +206,8 @@ describe('classifyPipelineHealthForIssue', () => {
     const newer = job({ id: 'job-newer', queuedAt: new Date(QUEUED_AT.getTime() + 30_000) });
     const out = classifyPipelineHealthForIssue(
       baseInput({
-        issue: { id: 'iss-1', status: 'approved', manualHold: true },
         jobs: [newer, older],
+        deps: [{ fromIssueId: 'iss-blocker', kind: 'blocks', fromStatus: 'open' }],
       }),
     );
     expect(out.waitingOn?.since).toBe(QUEUED_AT.toISOString());

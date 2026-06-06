@@ -1,60 +1,58 @@
 /**
- * Shared failure-finalize path (ISS-280).
+ * Shared failure-finalize path (ISS-280, reworked by ISS-393).
  *
- * The `/complete` and `/fail` device lifecycle handlers and the
- * `reconcileOrphanedJobs` sweeper pass all need the SAME tail once a job row
- * has been flipped to `failed`: route through verify-first auto-retry, fall
- * back to a manual-hold block when retry is not scheduled, mirror the linked
- * agent_session, broadcast, emit hooks, and re-tick dispatch so the freed
- * runner slot refills.
+ * The `/complete` and `/fail` device lifecycle handlers, the dispatcher's
+ * adapter-dispatch failure path, and the `reconcileOrphanedJobs` /
+ * stale-detector sweepers all need the SAME tail once a job row has been
+ * flipped to `failed`: route through verify-first auto-retry, reconcile the
+ * linked issue's status so it is NEVER stranded at the in-flight marker,
+ * mirror the linked agent_session, broadcast, emit hooks, and re-tick
+ * dispatch so the freed runner slot refills.
+ *
+ * ISS-393 — the legacy `setManualHoldBlock` fallback is gone. A failed job
+ * with an issueId now resolves in exactly one of two ways (never a no-op):
+ *   - retry scheduled  → revert issue.status to the stage entry-status so the
+ *     issue reflects "work re-queued" instead of the misleading `in_progress`
+ *     in-flight marker (the retry row itself drives re-dispatch);
+ *   - no retry (budget exhausted / non-retryable / resume-abort) → park the
+ *     issue at `waiting` (single human-review state) and reap the stuck
+ *     `running` pipeline_run so its serial slot frees.
+ * `on_hold`/`manualHold` are no longer failure targets — `on_hold` is now a
+ * deliberate user pause only.
  *
  * Keeping this in one place is the anti-drift guarantee: a silently-reaped
  * orphan (runner died without calling `/complete`) recovers identically to a
  * job that reported its own failure, so the runner cap=1 slot is always
- * released and the pipeline never wedges (ISS-268 root cause).
+ * released and the pipeline never wedges (ISS-268 / ISS-34 root cause).
  */
 
-import { jobs } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import { issues, jobs, projects } from '../db/schema.js';
+import {
+  type DeviceLite,
+  type TransitionIssueRow,
+  applyStatusTransition,
+} from '../issues/apply-transition.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
-import { computeHoldUntil } from '../pipeline/hold-policy.js';
+import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
-import { type FailureClassificationKind, setManualHoldBlock } from '../pipeline/manual-hold.js';
-import { loadRecoveryStats } from '../pipeline/recovery-stats.js';
+import { JOB_TYPE_ENTRY_STATUS } from '../pipeline/recovery-verifier.js';
+import { closeOpenRunForIssue } from '../pipeline/runs.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
+import { finalizeJobDone, hasTerminalHandoffForAttempt } from './finalize-done.js';
 import type { RetryOutcome } from './retry.js';
 import { scheduleAutoRetryWithVerify } from './retry.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
-/**
- * Map classifier v2 failure kinds onto the narrower manual-hold UI enum.
- * Permission errors join `permanent_invalid` (operator must fix credentials,
- * no auto-retry possible). Timeout errors join `transient_network` (the
- * retry engine already eligibilised them; this branch is only reached when
- * the retry budget is exhausted or verification cancelled retry).
- */
-export function mapFailureKindToClassification(
-  failureKind: string | null | undefined,
-): FailureClassificationKind {
-  switch (failureKind) {
-    case 'transient':
-    case 'timeout':
-      return 'transient_network';
-    case 'permanent':
-    case 'permission':
-      return 'permanent_invalid';
-    default:
-      return 'unknown';
-  }
-}
-
 export interface FinalizeFailedJobOptions {
   /** Human-readable failure reason; passed to the retry engine. */
   error: string;
-  /** Exit code to surface on the broadcast + manual-hold evidence (if any). */
+  /** Exit code to surface on the broadcast (if any). */
   exitCode?: number | undefined;
   /**
    * Pre-decided retry outcome. The resume-failed `abort` policy decides
@@ -62,6 +60,103 @@ export interface FinalizeFailedJobOptions {
    * so `finalizeFailedJob` skips `scheduleAutoRetryWithVerify`.
    */
   precomputedRetry?: RetryOutcome | undefined;
+}
+
+/**
+ * Reconcile the linked issue's status after a job failure so it is never left
+ * stranded at the `in_progress` in-flight marker (the ISS-34 wedge). See the
+ * module header for the two outcomes. No-op when the job has no issueId.
+ *
+ * Ordering contract: this runs AFTER `scheduleAutoRetryWithVerify` has already
+ * inserted the queued retry row. The retry-scheduled revert therefore fires a
+ * `transition` hook whose `considerEnqueue` finds that active job and skips —
+ * no double-dispatch (ISS-393 D2).
+ */
+async function reconcileIssueStatusAfterFailure(
+  job: JobRow,
+  retry: RetryOutcome,
+  recoveredViaVerify: boolean,
+): Promise<void> {
+  if (!job.issueId) return;
+
+  const [row] = await db
+    .select({
+      id: issues.id,
+      projectId: issues.projectId,
+      status: issues.status,
+      reopenCount: issues.reopenCount,
+      ownerId: projects.ownerId,
+    })
+    .from(issues)
+    .innerJoin(projects, eq(projects.id, issues.projectId))
+    .where(eq(issues.id, job.issueId))
+    .limit(1);
+  if (!row) {
+    logger.warn(
+      { issueId: job.issueId },
+      'finalize-failure: issue not found, skipping status reconcile',
+    );
+    return;
+  }
+
+  // activity_log.actorId has no FK; the project owner is a valid stand-in for
+  // a system-initiated transition (mirrors orchestrator `resolveSkipDevice`).
+  // Fall back to the job creator when the project has no owner.
+  const actorId = row.ownerId ?? job.createdBy;
+  const device: DeviceLite = { id: actorId, ownerId: actorId };
+  const issueRow: TransitionIssueRow = {
+    id: row.id,
+    projectId: row.projectId,
+    status: row.status,
+    reopenCount: row.reopenCount,
+  };
+
+  if (retry.scheduled) {
+    // Revert the in-flight marker back to the stage entry-status (code →
+    // approved, fix → reopen, …). Skip when the issue is already at entry
+    // (clarify/plan/review/test never leave their entry status mid-job).
+    const entry = JOB_TYPE_ENTRY_STATUS[job.type];
+    if (entry && row.status !== entry) {
+      try {
+        await applyStatusTransition(issueRow, entry, device, { skip: true });
+      } catch (err) {
+        logger.warn(
+          { err, issueId: row.id, to: entry },
+          'finalize-failure: entry-status revert failed',
+        );
+      }
+    }
+    return;
+  }
+
+  // Verify-first recovery (issue already advanced or moved to another step's
+  // territory) — the work is effectively done; leave the issue untouched.
+  if (recoveredViaVerify) return;
+
+  // Budget exhausted / non-retryable kind / resume-abort: park the issue at
+  // `waiting` for human review and reap the still-`running` pipeline_run.
+  if (row.status !== 'waiting') {
+    try {
+      await applyStatusTransition(issueRow, 'waiting', device, { skip: true });
+    } catch (err) {
+      logger.warn(
+        { err, issueId: row.id },
+        'finalize-failure: park-to-waiting failed',
+      );
+    }
+  }
+  // Issue-kind runs are not closed by `syncAgentSessionLifecycle`
+  // (`closeRunIfOneShot` only touches pm/interactive runs); close it here so
+  // an exhausted issue does not leave its run `running` and wedge the serial
+  // slot (CLAUDE.md orphan-hygiene — routes through cascadeCancelChildJobs).
+  try {
+    await closeOpenRunForIssue(row.id, 'failed');
+  } catch (err) {
+    logger.warn(
+      { err, issueId: row.id },
+      'finalize-failure: closeOpenRunForIssue failed',
+    );
+  }
 }
 
 /**
@@ -78,47 +173,35 @@ export async function finalizeFailedJob(
   updated: JobRow,
   opts: FinalizeFailedJobOptions,
 ): Promise<RetryOutcome> {
+  // False-failure override (see finalize-done.ts): the runner reports `failed`
+  // when it misses the Claude CLI `result` event even though the agent ran the
+  // step to completion. If the agent wrote a terminal handoff for this attempt,
+  // that authoritative signal beats the runner's exit detection — mark the job
+  // `done` instead of retrying / parking at `waiting`. Covers both the
+  // "Agent completed with errors" (null-exit) and the silent-death-after-work
+  // classes. Runs BEFORE scheduleAutoRetryWithVerify so no retry is queued.
+  if (updated.issueId && (await hasTerminalHandoffForAttempt(updated))) {
+    const flipped = await finalizeJobDone(updated, 'completed_via_handoff');
+    if (flipped) return { scheduled: false, reason: 'completed_via_handoff' };
+    // CAS lost (a concurrent terminal write won) → fall through to normal path.
+  }
+
   const retry: RetryOutcome =
     opts.precomputedRetry ?? (await scheduleAutoRetryWithVerify(updated, opts.error));
 
   // A retry is skipped for two very different reasons:
   //  - genuine failure with no retry left (budget exhausted / non-retryable
-  //    kind / resume-abort) → surface to the operator via manual-hold;
+  //    kind / resume-abort) → park the issue at `waiting` for an operator;
   //  - verify-first recovery: the issue ALREADY advanced past this step
   //    (`completed_via_recovery`) or moved into another step's territory
-  //    (`cancelled_stale`) → the work is effectively done, manual-holding here
-  //    would wedge an issue that has already recovered (ISS-280 AC2/AC4).
-  // Only the first case manual-holds.
+  //    (`cancelled_stale`) → the work is effectively done; touching the issue
+  //    would wedge one that already recovered (ISS-280 AC2/AC4).
   const recoveredViaVerify =
     retry.reason === 'completed_via_recovery' || retry.reason === 'cancelled_stale';
 
-  if (!retry.scheduled && !recoveredViaVerify && updated.issueId) {
-    const classificationKind = mapFailureKindToClassification(updated.failureKind);
-    const recoveryStats = await loadRecoveryStats(updated.issueId);
-    await setManualHoldBlock({
-      issueId: updated.issueId,
-      context: {
-        step: updated.type,
-        trigger: 'job_failed',
-        classification: {
-          kind: classificationKind,
-          reason: updated.failureReason ?? opts.error,
-          evidence:
-            opts.exitCode === undefined
-              ? { jobId: updated.id }
-              : { jobId: updated.id, exitCode: opts.exitCode },
-        },
-        attempts: updated.attempts,
-        lastFailureAt: new Date().toISOString(),
-        suggestedActions: ['resume', 'skip-step', 'close'],
-        holdUntil: computeHoldUntil({
-          classificationKind,
-          trigger: 'job_failed',
-          recoveryStats,
-        }),
-      },
-    });
-  }
+  // ISS-393 — never no-op a failed job with an issueId: revert to entry-status
+  // (retry path) or park at `waiting` + reap the run (no-retry path).
+  await reconcileIssueStatusAfterFailure(updated, retry, recoveredViaVerify);
 
   // Mirror lifecycle to the linked agent_session row. ISS-101 — pass
   // retryPending so we leave the parent pipeline_run open when a retry has

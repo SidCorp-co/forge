@@ -118,6 +118,9 @@ export interface SessionRow {
    *  per-turn `/turns` table is empty (ISS-348). */
   messages?: unknown[];
   totalMessages?: number;
+  /** Per-session dollar cost rolled up from usage_records, attached by the list
+   *  endpoint (ISS-391). 0 when the session has no usage rows yet. */
+  estimatedCost?: number;
 }
 
 /** `GET /api/agent-sessions/queue-stats` response (per-device counters). */
@@ -237,7 +240,13 @@ export function deriveSessionDisplayStatus(
   return state === "stale" || state === "reaping" ? "stalled" : "running";
 }
 
-/** Map a real/derived session status to a design-kit `StatusKey` for StatusChip. */
+/** Map a real/derived session status to a design-kit `StatusKey` for StatusChip.
+ *  ISS-322: `cancelled_stale` (a terminal session reaped by the stale-sweep) is
+ *  a benign cleanup, not a failure — it gets the neutral `swept` token, NOT the
+ *  red `zombie` token. `stalled` (a LIVE session whose heartbeat is overdue and
+ *  is about to be auto-recovered) stays `zombie`: it is genuinely attention-
+ *  worthy. For terminal `failed` rows, prefer `classifySessionOutcome` (it can
+ *  see `failureReason` and demote lifecycle/capacity cancels to neutral). */
 export function statusToChip(display: AgentSessionDisplayStatus): StatusKey {
   switch (display) {
     case "running":
@@ -252,11 +261,137 @@ export function statusToChip(display: AgentSessionDisplayStatus): StatusKey {
     case "failed":
       return "failed";
     case "cancelled_stale":
+      return "swept";
     case "stalled":
       return "zombie";
     default:
       return "queued";
   }
+}
+
+// ─── ISS-322: benign-cleanup vs real-failure classifier ─────────────────────
+
+/**
+ * Four-bucket outcome for a terminal session, so the UI never paints a benign
+ * cleanup or a lifecycle/capacity cancel the same red as a genuine failure:
+ *   - `success` — finished cleanly (incl. recovery-verified).
+ *   - `failed`  — a REAL failure that needs attention (red). Only `job_failed`
+ *                 or an unknown reason on a `failed` row qualifies.
+ *   - `cleanup` — auto-cleaned when the pipeline closed (ISS-258 cascade). Most
+ *                 such sessions are already `completed` post-ISS-352; this is the
+ *                 safety net for legacy rows / non-failure markers.
+ *   - `swept`   — swept after going stale, or cancelled by lifecycle/capacity
+ *                 (no runner, queue timeout, user cancel, …). Neutral, not red.
+ *   - `active`  — not terminal (running/queued/idle/stalled); falls back to the
+ *                 plain `statusToChip` mapping.
+ */
+export type SessionOutcomeBucket = "success" | "failed" | "cleanup" | "swept" | "active";
+
+/** `failureReason`s that mark a benign pipeline cleanup (ISS-258 cascade). The
+ *  `pipeline_*` values are the `jobs`-table vocab — defensive: post-ISS-352 the
+ *  session itself is `completed`, but a legacy row may still carry them. */
+const CLEANUP_REASONS = new Set<string>([
+  "migration_zombie_cleanup",
+  "pipeline_completed",
+  "pipeline_failed",
+  "pipeline_cancelled",
+]);
+
+/** `failureReason`s that are a lifecycle/capacity cancel or a stale sweep — NOT
+ *  a code failure, so they read neutral (`swept`) rather than red. */
+const SWEEP_OR_CANCEL_REASONS = new Set<string>([
+  "queue_timeout",
+  "heartbeat_timeout",
+  "no_worker_online",
+  "user_cancelled",
+  "issue_busy",
+  "waiting_on_dep",
+  "project_full",
+  "runner_full",
+]);
+
+export interface SessionOutcome {
+  bucket: SessionOutcomeBucket;
+  /** Design-kit token to colour the chip — `swept`/`done` are neutral/green,
+   *  only `failed` is red. */
+  statusKey: StatusKey;
+  /** Short chip/secondary label. */
+  label: string;
+  /** Plain-language tooltip explaining why this is (or isn't) a failure. */
+  tooltip: string;
+}
+
+/**
+ * Classify a terminal session into the four ISS-322 buckets from its display
+ * status + `failureReason`. Non-terminal states return `active` and defer to
+ * `statusToChip`. Keep red strictly for genuine failures.
+ */
+export function classifySessionOutcome(
+  display: AgentSessionDisplayStatus,
+  failureReason?: string | null,
+): SessionOutcome {
+  if (display === "completed" || display === "completed_via_recovery") {
+    return { bucket: "success", statusKey: "done", label: "Completed", tooltip: "Finished cleanly." };
+  }
+
+  if (display === "cancelled_stale") {
+    return {
+      bucket: "swept",
+      statusKey: "swept",
+      label: "Swept (overdue)",
+      tooltip:
+        "Swept after going stale (no recent heartbeat). This is automatic cleanup, not a failure.",
+    };
+  }
+
+  if (display === "failed") {
+    const reason = failureReason ?? null;
+    if (reason && CLEANUP_REASONS.has(reason)) {
+      return {
+        bucket: "cleanup",
+        statusKey: "swept",
+        label: "Cleaned up",
+        tooltip:
+          "This step was automatically cleaned up when the pipeline finished — not a failure.",
+      };
+    }
+    if (reason && SWEEP_OR_CANCEL_REASONS.has(reason)) {
+      return {
+        bucket: "swept",
+        statusKey: "swept",
+        label: FAILURE_REASON_LABEL[reason] ?? "Cancelled",
+        tooltip:
+          FAILURE_REASON_ACTION[reason] ??
+          "Cancelled by a lifecycle or capacity rule — not a failure.",
+      };
+    }
+    // job_failed, or a null/unknown reason on a failed row → a real failure.
+    return {
+      bucket: "failed",
+      statusKey: "failed",
+      label: "Failed",
+      tooltip:
+        (reason && FAILURE_REASON_ACTION[reason]) ?? "The agent step failed — see the run timeline.",
+    };
+  }
+
+  // Non-terminal (running / stalled / queued / idle): defer to the plain mapping.
+  return {
+    bucket: "active",
+    statusKey: statusToChip(display),
+    label: display,
+    tooltip: "",
+  };
+}
+
+/** Whether a terminal session is a genuine failure (the only bucket that should
+ *  read red / count toward "attention"). Live `stalled` sessions are handled
+ *  separately by the caller (they are not terminal). */
+export function isRealFailure(
+  display: AgentSessionDisplayStatus,
+  failureReason?: string | null,
+): boolean {
+  return classifySessionOutcome(display, failureReason).bucket === "failed";
 }
 
 type RunStatus = "running" | "done" | "failed" | "blocked" | "queued" | "review";

@@ -74,11 +74,6 @@ export function IssueMetadata({
           {issue.category}
         </span>
       )}
-      {issue.manualHold && (
-        <span className="rounded-sm border border-outline-variant/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-amber-600">
-          Paused
-        </span>
-      )}
       {desktopConnected && issue.status !== 'released' && issue.status !== 'closed' && (
         <button
           onClick={onStartSession}

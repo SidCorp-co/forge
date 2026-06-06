@@ -2,10 +2,11 @@
  * Pipeline self-healing sweeper — zombie session cleanup + dispatcher backstop.
  *
  * Previously this file also handled multi-tier "stuck issue" recovery
- * (re-enqueue + recoveryAttempts budget + pipeline_failed escalation).
- * The failure model now blocks issues via setManualHoldBlock at the
- * source (worker /fail, watchdog kills, adapter errors); operator
- * action is the only thing that resumes a blocked pipeline.
+ * (re-enqueue + recoveryAttempts budget + pipeline_failed escalation) and an
+ * expired-hold auto-clear pass. ISS-393 removed the manualHold model: the
+ * shared finalize path (`finalizeFailedJob`) now reverts a failed job's issue
+ * to its stage entry-status (retry) or parks it at `waiting` (exhausted), so
+ * there is no hold to clear here anymore.
  *
  * Each 60s tick performs two best-effort passes:
  *
@@ -31,7 +32,6 @@ import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import { finalizeFailedJob } from '../jobs/finalize-failure.js';
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
 import { logger } from '../logger.js';
-import { recordHoldAutoClear } from '../observability/hold-metrics.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { boss } from '../queue/boss.js';
 import { projectRoom } from '../ws/rooms.js';
@@ -86,10 +86,6 @@ export interface ZombieSweepResult {
   heartbeatTimedOut: number;
 }
 
-export interface ExpiredHoldsSweepResult {
-  cleared: number;
-}
-
 export interface OrphanReconcileResult {
   reconciled: number;
 }
@@ -99,7 +95,6 @@ export interface SweepResult {
   zombieSessions: ZombieSweepResult;
   orphanedJobs: OrphanReconcileResult;
   neverClaimedDispatches: OrphanReconcileResult;
-  expiredHolds: ExpiredHoldsSweepResult;
   backstopProjects: number;
   queueSnapshots: number;
 }
@@ -117,7 +112,6 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   // this pass they sit until runStaleSweep's 60-min backstop — long enough to
   // hold the cap=1 slot and block the next stage for hours.
   const neverClaimedDispatches = await reconcileNeverClaimedDispatches(now);
-  const expiredHolds = await sweepExpiredHolds(now);
   const backstopProjects = await runDispatcherBackstop();
   // ISS-381 (2.2) — snapshot per-project queue depth. Best-effort: a failure
   // here must never abort the tick or block the heartbeat below.
@@ -132,7 +126,6 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     zombieSessions,
     orphanedJobs,
     neverClaimedDispatches,
-    expiredHolds,
     backstopProjects,
     queueSnapshots,
   };
@@ -315,8 +308,8 @@ export async function sweepZombieSessions(
  * This pass closes the gap: when a linked session is terminal but its job is
  * still active, CAS-flip the job to `failed` and route it through the SAME
  * `finalizeFailedJob` path as `/complete` + `/fail` — so it gets verify-first
- * auto-retry (or a manual-hold block when budget is exhausted), the
- * agent_session sync, the `job.failed` broadcast, and a `dispatchTickForProject`
+ * auto-retry (or park-to-`waiting` + run reap when the budget is exhausted),
+ * the agent_session sync, the `job.failed` broadcast, and a `dispatchTickForProject`
  * that refills the freed slot.
  *
  * The `result`-event guard keeps lockstep with `runStaleSweep` (ISS-258): a
@@ -408,8 +401,8 @@ export async function reconcileOrphanedJobs(
  * Reaping routes through the SAME `finalizeFailedJob` path, so the verify-first
  * retry resolves a moot orphan whose issue already advanced
  * (`completed_via_recovery`) instead of spawning a duplicate, retries onto
- * another runner when the work is genuinely still pending, or manual-holds when
- * the budget is exhausted. CAS on `status='dispatched'` so a runner that claims
+ * another runner when the work is genuinely still pending, or parks the issue
+ * at `waiting` when the budget is exhausted. CAS on `status='dispatched'` so a runner that claims
  * (emits `started`) in the same instant wins the race.
  */
 export async function reconcileNeverClaimedDispatches(
@@ -418,8 +411,7 @@ export async function reconcileNeverClaimedDispatches(
 ): Promise<OrphanReconcileResult> {
   const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
   // postgres-js rejects raw Date params (Buffer.byteLength expects
-  // string/Buffer/ArrayBuffer); serialise to ISO before binding — same as
-  // sweepExpiredHolds.
+  // string/Buffer/ArrayBuffer); serialise to ISO before binding.
   const cutoffIso = new Date(now.getTime() - neverClaimedThresholdMs()).toISOString();
   const candidates = await db.execute<{ id: string }>(sql`
     SELECT j.id
@@ -477,91 +469,6 @@ function broadcastZombieTransition(
     status: 'failed',
     failureReason: reason,
   });
-}
-
-/**
- * ISS-198 — auto-clear expired manualHold rows.
- *
- * A row is cleared when:
- *   - `manual_hold = true`,
- *   - `manual_hold_until` is non-NULL and in the past,
- *   - no `failed` job for the same issue finished in the last 5 minutes
- *     (anti-ping-pong: don't clear a hold whose latest cause still smells
- *     fresh).
- *
- * Re-enqueueing is implicit — the dispatcher's L1 gate stops excluding the
- * issue the moment `manual_hold` flips false, so the next picker tick will
- * pick up any pending job on its own. Do not add a separate enqueue here.
- */
-export async function sweepExpiredHolds(
-  now: Date,
-  scope: SweepScope = {},
-): Promise<ExpiredHoldsSweepResult> {
-  const projectClause = scope.projectId ? sql`AND issues.project_id = ${scope.projectId}` : sql``;
-  // postgres-js driver rejects raw Date params (Buffer.byteLength expects
-  // string/Buffer/ArrayBuffer). Serialise to ISO before binding.
-  const nowIso = now.toISOString();
-  const rows = await db.execute<{
-    id: string;
-    project_id: string;
-    held_at: Date | string | null;
-    failure_kind: string | null;
-  }>(sql`
-    WITH cleared AS (
-      UPDATE issues
-      SET manual_hold = false,
-          manual_hold_until = NULL,
-          updated_at = ${nowIso}
-      WHERE manual_hold = true
-        AND manual_hold_until IS NOT NULL
-        AND manual_hold_until < ${nowIso}
-        AND NOT EXISTS (
-          SELECT 1 FROM jobs j
-          WHERE j.issue_id = issues.id
-            AND j.status = 'failed'
-            AND j.finished_at > now() - interval '5 minutes'
-        )
-        ${projectClause}
-      RETURNING id, project_id, updated_at, failure_context
-    )
-    SELECT id, project_id,
-           updated_at AS held_at,
-           (failure_context->'classification'->>'kind') AS failure_kind
-    FROM cleared
-  `);
-
-  for (const row of rows) {
-    const kind = (row.failure_kind ?? 'unknown_no_context') as
-      | 'transient_network'
-      | 'permanent_invalid'
-      | 'unknown'
-      | 'unknown_no_context';
-    roomManager.publish(projectRoom(row.project_id), {
-      event: 'issue.holdCleared',
-      data: { issueId: row.id, reason: 'auto_clear' },
-    });
-    if (isSentryEnabled()) {
-      Sentry.addBreadcrumb({
-        category: 'pipeline.reconciler.hold_auto_cleared',
-        level: 'info',
-        message: `auto-cleared manualHold for issue ${row.id}`,
-        data: {
-          issueId: row.id,
-          holdReason: row.failure_kind,
-          // holdDuration would require capturing held_since; we don't track
-          // that today, so emit null and document the field in the contract.
-          holdDuration: null,
-        },
-      });
-    }
-    recordHoldAutoClear({ kind });
-  }
-
-  if (rows.length > 0) {
-    logger.info({ cleared: rows.length }, 'pipeline-sweeper: expired holds cleared');
-  }
-
-  return { cleared: rows.length };
 }
 
 let registered = false;

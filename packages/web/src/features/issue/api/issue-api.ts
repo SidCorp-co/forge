@@ -134,12 +134,6 @@ export const issueApi = {
     return apiClient<PipelineTimingResponse>(`/issues/pipeline-timing?${qs.toString()}`);
   },
 
-  setManualHold: (id: string, value: boolean) =>
-    apiClient<{ issueId: string; manualHold: boolean }>(`/issues/${id}/manual-hold`, {
-      method: 'PATCH',
-      body: JSON.stringify({ value }),
-    }),
-
   batchPatch: (input: BatchPatchInput) =>
     apiClient<BatchPatchResponse>('/issues/batch', {
       method: 'PATCH',
@@ -290,7 +284,6 @@ export interface BatchPatchData {
   status?: IssueStatus;
   priority?: IssuePriority;
   category?: string | null;
-  manualHold?: boolean;
 }
 
 export interface BatchPatchInput {

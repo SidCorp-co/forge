@@ -46,6 +46,7 @@ import { registerDeviceStaleDetector } from './devices/stale-detector.js';
 import { docsRoutes } from './docs/routes.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { seedDomainTemplates } from './domain-templates/seed.js';
+import { registerRunnerReleaseRefetch } from './install/fetch-release.js';
 import { installRoutes } from './install/routes.js';
 import { registerCoolifyAdapter } from './integrations/coolify/adapter.js';
 import { registerEpodsystemAdapter } from './integrations/epodsystem/adapter.js';
@@ -135,7 +136,7 @@ import { registerScheduleTicker, unregisterScheduleTicker } from './schedules/ru
 import { skillFactsRoutes } from './skill-facts/routes.js';
 import { seedBuiltinSkills } from './skills/builtin-seed.js';
 import { skillCrudRoutes } from './skills/crud-routes.js';
-import { skillOverrideRoutes } from './skills/override-routes.js';
+import { skillStudioRoutes } from './skills/studio-routes.js';
 import { skillRegisterRoutes, skillSyncRoutes } from './skills/routes.js';
 import { taskIssueRoutes, taskRoutes } from './tasks/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
@@ -268,8 +269,13 @@ app.post('/mcp', mcpHandler);
 app.get('/mcp', mcpHandler);
 app.delete('/mcp', mcpHandler);
 
-// Public runner distribution: GET /install.sh, /install/latest.json, /install/bin/:target
+// Public runner distribution: GET /install.sh, /install/latest.json, /install/bin/:target.
+// Mounted at the root for self-hosters who expose core directly, AND under
+// `/api` because the hosted edge proxy forwards only `/api/*` to core — the
+// runner self-updater fetches `{core}/api/install/latest.json` (ISS-392). The
+// route handlers echo the arriving prefix into the download URLs they emit.
 app.route('/', installRoutes);
+app.route('/api', installRoutes);
 
 app.route('/api/auth', authRoutes);
 app.route('/api/auth', loginRoutes);
@@ -305,7 +311,7 @@ app.route('/api/projects', docsRoutes);
 app.route('/api/projects', memberRoutes);
 app.route('/api/projects', skillSyncRoutes);
 app.route('/api/projects', skillRegisterRoutes);
-app.route('/api/projects', skillOverrideRoutes);
+app.route('/api/projects', skillStudioRoutes);
 app.route('/api/invitations', invitationRoutes);
 app.route('/api/projects', issueProjectRoutes);
 app.route('/api/projects', searchRoutes);
@@ -458,6 +464,11 @@ if (isMain) {
   // outbox table; reconciler is the minute-cadence safety net.
   registerOutboxWorker();
   await registerReconciler();
+
+  // ISS-392 — periodically re-ingest the latest `runner-v*` GitHub Release so a
+  // freshly cut runner build is served (and auto-pulled by runners) without a
+  // manual core redeploy. No-op when RUNNER_RELEASE_DIR is unset.
+  registerRunnerReleaseRefetch();
 
   const server = serve({ fetch: app.fetch, port }, (info) => {
     logger.info({ port: info.port }, '@forge/core listening');

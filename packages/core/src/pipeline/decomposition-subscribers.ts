@@ -6,7 +6,7 @@
  *  1. cascade approve   — parent enters `approved` (from the review gate
  *                         `waiting`, or tolerantly `on_hold`/`confirmed`) and
  *                         flips all parked children (`draft` or `on_hold`) →
- *                         `approved`, clearing `manualHold`.
+ *                         `approved`.
  *  2. watcher           — when the LAST sibling reaches
  *                         {staging, released, closed}, post a system comment
  *                         on the parent and re-fire the parent's pipeline so
@@ -101,9 +101,6 @@ async function handleCascadeApprove(payload: HookPayloads['transition']): Promis
 
   let cascaded = 0;
   for (const child of children) {
-    if (child.manualHold) {
-      await db.update(issues).set({ manualHold: false }).where(eq(issues.id, child.id));
-    }
     if (!CASCADE_APPROVE_FROM_STATUSES.has(child.status)) continue;
     try {
       await applyStatusTransition(

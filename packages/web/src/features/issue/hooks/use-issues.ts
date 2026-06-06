@@ -158,39 +158,6 @@ export function useRunPipelineStep() {
   });
 }
 
-/**
- * ISS-42 C1 — toggle the manual_hold flag. Optimistically updates list pages
- * and the issue detail cache so the badge flips immediately; the WS event
- * router will reconcile on the canonical update.
- */
-export function useSetManualHold() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, value }: { id: string; value: boolean }) =>
-      issueApi.setManualHold(id, value),
-    onMutate: async ({ id, value }) => {
-      await qc.cancelQueries({ queryKey: issueKeys.lists });
-      const snapshots = qc.getQueriesData<ListPage>({ queryKey: issueKeys.lists });
-      for (const [key, old] of snapshots) {
-        if (!old) continue;
-        qc.setQueryData<ListPage>(key, {
-          ...old,
-          items: old.items.map((i) => (i.id === id ? { ...i, manualHold: value } : i)),
-        });
-      }
-      return { snapshots };
-    },
-    onError: (_err, _vars, ctx) => {
-      ctx?.snapshots?.forEach(([key, old]) => qc.setQueryData(key, old));
-    },
-    onSettled: (_data, _err, { id }) => {
-      qc.invalidateQueries({ queryKey: issueKeys.lists });
-      qc.invalidateQueries({ queryKey: issueKeys.searches });
-      qc.invalidateQueries({ queryKey: issueKeys.detail(id) });
-    },
-  });
-}
-
 // No optimistic update — partial-success per-issue is messy; rely on WS reconcile.
 export function useBatchPatchIssues() {
   const qc = useQueryClient();

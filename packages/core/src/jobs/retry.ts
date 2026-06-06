@@ -13,7 +13,7 @@
  *      for non-retryable kinds; broadcast `session.recoveryChanged`.
  *   3. Skip retry if the classifier says permanent / permission.
  *   4. Skip retry if the phased auto-retry budget (30×1m + 10×5m = 40)
- *      is exhausted; the caller then routes to setManualHoldBlock.
+ *      is exhausted; the caller then parks the issue at `waiting`.
  *   5. Verify-first: if `verifyRecovery` says the issue already advanced
  *      past the failed job's expected exit → mark agent_session as
  *      `completed_via_recovery` and stop. If the issue moved to a
@@ -60,7 +60,7 @@ export interface RetryOutcome {
  *              slower recovery, e.g. extended outages or quota resets).
  *
  *  After 40 total retries (job.attempts ≥ 41) the budget is exhausted; the
- *  caller routes the job through `setManualHoldBlock` for operator review.
+ *  caller then parks the issue at `waiting` for human review.
  *
  *  Provider `Retry-After` hints still win when they exceed the phase
  *  cooldown — the schedule is a floor, not a ceiling.
@@ -116,8 +116,8 @@ export function readAutoRetryPayload(payload: unknown): { excludeDeviceIds: stri
 /**
  * Verify-first auto-retry. See file header for the full state diagram.
  * Returns `{ scheduled: false, reason }` for every non-retry outcome so the
- * caller (lifecycle / watchdog) can hand off to `setManualHoldBlock` only
- * when the reason isn't a recovery-via-verification skip.
+ * caller (lifecycle / watchdog) can park the issue at `waiting` only when the
+ * reason isn't a recovery-via-verification skip.
  *
  * Idempotent: budget exhaustion + verification + classifier all guard the
  * insert path.

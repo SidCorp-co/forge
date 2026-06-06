@@ -1,10 +1,10 @@
 "use client";
 
 // ISS-377 Tier-1 "why is it stuck" surface. Renders the single server-derived
-// `BlockerState` (from `deriveBlockerState` — the ONE join of failureContext /
-// status / manualHold / pipelineHealth.waitingOn / blocks edges) as a prominent
-// banner. Shown ONLY when blocked; the screen renders nothing when the verdict
-// is null (AC#1/#2). The banner says WHY + WHO + the next action.
+// `BlockerState` (from `deriveBlockerState` — the ONE join of status /
+// pipelineHealth.waitingOn / blocks edges) as a prominent banner. Shown ONLY
+// when blocked; the screen renders nothing when the verdict is null (AC#1/#2).
+// The banner says WHY + WHO + the next action.
 import { Banner, Button } from "@/design";
 import type { BlockerState } from "../derive";
 import { IssueRefBadge } from "./issue-ref-badge";
@@ -16,7 +16,6 @@ interface BlockerBannerProps {
   onApprove: () => void;
   onResume: () => void;
   onProvideInfo: () => void;
-  onUnhold: () => void;
 }
 
 export function BlockerBanner({
@@ -26,7 +25,6 @@ export function BlockerBanner({
   onApprove,
   onResume,
   onProvideInfo,
-  onUnhold,
 }: BlockerBannerProps) {
   const { cta } = blocker;
 
@@ -40,12 +38,6 @@ export function BlockerBanner({
   } else if (cta.kind === "resume") {
     action = (
       <Button variant="secondary" size="sm" icon="rerun" loading={pending} onClick={onResume}>
-        {cta.label}
-      </Button>
-    );
-  } else if (cta.kind === "unhold") {
-    action = (
-      <Button variant="secondary" size="sm" icon="play" loading={pending} onClick={onUnhold}>
         {cta.label}
       </Button>
     );

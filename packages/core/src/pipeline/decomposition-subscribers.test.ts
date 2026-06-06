@@ -90,9 +90,9 @@ beforeEach(() => {
 describe('cascade approve', () => {
   it('flips draft children to approved when parent transitions waiting → approved', async () => {
     findDecompositionChildren.mockResolvedValueOnce([
-      { id: CHILD_A, status: 'draft', manualHold: false, projectId: PROJECT_ID },
-      { id: CHILD_B, status: 'draft', manualHold: false, projectId: PROJECT_ID },
-      { id: CHILD_C, status: 'draft', manualHold: false, projectId: PROJECT_ID },
+      { id: CHILD_A, status: 'draft', projectId: PROJECT_ID },
+      { id: CHILD_B, status: 'draft', projectId: PROJECT_ID },
+      { id: CHILD_C, status: 'draft', projectId: PROJECT_ID },
     ]);
     // Subsequent handlers also call findDecompositionParent/Children — return null/[].
     findDecompositionParent.mockResolvedValue(null);
@@ -115,9 +115,9 @@ describe('cascade approve', () => {
     }
   });
 
-  it('clears manualHold on children that have it set, then transitions them', async () => {
+  it('cascades a parked draft child to approved (ISS-393: no manualHold clearing)', async () => {
     findDecompositionChildren.mockResolvedValueOnce([
-      { id: CHILD_A, status: 'draft', manualHold: true, projectId: PROJECT_ID },
+      { id: CHILD_A, status: 'draft', projectId: PROJECT_ID },
     ]);
     findDecompositionParent.mockResolvedValue(null);
     findDecompositionChildren.mockResolvedValue([]);
@@ -132,8 +132,8 @@ describe('cascade approve', () => {
       reopenCount: 0,
     });
 
-    expect(dbUpdate).toHaveBeenCalled();
     expect(applyStatusTransition).toHaveBeenCalledTimes(1);
+    expect(applyStatusTransition.mock.calls[0]?.[1]).toBe('approved');
   });
 
   it('does nothing for transitions that do not enter approved', async () => {
@@ -155,7 +155,7 @@ describe('cascade approve', () => {
 
   it('cascades on_hold children (skill-created) when parent enters approved from on_hold (drift-tolerant)', async () => {
     findDecompositionChildren.mockResolvedValueOnce([
-      { id: CHILD_A, status: 'on_hold', manualHold: false, projectId: PROJECT_ID },
+      { id: CHILD_A, status: 'on_hold', projectId: PROJECT_ID },
     ]);
     findDecompositionParent.mockResolvedValue(null);
     findDecompositionChildren.mockResolvedValue([]);
@@ -176,8 +176,8 @@ describe('cascade approve', () => {
 
   it('skips children that are not parked (e.g. already in_progress)', async () => {
     findDecompositionChildren.mockResolvedValueOnce([
-      { id: CHILD_A, status: 'in_progress', manualHold: false, projectId: PROJECT_ID },
-      { id: CHILD_B, status: 'draft', manualHold: false, projectId: PROJECT_ID },
+      { id: CHILD_A, status: 'in_progress', projectId: PROJECT_ID },
+      { id: CHILD_B, status: 'draft', projectId: PROJECT_ID },
     ]);
     findDecompositionParent.mockResolvedValue(null);
     findDecompositionChildren.mockResolvedValue([]);
@@ -204,7 +204,7 @@ describe('cascade approve', () => {
   // that the orchestrator was about to triage.
   it('does NOT cascade children stuck at open (filter is draft-only)', async () => {
     findDecompositionChildren.mockResolvedValueOnce([
-      { id: CHILD_A, status: 'open', manualHold: false, projectId: PROJECT_ID },
+      { id: CHILD_A, status: 'open', projectId: PROJECT_ID },
     ]);
     findDecompositionParent.mockResolvedValue(null);
     findDecompositionChildren.mockResolvedValue([]);
@@ -235,8 +235,8 @@ describe('watcher children → staging', () => {
       issSeq: 99,
     });
     findDecompositionChildren.mockResolvedValueOnce([
-      { id: CHILD_A, status: 'staging', manualHold: false, projectId: PROJECT_ID },
-      { id: CHILD_B, status: 'in_progress', manualHold: false, projectId: PROJECT_ID },
+      { id: CHILD_A, status: 'staging', projectId: PROJECT_ID },
+      { id: CHILD_B, status: 'in_progress', projectId: PROJECT_ID },
     ]);
     // close cascade — payload.to !== 'closed', early returns.
 
@@ -272,9 +272,9 @@ describe('watcher children → staging', () => {
       issSeq: 99,
     });
     findDecompositionChildren.mockResolvedValueOnce([
-      { id: CHILD_A, status: 'staging', manualHold: false, projectId: PROJECT_ID },
-      { id: CHILD_B, status: 'staging', manualHold: false, projectId: PROJECT_ID },
-      { id: CHILD_C, status: 'staging', manualHold: false, projectId: PROJECT_ID },
+      { id: CHILD_A, status: 'staging', projectId: PROJECT_ID },
+      { id: CHILD_B, status: 'staging', projectId: PROJECT_ID },
+      { id: CHILD_C, status: 'staging', projectId: PROJECT_ID },
     ]);
 
     const bus = makeBus();
@@ -324,8 +324,8 @@ describe('watcher children → staging', () => {
       issSeq: 99,
     });
     findDecompositionChildren.mockResolvedValueOnce([
-      { id: CHILD_A, status: 'released', manualHold: false, projectId: PROJECT_ID },
-      { id: CHILD_B, status: 'staging', manualHold: false, projectId: PROJECT_ID },
+      { id: CHILD_A, status: 'released', projectId: PROJECT_ID },
+      { id: CHILD_B, status: 'staging', projectId: PROJECT_ID },
     ]);
 
     const bus = makeBus();
@@ -353,9 +353,9 @@ describe('close cascade', () => {
     findDecompositionParent.mockResolvedValueOnce(null);
     // close cascade fetch — the only consumer of findDecompositionChildren here.
     findDecompositionChildren.mockResolvedValueOnce([
-      { id: CHILD_A, status: 'in_progress', manualHold: false, projectId: PROJECT_ID },
-      { id: CHILD_B, status: 'closed', manualHold: false, projectId: PROJECT_ID },
-      { id: CHILD_C, status: 'staging', manualHold: false, projectId: PROJECT_ID },
+      { id: CHILD_A, status: 'in_progress', projectId: PROJECT_ID },
+      { id: CHILD_B, status: 'closed', projectId: PROJECT_ID },
+      { id: CHILD_C, status: 'staging', projectId: PROJECT_ID },
     ]);
 
     const bus = makeBus();

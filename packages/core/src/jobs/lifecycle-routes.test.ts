@@ -60,11 +60,6 @@ vi.mock('./retry.js', () => ({
   scheduleAutoRetryWithVerify: (...args: unknown[]) => scheduleRetryMock(...(args as [])),
 }));
 
-const setManualHoldBlockMock = vi.fn(async () => undefined);
-vi.mock('../pipeline/manual-hold.js', () => ({
-  setManualHoldBlock: (...args: unknown[]) => setManualHoldBlockMock(...(args as [never])),
-}));
-
 const publishMock = vi.fn(() => 0);
 vi.mock('../ws/server.js', () => ({
   roomManager: { publish: publishMock },

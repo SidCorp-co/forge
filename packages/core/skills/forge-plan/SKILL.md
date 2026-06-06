@@ -143,9 +143,9 @@ For Complex issues with **>3 parallel workstreams** that each ship independently
 
 1. For each child workstream, create a child issue:
    ```
-   forge_issues → create → { data: { title: "<child slice title>", description: "<scoped description>", status: "on_hold", priority: <inherit>, category: <inherit>, manualHold: false } }
+   forge_issues → create → { data: { title: "<child slice title>", description: "<scoped description>", status: "on_hold", priority: <inherit>, category: <inherit> } }
    ```
-   Children land at `on_hold` so the orchestrator does NOT auto-dispatch forge-triage. The cascade-approve hook on parent `waiting → approved` flips them to `approved` and the normal pipeline resumes. Do NOT use `manualHold: true` for parking — see [[feedback_manualhold_trap]].
+   Children land at `on_hold` so the orchestrator does NOT auto-dispatch forge-triage. The cascade-approve hook on parent `waiting → approved` flips them to `approved` and the normal pipeline resumes.
 
 2. For each created child, add a `decomposes` dependency edge with the parent as the `from` side via the MCP tool:
    ```
@@ -176,7 +176,7 @@ For Complex issues with **>3 parallel workstreams** that each ship independently
 5. Post a plan comment summarizing the decomposition decision and rationale: which children, why this split, what the parent's integration test will verify.
 
 **What happens after human approval (automatic, all system-owned):**
-- Parent enters `approved` → the cascade flips every `draft` child → `approved` simultaneously (manualHold cleared if set).
+- Parent enters `approved` → the cascade flips every `draft` child → `approved` simultaneously.
 - Children run their pipelines in parallel through code → review → test → released → closed. Children do NOT wait for the parent.
 - The parent sits at `approved` but its forward jobs (code/review/test/fix) are held by the `decomposeChildrenPending` dispatch gate until EVERY child has landed on the base branch (`child.merged_at` set, i.e. child reached `closed`).
 - Once all children are merged, the gate clears and the parent runs its integration work LAST (code → … → released → closed). The parent merges after its children.

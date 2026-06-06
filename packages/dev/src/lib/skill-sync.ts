@@ -5,9 +5,11 @@ import type { AppConfig } from "./types";
 /**
  * EPIC 6 (ISS-278/290/292) — pull effective skills from packages/core's
  * `/api/projects/:projectId/skills/effective` and write them through the
- * existing Tauri install commands. The endpoint returns the merged list of
- * global skills + any per-project overrides; consumers see a single coherent
- * view that reflects whatever the operator configured in the web UI.
+ * existing Tauri install commands. The endpoint lists global skills (read-only
+ * built-in templates) + this project's project skills, NOT deduped (ISS-388):
+ * the Studio UI needs both rows + the shadow relation. For installation we
+ * dedup by NAME here so the device holds one folder per name — a same-name
+ * project skill SHADOWS the global template (project wins).
  *
  * ISS-278 conflict resolution: Rust's `refresh_enabled_skills` returns a log
  * with `action="conflict"` entries when a project's local SKILL.md was edited
@@ -26,12 +28,26 @@ interface EffectiveSkill {
   localGuide?: string | null;
   contentHash?: string | null;
   files?: Array<{ path: string; content: string; encoding: string }>;
-  isOverridden?: boolean;
-  globalContentHash?: string | null;
+  // ISS-388 shadow relation (project skill shadowing a same-name global).
+  shadowsGlobal?: boolean;
+}
+
+/**
+ * Dedup the (non-deduped) Studio listing by name for installation: a
+ * project-scoped skill shadows the same-name global template. One folder per
+ * name lands on disk; the project body wins where both exist.
+ */
+function dedupByName(skills: EffectiveSkill[]): EffectiveSkill[] {
+  const shadowedNames = new Set(
+    skills.filter((s) => s.scope === "project").map((s) => s.name),
+  );
+  return skills.filter(
+    (s) => s.scope === "project" || !shadowedNames.has(s.name),
+  );
 }
 
 async function fetchEffectiveSkills(projectId: string): Promise<EffectiveSkill[]> {
-  return request<EffectiveSkill[]>(`/projects/${projectId}/skills/effective`);
+  return dedupByName(await request<EffectiveSkill[]>(`/projects/${projectId}/skills/effective`));
 }
 
 async function getLocalHashes(): Promise<Record<string, string>> {

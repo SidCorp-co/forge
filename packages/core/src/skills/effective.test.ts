@@ -10,7 +10,7 @@ vi.mock('../db/client.js', () => ({ db: {} }));
 const {
   computeDeviceSkillStatus,
   computeEffectiveSkill,
-  globalEffectiveHash,
+  dedupEffectiveSkills,
   globalEffectiveMd,
   pivotProjectSkillSyncStatus,
 } = await import('./effective.js');
@@ -32,52 +32,59 @@ const baseRow = (over: Partial<SkillBodyRow> = {}): SkillBodyRow => ({
 describe('computeEffectiveSkill', () => {
   it('uses skillMd + files and recomputes hashSkillBody for a plain global', () => {
     const row = baseRow();
-    const eff = computeEffectiveSkill(row, undefined);
+    const eff = computeEffectiveSkill(row);
     expect(eff.skillMd).toBe('# Skill');
-    expect(eff.isOverridden).toBe(false);
+    expect(eff.shadowsGlobal).toBe(false);
+    expect(eff.shadowedGlobalSkillId).toBeNull();
     expect(eff.effectiveHash).toBe(hashSkillBody('# Skill', row.files));
-  });
-
-  it('falls back to base files when the override forks no files (legacy row)', () => {
-    const row = baseRow();
-    const eff = computeEffectiveSkill(row, { skillMdOverride: '# Local', files: [] });
-    expect(eff.skillMd).toBe('# Local');
-    expect(eff.isOverridden).toBe(true);
-    expect(eff.files).toEqual(row.files);
-    // Empty override files → hash folds in the base files, NOT the
-    // files-blind override.contentHash.
-    expect(eff.effectiveHash).toBe(hashSkillBody('# Local', row.files));
-  });
-
-  it('uses the override files when the fork carries its own folder', () => {
-    const row = baseRow();
-    const overrideFiles = [{ path: 'references/b.md', content: 'B', encoding: 'utf8' as const }];
-    const eff = computeEffectiveSkill(row, { skillMdOverride: '# Local', files: overrideFiles });
-    expect(eff.skillMd).toBe('# Local');
-    expect(eff.isOverridden).toBe(true);
-    expect(eff.files).toEqual(overrideFiles);
-    expect(eff.effectiveHash).toBe(hashSkillBody('# Local', overrideFiles));
-  });
-
-  it('treats a missing override files field as no fork (falls back to base files)', () => {
-    const row = baseRow();
-    const eff = computeEffectiveSkill(row, { skillMdOverride: '# Local' });
-    expect(eff.files).toEqual(row.files);
-    expect(eff.effectiveHash).toBe(hashSkillBody('# Local', row.files));
   });
 
   it('falls back to prompt when skillMd is null (legacy skill)', () => {
     const row = baseRow({ skillMd: null });
-    const eff = computeEffectiveSkill(row, undefined);
+    const eff = computeEffectiveSkill(row);
     expect(eff.skillMd).toBe('legacy prompt');
     expect(eff.effectiveHash).toBe(hashSkillBody('legacy prompt', row.files));
   });
 
-  it('ignores overrides for project-scoped skills', () => {
+  it('uses the project skill body for a project-scoped skill', () => {
     const row = baseRow({ scope: 'project', skillMd: '# Project' });
-    const eff = computeEffectiveSkill(row, { skillMdOverride: '# ShouldBeIgnored' });
+    const eff = computeEffectiveSkill(row);
     expect(eff.skillMd).toBe('# Project');
-    expect(eff.isOverridden).toBe(false);
+    expect(eff.shadowsGlobal).toBe(false);
+  });
+});
+
+describe('dedupEffectiveSkills', () => {
+  it('a project skill shadows the same-name global (project wins, one row/name)', () => {
+    const rows: SkillBodyRow[] = [
+      baseRow({ id: 'g-1', name: 'forge-code', scope: 'global', skillMd: '# Global' }),
+      baseRow({ id: 'p-1', name: 'forge-code', scope: 'project', skillMd: '# Project' }),
+    ];
+    const eff = dedupEffectiveSkills(rows);
+    expect(eff).toHaveLength(1);
+    expect(eff[0]?.skillId).toBe('p-1');
+    expect(eff[0]?.skillMd).toBe('# Project');
+    expect(eff[0]?.shadowsGlobal).toBe(true);
+    expect(eff[0]?.shadowedGlobalSkillId).toBe('g-1');
+  });
+
+  it('leaves non-colliding globals and project skills unflagged', () => {
+    const rows: SkillBodyRow[] = [
+      baseRow({ id: 'g-1', name: 'forge-code', scope: 'global' }),
+      baseRow({ id: 'p-2', name: 'my-custom', scope: 'project', skillMd: '# Custom' }),
+    ];
+    const eff = dedupEffectiveSkills(rows);
+    expect(eff).toHaveLength(2);
+    const byId = Object.fromEntries(eff.map((e) => [e.skillId, e]));
+    expect(byId['g-1']?.shadowsGlobal).toBe(false);
+    expect(byId['g-1']?.shadowedGlobalSkillId).toBeNull();
+    expect(byId['p-2']?.shadowsGlobal).toBe(false);
+  });
+
+  it('keeps a global that has no same-name project shadow', () => {
+    const rows: SkillBodyRow[] = [baseRow({ id: 'g-1', name: 'forge-plan', scope: 'global' })];
+    const eff = dedupEffectiveSkills(rows);
+    expect(eff.map((e) => e.skillId)).toEqual(['g-1']);
   });
 });
 
@@ -87,17 +94,6 @@ describe('globalEffective helpers', () => {
     expect(globalEffectiveMd({ skillMd: null, prompt: 'p' })).toBe('p');
     expect(globalEffectiveMd({ skillMd: '   ', prompt: 'p' })).toBe('p');
     expect(globalEffectiveMd({ skillMd: null, prompt: null })).toBe('');
-  });
-
-  it('globalEffectiveHash matches hashSkillBody over the effective body', () => {
-    const files = [{ path: 'a.md', content: 'A', encoding: 'utf8' as const }];
-    expect(globalEffectiveHash({ skillMd: '# Md', prompt: 'p', files })).toBe(
-      hashSkillBody('# Md', files),
-    );
-    // legacy prompt-only skill hashes off the prompt fallback
-    expect(globalEffectiveHash({ skillMd: null, prompt: 'p', files })).toBe(
-      hashSkillBody('p', files),
-    );
   });
 });
 
@@ -110,7 +106,8 @@ describe('computeDeviceSkillStatus', () => {
       skillMd: '',
       files: [],
       effectiveHash: 'h1',
-      isOverridden: false,
+      shadowsGlobal: false,
+      shadowedGlobalSkillId: null,
     },
     {
       skillId: 's-2',
@@ -119,7 +116,8 @@ describe('computeDeviceSkillStatus', () => {
       skillMd: '',
       files: [],
       effectiveHash: 'h2',
-      isOverridden: false,
+      shadowsGlobal: false,
+      shadowedGlobalSkillId: null,
     },
     {
       skillId: 's-3',
@@ -128,7 +126,8 @@ describe('computeDeviceSkillStatus', () => {
       skillMd: '',
       files: [],
       effectiveHash: 'h3',
-      isOverridden: false,
+      shadowsGlobal: false,
+      shadowedGlobalSkillId: null,
     },
   ];
 
@@ -150,8 +149,8 @@ describe('computeDeviceSkillStatus', () => {
 
 describe('pivotProjectSkillSyncStatus', () => {
   const eff: EffectiveSkill[] = [
-    { skillId: 's-1', name: 'a', version: 5, skillMd: '', files: [], effectiveHash: 'h1', isOverridden: false },
-    { skillId: 's-2', name: 'b', version: 2, skillMd: '', files: [], effectiveHash: 'h2', isOverridden: false },
+    { skillId: 's-1', name: 'a', version: 5, skillMd: '', files: [], effectiveHash: 'h1', shadowsGlobal: false, shadowedGlobalSkillId: null },
+    { skillId: 's-2', name: 'b', version: 2, skillMd: '', files: [], effectiveHash: 'h2', shadowsGlobal: false, shadowedGlobalSkillId: null },
   ];
   const devicesList = [
     { deviceId: 'd-1', name: 'laptop', status: 'online', lastSeenAt: null },

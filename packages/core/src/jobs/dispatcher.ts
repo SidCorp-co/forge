@@ -7,14 +7,7 @@ import { applyPostmanMcpServers } from '../integrations/postman/resolver.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
 import { logger } from '../logger.js';
-import {
-  recordDispatchBarrierSkip,
-  recordRunnerDeathDetection,
-} from '../observability/hold-metrics.js';
-import { Sentry, isSentryEnabled } from '../observability/sentry.js';
-import { computeHoldUntil } from '../pipeline/hold-policy.js';
 import { hooks } from '../pipeline/hooks.js';
-import { setManualHoldBlock } from '../pipeline/manual-hold.js';
 import { resolveRunnerChainForJob } from '../pipeline/resolve-step-runner.js';
 import { injectTurnLevelRules } from '../prompt/user.js';
 import { boss } from '../queue/boss.js';
@@ -22,8 +15,14 @@ import { getRunnerAdapter } from '../runners/registry.js';
 import { getTrippedDeviceIds, selectRunnerForJob } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
+import {
+  recordDispatchBarrierSkip,
+  recordRunnerDeathDetection,
+} from '../observability/hold-metrics.js';
+import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { checkMonthlyBudget, postBudgetExhaustedComment, shouldEmitWarn } from './budget-check.js';
 import { assertDispatchable, runnerSupportsJobType } from './dispatch-gates.js';
+import { finalizeFailedJob } from './finalize-failure.js';
 import { persistPromptSnapshot } from './prompt-snapshot.js';
 import { JOB_QUEUE_NAME, PM_QUEUE_NAME } from './queue-name.js';
 import { readAutoRetryPayload } from './retry.js';
@@ -67,17 +66,16 @@ export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched'
     return 'skipped';
   }
 
-  // ISS-228 — SSOT dispatch barrier. Mirrors EVERY picker gate (manualHold,
-  // blocked_by, project_cap, runner_full, retry_cooldown, pipeline_run_running,
+  // ISS-228 — SSOT dispatch barrier. Mirrors EVERY picker gate (blocked_by,
+  // project_cap, runner_full, retry_cooldown, pipeline_run_running,
   // issue_busy) so the pg-boss-direct path enforces the same invariants as
   // `pickNextDispatchableJobForProject`. Replaces the ISS-226 narrow L1-only
   // check that left 5/6 gates bypassed and caused the 2026-05-25 cascade.
   //
-  // When the barrier fails: job stays `queued`, no row update, no
-  // setManualHoldBlock, no hook emission. The fire-and-forget
-  // `dispatchTickForProject` re-picks the job via the picker once state
-  // stabilises (job complete, manualHold cleared, runner online, terminal
-  // transition).
+  // When the barrier fails: job stays `queued`, no row update, no hook
+  // emission. The fire-and-forget `dispatchTickForProject` re-picks the job
+  // via the picker once state stabilises (job complete, runner online,
+  // terminal transition).
   const barrier = await assertDispatchable(job.id);
   if (!barrier.ok) {
     logger.debug(
@@ -196,7 +194,7 @@ export async function handlePmDispatch(msg: DispatchMessage): Promise<'dispatche
   }
   // ISS-228 — same SSOT barrier as handleDispatch. `assertDispatchable`
   // detects `j.type = 'pm'` internally and skips `blocked_by` accordingly
-  // (PM jobs have no issue deps); other gates (manualHold, project_cap,
+  // (PM jobs have no issue deps); other gates (project_cap,
   // runner_full, retry_cooldown, pipeline_run_running, issue_busy) still
   // apply.
   const barrier = await assertDispatchable(job.id);
@@ -479,12 +477,13 @@ async function dispatchViaRunner(
   });
 
   if (result.status === 'failed') {
-    // Adapter dispatch failure is a strong signal: the runner returned an
-    // explicit error from its claim/spawn path. Mark the job failed and
-    // surface to operator via setManualHoldBlock — auto-retry would just
-    // spawn another adapter call against the same broken state.
+    // Adapter dispatch failure: the runner returned an explicit error from its
+    // claim/spawn path. CAS-flip the job to `failed` and route through the
+    // shared finalize tail (ISS-393) so it gets the same verify-first retry
+    // (device-rotated onto a fresh runner) or, when the budget is exhausted,
+    // parks the issue at `waiting` + reaps the run — never a silent no-op.
     const errorReason = result.errorReason ?? 'adapter dispatch failed';
-    await db
+    const [updated] = await db
       .update(jobs)
       .set({
         status: 'failed',
@@ -494,42 +493,25 @@ async function dispatchViaRunner(
         failureReason: errorReason,
         classifierVersion: 1,
       })
-      .where(and(eq(jobs.id, job.id), eq(jobs.status, 'dispatched'), eq(jobs.runnerId, runner.id)));
+      .where(and(eq(jobs.id, job.id), eq(jobs.status, 'dispatched'), eq(jobs.runnerId, runner.id)))
+      .returning();
     await db
       .update(runners)
       .set({ lastError: errorReason, updatedAt: new Date() })
       .where(eq(runners.id, runner.id));
-    if (job.issueId) {
+    if (updated) {
       try {
-        await setManualHoldBlock({
-          issueId: job.issueId,
-          context: {
-            step: job.type,
-            trigger: 'adapter_error',
-            classification: {
-              kind: 'unknown',
-              reason: errorReason,
-              evidence: { jobId: job.id, runnerId: runner.id, runnerType: runner.type },
-            },
-            attempts: job.attempts,
-            lastFailureAt: new Date().toISOString(),
-            suggestedActions: ['resume', 'skip-step', 'close'],
-            holdUntil: computeHoldUntil({
-              classificationKind: 'unknown',
-              trigger: 'adapter_error',
-            }),
-          },
-        });
+        await finalizeFailedJob(updated, { error: errorReason });
       } catch (err) {
         logger.error(
           { err, jobId: job.id, issueId: job.issueId },
-          'dispatcher: setManualHoldBlock threw after adapter fail',
+          'dispatcher: finalizeFailedJob threw after adapter fail',
         );
       }
     }
     logger.warn(
       { jobId: job.id, runnerId: runner.id, reason: errorReason },
-      'dispatcher: adapter failed, marked failed + operator-blocked',
+      'dispatcher: adapter failed, marked failed + finalized',
     );
     return 'skipped';
   }
