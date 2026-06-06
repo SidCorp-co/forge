@@ -28,6 +28,8 @@ import {
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
+import { IssueQuickActions } from "@/features/issues/components/issue-quick-actions";
+import type { IssuePriority, IssueStatus } from "@/features/issues/types";
 import {
   formatDurationMs,
   formatUsd,
@@ -130,17 +132,19 @@ export function RunDetail({ open, onClose, issue, runId, slug }: RunDetailProps)
   const notSupported = (action: string) =>
     toast({ tone: "info", title: `${action} isn't supported yet` });
 
+  function openIssue() {
+    if (!slug || !taskIssueId) return;
+    onClose();
+    router.push(`/projects/${slug}/issues/${taskIssueId}`);
+  }
+
   const menuItems: MenuItem[] = [];
-  // Related / Jump-to cross-links (run ↔ issue) + shareable deep-link.
-  if (slug && taskIssueId) {
-    menuItems.push({
-      label: "Open issue",
-      icon: "list",
-      onSelect: () => {
-        onClose();
-        router.push(`/projects/${slug}/issues/${taskIssueId}`);
-      },
-    });
+  // Related / Jump-to cross-links (run ↔ issue) + shareable deep-link. When an
+  // issue row is present the quick-action bar already exposes a first-class
+  // "Open issue" control, so the menu only carries it in the run-only context
+  // (e.g. the Ops Runs tab, where there is no issue row + quick bar).
+  if (slug && taskIssueId && !issue) {
+    menuItems.push({ label: "Open issue", icon: "list", onSelect: openIssue });
   }
   if (runId) {
     menuItems.push({ label: "Copy link", icon: "link", onSelect: copyLink });
@@ -168,6 +172,26 @@ export function RunDetail({ open, onClose, issue, runId, slug }: RunDetailProps)
         <EmptyState title="No run selected" message="Pick a card to inspect its pipeline run." />
       ) : (
         <div className="flex flex-col gap-5">
+          {/* Quick-action bar (ISS-390) — pinned at the top of the drawer so the
+              most-used issue mutations (status / priority / assignee) + the
+              full-detail link are reachable in one glance without scrolling.
+              Only when opened from an issue card (the Ops run-only view has no
+              issue row to edit). */}
+          {issue && (
+            <div className="sticky -top-4 z-10 -mx-5 -mt-4 border-b border-line bg-surface/95 px-5 pb-3 pt-4 backdrop-blur-sm">
+              <IssueQuickActions
+                issueId={issue.id}
+                projectId={issue.projectId}
+                status={issue.status as IssueStatus}
+                agentStatus={issue.agentStatus ?? null}
+                priority={issue.priority as IssuePriority}
+                assigneeId={issue.assigneeId}
+                slug={slug}
+                onOpenIssue={openIssue}
+              />
+            </div>
+          )}
+
           {/* Header */}
           <div className="flex flex-col gap-2.5">
             <h2 className="fg-h2 leading-tight">{title}</h2>

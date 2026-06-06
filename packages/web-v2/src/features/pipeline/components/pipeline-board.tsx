@@ -57,6 +57,15 @@ export function PipelineBoard({ scope, embedded = false }: PipelineBoardProps) {
   const runIndex = useMemo(() => runsByIssue(runsQ.data?.items), [runsQ.data]);
   const groups = useMemo(() => groupIssuesByStage(issuesQ.data?.items), [issuesQ.data]);
 
+  // Keep the open drawer's issue snapshot in sync with the live list: editing
+  // status/priority/assignee from the quick-action bar invalidates `['issues']`,
+  // so re-derive the freshest row by id (falling back to the snapshot) — the
+  // header chip + quick-bar selects then reflect the change without reopening.
+  const selectedIssue = useMemo(() => {
+    if (!selected) return null;
+    return issuesQ.data?.items.find((i) => i.id === selected.issue.id) ?? selected.issue;
+  }, [selected, issuesQ.data]);
+
   return (
     <div
       className={
@@ -127,7 +136,7 @@ export function PipelineBoard({ scope, embedded = false }: PipelineBoardProps) {
       <RunDetail
         open={!!selected}
         onClose={() => setSelected(null)}
-        issue={selected?.issue ?? null}
+        issue={selectedIssue}
         runId={selected?.runId ?? null}
         slug={slug}
       />
