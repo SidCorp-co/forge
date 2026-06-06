@@ -15,6 +15,17 @@ const selectOrderBy = vi.fn(() => ({ limit: selectOrderByLimit }));
 const selectWhere = vi.fn(() => ({
   limit: selectLimit,
   orderBy: selectOrderBy,
+  // The list handler's per-page cost rollup (ISS-391) ends in
+  // `.where(...).groupBy(usageRecords.sessionId)` and is awaited directly, so
+  // the where-chain needs a thenable groupBy. It pulls from the same
+  // `whereResults` queue as `then` (push a cost-rollup row to assert
+  // estimatedCost attachment; defaults to [] → estimatedCost 0).
+  groupBy: () => ({
+    then: (cb: (v: unknown) => unknown) => {
+      const result = whereResults.shift() ?? [];
+      return Promise.resolve(result).then(cb);
+    },
+  }),
   then: (cb: (v: unknown) => unknown) => {
     const result = whereResults.shift() ?? [];
     return Promise.resolve(result).then(cb);
