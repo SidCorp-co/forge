@@ -93,13 +93,6 @@ describe('activity mapAction', () => {
     });
   });
 
-  it('maps issue.manualHold.set / cleared', () => {
-    expect(mapAction('issue.manualHold.set', {})).toMatchObject({ type: 'manual_hold_set' });
-    expect(mapAction('issue.manualHold.cleared', {})).toMatchObject({
-      type: 'manual_hold_cleared',
-    });
-  });
-
   it('maps issue.labeled / unlabeled with labelId metadata', () => {
     expect(mapAction('issue.labeled', { labelId: 'lbl-1' })).toMatchObject({
       type: 'label_added',

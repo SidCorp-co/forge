@@ -14,13 +14,11 @@ import {
   usageRecords,
 } from '../db/schema.js';
 import { sql } from 'drizzle-orm';
-import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import { enqueueJob } from '../jobs/enqueue.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { logger } from '../logger.js';
-import { recordActivityTx } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { ActiveJobConflictError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
 import { withActorContext } from '../pipeline/outbox-session.js';
@@ -31,7 +29,6 @@ import {
   isReopenEntry,
 } from '../pipeline/state-machine.js';
 import { markMergedIfLeavingBase } from './merged-at.js';
-import { publishPipelineHealthChanged } from './pipeline-health.js';
 import {
   TERMINAL_FOR_DISPATCH,
   publishIssueStatusChange,
@@ -54,8 +51,6 @@ const runPipelineStepBodySchema = z
   .object({ stage: stageEnum.optional() })
   .strict();
 
-const manualHoldBodySchema = z.object({ value: z.boolean() }).strict();
-
 // `complexity` is intentionally omitted: BulkActionBar does not expose a
 // complexity selector, so accepting it server-side would create a client/
 // server surface mismatch. If a future bulk-complexity affordance lands,
@@ -68,7 +63,6 @@ const batchPatchBodySchema = z
         status: z.enum(issueStatuses).optional(),
         priority: z.enum(issuePriorities).optional(),
         category: z.string().trim().min(1).max(100).nullable().optional(),
-        manualHold: z.boolean().optional(),
       })
       .strict()
       .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' }),
@@ -115,8 +109,8 @@ type BatchResult = {
 };
 
 // PATCH /api/issues/batch — partial-success batch update across N issues.
-// Each field uses the per-issue mutation path (transition / manual-hold /
-// plain patch) so activity + WS semantics match the single-issue routes.
+// Each field uses the per-issue mutation path (transition / plain patch) so
+// activity + WS semantics match the single-issue routes.
 // Inaccessible or invalid rows land in `skipped`; one failure does not abort
 // the rest. Registered before `/:id` so `/batch` matches ahead of the UUID.
 issueExtrasRoutes.patch(
@@ -140,7 +134,6 @@ issueExtrasRoutes.patch(
         priority: issues.priority,
         category: issues.category,
         complexity: issues.complexity,
-        manualHold: issues.manualHold,
         reopenCount: issues.reopenCount,
       })
       .from(issues)
@@ -292,52 +285,6 @@ issueExtrasRoutes.patch(
           }
         }
 
-        if (
-          data.manualHold !== undefined &&
-          row.manualHold !== data.manualHold
-        ) {
-          const before = row.manualHold;
-          const value = data.manualHold;
-          await db.transaction(async (tx) => {
-            // ISS-198 — see comment in /manual-hold above. Both branches
-            // null manualHoldUntil so any prior auto-clear horizon never
-            // survives an operator-driven toggle.
-            const updateFields = {
-              manualHold: value,
-              manualHoldUntil: null,
-              updatedAt: sql`now()` as never,
-            };
-            await tx
-              .update(issues)
-              .set(updateFields)
-              .where(eq(issues.id, row.id));
-            await recordActivityTx(tx, {
-              issueId: row.id,
-              actor,
-              action: value
-                ? 'issue.manualHold.set'
-                : 'issue.manualHold.cleared',
-              payload: { manualHold: value },
-            });
-          });
-          row.manualHold = value;
-          touched = true;
-          await hooks.emit('issueUpdated', {
-            issueId: row.id,
-            projectId: row.projectId,
-            actor,
-            fields: ['manualHold'],
-            before: { manualHold: before },
-            after: { manualHold: value },
-          });
-          // ISS-133 — clearing manualHold must wake the dispatcher so jobs
-          // gated on `manual_hold` get re-evaluated within a second instead
-          // of waiting up to 60s for the pg-boss backstop.
-          if (before === true && value === false) {
-            void dispatchTickForProject(row.projectId);
-          }
-        }
-
         const plainUpdates: Record<string, unknown> = {};
         const before: Record<string, unknown> = {};
         const after: Record<string, unknown> = {};
@@ -384,7 +331,7 @@ issueExtrasRoutes.patch(
         };
         // A status request that was rejected for this issue (no_op, illegal,
         // reopen-cap, stale) must not be silently swallowed when other fields
-        // (priority/category/manualHold) succeeded. Surface it on the updated
+        // (priority/category) succeeded. Surface it on the updated
         // entry so the caller can show a partial-success diagnostic.
         if (skipReason) entry.skipReason = skipReason;
         result.updated.push(entry);
@@ -461,88 +408,6 @@ issueExtrasRoutes.post(
     }
 
     return c.json({ issueId: issue.id, jobId: job.id, status: job.status }, 202);
-  },
-);
-
-// PATCH /api/issues/:id/manual-hold
-// ISS-42 C1 — toggle the manual_hold flag. When true, the dispatcher's
-// Layer-1 short-circuits with skip-reason 'manual_hold' so no new automation
-// jobs spawn. In-flight jobs are not killed (acceptable race per plan).
-issueExtrasRoutes.patch(
-  '/:id/manual-hold',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  zValidator('json', manualHoldBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  async (c) => {
-    const { id: issueId } = c.req.valid('param');
-    const { value } = c.req.valid('json');
-    const userId = c.get('userId');
-
-    const [issue] = await db
-      .select({
-        id: issues.id,
-        projectId: issues.projectId,
-        manualHold: issues.manualHold,
-      })
-      .from(issues)
-      .where(eq(issues.id, issueId))
-      .limit(1);
-    if (!issue) throw notFound('issue not found');
-
-    const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
-
-    const before = issue.manualHold;
-    const actor = { type: 'user' as const, id: userId };
-
-    if (before !== value) {
-      await db.transaction(async (tx) => {
-        // ISS-198 — both branches null manualHoldUntil. Clearing skips a
-        // stale auto-clear horizon on a row the operator already resumed;
-        // setting via this endpoint is operator-driven and indefinite, so
-        // any prior expiry must not survive. Failure-driven holds set
-        // their own expiry via setManualHoldBlock.
-        const updateFields = {
-          manualHold: value,
-          manualHoldUntil: null,
-          updatedAt: new Date(),
-        };
-        await tx
-          .update(issues)
-          .set(updateFields)
-          .where(eq(issues.id, issueId));
-        await recordActivityTx(tx, {
-          issueId,
-          actor,
-          action: value ? 'issue.manualHold.set' : 'issue.manualHold.cleared',
-          payload: { manualHold: value },
-        });
-      });
-
-      await hooks.emit('issueUpdated', {
-        issueId,
-        projectId: issue.projectId,
-        actor,
-        fields: ['manualHold'],
-        before: { manualHold: before },
-        after: { manualHold: value },
-      });
-
-      // ISS-133 — clearing manualHold must wake the dispatcher so jobs
-      // gated on `manual_hold` get re-evaluated within a second instead
-      // of waiting up to 60s for the pg-boss backstop.
-      if (before === true && value === false) {
-        void dispatchTickForProject(issue.projectId);
-      }
-
-      // ISS-164 — manual_hold flip changes the L1 gate reason for queued jobs.
-      await publishPipelineHealthChanged(issue.projectId, [issueId]);
-    }
-
-    return c.json({ issueId, manualHold: value });
   },
 );
 

@@ -87,7 +87,6 @@ export interface IssueRow {
   assigneeId: string | null;
   parentIssueId: string | null;
   reopenCount: number;
-  manualHold: boolean;
   mergedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -192,17 +191,12 @@ export interface IssueDetail extends IssueRow {
   labels?: IssueLabel[];
   metadata: Record<string, unknown> | null;
   pipelineHealth?: PipelineHealth;
-  // ISS-377 — already on the wire (GET /api/issues/:id spreads the full row via
-  // `db.select().from(issues)`); just untyped before. Drives the blocker banner.
-  failureContext?: IssueFailureContext | null;
-  manualHoldUntil?: string | null;
 }
 
 /** Why the dispatcher hasn't picked up the issue's next step. Mirrors core
  *  `PipelineWaitingReason` (`issues/pipeline-health.ts`). */
 export type WaitingReason =
   | "issue_busy"
-  | "manual_hold"
   | "waiting_on_dep"
   | "waiting_on_decomp_parent"
   | "project_full"
@@ -217,22 +211,6 @@ export interface PipelineHealth {
   waitingOn?: { reason: WaitingReason; since: string; details: Record<string, unknown> };
   queuedAt?: string;
   lastTickAt?: string;
-}
-
-/** The failure card core writes when a step is blocked after exhausted retries.
- *  Mirrors core `IssueFailureContext` (`pipeline/manual-hold.ts:40-64`). */
-export interface IssueFailureContext {
-  step: string;
-  trigger: "job_failed" | "session_lost" | "adapter_error";
-  classification?: {
-    kind: "transient_network" | "permanent_invalid" | "unknown";
-    reason: string;
-    evidence?: Record<string, unknown>;
-  };
-  attempts?: number;
-  lastFailureAt?: string;
-  suggestedActions?: Array<"resume" | "skip-step" | "close">;
-  holdUntil?: string | null;
 }
 
 /** One step-handoff row from `GET /api/issue-step-contexts` (kind=handoff).

@@ -724,10 +724,9 @@ agentSessionRoutes.post(
       .returning();
     if (!updated) throw notFound('agent session not found');
 
-    // Strapi parity also pinned `issues.manualHold = true` here for pipeline
-    // sessions so the sweeper wouldn't auto-retry. Core's issues schema does
-    // not have that field; the heartbeat sweeper isn't ported either, so the
-    // "abort = idle" status is enough today. Re-add when manualHold lands.
+    // Aborting a pipeline session just flips it to `idle`; the failure path
+    // (ISS-393) reverts the issue to its stage entry-status or parks it at
+    // `waiting`, so there is no separate hold flag to pin here.
     const meta = (updated.metadata ?? {}) as {
       type?: string;
       issueId?: string;

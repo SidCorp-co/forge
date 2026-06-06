@@ -1,8 +1,10 @@
 /**
- * ISS-198 — hold lifecycle counters surfaced for Prometheus / Grafana.
- * ISS-228 — extended with `dispatch_barrier_skips_total{reason}` so the
- * pg-boss-path barrier ({@link assertDispatchable}) reports a per-reason
- * skip counter the same way the picker does.
+ * Dispatch / runner observability counters surfaced for Prometheus / Grafana.
+ * ISS-228 — `dispatch_barrier_skips_total{reason}` so the pg-boss-path barrier
+ * ({@link assertDispatchable}) reports a per-reason skip counter the same way
+ * the picker does. ISS-393 removed the manual-hold counters along with the
+ * manual-hold failure model; what remains here is dispatch/runner-liveness
+ * telemetry (the filename is kept to avoid churn on the test mock paths).
  *
  * We don't pull in a full prom-client wiring here (no metrics endpoint yet);
  * instead we maintain in-process counters that can be scraped via the
@@ -10,10 +12,6 @@
  * `getHoldMetricsSnapshot` shape is what gets serialized.
  *
  * Metrics:
- *   - forge_hold_set_total{kind, indefinite}: incremented every time
- *     `setManualHoldBlock` writes manual_hold=true.
- *   - forge_hold_auto_clear_total{kind}: incremented for each row the
- *     sweeper auto-clears.
  *   - forge_runner_death_detection_seconds histogram: observed when the
  *     dispatcher's L5 gate refuses a stale runner; value is `now - lastSeen`.
  *   - dispatch_barrier_skips_total{reason}: incremented every time
@@ -25,19 +23,6 @@
  */
 
 import type { GateSkipReason } from '../jobs/dispatch-gates.js';
-
-type HoldKind = 'transient_network' | 'permanent_invalid' | 'unknown';
-
-interface HoldSetCounters {
-  kind: HoldKind;
-  indefinite: boolean;
-  count: number;
-}
-
-interface HoldClearCounters {
-  kind: HoldKind | 'unknown_no_context';
-  count: number;
-}
 
 const RUNNER_DEATH_BUCKETS_SECONDS = [10, 20, 30, 45, 60, 90, 120, 300] as const;
 
@@ -53,8 +38,6 @@ interface DispatchBarrierCounters {
 }
 
 interface HoldMetricsState {
-  holdSet: Map<string, HoldSetCounters>;
-  holdAutoClear: Map<string, HoldClearCounters>;
   runnerDeath: RunnerDeathHistogram;
   dispatchBarrierSkips: Map<GateSkipReason, DispatchBarrierCounters>;
 }
@@ -67,8 +50,6 @@ function makeState(): HoldMetricsState {
   };
   for (const b of RUNNER_DEATH_BUCKETS_SECONDS) histogram.bucketsLeq.set(b, 0);
   return {
-    holdSet: new Map(),
-    holdAutoClear: new Map(),
     runnerDeath: histogram,
     dispatchBarrierSkips: new Map(),
   };
@@ -76,31 +57,11 @@ function makeState(): HoldMetricsState {
 
 let state: HoldMetricsState = makeState();
 
-export function recordHoldSet(input: { kind: HoldKind; indefinite: boolean }): void {
-  const key = `${input.kind}|${input.indefinite ? '1' : '0'}`;
-  const existing = state.holdSet.get(key);
-  if (existing) {
-    existing.count += 1;
-  } else {
-    state.holdSet.set(key, { kind: input.kind, indefinite: input.indefinite, count: 1 });
-  }
-}
-
-export function recordHoldAutoClear(input: { kind: HoldKind | 'unknown_no_context' }): void {
-  const existing = state.holdAutoClear.get(input.kind);
-  if (existing) {
-    existing.count += 1;
-  } else {
-    state.holdAutoClear.set(input.kind, { kind: input.kind, count: 1 });
-  }
-}
-
 /**
  * ISS-228 — increment `dispatch_barrier_skips_total{reason}` every time
  * the pg-boss path leaves a job queued because `assertDispatchable`
  * reported a failing gate. Operators watch the `project_cap` series to
- * detect cascade attempts (5+ skips in 90s while `manualHold` is being
- * cleared en masse, ISS-228 forge-dev incident).
+ * detect cascade attempts (5+ skips in 90s, ISS-228 forge-dev incident).
  */
 export function recordDispatchBarrierSkip(reason: GateSkipReason): void {
   const existing = state.dispatchBarrierSkips.get(reason);
@@ -123,8 +84,6 @@ export function recordRunnerDeathDetection(seconds: number): void {
 }
 
 export interface HoldMetricsSnapshot {
-  holdSet: HoldSetCounters[];
-  holdAutoClear: HoldClearCounters[];
   runnerDeath: {
     count: number;
     sumSeconds: number;
@@ -135,8 +94,6 @@ export interface HoldMetricsSnapshot {
 
 export function getHoldMetricsSnapshot(): HoldMetricsSnapshot {
   return {
-    holdSet: [...state.holdSet.values()],
-    holdAutoClear: [...state.holdAutoClear.values()],
     runnerDeath: {
       count: state.runnerDeath.count,
       sumSeconds: state.runnerDeath.sumSeconds,

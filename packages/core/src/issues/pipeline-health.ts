@@ -60,7 +60,6 @@ export function resetLastTickAtForTest(): void {
 
 export type PipelineWaitingReason =
   | 'issue_busy'
-  | 'manual_hold'
   | 'waiting_on_dep'
   | 'waiting_on_decomp_parent'
   | 'project_full'
@@ -106,7 +105,7 @@ export interface PipelineHealthRunnerSat {
 }
 
 export interface ClassifyInput {
-  issue: { id: string; status: string; manualHold: boolean };
+  issue: { id: string; status: string };
   sessions: PipelineHealthSession[];
   jobs: PipelineHealthJob[];
   deps: PipelineHealthDep[];
@@ -148,11 +147,6 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
   if (!candidate) return out;
   const sinceIso = candidate.queuedAt.toISOString();
   out.queuedAt = sinceIso;
-
-  if (issue.manualHold) {
-    out.waitingOn = { reason: 'manual_hold', since: sinceIso, details: {} };
-    return out;
-  }
 
   const blockingSession = sessions.find(
     (s) =>
@@ -262,7 +256,6 @@ export async function hydratePipelineHealthForIssues(
     .select({
       id: issues.id,
       status: issues.status,
-      manualHold: issues.manualHold,
       projectId: issues.projectId,
     })
     .from(issues)
@@ -426,7 +419,6 @@ export async function hydratePipelineHealthForIssues(
       issue: {
         id: issueRow.id,
         status: issueRow.status,
-        manualHold: issueRow.manualHold,
       },
       sessions: sessionsByIssue.get(issueId) ?? [],
       jobs: jobsByIssue.get(issueId) ?? [],

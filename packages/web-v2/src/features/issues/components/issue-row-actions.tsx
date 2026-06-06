@@ -43,7 +43,7 @@ import {
   type IssueRow,
   type ProjectMember,
 } from "../types";
-import { CostCell, DepBadges, HoldBadge, type RowActions } from "./issue-table-row";
+import { CostCell, DepBadges, type RowActions } from "./issue-table-row";
 
 // A live agent state (running/queued/failed) takes over the chip — show the
 // execution status, not the static lifecycle label (ISS-366 D2). When idle we
@@ -183,7 +183,6 @@ export function IssueTableRow({
         </button>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
           {row.category && <MonoTag>{row.category}</MonoTag>}
-          <HoldBadge held={row.manualHold} />
           <DepBadges id={row.id} slug={slug} />
         </div>
       </TD>
@@ -253,7 +252,6 @@ export function IssueMobileCard({
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {row.category && <MonoTag>{row.category}</MonoTag>}
-          <HoldBadge held={row.manualHold} />
           <DepBadges id={row.id} slug={slug} />
         </div>
 

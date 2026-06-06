@@ -680,6 +680,13 @@
 			"when": 1782432000000,
 			"tag": "0098_drop_project_skill_overrides",
 			"breakpoints": true
+		},
+		{
+			"idx": 99,
+			"version": "7",
+			"when": 1782518400000,
+			"tag": "0099_drop_manual_hold",
+			"breakpoints": true
 		}
 	]
 }

@@ -20,7 +20,6 @@ import {
 } from '../../issues/attachment-service.js';
 import { type ReleaseNotes, ReleaseNotesSchema } from '../../issues/release-notes.js';
 import { dispatchTickForProject } from '../../jobs/dispatch-tick.js';
-import { recordActivityTx } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
 import {
   type ContextScopedMcpToolFactory,
@@ -73,7 +72,6 @@ const dataSchema = z
     category: z.string().trim().min(1).max(100).nullable().optional(),
     complexity: z.enum(issueComplexities).nullable().optional(),
     attachments: z.array(attachmentInputSchema).max(10).optional(),
-    manualHold: z.boolean().optional(),
     acceptanceCriteria: z.string().max(100_000).nullable().optional(),
     suggestedSolution: z.string().max(100_000).nullable().optional(),
     plan: z.string().max(200_000).nullable().optional(),
@@ -158,7 +156,6 @@ export type IssueRow = {
   category: string | null;
   reportedBy: string | null;
   complexity: string | null;
-  manualHold: boolean;
   assigneeId: string | null;
   createdById: string;
   parentIssueId: string | null;
@@ -191,7 +188,6 @@ export function serialize(row: IssueRow): Record<string, unknown> {
     priority: row.priority,
     category: row.category,
     complexity: row.complexity,
-    manualHold: row.manualHold,
     assigneeId: row.assigneeId,
     parentIssueId: row.parentIssueId,
     reopenCount: row.reopenCount,
@@ -294,9 +290,8 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     're-block children when an epic merge is rolled back. ' +
     'Project scope is derived from the X-Forge-Project-Slug header (or an ' +
     'explicit projectId). Status changes route through the issue state machine. ' +
-    'Avoid setting manualHold:true at create time — combine with confirmed ' +
-    'status transitions and the issue stalls. Toggle manualHold after the ' +
-    'issue settles, or use status:on_hold for a deliberate pause. ' +
+    'Use status:on_hold for a deliberate pause, or status:waiting to park an ' +
+    'issue for human review. ' +
     'Attachments: for anything bigger than a tiny snippet use the forge_uploads tool ' +
     '(presigned-URL pattern) instead of base64 — base64 in data.attachments[] is slow ' +
     'and burns context tokens. Workflow: (1) create the issue to get its id; (2) call ' +
@@ -401,7 +396,6 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             priority: input.data.priority ?? 'medium',
             category: input.data.category ?? null,
             complexity: input.data.complexity ?? null,
-            manualHold: input.data.manualHold ?? false,
             createdById: device.ownerId,
             plan: input.data.plan ?? null,
             acceptanceCriteria: input.data.acceptanceCriteria ?? null,
@@ -465,16 +459,6 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (input.data.priority !== undefined) updates.priority = input.data.priority;
         if (input.data.category !== undefined) updates.category = input.data.category;
         if (input.data.complexity !== undefined) updates.complexity = input.data.complexity;
-        // manualHold is journalled separately so MCP-driven holds emit the
-        // same activity entry + WS broadcast as the dedicated REST handler
-        // (`PATCH /api/issues/:id/manual-hold`). Without this, dispatcher
-        // gating still works (DB read is canonical) but other clients miss
-        // the toggle on the timeline + real-time UI.
-        let manualHoldChange: { before: boolean; after: boolean } | null = null;
-        if (input.data.manualHold !== undefined && input.data.manualHold !== issue.manualHold) {
-          manualHoldChange = { before: issue.manualHold, after: input.data.manualHold };
-          updates.manualHold = input.data.manualHold;
-        }
         if (input.data.plan !== undefined) updates.plan = input.data.plan;
         if (input.data.acceptanceCriteria !== undefined) {
           updates.acceptanceCriteria = input.data.acceptanceCriteria;
@@ -506,34 +490,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           updates.updatedAt = sql`now()`;
           await db.transaction(async (tx) => {
             await tx.update(issues).set(updates).where(eq(issues.id, issue.id));
-            if (manualHoldChange) {
-              await recordActivityTx(tx, {
-                issueId: issue.id,
-                actor: { type: 'device' as const, id: device.id },
-                action: manualHoldChange.after
-                  ? 'issue.manualHold.set'
-                  : 'issue.manualHold.cleared',
-                payload: { manualHold: manualHoldChange.after },
-              });
-            }
           });
-
-          if (manualHoldChange) {
-            await hooks.emit('issueUpdated', {
-              issueId: issue.id,
-              projectId: issue.projectId,
-              actor: { type: 'device' as const, id: device.id },
-              fields: ['manualHold'],
-              before: { manualHold: manualHoldChange.before },
-              after: { manualHold: manualHoldChange.after },
-            });
-            // ISS-133 — clearing manualHold must wake the dispatcher so jobs
-            // gated on `manual_hold` get re-evaluated within a second instead
-            // of waiting up to 60s for the pg-boss backstop.
-            if (manualHoldChange.before === true && manualHoldChange.after === false) {
-              void dispatchTickForProject(issue.projectId);
-            }
-          }
         }
 
         const fresh = await loadIssue(issue.id);

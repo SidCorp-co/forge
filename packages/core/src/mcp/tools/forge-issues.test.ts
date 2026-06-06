@@ -530,78 +530,18 @@ describe('forge_issues tool', () => {
     );
   });
 
-  it('update with manualHold journals an activity entry and emits issueUpdated', async () => {
-    const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
-      projectSlug: PROJECT_SLUG,
-    });
-    // loadIssue (manualHold currently false)
-    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, manualHold: false }]);
-    // membership check
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
-    // re-load fresh after update
-    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, manualHold: true }]);
-
-    const { hooks } = await import('../../pipeline/hooks.js');
-
-    await tool.handler({
-      action: 'update',
-      documentId: ISSUE_ID,
-      data: { manualHold: true },
-    });
-
-    expect(txInsertValues).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'issue.manualHold.set' }),
-    );
-    expect(hooks.emit).toHaveBeenCalledWith(
-      'issueUpdated',
-      expect.objectContaining({
-        issueId: ISSUE_ID,
-        fields: ['manualHold'],
-        before: { manualHold: false },
-        after: { manualHold: true },
-      }),
-    );
-    // ISS-133 — setting hold (false → true) must NOT tick.
-    expect(dispatchTick).not.toHaveBeenCalled();
-  });
-
-  it('update clearing manualHold (true → false) fires dispatchTickForProject (ISS-133)', async () => {
-    const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
-      projectSlug: PROJECT_SLUG,
-    });
-    // loadIssue (manualHold currently true)
-    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, manualHold: true }]);
-    // membership check
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
-    // re-load fresh
-    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, manualHold: false }]);
-
-    await tool.handler({
-      action: 'update',
-      documentId: ISSUE_ID,
-      data: { manualHold: false },
-    });
-
-    expect(dispatchTick).toHaveBeenCalledTimes(1);
-    expect(dispatchTick).toHaveBeenCalledWith(PROJECT_ID);
-  });
-
-  it('update with non-manualHold fields does NOT fire dispatchTickForProject (ISS-133)', async () => {
+  it('update with plain fields does NOT fire dispatchTickForProject', async () => {
     const tool = forgeIssuesTool({
       principal: { kind: 'device', device: fakeDevice },
       device: fakeDevice,
       projectSlug: PROJECT_SLUG,
     });
     // loadIssue
-    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, manualHold: false }]);
+    selectLimit.mockResolvedValueOnce([baseIssueRow]);
     // membership check
     selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
     // re-load fresh
-    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, manualHold: false }]);
+    selectLimit.mockResolvedValueOnce([baseIssueRow]);
 
     await tool.handler({
       action: 'update',
@@ -609,36 +549,6 @@ describe('forge_issues tool', () => {
       data: { title: 'renamed', description: 'new desc', plan: 'new plan' },
     });
 
-    expect(dispatchTick).not.toHaveBeenCalled();
-  });
-
-  it('update with manualHold no-op (value matches) skips activity + hook', async () => {
-    const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
-      projectSlug: PROJECT_SLUG,
-    });
-    // loadIssue (manualHold already true)
-    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, manualHold: true }]);
-    // membership check
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
-    // re-load fresh
-    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, manualHold: true }]);
-
-    const { hooks } = await import('../../pipeline/hooks.js');
-
-    await tool.handler({
-      action: 'update',
-      documentId: ISSUE_ID,
-      data: { manualHold: true },
-    });
-
-    expect(txInsertValues).not.toHaveBeenCalled();
-    expect(hooks.emit).not.toHaveBeenCalledWith(
-      'issueUpdated',
-      expect.objectContaining({ fields: ['manualHold'] }),
-    );
-    // ISS-133 — no transition means no tick.
     expect(dispatchTick).not.toHaveBeenCalled();
   });
 

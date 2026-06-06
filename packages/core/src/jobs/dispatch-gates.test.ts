@@ -179,14 +179,15 @@ describe('pickNextDispatchableJobForProject', () => {
   });
 
   // Snapshot the generated SQL so each gate clause is provably inline.
-  it('SQL inlines L1 (issue_busy + manual_hold), L2 (blocks + decomposes), L3 (project cap)', async () => {
+  it('SQL inlines L1 (issue_busy), L2 (blocks + decomposes), L3 (project cap)', async () => {
     mockProjectAgentConfigOnce(null);
     dbExecute.mockResolvedValueOnce([]);
     await pickNextDispatchableJobForProject('p1');
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
 
-    // L1 — issue_busy via session + sibling-job NOT EXISTS, manual_hold inline
-    expect(text).toMatch(/i\.manual_hold\s+IS\s+NOT\s+TRUE/);
+    // L1 — issue_busy via session + sibling-job NOT EXISTS (ISS-393 removed
+    // the manual_hold gate along with the manual-hold model).
+    expect(text).not.toMatch(/manual_hold/);
     expect(text).toMatch(/FROM\s+agent_sessions\s+s/);
     expect(text).toMatch(/s\.metadata->>'issueId'/);
     expect(text).toMatch(/FROM\s+jobs\s+other/);
@@ -497,7 +498,7 @@ describe('assertDispatchable', () => {
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
     expect(text).toMatch(/'not_queued'/);
     expect(text).toMatch(/'pipeline_run_not_running'/);
-    expect(text).toMatch(/'manual_hold'/);
+    expect(text).not.toMatch(/'manual_hold'/);
     expect(text).toMatch(/'retry_cooldown'/);
     expect(text).toMatch(/'issue_busy'/);
     expect(text).toMatch(/'blocked_by'/);

@@ -31,7 +31,6 @@ function makeIssue(overrides: Partial<Issue> = {}): Issue {
     category: null,
     reportedBy: null,
     complexity: null,
-    manualHold: false,
     plan: null,
     acceptanceCriteria: null,
     suggestedSolution: null,

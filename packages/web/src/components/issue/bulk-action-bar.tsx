@@ -16,7 +16,6 @@ export function BulkActionBar({ count, onApply, onClear }: BulkActionBarProps) {
     const [status, setStatus] = useState('');
     const [priority, setPriority] = useState('');
     const [category, setCategory] = useState('');
-    const [manualHold, setManualHold] = useState(''); // '' | 'true' | 'false'
 
     function handleApply() {
         const fields: { key: keyof Issue; value: string; list: { value: string; label: string }[]; label: string }[] = [
@@ -26,18 +25,13 @@ export function BulkActionBar({ count, onApply, onClear }: BulkActionBarProps) {
         ];
 
         const active = fields.filter((f) => f.value);
-        const holdChanged = manualHold !== '';
-        if (active.length === 0 && !holdChanged) return;
+        if (active.length === 0) return;
 
         const changes: Partial<Issue> = {};
         const parts: string[] = [];
         for (const f of active) {
             (changes as Record<string, string>)[f.key] = f.value;
             parts.push(`${f.label} → ${f.list.find((o) => o.value === f.value)?.label}`);
-        }
-        if (holdChanged) {
-            changes.manualHold = manualHold === 'true';
-            parts.push(`Hold → ${manualHold === 'true' ? 'On hold' : 'Released'}`);
         }
 
         if (!window.confirm(`Update ${count} issue${count !== 1 ? 's' : ''}?\n\n${parts.join('\n')}`)) return;
@@ -46,7 +40,6 @@ export function BulkActionBar({ count, onApply, onClear }: BulkActionBarProps) {
         setStatus('');
         setPriority('');
         setCategory('');
-        setManualHold('');
     }
 
     return (
@@ -75,15 +68,9 @@ export function BulkActionBar({ count, onApply, onClear }: BulkActionBarProps) {
                 ))}
             </Select>
 
-            <Select value={manualHold} onChange={(e) => setManualHold(e.currentTarget.value)} className="py-1.5 text-xs">
-                <option value="">Hold...</option>
-                <option value="true">Set on hold</option>
-                <option value="false">Release hold</option>
-            </Select>
-
             <button
                 onClick={handleApply}
-                disabled={!status && !priority && !category && !manualHold}
+                disabled={!status && !priority && !category}
                 className="rounded-sm bg-primary px-3 py-1.5 text-xs font-medium text-on-primary hover:bg-tertiary disabled:opacity-30 transition-colors"
             >
                 Apply

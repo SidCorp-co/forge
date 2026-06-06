@@ -76,16 +76,15 @@ describe('ISS-164 pipelineHealth E2E', () => {
 
   async function insertIssue(
     projectId: string,
-    overrides: { status?: string; issSeq?: number; manualHold?: boolean } = {},
+    overrides: { status?: string; issSeq?: number } = {},
   ): Promise<string> {
     const id = randomUUID();
     const status = overrides.status ?? 'open';
     const issSeq = overrides.issSeq ?? Math.floor(Math.random() * 100000);
-    const manualHold = overrides.manualHold ?? false;
     await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, priority, manual_hold, created_by_id)
+      INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
       VALUES (
-        ${id}, ${projectId}, ${issSeq}, ${'Issue ' + issSeq}, ${status}, 'medium', ${manualHold},
+        ${id}, ${projectId}, ${issSeq}, ${'Issue ' + issSeq}, ${status}, 'medium',
         (SELECT owner_id FROM projects WHERE id = ${projectId})
       )
     `);
@@ -216,14 +215,6 @@ describe('ISS-164 pipelineHealth E2E', () => {
     });
   });
 
-  it('classifies manual_hold when issue.manualHold is true', async () => {
-    const { project } = await seedProject();
-    const issueId = await insertIssue(project.id, { manualHold: true });
-    await insertJob(project.id, { issueId, status: 'queued', type: 'plan' });
-    const map = await mods.hydratePipelineHealthForIssues(project.id, [issueId]);
-    expect(map.get(issueId)?.waitingOn?.reason).toBe('manual_hold');
-  });
-
   it('classifies project_full IMMEDIATELY at queue time (ISS-137 blind-spot closure)', async () => {
     const { project } = await seedProject({ maxConcurrentIssues: 1 });
     const issueA = await insertIssue(project.id);
@@ -272,14 +263,14 @@ describe('ISS-164 pipelineHealth E2E', () => {
     expect(map.get(child)?.waitingOn?.reason).toBe('waiting_on_decomp_parent');
   });
 
-  it('manual_hold wins over a blocks parent (L1 before L2)', async () => {
+  it('classifies waiting_on_dep when an open blocks parent gates the child', async () => {
     const { project } = await seedProject();
     const blocker = await insertIssue(project.id, { status: 'open' });
-    const child = await insertIssue(project.id, { manualHold: true });
+    const child = await insertIssue(project.id);
     await insertEdge(project.id, blocker, child, 'blocks');
     await insertJob(project.id, { issueId: child, status: 'queued', type: 'plan' });
     const map = await mods.hydratePipelineHealthForIssues(project.id, [child]);
-    expect(map.get(child)?.waitingOn?.reason).toBe('manual_hold');
+    expect(map.get(child)?.waitingOn?.reason).toBe('waiting_on_dep');
   });
 
   it('classifies issue_busy when a sibling job is dispatched', async () => {

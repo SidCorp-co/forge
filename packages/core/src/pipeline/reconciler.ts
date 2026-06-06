@@ -52,7 +52,6 @@ export async function runReconcilerOnce(): Promise<{ rescued: number; stale: num
     FROM issues i
     INNER JOIN projects p ON p.id = i.project_id
     WHERE i.status IN (${statusList})
-      AND i.manual_hold = false
       AND i.updated_at < now() - interval '${sql.raw(STUCK_ISSUE_INTERVAL)}'
       AND NOT EXISTS (
         SELECT 1 FROM jobs j

@@ -131,13 +131,6 @@ function mapAction(action: string, payload: Record<string, unknown>): MapResult 
     };
   }
 
-  if (action === 'issue.manualHold.set') {
-    return { type: 'manual_hold_set' };
-  }
-  if (action === 'issue.manualHold.cleared') {
-    return { type: 'manual_hold_cleared' };
-  }
-
   if (action === 'issue.dependency.added') {
     return {
       type: 'relation_added',

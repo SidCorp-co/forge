@@ -11,12 +11,11 @@
  * one source of truth — so a future contributor extending one gate can no
  * longer drift the other (the failure mode that ISS-226's narrower L1 mirror
  * had to patch). pg-boss-direct dispatches now enforce the full gate set
- * (manualHold, blocked_by, project_cap, runner_full, retry_cooldown,
+ * (blocked_by, project_cap, runner_full, retry_cooldown,
  * pipeline_run_running) instead of just L1 issue_busy.
  *
  * Gate layers (single-source, see {@link buildBarrierFragments}):
- *   L1 issue_busy / manual_hold — at most one active session per issue;
- *                                 `issues.manual_hold = true` excludes
+ *   L1 issue_busy               — at most one active session per issue
  *   L2 waiting_on_dep / decomp  — every `kind='blocks'` parent must be
  *                                 terminal; release jobs additionally wait
  *                                 for their `kind='decomposes'` parent
@@ -48,7 +47,6 @@ export type GateSkipReason =
   | 'not_found'
   | 'not_queued'
   | 'pipeline_run_not_running'
-  | 'manual_hold'
   | 'retry_cooldown'
   | 'issue_busy'
   | 'blocked_by'
@@ -109,7 +107,7 @@ export function runnerSupportsJobType(runnerType: RunnerType, jobType: JobType):
 
 /**
  * @deprecated ISS-228 — superseded by {@link assertDispatchable}, which
- * mirrors the FULL picker gate set (manual_hold, blocked_by, project_cap,
+ * mirrors the FULL picker gate set (blocked_by, project_cap,
  * runner_full, …) and not just L1 issue_busy. Kept exported so the legacy
  * mock-based tests can still exercise the L1 SQL shape; new callers must
  * route through `assertDispatchable`.
@@ -273,7 +271,7 @@ interface BarrierFragments {
  *
  * Both call sites are responsible for the matching FROM + JOIN block plus
  * the trivially-shared scalar checks (`j.status='queued'`, `r.status='running'`,
- * the `retry_after_at` cooldown, the manual_hold pass form, and the
+ * the `retry_after_at` cooldown, and the
  * project_cap and runner-availability EXISTS checks). The parity test in
  * `dispatch-gates.test.ts` keeps the two sites in lockstep — extending one
  * without extending the other will flip a recorded scenario from
@@ -437,7 +435,6 @@ export async function pickNextDispatchableJobForProject(projectId: string): Prom
       -- engine when honouring a provider Retry-After hint; until the
       -- timestamp passes, the job is invisible to the picker.
       AND (j.retry_after_at IS NULL OR j.retry_after_at <= now())
-      AND (i.id IS NULL OR i.manual_hold IS NOT TRUE)
       AND NOT (${predicates.issueBusySession})
       AND NOT (${predicates.issueBusyJob})
       AND NOT (${predicates.blockedBy})
@@ -503,7 +500,6 @@ export async function assertDispatchable(jobId: string): Promise<DispatchBarrier
       CASE
         WHEN j.status <> 'queued' THEN 'not_queued'
         WHEN r.status <> 'running' THEN 'pipeline_run_not_running'
-        WHEN i.id IS NOT NULL AND i.manual_hold IS TRUE THEN 'manual_hold'
         WHEN j.retry_after_at IS NOT NULL AND j.retry_after_at > now() THEN 'retry_cooldown'
         WHEN ${predicates.issueBusySession} THEN 'issue_busy'
         WHEN ${predicates.issueBusyJob} THEN 'issue_busy'

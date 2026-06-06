@@ -7,16 +7,28 @@
  * runner gate, one such row stalled the project queue indefinitely.
  *
  * These tests assert the generated SELECT + per-row UPDATE both cover
- * `dispatched` and `running` and that the per-row UPDATE actually flips
- * a `dispatched` row.
+ * `dispatched` and `running`, that the per-row UPDATE actually flips a
+ * `dispatched` row, and that each reaped row routes through the shared
+ * `finalizeFailedJob` tail (ISS-393 — replaces the old setManualHoldBlock).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const executeMock = vi.fn(async (..._args: unknown[]) => [] as unknown[]);
+const selectJobRow = vi.fn<() => unknown[]>(() => []);
+
+// db.select().from().where().limit() → re-select of the just-failed job row.
+function selectChain() {
+  const chain = {
+    from: () => chain,
+    where: () => chain,
+    limit: async () => selectJobRow(),
+  };
+  return chain;
+}
 
 vi.mock('../db/client.js', () => ({
-  db: { execute: executeMock },
+  db: { execute: executeMock, select: () => selectChain() },
 }));
 
 vi.mock('../queue/boss.js', () => ({
@@ -27,12 +39,9 @@ vi.mock('../ws/server.js', () => ({
   roomManager: { publish: vi.fn() },
 }));
 
-vi.mock('../pipeline/manual-hold.js', () => ({
-  setManualHoldBlock: vi.fn(async () => {}),
-}));
-
-vi.mock('../pipeline/hold-policy.js', () => ({
-  computeHoldUntil: () => new Date('2026-05-28T00:00:00Z'),
+const finalizeFailedJobMock = vi.fn(async () => ({ scheduled: false }));
+vi.mock('./finalize-failure.js', () => ({
+  finalizeFailedJob: (...args: unknown[]) => finalizeFailedJobMock(...(args as [])),
 }));
 
 vi.mock('../logger.js', () => ({
@@ -67,6 +76,9 @@ function lastSqlText(callIndex: number): string {
 
 beforeEach(() => {
   executeMock.mockReset();
+  selectJobRow.mockReset();
+  selectJobRow.mockReturnValue([]);
+  finalizeFailedJobMock.mockClear();
 });
 
 afterEach(() => {
@@ -85,29 +97,27 @@ describe('runStaleSweep', () => {
     expect(text).toMatch(/NOT\s+EXISTS[\s\S]*job_events[\s\S]*kind\s*=\s*'result'/);
   });
 
-  it('per-row UPDATE flips dispatched rows (not just running)', async () => {
+  it('per-row UPDATE flips dispatched rows and routes through finalizeFailedJob', async () => {
     executeMock.mockResolvedValueOnce([
       {
         id: '11111111-1111-4111-8111-111111111111',
         project_id: '22222222-2222-4222-8222-222222222222',
         attempts: 1,
         status: 'dispatched',
-        type: 'triage',
-        issue_id: null,
+        type: 'code',
+        issue_id: '33333333-3333-4333-8333-333333333333',
         agent_session_id: null,
         dispatched_at: new Date(Date.now() - 65 * 60_000),
       },
     ]);
-    executeMock.mockResolvedValueOnce([
+    executeMock.mockResolvedValueOnce([{ id: '11111111-1111-4111-8111-111111111111' }]);
+    selectJobRow.mockReturnValue([
       {
         id: '11111111-1111-4111-8111-111111111111',
-        project_id: '22222222-2222-4222-8222-222222222222',
-        attempts: 1,
+        projectId: '22222222-2222-4222-8222-222222222222',
+        issueId: '33333333-3333-4333-8333-333333333333',
+        type: 'code',
         status: 'failed',
-        type: 'triage',
-        issue_id: null,
-        agent_session_id: null,
-        dispatched_at: null,
       },
     ]);
     const result = await runStaleSweep();
@@ -118,10 +128,10 @@ describe('runStaleSweep', () => {
     expect(updateText).toMatch(/failure_kind\s*=\s*'transient'/);
     expect(updateText).toMatch(/failure_reason\s*=\s*'runner stale.*'/);
     expect(updateText).toMatch(/error\s*=\s*'stale'/);
+    expect(finalizeFailedJobMock).toHaveBeenCalledTimes(1);
   });
 
-  it('does not invoke setManualHoldBlock for stale rows that have no issue_id (system jobs)', async () => {
-    const { setManualHoldBlock } = await import('../pipeline/manual-hold.js');
+  it('routes system jobs (no issue_id) through finalizeFailedJob too', async () => {
     executeMock.mockResolvedValueOnce([
       {
         id: 'job-sys',
@@ -134,20 +144,12 @@ describe('runStaleSweep', () => {
         dispatched_at: new Date(Date.now() - 65 * 60_000),
       },
     ]);
-    executeMock.mockResolvedValueOnce([
-      {
-        id: 'job-sys',
-        project_id: 'p1',
-        attempts: 1,
-        status: 'failed',
-        type: 'custom',
-        issue_id: null,
-        agent_session_id: null,
-      },
+    executeMock.mockResolvedValueOnce([{ id: 'job-sys' }]);
+    selectJobRow.mockReturnValue([
+      { id: 'job-sys', projectId: 'p1', issueId: null, type: 'custom', status: 'failed' },
     ]);
     const r = await runStaleSweep();
     expect(r.failed).toBe(1);
-    expect(r.blocked).toBe(0);
-    expect(setManualHoldBlock).not.toHaveBeenCalled();
+    expect(finalizeFailedJobMock).toHaveBeenCalledTimes(1);
   });
 });

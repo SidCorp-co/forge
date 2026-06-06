@@ -1,11 +1,11 @@
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { computeHoldUntil } from '../pipeline/hold-policy.js';
-import { setManualHoldBlock } from '../pipeline/manual-hold.js';
 import { boss } from '../queue/boss.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import { finalizeFailedJob } from './finalize-failure.js';
 
 export const STALE_DETECTOR_QUEUE = 'stale-job-detector';
 const STALE_THRESHOLD = "interval '60 minutes'";
@@ -25,9 +25,11 @@ type StaleJobRow = {
 /**
  * Find `dispatched`/`running` jobs whose latest job_event is older than 60
  * minutes (or whose dispatched_at is, if no events). Mark them failed and
- * surface the failure to the operator via setManualHoldBlock — no progress
- * is strong evidence the worker is wedged; auto-retry would just spawn
- * another wedged worker against the same state.
+ * route through the shared finalize tail (ISS-393) — verify-first retry
+ * (device-rotated onto a fresh runner) or, when exhausted, park the issue at
+ * `waiting` + reap the run. No progress is strong evidence the worker is
+ * wedged; the retry engine's device rotation gives the next attempt a clean
+ * runner rather than re-pinning the dead one.
  *
  * ISS-258 — `dispatched` is now covered. A runner that crashes between
  * dispatch and emitting `job_events:started` leaves the row in `dispatched`
@@ -49,7 +51,6 @@ type StaleJobRow = {
  */
 export async function runStaleSweep(): Promise<{
   failed: number;
-  blocked: number;
   durationMs: number;
 }> {
   const t0 = Date.now();
@@ -79,9 +80,11 @@ export async function runStaleSweep(): Promise<{
   );
 
   let failedCount = 0;
-  let blockedCount = 0;
 
   for (const row of stale) {
+    // CAS-flip to failed, then re-select the camelCase Drizzle row so the
+    // shared finalize tail (verify-first retry / park-to-waiting) runs against
+    // a typed JobRow rather than the raw snake_case sweep row.
     const updated = await db.execute<StaleJobRow>(
       sql.raw(`
       UPDATE jobs
@@ -92,52 +95,33 @@ export async function runStaleSweep(): Promise<{
           failure_reason = 'runner stale (no progress / no started event for >60min)',
           classifier_version = 1
       WHERE id = '${row.id}' AND status IN ('dispatched', 'running')
-      RETURNING *
+      RETURNING id
     `),
     );
-    const updatedRow = updated[0];
-    if (!updatedRow) continue;
+    if (!updated[0]) continue;
     failedCount++;
 
-    roomManager.publish(projectRoom(updatedRow.project_id), {
+    const [jobRow] = await db.select().from(jobs).where(eq(jobs.id, row.id)).limit(1);
+    if (!jobRow) continue;
+
+    roomManager.publish(projectRoom(jobRow.projectId), {
       event: 'job.failed',
-      data: { jobId: updatedRow.id, status: 'failed', error: 'stale', reason: 'stale' },
+      data: { jobId: jobRow.id, status: 'failed', error: 'stale', reason: 'stale' },
     });
 
-    if (!updatedRow.issue_id) continue;
     try {
-      await setManualHoldBlock({
-        issueId: updatedRow.issue_id,
-        context: {
-          step: updatedRow.type as never,
-          trigger: 'session_lost',
-          classification: {
-            kind: 'unknown',
-            reason: 'runner stale (no progress for >60min)',
-            evidence: {
-              jobId: updatedRow.id,
-              sessionId: updatedRow.agent_session_id,
-            },
-          },
-          attempts: updatedRow.attempts,
-          lastFailureAt: new Date().toISOString(),
-          suggestedActions: ['resume', 'skip-step', 'close'],
-          holdUntil: computeHoldUntil({
-            classificationKind: 'unknown',
-            trigger: 'session_lost',
-          }),
-        },
+      await finalizeFailedJob(jobRow, {
+        error: 'runner stale (no progress / no started event for >60min)',
       });
-      blockedCount++;
     } catch (err) {
       logger.error(
-        { err, jobId: updatedRow.id, issueId: updatedRow.issue_id },
-        'stale-detector: setManualHoldBlock threw, job stays failed without operator surface',
+        { err, jobId: jobRow.id, issueId: jobRow.issueId },
+        'stale-detector: finalizeFailedJob threw, job stays failed',
       );
     }
   }
 
-  return { failed: failedCount, blocked: blockedCount, durationMs: Date.now() - t0 };
+  return { failed: failedCount, durationMs: Date.now() - t0 };
 }
 
 let registered = false;

@@ -84,8 +84,6 @@ vi.mock('../observability/sentry.js', () => ({
 }));
 vi.mock('../observability/hold-metrics.js', () => ({
   recordRunnerDeathDetection: vi.fn(),
-  recordHoldSet: vi.fn(),
-  recordHoldAutoClear: vi.fn(),
   // ISS-228 — per-reason counter incremented when assertDispatchable
   // leaves a job queued. Test mock so the unit tests don't need a
   // metrics-state reset between cases.
