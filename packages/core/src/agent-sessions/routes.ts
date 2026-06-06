@@ -1243,7 +1243,36 @@ agentSessionRoutes.get(
       .limit(pageSize)
       .offset((page - 1) * pageSize);
 
-    return c.json(rows);
+    // Per-row dollar cost (ISS-391): the session row carries no cost — it lives
+    // in usage_records keyed by session_id. Roll it up in ONE bounded query over
+    // just this page's session ids (no per-row N+1), grouped by session_id.
+    // usage_records.session_id is a uuid-shaped text column → guard the cast
+    // (mirrors the /:id/cost route). usage_records.session_id = agent_sessions.id
+    // (NOT the job id), so filtering directly by the page's ids is correct and
+    // does not fan out the way a join through jobs would.
+    const costById = new Map<string, number>();
+    const pageIds = rows.map((r) => r.id);
+    if (pageIds.length > 0) {
+      const idList = sql.join(
+        pageIds.map((id) => sql`${id}::uuid`),
+        sql`, `,
+      );
+      const costRows = await db
+        .select({
+          sessionId: usageRecords.sessionId,
+          estimatedCost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
+        })
+        .from(usageRecords)
+        .where(
+          sql`${usageRecords.sessionId} ~ '^[0-9a-fA-F-]{36}$' AND ${usageRecords.sessionId}::uuid IN (${idList})`,
+        )
+        .groupBy(usageRecords.sessionId);
+      for (const cr of costRows) {
+        if (cr.sessionId) costById.set(cr.sessionId, cr.estimatedCost);
+      }
+    }
+
+    return c.json(rows.map((r) => ({ ...r, estimatedCost: costById.get(r.id) ?? 0 })));
   },
 );
 

@@ -118,6 +118,9 @@ export interface SessionRow {
    *  per-turn `/turns` table is empty (ISS-348). */
   messages?: unknown[];
   totalMessages?: number;
+  /** Per-session dollar cost rolled up from usage_records, attached by the list
+   *  endpoint (ISS-391). 0 when the session has no usage rows yet. */
+  estimatedCost?: number;
 }
 
 /** `GET /api/agent-sessions/queue-stats` response (per-device counters). */
