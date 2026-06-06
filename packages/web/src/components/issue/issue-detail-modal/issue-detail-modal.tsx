@@ -1,8 +1,6 @@
 'use client';
 
-import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { ExternalLink } from 'lucide-react';
 import { Modal, Skeleton, Button, ToastContainer } from '@/components/ui';
 import {
   useIssue,
@@ -14,6 +12,7 @@ import { useMeProfile } from '@/features/me/hooks/use-me';
 import { useToast } from '@/hooks/use-toast';
 import { formatApiError } from '@/lib/api/error';
 import { IssueDetailBody } from '@/components/issue/issue-detail-body';
+import { IssueQuickBar } from '@/components/issue/issue-detail-modal/issue-quick-bar';
 import { STATUS_TAB_MAP } from '@/components/issue/issue-detail-header';
 import { type IssueDetailTabKey } from '@/components/issue/issue-detail-tabs';
 import type { IssuePatchInput } from '@forge/contracts';
@@ -87,6 +86,14 @@ export function IssueDetailModal({ open, issueId, projectSlug, onClose }: IssueD
           <p className="text-[11px] text-outline">Issue not found.</p>
         ) : (
           <>
+            <IssueQuickBar
+              issue={issue}
+              members={members}
+              projectSlug={projectSlug}
+              onStatusUpdate={handleStatusUpdate}
+              onPatch={handlePatch}
+              onClose={onClose}
+            />
             <div className="max-h-[75vh] overflow-y-auto">
               <IssueDetailBody
                 issue={issue}
@@ -107,14 +114,6 @@ export function IssueDetailModal({ open, issueId, projectSlug, onClose }: IssueD
               <Button variant="ghost" onClick={onClose} size="xs">
                 Close
               </Button>
-              <Link
-                href={`/projects/${projectSlug}/issues/${issue.displayId}`}
-                onClick={onClose}
-              >
-                <Button size="xs">
-                  <ExternalLink className="h-3 w-3" /> Open full
-                </Button>
-              </Link>
             </footer>
           </>
         )}
