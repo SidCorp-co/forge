@@ -80,6 +80,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Headless CLI runners can now host interactive chat sessions, so you no longer need the desktop app open to chat with an agent on a server.**
   *Technical: Runner daemon handles the agent:start device-room frame and streams replies via PATCH /agent-sessions/:id, mirroring the desktop device-room contract; chat stays off the jobs table and the pipeline cap=1.*
 
+- **forge-runner devices now keep themselves up to date automatically — new releases are pulled and applied without anyone running an update command on each machine, and any in-flight job or chat finishes before the runner restarts.**
+  *Technical: Fixed the runner-distribution route so the self-updater manifest is reachable through the /api edge proxy (dual-mount + prefix-aware asset/install.sh URLs); manifest_url now derives {core}/api/install/latest.json. Auto-update defaults ON (serde default_auto) with config set update.auto + install.sh --no-auto-update opt-out; drain-to-idle (InflightGuard) before systemctl restart; periodic fetch-release re-ingest; /me/devices surfaces latestAgentVersion + agentOutdated with a web-v2 lagging badge. Merge 8d52bd4e.*
+
 ### Changed
 
 - **The Forge MCP tools that were prefixed `forge_admin_*` have been renamed to reflect what they actually are — ordinary project-scoped tools, not system-admin tools. `forge_admin_runners` → `forge_runners`, `forge_admin_users` → `forge_collaborators`, `forge_admin_health` → `forge_ops_health`; project archive moved onto `forge_projects.archive`; and the cross-your-projects metrics tool is now `forge_metrics.step_durations`. Access is unchanged — every one stays gated by your role on each project. The token-creation dialog no longer claims the `admin` scope grants "cross-tenant admin tools".**
