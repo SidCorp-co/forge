@@ -89,6 +89,28 @@ function formatCountdown(ms: number): string {
   return `${s}s`;
 }
 
+/** Short absolute timestamp for the Started column, or "—" when absent/invalid.
+ *  Mirrors the context-rail detail formatter (ISS-391). */
+function fmtTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const ms = new Date(iso).getTime();
+  if (Number.isNaN(ms)) return "—";
+  return new Date(ms).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** USD cost — sub-cent precision for tiny sessions, 2dp otherwise; "—" when
+ *  the row carries no cost rollup (older payloads). Mirrors context-rail. */
+function fmtCost(usd: number | undefined): string {
+  if (usd == null) return "—";
+  if (usd > 0 && usd < 0.01) return "<$0.01";
+  return `$${usd.toFixed(2)}`;
+}
+
 const FILTERS: SessionFilter[] = ["all", "running", "queued", "attention"];
 const FILTER_LABEL: Record<SessionFilter, string> = {
   all: "All",
@@ -227,16 +249,25 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
       {/* Workspace tier: subscribe to every visible project room for live updates. */}
       {!projectId && projectsQ.data?.map((p) => <RoomSub key={p.id} projectId={p.id} />)}
 
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
+      {/* Compact header (ISS-391): title + the four headline metrics collapsed
+          into a single inline summary strip (was a 4-card grid that ate a tall
+          band of mostly 0/— on quiet projects), with Sweep on the same row. */}
+      <header className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5">
           <h1 className="fg-h2">Sessions</h1>
-          <p className="fg-body-sm mt-1">
-            {issueFilter
-              ? "Agent sessions for this issue."
-              : projectId
-                ? "Agent sessions for this project."
-                : "Agent sessions across your workspace."}
-          </p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <StatPill label="Active" value={String(stats.active)} />
+            <StatPill label="Queued" value={String(stats.queued)} />
+            <StatPill
+              label="Zombie jobs"
+              value={String(stats.zombies)}
+              tone={stats.zombies > 0 ? "alert" : "default"}
+            />
+            <StatPill
+              label="Median wait"
+              value={stats.queued > 0 ? formatDuration(stats.medianWaitMs) : "—"}
+            />
+          </div>
         </div>
         {projectId ? (
           <Button
@@ -266,18 +297,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
         </div>
       )}
 
-      {/* Headline queue stats (draft "q-strip") — derived from the loaded list
-          so they work at both tiers (queue-stats only returns per-device
-          queued/running). Active · Queued · Zombie jobs · Median wait. Kept as a
-          compact summary beneath the fleet strip. */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-        <StatCard label="Active" value={String(stats.active)} />
-        <StatCard label="Queued" value={String(stats.queued)} />
-        <StatCard label="Zombie jobs" value={String(stats.zombies)} tone={stats.zombies > 0 ? "alert" : "default"} />
-        <StatCard label="Median wait" value={stats.queued > 0 ? formatDuration(stats.medianWaitMs) : "—"} />
-      </div>
-
-      <div className="mt-6 mb-4 overflow-x-auto">
+      <div className="mb-4 overflow-x-auto">
         <SegmentedControl options={filterOptions} value={filter} onChange={setFilter} />
       </div>
 
@@ -322,8 +342,10 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
                   <TH>Session</TH>
                   <TH>Issue · agent</TH>
                   <TH>Runner</TH>
+                  <TH>Started</TH>
                   <TH className="text-right">Turns</TH>
                   <TH className="text-right">Duration</TH>
+                  <TH className="text-right">Cost</TH>
                   <TH>Status</TH>
                   <TH className="text-right">Actions</TH>
                 </TR>
@@ -372,7 +394,10 @@ interface RowActions {
   abort: MutationLike;
 }
 
-function StatCard({
+/** Compact inline metric (ISS-391) — replaces the old big-number StatCard grid.
+ *  `label: value` on one line; the value turns red in `alert` tone (e.g. zombie
+ *  jobs > 0). */
+function StatPill({
   label,
   value,
   tone = "default",
@@ -382,17 +407,15 @@ function StatCard({
   tone?: "default" | "alert";
 }) {
   return (
-    <Card>
-      <CardContent>
-        <p className="fg-overline">{label}</p>
-        <p
-          className="fg-h1 mt-1 tabular-nums"
-          style={tone === "alert" ? { color: "var(--color-red)" } : undefined}
-        >
-          {value}
-        </p>
-      </CardContent>
-    </Card>
+    <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
+      <span className="fg-overline">{label}</span>
+      <span
+        className="fg-body-sm font-semibold tabular-nums"
+        style={tone === "alert" ? { color: "var(--color-red)" } : undefined}
+      >
+        {value}
+      </span>
+    </span>
   );
 }
 
@@ -640,8 +663,10 @@ function SessionTableRow({
       <TD className="max-w-[160px]">
         <RunnerCell row={row} deviceName={deviceName} display={display} now={now} />
       </TD>
+      <TD className="whitespace-nowrap font-mono text-muted">{fmtTime(row.startedAt ?? row.dispatchedAt)}</TD>
       <TD className="text-right font-mono text-muted">{row.usage?.turns ?? "—"}</TD>
       <TD className="text-right font-mono text-muted">{duration}</TD>
+      <TD className="text-right font-mono text-muted">{fmtCost(row.estimatedCost)}</TD>
       <TD>
         <StatusCell row={row} display={display} stage={stage} now={now} />
       </TD>
@@ -682,8 +707,10 @@ function SessionMobileCard({
           <div className="flex items-center gap-3">
             <Badge tone="neutral">{row.usage?.turns ?? 0} turns</Badge>
             <span className="fg-mono text-muted">{duration}</span>
+            <span className="fg-mono text-muted">{fmtCost(row.estimatedCost)}</span>
           </div>
         </div>
+        <div className="fg-caption mt-1.5 text-subtle">Started {fmtTime(row.startedAt ?? row.dispatchedAt)}</div>
         {row.deviceId && (
           <div className="mt-2.5">
             <RunnerCell row={row} deviceName={deviceName} display={display} now={now} />

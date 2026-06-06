@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AgentWorking,
+  Badge,
   Button,
   EmptyState,
   ErrorState,
@@ -30,7 +31,7 @@ import {
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { parseMessages, parseTurns } from "../types";
+import { deriveAgentTasks, parseMessages, parseTurns } from "../types";
 import {
   useCancelSession,
   useEditTurn,
@@ -98,6 +99,9 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
     return [];
   }, [turnsQ.data, session?.messages]);
   const fromMessages = (turnsQ.data?.turns?.length ?? 0) === 0 && items.length > 0;
+  // Task-count indicator (ISS-391) — surfaces "this session ran N agents/skills"
+  // in the header without opening the context rail. Same derivation the rail uses.
+  const taskCount = useMemo(() => deriveAgentTasks(items).length, [items]);
 
   const send = useSendMessage(sessionId);
   const regenerate = useRegenerateTurn(sessionId);
@@ -158,8 +162,11 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
               <h1 className="fg-h3 truncate">{session.title ?? "Session"}</h1>
               <MonoTag hue="cobalt">{session.id.slice(0, 8)}</MonoTag>
             </div>
-            <div className="mt-1">
+            <div className="mt-1 flex items-center gap-2">
               <StatusChip status={statusToChip(display)} stage={deriveStage(session.metadata)} size="sm" domain="session" />
+              {taskCount > 0 && (
+                <Badge tone="neutral">{taskCount} {taskCount === 1 ? "task" : "tasks"}</Badge>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-1.5">
