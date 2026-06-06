@@ -7,7 +7,7 @@ description: "Verify Epodsystem storefront changes on the draft theme — load t
 
 Gate the change against the design spec. This stage MUST fail on mismatch — do not pass on a guess.
 
-1. Resolve the verification surface via `forge_storefront_target`: prefer the **live storefront URL** (or the draft preview token URL). Do NOT use `screenshot_preview` on theme main (trap #7 — unreliable).
+1. Resolve the verification surface via `forge_storefront_target`: use the **live storefront URL** (or the draft preview token URL). **Do NOT use `screenshot_preview`** — it is currently unreliable on this integration (404s on main AND draft; see the guide §3) — so it is intentionally ignored here, never a blocker.
 2. With Playwright (`mcp__playwright__*`):
    - Navigate the changed pages; assert the spec'd sections actually render (not empty — catches the block-settings/EAV/handle traps).
    - Assert internal links return **HTTP 200** (no 404s in nav/cards).
