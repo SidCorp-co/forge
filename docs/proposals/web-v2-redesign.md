@@ -2,6 +2,8 @@
 
 Clean reskin + IA cleanup as parallel `packages/web-v2`, big-bang cutover; backend unchanged.
 
+> v1-retirement gate: the decided port-or-drop matrix for every legacy `packages/web` surface lives in [web-v2-v1-retirement-parity.md](web-v2-v1-retirement-parity.md).
+
 - **Status:** Draft proposal (pre-RFC)
 - **Date:** 2026-05-30
 - **Design reference:** `packages/web-redesign-plan/` (design-system tokens + hi-fi ui-kit prototype + INTEGRATION.md)
