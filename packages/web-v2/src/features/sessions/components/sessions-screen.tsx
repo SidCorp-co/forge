@@ -1,7 +1,7 @@
 "use client";
 
 // web-v2 shared Sessions index — used at BOTH the workspace tier
-// (`/v2/sessions`, cross-project, no `scope.projectId`) and the project tier
+// (`/sessions`, cross-project, no `scope.projectId`) and the project tier
 // (under the Agents shell, scoped + Sweep zombies). ISS-291. Rows link to the
 // session detail (`/projects/:slug/agents/:id`) and back to their issue
 // (ISS-331); the project slug is resolved per row from the projects list.

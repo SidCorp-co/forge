@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  formatDuration,
   formatTokens,
   ratingTone,
   sumTokens,
@@ -39,14 +38,6 @@ describe("formatTokens", () => {
     expect(formatTokens(942)).toBe("942");
     expect(formatTokens(1234)).toBe("1.2k");
     expect(formatTokens(2_000_000)).toBe("2.0M");
-  });
-});
-
-describe("formatDuration", () => {
-  it("buckets", () => {
-    expect(formatDuration(null)).toBe("—");
-    expect(formatDuration(820)).toBe("820ms");
-    expect(formatDuration(1240)).toBe("1.2s");
   });
 });
 

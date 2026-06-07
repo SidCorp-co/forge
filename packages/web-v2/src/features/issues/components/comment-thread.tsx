@@ -6,6 +6,7 @@
 // initials resolved against the project members, and reply/add boxes.
 
 import { type ClipboardEvent, type DragEvent, useCallback, useRef, useState } from "react";
+import { formatRelativeTime } from "@/lib/utils/format";
 import { Avatar, Badge, Banner, Button, EmptyState, Icon, IconButton, Markdown, Textarea } from "@/design";
 import { COMMENT_KIND_META, deriveCommentKind, initials, memberLabel } from "../derive";
 import { useCreateComment } from "../detail-hooks";
@@ -32,18 +33,6 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function relativeTime(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return "";
-  const s = Math.max(0, Math.floor((Date.now() - then) / 1000));
-  if (s < 60) return `${s}s ago`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
 }
 
 function AddCommentBox({
@@ -273,7 +262,7 @@ function CommentItem({
           <div className="flex flex-wrap items-center gap-2">
             <span className="fg-label text-fg">{author}</span>
             {kind !== "comment" && <Badge tone={meta.tone}>{meta.label}</Badge>}
-            <span className="fg-caption">{relativeTime(node.createdAt)}</span>
+            <span className="fg-caption">{formatRelativeTime(node.createdAt)}</span>
           </div>
           <div className="mt-1">
             <Markdown>{node.body}</Markdown>

@@ -1,6 +1,6 @@
 'use client';
 
-// The /v2 landing = workspace dashboard (ISS-355). Replaces the old flat
+// The workspace landing = workspace dashboard (ISS-355). Replaces the old flat
 // project list with a dense, actionable overview built ENTIRELY from existing
 // hooks (no new API/core changes), so the WS event-router invalidations that
 // already drive `['projects']`, `['projects','health']`, `['attention']`, and

@@ -1,5 +1,5 @@
 // web-v2 feature module: project-dashboard — PURE derivations (no React, no
-// fetching) for the per-project operator dashboard (`/v2/projects/[slug]`,
+// fetching) for the per-project operator dashboard (`/projects/[slug]`,
 // mockup `01 Dashboard.html`). Everything here re-composes data already fetched
 // by the existing `useProjectHealth` / `useAttention` / `useProjectRuns` /
 // `useStepDurations` / `useDevices` + `useQueueStats` / `useSchedules` hooks —

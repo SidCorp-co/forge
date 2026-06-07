@@ -1,9 +1,8 @@
 "use client";
 
 // web-v2 feature module: app-config — React Query hooks. Keyed `['app-config',
-// projectId]` (mirrors the v1 `appConfigKeys.detail`). The upsert mutation
-// invalidates that key and toasts, following the `useUpdateProject` pattern in
-// `features/project-settings/hooks.ts`.
+// projectId]`. The upsert mutation invalidates that key and toasts, following
+// the `useUpdateProject` pattern in `features/project-settings/hooks.ts`.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";

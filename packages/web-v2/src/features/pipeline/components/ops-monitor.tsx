@@ -1,6 +1,6 @@
 "use client";
 
-// Ops monitor (`/v2/ops`, ISS-295) — ONE tabbed surface (Monitor / Progress /
+// Ops monitor (`/ops`, ISS-295) — ONE tabbed surface (Monitor / Progress /
 // Health / Runs) collapsing the old /pipeline,/progress,/health,/runs into a
 // single Tabs view on real cross-project data. Live via WS: cross-project
 // events only arrive on subscribed rooms, so we fan out a `useRoom` per project
@@ -58,7 +58,7 @@ export function OpsMonitor() {
   const [tab, setTab] = useState("monitor");
   const [runId, setRunId] = useState<string | null>(null);
 
-  // Open a run directly from a shared deep-link (`/v2/ops?run=<id>`).
+  // Open a run directly from a shared deep-link (`/ops?run=<id>`).
   useEffect(() => {
     if (typeof window === "undefined") return;
     const shared = new URLSearchParams(window.location.search).get("run");

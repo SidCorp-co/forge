@@ -1,6 +1,6 @@
 "use client";
 
-// Project-tier Skills registry (`/v2/projects/[slug]/skills`). Responsive card
+// Project-tier Skills registry (`/projects/[slug]/skills`). Responsive card
 // grid of global + project skills with scope, sync state, registered-stage
 // chips, and an owner/admin enable control. ISS-299.
 import { useMemo, useState } from "react";

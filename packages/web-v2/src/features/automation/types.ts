@@ -1,7 +1,7 @@
 // web-v2 feature module: automation → PM. Shapes mirror the backend Zod
 // schemas in `packages/core/src/pm/routes.ts` (mounted at
-// `/api/projects/:projectId/pm/*`). Kept aligned with the v1 source of truth
-// `packages/web/src/features/pm/types.ts`.
+// `/api/projects/:projectId/pm/*`) — that backend contract is the source of
+// truth to keep these aligned with.
 
 export interface PmEventTriggers {
   jobFailed: boolean;

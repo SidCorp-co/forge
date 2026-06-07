@@ -1,11 +1,9 @@
 "use client";
 
-// Project settings → Agent. Ports the two LIVE v1 agent settings sections
-// (`packages/web/.../settings/components/chat-agent-section.tsx` +
-// `providers-tools-section.tsx`) into web-v2. Backed by the existing
-// `GET/PUT /api/app-config/:projectId` via `features/app-config`. Mirrors the
-// testing-tab load → form → dirty → save pattern. Owner/admin can edit (server
-// PUT is owner|admin-gated); everyone else sees read-only inputs.
+// Project settings → Agent. The chat-agent + providers/tools settings, backed
+// by `GET/PUT /api/app-config/:projectId` via `features/app-config`. Follows
+// the testing-tab load → form → dirty → save pattern. Owner/admin can edit
+// (server PUT is owner|admin-gated); everyone else sees read-only inputs.
 import { useEffect, useMemo, useState } from "react";
 import { Button, Card, CardContent, ErrorState, Field, Input, Skeleton, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";

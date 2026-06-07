@@ -1,10 +1,8 @@
-// Ported from `packages/web/src/lib/api/client.ts` (ISS-288). The ONLY
-// intentional divergence is the `API_URL` default: web-v2 mounts under `/v2`
-// on the same origin as core, so the default is the RELATIVE `/api` (not the
-// v1 `http://localhost:8080/api` absolute). Same-origin keeps the httpOnly
-// `forge_auth` cookie attached and lets the dev/CI `/api` + `/ws` rewrites
-// (next.config.ts → E2E_CORE_PROXY_URL) proxy to core. Keep the rest in sync
-// with v1 — query/auth semantics are shared.
+// Originally ported from v1 (ISS-288). The `API_URL` default is the RELATIVE
+// `/api`: web-v2 is same-origin with core in dev/CI, so a relative base keeps
+// the httpOnly `forge_auth` cookie attached and lets the `/api` + `/ws`
+// rewrites (next.config.ts → E2E_CORE_PROXY_URL) proxy to core. In prod
+// NEXT_PUBLIC_API_URL is set to core's absolute origin at build time.
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 /** Core base URL without `/api` suffix — used to derive the WS URL. Empty

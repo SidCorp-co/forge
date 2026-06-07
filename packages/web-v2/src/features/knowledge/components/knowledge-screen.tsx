@@ -1,6 +1,6 @@
 "use client";
 
-// Project-tier Knowledge (`/v2/projects/[slug]/knowledge`). User-provided
+// Project-tier Knowledge (`/projects/[slug]/knowledge`). User-provided
 // sources: an "Add source" dialog (paste or read a file client-side →
 // /knowledge/ingest) and the resulting knowledge-edge graph rendered as a
 // relation table. ISS-299.
