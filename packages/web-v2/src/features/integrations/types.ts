@@ -13,8 +13,10 @@ import type {
   EpodsystemConfigInput,
   EpodsystemSecretsInput,
   IntegrationHealthResult,
+  PostmanConfigInput,
   PostmanMode,
   PostmanRegion,
+  PostmanSecretsInput,
 } from "@forge/contracts";
 
 export type {
@@ -43,7 +45,7 @@ export type {
   BindingListResponse,
 } from "@forge/contracts";
 
-// === ISS-336 — Postman integration CRUD (legacy create/update bodies) ===
+// === ISS-336 — Postman integration config shape ===
 
 /** Non-secret Postman write-target stored in the connection `config`. */
 export interface PostmanConfig {
@@ -64,19 +66,6 @@ export interface PostmanConfig {
  * is stored.
  */
 export type { BindingSummary as IntegrationSummary } from "@forge/contracts";
-
-/** Body for creating a Postman integration. */
-export interface CreatePostmanInput {
-  config: PostmanConfig;
-  apiKey: string;
-}
-
-/** Body for patching a Postman integration (all fields optional). */
-export interface UpdatePostmanInput {
-  config?: Partial<PostmanConfig>;
-  apiKey?: string;
-  active?: boolean;
-}
 
 /**
  * Result of the test-connection (`POST .../test`) call. Bases the cutover-
@@ -135,11 +124,21 @@ export type CreateIntegrationInput =
       environment?: "staging" | "prod";
       config: EpodsystemConfigInput;
       secrets: EpodsystemSecretsInput;
+    }
+  | {
+      provider: "postman";
+      environment?: "staging" | "prod";
+      config: PostmanConfigInput;
+      secrets: PostmanSecretsInput;
     };
 
 /** Partial patch for `PATCH .../integrations/:id`. */
 export interface UpdateIntegrationInput {
-  config?: Partial<CoolifyConfigInput> & Partial<EpodsystemConfigInput>;
-  secrets?: Partial<CoolifySecretsInput> & Partial<EpodsystemSecretsInput>;
+  config?: Partial<CoolifyConfigInput> &
+    Partial<EpodsystemConfigInput> &
+    Partial<PostmanConfigInput>;
+  secrets?: Partial<CoolifySecretsInput> &
+    Partial<EpodsystemSecretsInput> &
+    Partial<PostmanSecretsInput>;
   active?: boolean;
 }

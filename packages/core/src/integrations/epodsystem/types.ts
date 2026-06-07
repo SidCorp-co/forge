@@ -11,11 +11,11 @@ import type { IntegrationEnvironment } from '../../db/schema.js';
  */
 
 /**
- * Non-secret Epodsystem target — stored in `project_integrations.config` (jsonb).
- * This is the "store context" a skill reads via `forge_storefront_target`; it
- * intentionally carries NO API key and NO endpoint (the endpoint is fixed
+ * Non-secret Epodsystem target — stored in the integration connection's `config`
+ * (jsonb). This is the "store context" a skill reads via `forge_storefront_target`;
+ * it intentionally carries NO API key and NO endpoint (the endpoint is fixed
  * platform config from `EPODSYSTEM_ENDPOINT`, not per-store). `environment`
- * mirrors the row column.
+ * mirrors the binding's environment.
  *
  * Decision (ISS-387): ONE store per project. staging ↔ theme draft,
  * prod ↔ theme main; publish promotes draft → main on the same store.
@@ -41,11 +41,11 @@ export interface EpodsystemConfig extends Record<string, unknown> {
   commerceEnabled?: boolean;
   /** Primary published domain; resolved (best-effort) via `storeDomains`. Draft preview = this domain + `?preview_token=<token>`. */
   domain?: string;
-  /** Mirror of project_integrations.environment; convenience for adapter logic. */
+  /** Mirror of the binding's `environment`; convenience for adapter logic. */
   environment: IntegrationEnvironment;
 }
 
-/** Secret material — encrypted into `project_integrations.secretsEnc`. */
+/** Secret material — encrypted into the connection's `secretsEnc`. */
 export interface EpodsystemSecrets extends Record<string, unknown> {
   /** Epodsystem API key (`crmk_...`). Bearer for both the MCP server and the GraphQL `apiKeyContext` call. */
   apiKey: string;

@@ -16,11 +16,11 @@ import {
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import {
-  useCreateIntegration,
-  useDeleteIntegration,
+  useCreateProviderIntegration,
+  useDeleteProviderIntegration,
   useIntegrationsList,
   useTestIntegration,
-  useUpdateIntegration,
+  useUpdateProviderIntegration,
 } from "../hooks";
 import type {
   IntegrationSummary,
@@ -78,10 +78,10 @@ export function PostmanSection({ projectId }: { projectId: string }) {
     [list.data],
   );
 
-  const create = useCreateIntegration(projectId);
-  const update = useUpdateIntegration(projectId);
+  const create = useCreateProviderIntegration(projectId);
+  const update = useUpdateProviderIntegration(projectId);
   const test = useTestIntegration(projectId);
-  const remove = useDeleteIntegration(projectId);
+  const remove = useDeleteProviderIntegration(projectId);
 
   // Re-seed the form whenever the loaded integration identity changes.
   const [form, setForm] = useState<FormState>(() => initialForm(existing));
@@ -106,14 +106,19 @@ export function PostmanSection({ projectId }: { projectId: string }) {
     if (existing) {
       await update.mutateAsync({
         id: existing.id,
-        input: {
+        body: {
           config: toConfig(form),
-          ...(form.apiKey.trim() ? { apiKey: form.apiKey.trim() } : {}),
+          ...(form.apiKey.trim() ? { secrets: { apiKey: form.apiKey.trim() } } : {}),
         },
       });
       setForm((f) => ({ ...f, apiKey: "" }));
     } else {
-      await create.mutateAsync({ config: toConfig(form), apiKey: form.apiKey.trim() });
+      await create.mutateAsync({
+        provider: "postman",
+        environment: "prod",
+        config: toConfig(form),
+        secrets: { apiKey: form.apiKey.trim() },
+      });
       setForm((f) => ({ ...f, apiKey: "" }));
     }
   }
@@ -132,7 +137,7 @@ export function PostmanSection({ projectId }: { projectId: string }) {
 
   async function handleToggleActive(active: boolean) {
     if (!existing) return;
-    await update.mutateAsync({ id: existing.id, input: { active } });
+    await update.mutateAsync({ id: existing.id, body: { active } });
   }
 
   const testUser = testResult?.diagnostics?.user;
