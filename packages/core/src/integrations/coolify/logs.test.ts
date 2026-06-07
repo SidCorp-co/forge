@@ -113,4 +113,36 @@ describe('redactCoolifyEnvDump (ISS-412)', () => {
     expect(out).toContain(`GREETING_SECRET=${FILTERED}`);
     expect(out).not.toContain('hello world');
   });
+
+  it('keeps the block alive across empty-value KEY= lines (live regression)', () => {
+    // The real Coolify env-dump emits empty-value lines (`COOLIFY_URL=`,
+    // `COOLIFY_FQDN=`) midway through. The first ship's regex required a
+    // non-empty value, so the block ended early and everything after lost
+    // defense-in-depth — that is how SENTRY_DSN_CORE / _WEB slipped through
+    // live deploy 19e21c95. The block MUST stay open across empty values.
+    const log = [
+      'Creating .env file with runtime variables for build phase.',
+      'SOURCE_COMMIT=19e21c95',
+      'COOLIFY_URL=',
+      'COOLIFY_FQDN=',
+      'SERVICE_URL_CORE=https://forge-beta-api.sidcorp.co',
+      'SENTRY_DSN_CORE=https://abc@logs.canawan.com/36',
+      'Container started',
+    ].join('\n');
+    const out = redactCoolifyEnvDump(log);
+    const lines = out.split('\n');
+    // Marker + footer pass through untouched.
+    expect(lines[0]).toBe('Creating .env file with runtime variables for build phase.');
+    expect(lines.at(-1)).toBe('Container started');
+    // Every env line inside the block — including the empty-value ones —
+    // is masked. The empty `KEY=` becomes `KEY=[Filtered]`, which is a
+    // no-op for leak purposes but proves the block stayed open.
+    expect(lines[1]).toBe(`SOURCE_COMMIT=${FILTERED}`);
+    expect(lines[2]).toBe(`COOLIFY_URL=${FILTERED}`);
+    expect(lines[3]).toBe(`COOLIFY_FQDN=${FILTERED}`);
+    expect(lines[4]).toBe(`SERVICE_URL_CORE=${FILTERED}`);
+    expect(lines[5]).toBe(`SENTRY_DSN_CORE=${FILTERED}`);
+    // No DSN value survives.
+    expect(out).not.toContain('logs.canawan.com');
+  });
 });
