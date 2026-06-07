@@ -31,7 +31,18 @@ const updateBinding = vi.fn();
 const softDeleteBinding = vi.fn();
 const softDeleteConnection = vi.fn();
 const listBindingsForProject = vi.fn();
+const listBindingsForConnection = vi.fn();
 const listConnectionsForOwner = vi.fn();
+const findDeliveryById = vi.fn();
+const enqueueCoolifyDispatch = vi.fn();
+
+vi.mock('./deliveries.js', () => ({
+  findDeliveryById: (id: string) => findDeliveryById(id),
+}));
+
+vi.mock('./queue.js', () => ({
+  enqueueCoolifyDispatch: (job: unknown) => enqueueCoolifyDispatch(job),
+}));
 
 vi.mock('./store.js', () => ({
   createConnection: (a: unknown) => createConnection(a),
@@ -44,6 +55,7 @@ vi.mock('./store.js', () => ({
   softDeleteBinding: (id: string) => softDeleteBinding(id),
   softDeleteConnection: (id: string) => softDeleteConnection(id),
   listBindingsForProject: (id: string) => listBindingsForProject(id),
+  listBindingsForConnection: (id: string) => listBindingsForConnection(id),
   listConnectionsForOwner: (id: string) => listConnectionsForOwner(id),
   buildContextFromBinding: vi.fn(),
   // Real overlay so summaries carry the effective config.
@@ -486,5 +498,276 @@ describe('PATCH — apiKey-provider rotation persists previousApiKey + expiry (I
       previousApiToken: 'tok-old',
     });
     expect(updatePatch.secrets.previousTokenExpiresAt).toBeTypeOf('string');
+  });
+});
+
+// === ISS-406 F2 — bind-existing + bindings-list + delivery-retry ===
+
+const CONN_ID = '33333333-3333-4333-8333-333333333333';
+const OTHER_USER = '99999999-9999-4999-8999-999999999999';
+
+function ownedConnection(overrides: Record<string, unknown> = {}) {
+  return {
+    id: CONN_ID,
+    ownerType: 'user',
+    ownerId: USER_ID,
+    provider: 'coolify',
+    displayName: null,
+    config: { baseUrl: 'https://coolify.example.com', resourceUuid: 'res-1', branch: 'main' },
+    secretsEnc: Buffer.from('enc'),
+    active: true,
+    lastHealthStatus: null,
+    lastHealthAt: null,
+    breakerOpenedAt: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  };
+}
+
+function bindReq(token: string, id: string, body: unknown) {
+  return buildApp().request(`/api/integration-connections/${id}/bindings`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+}
+
+function listBindingsReq(token: string, id: string) {
+  return buildApp().request(`/api/integration-connections/${id}/bindings`, {
+    method: 'GET',
+    headers: { authorization: `Bearer ${token}` },
+  });
+}
+
+describe('POST /api/integration-connections/:id/bindings — bind existing connection', () => {
+  it('201 — binds an existing connection to a project+env with no secret body', async () => {
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership(); // emailVerified + target-project owner
+    findConnectionById.mockResolvedValueOnce(ownedConnection());
+    findActiveBinding.mockResolvedValueOnce(null);
+    createBinding.mockResolvedValueOnce({
+      id: 'bind-1',
+      connectionId: CONN_ID,
+      projectId: PROJECT_ID,
+      provider: 'coolify',
+      environment: 'staging',
+      config: {},
+      integrationSecret: 'whsec_x',
+      active: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, environment: 'staging' });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      integration: { id: string; connectionId: string };
+      integrationSecret: string;
+    };
+    expect(body.integration.id).toBe('bind-1');
+    expect(body.integration.connectionId).toBe(CONN_ID);
+    expect(body.integrationSecret).toMatch(/^whsec_/);
+    // No secret is created here — createConnection must NOT be involved.
+    expect(createConnection).not.toHaveBeenCalled();
+    const arg = createBinding.mock.calls[0]?.[0] as { connectionId: string; provider: string };
+    expect(arg.connectionId).toBe(CONN_ID);
+    expect(arg.provider).toBe('coolify');
+  });
+
+  it('409 — provider+env clash on an existing active binding', async () => {
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    findConnectionById.mockResolvedValueOnce(ownedConnection());
+    findActiveBinding.mockResolvedValueOnce({ binding: { id: 'existing' }, connection: {} });
+
+    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, environment: 'staging' });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('ALREADY_EXISTS');
+    expect(createBinding).not.toHaveBeenCalled();
+  });
+
+  it('404 — non-owner of the connection (no existence leak)', async () => {
+    const token = await signUserToken(USER_ID);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    findConnectionById.mockResolvedValueOnce(ownedConnection({ ownerId: OTHER_USER }));
+
+    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, environment: 'staging' });
+    expect(res.status).toBe(404);
+    expect(createBinding).not.toHaveBeenCalled();
+  });
+
+  it('403 — caller is only a member (not admin) of the target project', async () => {
+    const token = await signUserToken(USER_ID);
+    // emailVerified, then a target project owned by someone else, then a member row.
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: OTHER_USER }])
+      .mockResolvedValueOnce([{ role: 'member' }]);
+    findConnectionById.mockResolvedValueOnce(ownedConnection());
+
+    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, environment: 'staging' });
+    expect(res.status).toBe(403);
+    expect(createBinding).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/integration-connections/:id/bindings — bindings for a connection', () => {
+  it('200 — returns all bindings for the connection', async () => {
+    const token = await signUserToken(USER_ID);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    findConnectionById.mockResolvedValueOnce(ownedConnection());
+    listBindingsForConnection.mockResolvedValueOnce([
+      {
+        binding: {
+          id: 'bind-a',
+          projectId: PROJECT_ID,
+          provider: 'coolify',
+          environment: 'staging',
+          config: {},
+          integrationSecret: 'whsec_a',
+          active: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        connection: ownedConnection(),
+      },
+      {
+        binding: {
+          id: 'bind-b',
+          projectId: '44444444-4444-4444-8444-444444444444',
+          provider: 'coolify',
+          environment: 'prod',
+          config: {},
+          integrationSecret: 'whsec_b',
+          active: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        connection: ownedConnection(),
+      },
+    ]);
+
+    const res = await listBindingsReq(token, CONN_ID);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: { id: string; connectionId: string }[] };
+    expect(body.items).toHaveLength(2);
+    expect(body.items.map((i) => i.id)).toEqual(['bind-a', 'bind-b']);
+    expect(body.items.every((i) => i.connectionId === CONN_ID)).toBe(true);
+  });
+
+  it('404 — non-owner of the connection', async () => {
+    const token = await signUserToken(USER_ID);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    findConnectionById.mockResolvedValueOnce(ownedConnection({ ownerId: OTHER_USER }));
+
+    const res = await listBindingsReq(token, CONN_ID);
+    expect(res.status).toBe(404);
+    expect(listBindingsForConnection).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/projects/:projectId/integrations/:id/deliveries/:deliveryId/retry', () => {
+  function retryReq(token: string, id: string, deliveryId: string) {
+    return buildApp().request(
+      `/api/projects/${PROJECT_ID}/integrations/${id}/deliveries/${deliveryId}/retry`,
+      { method: 'POST', headers: { authorization: `Bearer ${token}` } },
+    );
+  }
+
+  const binding = {
+    binding: { id: 'bind-1', projectId: PROJECT_ID, provider: 'coolify', environment: 'staging' },
+    connection: ownedConnection(),
+  };
+
+  it('202 — re-dispatches a failed outbound delivery with a fresh requestId', async () => {
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    findBindingWithConnectionById.mockResolvedValueOnce(binding);
+    findDeliveryById.mockResolvedValueOnce({
+      id: 'del-1',
+      bindingId: 'bind-1',
+      direction: 'outbound',
+      status: 'failed',
+      eventName: 'release.deploy',
+      payload: { runId: 'run-1', issueId: 'iss-1' },
+    });
+    enqueueCoolifyDispatch.mockResolvedValueOnce('job-1');
+
+    const res = await retryReq(token, 'bind-1', 'del-1');
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as { requestId: string; queued: boolean };
+    expect(body.queued).toBe(true);
+    expect(body.requestId).toMatch(/^retry_/);
+    expect(enqueueCoolifyDispatch).toHaveBeenCalledTimes(1);
+    const job = enqueueCoolifyDispatch.mock.calls[0]?.[0] as {
+      bindingId: string;
+      eventName: string;
+      requestId: string;
+      runId: string | null;
+      issueId: string | null;
+    };
+    expect(job.bindingId).toBe('bind-1');
+    expect(job.eventName).toBe('release.deploy');
+    expect(job.requestId).toMatch(/^retry_/);
+    expect(job.runId).toBe('run-1');
+    expect(job.issueId).toBe('iss-1');
+  });
+
+  it('409 — refuses a non-failed (ok) outbound delivery', async () => {
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    findBindingWithConnectionById.mockResolvedValueOnce(binding);
+    findDeliveryById.mockResolvedValueOnce({
+      id: 'del-2',
+      bindingId: 'bind-1',
+      direction: 'outbound',
+      status: 'ok',
+      eventName: 'release.deploy',
+      payload: {},
+    });
+
+    const res = await retryReq(token, 'bind-1', 'del-2');
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('NOT_RETRYABLE');
+    expect(enqueueCoolifyDispatch).not.toHaveBeenCalled();
+  });
+
+  it('409 — refuses an inbound delivery', async () => {
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    findBindingWithConnectionById.mockResolvedValueOnce(binding);
+    findDeliveryById.mockResolvedValueOnce({
+      id: 'del-3',
+      bindingId: 'bind-1',
+      direction: 'inbound',
+      status: 'failed',
+      eventName: 'webhook.in',
+      payload: {},
+    });
+
+    const res = await retryReq(token, 'bind-1', 'del-3');
+    expect(res.status).toBe(409);
+    expect(enqueueCoolifyDispatch).not.toHaveBeenCalled();
+  });
+
+  it('404 — delivery belongs to a different binding', async () => {
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    findBindingWithConnectionById.mockResolvedValueOnce(binding);
+    findDeliveryById.mockResolvedValueOnce({
+      id: 'del-4',
+      bindingId: 'some-other-binding',
+      direction: 'outbound',
+      status: 'failed',
+      eventName: 'release.deploy',
+      payload: {},
+    });
+
+    const res = await retryReq(token, 'bind-1', 'del-4');
+    expect(res.status).toBe(404);
+    expect(enqueueCoolifyDispatch).not.toHaveBeenCalled();
   });
 });

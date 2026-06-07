@@ -250,6 +250,17 @@ export interface ConnectionUpdateInput {
   active?: boolean;
 }
 
+/**
+ * Body for `POST /integration-connections/:id/bindings` — bind an EXISTING
+ * connection to a project+env. Carries NO secrets (the connection already holds
+ * the credential); only the target project + environment. Caller must own the
+ * connection and be an admin of the target project.
+ */
+export interface BindExistingConnectionRequest {
+  projectId: string;
+  environment: IntegrationEnvironment;
+}
+
 // === Response envelopes ===
 
 /** `{ connection }` — connection list items, create (201) + update. */
@@ -280,4 +291,20 @@ export interface BindingListResponse {
 /** List envelope for delivery rows (`GET .../integrations/:id/deliveries`). */
 export interface IntegrationDeliveryListResponse {
   items: IntegrationDeliveryRow[];
+}
+
+/** List envelope for a connection's bindings (`GET /integration-connections/:id/bindings`). */
+export interface ConnectionBindingsResponse {
+  items: BindingSummary[];
+}
+
+/**
+ * Result of `POST .../deliveries/:deliveryId/retry`. The retry is asynchronous —
+ * the route re-enqueues the outbound dispatch with a fresh `requestId` and the
+ * worker/adapter records the new delivery row, so this returns the queued
+ * request id (202) rather than a synchronous delivery summary.
+ */
+export interface DeliveryRetryResponse {
+  requestId: string;
+  queued: true;
 }
