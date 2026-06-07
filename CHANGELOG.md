@@ -98,6 +98,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **You can now configure Epodsystem and Coolify integrations directly from the redesigned (web-v2) integrations surface, including connection testing, HMAC secret rotation with one-time reveal, and the production-deploy confirmation gate.**
   *Technical: Frontend-only port of the v1 epodsystem-section/coolify-section into packages/web-v2/src/features/integrations; extends the v2 integrations api+hooks+types beyond Postman to generic create/update + rotateSecret/confirmProdDeploy/deliveries. Backend already complete. Full v1 retirement tracked separately in ISS-397.*
 
+- **Project agent settings (custom system prompt, chat provider and model) can now be viewed and edited in the new web-v2 interface.**
+  *Technical: New web-v2 features/app-config (api/hooks/types) + project-settings Agent tab, backed by GET/PUT /api/app-config/:projectId. Mirrors v1 Chat Agent (systemPromptOverride) + Providers/Tools (chatProviderId, chatModel). Antigravity/Device Integration dropped (v1 stubs); webhook/channels preview-only sections deferred (ISS-396). Merge dadac53f.*
+
 ### Changed
 
 - **The Forge MCP tools that were prefixed `forge_admin_*` have been renamed to reflect what they actually are — ordinary project-scoped tools, not system-admin tools. `forge_admin_runners` → `forge_runners`, `forge_admin_users` → `forge_collaborators`, `forge_admin_health` → `forge_ops_health`; project archive moved onto `forge_projects.archive`; and the cross-your-projects metrics tool is now `forge_metrics.step_durations`. Access is unchanged — every one stays gated by your role on each project. The token-creation dialog no longer claims the `admin` scope grants "cross-tenant admin tools".**
