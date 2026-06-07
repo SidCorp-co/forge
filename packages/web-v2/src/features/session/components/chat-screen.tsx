@@ -1,6 +1,6 @@
 "use client";
 
-// Single-assistant Chat surface (`/v2/projects/[slug]/agent`). Reuses the same
+// Single-assistant Chat surface (`/projects/[slug]/agent`). Reuses the same
 // conversation primitives as the run thread — Conversation + Composer + the
 // `['agent-session', …]` hooks — but lighter: no pipeline rail, no fork/rerun.
 // Bootstrap = resume the latest interactive `agent` session for the project,

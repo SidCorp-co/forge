@@ -1,6 +1,6 @@
 "use client";
 
-// Project-tier Agents view (`/v2/projects/[slug]/agents`, Concept C) — merged
+// Project-tier Agents view (`/projects/[slug]/agents`, Concept C) — merged
 // Sessions + Chat. Resolve slug → project (issues-page template), then render
 // the scoped shell.
 import { useParams } from "next/navigation";

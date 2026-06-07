@@ -67,13 +67,6 @@ export function formatTokens(n: number | null | undefined): string {
   return `${(n / 1_000_000).toFixed(1)}M`;
 }
 
-/** Human duration from milliseconds: `820` → `820ms`, `1240` → `1.2s`. */
-export function formatDuration(ms: number | null | undefined): string {
-  if (ms == null || !Number.isFinite(ms) || ms < 0) return "—";
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  return `${(ms / 1000).toFixed(1)}s`;
-}
-
 /** Badge tone for a QA rating chip. */
 export function ratingTone(rating: QaRating): "green" | "red" | "amber" {
   return rating === "good" ? "green" : rating === "bad" ? "red" : "amber";

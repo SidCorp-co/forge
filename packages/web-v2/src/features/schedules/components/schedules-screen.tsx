@@ -1,6 +1,6 @@
 "use client";
 
-// Project-tier Schedules (`/v2/projects/[slug]/schedules`). Full-width table on
+// Project-tier Schedules (`/projects/[slug]/schedules`). Full-width table on
 // desktop, stacked cards on mobile. Real `/api/schedules` data with an enable
 // Toggle + manual run. ISS-299.
 import {

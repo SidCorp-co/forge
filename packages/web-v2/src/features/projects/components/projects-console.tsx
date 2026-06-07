@@ -1,6 +1,6 @@
 'use client';
 
-// The /v2/projects workspace console. Orchestrates stats band, toolbar,
+// The /projects workspace console. Orchestrates stats band, toolbar,
 // attention banner, pinned + all-projects sections, the new-project tile, and
 // the loading / empty / error states. All data flows through
 // `useProjectsConsole`; all derivation lives in `derive.ts`.

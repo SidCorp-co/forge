@@ -1,6 +1,6 @@
 "use client";
 
-// Project-tier Memory (`/v2/projects/[slug]/memory`). Searchable list of system
+// Project-tier Memory (`/projects/[slug]/memory`). Searchable list of system
 // breadcrumbs (issue/comment/job/note/decision/policy/knowledge). Empty query →
 // paginated list; a term → semantic search hits. ISS-299.
 import { useEffect, useMemo, useState } from "react";

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { formatRelativeTime } from "@/lib/utils/format";
 import {
   Button,
   Card,
@@ -50,17 +51,6 @@ function providerIcon(key: string): IconName {
   return PROVIDER_ICON[key.split(":")[0] ?? key] ?? "link";
 }
 
-function relativeTime(iso: string | null): string | null {
-  if (!iso) return null;
-  const secs = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
-  if (secs < 60) return `${secs}s ago`;
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
-
 /** Status dot rendered as icon + text + tinted pill (never color-only — a11y). */
 function StatusPill({ status }: { status: CardStatus }) {
   const m = STATUS_META[status];
@@ -85,7 +75,7 @@ function externalRepoUrl(card: StatusCard): string | null {
 }
 
 function IntegrationCard({ card }: { card: StatusCard }) {
-  const lastSync = relativeTime(card.lastSyncAt);
+  const lastSync = formatRelativeTime(card.lastSyncAt);
   const repoUrl = externalRepoUrl(card);
   const transport =
     card.key === "github" && typeof card.meta?.transport === "string"

@@ -1,6 +1,6 @@
 "use client";
 
-// Project-tier agent-session detail (`/v2/projects/[slug]/agents/[sessionId]`).
+// Project-tier agent-session detail (`/projects/[slug]/agents/[sessionId]`).
 // Restores the run-conversation view (ISS-331): session rows on the Agents
 // screen link here, and `SessionScreen` fetches by id + links back to the
 // project Agents index via `projectSlug`. The detail component owns its own

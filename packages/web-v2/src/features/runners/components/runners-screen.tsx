@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { formatRelativeTime } from "@/lib/utils/format";
 import {
   Banner,
   Button,
@@ -30,18 +31,6 @@ import { useRoom } from "@/lib/ws/use-room";
 import { useDevices, useInitPairing, useRevokeDevice } from "../hooks";
 import { deviceHealth, type DeviceRow } from "../types";
 import { DeviceDetail } from "./device-detail";
-
-function relativeTime(iso: string | null): string {
-  if (!iso) return "never";
-  const then = new Date(iso).getTime();
-  const secs = Math.max(0, Math.floor((Date.now() - then) / 1000));
-  if (secs < 60) return `${secs}s ago`;
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
 
 function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
@@ -262,7 +251,7 @@ export function RunnersScreen() {
                         )}
                       </TD>
                       <TD>
-                        <span className="text-muted">{relativeTime(d.lastSeenAt)}</span>
+                        <span className="text-muted">{formatRelativeTime(d.lastSeenAt, { emptyLabel: "never" })}</span>
                       </TD>
                       <TD className="text-right">
                         {confirmId === d.id ? (

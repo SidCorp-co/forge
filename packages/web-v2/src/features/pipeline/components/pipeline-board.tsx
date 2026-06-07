@@ -1,6 +1,6 @@
 "use client";
 
-// Pipeline kanban screen (`/v2/projects/[slug]/pipeline`, ISS-295). 7 stage
+// Pipeline kanban screen (`/projects/[slug]/pipeline`, ISS-295). 7 stage
 // columns (triage→…→release); cards are issues grouped by STATUS_TO_STAGE with
 // the live run status overlaid by issueId. Live via WS (the project room
 // invalidates `['issues','search']` + `['pipeline-runs','list']`). Mirrors the

@@ -1,6 +1,6 @@
 "use client";
 
-// Project-tier Automation view (`/v2/projects/[slug]/automation`, Concept C) —
+// Project-tier Automation view (`/projects/[slug]/automation`, Concept C) —
 // merged Schedules + PM. Resolve slug → project (issues-page template), then
 // render the scoped tabbed shell. Schedule toggle/run are owner/admin-only, so
 // pass `canManage` from the membership role.

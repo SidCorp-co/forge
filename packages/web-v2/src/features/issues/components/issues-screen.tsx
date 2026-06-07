@@ -1,6 +1,6 @@
 "use client";
 
-// web-v2 Issues screen (`/v2/projects/[slug]/issues`). Redesigned to the
+// web-v2 Issues screen (`/projects/[slug]/issues`). Redesigned to the
 // 3-view layout from `design/draft-screen/02 Issues.html` (ISS-364): a
 // Board / List / Insights switcher in the header.
 //   • Board    → the existing 7-stage pipeline kanban (embedded PipelineBoard).
