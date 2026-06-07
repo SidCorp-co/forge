@@ -7,6 +7,11 @@ import { applyPostmanMcpServers } from '../integrations/postman/resolver.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
 import { logger } from '../logger.js';
+import {
+  recordDispatchBarrierSkip,
+  recordRunnerDeathDetection,
+} from '../observability/hold-metrics.js';
+import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { hooks } from '../pipeline/hooks.js';
 import { resolveRunnerChainForJob } from '../pipeline/resolve-step-runner.js';
 import { injectTurnLevelRules } from '../prompt/user.js';
@@ -15,11 +20,6 @@ import { getRunnerAdapter } from '../runners/registry.js';
 import { getTrippedDeviceIds, selectRunnerForJob } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
-import {
-  recordDispatchBarrierSkip,
-  recordRunnerDeathDetection,
-} from '../observability/hold-metrics.js';
-import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { checkMonthlyBudget, postBudgetExhaustedComment, shouldEmitWarn } from './budget-check.js';
 import { assertDispatchable, runnerSupportsJobType } from './dispatch-gates.js';
 import { finalizeFailedJob } from './finalize-failure.js';
@@ -280,31 +280,47 @@ async function dispatchViaRunner(
     }
   }
 
-  // Auto-retry device rotation — when retry.ts wrote a payload hint listing
-  // the devices already tried, drop any session-group pin that resolves to
-  // one of them so the selector can pick a not-yet-tried runner. Single-/few-
-  // device projects still fall through (selector wraps without the exclusion).
+  // Device selection splits cleanly into two cases (jobs/retry.ts owns the
+  // retry side):
+  //
+  //   - FIRST dispatch (`job.retryOf == null`): keep the primary-pinned
+  //     behaviour, plus the circuit breaker — skip devices whose runner is
+  //     failing repeatedly so the first dispatch doesn't land on a known-bad
+  //     device. The selector's wrap-around still probes a tripped device when
+  //     EVERY device is tripped, so a single-device project never wedges.
+  //
+  //   - RETRY (`job.retryOf != null`): the uniform round-robin drives it. Pin
+  //     the rotation `target`, exclude the devices already `done` this round,
+  //     and set `skipPrimary` so no device gets preferential treatment. The
+  //     circuit breaker is intentionally NOT applied here — the round-robin
+  //     already cycles devices fairly, and layering the breaker on top would
+  //     fight it (a device tripped after its 3 tries would be skipped for the
+  //     rest of the chain instead of getting its turn next round).
   const autoRetry = readAutoRetryPayload(job.payload);
+  const isRetry = job.retryOf != null;
 
-  // Circuit breaker — skip devices whose runner is failing repeatedly so
-  // dispatch rotates to a healthy device instead of hammering a broken/stuck
-  // one (e.g. an autoTest re-fire loop pinned to the primary). Merge the
-  // tripped devices into the auto-retry exclusion; selectRunnerForJob's
-  // wrap-around still falls back to a tripped device when EVERY device is
-  // tripped, so this never wedges a single-device project.
-  const trippedDeviceIds = await getTrippedDeviceIds(job.projectId);
-  const excludeDeviceIds = Array.from(
-    new Set([...autoRetry.excludeDeviceIds, ...trippedDeviceIds]),
-  );
-  if (trippedDeviceIds.length > 0) {
-    logger.warn(
-      { jobId: job.id, projectId: job.projectId, trippedDeviceIds },
-      'dispatcher: device circuit breaker tripped — rotating away from failing device(s)',
-    );
-  }
-  if (pinDeviceId && excludeDeviceIds.includes(pinDeviceId)) {
-    pinDeviceId = null;
+  let excludeDeviceIds: string[];
+  let skipPrimary: boolean;
+  if (isRetry) {
+    skipPrimary = true;
+    excludeDeviceIds = autoRetry.done;
+    // Rotation moves devices on purpose → never resume a prior session.
+    pinDeviceId = autoRetry.target;
     priorClaudeSessionId = null;
+  } else {
+    skipPrimary = false;
+    const trippedDeviceIds = await getTrippedDeviceIds(job.projectId);
+    excludeDeviceIds = trippedDeviceIds;
+    if (trippedDeviceIds.length > 0) {
+      logger.warn(
+        { jobId: job.id, projectId: job.projectId, trippedDeviceIds },
+        'dispatcher: device circuit breaker tripped — rotating away from failing device(s)',
+      );
+    }
+    if (pinDeviceId && excludeDeviceIds.includes(pinDeviceId)) {
+      pinDeviceId = null;
+      priorClaudeSessionId = null;
+    }
   }
 
   // ISS-232 Phase 2 — `selectRunnerForJob` no longer takes `fallbackChain`.
@@ -316,6 +332,7 @@ async function dispatchViaRunner(
     requiredCapabilities: required,
     pinDeviceId,
     excludeDeviceIds,
+    skipPrimary,
   });
   if (!runner) {
     // ISS-198 — selectRunnerForJob filters runners with stale heartbeats
