@@ -22,6 +22,7 @@ import type {
   OutboundDispatchInput,
   OutboundDispatchResult,
 } from '../types.js';
+import { isPreviousCredentialValid } from '../rotation.js';
 import { maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
 import { CoolifyApiError, CoolifyClient } from './client.js';
 import { flattenLogs, tailLog } from './logs.js';
@@ -43,16 +44,12 @@ function buildClient(ctx: {
   secrets: CoolifySecrets;
 }): CoolifyClient {
   // Honour the 24h rotation window: include previousApiToken only if it
-  // hasn't expired yet.
-  const previousValid =
-    !!ctx.secrets.previousApiToken &&
-    (!ctx.secrets.previousTokenExpiresAt ||
-      Date.parse(ctx.secrets.previousTokenExpiresAt) > Date.now());
+  // hasn't expired yet (validity guard lives in the shared rotation helper).
   const opts: ConstructorParameters<typeof CoolifyClient>[0] = {
     baseUrl: ctx.config.baseUrl,
     apiToken: ctx.secrets.apiToken,
   };
-  if (previousValid && ctx.secrets.previousApiToken) {
+  if (ctx.secrets.previousApiToken && isPreviousCredentialValid(ctx.secrets)) {
     opts.previousApiToken = ctx.secrets.previousApiToken;
   }
   return new CoolifyClient(opts);

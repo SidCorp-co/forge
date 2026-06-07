@@ -53,15 +53,17 @@ vi.mock('./store.js', () => ({
   }),
 }));
 
-const { integrationsRoutes } = await import('./routes.js');
+const { integrationsRoutes, integrationConnectionsRoutes } = await import('./routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
+const { encryptJson } = await import('./vault.js');
 
 function buildApp() {
   const app = new Hono<{ Variables: import('../middleware/request-id.js').RequestIdVars }>();
   app.use('*', requestId());
   app.route('/api/projects', integrationsRoutes);
+  app.route('/api/integration-connections', integrationConnectionsRoutes);
   app.onError(errorHandler);
   return app;
 }
@@ -302,5 +304,187 @@ describe('POST /api/projects/:projectId/integrations — postman provider schema
     expect(connId).toBe('conn-pm');
     // The eu/full target must be preserved — only collectionId changes.
     expect(updatePatch.config).toMatchObject({ region: 'eu', mode: 'full', collectionId: 'col-new' });
+  });
+});
+
+describe('PATCH — apiKey-provider rotation persists previousApiKey + expiry (ISS-405)', () => {
+  function mockPostmanBinding(secretsEnc: Buffer) {
+    findBindingWithConnectionById.mockResolvedValue({
+      binding: {
+        id: 'int-pm',
+        projectId: PROJECT_ID,
+        provider: 'postman',
+        environment: 'prod',
+        config: {},
+        integrationSecret: null,
+        active: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      connection: {
+        id: 'conn-pm',
+        provider: 'postman',
+        config: { workspaceName: 'W', region: 'us', mode: 'minimal', environment: 'prod' },
+        secretsEnc,
+        active: true,
+        lastHealthStatus: null,
+        lastHealthAt: null,
+        breakerOpenedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  function mockEpodsystemConnection(secretsEnc: Buffer) {
+    findConnectionById.mockResolvedValue({
+      id: 'conn-ep',
+      provider: 'epodsystem',
+      ownerType: 'user',
+      ownerId: USER_ID,
+      displayName: 'Store',
+      config: { environment: 'prod' },
+      secretsEnc,
+      active: true,
+      lastHealthStatus: null,
+      lastHealthAt: null,
+      breakerOpenedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
+
+  it('per-binding PATCH (postman): old apiKey is preserved as previousApiKey + future expiry', async () => {
+    process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    mockPostmanBinding(encryptJson({ apiKey: 'PMAK-old-key' }));
+    updateConnection.mockResolvedValueOnce({ id: 'conn-pm' });
+
+    const before = Date.now();
+    const res = await patch(token, 'int-pm', { secrets: { apiKey: 'PMAK-new-key' } });
+    expect(res.status).toBe(200);
+    expect(updateConnection).toHaveBeenCalledTimes(1);
+    const [, updatePatch] = updateConnection.mock.calls[0] as [
+      string,
+      { secrets: Record<string, unknown> },
+    ];
+    expect(updatePatch.secrets).toMatchObject({
+      apiKey: 'PMAK-new-key',
+      previousApiKey: 'PMAK-old-key',
+    });
+    const expiresAt = Date.parse(String(updatePatch.secrets.previousTokenExpiresAt));
+    expect(expiresAt).toBeGreaterThan(before);
+    // 24h rotation window — allow generous slack for slow CI clocks.
+    expect(expiresAt - before).toBeGreaterThan(23 * 60 * 60_000);
+    expect(expiresAt - before).toBeLessThan(25 * 60 * 60_000);
+  });
+
+  it('per-binding PATCH (postman): config-only update does NOT touch secrets', async () => {
+    process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    mockPostmanBinding(encryptJson({ apiKey: 'PMAK-old-key' }));
+    updateConnection.mockResolvedValueOnce({ id: 'conn-pm' });
+
+    const res = await patch(token, 'int-pm', { config: { collectionId: 'col-new' } });
+    expect(res.status).toBe(200);
+    const [, updatePatch] = updateConnection.mock.calls[0] as [
+      string,
+      { config?: object; secrets?: unknown },
+    ];
+    expect(updatePatch.secrets).toBeUndefined();
+  });
+
+  it('connection-level PATCH (epodsystem): old apiKey is preserved as previousApiKey + future expiry', async () => {
+    process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
+    const token = await signUserToken(USER_ID);
+    // selectLimit only stacks emailVerified for connection-level routes (no
+    // project-member assertion — connections are owner-scoped).
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    mockEpodsystemConnection(encryptJson({ apiKey: 'crmk_old' }));
+    updateConnection.mockResolvedValueOnce({
+      id: 'conn-ep',
+      provider: 'epodsystem',
+      displayName: 'Store',
+      config: { environment: 'prod' },
+      active: true,
+      lastHealthStatus: null,
+      lastHealthAt: null,
+      breakerOpenedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const before = Date.now();
+    const res = await buildApp().request('/api/integration-connections/conn-ep', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ secrets: { apiKey: 'crmk_new' } }),
+    });
+    expect(res.status).toBe(200);
+    expect(updateConnection).toHaveBeenCalledTimes(1);
+    const [connId, updatePatch] = updateConnection.mock.calls[0] as [
+      string,
+      { secrets: Record<string, unknown> },
+    ];
+    expect(connId).toBe('conn-ep');
+    expect(updatePatch.secrets).toMatchObject({
+      apiKey: 'crmk_new',
+      previousApiKey: 'crmk_old',
+    });
+    const expiresAt = Date.parse(String(updatePatch.secrets.previousTokenExpiresAt));
+    expect(expiresAt).toBeGreaterThan(before);
+    expect(expiresAt - before).toBeGreaterThan(23 * 60 * 60_000);
+    expect(expiresAt - before).toBeLessThan(25 * 60 * 60_000);
+  });
+
+  it('per-binding PATCH (coolify): existing rotation behavior unchanged (regression guard)', async () => {
+    process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    findBindingWithConnectionById.mockResolvedValue({
+      binding: {
+        id: 'int-cl',
+        projectId: PROJECT_ID,
+        provider: 'coolify',
+        environment: 'staging',
+        config: {},
+        integrationSecret: null,
+        active: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      connection: {
+        id: 'conn-cl',
+        provider: 'coolify',
+        config: {
+          baseUrl: 'https://coolify.example',
+          resourceUuid: 'res-1',
+          branch: 'main',
+          environment: 'staging',
+        },
+        secretsEnc: encryptJson({ apiToken: 'tok-old' }),
+        active: true,
+        lastHealthStatus: null,
+        lastHealthAt: null,
+        breakerOpenedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+    updateConnection.mockResolvedValueOnce({ id: 'conn-cl' });
+
+    const res = await patch(token, 'int-cl', { secrets: { apiToken: 'tok-new-123' } });
+    expect(res.status).toBe(200);
+    const [, updatePatch] = updateConnection.mock.calls[0] as [
+      string,
+      { secrets: Record<string, unknown> },
+    ];
+    expect(updatePatch.secrets).toMatchObject({
+      apiToken: 'tok-new-123',
+      previousApiToken: 'tok-old',
+    });
+    expect(updatePatch.secrets.previousTokenExpiresAt).toBeTypeOf('string');
   });
 });
