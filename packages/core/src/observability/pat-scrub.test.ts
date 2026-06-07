@@ -103,6 +103,66 @@ describe('scrubLogText (ISS-284 — Coolify build/deploy log)', () => {
   });
 });
 
+describe('scrubLogText env-assignment redaction (ISS-412)', () => {
+  it('redacts SHOUTING_CASE secret-suffix env assignments', () => {
+    const log = [
+      'POSTGRES_PASSWORD=p@ss',
+      'JWT_SECRET=jwt-val',
+      'DEVICE_TOKEN_PEPPER=pep',
+      'INTEGRATION_MASTER_KEY=imk',
+      'GITHUB_OAUTH_CLIENT_SECRET=gh',
+      'EMBEDDINGS_API_KEY=eak',
+      'SENTRY_DSN=https://abc@sentry.io/1',
+      'export AWS_SECRET_ACCESS_KEY=aws',
+    ].join('\n');
+    const out = scrubLogText(log);
+    expect(out).toBe(
+      [
+        `POSTGRES_PASSWORD=${FILTERED}`,
+        `JWT_SECRET=${FILTERED}`,
+        `DEVICE_TOKEN_PEPPER=${FILTERED}`,
+        `INTEGRATION_MASTER_KEY=${FILTERED}`,
+        `GITHUB_OAUTH_CLIENT_SECRET=${FILTERED}`,
+        `EMBEDDINGS_API_KEY=${FILTERED}`,
+        `SENTRY_DSN=${FILTERED}`,
+        `export AWS_SECRET_ACCESS_KEY=${FILTERED}`,
+      ].join('\n'),
+    );
+  });
+
+  it('does not redact non-secret env assignments', () => {
+    const log = [
+      'NODE_ENV=production',
+      'HOSTNAME=coolify-1',
+      'SERVICE_NAME_WEB=web',
+      'DOCKER_BUILDKIT=1',
+      'PORT=3000',
+    ].join('\n');
+    expect(scrubLogText(log)).toBe(log);
+  });
+
+  it('preserves the ISS-277 diagnostic stderr line', () => {
+    const log = [
+      'JWT_SECRET=leak',
+      "error: Cannot find module '@codemirror/state'",
+      'NODE_ENV=production',
+    ].join('\n');
+    const out = scrubLogText(log);
+    const lines = out.split('\n');
+    expect(lines[0]).toBe(`JWT_SECRET=${FILTERED}`);
+    expect(lines[1]).toBe("error: Cannot find module '@codemirror/state'");
+    expect(lines[2]).toBe('NODE_ENV=production');
+  });
+
+  it('is line-anchored — mid-line env-shaped fragments are not eaten by the rule', () => {
+    // The env rule is anchored to start-of-line; a `JWT_SECRET=x` fragment in
+    // the middle of a sentence does NOT match it. Mid-line secret literals
+    // are out of scope (header / URL / body-key rules handle those shapes).
+    const out = scrubLogText('not env JWT_SECRET=x');
+    expect(out).toBe('not env JWT_SECRET=x');
+  });
+});
+
 describe('testCredentials scrubbing (ISS-225)', () => {
   it('redacts nested previewDeploy.testCredentials without touching siblings', () => {
     const event = {

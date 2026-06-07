@@ -24,7 +24,7 @@ import type {
 } from '../types.js';
 import { maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
 import { CoolifyApiError, CoolifyClient } from './client.js';
-import { flattenLogs, tailLog } from './logs.js';
+import { flattenLogs, redactCoolifyEnvDump, tailLog } from './logs.js';
 import type { CoolifyConfig, CoolifySecrets, CoolifyWebhookPayload } from './types.js';
 
 const BREADCRUMB_OUT = 'integration.coolify.dispatch';
@@ -332,7 +332,11 @@ export async function fetchCoolifyDeploymentLogs(
   const extraSecrets = [ctx.secrets.apiToken, ctx.secrets.previousApiToken].filter(
     (s): s is string => typeof s === 'string' && s.length > 0,
   );
-  const scrubbed = scrubLogText(raw, extraSecrets);
+  // ISS-412 — Coolify-specific block redaction first (catches non-suffix env
+  // names inside the runtime .env dump), then generic scrubLogText handles
+  // suffix-shaped secrets, PATs, header/URL tokens, and extraSecrets residue.
+  const preRedacted = redactCoolifyEnvDump(raw);
+  const scrubbed = scrubLogText(preRedacted, extraSecrets);
   const { text, truncated } = tailLog(scrubbed);
   return { deploymentUuid, status: dep.status ?? null, logs: text, truncated };
 }
