@@ -17,6 +17,8 @@ import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useIntegrationsStatus } from "../hooks";
 import type { CardStatus, StatusCard } from "../types";
+import { CoolifySection } from "./coolify-section";
+import { EpodsystemSection } from "./epodsystem-section";
 import { PostmanSection } from "./postman-section";
 
 const STATUS_META: Record<
@@ -215,9 +217,12 @@ export function IntegrationsScreen() {
             ))}
           </div>
 
-          {/* ISS-336 — editable Postman integration config. */}
+          {/* Editable per-project integration config. ISS-336 (Postman) +
+              ISS-395 (Epodsystem + Coolify, ported from v1). */}
           {projectId && (
-            <div className="mt-2">
+            <div className="mt-2 flex flex-col gap-4">
+              <EpodsystemSection projectId={projectId} />
+              <CoolifySection projectId={projectId} />
               <PostmanSection projectId={projectId} />
             </div>
           )}
