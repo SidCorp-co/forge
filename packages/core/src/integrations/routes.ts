@@ -39,6 +39,8 @@ import {
 } from './store.js';
 import { type IntegrationProvider, capabilitiesFor } from './types.js';
 import { isVaultConfigured } from './vault.js';
+import { projectRoom } from '../ws/rooms.js';
+import { roomManager } from '../ws/server.js';
 
 // `assertVaultBootSafety` lets core boot when the integration tables are empty,
 // so the first create/update attempt is the moment the missing-key
@@ -226,6 +228,27 @@ function summarizeConnection(connection: IntegrationConnectionRow) {
   };
 }
 
+/**
+ * Broadcast a binding mutation to the project room so web clients refresh the
+ * integrations list/status + connections cache live (ISS-401/C). Fire-and-
+ * forget — never let a publish failure surface on the mutation response. Only
+ * binding mutations carry a `projectId`; owner-scoped connection mutations have
+ * no project room and rely on client self-invalidation + reconnect replay.
+ */
+function broadcastIntegrationChanged(
+  projectId: string,
+  extra: { bindingId?: string; connectionId?: string } = {},
+): void {
+  try {
+    roomManager.publish(projectRoom(projectId), {
+      event: 'integration.changed',
+      data: { projectId, ...extra },
+    });
+  } catch {
+    // Realtime is best-effort; window-focus refetch + reconnect replay backstop.
+  }
+}
+
 export const integrationsRoutes = new Hono<{ Variables: AuthVars }>();
 integrationsRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -284,6 +307,7 @@ integrationsRoutes.post(
         environment: body.environment,
         integrationSecret,
       });
+      broadcastIntegrationChanged(projectId, { bindingId: binding.id, connectionId: connection.id });
       return c.json(
         { integration: summarizeBinding({ binding, connection }), integrationSecret },
         201,
@@ -377,6 +401,7 @@ integrationsRoutes.patch(
 
     const refreshed = await findBindingWithConnectionById(id);
     if (!refreshed) throw notFound();
+    broadcastIntegrationChanged(projectId, { bindingId: id, connectionId: connection.id });
     return c.json({ integration: summarizeBinding(refreshed) });
   },
 );
@@ -395,6 +420,10 @@ integrationsRoutes.delete('/:projectId/integrations/:id', async (c) => {
   // is left intact — it may be shared by other projects, and credential removal
   // is an owner-scoped action on the connection itself.
   await softDeleteBinding(id);
+  broadcastIntegrationChanged(projectId, {
+    bindingId: id,
+    connectionId: existing.connection.id,
+  });
   return c.json({ ok: true });
 });
 
@@ -435,6 +464,10 @@ integrationsRoutes.post('/:projectId/integrations/:id/rotate-secret', async (c) 
   await updateBinding(id, { integrationSecret: newSecret });
   const refreshed = await findBindingWithConnectionById(id);
   if (!refreshed) throw notFound();
+  broadcastIntegrationChanged(projectId, {
+    bindingId: id,
+    connectionId: existing.connection.id,
+  });
   return c.json({ integration: summarizeBinding(refreshed), integrationSecret: newSecret });
 });
 
@@ -457,6 +490,10 @@ integrationsRoutes.post('/:projectId/integrations/:id/confirm-prod-deploy', asyn
   // adapter, which would transitively import these routes).
   const { confirmPendingProdDeploy } = await import('../pipeline/release-coolify.js');
   const result = await confirmPendingProdDeploy(id);
+  broadcastIntegrationChanged(projectId, {
+    bindingId: id,
+    connectionId: existing.connection.id,
+  });
   return c.json(result);
 });
 

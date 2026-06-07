@@ -30,6 +30,17 @@ export type {
   EpodsystemSecretsInput,
   PostmanRegion,
   PostmanMode,
+  // === ISS-401/C — connection/binding cutover ===
+  // The project-facing binding summary + the owner-facing connection summary,
+  // plus the connection CRUD request/response envelopes. All exclude secret
+  // bytes by construction (only `hasSecrets`/`integrationSecretSet` booleans).
+  BindingSummary,
+  ConnectionSummary,
+  ConnectionCreateInput,
+  ConnectionUpdateInput,
+  ConnectionResponse,
+  ConnectionListResponse,
+  BindingListResponse,
 } from "@forge/contracts";
 
 // === ISS-336 — Postman integration CRUD (legacy create/update bodies) ===
@@ -45,28 +56,14 @@ export interface PostmanConfig {
 }
 
 /**
- * Summarized integration row consumed by the current web-v2 UI. The merged
- * cutover-A REST (ISS-399) returns the project-facing `BindingSummary`
- * (`@forge/contracts`), which is a SUPERSET of this shape (it adds
- * `connectionId`). This local shape is intentionally kept until the UI/api/hooks
- * cutover onto `BindingSummary` + connection CRUD (ISS-401/C, ISS-402/D); the
- * API key is NEVER present here — `hasSecrets` only signals one is stored.
+ * Project-facing integration row consumed by the web-v2 UI. ISS-401/C cuts this
+ * over to the contracts `BindingSummary` returned by the merged cutover-A REST
+ * (ISS-399): it is a superset of the old local shape (adds `connectionId`). The
+ * alias keeps every import site (`api.ts`/`hooks.ts`/components) unchanged. No
+ * secret bytes are present — `hasSecrets`/`integrationSecretSet` only signal one
+ * is stored.
  */
-export interface IntegrationSummary {
-  id: string;
-  projectId: string;
-  provider: string;
-  environment: string;
-  config: Record<string, unknown>;
-  active: boolean;
-  lastHealthStatus: string | null;
-  lastHealthAt: string | null;
-  breakerOpenedAt: string | null;
-  hasSecrets: boolean;
-  integrationSecretSet: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
+export type { BindingSummary as IntegrationSummary } from "@forge/contracts";
 
 /** Body for creating a Postman integration. */
 export interface CreatePostmanInput {

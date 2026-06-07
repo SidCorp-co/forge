@@ -2,7 +2,12 @@
 // against `packages/core/src/integrations/routes.ts` (ISS-305).
 import { apiClient } from "@/lib/api/client";
 import type {
+  BindingListResponse,
   ConfirmProdDeployResult,
+  ConnectionCreateInput,
+  ConnectionListResponse,
+  ConnectionResponse,
+  ConnectionUpdateInput,
   CreateIntegrationInput,
   CreatePostmanInput,
   IntegrationDelivery,
@@ -18,9 +23,10 @@ export const integrationsApi = {
   status: (projectId: string) =>
     apiClient<IntegrationsStatus>(`/projects/${projectId}/integrations/status`),
 
-  /** `GET /api/projects/:projectId/integrations` — all integration rows. */
+  /** `GET /api/projects/:projectId/integrations` — bindings for the project
+   *  (project-facing `BindingSummary` rows, projected from binding + connection). */
   list: (projectId: string) =>
-    apiClient<{ items: IntegrationSummary[] }>(`/projects/${projectId}/integrations`),
+    apiClient<BindingListResponse>(`/projects/${projectId}/integrations`),
 
   /** `POST /api/projects/:projectId/integrations` — create a Postman integration. */
   createPostman: (projectId: string, input: CreatePostmanInput) =>
@@ -96,4 +102,34 @@ export const integrationsApi = {
     apiClient<{ items: IntegrationDelivery[] }>(
       `/projects/${projectId}/integrations/${id}/deliveries`,
     ),
+};
+
+// === ISS-401/C — owner-scoped connection CRUD ===
+// Connections are the credential, owned by the authenticated principal (NOT a
+// project) — these routes carry NO `:projectId` and the list is scoped server-
+// side by the auth `userId`. Secrets are write-only inputs; responses only ever
+// carry `hasSecrets`. `apiClient` injects the bearer token (never raw fetch).
+export const integrationConnectionsApi = {
+  /** `GET /api/integration-connections` — connections owned by the caller. */
+  list: () => apiClient<ConnectionListResponse>(`/integration-connections`),
+
+  /** `POST /api/integration-connections` — create a connection (201). */
+  create: (body: ConnectionCreateInput) =>
+    apiClient<ConnectionResponse>(`/integration-connections`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  /** `PATCH /api/integration-connections/:id` — update displayName/config/secrets/active. */
+  update: (id: string, body: ConnectionUpdateInput) =>
+    apiClient<ConnectionResponse>(`/integration-connections/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  /** `DELETE /api/integration-connections/:id` — soft-delete (active=false). */
+  remove: (id: string) =>
+    apiClient<{ ok: boolean }>(`/integration-connections/${id}`, {
+      method: "DELETE",
+    }),
 };
