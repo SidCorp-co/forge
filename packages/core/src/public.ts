@@ -35,3 +35,9 @@ export {
   type ReleaseNotes,
   type ReleaseNotesSection,
 } from './issues/release-notes.js';
+
+// Integration provider + capability descriptor surface for `@forge/contracts`.
+// Type-only: the runtime `capabilitiesFor` / `DEFAULT_CAPABILITIES` values stay
+// core-internal so no integration runtime leaks into clients. The owner /
+// environment / delivery enums are already reachable via the `schema` namespace.
+export type { IntegrationProvider, IntegrationCapabilities } from './integrations/types.js';

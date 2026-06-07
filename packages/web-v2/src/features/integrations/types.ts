@@ -1,30 +1,40 @@
-// web-v2 feature module: integrations hub. Types verified against
-// `GET /api/projects/:projectId/integrations/status` in
-// `packages/core/src/integrations/routes.ts` (ISS-305).
+// web-v2 feature module: integrations hub.
+//
+// Cutover-agnostic shapes (status cards, delivery rows, health result, provider
+// config/secret inputs, confirm-prod result, environment enum) now live in
+// @forge/contracts (ISS-400) so web + dev share ONE contract instead of local
+// duplicates. They are re-exported here under the existing local names (aliased
+// where the contract name differs) so import sites in api.ts / hooks.ts /
+// components stay unchanged.
 
-export type CardStatus = "connected" | "attention" | "error" | "not_configured";
+import type {
+  CoolifyConfigInput,
+  CoolifySecretsInput,
+  EpodsystemConfigInput,
+  EpodsystemSecretsInput,
+  IntegrationHealthResult,
+  PostmanMode,
+  PostmanRegion,
+} from "@forge/contracts";
 
-export interface StatusCard {
-  key: string;
-  label: string;
-  status: CardStatus;
-  detail: string;
-  /** ISO timestamp of the last real sync/health-check, or null when none exists. */
-  lastSyncAt: string | null;
-  configured: boolean;
-  meta?: Record<string, unknown>;
-}
+export type {
+  IntegrationCardStatus as CardStatus,
+  IntegrationStatusCard as StatusCard,
+  IntegrationsStatus,
+  IntegrationDeliveryRow as IntegrationDelivery,
+  ConfirmProdDeployResult,
+  IntegrationEnvironment,
+  CoolifyConfigInput,
+  CoolifySecretsInput,
+  EpodsystemConfigInput,
+  EpodsystemSecretsInput,
+  PostmanRegion,
+  PostmanMode,
+} from "@forge/contracts";
 
-export interface IntegrationsStatus {
-  cards: StatusCard[];
-}
+// === ISS-336 — Postman integration CRUD (legacy create/update bodies) ===
 
-// === ISS-336 — Postman integration CRUD ===
-
-export type PostmanRegion = "us" | "eu";
-export type PostmanMode = "minimal" | "full";
-
-/** Non-secret Postman write-target stored in `project_integrations.config`. */
+/** Non-secret Postman write-target stored in the connection `config`. */
 export interface PostmanConfig {
   workspaceId?: string;
   workspaceName: string;
@@ -34,8 +44,14 @@ export interface PostmanConfig {
   environment?: string;
 }
 
-/** Summarized integration row — mirrors `summarize()` in core routes.ts. The
- *  API key is NEVER present here; `hasSecrets` only indicates one is stored. */
+/**
+ * Summarized integration row consumed by the current web-v2 UI. The merged
+ * cutover-A REST (ISS-399) returns the project-facing `BindingSummary`
+ * (`@forge/contracts`), which is a SUPERSET of this shape (it adds
+ * `connectionId`). This local shape is intentionally kept until the UI/api/hooks
+ * cutover onto `BindingSummary` + connection CRUD (ISS-401/C, ISS-402/D); the
+ * API key is NEVER present here — `hasSecrets` only signals one is stored.
+ */
 export interface IntegrationSummary {
   id: string;
   projectId: string;
@@ -65,10 +81,12 @@ export interface UpdatePostmanInput {
   active?: boolean;
 }
 
-/** Result of the test-connection (`POST .../test`) call — `HealthCheckResult`. */
-export interface IntegrationTestResult {
-  status: "ok" | "degraded" | "error";
-  message?: string;
+/**
+ * Result of the test-connection (`POST .../test`) call. Bases the cutover-
+ * agnostic shape on the contract `IntegrationHealthResult` and narrows
+ * `diagnostics` to the Postman user fields the UI renders.
+ */
+export interface IntegrationTestResult extends IntegrationHealthResult {
   diagnostics?: {
     user?: {
       id: number | string | null;
@@ -81,45 +99,12 @@ export interface IntegrationTestResult {
 }
 
 // === ISS-395 — Coolify + Epodsystem integration CRUD (ported from v1) ===
-// The backend already supports all three providers; these types mirror v1
-// `packages/web/src/features/integrations/types.ts`. Provider config is
-// core-internal (not in @forge/contracts), so it is declared locally here.
-
-export type IntegrationEnvironment = "staging" | "prod";
-
-/** Coolify non-secret config (`project_integrations.config`). */
-export interface CoolifyConfigInput {
-  baseUrl: string;
-  resourceUuid: string;
-  branch: string;
-}
-
-export interface CoolifySecretsInput {
-  apiToken: string;
-}
-
-/**
- * ISS-387 — Epodsystem storefront. One store per project; the `crmk_` key is
- * the only secret. The endpoint is fixed platform config (EPODSYSTEM_ENDPOINT
- * env), NOT user input. Store identity is filled by the test healthcheck, so
- * every config field is optional.
- */
-export interface EpodsystemConfigInput {
-  storeSlug?: string;
-  storeName?: string;
-  themeId?: string;
-  draftThemeId?: string;
-  commerceEnabled?: boolean;
-}
-
-export interface EpodsystemSecretsInput {
-  apiKey: string;
-}
 
 /**
  * Permissive read-shape for a provider-specific `config` jsonb. Consumers
  * narrow by the row's `provider`; every field is optional so both the Coolify
- * and Epodsystem sections read it without per-provider casts.
+ * and Epodsystem sections read it without per-provider casts. UI-local helper,
+ * not a wire contract.
  */
 export interface ProviderConfig {
   // coolify
@@ -137,20 +122,20 @@ export interface ProviderConfig {
   draftThemeId?: string;
   commerceEnabled?: boolean;
   domain?: string;
-  environment?: IntegrationEnvironment;
+  environment?: "staging" | "prod";
 }
 
 /** Discriminated create body for the generic `POST .../integrations`. */
 export type CreateIntegrationInput =
   | {
       provider: "coolify";
-      environment: IntegrationEnvironment;
+      environment: "staging" | "prod";
       config: CoolifyConfigInput;
       secrets: CoolifySecretsInput;
     }
   | {
       provider: "epodsystem";
-      environment?: IntegrationEnvironment;
+      environment?: "staging" | "prod";
       config: EpodsystemConfigInput;
       secrets: EpodsystemSecretsInput;
     };
@@ -160,27 +145,4 @@ export interface UpdateIntegrationInput {
   config?: Partial<CoolifyConfigInput> & Partial<EpodsystemConfigInput>;
   secrets?: Partial<CoolifySecretsInput> & Partial<EpodsystemSecretsInput>;
   active?: boolean;
-}
-
-/** Result of `POST .../confirm-prod-deploy`. */
-export interface ConfirmProdDeployResult {
-  confirmed: boolean;
-  runId: string | null;
-  integrationId: string;
-}
-
-/** Webhook delivery row (`GET .../deliveries`). */
-export interface IntegrationDelivery {
-  id: string;
-  projectIntegrationId: string;
-  direction: "outbound" | "inbound";
-  eventName: string;
-  status: "pending" | "ok" | "failed";
-  requestId: string | null;
-  payload: Record<string, unknown>;
-  response: Record<string, unknown> | null;
-  errorMessage: string | null;
-  durationMs: number | null;
-  createdAt: string;
-  completedAt: string | null;
 }
