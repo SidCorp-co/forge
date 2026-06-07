@@ -1,7 +1,7 @@
 import { request } from "./client";
 
-// ISS-197 — keep parity with packages/core (db/schema.ts) and packages/web
-// (features/agent/api.ts). `completed_via_recovery` / `cancelled_stale` are
+// ISS-197 — keep parity with packages/core (db/schema.ts) and web-v2
+// (features/agents). `completed_via_recovery` / `cancelled_stale` are
 // non-failure terminal markers from the verify-first retry path.
 export type AgentSessionStatus =
   | "idle"

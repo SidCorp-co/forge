@@ -18,7 +18,7 @@ const PROVIDER_ICON: Record<string, IconName> = { github: 'github' };
  * so the email form simply sits at the top of the card. Each button is a plain
  * full-page `<a>` to the core `/start` endpoint (a 302 dance, not an XHR).
  */
-export function SocialLogin({ redirectTo = '/v2' }: { redirectTo?: string }) {
+export function SocialLogin({ redirectTo = '/' }: { redirectTo?: string }) {
   const [providers, setProviders] = useState<OAuthProviderPublic[]>([]);
 
   useEffect(() => {

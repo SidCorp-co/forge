@@ -132,7 +132,7 @@ async function authenticate(req: IncomingMessage): Promise<AuthResult | null> {
 
   // The legacy `?token=<jwt>` query path was removed in ISS-315 cleanup —
   // it leaked the JWT into nginx access logs / Referer / browser history,
-  // and every live client (packages/dev subprotocol, packages/web cookie) had
+  // and every live client (packages/dev subprotocol, web cookie) had
   // already migrated off it. Anyone still passing the query is treated as
   // unauthenticated.
   return null;

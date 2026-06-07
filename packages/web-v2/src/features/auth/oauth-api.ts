@@ -39,11 +39,10 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 /**
  * Full-page URL the browser navigates to for `:provider/start`. The
- * post-callback `redirect` defaults to the absolute `/v2` so core lands the
- * authenticated user back in the web-v2 shell (an absolute path escapes the
- * basePath the same way the API base does).
+ * post-callback `redirect` defaults to `/` so core lands the authenticated
+ * user back in the web-v2 shell (web-v2 serves at root since ISS-397).
  */
-export function startUrl(providerId: OAuthProviderId, redirectTo = '/v2'): string {
+export function startUrl(providerId: OAuthProviderId, redirectTo = '/'): string {
   const qs = new URLSearchParams({ redirect: redirectTo });
   return `${API_BASE}/auth/oauth/${providerId}/start?${qs.toString()}`;
 }

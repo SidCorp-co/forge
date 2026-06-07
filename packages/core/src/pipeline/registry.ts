@@ -104,10 +104,10 @@ export const MANUAL_ONLY_JOB_TYPES: readonly JobType[] = [];
 // so adding a step here automatically expands the reconciler's rescue set.
 export const AUTO_DISPATCH_STATUSES: readonly IssueStatus[] = PIPELINE_STEPS.map((s) => s.status);
 
-// Mirrors the static map historically duplicated in
-// `packages/web/src/features/pipeline/runner-capabilities.ts`. The web copy
-// stays in place until a follow-up issue switches the FE to fetch the
-// registry; the test suite asserts the values match.
+// Canonical runner→job-type map. A static FE duplicate historically lived in
+// v1 `packages/web/src/features/pipeline/runner-capabilities.ts`; it was
+// removed with v1 (ISS-397) and web-v2 has no copy, so this is now the sole
+// source. The test suite still asserts the values stay self-consistent.
 export const RUNNER_CAPABILITIES: Record<RunnerType, readonly JobType[]> = {
   'claude-code': ['plan', 'code', 'review', 'fix', 'triage', 'test', 'release', 'clarify'],
   antigravity: ['plan', 'code', 'review', 'fix', 'triage', 'test', 'release', 'clarify'],

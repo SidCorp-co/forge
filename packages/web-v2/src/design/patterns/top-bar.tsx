@@ -31,13 +31,6 @@ export interface TopBarProps {
   onDensityChange?: (d: TopBarDensity) => void;
   /** When true the header shrinks (used for shrink-on-scroll). */
   scrolled?: boolean;
-  /**
-   * When set, renders a subtle "Back to classic" link to the v1 UI. This MUST
-   * resolve as a raw `<a href>` (not `next/link`), because the app runs under
-   * the `/v2` basePath and `next/link` would prefix it — turning `/` into
-   * `/v2/`. A plain anchor to `"/"` escapes the basePath and lands on v1.
-   */
-  backToClassicHref?: string;
 }
 
 export function TopBar({
@@ -52,7 +45,6 @@ export function TopBar({
   density,
   onDensityChange,
   scrolled = false,
-  backToClassicHref,
 }: TopBarProps) {
   return (
     <header
@@ -101,20 +93,6 @@ export function TopBar({
               ]}
             />
           </Tooltip>
-        )}
-        {backToClassicHref && (
-          // Raw anchor (NOT next/link) — must escape the /v2 basePath to reach v1.
-          // Label collapses to icon-only below sm so the header stays one row at
-          // 375px (ISS-308 C2).
-          <a
-            href={backToClassicHref}
-            title="Back to classic"
-            aria-label="Back to classic"
-            className="fg-body-sm inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-muted transition-colors hover:bg-hover hover:text-fg sm:px-2.5"
-          >
-            <Icon name="arrowRight" size={15} className="rotate-180" />
-            <span className="hidden sm:inline">Back to classic</span>
-          </a>
         )}
         <button
           type="button"

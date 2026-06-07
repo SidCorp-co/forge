@@ -27,7 +27,7 @@ pnpm tauri dev    # spawns vite + tauri, opens the desktop window
 
 First-run pairing:
 
-1. Open the cloud UI ([`@forge/web`](../web)) and sign in.
+1. Open the cloud UI ([`web-v2`](../web-v2)) and sign in.
 2. In the desktop app, paste the pairing code from the cloud UI's *Devices* page.
 3. The desktop registers itself as a runner and starts polling for jobs.
 

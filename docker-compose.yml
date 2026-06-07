@@ -44,11 +44,11 @@ services:
       retries: 5
       start_period: 20s
 
-  # === Web Frontend ===
-  web:
+  # === Web Frontend (web-v2 — canonical UI at host root, ISS-397) ===
+  web-v2:
     build:
       context: .
-      dockerfile: packages/web/Dockerfile
+      dockerfile: packages/web-v2/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8080/api
     restart: unless-stopped

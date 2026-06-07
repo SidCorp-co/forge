@@ -43,12 +43,12 @@
     },
 
     {
-      "id": "packages/web",
+      "id": "packages/web-v2",
       "kind": "service",
-      "purpose": "Next.js 16 cloud UI",
+      "purpose": "Next.js 16 cloud UI (canonical; replaced v1 packages/web at host root, ISS-397)",
       "status": "active",
       "stack": ["next", "react-query", "tailwind"],
-      "docs": "packages/web/CLAUDE.md"
+      "docs": "docs/proposals/web-v2-redesign.md"
     },
     {
       "id": "packages/dev",
@@ -134,13 +134,6 @@
       "decisions": ["ADR-0005"]
     },
     {
-      "id": "admin-ui",
-      "kind": "module",
-      "purpose": "User/project/device/audit UI at /admin",
-      "status": "planned"
-    },
-
-    {
       "id": "feature.issue-pipeline-14status",
       "kind": "feature",
       "purpose": "open → confirmed → clarified → … → closed (max 5 reopen cycles)",
@@ -207,7 +200,7 @@
     { "from": "forge", "to": "control-plane", "relation": "contains" },
     { "from": "forge", "to": "runtime-plane", "relation": "contains" },
 
-    { "from": "client-plane", "to": "packages/web", "relation": "contains" },
+    { "from": "client-plane", "to": "packages/web-v2", "relation": "contains" },
     { "from": "client-plane", "to": "packages/dev", "relation": "contains" },
 
     { "from": "control-plane", "to": "packages/core", "relation": "contains" },
@@ -235,7 +228,6 @@
     { "from": "packages/core", "to": "memory-knowledge", "relation": "contains" },
     { "from": "packages/core", "to": "chat", "relation": "contains" },
     { "from": "packages/core", "to": "auth", "relation": "contains" },
-    { "from": "packages/web", "to": "admin-ui", "relation": "contains" },
 
     {
       "from": "issues-pipeline",
@@ -294,7 +286,7 @@
     { "from": "forged", "to": "claude-cli", "relation": "depends_on" },
 
     {
-      "from": "packages/web",
+      "from": "packages/web-v2",
       "to": "packages/core",
       "relation": "depends_on",
       "note": "REST + WS"
@@ -308,7 +300,7 @@
 
     {
       "from": "packages/core",
-      "to": "packages/web",
+      "to": "packages/web-v2",
       "relation": "broadcasts_to",
       "note": "user JWT room"
     },

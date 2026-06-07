@@ -4,7 +4,7 @@ import { ForgeMascot } from "@/design";
 /**
  * Global 404. Renders OUTSIDE the (workspace) shell, so it is fully
  * self-contained (own centering + app background). `next/link` auto-prefixes
- * the `/v2` basePath, so Home resolves to `/v2`.
+ * the basePath; web-v2 serves at root (ISS-397) so Home resolves to `/`.
  */
 export default function NotFound() {
   return (

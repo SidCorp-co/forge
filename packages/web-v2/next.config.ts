@@ -12,20 +12,32 @@ import type { NextConfig } from "next";
 const coreProxy = process.env.E2E_CORE_PROXY_URL;
 
 /**
- * web-v2 mounts under `/v2` on the same origin as the current web (v1 at `/`,
- * v2 at `/v2`) so the two run side-by-side with NO env config. Override with
- * `WEB_V2_BASE_PATH=""` only for the big-bang cutover (serve v2 at root).
- * API/WS calls stay unprefixed (`/api`, `/ws`) so the shared httpOnly cookie +
- * WS upgrade work across both.
+ * web-v2 is the canonical Forge cloud UI and serves at the host ROOT (ISS-397
+ * retired v1 `packages/web` + the `/v2` prefix). Override with
+ * `WEB_V2_BASE_PATH="/v2"` only to re-mount under a prefix (e.g. to run a
+ * legacy build side-by-side). API/WS calls stay unprefixed (`/api`, `/ws`) so
+ * the httpOnly `forge_auth` cookie + WS upgrade work.
  */
-const basePath = process.env.WEB_V2_BASE_PATH ?? "/v2";
+const basePath = process.env.WEB_V2_BASE_PATH ?? "";
 
 const nextConfig: NextConfig = {
   output: "standalone",
   ...(basePath ? { basePath, assetPrefix: basePath } : {}),
   async rewrites() {
-    if (!coreProxy) return [];
+    // `/.well-known/forge-config.json` is the canonical discovery path
+    // (Matrix-style — see app/forge-config/route.ts). Next.js App Router
+    // can't have a folder literally named `.well-known` (dot-prefixed
+    // segments are filtered), so we rewrite to a regular route. Ported from
+    // v1 with the cutover (ISS-397) so desktop discovery keeps working.
+    const wellKnown = [
+      {
+        source: "/.well-known/forge-config.json",
+        destination: "/forge-config",
+      },
+    ];
+    if (!coreProxy) return wellKnown;
     return [
+      ...wellKnown,
       { source: "/api/:path*", destination: `${coreProxy}/api/:path*` },
       { source: "/ws", destination: `${coreProxy}/ws` },
     ];

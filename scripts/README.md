@@ -8,7 +8,7 @@ Validates a branch name against the [Trunk-Based Development](../docs/guides/tru
 
 ## check-source-language.mjs — English-only source policy
 
-Fails if any `.ts`/`.tsx`/`.md` file under `packages/web/src/`, `packages/dev/src/`, or `packages/core/src/` contains non-allowlisted diacritics. See ISS-65 for context — the project is English-only across UI strings, identifiers, comments, docs, and tests, after ISS-43 leaked Vietnamese copy onto `main`.
+Fails if any `.ts`/`.tsx`/`.md` file under `packages/web-v2/src/`, `packages/dev/src/`, or `packages/core/src/` contains non-allowlisted diacritics. See ISS-65 for context — the project is English-only across UI strings, identifiers, comments, docs, and tests, after ISS-43 leaked Vietnamese copy onto `main`.
 
 ### Modes
 

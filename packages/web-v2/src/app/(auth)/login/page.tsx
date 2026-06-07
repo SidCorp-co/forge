@@ -55,7 +55,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         </div>
       )}
 
-      <SocialLogin redirectTo="/v2" />
+      <SocialLogin redirectTo="/" />
       <LoginForm presetEmail={presetEmail} />
     </AuthShell>
   );

@@ -133,7 +133,7 @@ export function clearProjectIdCache() {
  * packages/core returns flat rows keyed by `id` (uuid). The dev app's types still
  * mirror the legacy Strapi shape with `documentId: string` and `id: number`.
  * Mirror id→documentId so existing components keep working unchanged; the cast
- * shape on `id` is the same lie that packages/web's agent api.ts uses.
+ * shape on `id` is the same lie that web-v2's agents api uses.
  */
 export function adaptRow<T extends { id: string }>(row: T): T & { documentId: string } {
   return { ...row, id: row.id as unknown as number, documentId: row.id } as unknown as T & {

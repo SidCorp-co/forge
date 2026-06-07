@@ -19,7 +19,7 @@ export default function RegisterPage() {
     >
       {/* Social sign-up uses the same OAuth flow as sign-in — renders only when
           providers are configured server-side. */}
-      <SocialLogin redirectTo="/v2" />
+      <SocialLogin redirectTo="/" />
       <RegisterForm />
     </AuthShell>
   );

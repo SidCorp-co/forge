@@ -37,7 +37,7 @@ const NON_ENGLISH = /[À-ÖØ-öø-ſƠơƯưẠ-ỹ]/u;
 const NON_ENGLISH_GLOBAL = /[À-ÖØ-öø-ſƠơƯưẠ-ỹ]/gu;
 
 const SCAN_ROOTS = [
-  'packages/web/src',
+  'packages/web-v2/src',
   'packages/dev/src',
   'packages/core/src',
 ];
