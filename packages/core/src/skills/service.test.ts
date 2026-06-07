@@ -35,7 +35,8 @@ vi.mock('../pipeline/hooks.js', () => ({
   hooks: { emit: hooksEmit },
 }));
 
-const { SkillDeleteBlockedError, registerSkillForProject } = await import('./service.js');
+const { SkillDeleteBlockedError, SkillNotProjectScopedError, registerSkillForProject } =
+  await import('./service.js');
 
 beforeEach(() => {
   selectQueue.length = 0;
@@ -99,5 +100,43 @@ describe('registerSkillForProject({ stage: null }) — SKILL_DELETE_BLOCKED_BY_A
     expect(err.toggle).toBe('autoReview');
     expect(err.message).toContain("stage 'developed'");
     expect(err.message).toContain("'autoReview=true'");
+  });
+});
+
+describe('registerSkillForProject(stage) — SKILL_NOT_PROJECT_SCOPED (single path)', () => {
+  const base = {
+    projectId: '00000000-0000-0000-0000-000000000001',
+    skillId: '00000000-0000-0000-0000-000000000002',
+    stage: 'approved' as const,
+    actorUserId: '00000000-0000-0000-0000-000000000003',
+  };
+
+  it('rejects registering a global template (must adopt into the project first)', async () => {
+    pushSelect([{ scope: 'global', projectId: null }]); // the target skill is global
+    await expect(registerSkillForProject(base)).rejects.toBeInstanceOf(
+      SkillNotProjectScopedError,
+    );
+    expect(dbDelete).not.toHaveBeenCalled();
+    expect(hooksEmit).not.toHaveBeenCalled();
+  });
+
+  it('rejects registering a project skill owned by a DIFFERENT project', async () => {
+    pushSelect([{ scope: 'project', projectId: 'some-other-project' }]);
+    await expect(registerSkillForProject(base)).rejects.toBeInstanceOf(
+      SkillNotProjectScopedError,
+    );
+  });
+
+  it('rejects when the skill does not exist', async () => {
+    pushSelect([]); // no row
+    await expect(registerSkillForProject(base)).rejects.toBeInstanceOf(
+      SkillNotProjectScopedError,
+    );
+  });
+
+  it('exposes the SKILL_NOT_PROJECT_SCOPED code', () => {
+    const err = new SkillNotProjectScopedError('abc');
+    expect(err.code).toBe('SKILL_NOT_PROJECT_SCOPED');
+    expect(err.message).toContain('abc');
   });
 });

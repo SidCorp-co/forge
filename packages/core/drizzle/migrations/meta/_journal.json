@@ -708,6 +708,13 @@
 			"when": 1782777600000,
 			"tag": "0102_integration_deliveries_binding_cutover",
 			"breakpoints": true
+		},
+		{
+			"idx": 103,
+			"version": "7",
+			"when": 1782864000000,
+			"tag": "0103_skills_scope_explicit_backfill",
+			"breakpoints": true
 		}
 	]
 }

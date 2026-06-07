@@ -10,6 +10,7 @@ import { type DeviceVars, requireDevice } from '../middleware/require-device.js'
 import { hooks } from '../pipeline/hooks.js';
 import {
   SkillDeleteBlockedError,
+  SkillNotProjectScopedError,
   getSkillForProject,
   registerSkillForProject,
 } from './service.js';
@@ -241,6 +242,12 @@ skillRegisterRoutes.post(
             code: err.code,
             details: { stage: err.stage, toggle: err.toggle },
           },
+        });
+      }
+      if (err instanceof SkillNotProjectScopedError) {
+        throw new HTTPException(400, {
+          message: err.message,
+          cause: { code: err.code },
         });
       }
       throw err;

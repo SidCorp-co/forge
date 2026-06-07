@@ -52,6 +52,11 @@ describe('computeEffectiveSkill', () => {
     expect(eff.skillMd).toBe('# Project');
     expect(eff.shadowsGlobal).toBe(false);
   });
+
+  it('carries the scope through (only project scope is usable)', () => {
+    expect(computeEffectiveSkill(baseRow({ scope: 'global' })).scope).toBe('global');
+    expect(computeEffectiveSkill(baseRow({ scope: 'project' })).scope).toBe('project');
+  });
 });
 
 describe('dedupEffectiveSkills', () => {
@@ -106,6 +111,7 @@ describe('computeDeviceSkillStatus', () => {
       skillMd: '',
       files: [],
       effectiveHash: 'h1',
+      scope: 'project',
       shadowsGlobal: false,
       shadowedGlobalSkillId: null,
     },
@@ -116,6 +122,7 @@ describe('computeDeviceSkillStatus', () => {
       skillMd: '',
       files: [],
       effectiveHash: 'h2',
+      scope: 'project',
       shadowsGlobal: false,
       shadowedGlobalSkillId: null,
     },
@@ -126,6 +133,7 @@ describe('computeDeviceSkillStatus', () => {
       skillMd: '',
       files: [],
       effectiveHash: 'h3',
+      scope: 'project',
       shadowsGlobal: false,
       shadowedGlobalSkillId: null,
     },
@@ -149,8 +157,8 @@ describe('computeDeviceSkillStatus', () => {
 
 describe('pivotProjectSkillSyncStatus', () => {
   const eff: EffectiveSkill[] = [
-    { skillId: 's-1', name: 'a', version: 5, skillMd: '', files: [], effectiveHash: 'h1', shadowsGlobal: false, shadowedGlobalSkillId: null },
-    { skillId: 's-2', name: 'b', version: 2, skillMd: '', files: [], effectiveHash: 'h2', shadowsGlobal: false, shadowedGlobalSkillId: null },
+    { skillId: 's-1', name: 'a', version: 5, skillMd: '', files: [], effectiveHash: 'h1', scope: 'project', shadowsGlobal: false, shadowedGlobalSkillId: null },
+    { skillId: 's-2', name: 'b', version: 2, skillMd: '', files: [], effectiveHash: 'h2', scope: 'project', shadowsGlobal: false, shadowedGlobalSkillId: null },
   ];
   const devicesList = [
     { deviceId: 'd-1', name: 'laptop', status: 'online', lastSeenAt: null },

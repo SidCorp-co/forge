@@ -127,6 +127,23 @@ export class SkillDeleteBlockedError extends Error {
   }
 }
 
+/**
+ * Thrown when a stage registration targets a skill that is not a project skill
+ * owned by this project. Only project skills are usable — adopt the global
+ * template first (`applyGlobalSkillDefault`). See docs/skills-scope-playbook.md
+ * (Rule 4).
+ */
+export class SkillNotProjectScopedError extends Error {
+  readonly code = 'SKILL_NOT_PROJECT_SCOPED';
+  constructor(skillId: string) {
+    super(
+      `SKILL_NOT_PROJECT_SCOPED: skill '${skillId}' is not a project skill for this project; ` +
+        `adopt the global template into the project before registering it`,
+    );
+    this.name = 'SkillNotProjectScopedError';
+  }
+}
+
 export async function registerSkillForProject(
   input: RegisterSkillInput,
 ): Promise<RegisterSkillResult> {
@@ -173,6 +190,18 @@ export async function registerSkillForProject(
       );
     await hooks.emit('skillRegistered', { projectId, skillId, actorUserId, stage: null });
     return { projectId, skillId, stage: null };
+  }
+
+  // Single path: only a project skill owned by THIS project may be registered.
+  // Globals are templates — they must be adopted (cloned) into the project
+  // first. See docs/skills-scope-playbook.md (Rule 4).
+  const [target] = await db
+    .select({ scope: skills.scope, projectId: skills.projectId })
+    .from(skills)
+    .where(eq(skills.id, skillId))
+    .limit(1);
+  if (!target || target.scope !== 'project' || target.projectId !== projectId) {
+    throw new SkillNotProjectScopedError(skillId);
   }
 
   await db.transaction(async (tx) => {

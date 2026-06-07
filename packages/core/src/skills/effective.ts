@@ -10,12 +10,21 @@ import {
 import { hashSkillBody } from './hash.js';
 
 /**
- * Shared effective-skill resolution for Skill Studio (ISS-278/388). Global
- * skills are immutable templates; the only per-project customization is a
- * project-scoped skill with the SAME NAME, which SHADOWS the same-name global.
- * This module dedups by name (project wins) and is the single source of truth
- * for the **device sync manifest**, which must hash uniformly via
- * `hashSkillBody(effectiveMd, files)` for every entry.
+ * Skill-scope resolution. See docs/skills-scope-playbook.md for the normative
+ * rules. The one rule that matters here:
+ *
+ *   Only `scope='project'` skills are USABLE — installed on a device, bundled
+ *   for a runner, dispatched in a pipeline. `global` skills are org-level
+ *   TEMPLATES that only appear in the *catalog* read
+ *   (`resolveEffectiveSkillsForProject`) as adoptable rows. They are NEVER a
+ *   runtime fallback.
+ *
+ * - `resolveProjectSkills` → the usable set (project rows only). The device
+ *   sync manifest + skills-zip resolve from this, hashed uniformly via
+ *   `hashSkillBody(effectiveMd, files)`.
+ * - `resolveEffectiveSkillsForProject` → the catalog: project rows + global
+ *   templates, deduped by name (the `shadowsGlobal` flag is a catalog hint,
+ *   never a resolution rule).
  */
 
 export interface SkillFile {
@@ -31,9 +40,18 @@ export interface EffectiveSkill {
   skillMd: string;
   files: SkillFile[];
   effectiveHash: string;
-  /** True when this project skill shadows a same-name global template. */
+  /**
+   * The skill's scope. Only `project` is USABLE (installed/dispatched); a
+   * `global` entry only ever appears in the catalog read as an adoptable
+   * template — see docs/skills-scope-playbook.md.
+   */
+  scope: 'global' | 'project';
+  /**
+   * Catalog hint only: true when a same-name global template exists. NEVER a
+   * resolution rule — a global never falls back into the usable set.
+   */
   shadowsGlobal: boolean;
-  /** The shadowed global's skill id (null when not shadowing). */
+  /** The same-name global's skill id (null when none). Catalog hint only. */
   shadowedGlobalSkillId: string | null;
 }
 
@@ -86,6 +104,7 @@ export function computeEffectiveSkill(skill: SkillBodyRow): EffectiveSkill {
     skillMd: md,
     files,
     effectiveHash: hashSkillBody(md, files),
+    scope: skill.scope,
     shadowsGlobal: false,
     shadowedGlobalSkillId: null,
   };
@@ -150,12 +169,14 @@ async function resolveRawEffectiveSkillsForProject(projectId: string): Promise<E
 }
 
 /**
- * Every skill visible to a project (its own project-scoped skills + all
- * globals), deduped by name (project shadows same-name global) with the
- * effective hash computed. Skill bodies are NOT templated: Forge facts +
- * project context are injected into the system prompt at dispatch
- * (`prompt/system.ts`), so a synced SKILL.md is exactly what the author wrote —
- * no var expansion, no fact-driven re-sync churn.
+ * The CATALOG read: every skill visible to a project (its own project-scoped
+ * skills + all global templates), deduped by name (project wins, `shadowsGlobal`
+ * flags a same-name global as a hint). This is a browse/adopt surface — NOT
+ * what a device installs. Only the `scope='project'` rows here are usable; the
+ * `scope='global'` rows are adoptable templates (clone via `applyGlobalSkillDefault`).
+ * Skill bodies are NOT templated: Forge facts + project context are injected
+ * into the system prompt at dispatch (`prompt/system.ts`), so a synced SKILL.md
+ * is exactly what the author wrote.
  */
 export async function resolveEffectiveSkillsForProject(
   projectId: string,
@@ -164,9 +185,24 @@ export async function resolveEffectiveSkillsForProject(
 }
 
 /**
- * The device-sync manifest set: effective skills intersected with the skills
- * registered to ANY stage of the project. Scope is intentionally limited to
- * registered skills (expanding beyond that is out of scope for ISS-278).
+ * The USABLE set: project-scoped skills only. No globals, no shadow merge —
+ * this is exactly what may be installed/dispatched. See
+ * docs/skills-scope-playbook.md (Rule 2).
+ */
+export async function resolveProjectSkills(projectId: string): Promise<EffectiveSkill[]> {
+  const rows = (await db
+    .select(skillBodyProjection)
+    .from(skills)
+    .where(and(eq(skills.scope, 'project'), eq(skills.projectId, projectId)))) as SkillBodyRow[];
+  return rows.map(computeEffectiveSkill);
+}
+
+/**
+ * The device-sync manifest set: the project's USABLE (project-scoped) skills
+ * intersected with the names registered to a stage. Globals never enter this
+ * set — a registration that still points at a global (legacy data; the
+ * register API now rejects it) contributes nothing unless the project owns a
+ * same-name project skill. See docs/skills-scope-playbook.md (Rules 2 & 4).
  */
 export async function resolveRegisteredEffectiveSkills(
   projectId: string,
@@ -179,10 +215,10 @@ export async function resolveRegisteredEffectiveSkills(
   const registeredIds = [...new Set(regs.map((r) => r.skillId))];
   if (registeredIds.length === 0) return [];
 
-  // Filter by NAME, not skillId: a registration may point at a global that is
-  // now shadowed by a same-name project skill. The deduped list carries the
-  // project skill's id under that name, so matching by id would drop the
-  // shadow. Resolve registered ids → names, then keep effective rows by name.
+  // Resolve registered ids → names, then keep only the project skills whose
+  // name is registered. Matching by NAME (not id) keeps legacy registrations
+  // that still point at a global working IFF the project has adopted a
+  // same-name project skill — the global itself is never returned.
   const nameRows = await db
     .select({ name: skills.name })
     .from(skills)
@@ -190,8 +226,8 @@ export async function resolveRegisteredEffectiveSkills(
   const registeredNames = new Set(nameRows.map((n) => n.name));
   if (registeredNames.size === 0) return [];
 
-  const all = await resolveRawEffectiveSkillsForProject(projectId);
-  return all.filter((s) => registeredNames.has(s.name));
+  const projectSkills = await resolveProjectSkills(projectId);
+  return projectSkills.filter((s) => registeredNames.has(s.name));
 }
 
 export type DeviceSkillStatusValue = 'synced' | 'outdated' | 'missing';
