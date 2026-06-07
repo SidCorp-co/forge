@@ -15,7 +15,7 @@
 
 import { logger } from '../../logger.js';
 import { getAdapter, registerAdapter } from '../registry.js';
-import { updateIntegration } from '../store.js';
+import { updateConnection } from '../store.js';
 import type { HealthCheckResult, IntegrationAdapter } from '../types.js';
 import { epodsystemGraphqlBase } from './endpoints.js';
 import type {
@@ -85,7 +85,7 @@ export const epodsystemAdapter: IntegrationAdapter<EpodsystemConfig, EpodsystemS
   async healthcheck(ctx): Promise<HealthCheckResult> {
     const apiKey = ctx.secrets?.apiKey;
     if (!apiKey) {
-      await updateIntegration(ctx.integrationId, {
+      await updateConnection(ctx.connectionId, {
         lastHealthStatus: 'error',
         lastHealthAt: new Date(),
       });
@@ -99,7 +99,7 @@ export const epodsystemAdapter: IntegrationAdapter<EpodsystemConfig, EpodsystemS
     try {
       const probe = await gqlPost(url, apiKey, API_KEY_CONTEXT_QUERY);
       if (!probe.ok) {
-        await updateIntegration(ctx.integrationId, {
+        await updateConnection(ctx.connectionId, {
           lastHealthStatus: 'error',
           lastHealthAt: new Date(),
         });
@@ -114,7 +114,7 @@ export const epodsystemAdapter: IntegrationAdapter<EpodsystemConfig, EpodsystemS
       // A 200 with a GraphQL error array (auth rejected at the resolver layer)
       // is still a failure — surface it without leaking the key.
       if (body.errors && body.errors.length > 0) {
-        await updateIntegration(ctx.integrationId, {
+        await updateConnection(ctx.connectionId, {
           lastHealthStatus: 'error',
           lastHealthAt: new Date(),
         });
@@ -151,7 +151,7 @@ export const epodsystemAdapter: IntegrationAdapter<EpodsystemConfig, EpodsystemS
           // Enrichment is non-fatal; log without the key.
           logger.warn(
             {
-              integrationId: ctx.integrationId,
+              connectionId: ctx.connectionId, bindingId: ctx.bindingId,
               err: err instanceof Error ? err.message : 'unknown',
             },
             'epodsystem: healthcheck enrichment failed (non-fatal)',
@@ -175,7 +175,7 @@ export const epodsystemAdapter: IntegrationAdapter<EpodsystemConfig, EpodsystemS
       if (themeName != null) resolved.themeName = themeName;
       if (store?.commerce_enabled != null) resolved.commerceEnabled = store.commerce_enabled;
       if (domain != null) resolved.domain = domain;
-      await updateIntegration(ctx.integrationId, {
+      await updateConnection(ctx.connectionId, {
         config: resolved,
         lastHealthStatus: 'ok',
         lastHealthAt: new Date(),
@@ -198,12 +198,12 @@ export const epodsystemAdapter: IntegrationAdapter<EpodsystemConfig, EpodsystemS
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown error';
-      await updateIntegration(ctx.integrationId, {
+      await updateConnection(ctx.connectionId, {
         lastHealthStatus: 'error',
         lastHealthAt: new Date(),
       });
       logger.warn(
-        { integrationId: ctx.integrationId, err: message },
+        { connectionId: ctx.connectionId, bindingId: ctx.bindingId, err: message },
         'epodsystem: healthcheck failed',
       );
       return { status: 'error', message };

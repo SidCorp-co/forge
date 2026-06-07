@@ -1,10 +1,13 @@
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
-import { projectIntegrations, projects } from '../db/schema.js';
-import { buildContext } from '../integrations/store.js';
+import { projects } from '../db/schema.js';
 import { getAdapter } from '../integrations/registry.js';
+import {
+  buildContextFromBinding,
+  listActiveBindingsForProjectProvider,
+} from '../integrations/store.js';
 import type { IntegrationProvider } from '../integrations/types.js';
 import { logger } from '../logger.js';
 import { handleGitHubEvent } from './github-adapter.js';
@@ -57,13 +60,11 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
     const adapter = getAdapter(map.provider);
     if (!adapter) throw badRequest({ provider: map.provider }, 'ADAPTER_NOT_REGISTERED');
 
-    // Multi-env disambiguation: every active integration row for this
-    // provider is a candidate. We verify the inbound signature against each
-    // row's own integrationSecret and dispatch on the one that matches.
-    // This is the only way to tell e.g. a staging-Coolify webhook apart from
-    // a prod-Coolify webhook when both rows exist for the same project.
-    const candidateRows = await findActiveIntegrations(project.id, map.provider);
-    if (candidateRows.length === 0) {
+    // Multi-env disambiguation across active bindings: verify the inbound
+    // signature against each binding's own integrationSecret and dispatch on
+    // the one that matches (tells a staging-Coolify webhook apart from prod).
+    const candidatePairs = await listActiveBindingsForProjectProvider(project.id, map.provider);
+    if (candidatePairs.length === 0) {
       throw badRequest({ provider: map.provider }, 'INTEGRATION_NOT_CONFIGURED');
     }
 
@@ -74,12 +75,12 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
       throw unauthorized('MISSING_SIGNATURE');
     }
 
-    const integrationRow = candidateRows.find(
-      (row) =>
-        row.integrationSecret !== null &&
-        verifyHmacSignature(row.integrationSecret, rawBody, signatureHeader),
+    const pair = candidatePairs.find(
+      (p) =>
+        p.binding.integrationSecret !== null &&
+        verifyHmacSignature(p.binding.integrationSecret, rawBody, signatureHeader),
     );
-    if (!integrationRow) {
+    if (!pair) {
       throw unauthorized('INVALID_SIGNATURE');
     }
 
@@ -89,7 +90,7 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
     } catch {
       throw badRequest({ body: 'invalid json' });
     }
-    const ctx = buildContext(integrationRow);
+    const ctx = buildContextFromBinding(pair);
     try {
       const result = await adapter.handleInbound(ctx, {
         headers: collectHeaders(c.req.raw.headers),
@@ -99,7 +100,7 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
       return c.json({
         accepted: true,
         handler: map.provider,
-        environment: integrationRow.environment,
+        environment: pair.binding.environment,
         deliveryId: result.deliveryId,
         actions: result.actions,
       });
@@ -107,7 +108,7 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
       const message = err instanceof Error ? err.message : 'unknown error';
       if (/signature/i.test(message)) throw unauthorized('INVALID_SIGNATURE');
       logger.error(
-        { err, slug, provider: map.provider, integrationId: integrationRow.id },
+        { err, slug, provider: map.provider, bindingId: pair.binding.id },
         'integration adapter: handler threw',
       );
       throw new HTTPException(500, {
@@ -157,19 +158,6 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
   logger.info({ slug, bytes: rawBody.length }, 'webhook: generic receive');
   return c.json({ accepted: true, handler: 'generic', actions: 0 });
 });
-
-async function findActiveIntegrations(projectId: string, provider: IntegrationProvider) {
-  return db
-    .select()
-    .from(projectIntegrations)
-    .where(
-      and(
-        eq(projectIntegrations.projectId, projectId),
-        eq(projectIntegrations.provider, provider),
-        eq(projectIntegrations.active, true),
-      ),
-    );
-}
 
 function collectHeaders(headers: Headers): Record<string, string | undefined> {
   const out: Record<string, string | undefined> = {};

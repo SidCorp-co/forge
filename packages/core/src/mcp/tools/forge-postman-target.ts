@@ -11,10 +11,11 @@
  * integration. Authorization is membership-level, like `forge_coolify_deploy`.
  */
 
-import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '../../db/client.js';
-import { projectIntegrations } from '../../db/schema.js';
+import {
+  effectiveConfig,
+  listActiveBindingsForProjectProvider,
+} from '../../integrations/store.js';
 import type { PostmanConfig } from '../../integrations/postman/types.js';
 import {
   type ContextScopedMcpToolFactory,
@@ -50,21 +51,10 @@ export const forgePostmanTargetTool: ContextScopedMcpToolFactory = ({
     const projectId = input.projectId ?? (await resolveProjectIdFromSlug(projectSlug));
     await assertPrincipalIsMember(principal, projectId);
 
-    const [row] = await db
-      .select()
-      .from(projectIntegrations)
-      .where(
-        and(
-          eq(projectIntegrations.projectId, projectId),
-          eq(projectIntegrations.provider, 'postman'),
-          eq(projectIntegrations.active, true),
-        ),
-      )
-      .limit(1);
+    const [pair] = await listActiveBindingsForProjectProvider(projectId, 'postman');
+    if (!pair) return { configured: false };
 
-    if (!row) return { configured: false };
-
-    const config = (row.config ?? {}) as PostmanConfig;
+    const config = effectiveConfig<PostmanConfig>(pair);
     return {
       configured: true,
       workspaceId: config.workspaceId ?? null,

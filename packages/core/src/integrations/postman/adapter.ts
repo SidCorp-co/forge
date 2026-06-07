@@ -11,7 +11,7 @@
 
 import { logger } from '../../logger.js';
 import { getAdapter, registerAdapter } from '../registry.js';
-import { updateIntegration } from '../store.js';
+import { updateConnection } from '../store.js';
 import type { HealthCheckResult, IntegrationAdapter } from '../types.js';
 import { postmanRestBase } from './endpoints.js';
 import type { PostmanConfig, PostmanMeResponse, PostmanSecrets } from './types.js';
@@ -39,7 +39,7 @@ export const postmanAdapter: IntegrationAdapter<PostmanConfig, PostmanSecrets> =
   async healthcheck(ctx): Promise<HealthCheckResult> {
     const apiKey = ctx.secrets?.apiKey;
     if (!apiKey) {
-      await updateIntegration(ctx.integrationId, {
+      await updateConnection(ctx.connectionId, {
         lastHealthStatus: 'error',
         lastHealthAt: new Date(),
       });
@@ -58,7 +58,7 @@ export const postmanAdapter: IntegrationAdapter<PostmanConfig, PostmanSecrets> =
       clearTimeout(timer);
 
       if (!res.ok) {
-        await updateIntegration(ctx.integrationId, {
+        await updateConnection(ctx.connectionId, {
           lastHealthStatus: 'error',
           lastHealthAt: new Date(),
         });
@@ -72,7 +72,7 @@ export const postmanAdapter: IntegrationAdapter<PostmanConfig, PostmanSecrets> =
 
       const body = (await res.json()) as PostmanMeResponse;
       const user = body.user ?? {};
-      await updateIntegration(ctx.integrationId, {
+      await updateConnection(ctx.connectionId, {
         lastHealthStatus: 'ok',
         lastHealthAt: new Date(),
       });
@@ -92,12 +92,12 @@ export const postmanAdapter: IntegrationAdapter<PostmanConfig, PostmanSecrets> =
     } catch (err) {
       clearTimeout(timer);
       const message = err instanceof Error ? err.message : 'unknown error';
-      await updateIntegration(ctx.integrationId, {
+      await updateConnection(ctx.connectionId, {
         lastHealthStatus: 'error',
         lastHealthAt: new Date(),
       });
       logger.warn(
-        { integrationId: ctx.integrationId, err: message },
+        { connectionId: ctx.connectionId, bindingId: ctx.bindingId, err: message },
         'postman: healthcheck failed',
       );
       return { status: 'error', message };

@@ -58,6 +58,13 @@ vi.mock('../integrations/deliveries.js', () => ({
   findDeliveryByRequestId: (id: string, req: string) => findDeliverySpy(id, req),
 }));
 
+// Coolify integration resolution now goes through the binding→connection store
+// helper; pipelineRuns reads/writes still use the db stub above.
+const listBindingsSpy = vi.fn();
+vi.mock('../integrations/store.js', () => ({
+  listActiveBindingsForProjectProvider: (...a: unknown[]) => listBindingsSpy(...(a as [])),
+}));
+
 vi.mock('./runs.js', () => ({ setCurrentStepForce: vi.fn() }));
 
 vi.mock('../observability/sentry.js', () => ({
@@ -79,19 +86,27 @@ const RUN_ID = 'run-1';
 const STAGING_INT = 'a1111111-1111-4111-8111-111111111111';
 const PROD_INT = 'b2222222-2222-4222-8222-222222222222';
 
-const stagingRow = { id: STAGING_INT, environment: 'staging' };
-const prodRow = { id: PROD_INT, environment: 'prod' };
+const stagingPair = {
+  binding: { id: STAGING_INT, projectId: PROJECT_ID, provider: 'coolify', environment: 'staging', config: {}, active: true },
+  connection: { id: STAGING_INT, provider: 'coolify', config: {}, active: true },
+};
+const prodPair = {
+  binding: { id: PROD_INT, projectId: PROJECT_ID, provider: 'coolify', environment: 'prod', config: {}, active: true },
+  connection: { id: PROD_INT, provider: 'coolify', config: {}, active: true },
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
   selectQueue.length = 0;
   enqueueSpy.mockReset();
   findDeliverySpy.mockReset();
+  listBindingsSpy.mockReset();
+  listBindingsSpy.mockResolvedValue([]);
 });
 
 describe('tryDispatchCoolifyRelease — staging dispatch', () => {
   it('always enqueues a fresh dispatch with a per-attempt requestId (no dedup block)', async () => {
-    selectQueue.push([stagingRow]); // active coolify integrations
+    listBindingsSpy.mockResolvedValueOnce([stagingPair]); // active coolify bindings
 
     const outcome = await tryDispatchCoolifyRelease({
       projectId: PROJECT_ID,
@@ -102,17 +117,17 @@ describe('tryDispatchCoolifyRelease — staging dispatch', () => {
     // No idempotency lookup — re-deploys are never silently no-op'd (ISS-290).
     expect(findDeliverySpy).not.toHaveBeenCalled();
     expect(enqueueSpy).toHaveBeenCalledTimes(1);
-    const job = enqueueSpy.mock.calls[0]?.[0] as { integrationId: string; requestId: string };
-    expect(job.integrationId).toBe(STAGING_INT);
+    const job = enqueueSpy.mock.calls[0]?.[0] as { bindingId: string; requestId: string };
+    expect(job.bindingId).toBe(STAGING_INT);
     expect(job.requestId).toMatch(new RegExp(`^${RUN_ID}:${STAGING_INT}:\\d+-[0-9a-f]{8}$`));
     expect(outcome.dispatched).toBe(true);
     expect(outcome.integrationIds).toEqual([STAGING_INT]);
   });
 
   it('re-deploying the same run enqueues again with a distinct requestId', async () => {
-    selectQueue.push([stagingRow]);
+    listBindingsSpy.mockResolvedValueOnce([stagingPair]);
     await tryDispatchCoolifyRelease({ projectId: PROJECT_ID, issueId: ISSUE_ID, runId: RUN_ID });
-    selectQueue.push([stagingRow]);
+    listBindingsSpy.mockResolvedValueOnce([stagingPair]);
     await tryDispatchCoolifyRelease({ projectId: PROJECT_ID, issueId: ISSUE_ID, runId: RUN_ID });
 
     expect(enqueueSpy).toHaveBeenCalledTimes(2);
@@ -124,7 +139,7 @@ describe('tryDispatchCoolifyRelease — staging dispatch', () => {
 
 describe('dispatchCoolifyDeployDirect — run-less resource redeploy (ISS-312)', () => {
   it('staging: enqueues with runId:null + a synthetic direct: requestId', async () => {
-    selectQueue.push([stagingRow]); // active coolify integrations
+    listBindingsSpy.mockResolvedValueOnce([stagingPair]); // active coolify bindings
 
     const outcome = await dispatchCoolifyDeployDirect({
       projectId: PROJECT_ID,
@@ -133,12 +148,12 @@ describe('dispatchCoolifyDeployDirect — run-less resource redeploy (ISS-312)',
 
     expect(enqueueSpy).toHaveBeenCalledTimes(1);
     const job = enqueueSpy.mock.calls[0]?.[0] as {
-      integrationId: string;
+      bindingId: string;
       runId: string | null;
       issueId: string | null;
       requestId: string;
     };
-    expect(job.integrationId).toBe(STAGING_INT);
+    expect(job.bindingId).toBe(STAGING_INT);
     expect(job.runId).toBeNull();
     expect(job.issueId).toBeNull();
     expect(job.requestId).toMatch(new RegExp(`^direct:${STAGING_INT}:\\d+-[0-9a-f]{8}$`));
@@ -148,7 +163,7 @@ describe('dispatchCoolifyDeployDirect — run-less resource redeploy (ISS-312)',
   });
 
   it('prod: returns pendingHumanConfirm and enqueues nothing', async () => {
-    selectQueue.push([prodRow]);
+    listBindingsSpy.mockResolvedValueOnce([prodPair]);
 
     const outcome = await dispatchCoolifyDeployDirect({
       projectId: PROJECT_ID,
@@ -163,7 +178,7 @@ describe('dispatchCoolifyDeployDirect — run-less resource redeploy (ISS-312)',
   });
 
   it('unknown/inactive integration: returns no-integration without enqueueing', async () => {
-    selectQueue.push([stagingRow]); // active set does not include the requested id
+    listBindingsSpy.mockResolvedValueOnce([stagingPair]); // active set does not include the requested id
 
     const outcome = await dispatchCoolifyDeployDirect({
       projectId: PROJECT_ID,
@@ -179,7 +194,7 @@ describe('dispatchCoolifyDeployDirect — run-less resource redeploy (ISS-312)',
 
 describe('tryDispatchCoolifyRelease — prod confirm gate', () => {
   it('returns pendingHumanConfirm and enqueues nothing when the gate is unconfirmed', async () => {
-    selectQueue.push([prodRow]); // active coolify integrations
+    listBindingsSpy.mockResolvedValueOnce([prodPair]); // active coolify bindings
     selectQueue.push([]); // getProdGateState: no run carries a gate
     selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm: run metadata read
 

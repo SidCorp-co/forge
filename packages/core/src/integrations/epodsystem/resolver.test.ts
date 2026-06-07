@@ -1,17 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// --- db.select().from().where().limit() chain ---
-const selectLimit = vi.fn();
-const selectWhere = vi.fn(() => ({ limit: selectLimit }));
-const selectFrom = vi.fn(() => ({ where: selectWhere }));
-
-vi.mock('../../db/client.js', () => ({
-  db: { select: vi.fn(() => ({ from: selectFrom })) },
-}));
-
-const decryptJson = vi.fn();
-vi.mock('../vault.js', () => ({
-  decryptJson: (buf: Buffer) => decryptJson(buf),
+// The resolver reads via the connection/binding store helpers.
+const listBindingsMock = vi.fn();
+const decryptConnectionSecretsMock = vi.fn();
+vi.mock('../store.js', () => ({
+  listActiveBindingsForProjectProvider: (...a: unknown[]) => listBindingsMock(...(a as [])),
+  decryptConnectionSecrets: (...a: unknown[]) => decryptConnectionSecretsMock(...(a as [])),
+  effectiveConfig: (pair: { connection: { config?: object }; binding: { config?: object } }) => ({
+    ...(pair.connection.config ?? {}),
+    ...(pair.binding.config ?? {}),
+  }),
 }));
 
 const { applyEpodsystemMcpServers, resolveEpodsystemMcpEntry, buildEpodsystemMcpEntry } =
@@ -20,16 +18,19 @@ const { applyEpodsystemMcpServers, resolveEpodsystemMcpEntry, buildEpodsystemMcp
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 
 function mockActiveRow(config: Record<string, unknown>) {
-  selectLimit.mockResolvedValueOnce([
-    { id: 'int-1', projectId: PROJECT_ID, config, secretsEnc: Buffer.from('enc') },
+  listBindingsMock.mockResolvedValueOnce([
+    {
+      binding: { id: 'bind-1', projectId: PROJECT_ID, config: {} },
+      connection: { id: 'conn-1', config, secretsEnc: Buffer.from('enc') },
+    },
   ]);
-  decryptJson.mockReturnValueOnce({ apiKey: 'crmk_secret_key_123456' });
+  decryptConnectionSecretsMock.mockReturnValueOnce({ apiKey: 'crmk_secret_key_123456' });
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  selectLimit.mockReset();
-  decryptJson.mockReset();
+  listBindingsMock.mockReset();
+  decryptConnectionSecretsMock.mockReset();
 });
 
 describe('buildEpodsystemMcpEntry', () => {
@@ -59,25 +60,31 @@ describe('resolveEpodsystemMcpEntry', () => {
   });
 
   it('returns null when no active integration exists (AC#6 drop-on-disable)', async () => {
-    selectLimit.mockResolvedValueOnce([]);
+    listBindingsMock.mockResolvedValueOnce([]);
     const entry = await resolveEpodsystemMcpEntry(PROJECT_ID);
     expect(entry).toBeNull();
-    expect(decryptJson).not.toHaveBeenCalled();
+    expect(decryptConnectionSecretsMock).not.toHaveBeenCalled();
   });
 
-  it('returns null when the row has no secretsEnc', async () => {
-    selectLimit.mockResolvedValueOnce([
-      { id: 'int-1', projectId: PROJECT_ID, config: {}, secretsEnc: null },
+  it('returns null when the connection has no secretsEnc', async () => {
+    listBindingsMock.mockResolvedValueOnce([
+      {
+        binding: { id: 'bind-1', projectId: PROJECT_ID, config: {} },
+        connection: { id: 'conn-1', config: {}, secretsEnc: null },
+      },
     ]);
     const entry = await resolveEpodsystemMcpEntry(PROJECT_ID);
     expect(entry).toBeNull();
   });
 
   it('returns null (does not throw) when decrypt fails', async () => {
-    selectLimit.mockResolvedValueOnce([
-      { id: 'int-1', projectId: PROJECT_ID, config: {}, secretsEnc: Buffer.from('enc') },
+    listBindingsMock.mockResolvedValueOnce([
+      {
+        binding: { id: 'bind-1', projectId: PROJECT_ID, config: {} },
+        connection: { id: 'conn-1', config: {}, secretsEnc: Buffer.from('enc') },
+      },
     ]);
-    decryptJson.mockImplementationOnce(() => {
+    decryptConnectionSecretsMock.mockImplementationOnce(() => {
       throw new Error('bad key');
     });
     const entry = await resolveEpodsystemMcpEntry(PROJECT_ID);
@@ -112,21 +119,21 @@ describe('applyEpodsystemMcpServers', () => {
 
     // Second dispatch (different project, no active integration): no inject,
     // and nothing from the first dispatch bleeds through.
-    selectLimit.mockResolvedValueOnce([]);
+    listBindingsMock.mockResolvedValueOnce([]);
     const second = await applyEpodsystemMcpServers(PROJECT_ID, shared);
     expect(second).toBe(shared);
     expect(second).toEqual({ postman: { type: 'http' } });
   });
 
   it('leaves the override unchanged when there is no active integration', async () => {
-    selectLimit.mockResolvedValueOnce([]);
+    listBindingsMock.mockResolvedValueOnce([]);
     const existing = { other: { type: 'stdio' } };
     const merged = await applyEpodsystemMcpServers(PROJECT_ID, existing);
     expect(merged).toBe(existing);
   });
 
   it('returns null override unchanged when there is no active integration', async () => {
-    selectLimit.mockResolvedValueOnce([]);
+    listBindingsMock.mockResolvedValueOnce([]);
     const merged = await applyEpodsystemMcpServers(PROJECT_ID, null);
     expect(merged).toBeNull();
   });

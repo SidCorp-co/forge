@@ -8,7 +8,12 @@ import { closeRun, setCurrentStepForce } from '../../pipeline/runs.js';
 import { verifyHmacSignature } from '../../webhooks/hmac.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
 import { getAdapter, registerAdapter } from '../registry.js';
-import { type ProjectIntegrationRow, buildContext, findById, updateIntegration } from '../store.js';
+import {
+  type BindingWithConnection,
+  buildContextFromBinding,
+  findConnectionById,
+  updateConnection,
+} from '../store.js';
 import type {
   HealthCheckResult,
   InboundDispatchInput,
@@ -72,7 +77,7 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
     try {
       const res = await client.getResource(ctx.config.resourceUuid);
       const durationMs = Date.now() - started;
-      await updateIntegration(ctx.integrationId, {
+      await updateConnection(ctx.connectionId, {
         lastHealthStatus: 'ok',
         lastHealthAt: new Date(),
       });
@@ -84,12 +89,12 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown error';
       const status = err instanceof CoolifyApiError ? err.status : null;
-      await updateIntegration(ctx.integrationId, {
+      await updateConnection(ctx.connectionId, {
         lastHealthStatus: 'error',
         lastHealthAt: new Date(),
       });
       logger.warn(
-        { integrationId: ctx.integrationId, err: message, httpStatus: status },
+        { connectionId: ctx.connectionId, bindingId: ctx.bindingId, err: message, httpStatus: status },
         'coolify: healthcheck failed',
       );
       return {
@@ -101,12 +106,12 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
   },
 
   async dispatchOutbound(ctx, input: OutboundDispatchInput): Promise<OutboundDispatchResult> {
-    // Refresh row to honour any breaker state changes since context was
-    // built. If the breaker is open we abort without contacting Coolify.
-    const row = await findById(ctx.integrationId);
-    if (!row || !row.active) {
+    // Refresh the connection to honour any breaker state changes since context
+    // was built. If the breaker is open we abort without contacting Coolify.
+    const connection = await findConnectionById(ctx.connectionId);
+    if (!connection || !connection.active) {
       throw new Error(
-        `coolify: integration ${ctx.integrationId} is inactive (circuit breaker open?)`,
+        `coolify: connection ${ctx.connectionId} is inactive (circuit breaker open?)`,
       );
     }
 
@@ -118,7 +123,7 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
     const runId = payload.runId ?? input.runId ?? null;
 
     const deliveryId = await recordDelivery({
-      projectIntegrationId: ctx.integrationId,
+      bindingId: ctx.bindingId,
       direction: 'outbound',
       eventName: input.eventName,
       payload: {
@@ -137,7 +142,8 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
         level: 'info',
         message: `coolify deploy dispatch: ${input.eventName}`,
         data: {
-          integrationId: ctx.integrationId,
+          connectionId: ctx.connectionId,
+          bindingId: ctx.bindingId,
           environment: ctx.environment,
           deliveryId,
           runId,
@@ -164,7 +170,7 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
         durationMs,
         completedAt: new Date(),
       });
-      await maybeResetBreaker(ctx.integrationId);
+      await maybeResetBreaker(ctx.connectionId);
       return { deliveryId, externalId: deploymentUuid, durationMs };
     } catch (err) {
       const durationMs = Date.now() - started;
@@ -177,10 +183,13 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
         durationMs,
         completedAt: new Date(),
       });
-      const tripped = await maybeTripBreaker(ctx.integrationId);
+      const tripped = await maybeTripBreaker({
+        bindingId: ctx.bindingId,
+        connectionId: ctx.connectionId,
+      });
       if (tripped) {
         logger.error(
-          { integrationId: ctx.integrationId, environment: ctx.environment },
+          { connectionId: ctx.connectionId, bindingId: ctx.bindingId, environment: ctx.environment },
           'coolify: circuit breaker tripped — ops follow-up required',
         );
       }
@@ -209,7 +218,7 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
     }
 
     const deliveryId = await recordDelivery({
-      projectIntegrationId: ctx.integrationId,
+      bindingId: ctx.bindingId,
       direction: 'inbound',
       eventName: payload.event ?? 'coolify.unknown',
       payload,
@@ -223,7 +232,8 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
         level: 'info',
         message: `coolify webhook: ${payload.event ?? '<no event>'}`,
         data: {
-          integrationId: ctx.integrationId,
+          connectionId: ctx.connectionId,
+          bindingId: ctx.bindingId,
           environment: ctx.environment,
           deploymentUuid,
           status: payload.status ?? null,
@@ -234,10 +244,10 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
     // Locate the original outbound delivery whose Coolify response carried
     // this deployment_uuid. We extract runId from its payload to advance
     // the right pipeline run.
-    const outbound = await findOutboundByDeploymentUuid(ctx.integrationId, deploymentUuid);
+    const outbound = await findOutboundByDeploymentUuid(ctx.bindingId, deploymentUuid);
     if (!outbound) {
       logger.warn(
-        { integrationId: ctx.integrationId, deploymentUuid },
+        { bindingId: ctx.bindingId, deploymentUuid },
         'coolify webhook: no matching outbound delivery — possibly fired for a deploy from another tool',
       );
       return { deliveryId, actions: 0 };
@@ -247,7 +257,7 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
     const runId = outboundPayload?.runId;
     if (!runId) {
       logger.warn(
-        { integrationId: ctx.integrationId, deploymentUuid },
+        { bindingId: ctx.bindingId, deploymentUuid },
         'coolify webhook: matched outbound delivery has no runId — cannot advance pipeline',
       );
       return { deliveryId, actions: 0 };
@@ -276,7 +286,7 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
 };
 
 async function findOutboundByDeploymentUuid(
-  projectIntegrationId: string,
+  bindingId: string,
   deploymentUuid: string,
 ): Promise<typeof integrationDeliveries.$inferSelect | null> {
   const rows = await db
@@ -284,7 +294,7 @@ async function findOutboundByDeploymentUuid(
     .from(integrationDeliveries)
     .where(
       and(
-        eq(integrationDeliveries.projectIntegrationId, projectIntegrationId),
+        eq(integrationDeliveries.bindingId, bindingId),
         eq(integrationDeliveries.direction, 'outbound'),
         eq(integrationDeliveries.status, 'ok'),
         sql`response->>'deployment_uuid' = ${deploymentUuid}`,
@@ -312,10 +322,10 @@ export interface CoolifyDeploymentLogsResult {
  * into the build log is redacted alongside the generic secret-shaped patterns.
  */
 export async function fetchCoolifyDeploymentLogs(
-  row: ProjectIntegrationRow,
+  pair: BindingWithConnection,
   deploymentUuid: string,
 ): Promise<CoolifyDeploymentLogsResult> {
-  const ctx = buildContext<CoolifyConfig, CoolifySecrets>(row);
+  const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>(pair);
   const client = buildClient(ctx);
   const dep = await client.getDeployment(deploymentUuid);
   const raw = flattenLogs(dep.logs);

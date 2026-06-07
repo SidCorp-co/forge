@@ -12,7 +12,6 @@ import {
   devices,
   integrationDeliveries,
   integrationEnvironments,
-  projectIntegrations,
   projectMembers,
   projects,
   runners,
@@ -22,17 +21,26 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import type { CoolifySecrets } from './coolify/types.js';
 import { getAdapter } from './registry.js';
 import {
-  buildContext,
-  createIntegration,
-  findById,
-  listForProjectProvider,
-  softDeleteIntegration,
-  updateIntegration,
+  type BindingWithConnection,
+  type IntegrationConnectionRow,
+  buildContextFromBinding,
+  createBinding,
+  createConnection,
+  effectiveConfig,
+  findActiveBinding,
+  findBindingWithConnectionById,
+  findConnectionById,
+  listBindingsForProject,
+  listConnectionsForOwner,
+  softDeleteBinding,
+  softDeleteConnection,
+  updateBinding,
+  updateConnection,
 } from './store.js';
-import type { IntegrationProvider } from './types.js';
+import { type IntegrationProvider, capabilitiesFor } from './types.js';
 import { isVaultConfigured } from './vault.js';
 
-// `assertVaultBootSafety` lets core boot when project_integrations is empty,
+// `assertVaultBootSafety` lets core boot when the integration tables are empty,
 // so the first create/update attempt is the moment the missing-key
 // misconfiguration surfaces. Convert it into a structured 503 so operators see
 // a remediation message instead of a bare "Internal Server Error".
@@ -135,7 +143,7 @@ const epodsystemSecretsSchema = z.object({
 
 // Discriminated on `provider` so each provider validates its own config +
 // secrets shape. `environment` defaults to 'prod' for postman (it has no
-// staging/prod split, but the table column + unique index require a value).
+// staging/prod split, but the binding column + unique index require a value).
 const createSchema = z.discriminatedUnion('provider', [
   z.object({
     provider: z.literal('coolify'),
@@ -158,7 +166,7 @@ const createSchema = z.discriminatedUnion('provider', [
 ]);
 
 // PATCH carries no provider, so config/secrets are validated loosely here and
-// re-validated against the EXISTING row's provider inside the handler.
+// re-validated against the EXISTING binding's provider inside the handler.
 const updateSchema = z.object({
   config: z.record(z.string(), z.unknown()).optional(),
   secrets: z.record(z.string(), z.unknown()).optional(),
@@ -173,21 +181,48 @@ function configSchemaForProvider(provider: string): z.ZodTypeAny {
   return coolifyConfigSchema.partial();
 }
 
-function summarize(row: typeof projectIntegrations.$inferSelect) {
+/**
+ * Project-facing integration summary, projected from a binding + its owning
+ * connection. Field names are kept stable for the web client: `id` is the
+ * BINDING id (== old project_integration id for backfilled rows); health/breaker
+ * + secret-presence come from the connection; `config` is the effective overlay.
+ */
+function summarizeBinding(pair: BindingWithConnection) {
+  const { binding, connection } = pair;
   return {
-    id: row.id,
-    projectId: row.projectId,
-    provider: row.provider as IntegrationProvider,
-    environment: row.environment as IntegrationEnvironment,
-    config: row.config,
-    active: row.active,
-    lastHealthStatus: row.lastHealthStatus,
-    lastHealthAt: row.lastHealthAt,
-    breakerOpenedAt: row.breakerOpenedAt,
-    hasSecrets: row.secretsEnc !== null,
-    integrationSecretSet: row.integrationSecret !== null,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
+    id: binding.id,
+    connectionId: connection.id,
+    projectId: binding.projectId,
+    provider: binding.provider as IntegrationProvider,
+    environment: binding.environment as IntegrationEnvironment,
+    config: effectiveConfig(pair),
+    active: binding.active && connection.active,
+    lastHealthStatus: connection.lastHealthStatus,
+    lastHealthAt: connection.lastHealthAt,
+    breakerOpenedAt: connection.breakerOpenedAt,
+    hasSecrets: connection.secretsEnc !== null,
+    integrationSecretSet: binding.integrationSecret !== null,
+    createdAt: binding.createdAt,
+    updatedAt: binding.updatedAt,
+  };
+}
+
+/** Owner-facing connection summary (never echoes secret bytes). */
+function summarizeConnection(connection: IntegrationConnectionRow) {
+  return {
+    id: connection.id,
+    ownerType: connection.ownerType,
+    ownerId: connection.ownerId,
+    provider: connection.provider as IntegrationProvider,
+    displayName: connection.displayName,
+    config: connection.config,
+    active: connection.active,
+    lastHealthStatus: connection.lastHealthStatus,
+    lastHealthAt: connection.lastHealthAt,
+    breakerOpenedAt: connection.breakerOpenedAt,
+    hasSecrets: connection.secretsEnc !== null,
+    createdAt: connection.createdAt,
+    updatedAt: connection.updatedAt,
   };
 }
 
@@ -199,12 +234,8 @@ integrationsRoutes.get('/:projectId/integrations', async (c) => {
   const userId = c.get('userId');
   await assertProjectMember(projectId, userId);
 
-  const rows = await db
-    .select()
-    .from(projectIntegrations)
-    .where(eq(projectIntegrations.projectId, projectId))
-    .orderBy(desc(projectIntegrations.createdAt));
-  return c.json({ items: rows.map(summarize) });
+  const pairs = await listBindingsForProject(projectId);
+  return c.json({ items: pairs.map(summarizeBinding) });
 });
 
 integrationsRoutes.post(
@@ -221,22 +252,46 @@ integrationsRoutes.post(
     assertVaultConfigured();
 
     const body = c.req.valid('json');
-    // Auto-mint an HMAC secret for inbound webhook verification.
+
+    // One active binding per (project, provider, env) — guard before we create a
+    // connection so we don't leave an orphan when the binding would collide.
+    const clash = await findActiveBinding(projectId, body.provider, body.environment);
+    if (clash) {
+      throw new HTTPException(409, {
+        message: 'integration already exists for this provider+environment',
+        cause: { code: 'ALREADY_EXISTS' },
+      });
+    }
+
+    // Auto-mint a per-binding HMAC secret for inbound webhook verification.
     const integrationSecret = `whsec_${randomBytes(24).toString('hex')}`;
 
+    // Create the credential (connection, owned by the caller) then bind it into
+    // this project+env. Config lives on the connection; the binding carries the
+    // env + inbound HMAC. (Per-binding config overrides arrive with the shared-
+    // connection UX in a later epic issue.)
+    const connection = await createConnection({
+      ownerId: userId,
+      provider: body.provider,
+      config: { ...body.config, environment: body.environment },
+      secrets: body.secrets,
+    });
     try {
-      const created = await createIntegration({
+      const binding = await createBinding({
+        connectionId: connection.id,
         projectId,
         provider: body.provider,
         environment: body.environment,
-        config: { ...body.config, environment: body.environment },
-        secrets: body.secrets,
         integrationSecret,
       });
-      return c.json({ integration: summarize(created), integrationSecret }, 201);
+      return c.json(
+        { integration: summarizeBinding({ binding, connection }), integrationSecret },
+        201,
+      );
     } catch (err) {
-      // Postgres unique-violation error code is the durable signal here;
-      // fall back to message scan only when the driver hides the code.
+      // Roll the just-created connection back so a binding-unique collision
+      // doesn't leave a dangling credential.
+      await softDeleteConnection(connection.id).catch(() => {});
       const code = (err as { code?: string } | null)?.code;
       const msg = err instanceof Error ? err.message : String(err);
       if (code === '23505' || /duplicate key|unique/.test(msg)) {
@@ -262,26 +317,26 @@ integrationsRoutes.patch(
     const role = await assertProjectMember(projectId, userId);
     assertAdmin(role);
 
-    const existing = await findById(id);
-    if (!existing || existing.projectId !== projectId) throw notFound();
+    const existing = await findBindingWithConnectionById(id);
+    if (!existing || existing.binding.projectId !== projectId) throw notFound();
+    const { binding, connection } = existing;
 
     const patch = c.req.valid('json');
 
-    // Re-validate the loose config against the existing row's provider so a
-    // PATCH can never strip the wrong provider's fields (union-of-partials
-    // would silently drop unknown keys).
+    // Re-validate the loose config against the existing provider so a PATCH can
+    // never strip the wrong provider's fields. Config lives on the connection.
     let mergedConfig: Record<string, unknown> | undefined;
     if (patch.config) {
-      const parsed = configSchemaForProvider(existing.provider).safeParse(patch.config);
+      const parsed = configSchemaForProvider(binding.provider).safeParse(patch.config);
       if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
       mergedConfig = {
-        ...(existing.config as object),
+        ...((connection.config ?? {}) as object),
         ...(parsed.data as Record<string, unknown>),
       };
     }
 
     let mergedSecrets: Record<string, unknown> | null | undefined = undefined;
-    if (existing.provider === 'postman' || existing.provider === 'epodsystem') {
+    if (binding.provider === 'postman' || binding.provider === 'epodsystem') {
       // Postman + Epodsystem both have a single non-rotating secret: the API
       // key. Replace it wholesale when present.
       const parsed = postmanSecretsSchema.partial().safeParse(patch.secrets ?? {});
@@ -292,12 +347,12 @@ integrationsRoutes.patch(
       }
     } else if (typeof patch.secrets?.apiToken === 'string') {
       // Coolify token rotation — keep the previous token for 24h so deploys in
-      // flight when the operator updates the token still authenticate.
-      // Only guard the vault when this PATCH touches encrypted material —
-      // config-only patches must keep working even if the key is missing.
+      // flight when the operator updates the token still authenticate. Only
+      // guard the vault when this PATCH touches encrypted material — config-only
+      // patches must keep working even if the key is missing.
       assertVaultConfigured();
-      const currentSecrets = existing.secretsEnc
-        ? (await import('./vault.js')).decryptJson<CoolifySecrets>(existing.secretsEnc)
+      const currentSecrets = connection.secretsEnc
+        ? (await import('./vault.js')).decryptJson<CoolifySecrets>(connection.secretsEnc)
         : null;
       mergedSecrets = {
         apiToken: patch.secrets.apiToken,
@@ -308,13 +363,21 @@ integrationsRoutes.patch(
       };
     }
 
-    const updatePatch: Parameters<typeof updateIntegration>[1] = {};
-    if (mergedConfig !== undefined) updatePatch.config = mergedConfig;
-    if (mergedSecrets !== undefined) updatePatch.secrets = mergedSecrets;
-    if (patch.active !== undefined) updatePatch.active = patch.active;
-    const updated = await updateIntegration(id, updatePatch);
-    if (!updated) throw notFound();
-    return c.json({ integration: summarize(updated) });
+    // Config + secrets live on the connection; `active` toggles the binding
+    // (disabling resolution for this project without touching the credential).
+    if (mergedConfig !== undefined || mergedSecrets !== undefined) {
+      const connPatch: Parameters<typeof updateConnection>[1] = {};
+      if (mergedConfig !== undefined) connPatch.config = mergedConfig;
+      if (mergedSecrets !== undefined) connPatch.secrets = mergedSecrets;
+      await updateConnection(connection.id, connPatch);
+    }
+    if (patch.active !== undefined) {
+      await updateBinding(binding.id, { active: patch.active });
+    }
+
+    const refreshed = await findBindingWithConnectionById(id);
+    if (!refreshed) throw notFound();
+    return c.json({ integration: summarizeBinding(refreshed) });
   },
 );
 
@@ -325,10 +388,13 @@ integrationsRoutes.delete('/:projectId/integrations/:id', async (c) => {
   const role = await assertProjectMember(projectId, userId);
   assertAdmin(role);
 
-  const existing = await findById(id);
-  if (!existing || existing.projectId !== projectId) throw notFound();
+  const existing = await findBindingWithConnectionById(id);
+  if (!existing || existing.binding.projectId !== projectId) throw notFound();
 
-  await softDeleteIntegration(id);
+  // Soft-delete the binding (stops resolution for this project). The connection
+  // is left intact — it may be shared by other projects, and credential removal
+  // is an owner-scoped action on the connection itself.
+  await softDeleteBinding(id);
   return c.json({ ok: true });
 });
 
@@ -338,17 +404,17 @@ integrationsRoutes.post('/:projectId/integrations/:id/test', async (c) => {
   const userId = c.get('userId');
   await assertProjectMember(projectId, userId);
 
-  const existing = await findById(id);
-  if (!existing || existing.projectId !== projectId) throw notFound();
+  const existing = await findBindingWithConnectionById(id);
+  if (!existing || existing.binding.projectId !== projectId) throw notFound();
 
-  const adapter = getAdapter(existing.provider);
+  const adapter = getAdapter(existing.binding.provider);
   if (!adapter) {
     throw new HTTPException(400, {
-      message: `no adapter registered for provider=${existing.provider}`,
+      message: `no adapter registered for provider=${existing.binding.provider}`,
       cause: { code: 'NO_ADAPTER' },
     });
   }
-  const ctx = buildContext(existing);
+  const ctx = buildContextFromBinding(existing);
   const result = await adapter.healthcheck(ctx);
   return c.json(result);
 });
@@ -360,13 +426,16 @@ integrationsRoutes.post('/:projectId/integrations/:id/rotate-secret', async (c) 
   const role = await assertProjectMember(projectId, userId);
   assertAdmin(role);
 
-  const existing = await findById(id);
-  if (!existing || existing.projectId !== projectId) throw notFound();
+  const existing = await findBindingWithConnectionById(id);
+  if (!existing || existing.binding.projectId !== projectId) throw notFound();
 
+  // The inbound HMAC secret is per-binding (an inbound webhook is project+env
+  // scoped), so rotation targets the binding.
   const newSecret = `whsec_${randomBytes(24).toString('hex')}`;
-  const updated = await updateIntegration(id, { integrationSecret: newSecret });
-  if (!updated) throw notFound();
-  return c.json({ integration: summarize(updated), integrationSecret: newSecret });
+  await updateBinding(id, { integrationSecret: newSecret });
+  const refreshed = await findBindingWithConnectionById(id);
+  if (!refreshed) throw notFound();
+  return c.json({ integration: summarizeBinding(refreshed), integrationSecret: newSecret });
 });
 
 integrationsRoutes.post('/:projectId/integrations/:id/confirm-prod-deploy', async (c) => {
@@ -376,9 +445,9 @@ integrationsRoutes.post('/:projectId/integrations/:id/confirm-prod-deploy', asyn
   const role = await assertProjectMember(projectId, userId);
   assertAdmin(role);
 
-  const existing = await findById(id);
-  if (!existing || existing.projectId !== projectId) throw notFound();
-  if (existing.environment !== 'prod') {
+  const existing = await findBindingWithConnectionById(id);
+  if (!existing || existing.binding.projectId !== projectId) throw notFound();
+  if (existing.binding.environment !== 'prod') {
     throw new HTTPException(400, {
       message: 'confirm-prod-deploy is only valid on prod-environment integrations',
       cause: { code: 'NOT_PROD_ENV' },
@@ -397,13 +466,13 @@ integrationsRoutes.get('/:projectId/integrations/:id/deliveries', async (c) => {
   const userId = c.get('userId');
   await assertProjectMember(projectId, userId);
 
-  const existing = await findById(id);
-  if (!existing || existing.projectId !== projectId) throw notFound();
+  const existing = await findBindingWithConnectionById(id);
+  if (!existing || existing.binding.projectId !== projectId) throw notFound();
 
   const rows = await db
     .select()
     .from(integrationDeliveries)
-    .where(eq(integrationDeliveries.projectIntegrationId, id))
+    .where(eq(integrationDeliveries.bindingId, id))
     .orderBy(desc(integrationDeliveries.createdAt))
     .limit(50);
   return c.json({ items: rows });
@@ -414,7 +483,9 @@ integrationsRoutes.get('/:projectId/integrations/:id/deliveries', async (c) => {
 // Aggregates ONLY real, already-existing signals — no fabricated metrics. Each
 // card carries a status the UI renders with icon + text (never color-only) plus
 // a last-sync timestamp where one genuinely exists. Providers with no backing
-// data render `not_configured` rather than inventing health.
+// data render `not_configured` rather than inventing health. Each provider card
+// also carries its adapter `capabilities` so the UI renders to the provider's
+// archetype (e.g. no delivery-log affordance for MCP-injection providers).
 
 const pExecFile = promisify(execFile);
 
@@ -458,6 +529,11 @@ function toIso(d: Date | string | null): string | null {
   return d instanceof Date ? d.toISOString() : d;
 }
 
+/** Adapter capabilities for a provider, for capability-aware card rendering. */
+function providerCapabilities(provider: IntegrationProvider) {
+  return capabilitiesFor(getAdapter(provider));
+}
+
 integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
   const projectId = c.req.param('projectId');
   const userId = c.get('userId');
@@ -470,10 +546,18 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
     .limit(1);
   if (!project) throw notFound('project');
 
-  const integrationRows = await db
-    .select()
-    .from(projectIntegrations)
-    .where(eq(projectIntegrations.projectId, projectId));
+  // One row per active binding, joined to its connection (health/breaker live on
+  // the connection). Flattened to the shape the cards below already consume.
+  const pairs = await listBindingsForProject(projectId);
+  const integrationRows = pairs.map((pair) => ({
+    provider: pair.binding.provider,
+    environment: pair.binding.environment,
+    config: effectiveConfig(pair),
+    active: pair.binding.active && pair.connection.active,
+    lastHealthStatus: pair.connection.lastHealthStatus,
+    lastHealthAt: pair.connection.lastHealthAt,
+    breakerOpenedAt: pair.connection.breakerOpenedAt,
+  }));
 
   // Runners bound to this project + each device's git push-cred status.
   const runnerRows = await db
@@ -511,8 +595,9 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
     meta: { transport, remoteUrl, baseBranch: project.baseBranch, deviceCreds },
   });
 
-  // --- Coolify (one card per configured integration) ---
+  // --- Coolify (one card per configured binding) ---
   const coolifyRows = integrationRows.filter((r) => r.provider === 'coolify');
+  const coolifyCaps = providerCapabilities('coolify');
   if (coolifyRows.length === 0) {
     cards.push({
       key: 'coolify',
@@ -521,6 +606,7 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
       detail: 'no Coolify integration configured',
       lastSyncAt: null,
       configured: false,
+      meta: { capabilities: coolifyCaps },
     });
   } else {
     for (const row of coolifyRows) {
@@ -533,14 +619,19 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
           : 'never health-checked',
         lastSyncAt: toIso(row.lastHealthAt),
         configured: true,
-        meta: { environment: row.environment, breakerOpen: row.breakerOpenedAt !== null },
+        meta: {
+          environment: row.environment,
+          breakerOpen: row.breakerOpenedAt !== null,
+          capabilities: coolifyCaps,
+        },
       });
     }
   }
 
-  // --- Postman (ISS-336) — one card; reflects the active integration's
-  // last test-connection health, or 'not_configured' when absent. ---
+  // --- Postman (ISS-336) — one card; reflects the active binding's last
+  // test-connection health, or 'not_configured' when absent. ---
   const postmanRow = integrationRows.find((r) => r.provider === 'postman');
+  const postmanCaps = providerCapabilities('postman');
   if (!postmanRow) {
     cards.push({
       key: 'postman',
@@ -549,6 +640,7 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
       detail: 'no Postman integration configured',
       lastSyncAt: null,
       configured: false,
+      meta: { capabilities: postmanCaps },
     });
   } else {
     const pmCfg = (postmanRow.config ?? {}) as { region?: string; mode?: string };
@@ -563,14 +655,15 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
           : 'never test-connected',
       lastSyncAt: toIso(postmanRow.lastHealthAt),
       configured: true,
-      meta: { region: pmCfg.region ?? 'us', mode: pmCfg.mode ?? 'minimal' },
+      meta: { region: pmCfg.region ?? 'us', mode: pmCfg.mode ?? 'minimal', capabilities: postmanCaps },
     });
   }
 
-  // --- Epodsystem (ISS-387) — one card; reflects the active integration's
-  // last test-connection health, or 'not_configured' when absent. Carries only
+  // --- Epodsystem (ISS-387) — one card; reflects the active binding's last
+  // test-connection health, or 'not_configured' when absent. Carries only
   // non-secret store identity in meta — never the crmk_ key. ---
   const epodsystemRow = integrationRows.find((r) => r.provider === 'epodsystem');
+  const epodsystemCaps = providerCapabilities('epodsystem');
   if (!epodsystemRow) {
     cards.push({
       key: 'epodsystem',
@@ -579,6 +672,7 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
       detail: 'no Epodsystem integration configured',
       lastSyncAt: null,
       configured: false,
+      meta: { capabilities: epodsystemCaps },
     });
   } else {
     const epCfg = (epodsystemRow.config ?? {}) as { storeSlug?: string; storeName?: string };
@@ -593,7 +687,11 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
           : 'never test-connected',
       lastSyncAt: toIso(epodsystemRow.lastHealthAt),
       configured: true,
-      meta: { storeSlug: epCfg.storeSlug ?? null, storeName: epCfg.storeName ?? null },
+      meta: {
+        storeSlug: epCfg.storeSlug ?? null,
+        storeName: epCfg.storeName ?? null,
+        capabilities: epodsystemCaps,
+      },
     });
   }
 
@@ -657,9 +755,137 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
   return c.json({ cards });
 });
 
-export async function loadIntegrationsForProvider(
-  provider: IntegrationProvider,
-  projectId: string,
-) {
-  return listForProjectProvider(projectId, provider);
+// === Owner-scoped connection CRUD ===
+//
+// A connection is the credential, owned by a principal (a user today). Bindings
+// (project-scoped, above) reference a connection. Mounted at a distinct base so
+// the single-segment paths never collide with the project router's `/:id`.
+
+const connectionCreateSchema = z.discriminatedUnion('provider', [
+  z.object({
+    provider: z.literal('coolify'),
+    displayName: z.string().min(1).max(200).optional(),
+    config: coolifyConfigSchema,
+    secrets: coolifySecretsSchema,
+  }),
+  z.object({
+    provider: z.literal('postman'),
+    displayName: z.string().min(1).max(200).optional(),
+    config: postmanConfigSchema,
+    secrets: postmanSecretsSchema,
+  }),
+  z.object({
+    provider: z.literal('epodsystem'),
+    displayName: z.string().min(1).max(200).optional(),
+    config: epodsystemConfigBase,
+    secrets: epodsystemSecretsSchema,
+  }),
+]);
+
+const connectionUpdateSchema = z.object({
+  displayName: z.string().min(1).max(200).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
+  secrets: z.record(z.string(), z.unknown()).optional(),
+  active: z.boolean().optional(),
+});
+
+async function loadOwnedConnection(
+  id: string,
+  userId: string,
+): Promise<IntegrationConnectionRow> {
+  const connection = await findConnectionById(id);
+  // Treat a connection owned by someone else as not-found (don't leak existence).
+  if (!connection || connection.ownerType !== 'user' || connection.ownerId !== userId) {
+    throw notFound('connection');
+  }
+  return connection;
 }
+
+export const integrationConnectionsRoutes = new Hono<{ Variables: AuthVars }>();
+integrationConnectionsRoutes.use('*', requireAuth(), assertEmailVerified());
+
+integrationConnectionsRoutes.get('/', async (c) => {
+  const userId = c.get('userId');
+  const rows = await listConnectionsForOwner(userId);
+  return c.json({ items: rows.map(summarizeConnection) });
+});
+
+integrationConnectionsRoutes.post(
+  '/',
+  zValidator('json', connectionCreateSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const userId = c.get('userId');
+    assertVaultConfigured();
+    const body = c.req.valid('json');
+    const connection = await createConnection({
+      ownerType: 'user',
+      ownerId: userId,
+      provider: body.provider,
+      displayName: body.displayName ?? null,
+      config: body.config,
+      secrets: body.secrets,
+    });
+    return c.json({ connection: summarizeConnection(connection) }, 201);
+  },
+);
+
+integrationConnectionsRoutes.patch(
+  '/:id',
+  zValidator('json', connectionUpdateSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const id = c.req.param('id');
+    const userId = c.get('userId');
+    const existing = await loadOwnedConnection(id, userId);
+    const patch = c.req.valid('json');
+
+    const connPatch: Parameters<typeof updateConnection>[1] = {};
+    if (patch.displayName !== undefined) connPatch.displayName = patch.displayName;
+    if (patch.active !== undefined) connPatch.active = patch.active;
+    if (patch.config) {
+      const parsed = configSchemaForProvider(existing.provider).safeParse(patch.config);
+      if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
+      connPatch.config = {
+        ...((existing.config ?? {}) as object),
+        ...(parsed.data as Record<string, unknown>),
+      };
+    }
+    if (patch.secrets) {
+      assertVaultConfigured();
+      if (existing.provider === 'postman' || existing.provider === 'epodsystem') {
+        const parsed = postmanSecretsSchema.partial().safeParse(patch.secrets);
+        if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
+        if (parsed.data.apiKey) connPatch.secrets = { apiKey: parsed.data.apiKey };
+      } else if (typeof patch.secrets.apiToken === 'string') {
+        const currentSecrets = existing.secretsEnc
+          ? (await import('./vault.js')).decryptJson<CoolifySecrets>(existing.secretsEnc)
+          : null;
+        connPatch.secrets = {
+          apiToken: patch.secrets.apiToken,
+          previousApiToken: currentSecrets?.apiToken,
+          previousTokenExpiresAt: currentSecrets?.apiToken
+            ? new Date(Date.now() + ROTATION_WINDOW_MS).toISOString()
+            : undefined,
+        };
+      }
+    }
+
+    const updated = await updateConnection(id, connPatch);
+    if (!updated) throw notFound('connection');
+    return c.json({ connection: summarizeConnection(updated) });
+  },
+);
+
+integrationConnectionsRoutes.delete('/:id', async (c) => {
+  const id = c.req.param('id');
+  const userId = c.get('userId');
+  await loadOwnedConnection(id, userId);
+  // Cascade: bindings reference the connection with ON DELETE CASCADE, but we
+  // only soft-delete here (active=false) so existing bindings stop resolving via
+  // findActiveBinding's `connection.active` filter without dropping audit rows.
+  await softDeleteConnection(id);
+  return c.json({ ok: true });
+});

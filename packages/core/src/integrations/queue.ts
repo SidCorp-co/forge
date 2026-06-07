@@ -2,12 +2,13 @@ import { INTEGRATIONS_QUEUE_NAME } from '../jobs/queue-name.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
 import { coolifyAdapter } from './coolify/adapter.js';
-import { buildContext, findById } from './store.js';
+import { buildContextFromBinding, findBindingById, findConnectionById } from './store.js';
 import type { CoolifyConfig, CoolifySecrets } from './coolify/types.js';
 
 export interface CoolifyDispatchJob {
   jobKind: 'coolify.dispatch';
-  integrationId: string;
+  /** Active binding to dispatch on (== old project_integration id for backfilled rows). */
+  bindingId: string;
   /** `null` for a run-less resource redeploy (no pipeline run to track). */
   runId: string | null;
   issueId: string | null;
@@ -40,7 +41,7 @@ export async function registerIntegrationsWorker(): Promise<void> {
           // Let pg-boss surface this to the retry policy. The adapter has
           // already recorded the failed delivery + maybe-tripped the breaker.
           logger.error(
-            { err, integrationId: data.integrationId, runId: data.runId },
+            { err, bindingId: data.bindingId, runId: data.runId },
             'integrations worker: coolify dispatch threw — retry will be scheduled by pg-boss',
           );
           throw err;
@@ -53,15 +54,23 @@ export async function registerIntegrationsWorker(): Promise<void> {
 }
 
 async function runCoolifyDispatch(data: CoolifyDispatchJob): Promise<void> {
-  const row = await findById(data.integrationId);
-  if (!row || !row.active) {
+  const binding = await findBindingById(data.bindingId);
+  if (!binding || !binding.active) {
     logger.warn(
-      { integrationId: data.integrationId },
-      'coolify dispatch worker: integration row missing or inactive — dropping job',
+      { bindingId: data.bindingId },
+      'coolify dispatch worker: binding missing or inactive — dropping job',
     );
     return;
   }
-  const ctx = buildContext<CoolifyConfig, CoolifySecrets>(row);
+  const connection = await findConnectionById(binding.connectionId);
+  if (!connection || !connection.active) {
+    logger.warn(
+      { bindingId: data.bindingId, connectionId: binding.connectionId },
+      'coolify dispatch worker: connection missing or inactive (breaker open?) — dropping job',
+    );
+    return;
+  }
+  const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>({ binding, connection });
   await coolifyAdapter.dispatchOutbound(ctx, {
     eventName: data.eventName,
     payload: { runId: data.runId, issueId: data.issueId, environment: ctx.environment },

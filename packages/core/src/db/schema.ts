@@ -2021,12 +2021,17 @@ export const integrationDeliveries = pgTable(
   'integration_deliveries',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    projectIntegrationId: uuid('project_integration_id')
-      .notNull()
-      .references(() => projectIntegrations.id, { onDelete: 'cascade' }),
-    // Connection/Binding model (additive): repointed from projectIntegrationId
-    // during the REST cutover. Nullable + backfilled 1:1 so existing rows keep
-    // working until the cutover flips reads to bindings.
+    // Legacy link. Nullable since the ISS-399 cutover: new bindings created via
+    // the connection/binding CRUD have no backing project_integrations row, so
+    // post-cutover dispatches write binding_id only (project_integration_id
+    // stays populated on backfilled historical rows). Dropped entirely in the
+    // table-retirement issue (epic F).
+    projectIntegrationId: uuid('project_integration_id').references(
+      () => projectIntegrations.id,
+      { onDelete: 'cascade' },
+    ),
+    // Connection/Binding model: the dispatch/read key after the ISS-399 cutover.
+    // Backfilled 1:1 from project_integration_id by migration 0101.
     bindingId: uuid('binding_id').references(() => integrationBindings.id, {
       onDelete: 'cascade',
     }),
@@ -2056,6 +2061,11 @@ export const integrationDeliveries = pgTable(
       t.bindingId,
       sql`${t.createdAt} DESC`,
     ),
+    // Post-cutover idempotency key (mirrors requestIdUq on the legacy column):
+    // a dispatch keyed by (binding, requestId) is deduped at the DB level.
+    bindingRequestIdUq: uniqueIndex('integration_deliveries_binding_request_id_uq')
+      .on(t.bindingId, t.requestId)
+      .where(sql`request_id IS NOT NULL`),
   }),
 );
 

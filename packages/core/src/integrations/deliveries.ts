@@ -7,7 +7,10 @@ import {
 } from '../db/schema.js';
 
 export interface RecordDeliveryInput {
-  projectIntegrationId: string;
+  /** Binding the delivery is scoped to (the post-cutover key). */
+  bindingId: string;
+  /** Legacy column — null for new bindings with no backing project_integration. */
+  projectIntegrationId?: string | null;
   direction: IntegrationDeliveryDirection;
   eventName: string;
   payload: unknown;
@@ -27,7 +30,8 @@ export async function recordDelivery(input: RecordDeliveryInput): Promise<string
   const [row] = await db
     .insert(integrationDeliveries)
     .values({
-      projectIntegrationId: input.projectIntegrationId,
+      bindingId: input.bindingId,
+      projectIntegrationId: input.projectIntegrationId ?? null,
       direction: input.direction,
       eventName: input.eventName,
       payload: (input.payload ?? {}) as Record<string, unknown>,
@@ -51,12 +55,12 @@ export async function updateDelivery(id: string, patch: UpdateDeliveryInput): Pr
 }
 
 /**
- * Counts outbound deliveries with the given status for an integration within
- * the lookback window. Used by the circuit breaker to decide whether to
- * trip; the parent project_integrations.active flag is the breaker state.
+ * Counts outbound deliveries with the given status for a binding within the
+ * lookback window. Used by the circuit breaker to decide whether to trip; the
+ * owning connection's `active` flag is the breaker state.
  */
 export async function countOutboundStatusInWindow(
-  projectIntegrationId: string,
+  bindingId: string,
   status: IntegrationDeliveryStatus,
   windowMs: number,
 ): Promise<number> {
@@ -66,7 +70,7 @@ export async function countOutboundStatusInWindow(
     .from(integrationDeliveries)
     .where(
       and(
-        eq(integrationDeliveries.projectIntegrationId, projectIntegrationId),
+        eq(integrationDeliveries.bindingId, bindingId),
         eq(integrationDeliveries.direction, 'outbound'),
         eq(integrationDeliveries.status, status),
         gte(integrationDeliveries.createdAt, since),
@@ -81,7 +85,7 @@ export async function countOutboundStatusInWindow(
  * since a 1-failure-then-success run shouldn't trip.
  */
 export async function recentOutboundDeliveries(
-  projectIntegrationId: string,
+  bindingId: string,
   limit: number,
   windowMs: number,
 ): Promise<{ status: IntegrationDeliveryStatus; createdAt: Date }[]> {
@@ -94,7 +98,7 @@ export async function recentOutboundDeliveries(
     .from(integrationDeliveries)
     .where(
       and(
-        eq(integrationDeliveries.projectIntegrationId, projectIntegrationId),
+        eq(integrationDeliveries.bindingId, bindingId),
         eq(integrationDeliveries.direction, 'outbound'),
         gte(integrationDeliveries.createdAt, since),
       ),
@@ -104,14 +108,14 @@ export async function recentOutboundDeliveries(
 }
 
 export async function findLastSuccessfulOutbound(
-  projectIntegrationId: string,
+  bindingId: string,
 ): Promise<typeof integrationDeliveries.$inferSelect | null> {
   const rows = await db
     .select()
     .from(integrationDeliveries)
     .where(
       and(
-        eq(integrationDeliveries.projectIntegrationId, projectIntegrationId),
+        eq(integrationDeliveries.bindingId, bindingId),
         eq(integrationDeliveries.direction, 'outbound'),
         eq(integrationDeliveries.status, 'ok'),
       ),
@@ -128,14 +132,14 @@ export async function findLastSuccessfulOutbound(
  * its `response.deployment_uuid`.
  */
 export async function findLastOutbound(
-  projectIntegrationId: string,
+  bindingId: string,
 ): Promise<typeof integrationDeliveries.$inferSelect | null> {
   const rows = await db
     .select()
     .from(integrationDeliveries)
     .where(
       and(
-        eq(integrationDeliveries.projectIntegrationId, projectIntegrationId),
+        eq(integrationDeliveries.bindingId, bindingId),
         eq(integrationDeliveries.direction, 'outbound'),
       ),
     )
@@ -145,15 +149,15 @@ export async function findLastOutbound(
 }
 
 /**
- * Looks up an outbound delivery by its `(project_integration_id, request_id)`
- * pair — the same tuple the `integration_deliveries_request_id_uq` partial
- * unique index covers. Returns the row or null. Used as the application-level
+ * Looks up an outbound delivery by its `(binding_id, request_id)` pair — the
+ * same tuple the `integration_deliveries_binding_request_id_uq` partial unique
+ * index covers. Returns the row or null. Used as the application-level
  * idempotency guard in the Coolify dispatch loop so a duplicate dispatch with
  * the same `requestId` (e.g. agent-driven + auto-subscriber) is skipped
  * instead of hitting a unique-violation inside the worker.
  */
 export async function findDeliveryByRequestId(
-  projectIntegrationId: string,
+  bindingId: string,
   requestId: string,
 ): Promise<typeof integrationDeliveries.$inferSelect | null> {
   const rows = await db
@@ -161,7 +165,7 @@ export async function findDeliveryByRequestId(
     .from(integrationDeliveries)
     .where(
       and(
-        eq(integrationDeliveries.projectIntegrationId, projectIntegrationId),
+        eq(integrationDeliveries.bindingId, bindingId),
         eq(integrationDeliveries.direction, 'outbound'),
         eq(integrationDeliveries.requestId, requestId),
       ),

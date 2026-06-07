@@ -12,12 +12,13 @@
  * integration. Authorization is membership-level, like `forge_postman_target`.
  */
 
-import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '../../db/client.js';
-import { projectIntegrations } from '../../db/schema.js';
 import { epodsystemEndpoint } from '../../integrations/epodsystem/endpoints.js';
 import type { EpodsystemConfig } from '../../integrations/epodsystem/types.js';
+import {
+  effectiveConfig,
+  listActiveBindingsForProjectProvider,
+} from '../../integrations/store.js';
 import {
   type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
@@ -55,21 +56,10 @@ export const forgeStorefrontTargetTool: ContextScopedMcpToolFactory = ({
     const projectId = input.projectId ?? (await resolveProjectIdFromSlug(projectSlug));
     await assertPrincipalIsMember(principal, projectId);
 
-    const [row] = await db
-      .select()
-      .from(projectIntegrations)
-      .where(
-        and(
-          eq(projectIntegrations.projectId, projectId),
-          eq(projectIntegrations.provider, 'epodsystem'),
-          eq(projectIntegrations.active, true),
-        ),
-      )
-      .limit(1);
+    const [pair] = await listActiveBindingsForProjectProvider(projectId, 'epodsystem');
+    if (!pair) return { configured: false };
 
-    if (!row) return { configured: false };
-
-    const config = (row.config ?? {}) as EpodsystemConfig;
+    const config = effectiveConfig<EpodsystemConfig>(pair);
     return {
       configured: true,
       orgId: config.orgId ?? null,

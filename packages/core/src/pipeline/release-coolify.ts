@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { pipelineRuns, projectIntegrations } from '../db/schema.js';
+import { pipelineRuns } from '../db/schema.js';
 import { findDeliveryByRequestId } from '../integrations/deliveries.js';
 import { enqueueCoolifyDispatch } from '../integrations/queue.js';
+import { listActiveBindingsForProjectProvider } from '../integrations/store.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { setCurrentStepForce } from './runs.js';
@@ -37,17 +38,8 @@ export async function tryDispatchCoolifyRelease(args: {
   runId: string;
 }): Promise<DispatchOutcome> {
   const { projectId, issueId, runId } = args;
-  const rows = await db
-    .select()
-    .from(projectIntegrations)
-    .where(
-      and(
-        eq(projectIntegrations.projectId, projectId),
-        eq(projectIntegrations.provider, 'coolify'),
-        eq(projectIntegrations.active, true),
-      ),
-    );
-  if (rows.length === 0) {
+  const pairs = await listActiveBindingsForProjectProvider(projectId, 'coolify');
+  if (pairs.length === 0) {
     await setCurrentStepForce(runId, RELEASE_DEPLOY_SKIPPED);
     return { dispatched: false, pendingHumanConfirm: false, integrationIds: [], reason: 'no-integration' };
   }
@@ -55,13 +47,13 @@ export async function tryDispatchCoolifyRelease(args: {
   const dispatched: string[] = [];
   let pendingHumanConfirm = false;
 
-  for (const row of rows) {
-    if (row.environment === 'prod') {
+  for (const { binding } of pairs) {
+    if (binding.environment === 'prod') {
       // Manual approval gate — never auto-dispatch prod. The UI sticky
       // banner calls /integrations/:id/confirm-prod-deploy to release the gate.
-      const gateState = await getProdGateState(row.id);
+      const gateState = await getProdGateState(binding.id);
       if (!gateState || gateState.confirmedAt === null) {
-        await markPendingHumanConfirm({ runId, issueId, integrationId: row.id });
+        await markPendingHumanConfirm({ runId, issueId, bindingId: binding.id });
         pendingHumanConfirm = true;
         continue;
       }
@@ -73,25 +65,25 @@ export async function tryDispatchCoolifyRelease(args: {
     // `integration_deliveries` unique constraint + pg-boss singletonKey
     // collision-free (even for two dispatches in the same ms) without a dedup
     // lookup. (Coolify-side, the adapter force-rebuilds so the build is fresh.)
-    const requestId = `${runId}:${row.id}:${Date.now()}-${randomUUID().slice(0, 8)}`;
+    const requestId = `${runId}:${binding.id}:${Date.now()}-${randomUUID().slice(0, 8)}`;
 
     await setCurrentStepForce(runId, RELEASE_DEPLOY_IN_FLIGHT);
     await enqueueCoolifyDispatch({
       jobKind: 'coolify.dispatch',
-      integrationId: row.id,
+      bindingId: binding.id,
       runId,
       issueId,
       eventName: 'release.requested',
       requestId,
     });
-    dispatched.push(row.id);
+    dispatched.push(binding.id);
 
     if (isSentryEnabled()) {
       Sentry.addBreadcrumb({
         category: 'integration.coolify.dispatch',
         level: 'info',
         message: 'enqueued coolify dispatch',
-        data: { integrationId: row.id, environment: row.environment, runId },
+        data: { bindingId: binding.id, environment: binding.environment, runId },
       });
     }
   }
@@ -100,7 +92,9 @@ export async function tryDispatchCoolifyRelease(args: {
     return {
       dispatched: false,
       pendingHumanConfirm: true,
-      integrationIds: rows.filter((r) => r.environment === 'prod').map((r) => r.id),
+      integrationIds: pairs
+        .filter((p) => p.binding.environment === 'prod')
+        .map((p) => p.binding.id),
       reason: 'awaiting-prod-confirm',
     };
   }
@@ -129,37 +123,30 @@ export async function dispatchCoolifyDeployDirect(args: {
   integrationId: string;
 }): Promise<DispatchOutcome> {
   const { projectId, integrationId } = args;
-  const rows = await db
-    .select()
-    .from(projectIntegrations)
-    .where(
-      and(
-        eq(projectIntegrations.projectId, projectId),
-        eq(projectIntegrations.provider, 'coolify'),
-        eq(projectIntegrations.active, true),
-      ),
-    );
-  const row = rows.find((r) => r.id === integrationId);
-  if (!row) {
+  // `integrationId` here is a binding id (the MCP tool passes binding ids).
+  const pairs = await listActiveBindingsForProjectProvider(projectId, 'coolify');
+  const pair = pairs.find((p) => p.binding.id === integrationId);
+  if (!pair) {
     return { dispatched: false, pendingHumanConfirm: false, integrationIds: [], reason: 'no-integration' };
   }
+  const { binding } = pair;
 
-  if (row.environment === 'prod') {
+  if (binding.environment === 'prod') {
     // Prod is never auto-dispatched run-less. Confirming a prod deploy is
     // run-keyed (confirm-prod-deploy endpoint), so it still requires the
     // issueId path — return the gate outcome without enqueueing.
     return {
       dispatched: false,
       pendingHumanConfirm: true,
-      integrationIds: [row.id],
+      integrationIds: [binding.id],
       reason: 'awaiting-prod-confirm',
     };
   }
 
-  const requestId = `direct:${integrationId}:${Date.now()}-${randomUUID().slice(0, 8)}`;
+  const requestId = `direct:${binding.id}:${Date.now()}-${randomUUID().slice(0, 8)}`;
   await enqueueCoolifyDispatch({
     jobKind: 'coolify.dispatch',
-    integrationId: row.id,
+    bindingId: binding.id,
     runId: null,
     issueId: null,
     eventName: 'release.requested',
@@ -171,11 +158,11 @@ export async function dispatchCoolifyDeployDirect(args: {
       category: 'integration.coolify.dispatch',
       level: 'info',
       message: 'enqueued run-less coolify dispatch',
-      data: { integrationId: row.id, environment: row.environment, runId: null },
+      data: { bindingId: binding.id, environment: binding.environment, runId: null },
     });
   }
 
-  return { dispatched: true, pendingHumanConfirm: false, integrationIds: [row.id] };
+  return { dispatched: true, pendingHumanConfirm: false, integrationIds: [binding.id] };
 }
 
 // Pending-confirmation gate state. Persisted on pipelineRuns.metadata under
@@ -183,7 +170,7 @@ export async function dispatchCoolifyDeployDirect(args: {
 interface ProdGateState {
   runId: string;
   issueId: string | null;
-  integrationId: string;
+  bindingId: string;
   requestedAt: string;
   confirmedAt: string | null;
   confirmedByUserId?: string;
@@ -194,7 +181,7 @@ const GATE_METADATA_KEY = '__forge_prod_deploy_gate';
 async function markPendingHumanConfirm(input: {
   runId: string;
   issueId: string | null;
-  integrationId: string;
+  bindingId: string;
 }): Promise<void> {
   const [row] = await db
     .select({ metadata: pipelineRuns.metadata })
@@ -203,10 +190,10 @@ async function markPendingHumanConfirm(input: {
     .limit(1);
   const current = (row?.metadata ?? {}) as Record<string, unknown>;
   const gates = (current[GATE_METADATA_KEY] as Record<string, ProdGateState>) ?? {};
-  gates[input.integrationId] = {
+  gates[input.bindingId] = {
     runId: input.runId,
     issueId: input.issueId,
-    integrationId: input.integrationId,
+    bindingId: input.bindingId,
     requestedAt: new Date().toISOString(),
     confirmedAt: null,
   };
@@ -221,12 +208,12 @@ async function markPendingHumanConfirm(input: {
   await setCurrentStepForce(input.runId, RELEASE_DEPLOY_PENDING);
 
   logger.info(
-    { integrationId: input.integrationId, runId: input.runId },
+    { bindingId: input.bindingId, runId: input.runId },
     'coolify: prod deploy awaiting human confirmation',
   );
 }
 
-async function getProdGateState(integrationId: string): Promise<ProdGateState | null> {
+async function getProdGateState(bindingId: string): Promise<ProdGateState | null> {
   // Find the most recent run (regardless of status) that has a gate for this
   // integration. The release flow closes the issue-run before the deploy hook
   // fires, so we must look at completed runs too — otherwise the prod gate
@@ -239,7 +226,7 @@ async function getProdGateState(integrationId: string): Promise<ProdGateState | 
   for (const r of rows) {
     const md = (r.metadata ?? {}) as Record<string, unknown>;
     const gates = (md[GATE_METADATA_KEY] as Record<string, ProdGateState>) ?? {};
-    const g = gates[integrationId];
+    const g = gates[bindingId];
     if (g) return g;
   }
   return null;
@@ -248,20 +235,22 @@ async function getProdGateState(integrationId: string): Promise<ProdGateState | 
 export interface ConfirmProdResult {
   confirmed: boolean;
   runId: string | null;
+  /** The binding id the confirmation targeted (== old project_integration id). */
   integrationId: string;
 }
 
 /**
  * Called by POST /api/projects/:projectId/integrations/:id/confirm-prod-deploy.
- * Flips the gate state to confirmed and enqueues the deploy.
+ * Flips the gate state to confirmed and enqueues the deploy. `bindingId` is the
+ * `:id` route param (a binding id).
  */
 export async function confirmPendingProdDeploy(
-  integrationId: string,
+  bindingId: string,
   confirmedByUserId?: string,
 ): Promise<ConfirmProdResult> {
-  const gate = await getProdGateState(integrationId);
+  const gate = await getProdGateState(bindingId);
   if (!gate) {
-    return { confirmed: false, runId: null, integrationId };
+    return { confirmed: false, runId: null, integrationId: bindingId };
   }
 
   // Persist the confirmation onto the run's metadata.
@@ -270,11 +259,11 @@ export async function confirmPendingProdDeploy(
     .from(pipelineRuns)
     .where(eq(pipelineRuns.id, gate.runId))
     .limit(1);
-  if (!run) return { confirmed: false, runId: null, integrationId };
+  if (!run) return { confirmed: false, runId: null, integrationId: bindingId };
 
   const md = (run.metadata ?? {}) as Record<string, unknown>;
   const gates = (md[GATE_METADATA_KEY] as Record<string, ProdGateState>) ?? {};
-  gates[integrationId] = {
+  gates[bindingId] = {
     ...gate,
     confirmedAt: new Date().toISOString(),
     ...(confirmedByUserId ? { confirmedByUserId } : {}),
@@ -289,12 +278,12 @@ export async function confirmPendingProdDeploy(
   // Same idempotency guard as the staging loop (ISS-242): a confirmed prod
   // deploy already enqueued for this `:confirmed` requestId must not fire
   // twice if the confirm endpoint is hit again.
-  const confirmedRequestId = `${run.id}:${integrationId}:confirmed`;
-  const existing = await findDeliveryByRequestId(integrationId, confirmedRequestId);
+  const confirmedRequestId = `${run.id}:${bindingId}:confirmed`;
+  const existing = await findDeliveryByRequestId(bindingId, confirmedRequestId);
   if (!existing) {
     await enqueueCoolifyDispatch({
       jobKind: 'coolify.dispatch',
-      integrationId,
+      bindingId,
       runId: run.id,
       issueId: gate.issueId,
       eventName: 'release.requested',
@@ -302,7 +291,7 @@ export async function confirmPendingProdDeploy(
     });
   }
 
-  return { confirmed: true, runId: run.id, integrationId };
+  return { confirmed: true, runId: run.id, integrationId: bindingId };
 }
 
 /**
