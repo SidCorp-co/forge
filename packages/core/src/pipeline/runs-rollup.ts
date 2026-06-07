@@ -9,23 +9,20 @@
  * here so the front-end stays a thin renderer.
  */
 
-import { eq, sql } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
-  agentSessions,
-  jobs,
   type PipelineRunKind,
   type PipelineRunStatus,
+  agentSessions,
+  devices,
+  jobs,
   pipelineRuns,
   usageRecords,
 } from '../db/schema.js';
+import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '../jobs/retry.js';
 
-export type PipelineStepStatus =
-  | 'pending'
-  | 'running'
-  | 'completed'
-  | 'failed'
-  | 'skipped';
+export type PipelineStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
 
 export interface PipelineRunStepSummary {
   jobType: string;
@@ -46,6 +43,45 @@ export interface PipelineRunCostSummary {
   sampleCount: number;
 }
 
+/**
+ * ISS-411 — one job row of a run's per-attempt timeline. Unlike `steps`
+ * (one row per `jobType`, derived from `agent_sessions`), this is sourced from
+ * the `jobs` table so the `retry_of` chain, the device each attempt landed on,
+ * and the ISS-407 round-robin state (`payload._autoRetry`) are all visible.
+ */
+export interface PipelineRunAttempt {
+  jobId: string;
+  jobType: string;
+  status: string;
+  /** `jobs.attempts` — re-dispatch counter on this job row. */
+  attempts: number;
+  /** Prior job in the `retry_of` chain, if this row is a retry. */
+  retryOf: string | null;
+  deviceId: string | null;
+  /** Friendly device name (`devices.name`), null when the device is gone. */
+  deviceName: string | null;
+  failureReason: string | null;
+  queuedAt: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  /** ISS-407 round-robin rotation state at the time this row was (re)queued. */
+  autoRetry: { round: number; target: string | null; tries: number; done: string[] } | null;
+}
+
+/**
+ * ISS-411 — derived round-robin headline for the run, taken from the most
+ * recent attempt's `_autoRetry`. `round N / maxRounds` + the device the next
+ * attempt targets (resolved to a name) make "retried 3x on dev1, now round 2
+ * targeting ubuntu5" legible at a glance.
+ */
+export interface PipelineRunRetrySummary {
+  totalAttempts: number;
+  round: number;
+  maxRounds: number;
+  targetDeviceId: string | null;
+  targetDeviceName: string | null;
+}
+
 export interface PipelineRunSummary {
   id: string;
   projectId: string;
@@ -57,9 +93,15 @@ export interface PipelineRunSummary {
   finishedAt: string | null;
   steps: PipelineRunStepSummary[];
   cost: PipelineRunCostSummary;
+  /** ISS-411 — per-attempt device/retry timeline (jobs-sourced). */
+  attempts: PipelineRunAttempt[];
+  /** ISS-411 — round-robin headline; null when the run never retried. */
+  retrySummary: PipelineRunRetrySummary | null;
 }
 
-export type PipelineRunListItem = Omit<PipelineRunSummary, 'steps'>;
+// The list endpoint stays cheap: it omits the heavy per-step + per-attempt
+// rollups (each needs its own query). Only the single-run summary carries them.
+export type PipelineRunListItem = Omit<PipelineRunSummary, 'steps' | 'attempts' | 'retrySummary'>;
 
 const EMPTY_COST: PipelineRunCostSummary = {
   estimatedCost: 0,
@@ -113,8 +155,7 @@ async function loadStepsForRun(runId: string): Promise<PipelineRunStepSummary[]>
 
     const startedAt = toIso(r.startedAt);
     // Only stamp finishedAt for terminal sessions.
-    const finishedAt =
-      status === 'completed' || status === 'failed' ? toIso(r.finishedAt) : null;
+    const finishedAt = status === 'completed' || status === 'failed' ? toIso(r.finishedAt) : null;
     const durationMs =
       startedAt && finishedAt
         ? new Date(finishedAt).getTime() - new Date(startedAt).getTime()
@@ -137,8 +178,9 @@ async function loadCostForRun(runId: string): Promise<PipelineRunCostSummary> {
       estimatedCost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
       inputTokens: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
       outputTokens: sql<number>`coalesce(sum(${usageRecords.outputTokens}), 0)`.mapWith(Number),
-      cacheReadTokens:
-        sql<number>`coalesce(sum(${usageRecords.cacheReadTokens}), 0)`.mapWith(Number),
+      cacheReadTokens: sql<number>`coalesce(sum(${usageRecords.cacheReadTokens}), 0)`.mapWith(
+        Number,
+      ),
       cacheCreationTokens:
         sql<number>`coalesce(sum(${usageRecords.cacheCreationTokens}), 0)`.mapWith(Number),
       requests: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
@@ -149,6 +191,87 @@ async function loadCostForRun(runId: string): Promise<PipelineRunCostSummary> {
     .where(eq(jobs.pipelineRunId, runId));
 
   return row ?? EMPTY_COST;
+}
+
+/**
+ * ISS-411 — per-attempt timeline for one run, sourced from `jobs` (NOT
+ * `agent_sessions`), ordered oldest-first. Left-joins `devices` so each
+ * attempt carries the runner-friendly device name, and reads the ISS-407
+ * `payload._autoRetry` rotation state defensively (absent on pre-407 rows →
+ * null). Also returns a derived `retrySummary` headline from the latest row.
+ */
+async function loadAttemptsForRun(runId: string): Promise<{
+  attempts: PipelineRunAttempt[];
+  retrySummary: PipelineRunRetrySummary | null;
+}> {
+  const rows = await db
+    .select({
+      jobId: jobs.id,
+      jobType: jobs.type,
+      status: jobs.status,
+      attempts: jobs.attempts,
+      retryOf: jobs.retryOf,
+      deviceId: jobs.deviceId,
+      deviceName: devices.name,
+      failureReason: jobs.failureReason,
+      queuedAt: jobs.queuedAt,
+      startedAt: jobs.dispatchedAt,
+      finishedAt: jobs.finishedAt,
+      payload: jobs.payload,
+    })
+    .from(jobs)
+    .leftJoin(devices, eq(devices.id, jobs.deviceId))
+    .where(eq(jobs.pipelineRunId, runId))
+    .orderBy(asc(jobs.queuedAt));
+
+  // Map deviceId → name for resolving the `_autoRetry.target` device, which is
+  // not necessarily the device of any row already loaded.
+  const nameById = new Map<string, string>();
+  for (const r of rows) {
+    if (r.deviceId && r.deviceName) nameById.set(r.deviceId, r.deviceName);
+  }
+
+  const attempts: PipelineRunAttempt[] = rows.map((r) => {
+    // `readAutoRetryPayload` always returns the zero state; only surface it
+    // when the row actually carries `_autoRetry` (i.e. it is a retry chain).
+    const hasAutoRetry =
+      !!r.payload &&
+      typeof r.payload === 'object' &&
+      '_autoRetry' in (r.payload as Record<string, unknown>);
+    const ar = hasAutoRetry ? readAutoRetryPayload(r.payload) : null;
+    return {
+      jobId: r.jobId,
+      jobType: r.jobType,
+      status: r.status,
+      attempts: r.attempts ?? 0,
+      retryOf: r.retryOf ?? null,
+      deviceId: r.deviceId ?? null,
+      deviceName: r.deviceName ?? null,
+      failureReason: r.failureReason ?? null,
+      queuedAt: toIso(r.queuedAt),
+      startedAt: toIso(r.startedAt),
+      finishedAt: toIso(r.finishedAt),
+      autoRetry: ar,
+    } satisfies PipelineRunAttempt;
+  });
+
+  // Headline from the most-recent attempt that carries rotation state.
+  let retrySummary: PipelineRunRetrySummary | null = null;
+  for (let i = attempts.length - 1; i >= 0; i--) {
+    const ar = attempts[i]?.autoRetry;
+    if (ar) {
+      retrySummary = {
+        totalAttempts: attempts.length,
+        round: ar.round,
+        maxRounds: RETRY_MAX_ROUNDS,
+        targetDeviceId: ar.target,
+        targetDeviceName: ar.target ? (nameById.get(ar.target) ?? null) : null,
+      };
+      break;
+    }
+  }
+
+  return { attempts, retrySummary };
 }
 
 function rowToListItem(row: RunRow): PipelineRunListItem {
@@ -166,22 +289,22 @@ function rowToListItem(row: RunRow): PipelineRunListItem {
 }
 
 /** Load a single run with steps + cost rolled up. Returns null if missing. */
-export async function loadPipelineRunSummary(
-  runId: string,
-): Promise<PipelineRunSummary | null> {
-  const [row] = await db
-    .select()
-    .from(pipelineRuns)
-    .where(eq(pipelineRuns.id, runId))
-    .limit(1);
+export async function loadPipelineRunSummary(runId: string): Promise<PipelineRunSummary | null> {
+  const [row] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1);
   if (!row) return null;
 
-  const [steps, cost] = await Promise.all([loadStepsForRun(runId), loadCostForRun(runId)]);
+  const [steps, cost, attemptRollup] = await Promise.all([
+    loadStepsForRun(runId),
+    loadCostForRun(runId),
+    loadAttemptsForRun(runId),
+  ]);
 
   return {
     ...rowToListItem(row),
     steps,
     cost,
+    attempts: attemptRollup.attempts,
+    retrySummary: attemptRollup.retrySummary,
   };
 }
 
@@ -190,9 +313,7 @@ export async function loadPipelineRunSummary(
  * Runs with no usage rows are absent from the map; callers should fall back
  * to {@link EMPTY_COST}.
  */
-async function loadCostByRunIds(
-  runIds: string[],
-): Promise<Map<string, PipelineRunCostSummary>> {
+async function loadCostByRunIds(runIds: string[]): Promise<Map<string, PipelineRunCostSummary>> {
   const out = new Map<string, PipelineRunCostSummary>();
   if (runIds.length === 0) return out;
   const rows = await db
@@ -201,8 +322,9 @@ async function loadCostByRunIds(
       estimatedCost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
       inputTokens: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
       outputTokens: sql<number>`coalesce(sum(${usageRecords.outputTokens}), 0)`.mapWith(Number),
-      cacheReadTokens:
-        sql<number>`coalesce(sum(${usageRecords.cacheReadTokens}), 0)`.mapWith(Number),
+      cacheReadTokens: sql<number>`coalesce(sum(${usageRecords.cacheReadTokens}), 0)`.mapWith(
+        Number,
+      ),
       cacheCreationTokens:
         sql<number>`coalesce(sum(${usageRecords.cacheCreationTokens}), 0)`.mapWith(Number),
       requests: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),

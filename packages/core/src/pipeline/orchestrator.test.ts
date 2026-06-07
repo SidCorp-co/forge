@@ -408,6 +408,42 @@ describe('pipeline/orchestrator', () => {
     expect(nextSelect).not.toHaveBeenCalled();
   });
 
+  // ISS-411 — operator-hold guard: an issue leaving `on_hold` via a NON-user
+  // actor (the aborted agent's termination-protocol advance) must NOT
+  // re-dispatch. Only a human Resume (actor.type==='user') re-engages.
+  it('does NOT enqueue on a non-user advance out of on_hold (agent termination override)', async () => {
+    const bus = makeBus();
+    await bus.emit(
+      'transition',
+      transition({
+        from: 'on_hold',
+        to: 'developed',
+        actor: { type: 'device', id: 'dev-1' },
+      }) as never,
+    );
+    expect(dbInsert).not.toHaveBeenCalled();
+    expect(enqueueMock).not.toHaveBeenCalled();
+    // Short-circuits before any cfg/skill resolution.
+    expect(nextSelect).not.toHaveBeenCalled();
+    expect(resolverResolve).not.toHaveBeenCalled();
+  });
+
+  it('DOES enqueue on a human Resume out of on_hold (user actor)', async () => {
+    cfgResolved({ enabled: true, autoReview: true });
+    skillRegistered('forge-review', 'review', 'autoReview');
+    nextSelect.mockResolvedValueOnce([]); // findActiveJob → none
+    insertReturning.mockResolvedValueOnce([{ id: 'resume-job' }]);
+
+    const bus = makeBus();
+    await bus.emit(
+      'transition',
+      transition({ from: 'on_hold', to: 'developed', actor: { type: 'user', id: 'u-1' } }) as never,
+    );
+
+    expect(dbInsert).toHaveBeenCalledTimes(1);
+    expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'resume-job' }));
+  });
+
   it('dedupes when an active job of the same type already exists', async () => {
     cfgResolved({ enabled: true, autoPlan: true });
     skillRegistered('forge-plan', 'plan', 'autoPlan');

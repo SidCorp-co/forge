@@ -20,7 +20,11 @@ const updateSet = vi.fn(() => ({ where: updateWhere }));
 
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
-const selectFrom = vi.fn(() => ({ where: selectWhere }));
+// ISS-411 — parkIssueOnCancel runs `select().from(issues).innerJoin(projects)
+// .where().limit(1)`, so the `from` stub must offer both the `where` (run
+// lookup) and `innerJoin` (issue+owner lookup) chains.
+const selectInnerJoin = vi.fn(() => ({ where: selectWhere }));
+const selectFrom = vi.fn(() => ({ where: selectWhere, innerJoin: selectInnerJoin }));
 
 vi.mock('../db/client.js', () => {
   const dbStub = {
@@ -31,6 +35,13 @@ vi.mock('../db/client.js', () => {
   return { db: dbStub };
 });
 
+// ISS-411 — observe the operator-cancel → issue `on_hold` park without the
+// real state-machine. parkIssueOnCancel is best-effort, so the spy resolves.
+const applyStatusTransitionSpy = vi.fn(async () => undefined);
+vi.mock('../issues/apply-transition.js', () => ({
+  applyStatusTransition: (...args: unknown[]) => applyStatusTransitionSpy(...args),
+}));
+
 const publishSpy = vi.fn();
 vi.mock('../ws/server.js', () => ({
   roomManager: { publish: publishSpy },
@@ -40,11 +51,9 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-const {
-  pausePipelineRun,
-  resumePipelineRun,
-  cancelPipelineRun,
-} = await import('./runs-control.js');
+const { pausePipelineRun, resumePipelineRun, cancelPipelineRun } = await import(
+  './runs-control.js'
+);
 
 const RUN_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
@@ -161,7 +170,9 @@ describe('cancelPipelineRun', () => {
 
     const events = publishSpy.mock.calls.map((c) => (c[1] as { event: string }).event);
     expect(events.filter((e) => e === 'pipeline_run.status_changed')).toHaveLength(1);
-    const aborts = publishSpy.mock.calls.filter((c) => (c[1] as { event: string }).event === 'agent:abort');
+    const aborts = publishSpy.mock.calls.filter(
+      (c) => (c[1] as { event: string }).event === 'agent:abort',
+    );
     expect(aborts).toHaveLength(2);
     for (const call of aborts) {
       const data = (call[1] as { data: { reason: string } }).data;
@@ -206,5 +217,58 @@ describe('cancelPipelineRun', () => {
     updateReturning.mockResolvedValueOnce([]);
     selectLimit.mockResolvedValueOnce([]);
     await expect(cancelPipelineRun(RUN_ID)).rejects.toThrow(/NOT_FOUND/);
+  });
+
+  // ISS-411 — operator cancel must be authoritative: the linked issue is parked
+  // at `on_hold` so the orchestrator does not silently re-dispatch a fresh run.
+  it('parks the linked issue at on_hold after cancelling an issue-kind run', async () => {
+    updateReturning.mockResolvedValueOnce([runRow('cancelled', { finishedAt: new Date() })]); // run
+    updateReturning.mockResolvedValueOnce([]); // jobs cascade — no child jobs
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: ISSUE_ID,
+        projectId: PROJECT_ID,
+        status: 'in_progress',
+        reopenCount: 0,
+        ownerId: 'owner-1',
+      },
+    ]);
+
+    await cancelPipelineRun(RUN_ID);
+
+    expect(applyStatusTransitionSpy).toHaveBeenCalledTimes(1);
+    const [issueArg, toStatus, deviceArg, opts] = applyStatusTransitionSpy.mock.calls[0] as [
+      { id: string; status: string },
+      string,
+      { id: string; ownerId: string },
+      { skip?: boolean },
+    ];
+    expect(issueArg).toMatchObject({ id: ISSUE_ID, status: 'in_progress' });
+    expect(toStatus).toBe('on_hold');
+    expect(deviceArg).toMatchObject({ id: 'owner-1', ownerId: 'owner-1' });
+    expect(opts).toMatchObject({ skip: true });
+  });
+
+  it('does NOT re-park an issue already on_hold/terminal on cancel', async () => {
+    updateReturning.mockResolvedValueOnce([runRow('cancelled', { finishedAt: new Date() })]);
+    updateReturning.mockResolvedValueOnce([]);
+    selectLimit.mockResolvedValueOnce([
+      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'closed', reopenCount: 0, ownerId: 'owner-1' },
+    ]);
+
+    await cancelPipelineRun(RUN_ID);
+
+    expect(applyStatusTransitionSpy).not.toHaveBeenCalled();
+  });
+
+  it('does NOT park for a non-issue (pm/interactive/system) run', async () => {
+    updateReturning.mockResolvedValueOnce([
+      runRow('cancelled', { finishedAt: new Date(), kind: 'pm', issueId: null }),
+    ]);
+    updateReturning.mockResolvedValueOnce([]);
+
+    await cancelPipelineRun(RUN_ID);
+
+    expect(applyStatusTransitionSpy).not.toHaveBeenCalled();
   });
 });

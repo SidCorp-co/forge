@@ -62,7 +62,33 @@ export interface PipelineRunStepSummary {
   agentSessionId: string | null;
 }
 
-/** `GET /api/pipeline-runs/:id` — the full run rollup (steps + cost). */
+/** ISS-411 — one job row of a run's per-attempt timeline (jobs-sourced, so the
+ *  `retry_of` chain + device + ISS-407 `_autoRetry` rotation are visible). */
+export interface PipelineRunAttempt {
+  jobId: string;
+  jobType: string;
+  status: string;
+  attempts: number;
+  retryOf: string | null;
+  deviceId: string | null;
+  deviceName: string | null;
+  failureReason: string | null;
+  queuedAt: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  autoRetry: { round: number; target: string | null; tries: number; done: string[] } | null;
+}
+
+/** ISS-411 — round-robin headline derived from the latest attempt. */
+export interface PipelineRunRetrySummary {
+  totalAttempts: number;
+  round: number;
+  maxRounds: number;
+  targetDeviceId: string | null;
+  targetDeviceName: string | null;
+}
+
+/** `GET /api/pipeline-runs/:id` — the full run rollup (steps + cost + attempts). */
 export interface PipelineRunSummary {
   id: string;
   projectId: string;
@@ -74,10 +100,18 @@ export interface PipelineRunSummary {
   finishedAt: string | null;
   steps: PipelineRunStepSummary[];
   cost: PipelineRunCostSummary;
+  /** ISS-411 — per-attempt device/retry timeline. */
+  attempts: PipelineRunAttempt[];
+  /** ISS-411 — round-robin headline; null when the run never retried. */
+  retrySummary: PipelineRunRetrySummary | null;
 }
 
-/** `GET /api/projects/:id/pipeline-runs` list row — the summary minus `steps`. */
-export type PipelineRunListItem = Omit<PipelineRunSummary, "steps">;
+/** `GET /api/projects/:id/pipeline-runs` list row — the summary minus the heavy
+ *  per-step + per-attempt rollups (the list endpoint omits them). */
+export type PipelineRunListItem = Omit<
+  PipelineRunSummary,
+  "steps" | "attempts" | "retrySummary"
+>;
 
 /**
  * Minimal issue row this feature consumes for the kanban cards, from

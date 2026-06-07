@@ -24,10 +24,20 @@
 
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { pipelineRuns } from '../db/schema.js';
+import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
+import { type DeviceLite, applyStatusTransition } from '../issues/apply-transition.js';
+import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { broadcastAbortEvents, cascadeCancelChildJobs } from './runs-cascade.js';
+
+/**
+ * ISS-411 — issue statuses an operator cancel must NOT disturb. `on_hold` is
+ * already parked; `closed`/`released` are terminal (parking them would re-open
+ * a finished issue). Everything else is "actionable" and would be re-picked by
+ * the orchestrator the moment the run dies, so cancel parks it at `on_hold`.
+ */
+const CANCEL_PARK_SKIP_STATUSES = new Set<IssueStatus>(['on_hold', 'closed', 'released']);
 
 export type PipelineRunRow = typeof pipelineRuns.$inferSelect;
 
@@ -111,6 +121,52 @@ export async function resumePipelineRun(runId: string): Promise<PipelineRunRow> 
 }
 
 /**
+ * ISS-411 — after an operator cancels an issue-scoped run, atomically park the
+ * linked issue at `on_hold` so the orchestrator does not immediately re-pick it
+ * (autoTriage/autoCode dispatch only from "actionable" statuses; `on_hold` has
+ * no `STATUS_TO_JOB_TYPE` mapping). Without this, cancel silently re-dispatched
+ * a fresh run seconds later. Runs AFTER the cancel commit (applyStatusTransition
+ * opens its own transaction) and is best-effort: a failure here must not fail
+ * the cancel itself. The transition uses the project owner as a `device` actor
+ * (mirrors the system-transition pattern in `jobs/finalize-failure.ts`), so the
+ * orchestrator's ISS-411 guard treats a later non-`user` advance out of
+ * `on_hold` as inert — only a human Resume re-engages the pipeline.
+ */
+async function parkIssueOnCancel(run: PipelineRunRow): Promise<void> {
+  if (run.kind !== 'issue' || !run.issueId) return;
+  try {
+    const [row] = await db
+      .select({
+        id: issues.id,
+        projectId: issues.projectId,
+        status: issues.status,
+        reopenCount: issues.reopenCount,
+        ownerId: projects.ownerId,
+      })
+      .from(issues)
+      .innerJoin(projects, eq(projects.id, issues.projectId))
+      .where(eq(issues.id, run.issueId))
+      .limit(1);
+    if (!row) return;
+    if (CANCEL_PARK_SKIP_STATUSES.has(row.status)) return;
+
+    const actorId = row.ownerId ?? run.projectId;
+    const device: DeviceLite = { id: actorId, ownerId: actorId };
+    await applyStatusTransition(
+      { id: row.id, projectId: row.projectId, status: row.status, reopenCount: row.reopenCount },
+      'on_hold',
+      device,
+      { skip: true },
+    );
+  } catch (err) {
+    logger.warn(
+      { err, runId: run.id, issueId: run.issueId },
+      'cancel: park-issue-on_hold failed (run already cancelled)',
+    );
+  }
+}
+
+/**
  * Cancel a run. Status flips to `cancelled` (from `running` or `paused`),
  * any queued/dispatched jobs of the run are marked `cancelled`, linked
  * agent_sessions in non-terminal states transition to `failed` with
@@ -164,6 +220,9 @@ export async function cancelPipelineRun(runId: string): Promise<CancelPipelineRu
     if (result.deviceBySession) {
       await broadcastAbortEvents(result.deviceBySession, FAILURE_REASON_PIPELINE_CANCELLED, runId);
     }
+    // ISS-411 — make the cancel authoritative: park the linked issue so it does
+    // not silently auto-resume. Best-effort; never fails the cancel.
+    await parkIssueOnCancel(result.run);
   }
 
   return {

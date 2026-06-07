@@ -697,6 +697,9 @@ export interface SessionTimelineEntry {
   claudeShort: string | null;
   deviceId: string | null;
   deviceShort: string | null;
+  /** ISS-411 — friendly runner name (`devices.name`); null on a pre-411 server
+   *  or when the device row is gone. The UI prefers this over `deviceShort`. */
+  deviceName: string | null;
   status: string;
   startedAt: string | null;
   continuity: SessionContinuity;
@@ -777,6 +780,7 @@ export function deriveSessionTimeline(
       claudeShort: claude ? claude.slice(0, 8) : null,
       deviceId,
       deviceShort: deviceId ? deviceId.slice(0, 8) : null,
+      deviceName: s.deviceName ?? null,
       status: s.status,
       startedAt: s.startedAt ?? s.createdAt ?? null,
       continuity,

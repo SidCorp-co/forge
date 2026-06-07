@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions } from '../db/schema.js';
+import { agentSessions, devices } from '../db/schema.js';
 
 export type DerivedAgentStatus = 'running' | 'queued' | 'completed' | 'failed' | null;
 
@@ -20,6 +20,11 @@ export interface HydratedAgentSession {
   lastHeartbeatAt: Date | null;
   pipelineRunId: string | null;
   claudeSessionId: string | null;
+  // ISS-411 — friendly device name (`devices.name`) for the live-run UI so the
+  // operator sees WHERE a run is executing by name, not a raw deviceId UUID.
+  // Resolved by one batch lookup; null when the session has no device or the
+  // device row is gone. Purely additive; shared by list/search/detail.
+  deviceName: string | null;
 }
 
 export interface HydratedAgentAttachment {
@@ -75,6 +80,18 @@ export async function hydrateAgentSessionsForIssues(
     )
     .orderBy(desc(agentSessions.updatedAt));
 
+  // ISS-411 — one batch lookup deviceId → name, shared across all sessions
+  // (and reused below in the push loop). Empty when no session has a device.
+  const deviceIds = [...new Set(rows.map((r) => r.deviceId).filter((d): d is string => !!d))];
+  const deviceNameById = new Map<string, string>();
+  if (deviceIds.length > 0) {
+    const deviceRows = await db
+      .select({ id: devices.id, name: devices.name })
+      .from(devices)
+      .where(inArray(devices.id, deviceIds));
+    for (const d of deviceRows) deviceNameById.set(d.id, d.name);
+  }
+
   for (const r of rows) {
     const meta = (r.metadata as Record<string, unknown> | null) ?? null;
     const issueId = typeof meta?.issueId === 'string' ? (meta.issueId as string) : null;
@@ -96,6 +113,7 @@ export async function hydrateAgentSessionsForIssues(
       lastHeartbeatAt: r.lastHeartbeatAt,
       pipelineRunId: r.pipelineRunId,
       claudeSessionId: r.claudeSessionId,
+      deviceName: r.deviceId ? (deviceNameById.get(r.deviceId) ?? null) : null,
     });
   }
 

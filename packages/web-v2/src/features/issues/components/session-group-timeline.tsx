@@ -102,6 +102,14 @@ function TimelineRow({ entry, isLast }: { entry: SessionTimelineEntry; isLast: b
             <span className="font-mono text-[12.5px] font-bold text-fg">{entry.jobType}</span>
           )}
           <span className="fg-body-sm capitalize text-muted">{entry.status}</span>
+          {/* ISS-411 — surface WHERE this step ran by runner NAME (not a raw
+              deviceId UUID). Falls back to the short id on a pre-411 server. */}
+          {(entry.deviceName ?? entry.deviceShort) && (
+            <span className="fg-caption inline-flex items-center gap-1 text-muted">
+              <Icon name="server" size={11} className="align-[-1px]" />
+              {entry.deviceName ?? entry.deviceShort}
+            </span>
+          )}
         </div>
 
         <button
@@ -116,7 +124,9 @@ function TimelineRow({ entry, isLast }: { entry: SessionTimelineEntry; isLast: b
         {showOps && (
           <div className="mt-2 flex flex-wrap gap-2 border-t border-line-subtle pt-2">
             {entry.claudeShort && <OpsTag label="claude" value={entry.claudeShort} />}
-            {entry.deviceShort && <OpsTag label="device" value={entry.deviceShort} />}
+            {(entry.deviceName ?? entry.deviceShort) && (
+              <OpsTag label="device" value={entry.deviceName ?? entry.deviceShort ?? ""} />
+            )}
             <OpsTag label="status" value={entry.status} />
             {entry.continuity === "fresh" && entry.freshReason && (
               <span className="fg-caption text-muted">{FRESH_REASON_COPY[entry.freshReason]}</span>
