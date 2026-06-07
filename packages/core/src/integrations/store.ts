@@ -407,6 +407,21 @@ export async function listBindingsForProject(projectId: string): Promise<Binding
     .orderBy(desc(integrationBindings.createdAt));
 }
 
+/** All bindings (+ connections) for one connection, any active state, newest first. */
+export async function listBindingsForConnection(
+  connectionId: string,
+): Promise<BindingWithConnection[]> {
+  return db
+    .select({ binding: integrationBindings, connection: integrationConnections })
+    .from(integrationBindings)
+    .innerJoin(
+      integrationConnections,
+      eq(integrationBindings.connectionId, integrationConnections.id),
+    )
+    .where(eq(integrationBindings.connectionId, connectionId))
+    .orderBy(desc(integrationBindings.createdAt));
+}
+
 /** Connections owned by a principal (owner-scoped CRUD list). */
 export async function listConnectionsForOwner(
   ownerId: string,

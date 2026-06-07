@@ -18,6 +18,8 @@ import {
 } from '../db/schema.js';
 import { classifyGitRemote } from '../git/provision-credential.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { findDeliveryById } from './deliveries.js';
+import { enqueueCoolifyDispatch } from './queue.js';
 import { getAdapter } from './registry.js';
 import { type RotatingProvider, isRotatingProvider, mergeRotatedSecrets } from './rotation.js';
 import {
@@ -30,6 +32,7 @@ import {
   findActiveBinding,
   findBindingWithConnectionById,
   findConnectionById,
+  listBindingsForConnection,
   listBindingsForProject,
   listConnectionsForOwner,
   softDeleteBinding,
@@ -514,6 +517,50 @@ integrationsRoutes.get('/:projectId/integrations/:id/deliveries', async (c) => {
   return c.json({ items: rows });
 });
 
+// Re-dispatch a failed outbound delivery. Async by design: we re-enqueue the
+// SAME outbound path the original used (enqueueCoolifyDispatch → worker →
+// coolifyAdapter.dispatchOutbound) with a FRESH requestId, so the worker/adapter
+// records the new delivery row. The route must NOT pre-record it — the
+// (binding_id, request_id) partial unique index would collide. Outbound
+// deliveries are Coolify-only today (postman/epodsystem are MCP-injection with
+// no outbound), so the `direction==='outbound'` guard scopes retry correctly
+// without per-provider branching.
+integrationsRoutes.post('/:projectId/integrations/:id/deliveries/:deliveryId/retry', async (c) => {
+  const projectId = c.req.param('projectId');
+  const id = c.req.param('id');
+  const deliveryId = c.req.param('deliveryId');
+  const userId = c.get('userId');
+  const role = await assertProjectMember(projectId, userId);
+  assertAdmin(role);
+
+  const existing = await findBindingWithConnectionById(id);
+  if (!existing || existing.binding.projectId !== projectId) throw notFound();
+
+  const delivery = await findDeliveryById(deliveryId);
+  if (!delivery || delivery.bindingId !== id) throw notFound('delivery');
+
+  if (delivery.direction !== 'outbound' || delivery.status !== 'failed') {
+    throw new HTTPException(409, {
+      message: 'only failed outbound deliveries can be retried',
+      cause: { code: 'NOT_RETRYABLE' },
+    });
+  }
+
+  // Carry the original tracking keys forward; a fresh requestId keeps the new
+  // delivery row distinct and stops pg-boss's singletonKey from collapsing it.
+  const p = (delivery.payload ?? {}) as { runId?: string | null; issueId?: string | null };
+  const requestId = `retry_${randomBytes(12).toString('hex')}`;
+  await enqueueCoolifyDispatch({
+    jobKind: 'coolify.dispatch',
+    bindingId: id,
+    runId: p.runId ?? null,
+    issueId: p.issueId ?? null,
+    eventName: delivery.eventName,
+    requestId,
+  });
+  return c.json({ requestId, queued: true }, 202);
+});
+
 // === ISS-305 — composed read-only integrations status for the web hub ===
 //
 // Aggregates ONLY real, already-existing signals — no fabricated metrics. Each
@@ -866,6 +913,79 @@ integrationConnectionsRoutes.post(
     return c.json({ connection: summarizeConnection(connection) }, 201);
   },
 );
+
+// Bind an EXISTING connection to a project+env — no secrets (the connection
+// already holds the credential). Owner-only on the connection + admin on the
+// TARGET project. Contrast the create path (POST /:projectId/integrations) which
+// always mints a NEW connection from the request body's secrets.
+const bindExistingSchema = z.object({
+  projectId: z.string().min(1),
+  environment: environmentSchema,
+});
+
+integrationConnectionsRoutes.post(
+  '/:id/bindings',
+  zValidator('json', bindExistingSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const id = c.req.param('id');
+    const userId = c.get('userId');
+    // Owner-only: a connection owned by someone else reads as not-found.
+    const connection = await loadOwnedConnection(id, userId);
+    const body = c.req.valid('json');
+    // Admin on the target project (mirrors the create path's authorization).
+    const role = await assertProjectMember(body.projectId, userId);
+    assertAdmin(role);
+
+    const provider = connection.provider as IntegrationProvider;
+    // One active binding per (project, provider, env).
+    const clash = await findActiveBinding(body.projectId, provider, body.environment);
+    if (clash) {
+      throw new HTTPException(409, {
+        message: 'integration already exists for this provider+environment',
+        cause: { code: 'ALREADY_EXISTS' },
+      });
+    }
+
+    // Auto-mint a per-binding HMAC secret for inbound webhook verification.
+    const integrationSecret = `whsec_${randomBytes(24).toString('hex')}`;
+    try {
+      const binding = await createBinding({
+        connectionId: id,
+        projectId: body.projectId,
+        provider,
+        environment: body.environment,
+        integrationSecret,
+      });
+      broadcastIntegrationChanged(body.projectId, { bindingId: binding.id, connectionId: id });
+      return c.json(
+        { integration: summarizeBinding({ binding, connection }), integrationSecret },
+        201,
+      );
+    } catch (err) {
+      // No connection rollback here — we did not create one (contrast the create
+      // path, which soft-deletes its just-minted connection on a binding clash).
+      const code = (err as { code?: string } | null)?.code;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (code === '23505' || /duplicate key|unique/.test(msg)) {
+        throw new HTTPException(409, {
+          message: 'integration already exists for this provider+environment',
+          cause: { code: 'ALREADY_EXISTS' },
+        });
+      }
+      throw err;
+    }
+  },
+);
+
+integrationConnectionsRoutes.get('/:id/bindings', async (c) => {
+  const id = c.req.param('id');
+  const userId = c.get('userId');
+  await loadOwnedConnection(id, userId);
+  const pairs = await listBindingsForConnection(id);
+  return c.json({ items: pairs.map(summarizeBinding) });
+});
 
 integrationConnectionsRoutes.patch(
   '/:id',

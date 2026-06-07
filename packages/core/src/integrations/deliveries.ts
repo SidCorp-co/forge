@@ -148,6 +148,18 @@ export async function findLastOutbound(
   return rows[0] ?? null;
 }
 
+/** Looks up a single delivery by its primary key. Returns the row or null. */
+export async function findDeliveryById(
+  id: string,
+): Promise<typeof integrationDeliveries.$inferSelect | null> {
+  const rows = await db
+    .select()
+    .from(integrationDeliveries)
+    .where(eq(integrationDeliveries.id, id))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 /**
  * Looks up an outbound delivery by its `(binding_id, request_id)` pair — the
  * same tuple the `integration_deliveries_binding_request_id_uq` partial unique
