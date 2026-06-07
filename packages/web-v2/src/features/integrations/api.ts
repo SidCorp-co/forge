@@ -2,10 +2,14 @@
 // against `packages/core/src/integrations/routes.ts` (ISS-305).
 import { apiClient } from "@/lib/api/client";
 import type {
+  ConfirmProdDeployResult,
+  CreateIntegrationInput,
   CreatePostmanInput,
+  IntegrationDelivery,
   IntegrationSummary,
   IntegrationTestResult,
   IntegrationsStatus,
+  UpdateIntegrationInput,
   UpdatePostmanInput,
 } from "./types";
 
@@ -56,4 +60,40 @@ export const integrationsApi = {
     apiClient<{ ok: boolean }>(`/projects/${projectId}/integrations/${id}`, {
       method: "DELETE",
     }),
+
+  // === ISS-395 — generic provider CRUD (Coolify + Epodsystem) ===
+
+  /** `POST .../integrations` — create with a discriminated provider body. */
+  create: (projectId: string, body: CreateIntegrationInput) =>
+    apiClient<{ integration: IntegrationSummary; integrationSecret: string }>(
+      `/projects/${projectId}/integrations`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+
+  /** `PATCH .../integrations/:id` — update config/secrets/active. */
+  update: (projectId: string, id: string, body: UpdateIntegrationInput) =>
+    apiClient<{ integration: IntegrationSummary }>(
+      `/projects/${projectId}/integrations/${id}`,
+      { method: "PATCH", body: JSON.stringify(body) },
+    ),
+
+  /** `POST .../rotate-secret` — mint a new HMAC webhook secret (returned once). */
+  rotateSecret: (projectId: string, id: string) =>
+    apiClient<{ integration: IntegrationSummary; integrationSecret: string }>(
+      `/projects/${projectId}/integrations/${id}/rotate-secret`,
+      { method: "POST" },
+    ),
+
+  /** `POST .../confirm-prod-deploy` — release the prod deploy gate. */
+  confirmProdDeploy: (projectId: string, id: string) =>
+    apiClient<ConfirmProdDeployResult>(
+      `/projects/${projectId}/integrations/${id}/confirm-prod-deploy`,
+      { method: "POST" },
+    ),
+
+  /** `GET .../deliveries` — recent inbound/outbound webhook deliveries. */
+  deliveries: (projectId: string, id: string) =>
+    apiClient<{ items: IntegrationDelivery[] }>(
+      `/projects/${projectId}/integrations/${id}/deliveries`,
+    ),
 };

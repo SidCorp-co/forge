@@ -1,9 +1,9 @@
 "use client";
 
-// Project settings → Integrations. The full integrations surface (Coolify,
-// webhooks, channels, …) lives at the workspace `/integrations` route — this
-// tab is a deliberate link-through rather than a duplicate, per the issue's
-// "integrations link-through" scope. No secrets are rendered here.
+// Project settings → Integrations. The full per-project integration config
+// (Epodsystem storefront, Coolify deploy, Postman) lives at the workspace
+// `/integrations` hub — this tab deep-links there rather than duplicating the
+// forms (ISS-395 AC4). No secrets are rendered here.
 import { useRouter } from "next/navigation";
 import { Button, Card, CardContent } from "@/design";
 
@@ -14,8 +14,9 @@ export function IntegrationsTab() {
       <CardContent>
         <h2 className="fg-h3 mb-1">Integrations</h2>
         <p className="fg-body-sm mb-4 text-muted">
-          Deploy hooks, webhooks, and notification channels are configured on the workspace
-          Integrations page.
+          Configure this project&apos;s integrations — Epodsystem storefront, Coolify deploy
+          (staging/prod, webhook secret, production gate), and Postman — on the workspace
+          Integrations page. Connection testing and secret rotation happen there.
         </p>
         <Button variant="secondary" icon="link" onClick={() => router.push("/integrations")}>
           Open Integrations

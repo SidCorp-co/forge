@@ -79,3 +79,108 @@ export interface IntegrationTestResult {
     [k: string]: unknown;
   };
 }
+
+// === ISS-395 — Coolify + Epodsystem integration CRUD (ported from v1) ===
+// The backend already supports all three providers; these types mirror v1
+// `packages/web/src/features/integrations/types.ts`. Provider config is
+// core-internal (not in @forge/contracts), so it is declared locally here.
+
+export type IntegrationEnvironment = "staging" | "prod";
+
+/** Coolify non-secret config (`project_integrations.config`). */
+export interface CoolifyConfigInput {
+  baseUrl: string;
+  resourceUuid: string;
+  branch: string;
+}
+
+export interface CoolifySecretsInput {
+  apiToken: string;
+}
+
+/**
+ * ISS-387 — Epodsystem storefront. One store per project; the `crmk_` key is
+ * the only secret. The endpoint is fixed platform config (EPODSYSTEM_ENDPOINT
+ * env), NOT user input. Store identity is filled by the test healthcheck, so
+ * every config field is optional.
+ */
+export interface EpodsystemConfigInput {
+  storeSlug?: string;
+  storeName?: string;
+  themeId?: string;
+  draftThemeId?: string;
+  commerceEnabled?: boolean;
+}
+
+export interface EpodsystemSecretsInput {
+  apiKey: string;
+}
+
+/**
+ * Permissive read-shape for a provider-specific `config` jsonb. Consumers
+ * narrow by the row's `provider`; every field is optional so both the Coolify
+ * and Epodsystem sections read it without per-provider casts.
+ */
+export interface ProviderConfig {
+  // coolify
+  baseUrl?: string;
+  resourceUuid?: string;
+  branch?: string;
+  // epodsystem
+  orgId?: string;
+  scopes?: string[];
+  storeId?: string;
+  storeSlug?: string;
+  storeName?: string;
+  themeId?: string;
+  themeName?: string;
+  draftThemeId?: string;
+  commerceEnabled?: boolean;
+  domain?: string;
+  environment?: IntegrationEnvironment;
+}
+
+/** Discriminated create body for the generic `POST .../integrations`. */
+export type CreateIntegrationInput =
+  | {
+      provider: "coolify";
+      environment: IntegrationEnvironment;
+      config: CoolifyConfigInput;
+      secrets: CoolifySecretsInput;
+    }
+  | {
+      provider: "epodsystem";
+      environment?: IntegrationEnvironment;
+      config: EpodsystemConfigInput;
+      secrets: EpodsystemSecretsInput;
+    };
+
+/** Partial patch for `PATCH .../integrations/:id`. */
+export interface UpdateIntegrationInput {
+  config?: Partial<CoolifyConfigInput> & Partial<EpodsystemConfigInput>;
+  secrets?: Partial<CoolifySecretsInput> & Partial<EpodsystemSecretsInput>;
+  active?: boolean;
+}
+
+/** Result of `POST .../confirm-prod-deploy`. */
+export interface ConfirmProdDeployResult {
+  confirmed: boolean;
+  runId: string | null;
+  integrationId: string;
+}
+
+/** Webhook delivery row (`GET .../deliveries`). */
+export interface IntegrationDelivery {
+  id: string;
+  projectIntegrationId: string;
+  direction: "outbound" | "inbound";
+  eventName: string;
+  status: "pending" | "ok" | "failed";
+  requestId: string | null;
+  payload: Record<string, unknown>;
+  response: Record<string, unknown> | null;
+  errorMessage: string | null;
+  durationMs: number | null;
+  createdAt: string;
+  completedAt: string | null;
+}
