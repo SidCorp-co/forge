@@ -1,7 +1,7 @@
 /**
- * Shapes mirror backend Zod schemas in `packages/core/src/pm/routes.ts`.
- * `packages/web/src/features/pm/types.ts` must stay byte-equivalent for the
- * shared interfaces — see `jarvis-agents/CLAUDE.md` cross-app-parity.
+ * Shapes mirror backend Zod schemas in `packages/core/src/pm/routes.ts` (the
+ * canonical source). web-v2 surfaces PM under its `automation` feature; keep
+ * the shared interfaces in sync — see `jarvis-agents/CLAUDE.md` cross-app-parity.
  */
 
 export interface PmEventTriggers {

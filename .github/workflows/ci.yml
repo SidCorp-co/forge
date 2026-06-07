@@ -82,7 +82,7 @@ jobs:
           # here — keep filters as plain positive include lists.
           filters: |
             web:
-              - 'packages/web/**'
+              - 'packages/web-v2/**'
               - 'packages/contracts/**'
             dev:
               - 'packages/dev/**'
@@ -106,13 +106,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-workspace
-      # Lint debt — eslint-plugin-react-compiler flags pre-existing
-      # patterns (setState in effects, impure-during-render) across landing
-      # + protected pages. Tracked for cleanup; don't block CI.
-      - run: pnpm --filter web lint
+      # web-v2 lint is a no-op placeholder (WIP); kept non-blocking.
+      - run: pnpm --filter web-v2 lint
         continue-on-error: true
-      - run: pnpm --filter web exec vitest run --passWithNoTests
-      - run: pnpm --filter web build
+      - run: pnpm --filter web-v2 exec vitest run --passWithNoTests
+      - run: pnpm --filter web-v2 build
         env:
           NEXT_PUBLIC_API_URL: http://localhost:8080/api
 

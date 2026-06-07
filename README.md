@@ -103,7 +103,7 @@ See [docs/architecture/system-overview.md](docs/architecture/system-overview.md)
 | Package | Role | Dev |
 |---------|------|-----|
 | [`packages/core/`](packages/core/) | Control plane: Hono + Drizzle + pg-boss + WebSocket + MCP | `pnpm dev` |
-| [`packages/web/`](packages/web/) | Next.js dashboard: kanban, replay, pipeline health, devices | `pnpm dev` |
+| [`packages/web-v2/`](packages/web-v2/) | Next.js dashboard: kanban, replay, pipeline health, devices | `pnpm dev` |
 | [`packages/dev/`](packages/dev/) | Tauri desktop device agent (GUI form factor) | `pnpm tauri dev` |
 | `packages/forged/` | CLI daemon device agent (headless) — coming soon | — |
 | [`packages/contracts/`](packages/contracts/) | Shared TypeScript contracts | — |

@@ -17,7 +17,7 @@ updates:
       - "/packages/contracts"
       - "/packages/core"
       - "/packages/dev"
-      - "/packages/web"
+      - "/packages/web-v2"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
@@ -27,7 +27,7 @@ updates:
         update-types: ["minor", "patch"]
 
   # Cargo for the Tauri desktop app's Rust backend. packages/dev/src-tauri/
-  # is the only Cargo project; packages/core/ and packages/web/ are pure TS.
+  # is the only Cargo project; packages/core/ and packages/web-v2/ are pure TS.
   - package-ecosystem: "cargo"
     directory: "/packages/dev/src-tauri/"
     schedule:

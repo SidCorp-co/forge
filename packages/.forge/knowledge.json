@@ -3,8 +3,8 @@
   "architecture": "Web/Desktop UIs → core (Hono) REST API + WebSocket → Postgres (Drizzle). core (packages/core) is a single Node process that serves REST, WebSocket, and an MCP server, and runs AI agents via Claude CLI or cloud APIs.",
   "paths": {
     "api": "packages/core/src/{name}/routes.ts",
-    "frontend-feature": "packages/web/src/features/{domain}/",
-    "frontend-page": "packages/web/src/app/(protected)/{path}/",
+    "frontend-feature": "packages/web-v2/src/features/{domain}/",
+    "frontend-page": "packages/web-v2/src/app/(workspace)/{path}/",
     "desktop-page": "packages/dev/src/pages/{path}/",
     "agent-tools": "packages/core/src/mcp/tools/",
     "mcp-tools": "packages/core/src/mcp/tools/"
@@ -31,17 +31,17 @@
     ],
     "targetBranchFallback": "targetBranch has no dedicated project column; if neither layer sets it, it falls through to the resolved baseBranch.",
     "resolver": "packages/core/src/branches/resolve.ts → resolveIssueBranches(issue, project) returns { baseBranch, targetBranch, prodBranch }.",
-    "webMirror": "packages/web/src/features/issue/hooks/use-resolved-branch-config.ts (same logic, runs against React Query state).",
+    "webMirror": "Canonical resolver is core's resolve.ts; the v1 web mirror (features/issue/hooks/use-resolved-branch-config.ts) was removed with packages/web (ISS-397) and is not yet re-ported to web-v2.",
     "skillsContract": "Pipeline skills (forge-plan, forge-code, forge-release, forge-fix) MUST resolve via forge_config get { issueId } and use $BASE — never hardcode 'main'.",
     "projectDefault": {
       "ui": "Project → Settings → Repository section.",
-      "source": "packages/web/src/app/projects/[slug]/settings/components/repo-section.tsx",
+      "source": "packages/web-v2/src/features/project-settings/components/repo-tab.tsx",
       "columns": ["projects.baseBranch", "projects.productionBranch"],
       "effect": "Changing the project default affects FUTURE issues. In-flight issues keep their resolved value until they get a per-issue override."
     },
     "issueOverride": {
       "ui": "Issue detail page → aside → 'Branch config' card → toggle 'Override project branch config'.",
-      "source": "packages/web/src/components/issue/aside/branch-config-card.tsx",
+      "source": "v1 branch-config-card.tsx was removed with packages/web (ISS-397); the per-issue override UI is not yet re-ported to web-v2 (parity gap). Wire format below is still the source of truth.",
       "storage": "issues.metadata.branchConfig (jsonb): { baseBranch?: string|null, targetBranch?: string|null, prodBranch?: string|null }",
       "validation": [
         "Branch names match ^[a-zA-Z0-9._/-]{1,100}$.",
@@ -55,7 +55,7 @@
   },
   "recipes": {
     "new-endpoint": "1) Create packages/core/src/{name}/routes.ts (+ tests). 2) Mount in packages/core/src/index.ts. 3) Add WS broadcast if needed.",
-    "new-page-web": "1) Create packages/web/src/app/(protected)/{path}/page.tsx. 2) Add feature module in packages/web/src/features/{name}/ with api.ts, types.ts, hooks/.",
+    "new-page-web": "1) Create packages/web-v2/src/app/(workspace)/{path}/page.tsx. 2) Add feature module in packages/web-v2/src/features/{name}/ with api.ts, types.ts, hooks/, components/.",
     "new-agent-tool": "1) Add tool in packages/core/src/mcp/tools/forge-{name}.ts. 2) Register in packages/core/src/mcp/server.ts.",
     "decomposition-integration-branch": {
       "id": "decomposition-integration-branch",
@@ -89,7 +89,7 @@
   },
   "commands": {
     "dev-core": "cd packages/core && pnpm dev",
-    "dev-web": "cd packages/web && pnpm dev",
+    "dev-web": "cd packages/web-v2 && pnpm dev",
     "dev-desktop": "cd packages/dev && pnpm tauri dev",
     "build-core": "cd packages/core && pnpm build"
   }

@@ -1,5 +1,5 @@
 // Hand-typed response wrappers. Core returns bare arrays for list endpoints
-// with an `X-Total-Count` header; `apiClientList` in `packages/web` reads that
+// with an `X-Total-Count` header; `apiClientList` in web-v2 reads that
 // header and wraps the payload into `ListResponse<T>` for ergonomics.
 
 export interface ListResponse<T> {

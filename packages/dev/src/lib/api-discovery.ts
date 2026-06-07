@@ -6,7 +6,7 @@
  * different host than the API. We probe `/.well-known/forge-config.json`
  * (Matrix client-server discovery pattern, RFC 8615) on the user-typed
  * URL to learn the actual API origin. The web app exposes this endpoint;
- * see `packages/web/src/app/forge-config/route.ts`.
+ * see `packages/web-v2/src/app/forge-config/route.ts`.
  *
  * Fallback ladder (mirrors the Matrix spec's IGNORE → FAIL_ERROR semantics
  * but lenient by default — a wrong answer just means "no GitHub button"):

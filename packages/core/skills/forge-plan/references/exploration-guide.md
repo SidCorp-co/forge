@@ -91,7 +91,7 @@ This is already in CLAUDE.md but repeated here for convenience:
 | Package | Path | Stack |
 |---------|------|-------|
 | Backend | `packages/core/src/` | Hono, Drizzle, REST, WebSocket |
-| Cloud UI | `packages/web/src/` | Next.js 16, App Router |
+| Cloud UI | `packages/web-v2/src/` | Next.js 16, App Router |
 | Desktop | `packages/dev/src/` | Tauri + React |
 
 **Frontend patterns:** `src/app/` (pages) → `src/features/` or `components/` (UI) → `hooks/` (logic) → API calls
