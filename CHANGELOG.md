@@ -95,6 +95,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Forge can now manage Epodsystem-powered websites (ecommerce, blog, landing) end-to-end: connect a store with an API key, then let the pipeline build changes on a draft theme, verify them, and publish to live.**
   *Technical: New epodsystem MCP-injection integration cloned from the postman pattern (adapter/resolver/healthcheck + dispatcher inject), a website project kind with ecommerce/blog/landing domain templates, the forge_storefront_target MCP tool, 9 shop-* skills, skills-zip for remote runners, and a draft->main theme publish/rollback flow. crmk_ keys live only in the AES-256-GCM vault + dispatch payload — never DB jsonb/logs/API/build output. Merges 27882926 + b4745506.*
 
+- **You can now configure Epodsystem and Coolify integrations directly from the redesigned (web-v2) integrations surface, including connection testing, HMAC secret rotation with one-time reveal, and the production-deploy confirmation gate.**
+  *Technical: Frontend-only port of the v1 epodsystem-section/coolify-section into packages/web-v2/src/features/integrations; extends the v2 integrations api+hooks+types beyond Postman to generic create/update + rotateSecret/confirmProdDeploy/deliveries. Backend already complete. Full v1 retirement tracked separately in ISS-397.*
+
 ### Changed
 
 - **The Forge MCP tools that were prefixed `forge_admin_*` have been renamed to reflect what they actually are — ordinary project-scoped tools, not system-admin tools. `forge_admin_runners` → `forge_runners`, `forge_admin_users` → `forge_collaborators`, `forge_admin_health` → `forge_ops_health`; project archive moved onto `forge_projects.archive`; and the cross-your-projects metrics tool is now `forge_metrics.step_durations`. Access is unchanged — every one stays gated by your role on each project. The token-creation dialog no longer claims the `admin` scope grants "cross-tenant admin tools".**
