@@ -161,6 +161,40 @@ describe('scrubLogText env-assignment redaction (ISS-412)', () => {
     const out = scrubLogText('not env JWT_SECRET=x');
     expect(out).toBe('not env JWT_SECRET=x');
   });
+
+  it('redacts secret tokens sandwiched mid-key, not only as a suffix (live shape)', () => {
+    // The first ISS-412 ship missed the production env-var names because the
+    // suffix-only regex required the secret token at end-of-key. Real Coolify
+    // env dumps append a service tag (`_CORE`, `_WEB`, `_ID`) so the secret
+    // token sits in the middle. These exact lines leaked in deploy 19e21c95.
+    const log = [
+      'SENTRY_DSN_CORE=https://abc@logs.canawan.com/36',
+      'SENTRY_DSN_WEB=https://def@logs.canawan.com/37',
+      'AWS_SECRET_ACCESS_KEY=aws',
+      'AWS_ACCESS_KEY_ID=aki',
+    ].join('\n');
+    const out = scrubLogText(log);
+    expect(out).toBe(
+      [
+        `SENTRY_DSN_CORE=${FILTERED}`,
+        `SENTRY_DSN_WEB=${FILTERED}`,
+        `AWS_SECRET_ACCESS_KEY=${FILTERED}`,
+        `AWS_ACCESS_KEY_ID=${FILTERED}`,
+      ].join('\n'),
+    );
+  });
+
+  it('does not redact non-secret env names that merely contain a secret-token substring', () => {
+    // Segment-match (not substring-match) keeps these readable: `SERVICE_URL_CORE`
+    // has no secret token as a full segment; `GITHUB_OAUTH_CLIENT_ID` ends in
+    // `ID` which is not in the token set. Both were preserved in the live log.
+    const log = [
+      'SERVICE_URL_CORE=https://forge-beta-api.sidcorp.co',
+      'GITHUB_OAUTH_CLIENT_ID=ghid',
+      'KEYBOARD=qwerty',
+    ].join('\n');
+    expect(scrubLogText(log)).toBe(log);
+  });
 });
 
 describe('testCredentials scrubbing (ISS-225)', () => {

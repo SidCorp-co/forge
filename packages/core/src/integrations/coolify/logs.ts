@@ -11,8 +11,11 @@ export const LOG_MAX_BYTES = 16 * 1024;
 // ISS-412 — Coolify emits this banner immediately before dumping every
 // runtime env var as a KEY=value line. We use it as the start delimiter of
 // an env-dump block; the block ends at the first non-env-shaped line.
+// The value is optional — Coolify routinely emits `COOLIFY_URL=` (empty)
+// inside the dump and an over-strict regex used to end the block early,
+// leaving the rest of the env vars only gated by Layer 1's suffix rule.
 const ENV_DUMP_MARKER = /Creating \.env file with runtime variables/i;
-const ENV_ASSIGNMENT_LINE = /^(\s*(?:export\s+)?[A-Z][A-Z0-9_]*)\s*=\s*\S.*$/;
+const ENV_ASSIGNMENT_LINE = /^(\s*(?:export\s+)?[A-Z][A-Z0-9_]*)\s*=.*$/;
 
 /**
  * Defense-in-depth before the generic {@link scrubLogText} runs. Inside the

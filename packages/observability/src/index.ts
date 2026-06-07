@@ -45,18 +45,25 @@ export const PAT_STRING_PATTERN = /forge_pat_(?:dev|stg|prd)_[A-Fa-f0-9]+/g;
 
 /**
  * ISS-412 — env-assignment lines in build/deploy logs. Matches `KEY=value`
- * (optionally `export KEY=value`) where KEY is SHOUTING_SNAKE_CASE and ends
- * with a known secret-shaped suffix. Line-anchored via the per-line split in
- * {@link scrubLogText} so it cannot match a mid-line URL query param. Value
- * spans to end-of-line so quoted multi-word values are fully masked. Suffix
- * list intentionally narrow: catches `_SECRET` / `_TOKEN` / `_KEY` / `_PASS` /
- * `_PASSWORD` / `_PEPPER` / `_DSN` / `_CREDENTIALS` names that the existing
- * `\b<key>\b` body-key regex skips (regex `\b` is `\w`↔non-`\w`; `_` is a
- * word char so `\bpassword\b` does NOT match `POSTGRES_PASSWORD`). Plain
- * non-suffix lines like `NODE_ENV=production` pass through untouched.
+ * (optionally `export KEY=value`) where KEY is SHOUTING_SNAKE_CASE and ANY
+ * underscore-delimited segment of the key is in the secret token set
+ * (`PASSWORD|SECRET|TOKEN|KEY|PASS|PEPPER|DSN|CREDENTIALS`). Segment match —
+ * not pure suffix — so production names like `SENTRY_DSN_CORE` /
+ * `SENTRY_DSN_WEB` (a secret token sandwiched between service prefixes and
+ * tenant tags) and `AWS_SECRET_ACCESS_KEY` are caught alongside the simple
+ * trailing-suffix forms (`JWT_SECRET`, `POSTGRES_PASSWORD`). Line-anchored
+ * via the per-line split in {@link scrubLogText} so it cannot match a
+ * mid-line URL query param. Value spans to end-of-line so quoted multi-word
+ * values are fully masked. Plain non-secret lines like `NODE_ENV=production`,
+ * `SERVICE_URL_CORE=...`, `GITHUB_OAUTH_CLIENT_ID=...` pass through.
+ *
+ * Why segment-match instead of `\b<key>\b`: regex `\b` is `\w`↔non-`\w`,
+ * and `_` is a word char, so `\bpassword\b` does NOT match
+ * `POSTGRES_PASSWORD` — the underscore eats the boundary. The previous
+ * suffix-only form missed `SENTRY_DSN_CORE` for the same structural reason.
  */
 export const ENV_SECRET_ASSIGNMENT_PATTERN =
-  /^(\s*(?:export\s+)?[A-Z][A-Z0-9_]*(?:PASSWORD|SECRET|TOKEN|KEY|PASS|PEPPER|DSN|CREDENTIALS))\s*=\s*\S.*$/;
+  /^(\s*(?:export\s+)?(?:[A-Z0-9]+_)*(?:PASSWORD|SECRET|TOKEN|KEY|PASS|PEPPER|DSN|CREDENTIALS)(?:_[A-Z0-9]+)*)\s*=\s*\S.*$/;
 
 export const FILTERED = '[Filtered]';
 
