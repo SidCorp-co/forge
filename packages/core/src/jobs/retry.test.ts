@@ -27,6 +27,12 @@ vi.mock('../pipeline/recovery-verifier.js', () => ({
   verifyRecovery: (...args: unknown[]) => verifyRecoveryMock(...(args as [never])),
 }));
 
+// Round-robin candidate set. Default: a healthy 3-device project.
+const onlineDevicesMock = vi.fn(async () => ['device-A', 'device-B', 'device-C']);
+vi.mock('../runners/select.js', () => ({
+  onlineCapableDeviceIds: (...a: unknown[]) => onlineDevicesMock(...(a as [never])),
+}));
+
 const incrementRecoveryStatsMock = vi.fn(async () => undefined);
 const incrementAutoRetryCountMock = vi.fn(async () => undefined);
 const markSessionTerminalMock = vi.fn(async () => undefined);
@@ -51,7 +57,9 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-const { scheduleAutoRetryWithVerify } = await import('./retry.js');
+const { scheduleAutoRetryWithVerify, RETRY_COOLDOWN_MS, RETRY_MAX_ROUNDS } = await import(
+  './retry.js'
+);
 
 type JobRow = Record<string, unknown>;
 
@@ -72,6 +80,8 @@ const baseJob: JobRow = {
   failureKind: null,
   failureMeta: null,
   agentSessionId: 's1',
+  deviceId: 'device-A',
+  retryOf: null,
   error: 'ECONNRESET',
 };
 
@@ -81,13 +91,14 @@ beforeEach(() => {
   vi.setSystemTime(FIXED_NOW);
   insertReturning.mockReset();
   verifyRecoveryMock.mockResolvedValue('pending');
+  onlineDevicesMock.mockResolvedValue(['device-A', 'device-B', 'device-C']);
 });
 afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('scheduleAutoRetryWithVerify', () => {
-  it('schedules a single auto-retry for a transient failure with the 60s floor', async () => {
+describe('scheduleAutoRetryWithVerify — uniform round-robin', () => {
+  it('schedules a retry with the uniform 60s cooldown', async () => {
     insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
     const result = await scheduleAutoRetryWithVerify({ ...baseJob } as never, 'crashed');
     expect(result.scheduled).toBe(true);
@@ -98,15 +109,14 @@ describe('scheduleAutoRetryWithVerify', () => {
     expect(inserted.attempts).toBe(2);
     expect(inserted.status).toBe('queued');
     expect(inserted.agentSessionId).toBe('s1');
-    expect(inserted.retryAfterAt).toEqual(new Date(FIXED_NOW + 60000));
+    expect(inserted.retryAfterAt).toEqual(new Date(FIXED_NOW + RETRY_COOLDOWN_MS));
 
-    expect(enqueueMock).toHaveBeenCalledWith(
-      expect.objectContaining({ jobId: 'j2' }),
-      { startAfterSeconds: 60 },
-    );
+    expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'j2' }), {
+      startAfterSeconds: 60,
+    });
   });
 
-  it('honours classifier Retry-After hint above the floor', async () => {
+  it('ALWAYS uses 60s — ignores any Retry-After hint (no per-error handling)', async () => {
     insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
     await scheduleAutoRetryWithVerify(
       {
@@ -117,138 +127,58 @@ describe('scheduleAutoRetryWithVerify', () => {
       'rate-limited',
     );
     const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(inserted.retryAfterAt).toEqual(new Date(FIXED_NOW + 600 * 1000));
-    expect(enqueueMock).toHaveBeenCalledWith(expect.anything(), { startAfterSeconds: 600 });
+    expect(inserted.retryAfterAt).toEqual(new Date(FIXED_NOW + 60_000));
+    expect(enqueueMock).toHaveBeenCalledWith(expect.anything(), { startAfterSeconds: 60 });
   });
 
-  it('uses 60s floor when Retry-After is below it', async () => {
+  it('RETRIES every error kind uniformly — even a "permanent" classification', async () => {
     insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-    await scheduleAutoRetryWithVerify(
-      {
-        ...baseJob,
-        error: '429',
-        failureMeta: { headers: { 'retry-after': '5' } },
-      } as never,
-      'rate-limited',
+    const result = await scheduleAutoRetryWithVerify(
+      { ...baseJob, error: 'invalid_request_error' } as never,
+      'crashed',
     );
-    const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(inserted.retryAfterAt).toEqual(new Date(FIXED_NOW + 60000));
+    expect(result.scheduled).toBe(true);
   });
 
-  it('skips retry and marks completed_via_recovery when verifier says advanced', async () => {
+  it('RETRIES a "permission" classification too (no error-type branching)', async () => {
+    insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
+    const result = await scheduleAutoRetryWithVerify(
+      { ...baseJob, error: '401 Unauthorized' } as never,
+      'crashed',
+    );
+    expect(result.scheduled).toBe(true);
+  });
+
+  it('RETRIES a weekly-limit / unknown-command failure uniformly', async () => {
+    insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
+    const r1 = await scheduleAutoRetryWithVerify(
+      { ...baseJob, error: "You've hit your weekly limit" } as never,
+      'limit',
+    );
+    expect(r1.scheduled).toBe(true);
+    insertReturning.mockResolvedValueOnce([{ id: 'j3' }]);
+    const r2 = await scheduleAutoRetryWithVerify(
+      { ...baseJob, error: 'Unknown command: /forge-review' } as never,
+      'unknown-cmd',
+    );
+    expect(r2.scheduled).toBe(true);
+  });
+
+  it('skips retry + marks completed_via_recovery when verifier says advanced', async () => {
     verifyRecoveryMock.mockResolvedValueOnce('advanced');
     const result = await scheduleAutoRetryWithVerify({ ...baseJob } as never, 'crashed');
     expect(result.scheduled).toBe(false);
     expect(result.reason).toBe('completed_via_recovery');
     expect(dbInsert).not.toHaveBeenCalled();
     expect(markSessionTerminalMock).toHaveBeenCalledWith('s1', 'completed_via_recovery');
-    expect(
-      addBreadcrumbMock.mock.calls.some(
-        (c) =>
-          (c[0] as { category?: string }).category === 'session.recovery_skipped' &&
-          ((c[0] as { data?: Record<string, unknown> }).data?.currentStatus === 'advanced'),
-      ),
-    ).toBe(true);
   });
 
-  it('skips retry and marks cancelled_stale when verifier says reverted', async () => {
+  it('skips retry + marks cancelled_stale when verifier says reverted', async () => {
     verifyRecoveryMock.mockResolvedValueOnce('reverted');
     const result = await scheduleAutoRetryWithVerify({ ...baseJob } as never, 'crashed');
     expect(result.scheduled).toBe(false);
     expect(result.reason).toBe('cancelled_stale');
     expect(markSessionTerminalMock).toHaveBeenCalledWith('s1', 'cancelled_stale');
-  });
-
-  it('does NOT retry when classifier returns permanent', async () => {
-    const result = await scheduleAutoRetryWithVerify(
-      { ...baseJob, error: 'invalid_request_error' } as never,
-      'crashed',
-    );
-    expect(result.scheduled).toBe(false);
-    expect(result.reason).toBe('classifier:permanent');
-    expect(dbInsert).not.toHaveBeenCalled();
-  });
-
-  it('does NOT retry when classifier returns permission (v2 split)', async () => {
-    const result = await scheduleAutoRetryWithVerify(
-      { ...baseJob, error: '401 Unauthorized' } as never,
-      'crashed',
-    );
-    expect(result.scheduled).toBe(false);
-    expect(result.reason).toBe('classifier:permission');
-    expect(dbInsert).not.toHaveBeenCalled();
-  });
-
-  it('DOES retry when classifier returns timeout (v2 split)', async () => {
-    insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-    const result = await scheduleAutoRetryWithVerify(
-      { ...baseJob, error: 'ETIMEDOUT' } as never,
-      'crashed',
-    );
-    expect(result.scheduled).toBe(true);
-  });
-
-  it('DOES retry once when classifier returns unknown (silent runner death fallback)', async () => {
-    // Silent CLI deaths (e.g. Tauri's "Agent completed with errors" fallback
-    // when Claude CLI exits non-zero with empty stderr) classify as unknown
-    // because no pattern matches. They are usually transient; we attempt one
-    // recovery before falling through to manual hold.
-    insertReturning.mockResolvedValueOnce([{ id: 'j-unknown-retry' }]);
-    const result = await scheduleAutoRetryWithVerify(
-      { ...baseJob, error: 'Agent completed with errors' } as never,
-      'crashed',
-    );
-    expect(result.scheduled).toBe(true);
-    expect(result.newJobId).toBe('j-unknown-retry');
-  });
-
-  it('exhausts the phased budget after 40 retries (attempts=41)', async () => {
-    const result = await scheduleAutoRetryWithVerify(
-      { ...baseJob, error: 'mystery glitch', attempts: 41 } as never,
-      'crashed',
-    );
-    expect(result.scheduled).toBe(false);
-    expect(result.reason).toBe('retry_budget_exhausted');
-    expect(dbInsert).not.toHaveBeenCalled();
-  });
-
-  it('uses the 5-minute phase-2 cooldown once past 30 retries', async () => {
-    // attempts=31 → upcoming retry is the 31st, which falls in phase 2.
-    insertReturning.mockResolvedValueOnce([{ id: 'j-phase-2' }]);
-    await scheduleAutoRetryWithVerify(
-      { ...baseJob, attempts: 31 } as never,
-      'crashed',
-    );
-    const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(inserted.retryAfterAt).toEqual(new Date(FIXED_NOW + 5 * 60_000));
-    expect(enqueueMock).toHaveBeenCalledWith(
-      expect.objectContaining({ jobId: 'j-phase-2' }),
-      { startAfterSeconds: 300 },
-    );
-  });
-
-  it('still uses the 1-minute phase-1 cooldown for the 30th retry', async () => {
-    // attempts=30 → upcoming retry is the 30th, last slot in phase 1.
-    insertReturning.mockResolvedValueOnce([{ id: 'j-phase-1-edge' }]);
-    await scheduleAutoRetryWithVerify(
-      { ...baseJob, attempts: 30 } as never,
-      'crashed',
-    );
-    const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(inserted.retryAfterAt).toEqual(new Date(FIXED_NOW + 60_000));
-  });
-
-  it('DOES retry well past 3 attempts while phased budget remains', async () => {
-    // Transient/timeout/unknown share the 40-retry phased budget. Pre this
-    // change attempts >= 4 returned retry_budget_exhausted on transient; now
-    // it keeps retrying until attempts >= 41 (assuming the issue hasn't moved on).
-    insertReturning.mockResolvedValueOnce([{ id: 'j-retry-20' }]);
-    const result = await scheduleAutoRetryWithVerify(
-      { ...baseJob, attempts: 20 } as never,
-      'crashed',
-    );
-    expect(result.scheduled).toBe(true);
-    expect(result.newJobId).toBe('j-retry-20');
   });
 
   it('does NOT retry a cancelled job', async () => {
@@ -261,22 +191,14 @@ describe('scheduleAutoRetryWithVerify', () => {
     expect(dbInsert).not.toHaveBeenCalled();
   });
 
-  it('always increments recoveryStats even for non-retryable kinds', async () => {
+  it('always increments recoveryStats (display label) — even though it always retries', async () => {
+    insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
     await scheduleAutoRetryWithVerify(
       { ...baseJob, error: 'invalid_request_error' } as never,
       'crashed',
     );
     expect(incrementRecoveryStatsMock).toHaveBeenCalledWith('s1', 'permanent');
     expect(publishMock).toHaveBeenCalledWith('p1', 's1');
-  });
-
-  it('increments recoveryStats with timeout kind for timeout failures', async () => {
-    insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
-    await scheduleAutoRetryWithVerify(
-      { ...baseJob, error: 'ETIMEDOUT' } as never,
-      'crashed',
-    );
-    expect(incrementRecoveryStatsMock).toHaveBeenCalledWith('s1', 'timeout');
   });
 
   it('emits session.recovery_attempted breadcrumb on successful schedule', async () => {
@@ -295,7 +217,7 @@ describe('scheduleAutoRetryWithVerify', () => {
     expect(incrementAutoRetryCountMock).toHaveBeenCalledWith('s1');
   });
 
-  it('writes classification onto the failed job when not already set', async () => {
+  it('writes classification onto the failed job when not already set (display only)', async () => {
     insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
     await scheduleAutoRetryWithVerify({ ...baseJob } as never, 'crashed');
     expect(updateSet).toHaveBeenCalled();
@@ -303,79 +225,93 @@ describe('scheduleAutoRetryWithVerify', () => {
     expect(setArg?.failureKind).toBe('transient');
   });
 
-  it('writes the failed deviceId into the auto-retry exclude set on the new job', async () => {
-    insertReturning.mockResolvedValueOnce([{ id: 'j-retry-rotate' }]);
-    await scheduleAutoRetryWithVerify(
-      { ...baseJob, deviceId: 'device-A' } as never,
-      'crashed',
-    );
-    const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(inserted.payload).toEqual(
-      expect.objectContaining({
-        _autoRetry: { excludeDeviceIds: ['device-A'] },
-      }),
-    );
-  });
-
-  it('accumulates the exclude set across a retry chain (deduped)', async () => {
-    insertReturning.mockResolvedValueOnce([{ id: 'j-retry-accumulate' }]);
-    await scheduleAutoRetryWithVerify(
-      {
-        ...baseJob,
-        deviceId: 'device-B',
-        // Prior attempt already excluded device-A; new failure on device-B.
-        payload: { _autoRetry: { excludeDeviceIds: ['device-A'] } },
-      } as never,
-      'crashed',
-    );
-    const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(inserted.payload).toEqual({
-      _autoRetry: { excludeDeviceIds: ['device-A', 'device-B'] },
+  describe('round-robin rotation state', () => {
+    it('first failure STAYS on the same device for its 3 tries', async () => {
+      insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
+      await scheduleAutoRetryWithVerify({ ...baseJob, deviceId: 'device-A' } as never, 'x');
+      const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(inserted.payload).toEqual({
+        skill: 'forge-plan',
+        _autoRetry: { round: 1, target: 'device-A', tries: 2, done: [] },
+      });
     });
-  });
 
-  it('does not duplicate a device already in the exclude set', async () => {
-    insertReturning.mockResolvedValueOnce([{ id: 'j-retry-dedupe' }]);
-    await scheduleAutoRetryWithVerify(
-      {
-        ...baseJob,
-        deviceId: 'device-A',
-        payload: { _autoRetry: { excludeDeviceIds: ['device-A'] } },
-      } as never,
-      'crashed',
-    );
-    const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(inserted.payload).toEqual({
-      _autoRetry: { excludeDeviceIds: ['device-A'] },
+    it('rotates to the next online device after 3 tries on a device', async () => {
+      insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
+      await scheduleAutoRetryWithVerify(
+        {
+          ...baseJob,
+          deviceId: 'device-A',
+          payload: {
+            skill: 'forge-plan',
+            _autoRetry: { round: 1, target: 'device-A', tries: 3, done: [] },
+          },
+        } as never,
+        'x',
+      );
+      const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(inserted.payload).toEqual({
+        skill: 'forge-plan',
+        _autoRetry: { round: 1, target: 'device-B', tries: 1, done: ['device-A'] },
+      });
     });
-  });
 
-  it('preserves prior payload keys when injecting the auto-retry hint', async () => {
-    insertReturning.mockResolvedValueOnce([{ id: 'j-retry-payload-merge' }]);
-    await scheduleAutoRetryWithVerify(
-      {
-        ...baseJob,
-        deviceId: 'device-A',
-        payload: { skill: 'forge-plan', custom: 'keep-me' },
-      } as never,
-      'crashed',
-    );
-    const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(inserted.payload).toEqual({
-      skill: 'forge-plan',
-      custom: 'keep-me',
-      _autoRetry: { excludeDeviceIds: ['device-A'] },
+    it('advances to the next round (resets done) when every device is exhausted', async () => {
+      insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
+      await scheduleAutoRetryWithVerify(
+        {
+          ...baseJob,
+          deviceId: 'device-C',
+          payload: {
+            _autoRetry: { round: 1, target: 'device-C', tries: 3, done: ['device-A', 'device-B'] },
+          },
+        } as never,
+        'x',
+      );
+      const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(inserted.payload).toEqual({
+        _autoRetry: { round: 2, target: 'device-A', tries: 1, done: [] },
+      });
     });
-  });
 
-  it('skips the exclude hint when the failed job has no deviceId', async () => {
-    insertReturning.mockResolvedValueOnce([{ id: 'j-retry-no-device' }]);
-    await scheduleAutoRetryWithVerify(
-      { ...baseJob, deviceId: null } as never,
-      'crashed',
-    );
-    const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(inserted.payload).not.toHaveProperty('_autoRetry');
+    it('stops (parks) after RETRY_MAX_ROUNDS full sweeps', async () => {
+      const result = await scheduleAutoRetryWithVerify(
+        {
+          ...baseJob,
+          deviceId: 'device-C',
+          payload: {
+            _autoRetry: {
+              round: RETRY_MAX_ROUNDS,
+              target: 'device-C',
+              tries: 3,
+              done: ['device-A', 'device-B'],
+            },
+          },
+        } as never,
+        'x',
+      );
+      expect(result.scheduled).toBe(false);
+      expect(result.reason).toBe('retry_rounds_exhausted');
+      expect(dbInsert).not.toHaveBeenCalled();
+    });
+
+    it('preserves prior payload keys when writing rotation state', async () => {
+      insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
+      await scheduleAutoRetryWithVerify(
+        {
+          ...baseJob,
+          deviceId: 'device-A',
+          payload: { skill: 'forge-plan', custom: 'keep-me' },
+        } as never,
+        'x',
+      );
+      const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(inserted.payload).toEqual({
+        skill: 'forge-plan',
+        custom: 'keep-me',
+        _autoRetry: { round: 1, target: 'device-A', tries: 2, done: [] },
+      });
+    });
   });
 
   it('swallows enqueue errors so the retry row is still created', async () => {
