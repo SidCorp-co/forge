@@ -753,6 +753,20 @@ export function registerPipelineOrchestrator(bus: HooksBus): void {
     try {
       // Guard: `needs_info → open` never re-triages (user answered a question).
       if (payload.to === 'open' && payload.from === 'needs_info') return;
+      // ISS-411 — operator hold is authoritative. When an issue leaves `on_hold`
+      // via a non-`user` actor (the aborted agent's termination-protocol
+      // `forge_issues.update`, or any system advance), do NOT re-dispatch — only
+      // a human Resume (REST `/transition`, actor.type==='user') may re-engage
+      // the pipeline. This is what makes an operator Cancel a HARD STOP: parking
+      // the issue at `on_hold` (runs-control.ts) plus this guard means a stray
+      // status advance can never silently restart the run.
+      if (payload.from === 'on_hold' && payload.actor.type !== 'user') {
+        logger.info(
+          { issueId: payload.issueId, to: payload.to, actor: payload.actor.type },
+          'orchestrator: skip enqueue — non-user advance out of operator on_hold',
+        );
+        return;
+      }
       // Short-circuit BEFORE loading cfg if the target isn't even mapped to a
       // skill — saves a DB hit on human-gated transitions.
       if (!resolveJobTypeForStatus(payload.to) && !SKIPPABLE_STAGES.has(payload.to)) return;

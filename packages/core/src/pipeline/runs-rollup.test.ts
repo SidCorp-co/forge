@@ -18,10 +18,30 @@ let nextSelectKind: 'steps' | 'cost' | 'runRow' | 'bulkCost' = 'steps';
 vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => ({ _and: args }),
   eq: (...args: unknown[]) => ({ _eq: args }),
+  asc: (...args: unknown[]) => ({ _asc: args }),
   sql: ((strings: TemplateStringsArray, ...values: unknown[]) => {
     const obj = { _sql: strings.join('?'), values };
     return Object.assign(obj, { mapWith: () => obj });
   }) as never,
+}));
+
+// ISS-411 — runs-rollup now imports the pure retry-state helpers; mock them so
+// the suite does not transitively pull in the dispatch/queue graph (env-gated).
+vi.mock('../jobs/retry.js', () => ({
+  RETRY_MAX_ROUNDS: 10,
+  readAutoRetryPayload: (payload: unknown) => {
+    const raw =
+      payload && typeof payload === 'object'
+        ? (payload as Record<string, unknown>)._autoRetry
+        : null;
+    const r = (raw ?? {}) as Record<string, unknown>;
+    return {
+      round: typeof r.round === 'number' ? r.round : 1,
+      target: typeof r.target === 'string' ? r.target : null,
+      tries: typeof r.tries === 'number' ? r.tries : 0,
+      done: Array.isArray(r.done) ? r.done : [],
+    };
+  },
 }));
 
 vi.mock('../db/schema.js', () => ({
@@ -35,7 +55,21 @@ vi.mock('../db/schema.js', () => ({
     updatedAt: 'agent_sessions.updated_at',
     status: 'agent_sessions.status',
   },
-  jobs: { id: 'jobs.id', pipelineRunId: 'jobs.pipeline_run_id' },
+  jobs: {
+    id: 'jobs.id',
+    pipelineRunId: 'jobs.pipeline_run_id',
+    type: 'jobs.type',
+    status: 'jobs.status',
+    attempts: 'jobs.attempts',
+    retryOf: 'jobs.retry_of',
+    deviceId: 'jobs.device_id',
+    failureReason: 'jobs.failure_reason',
+    queuedAt: 'jobs.queued_at',
+    dispatchedAt: 'jobs.dispatched_at',
+    finishedAt: 'jobs.finished_at',
+    payload: 'jobs.payload',
+  },
+  devices: { id: 'devices.id', name: 'devices.name' },
   pipelineRuns: { id: 'pipeline_runs.id' },
   usageRecords: {
     id: 'usage_records.id',
@@ -77,14 +111,13 @@ vi.mock('../db/client.js', () => ({
 function makeChain(eventual: Promise<unknown>): Record<string, unknown> {
   const chain = {
     innerJoin: () => chain,
+    leftJoin: () => chain,
     where: () => chain,
     groupBy: () => chain,
     orderBy: () => chain,
     limit: () => eventual,
-    then: (
-      onFulfilled: (value: unknown) => unknown,
-      onRejected?: (reason: unknown) => unknown,
-    ) => eventual.then(onFulfilled, onRejected),
+    then: (onFulfilled: (value: unknown) => unknown, onRejected?: (reason: unknown) => unknown) =>
+      eventual.then(onFulfilled, onRejected),
   } as Record<string, unknown>;
   return chain;
 }
