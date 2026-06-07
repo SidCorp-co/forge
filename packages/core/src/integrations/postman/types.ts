@@ -34,6 +34,14 @@ export interface PostmanConfig extends Record<string, unknown> {
 export interface PostmanSecrets extends Record<string, unknown> {
   /** Postman API key (PMAK-...). Bearer for MCP, X-Api-Key for the REST /me call. */
   apiKey: string;
+  /**
+   * Previous API key, retained during the 24h rotation window so a `GET /me`
+   * healthcheck issued before the new key fully propagates can still
+   * authenticate. Mirrors the Coolify dual-token pattern (ISS-405).
+   */
+  previousApiKey?: string;
+  /** ISO-8601 timestamp; if past, `previousApiKey` is ignored. */
+  previousTokenExpiresAt?: string;
 }
 
 /** Shape of a successful Postman `GET /me` response (the fields we surface). */

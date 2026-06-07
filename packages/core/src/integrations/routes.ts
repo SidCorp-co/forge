@@ -18,8 +18,8 @@ import {
 } from '../db/schema.js';
 import { classifyGitRemote } from '../git/provision-credential.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import type { CoolifySecrets } from './coolify/types.js';
 import { getAdapter } from './registry.js';
+import { type RotatingProvider, isRotatingProvider, mergeRotatedSecrets } from './rotation.js';
 import {
   type BindingWithConnection,
   type IntegrationConnectionRow,
@@ -62,8 +62,6 @@ const forbidden = () =>
   new HTTPException(403, { message: 'forbidden', cause: { code: 'FORBIDDEN' } });
 const notFound = (entity = 'integration') =>
   new HTTPException(404, { message: `${entity} not found`, cause: { code: 'NOT_FOUND' } });
-
-const ROTATION_WINDOW_MS = 24 * 60 * 60_000;
 
 async function assertProjectMember(
   projectId: string,
@@ -360,31 +358,32 @@ integrationsRoutes.patch(
     }
 
     let mergedSecrets: Record<string, unknown> | null | undefined = undefined;
-    if (binding.provider === 'postman' || binding.provider === 'epodsystem') {
-      // Postman + Epodsystem both have a single non-rotating secret: the API
-      // key. Replace it wholesale when present.
-      const parsed = postmanSecretsSchema.partial().safeParse(patch.secrets ?? {});
-      if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-      if (parsed.data.apiKey) {
-        assertVaultConfigured();
-        mergedSecrets = { apiKey: parsed.data.apiKey };
+    // All providers route through the shared rotation helper so the dual-token
+    // overlap window applies uniformly (ISS-405). Per-provider zod parsing
+    // stays here so each provider's input shape is validated before the merge.
+    if (patch.secrets && isRotatingProvider(binding.provider)) {
+      const provider: RotatingProvider = binding.provider;
+      let incoming: Record<string, unknown> | null = null;
+      if (provider === 'coolify') {
+        const parsed = coolifySecretsSchema.partial().safeParse(patch.secrets);
+        if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
+        incoming = parsed.data;
+      } else {
+        const parsed = postmanSecretsSchema.partial().safeParse(patch.secrets);
+        if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
+        incoming = parsed.data;
       }
-    } else if (typeof patch.secrets?.apiToken === 'string') {
-      // Coolify token rotation — keep the previous token for 24h so deploys in
-      // flight when the operator updates the token still authenticate. Only
-      // guard the vault when this PATCH touches encrypted material — config-only
-      // patches must keep working even if the key is missing.
-      assertVaultConfigured();
-      const currentSecrets = connection.secretsEnc
-        ? (await import('./vault.js')).decryptJson<CoolifySecrets>(connection.secretsEnc)
-        : null;
-      mergedSecrets = {
-        apiToken: patch.secrets.apiToken,
-        previousApiToken: currentSecrets?.apiToken,
-        previousTokenExpiresAt: currentSecrets?.apiToken
-          ? new Date(Date.now() + ROTATION_WINDOW_MS).toISOString()
-          : undefined,
-      };
+      // Skip the vault guard for a config-only PATCH (no primary credential
+      // change) — same conditional as the prior coolify branch.
+      const primaryField = provider === 'coolify' ? 'apiToken' : 'apiKey';
+      if (typeof incoming[primaryField] === 'string') {
+        assertVaultConfigured();
+        const currentSecrets = connection.secretsEnc
+          ? (await import('./vault.js')).decryptJson<Record<string, unknown>>(connection.secretsEnc)
+          : null;
+        const merged = mergeRotatedSecrets(provider, currentSecrets, incoming);
+        if (merged) mergedSecrets = merged;
+      }
     }
 
     // Config + secrets live on the connection; `active` toggles the binding
@@ -890,23 +889,26 @@ integrationConnectionsRoutes.patch(
         ...(parsed.data as Record<string, unknown>),
       };
     }
-    if (patch.secrets) {
+    if (patch.secrets && isRotatingProvider(existing.provider)) {
       assertVaultConfigured();
-      if (existing.provider === 'postman' || existing.provider === 'epodsystem') {
+      const provider: RotatingProvider = existing.provider;
+      let incoming: Record<string, unknown> | null = null;
+      if (provider === 'coolify') {
+        const parsed = coolifySecretsSchema.partial().safeParse(patch.secrets);
+        if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
+        incoming = parsed.data;
+      } else {
         const parsed = postmanSecretsSchema.partial().safeParse(patch.secrets);
         if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-        if (parsed.data.apiKey) connPatch.secrets = { apiKey: parsed.data.apiKey };
-      } else if (typeof patch.secrets.apiToken === 'string') {
+        incoming = parsed.data;
+      }
+      const primaryField = provider === 'coolify' ? 'apiToken' : 'apiKey';
+      if (typeof incoming[primaryField] === 'string') {
         const currentSecrets = existing.secretsEnc
-          ? (await import('./vault.js')).decryptJson<CoolifySecrets>(existing.secretsEnc)
+          ? (await import('./vault.js')).decryptJson<Record<string, unknown>>(existing.secretsEnc)
           : null;
-        connPatch.secrets = {
-          apiToken: patch.secrets.apiToken,
-          previousApiToken: currentSecrets?.apiToken,
-          previousTokenExpiresAt: currentSecrets?.apiToken
-            ? new Date(Date.now() + ROTATION_WINDOW_MS).toISOString()
-            : undefined,
-        };
+        const merged = mergeRotatedSecrets(provider, currentSecrets, incoming);
+        if (merged) connPatch.secrets = merged;
       }
     }
 

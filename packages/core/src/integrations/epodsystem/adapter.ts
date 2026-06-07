@@ -15,6 +15,7 @@
 
 import { logger } from '../../logger.js';
 import { getAdapter, registerAdapter } from '../registry.js';
+import { isPreviousCredentialValid } from '../rotation.js';
 import { updateConnection } from '../store.js';
 import type { HealthCheckResult, IntegrationAdapter } from '../types.js';
 import { epodsystemGraphqlBase } from './endpoints.js';
@@ -96,31 +97,66 @@ export const epodsystemAdapter: IntegrationAdapter<EpodsystemConfig, EpodsystemS
     // the prod admin host) — not per-store, not user-supplied. The crmk_ key
     // resolves the org/store on its own.
     const url = epodsystemGraphqlBase();
-    try {
-      const probe = await gqlPost(url, apiKey, API_KEY_CONTEXT_QUERY);
+
+    // One probe with a given key. Treats both an HTTP 401/403 and a 200 + GraphQL
+    // `errors[]` (the platform's resolver-layer auth rejection) as `unauthorized`
+    // so the rotation-window fallback covers both shapes (ISS-405).
+    type ProbeResult =
+      | { kind: 'ok'; body: ApiKeyContextResponse }
+      | { kind: 'unauthorized'; status: number }
+      | { kind: 'http-error'; status: number };
+    async function probeApiKeyContext(key: string): Promise<ProbeResult> {
+      const probe = await gqlPost(url, key, API_KEY_CONTEXT_QUERY);
       if (!probe.ok) {
-        await updateConnection(ctx.connectionId, {
-          lastHealthStatus: 'error',
-          lastHealthAt: new Date(),
-        });
-        const reason =
-          probe.status === 401 || probe.status === 403
-            ? 'invalid Epodsystem API key'
-            : `Epodsystem API error (HTTP ${probe.status})`;
-        return { status: 'error', message: reason, diagnostics: { httpStatus: probe.status } };
+        if (probe.status === 401 || probe.status === 403) {
+          return { kind: 'unauthorized', status: probe.status };
+        }
+        return { kind: 'http-error', status: probe.status };
       }
-
       const body = probe.json as ApiKeyContextResponse;
-      // A 200 with a GraphQL error array (auth rejected at the resolver layer)
-      // is still a failure — surface it without leaking the key.
       if (body.errors && body.errors.length > 0) {
+        return { kind: 'unauthorized', status: 200 };
+      }
+      return { kind: 'ok', body };
+    }
+
+    try {
+      let result = await probeApiKeyContext(apiKey);
+      // If the primary key is rejected AND a retained previous key is still
+      // inside the rotation window, retry once with it. Mirrors
+      // coolify/client.ts:50-79 and the dual-token PATCH path.
+      let activeKey = apiKey;
+      if (
+        result.kind === 'unauthorized' &&
+        ctx.secrets.previousApiKey &&
+        isPreviousCredentialValid(ctx.secrets)
+      ) {
+        result = await probeApiKeyContext(ctx.secrets.previousApiKey);
+        if (result.kind === 'ok') activeKey = ctx.secrets.previousApiKey;
+      }
+
+      if (result.kind !== 'ok') {
         await updateConnection(ctx.connectionId, {
           lastHealthStatus: 'error',
           lastHealthAt: new Date(),
         });
-        return { status: 'error', message: 'invalid Epodsystem API key' };
+        if (result.kind === 'unauthorized') {
+          return result.status === 200
+            ? { status: 'error', message: 'invalid Epodsystem API key' }
+            : {
+                status: 'error',
+                message: 'invalid Epodsystem API key',
+                diagnostics: { httpStatus: result.status },
+              };
+        }
+        return {
+          status: 'error',
+          message: `Epodsystem API error (HTTP ${result.status})`,
+          diagnostics: { httpStatus: result.status },
+        };
       }
 
+      const body = result.body;
       const apiCtx = body.data?.apiKeyContext;
       // One-store-per-project (ISS-387): take the first store. A valid key with
       // no store yet leaves `store` undefined → key-valid, identity unresolved.
@@ -135,7 +171,9 @@ export const epodsystemAdapter: IntegrationAdapter<EpodsystemConfig, EpodsystemS
       let domain: string | null = null;
       if (store?.id != null) {
         try {
-          const enrich = await gqlPost(url, apiKey, STORE_CONTEXT_QUERY, { sid: String(store.id) });
+          const enrich = await gqlPost(url, activeKey, STORE_CONTEXT_QUERY, {
+            sid: String(store.id),
+          });
           if (enrich.ok) {
             const ed = (enrich.json as StoreContextResponse).data;
             const themes = ed?.storeThemes ?? [];

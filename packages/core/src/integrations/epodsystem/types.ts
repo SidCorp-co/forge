@@ -49,6 +49,14 @@ export interface EpodsystemConfig extends Record<string, unknown> {
 export interface EpodsystemSecrets extends Record<string, unknown> {
   /** Epodsystem API key (`crmk_...`). Bearer for both the MCP server and the GraphQL `apiKeyContext` call. */
   apiKey: string;
+  /**
+   * Previous API key, retained during the 24h rotation window so an
+   * `apiKeyContext` healthcheck issued before the new key fully propagates can
+   * still authenticate. Mirrors the Coolify dual-token pattern (ISS-405).
+   */
+  previousApiKey?: string;
+  /** ISO-8601 timestamp; if past, `previousApiKey` is ignored. */
+  previousTokenExpiresAt?: string;
 }
 
 /**

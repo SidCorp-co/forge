@@ -11,6 +11,7 @@
 
 import { logger } from '../../logger.js';
 import { getAdapter, registerAdapter } from '../registry.js';
+import { isPreviousCredentialValid } from '../rotation.js';
 import { updateConnection } from '../store.js';
 import type { HealthCheckResult, IntegrationAdapter } from '../types.js';
 import { postmanRestBase } from './endpoints.js';
@@ -47,31 +48,61 @@ export const postmanAdapter: IntegrationAdapter<PostmanConfig, PostmanSecrets> =
     }
 
     const base = postmanRestBase(ctx.config.region ?? 'us');
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), ME_TIMEOUT_MS);
-    try {
-      const res = await fetch(`${base}/me`, {
-        method: 'GET',
-        headers: { 'X-Api-Key': apiKey, Accept: 'application/json' },
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
 
-      if (!res.ok) {
+    // One attempt with a given key. Returns the parsed result OR a 401/403
+    // sentinel so the caller can fall back to the previous key (ISS-405 dual-
+    // token rotation, mirrors coolify/client.ts:50-79).
+    type AttemptResult =
+      | { kind: 'ok'; body: PostmanMeResponse }
+      | { kind: 'unauthorized'; status: number }
+      | { kind: 'http-error'; status: number };
+    async function attempt(key: string): Promise<AttemptResult> {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), ME_TIMEOUT_MS);
+      try {
+        const res = await fetch(`${base}/me`, {
+          method: 'GET',
+          headers: { 'X-Api-Key': key, Accept: 'application/json' },
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) {
+            return { kind: 'unauthorized', status: res.status };
+          }
+          return { kind: 'http-error', status: res.status };
+        }
+        const body = (await res.json()) as PostmanMeResponse;
+        return { kind: 'ok', body };
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    try {
+      let result = await attempt(apiKey);
+      // If the primary key is rejected AND the operator just rotated within
+      // the overlap window, retry once with the retained previous key.
+      if (
+        result.kind === 'unauthorized' &&
+        ctx.secrets.previousApiKey &&
+        isPreviousCredentialValid(ctx.secrets)
+      ) {
+        result = await attempt(ctx.secrets.previousApiKey);
+      }
+
+      if (result.kind !== 'ok') {
         await updateConnection(ctx.connectionId, {
           lastHealthStatus: 'error',
           lastHealthAt: new Date(),
         });
-        // 401/403 → bad key; surface a clear, key-free message.
         const reason =
-          res.status === 401 || res.status === 403
+          result.kind === 'unauthorized'
             ? 'invalid Postman API key'
-            : `Postman API error (HTTP ${res.status})`;
-        return { status: 'error', message: reason, diagnostics: { httpStatus: res.status } };
+            : `Postman API error (HTTP ${result.status})`;
+        return { status: 'error', message: reason, diagnostics: { httpStatus: result.status } };
       }
 
-      const body = (await res.json()) as PostmanMeResponse;
-      const user = body.user ?? {};
+      const user = result.body.user ?? {};
       await updateConnection(ctx.connectionId, {
         lastHealthStatus: 'ok',
         lastHealthAt: new Date(),
@@ -90,7 +121,6 @@ export const postmanAdapter: IntegrationAdapter<PostmanConfig, PostmanSecrets> =
         },
       };
     } catch (err) {
-      clearTimeout(timer);
       const message = err instanceof Error ? err.message : 'unknown error';
       await updateConnection(ctx.connectionId, {
         lastHealthStatus: 'error',
