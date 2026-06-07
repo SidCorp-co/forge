@@ -54,6 +54,49 @@ export interface InboundDispatchResult {
 }
 
 /**
+ * Declares which integration surfaces a provider actually supports, so the UI
+ * (and the connection/binding layer) can render to the provider's archetype
+ * instead of one rigid layout — e.g. no empty delivery-log box for an
+ * MCP-injection provider that never dispatches. See
+ * docs/integrations/connection-binding.md.
+ *
+ * Two archetypes today:
+ *  - deploy / 2-way   (coolify): dispatch + inbound webhook + env split + prod gate + delivery log
+ *  - MCP-injection    (postman, epodsystem): injects an mcpServers.* entry into the runner; no dispatch
+ */
+export interface IntegrationCapabilities {
+  /** Core makes outbound API calls (e.g. trigger a deploy). */
+  canDispatch: boolean;
+  /** Core handles an inbound webhook callback from the provider. */
+  canReceiveWebhook: boolean;
+  /** Injects an `mcpServers.<provider>` entry into the runner at dispatch time. */
+  injectsMcp: boolean;
+  /** A staging/prod environment split is meaningful for this provider. */
+  hasEnvironments: boolean;
+  /** A prod-environment action requires an explicit human confirm gate. */
+  prodConfirmGate: boolean;
+  /** A delivery audit log is meaningful (false for MCP-injection providers). */
+  hasDeliveryLog: boolean;
+}
+
+/** Conservative default for an adapter that does not declare capabilities. */
+export const DEFAULT_CAPABILITIES: IntegrationCapabilities = {
+  canDispatch: false,
+  canReceiveWebhook: false,
+  injectsMcp: false,
+  hasEnvironments: false,
+  prodConfirmGate: false,
+  hasDeliveryLog: false,
+};
+
+/** Resolve an adapter's capabilities, falling back to the conservative default. */
+export function capabilitiesFor(
+  adapter: Pick<IntegrationAdapter, 'capabilities'> | undefined | null,
+): IntegrationCapabilities {
+  return { ...DEFAULT_CAPABILITIES, ...(adapter?.capabilities ?? {}) };
+}
+
+/**
  * Adapters implement this. Only three methods are required for ISS-234;
  * validateConfig + pollState are intentionally deferred to follow-up issues.
  */
@@ -62,6 +105,12 @@ export interface IntegrationAdapter<
   TSecrets extends Record<string, unknown> = Record<string, unknown>,
 > {
   readonly provider: IntegrationProvider;
+  /**
+   * Provider archetype flags. Optional for backward-compatibility (test mocks,
+   * the conservative default applies via {@link capabilitiesFor}); all shipped
+   * adapters declare it.
+   */
+  readonly capabilities?: IntegrationCapabilities;
   healthcheck(ctx: AdapterContext<TConfig, TSecrets>): Promise<HealthCheckResult>;
   dispatchOutbound(
     ctx: AdapterContext<TConfig, TSecrets>,

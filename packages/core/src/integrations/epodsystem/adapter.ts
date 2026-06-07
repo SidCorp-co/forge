@@ -71,6 +71,16 @@ async function gqlPost(
 
 export const epodsystemAdapter: IntegrationAdapter<EpodsystemConfig, EpodsystemSecrets> = {
   provider: 'epodsystem',
+  // MCP-injection archetype: injects mcpServers.epodsystem into the runner; core
+  // never dispatches or receives webhooks, so no env split / delivery log.
+  capabilities: {
+    canDispatch: false,
+    canReceiveWebhook: false,
+    injectsMcp: true,
+    hasEnvironments: false,
+    prodConfirmGate: false,
+    hasDeliveryLog: false,
+  },
 
   async healthcheck(ctx): Promise<HealthCheckResult> {
     const apiKey = ctx.secrets?.apiKey;
@@ -140,7 +150,10 @@ export const epodsystemAdapter: IntegrationAdapter<EpodsystemConfig, EpodsystemS
         } catch (err) {
           // Enrichment is non-fatal; log without the key.
           logger.warn(
-            { integrationId: ctx.integrationId, err: err instanceof Error ? err.message : 'unknown' },
+            {
+              integrationId: ctx.integrationId,
+              err: err instanceof Error ? err.message : 'unknown',
+            },
             'epodsystem: healthcheck enrichment failed (non-fatal)',
           );
         }

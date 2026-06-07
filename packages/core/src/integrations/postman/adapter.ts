@@ -25,6 +25,16 @@ const notSupported = (op: string): never => {
 
 export const postmanAdapter: IntegrationAdapter<PostmanConfig, PostmanSecrets> = {
   provider: 'postman',
+  // MCP-injection archetype: injects mcpServers.postman into the runner; core
+  // never dispatches or receives webhooks, so no env split / delivery log.
+  capabilities: {
+    canDispatch: false,
+    canReceiveWebhook: false,
+    injectsMcp: true,
+    hasEnvironments: false,
+    prodConfirmGate: false,
+    hasDeliveryLog: false,
+  },
 
   async healthcheck(ctx): Promise<HealthCheckResult> {
     const apiKey = ctx.secrets?.apiKey;

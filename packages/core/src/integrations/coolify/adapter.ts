@@ -55,6 +55,16 @@ function buildClient(ctx: {
 
 export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> = {
   provider: 'coolify',
+  // Deploy / 2-way archetype: outbound deploy + inbound webhook, env split,
+  // prod confirm gate, delivery audit log.
+  capabilities: {
+    canDispatch: true,
+    canReceiveWebhook: true,
+    injectsMcp: false,
+    hasEnvironments: true,
+    prodConfirmGate: true,
+    hasDeliveryLog: true,
+  },
 
   async healthcheck(ctx) {
     const started = Date.now();

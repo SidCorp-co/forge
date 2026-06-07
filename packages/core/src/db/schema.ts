@@ -2024,6 +2024,12 @@ export const integrationDeliveries = pgTable(
     projectIntegrationId: uuid('project_integration_id')
       .notNull()
       .references(() => projectIntegrations.id, { onDelete: 'cascade' }),
+    // Connection/Binding model (additive): repointed from projectIntegrationId
+    // during the REST cutover. Nullable + backfilled 1:1 so existing rows keep
+    // working until the cutover flips reads to bindings.
+    bindingId: uuid('binding_id').references(() => integrationBindings.id, {
+      onDelete: 'cascade',
+    }),
     direction: text('direction', { enum: integrationDeliveryDirections }).notNull(),
     eventName: text('event_name').notNull(),
     requestId: text('request_id'),
@@ -2046,6 +2052,10 @@ export const integrationDeliveries = pgTable(
     requestIdUq: uniqueIndex('integration_deliveries_request_id_uq')
       .on(t.projectIntegrationId, t.requestId)
       .where(sql`request_id IS NOT NULL`),
+    bindingCreatedIdx: index('integration_deliveries_binding_created_idx').on(
+      t.bindingId,
+      sql`${t.createdAt} DESC`,
+    ),
   }),
 );
 
@@ -2062,6 +2072,114 @@ export const integrationDeliveriesRelations = relations(integrationDeliveries, (
     fields: [integrationDeliveries.projectIntegrationId],
     references: [projectIntegrations.id],
   }),
+  binding: one(integrationBindings, {
+    fields: [integrationDeliveries.bindingId],
+    references: [integrationBindings.id],
+  }),
+}));
+
+// === Connection / Binding model (docs/integrations/connection-binding.md) ===
+//
+// Additive successor to project_integrations: the CREDENTIAL (connection, owned
+// by a principal — user now, org later) is split from the per-project+env LINK
+// (binding). Tables land empty+backfilled; all current read/dispatch paths keep
+// using project_integrations until the REST cutover issue flips them. Owner is a
+// generic principal so org-level sharing arrives without a data migration.
+
+export const integrationOwnerTypes = ['user', 'org'] as const;
+export type IntegrationOwnerType = (typeof integrationOwnerTypes)[number];
+
+export const integrationConnections = pgTable(
+  'integration_connections',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // Generic principal. ownerType discriminates the namespace of ownerId so we
+    // can add 'org' later without re-keying rows; no FK because it is polymorphic.
+    ownerType: text('owner_type', { enum: integrationOwnerTypes }).notNull().default('user'),
+    ownerId: uuid('owner_id').notNull(),
+    provider: text('provider').notNull(),
+    displayName: text('display_name'),
+    // Connection-scoped non-secret config (e.g. coolify baseUrl, postman
+    // region/mode, epodsystem store identity). Per-project overrides live on the
+    // binding.
+    config: jsonb('config').notNull().default({}),
+    // The ONE encrypted copy of the credential — rotate once, every binding
+    // follows. Same <iv:12><tag:16><ct> format as project_integrations.
+    secretsEnc: bytea('secrets_enc'),
+    // Future OAuth-first connect (GitHub App installation id, etc.).
+    oauthInstallationId: text('oauth_installation_id'),
+    active: boolean('active').notNull().default(true),
+    breakerOpenedAt: timestamp('breaker_opened_at', { withTimezone: true }),
+    lastHealthStatus: text('last_health_status'),
+    lastHealthAt: timestamp('last_health_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    ownerProviderIdx: index('integration_connections_owner_provider_idx').on(
+      t.ownerType,
+      t.ownerId,
+      t.provider,
+    ),
+    activeProviderIdx: index('integration_connections_active_provider_idx')
+      .on(t.provider, t.active)
+      .where(sql`active = true`),
+  }),
+);
+
+export const integrationBindings = pgTable(
+  'integration_bindings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    connectionId: uuid('connection_id')
+      .notNull()
+      .references(() => integrationConnections.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    // Denormalized from the connection so the inbound router + unique index work
+    // without a join. Always equals the parent connection's provider.
+    provider: text('provider').notNull(),
+    environment: text('environment', { enum: integrationEnvironments }).notNull(),
+    // Per-binding overrides (e.g. coolify resourceUuid/branch). Overlaid on top
+    // of connection.config at dispatch time.
+    config: jsonb('config').notNull().default({}),
+    // Per-binding HMAC secret for inbound webhook signature verification — an
+    // inbound webhook is project+env scoped, so this stays on the binding.
+    integrationSecret: text('integration_secret'),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    connectionIdx: index('integration_bindings_connection_idx').on(t.connectionId),
+    projectProviderIdx: index('integration_bindings_project_provider_idx').on(
+      t.projectId,
+      t.provider,
+    ),
+    // Preserves project_integrations' one-row-per (project, provider, env) guard.
+    projectProviderEnvUq: uniqueIndex('integration_bindings_project_provider_env_uq').on(
+      t.projectId,
+      t.provider,
+      t.environment,
+    ),
+  }),
+);
+
+export const integrationConnectionsRelations = relations(integrationConnections, ({ many }) => ({
+  bindings: many(integrationBindings),
+}));
+
+export const integrationBindingsRelations = relations(integrationBindings, ({ one, many }) => ({
+  connection: one(integrationConnections, {
+    fields: [integrationBindings.connectionId],
+    references: [integrationConnections.id],
+  }),
+  project: one(projects, {
+    fields: [integrationBindings.projectId],
+    references: [projects.id],
+  }),
+  deliveries: many(integrationDeliveries),
 }));
 
 /**
