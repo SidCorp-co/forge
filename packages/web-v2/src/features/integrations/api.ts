@@ -9,13 +9,11 @@ import type {
   ConnectionResponse,
   ConnectionUpdateInput,
   CreateIntegrationInput,
-  CreatePostmanInput,
   IntegrationDelivery,
   IntegrationSummary,
   IntegrationTestResult,
   IntegrationsStatus,
   UpdateIntegrationInput,
-  UpdatePostmanInput,
 } from "./types";
 
 export const integrationsApi = {
@@ -27,33 +25,6 @@ export const integrationsApi = {
    *  (project-facing `BindingSummary` rows, projected from binding + connection). */
   list: (projectId: string) =>
     apiClient<BindingListResponse>(`/projects/${projectId}/integrations`),
-
-  /** `POST /api/projects/:projectId/integrations` — create a Postman integration. */
-  createPostman: (projectId: string, input: CreatePostmanInput) =>
-    apiClient<{ integration: IntegrationSummary; integrationSecret: string }>(
-      `/projects/${projectId}/integrations`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          provider: "postman",
-          environment: "prod",
-          config: input.config,
-          secrets: { apiKey: input.apiKey },
-        }),
-      },
-    ),
-
-  /** `PATCH /api/projects/:projectId/integrations/:id` — update config/key/active. */
-  updatePostman: (projectId: string, id: string, input: UpdatePostmanInput) => {
-    const body: Record<string, unknown> = {};
-    if (input.config) body.config = input.config;
-    if (input.apiKey) body.secrets = { apiKey: input.apiKey };
-    if (input.active !== undefined) body.active = input.active;
-    return apiClient<{ integration: IntegrationSummary }>(
-      `/projects/${projectId}/integrations/${id}`,
-      { method: "PATCH", body: JSON.stringify(body) },
-    );
-  },
 
   /** `POST /api/projects/:projectId/integrations/:id/test` — validate the key. */
   test: (projectId: string, id: string) =>
