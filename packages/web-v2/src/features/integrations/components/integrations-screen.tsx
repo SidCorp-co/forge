@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type KeyboardEvent, useEffect, useMemo, useState } from "react";
 import { formatRelativeTime } from "@/lib/utils/format";
 import {
   Button,
@@ -17,25 +17,9 @@ import {
 import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useIntegrationsStatus } from "../hooks";
-import type { CardStatus, StatusCard } from "../types";
-import { CoolifySection } from "./coolify-section";
-import { EpodsystemSection } from "./epodsystem-section";
-import { PostmanSection } from "./postman-section";
-
-const STATUS_META: Record<
-  CardStatus,
-  { icon: IconName; label: string; fg: string; bg: string }
-> = {
-  connected: { icon: "check", label: "Connected", fg: "var(--green-600)", bg: "var(--green-50)" },
-  attention: { icon: "alert", label: "Attention", fg: "var(--amberw-600)", bg: "var(--amberw-50)" },
-  error: { icon: "alert", label: "Error", fg: "var(--red-600)", bg: "var(--red-50)" },
-  not_configured: {
-    icon: "dot",
-    label: "Not configured",
-    fg: "var(--fg-subtle)",
-    bg: "var(--bg-sunken)",
-  },
-};
+import { DIRECTORY_STATUS_META, deriveDirectoryStatus, isProviderCard } from "../derive";
+import type { StatusCard } from "../types";
+import { ConnectionDetailDrawer } from "./connection-detail-drawer";
 
 const PROVIDER_ICON: Record<string, IconName> = {
   github: "github",
@@ -51,9 +35,11 @@ function providerIcon(key: string): IconName {
   return PROVIDER_ICON[key.split(":")[0] ?? key] ?? "link";
 }
 
-/** Status dot rendered as icon + text + tinted pill (never color-only — a11y). */
-function StatusPill({ status }: { status: CardStatus }) {
-  const m = STATUS_META[status];
+/** Status dot rendered as icon + text + tinted pill (never color-only — a11y).
+ *  The directory state is derived client-side (ISS-402): a tripped breaker and
+ *  the server `attention` bucket both read Degraded; no fabricated health. */
+function StatusPill({ card }: { card: StatusCard }) {
+  const m = DIRECTORY_STATUS_META[deriveDirectoryStatus(card)];
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-[12px] font-semibold"
@@ -74,24 +60,41 @@ function externalRepoUrl(card: StatusCard): string | null {
   return null;
 }
 
-function IntegrationCard({ card }: { card: StatusCard }) {
+function IntegrationCard({ card, onOpen }: { card: StatusCard; onOpen?: () => void }) {
   const lastSync = formatRelativeTime(card.lastSyncAt);
   const repoUrl = externalRepoUrl(card);
   const transport =
     card.key === "github" && typeof card.meta?.transport === "string"
       ? (card.meta.transport as string)
       : null;
+  const clickable = Boolean(onOpen);
 
   return (
     <Card>
       <CardContent>
-        <div className="flex min-h-[120px] flex-col gap-2.5">
+        <div
+          className={`flex min-h-[120px] flex-col gap-2.5 ${clickable ? "cursor-pointer" : ""}`}
+          {...(clickable
+            ? {
+                role: "button",
+                tabIndex: 0,
+                "aria-label": `Manage ${card.label}`,
+                onClick: onOpen,
+                onKeyDown: (e: KeyboardEvent) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onOpen?.();
+                  }
+                },
+              }
+            : {})}
+        >
           <div className="flex items-center justify-between gap-2">
             <span className="inline-flex items-center gap-2">
               <Icon name={providerIcon(card.key)} size={18} className="text-muted" />
               <span className="fg-h3">{card.label}</span>
             </span>
-            <StatusPill status={card.status} />
+            <StatusPill card={card} />
           </div>
 
           <p className="fg-body-sm text-muted">{card.detail}</p>
@@ -112,10 +115,16 @@ function IntegrationCard({ card }: { card: StatusCard }) {
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent hover:underline"
+                onClick={(e) => e.stopPropagation()}
               >
                 Open repo
                 <Icon name="arrowRight" size={13} />
               </a>
+            ) : clickable ? (
+              <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent">
+                Manage
+                <Icon name="arrowRight" size={13} />
+              </span>
             ) : null}
           </div>
         </div>
@@ -136,6 +145,7 @@ export function IntegrationsScreen() {
   }, [projects.data, projectId]);
 
   const status = useIntegrationsStatus(projectId || undefined);
+  const [selectedCard, setSelectedCard] = useState<StatusCard | null>(null);
 
   const options = useMemo(
     () => (projects.data ?? []).map((p) => ({ value: p.id, label: p.name })),
@@ -203,18 +213,23 @@ export function IntegrationsScreen() {
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {(status.data?.cards ?? []).map((card) => (
-              <IntegrationCard key={card.key} card={card} />
+              <IntegrationCard
+                key={card.key}
+                card={card}
+                onOpen={isProviderCard(card.key) ? () => setSelectedCard(card) : undefined}
+              />
             ))}
           </div>
 
-          {/* Editable per-project integration config. ISS-336 (Postman) +
-              ISS-395 (Epodsystem + Coolify, ported from v1). */}
+          {/* Drill-in: provider cards open an adaptive connection detail drawer
+              (config + Test/Rotate/Disconnect, plus delivery log when the
+              adapter declares hasDeliveryLog). ISS-402. */}
           {projectId && (
-            <div className="mt-2 flex flex-col gap-4">
-              <EpodsystemSection projectId={projectId} />
-              <CoolifySection projectId={projectId} />
-              <PostmanSection projectId={projectId} />
-            </div>
+            <ConnectionDetailDrawer
+              projectId={projectId}
+              card={selectedCard}
+              onClose={() => setSelectedCard(null)}
+            />
           )}
         </>
       )}
