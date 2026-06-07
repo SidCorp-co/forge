@@ -278,6 +278,27 @@ Manually moving a decompose parent or child breaks the kickoff.`,
     render: () => `## Comment + status ordering
 Post your findings/decision comment via \`forge_comments.create\` BEFORE the final \`forge_issues.update\` status change — the next pipeline step must see the comment already in place. Status is always the LAST action.`,
   },
+  {
+    id: 'memory-recall-first',
+    title: 'Recall project memory before working',
+    category: 'protocol',
+    tier: 'contextual',
+    scope: 'global',
+    namespace: 'forge',
+    // The stages where acting without prior context is the costliest mistake:
+    // plan (wrong design vs an existing convention/decision), clarify
+    // (re-deriving a repro/gotcha already recorded), fix (re-fixing a known
+    // pattern). Other stages (triage/code/review/test/release) may still recall
+    // at will — forge_memory is in the Tool Reference — but it is not mandated.
+    // code is intentionally OUT: the orchestrator already injects a search-first
+    // `preventiveContext` into code jobs, so mandating it here would duplicate.
+    appliesTo: ['clarify', 'plan', 'fix'],
+    version: 1,
+    render: () => `## Recall memory first
+Project memory is NOT auto-loaded into this prompt. BEFORE you design/reproduce/fix, recall what prior work already established for the area you are about to touch — conventions, gotchas, decisions, fix-patterns — so you neither contradict them nor rediscover from scratch:
+\`forge_memory.search({ projectId, query: <the feature / file / error you're about to work on>, topK: 3, sourceFilter: ['knowledge', 'policy'] })\`
+Run one or two focused queries on the concrete nouns of THIS task. Hits are point-in-time — verify against the live code/git before relying on them. This READ step is the counterpart to the "Capture Learnings" write step in Pipeline Rules.`,
+  },
 
   // ── Tier 2: format facts ────────────────────────────────────────────────
   {
