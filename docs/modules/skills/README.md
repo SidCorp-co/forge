@@ -110,6 +110,14 @@ Unique constraint: `(projectId, stage)` — at most one skill per stage per proj
 | `forge-release` | staging → released | Merge to production |
 | `forge-fix` | reopen → deploying | Address rejection feedback |
 
+## Scope & shadowing (ISS-388)
+
+Global skills are **read-only default templates**; a project customizes one by creating a **same-name project skill that SHADOWS** the global for that project. There is no fork/override mechanism.
+
+- MCP + Skill Studio create/update/delete **per-project** skills only — global is never mutated.
+- `skills/effective.ts` dedups by name (**project wins**) → one row per name plus a `shadowsGlobal` marker; `forge_skills.list`/`effective` surface it.
+- **Removed**: `forge_skills.override_set`/`override_delete`, REST `override-routes.ts`, the `projectSkillOverrides` table, and the override-merge `isOverridden` branch. Shadow-by-name only.
+
 ## Future (v0.2+)
 
 - Skill library UI: search, install, rate, version

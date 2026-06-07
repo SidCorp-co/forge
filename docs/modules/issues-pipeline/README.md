@@ -112,3 +112,4 @@ Each transition can map to a skill (triage, clarify, plan, code, review, test, r
 | Document | Description |
 |----------|-------------|
 | [status-pipeline.md](status-pipeline.md) | Full 17-status lifecycle reference — transition rules, skill mappings, gate semantics |
+| [decompose.md](decompose.md) | Epic → children decomposition lifecycle — create/approve cascade, children-first + parent-last gating |
