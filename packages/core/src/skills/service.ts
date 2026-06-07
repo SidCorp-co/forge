@@ -424,6 +424,56 @@ export class SkillAlreadyShadowedError extends Error {
 }
 
 /**
+ * Single-path bridge for provisioning flows (project bootstrap, domain-template
+ * apply): return the id of the project skill named `skillName`, cloning the
+ * same-name global TEMPLATE into the project when the project does not own one
+ * yet. Returns null when neither a project skill nor a global template of that
+ * name exists (the caller decides whether to skip or error). Idempotent — a
+ * re-run returns the existing project skill instead of cloning again.
+ *
+ * This is how a global enters a project under the single-path model: choosing a
+ * skill for a stage materialises a project-owned copy; the global itself is
+ * never registered or dispatched. See docs/skills-scope-playbook.md.
+ */
+export async function resolveOrAdoptProjectSkill(
+  projectId: string,
+  skillName: string,
+): Promise<string | null> {
+  const [proj] = await db
+    .select({ id: skills.id })
+    .from(skills)
+    .where(
+      and(eq(skills.scope, 'project'), eq(skills.projectId, projectId), eq(skills.name, skillName)),
+    )
+    .limit(1);
+  if (proj) return proj.id;
+
+  const [global] = await db
+    .select({
+      name: skills.name,
+      description: skills.description,
+      skillMd: skills.skillMd,
+      prompt: skills.prompt,
+      target: skills.target,
+      files: skills.files,
+    })
+    .from(skills)
+    .where(and(eq(skills.scope, 'global'), eq(skills.name, skillName)))
+    .limit(1);
+  if (!global) return null;
+
+  const created = await createProjectSkill({
+    projectId,
+    name: global.name,
+    description: global.description,
+    skillMd: global.skillMd ?? global.prompt ?? '',
+    target: global.target,
+    files: (Array.isArray(global.files) ? global.files : []) as SkillFileInput[],
+  });
+  return created.id;
+}
+
+/**
  * Resolve the device-bound runners for a project to a distinct set of device
  * ids, optionally narrowed to one device. Remote (host='remote') runners have
  * no device and are excluded — skills sync to a filesystem, which only a

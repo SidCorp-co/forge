@@ -60,6 +60,17 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
+// Bootstrap adopts each stage's global template into a project skill via
+// resolveOrAdoptProjectSkill; stub it so the test controls which stages bind
+// without simulating the clone queries. Other skills/service exports stay real.
+const resolveOrAdoptProjectSkillMock = vi.fn(
+  async (_projectId: string, _skillName: string): Promise<string | null> => null,
+);
+vi.mock('../skills/service.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../skills/service.js')>()),
+  resolveOrAdoptProjectSkill: resolveOrAdoptProjectSkillMock,
+}));
+
 const { projectRoutes } = await import('./routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
@@ -85,6 +96,8 @@ beforeEach(() => {
   insertOnConflict.mockClear();
   insertOnConflictDoUpdate.mockClear();
   insertReturning.mockReset();
+  resolveOrAdoptProjectSkillMock.mockReset();
+  resolveOrAdoptProjectSkillMock.mockResolvedValue(null);
   let callIdx = 0;
   txInsert.mockImplementation(() => {
     const idx = callIdx++;
@@ -1031,15 +1044,6 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     'tested',
     'testing',
   ].sort();
-  const SKILL_IDS = {
-    triage: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-    plan: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-    code: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-    review: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
-    test: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
-    fix: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
-    release: '99999999-9999-4999-8999-999999999999',
-  };
 
   function bootstrap(token: string) {
     return req(`/${PID}/skills/bootstrap`, { method: 'POST', token });
@@ -1066,28 +1070,14 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
       .mockResolvedValueOnce([]) // existing registrations -> none
       .mockResolvedValueOnce([{ agentConfig: null }]); // project agentConfig
 
-    // 5th selectWhere — globalSkills lookup (.where(...) without .limit()).
-    // Preceding 5 select calls all use .limit() and consume the
-    // selectLimit queue above; the 6th overall select is this one.
-    selectWhere
-      .mockReturnValueOnce({ limit: selectLimit })
-      .mockReturnValueOnce({ limit: selectLimit })
-      .mockReturnValueOnce({ limit: selectLimit })
-      .mockReturnValueOnce({ limit: selectLimit })
-      .mockReturnValueOnce({ limit: selectLimit })
-      .mockResolvedValueOnce([
-        { id: SKILL_IDS.triage, name: 'forge-triage' },
-        { id: SKILL_IDS.plan, name: 'forge-plan' },
-        { id: SKILL_IDS.code, name: 'forge-code' },
-        { id: SKILL_IDS.review, name: 'forge-review' },
-        { id: SKILL_IDS.test, name: 'forge-test' },
-        { id: SKILL_IDS.fix, name: 'forge-fix' },
-        { id: SKILL_IDS.release, name: 'forge-release' },
-      ]);
-
-    // The bootstrap inserts directly into skill_registrations (no .onConflictDoNothing).
-    // Override insertValues to be awaitable.
-    insertValues.mockReturnValueOnce(Promise.resolve());
+    // Each stage adopts a project-owned skill from its `forge-<type>` template.
+    // forge-clarify has no template (mirrors the old "global missing" case), so
+    // the `confirmed` stage is skipped; the other 7 stages bind.
+    resolveOrAdoptProjectSkillMock.mockImplementation(async (_p: string, name: string) =>
+      name === 'forge-clarify' ? null : `proj-${name}`,
+    );
+    // The bootstrap inserts directly into skill_registrations. Make it awaitable.
+    insertValues.mockReturnValueOnce(Promise.resolve() as never);
 
     const res = await bootstrap(token);
     expect(res.status).toBe(201);
@@ -1194,22 +1184,7 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ agentConfig: { pipelineConfig: { enabled: false } } }]);
 
-    selectWhere
-      .mockReturnValueOnce({ limit: selectLimit })
-      .mockReturnValueOnce({ limit: selectLimit })
-      .mockReturnValueOnce({ limit: selectLimit })
-      .mockReturnValueOnce({ limit: selectLimit })
-      .mockReturnValueOnce({ limit: selectLimit })
-      .mockResolvedValueOnce([
-        { id: SKILL_IDS.triage, name: 'forge-triage' },
-        { id: SKILL_IDS.plan, name: 'forge-plan' },
-        { id: SKILL_IDS.code, name: 'forge-code' },
-        { id: SKILL_IDS.review, name: 'forge-review' },
-        { id: SKILL_IDS.test, name: 'forge-test' },
-        { id: SKILL_IDS.fix, name: 'forge-fix' },
-        { id: SKILL_IDS.release, name: 'forge-release' },
-      ] as never);
-
+    resolveOrAdoptProjectSkillMock.mockImplementation(async () => 'proj-skill');
     insertValues.mockReturnValueOnce(Promise.resolve() as never);
 
     const res = await bootstrap(token);
@@ -1236,14 +1211,7 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ agentConfig: null }]);
 
-    selectWhere
-      .mockReturnValueOnce({ limit: selectLimit })
-      .mockReturnValueOnce({ limit: selectLimit })
-      .mockReturnValueOnce({ limit: selectLimit })
-      .mockReturnValueOnce({ limit: selectLimit })
-      .mockReturnValueOnce({ limit: selectLimit })
-      .mockResolvedValueOnce([] as never); // no global skills
-
+    // No template resolves → nothing to bind → 503. (default mock returns null)
     const res = await bootstrap(token);
     expect(res.status).toBe(503);
     expect(insertValues).not.toHaveBeenCalled();

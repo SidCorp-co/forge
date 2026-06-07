@@ -15,7 +15,6 @@ import {
   projects,
   runners,
   skillRegistrations,
-  skills,
 } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { isEnabled } from '../lib/feature-flags.js';
@@ -31,6 +30,7 @@ import { PipelineConfigError, updatePipelineConfig } from '../pipeline/pipeline-
 import { STATUS_TO_JOB_TYPE } from '../pipeline/skill-mapping.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
 import { defaultRunnerCapabilities } from '../runners/select.js';
+import { resolveOrAdoptProjectSkill } from '../skills/service.js';
 import { mergeStateContext, stateContextSchema } from './state-context.js';
 
 function generateApiKey(): string {
@@ -962,24 +962,11 @@ projectRoutes.post(
       });
     }
 
-    // Look up global skills referenced by STATUS_TO_JOB_TYPE. Each entry in
-    // the map points to a `forge-<type>` skill name + the auto* toggle key.
-    const desiredSkillNames = Array.from(
-      new Set(
-        Object.values(STATUS_TO_JOB_TYPE)
-          .filter((s): s is NonNullable<typeof s> => s != null)
-          .map((s) => `forge-${s.type}`),
-      ),
-    );
-    const globalSkills = await db
-      .select({ id: skills.id, name: skills.name })
-      .from(skills)
-      .where(and(eq(skills.scope, 'global')));
-    const skillByName = new Map(globalSkills.map((s) => [s.name, s.id]));
-
-    // Build registration rows: one per (status → skill) pair where the
-    // global skill exists. Missing skills are skipped (logged) so a partial
-    // builtin seed doesn't crash bootstrap.
+    // Single path: each stage binds a PROJECT-owned skill. Materialise one by
+    // cloning the same-name global `forge-<type>` template into this project
+    // (clone-on-first-use); a global is never registered directly. Stages whose
+    // template is absent (partial builtin seed) are skipped. See
+    // docs/skills-scope-playbook.md.
     const toInsert: Array<{
       projectId: string;
       skillId: string;
@@ -988,15 +975,14 @@ projectRoutes.post(
     }> = [];
     for (const [status, mapping] of Object.entries(STATUS_TO_JOB_TYPE)) {
       if (!mapping) continue;
-      const skillName = `forge-${mapping.type}`;
-      const skillId = skillByName.get(skillName);
+      const skillId = await resolveOrAdoptProjectSkill(id, `forge-${mapping.type}`);
       if (!skillId) continue;
       toInsert.push({ projectId: id, skillId, stage: status, registeredBy: userId });
     }
 
     if (toInsert.length === 0) {
       throw new HTTPException(503, {
-        message: 'no global skills available — server skill seed has not run',
+        message: 'no skill templates available — server skill seed has not run',
         cause: { code: 'NO_GLOBAL_SKILLS' },
       });
     }
@@ -1036,7 +1022,6 @@ projectRoutes.post(
         alreadyBootstrapped: false,
         skillsBound,
         pipelineEnabled,
-        ...(desiredSkillNames.length > 0 ? { desiredSkillNames } : {}),
       },
       201,
     );
