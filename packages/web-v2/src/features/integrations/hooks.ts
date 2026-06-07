@@ -3,8 +3,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
-import { integrationsApi } from "./api";
+import { integrationConnectionsApi, integrationsApi } from "./api";
 import type {
+  ConnectionCreateInput,
+  ConnectionUpdateInput,
   CreateIntegrationInput,
   CreatePostmanInput,
   UpdateIntegrationInput,
@@ -173,5 +175,70 @@ export function useIntegrationDeliveries(projectId: string | undefined, id: stri
     queryKey: ["integrations", "deliveries", projectId, id],
     queryFn: () => integrationsApi.deliveries(projectId as string, id as string),
     enabled: !!projectId && !!id,
+  });
+}
+
+// === ISS-401/C — owner-scoped connection hooks ===
+// Connections belong to the authenticated principal, NOT a project, so these
+// keys are NOT project-scoped: a single `['integration-connections']` cache
+// entry serves every project view. The event-router invalidates this exact key
+// on `integration.changed`; `replayOnReconnect` refreshes it after a drop.
+
+/** Connections owned by the current user. Keyed `['integration-connections']`. */
+export function useConnections() {
+  return useQuery({
+    queryKey: ["integration-connections"],
+    queryFn: () => integrationConnectionsApi.list(),
+  });
+}
+
+function useInvalidateConnections() {
+  const qc = useQueryClient();
+  return () => qc.invalidateQueries({ queryKey: ["integration-connections"] });
+}
+
+/** Create an owner-scoped connection (credential). */
+export function useCreateConnection() {
+  const invalidate = useInvalidateConnections();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (body: ConnectionCreateInput) => integrationConnectionsApi.create(body),
+    onSuccess: () => {
+      invalidate();
+      toast({ title: "Connection created", tone: "success" });
+    },
+    onError: (err) =>
+      toast({ title: "Couldn't create connection", description: formatApiError(err), tone: "error" }),
+  });
+}
+
+/** Patch a connection (displayName/config/secrets/active). */
+export function useUpdateConnection() {
+  const invalidate = useInvalidateConnections();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: ConnectionUpdateInput }) =>
+      integrationConnectionsApi.update(id, body),
+    onSuccess: () => {
+      invalidate();
+      toast({ title: "Connection saved", tone: "success" });
+    },
+    onError: (err) =>
+      toast({ title: "Couldn't save connection", description: formatApiError(err), tone: "error" }),
+  });
+}
+
+/** Soft-delete a connection (active=false). */
+export function useDeleteConnection() {
+  const invalidate = useInvalidateConnections();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (id: string) => integrationConnectionsApi.remove(id),
+    onSuccess: () => {
+      invalidate();
+      toast({ title: "Connection removed", tone: "success" });
+    },
+    onError: (err) =>
+      toast({ title: "Couldn't remove connection", description: formatApiError(err), tone: "error" }),
   });
 }

@@ -198,6 +198,19 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
       qc.invalidateQueries({ queryKey: ['notifications-unread'] });
       return;
     }
+    case 'integration.changed': {
+      // ISS-401/C — a binding mutation (create/update/delete/rotate-secret/
+      // confirm-prod-deploy) broadcasts this to the project room. Refresh the
+      // project-facing bindings list + composed status, and the owner-scoped
+      // connections list (keyed without a projectId). Connection-only mutations
+      // do not emit (no owner WS room) — they self-invalidate client-side.
+      if (data?.projectId) {
+        qc.invalidateQueries({ queryKey: ['integrations', 'list', data.projectId] });
+        qc.invalidateQueries({ queryKey: ['integrations', 'status', data.projectId] });
+      }
+      qc.invalidateQueries({ queryKey: ['integration-connections'] });
+      return;
+    }
     case 'pat.created':
     case 'pat.revoked':
     case 'pat.used': {
@@ -240,4 +253,9 @@ export function replayOnReconnect(qc: QueryClient): void {
   // WS broadcast yet, so reconnect replay (+ window-focus refetch + Refresh) is
   // its freshness signal until a `chat-log.created` event lands in core.
   qc.invalidateQueries({ queryKey: ['chat-logs'] });
+  // ISS-401/C — refresh integration bindings/status (per-project) + the owner-
+  // scoped connections list after a dropped connection. Connection mutations
+  // have no WS broadcast, so reconnect replay is their cross-client freshness.
+  qc.invalidateQueries({ queryKey: ['integrations'] });
+  qc.invalidateQueries({ queryKey: ['integration-connections'] });
 }
