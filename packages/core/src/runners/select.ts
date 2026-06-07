@@ -1,6 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { projects, type RunnerType } from '../db/schema.js';
+import { type RunnerType, projects } from '../db/schema.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import type { RequiredCapabilities, Runner } from './types.js';
 
@@ -109,6 +109,17 @@ interface SelectInput {
    * parking on a manual hold).
    */
   excludeDeviceIds?: string[];
+  /**
+   * Retry-rotation flag (jobs/retry.ts). When true:
+   *   - the primary-device preference (step 2) is SKIPPED — once a retry chain
+   *     starts every online device is equal, so `defaultDeviceId` no longer
+   *     wins; the caller pins the round-robin `target` via `pinDeviceId`;
+   *   - the all-excluded wrap-around is DISABLED — the retry policy owns round
+   *     resets (it clears the exclude set at a round boundary), so a fully
+   *     excluded sweep returns null instead of silently re-hammering primary.
+   * First dispatches leave this false → primary-pinned behaviour is unchanged.
+   */
+  skipPrimary?: boolean;
 }
 
 type RunnerRow = {
@@ -174,19 +185,25 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
   const required = JSON.stringify(requiredCapabilities ?? {});
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
   const excludeDeviceIds = input.excludeDeviceIds ?? [];
+  const skipPrimary = input.skipPrimary ?? false;
 
-  // Try once with the auto-retry exclusion honored; if nothing matches and
-  // the project only has already-tried devices online, retry without the
-  // exclusion so the chain wraps around instead of starving.
-  const primary = await pickRunner(projectId, required, livenessSeconds, {
+  const picked = await pickRunner(projectId, required, livenessSeconds, {
     pinDeviceId: pinDeviceId ?? null,
     excludeDeviceIds,
+    skipPrimary,
   });
-  if (primary) return primary;
-  if (excludeDeviceIds.length > 0) {
+  if (picked) return picked;
+
+  // First-dispatch wrap-around: when every device is excluded (e.g. all
+  // tripped by the circuit breaker) re-run without the exclusion so a
+  // single-/few-device project still gets a probe rather than wedging. This
+  // is DISABLED for retry rotation (`skipPrimary`) — there the retry policy
+  // owns round resets, and wrapping would silently re-hammer one device.
+  if (!skipPrimary && excludeDeviceIds.length > 0) {
     return pickRunner(projectId, required, livenessSeconds, {
       pinDeviceId: pinDeviceId ?? null,
       excludeDeviceIds: [],
+      skipPrimary,
     });
   }
   return null;
@@ -196,11 +213,12 @@ async function pickRunner(
   projectId: string,
   required: string,
   livenessSeconds: number,
-  opts: { pinDeviceId: string | null; excludeDeviceIds: string[] },
+  opts: { pinDeviceId: string | null; excludeDeviceIds: string[]; skipPrimary: boolean },
 ): Promise<Runner | null> {
-  // Step 1 — pin (session-group resume). The exclusion overrides the pin so
-  // retries actually rotate; the caller drops `priorClaudeSessionId` when the
-  // pin is skipped (see dispatcher.ts).
+  // Step 1 — pin. For a session-group resume this is the prior device; for a
+  // retry rotation it is the round-robin `target`. The exclusion overrides the
+  // pin so a done/tripped device is never re-picked (caller drops
+  // `priorClaudeSessionId` when the pin is skipped — see dispatcher.ts).
   if (opts.pinDeviceId && !opts.excludeDeviceIds.includes(opts.pinDeviceId)) {
     const pinned = await findHealthyByDevice(
       projectId,
@@ -209,17 +227,19 @@ async function pickRunner(
       livenessSeconds,
     );
     if (pinned) return pinned;
-    // Pin stale → caller will downgrade to fresh dispatch.
+    // Pin stale → fall through (retry rotation: to standby; first dispatch:
+    // to primary then standby).
   }
 
-  // Step 2 — primary (defaultDeviceId)
+  // Step 2 — primary (defaultDeviceId). Skipped for retry rotation, where
+  // every online device is equal and the round-robin target drives selection.
   const [project] = await db
     .select({ defaultDeviceId: projects.defaultDeviceId })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
   const defaultDeviceId = project?.defaultDeviceId ?? null;
-  if (defaultDeviceId && !opts.excludeDeviceIds.includes(defaultDeviceId)) {
+  if (!opts.skipPrimary && defaultDeviceId && !opts.excludeDeviceIds.includes(defaultDeviceId)) {
     const primary = await findHealthyByDevice(
       projectId,
       defaultDeviceId,
@@ -327,4 +347,34 @@ async function findStandby(
   if (rows.length === 0) return null;
   // biome-ignore lint/style/noNonNullAssertion: length checked
   return rowToRunner(rows[0]!);
+}
+
+/**
+ * Distinct device ids that currently have an online + fresh runner capable of
+ * `requiredCapabilities` on this project, deterministically ordered by
+ * `device_id ASC`. The retry round-robin (jobs/retry.ts) uses this as the
+ * candidate set: which devices a sweep cycles through, and when a round is
+ * complete (every candidate already tried). Remote/server runners (NULL
+ * device_id) are excluded — rotation is device-scoped.
+ */
+export async function onlineCapableDeviceIds(
+  projectId: string,
+  requiredCapabilities?: RequiredCapabilities,
+): Promise<string[]> {
+  const required = JSON.stringify(requiredCapabilities ?? {});
+  const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
+  const rows = await db.execute<{ device_id: string }>(
+    sql`
+      SELECT DISTINCT device_id
+      FROM runners
+      WHERE project_id = ${projectId}
+        AND device_id IS NOT NULL
+        AND status = 'online'
+        AND capabilities @> ${required}::jsonb
+        AND last_seen_at IS NOT NULL
+        AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
+      ORDER BY device_id ASC
+    `,
+  );
+  return rows.map((r) => r.device_id).filter((id): id is string => Boolean(id));
 }

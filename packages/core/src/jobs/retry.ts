@@ -1,46 +1,47 @@
 /**
- * Verify-first auto-retry engine (ISS-197).
+ * Uniform round-robin auto-retry engine.
  *
- * Old model (pre-ISS-197): one flat 60s cooldown, regardless of provider
- * Retry-After hint or issue progress. Blind retries burned tokens when the
- * issue had already moved on, and rate-limit responses with
- * `Retry-After: 600` got pinged again after 60s.
+ * Design (deliberately simple + transparent — one policy for EVERY failure):
  *
- * New model:
- *   1. Classify the failure (classifier v2 — transient | permission |
- *      permanent | timeout | unknown — and an optional Retry-After hint).
- *   2. ALWAYS increment recoveryStats on the linked agent_session, even
- *      for non-retryable kinds; broadcast `session.recoveryChanged`.
- *   3. Skip retry if the classifier says permanent / permission.
- *   4. Skip retry if the phased auto-retry budget (30×1m + 10×5m = 40)
- *      is exhausted; the caller then parks the issue at `waiting`.
- *   5. Verify-first: if `verifyRecovery` says the issue already advanced
- *      past the failed job's expected exit → mark agent_session as
- *      `completed_via_recovery` and stop. If the issue moved to a
- *      different jobType's territory → mark `cancelled_stale` and stop.
- *   6. Otherwise schedule the retry with `retry_after_at` set to
- *      `max(now + MIN_RETRY_COOLDOWN_MS, classifier.retryAfter)`; the L1
- *      dispatch gate enforces the timestamp.
+ *   - **No per-error branching.** A failure is a failure. We do NOT inspect the
+ *     failure kind to decide whether/how to retry — `transient`, `permanent`,
+ *     a weekly-usage-limit, an "Unknown command" skill glitch, a silent runner
+ *     death: all retry the same way. (The classifier still runs, but ONLY to
+ *     persist a human-readable label on the job + recovery stats for the
+ *     operator UI; it never gates the retry decision. See the loud comment at
+ *     the call site.)
+ *   - **Uniform cooldown.** Every retry waits exactly `RETRY_COOLDOWN_MS`
+ *     (60s). No phases, no provider Retry-After parsing.
+ *   - **Round-robin across devices.** Each device gets `RETRY_TRIES_PER_DEVICE`
+ *     (3) attempts before the chain rotates to the next online device. The
+ *     project's `defaultDeviceId` (primary) only decides the FIRST dispatch;
+ *     from the first retry on, every online device is treated equally. The
+ *     rotation state lives in `payload._autoRetry` and the dispatcher honours
+ *     it (`target` → pin, `done` → exclude).
+ *   - **Bounded.** After `RETRY_MAX_ROUNDS` (10) full sweeps the chain stops
+ *     and the caller parks the issue at `waiting` for a human.
  *
- * Clean-break: the legacy flat-cooldown constant and the blind-retry path
- * are deleted outright. The floor lives in `pipeline/retry-after-parser.ts`
- * so a grep for the cooldown literal inside `jobs/` stays empty.
+ * The only NON-error guards that can still short-circuit a retry are
+ * structural, not error-type: a job whose cancellation was requested, and the
+ * verify-first check (the issue already advanced past / reverted away from
+ * this step, so retrying would be wasted spend).
  */
 
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { jobs } from '../db/schema.js';
-import { logger } from '../logger.js';
-import { Sentry, isSentryEnabled } from '../observability/sentry.js';
-import { CLASSIFIER_VERSION, classifyFailure, type FailureKind } from '../pipeline/failure-classifier.js';
-import { verifyRecovery } from '../pipeline/recovery-verifier.js';
-import { MIN_RETRY_COOLDOWN_MS } from '../pipeline/retry-after-parser.js';
 import { publishSessionRecoveryChanged } from '../agent-sessions/recovery-publish.js';
 import {
   incrementAutoRetryCount,
   incrementRecoveryStats,
   markSessionTerminal,
 } from '../agent-sessions/recovery-stats.js';
+import { db } from '../db/client.js';
+import { jobs } from '../db/schema.js';
+import { logger } from '../logger.js';
+import { Sentry, isSentryEnabled } from '../observability/sentry.js';
+import { classifyFailure } from '../pipeline/failure-classifier.js';
+import { verifyRecovery } from '../pipeline/recovery-verifier.js';
+import { onlineCapableDeviceIds } from '../runners/select.js';
+import type { RequiredCapabilities } from '../runners/types.js';
 import { enqueueJob } from './enqueue.js';
 
 type JobRow = typeof jobs.$inferSelect;
@@ -51,76 +52,102 @@ export interface RetryOutcome {
   reason?: string;
 }
 
-/** Phased retry schedule shared by all retryable kinds (transient / timeout /
- *  unknown):
- *
- *    Phase 1 — 30 retries with a 1-minute cooldown (covers ~30 min of
- *              transient blips and short rate-limit windows).
- *    Phase 2 — 10 retries with a 5-minute cooldown (additional ~50 min for
- *              slower recovery, e.g. extended outages or quota resets).
- *
- *  After 40 total retries (job.attempts ≥ 41) the budget is exhausted; the
- *  caller then parks the issue at `waiting` for human review.
- *
- *  Provider `Retry-After` hints still win when they exceed the phase
- *  cooldown — the schedule is a floor, not a ceiling.
- *
- *  `permission` / `permanent` are hard-stops upstream and never reach this
- *  helper. */
-export const AUTO_RETRY_PHASE_1_COUNT = 30;
-export const AUTO_RETRY_PHASE_2_COUNT = 10;
-export const AUTO_RETRY_PHASE_2_COOLDOWN_MS = 5 * 60_000;
-export const AUTO_RETRY_MAX_TOTAL = AUTO_RETRY_PHASE_1_COUNT + AUTO_RETRY_PHASE_2_COUNT;
+/** Uniform cooldown between every retry. No phases, no Retry-After. */
+export const RETRY_COOLDOWN_MS = 60_000;
 
-function autoRetryBudgetFor(kind: FailureKind): number | null {
-  if (kind === 'permission' || kind === 'permanent') return 0;
-  return AUTO_RETRY_MAX_TOTAL;
-}
+/** Attempts a single device gets before the chain rotates to the next one. */
+export const RETRY_TRIES_PER_DEVICE = 3;
 
-/** Phase-aware cooldown for the upcoming retry. `nextAttempt` is the
- *  attempt# of the retry being scheduled (2 = first retry, 3 = second, ...).
+/** Full device sweeps before the chain gives up and the caller parks the
+ *  issue at `waiting`. */
+export const RETRY_MAX_ROUNDS = 10;
+
+/**
+ * Round-robin rotation state carried on `payload[AUTO_RETRY_PAYLOAD_KEY]`.
+ *
+ *   - `round`  — 1-based sweep counter (1..RETRY_MAX_ROUNDS).
+ *   - `target` — device the NEXT attempt should land on (dispatcher pins it).
+ *   - `tries`  — attempts already spent on `target` this round (1..TRIES).
+ *   - `done`   — devices that finished their tries this round (dispatcher
+ *                excludes them so the sweep doesn't repeat a device).
  */
-function autoRetryPhasedCooldownMs(nextAttempt: number): number {
-  const retryNum = nextAttempt - 1;
-  if (retryNum <= AUTO_RETRY_PHASE_1_COUNT) return MIN_RETRY_COOLDOWN_MS;
-  return AUTO_RETRY_PHASE_2_COOLDOWN_MS;
-}
-
-/** Payload key the dispatcher reads to skip every device already tried in
- *  this retry chain. See `dispatcher.ts` — the selector skips primary + pin
- *  whose device is in the set and excludes the set from standby selection, so
- *  each retry lands on a not-yet-tried runner. When the set covers every
- *  online runner the selector re-runs with an EMPTY set so the chain wraps
- *  around instead of starving (single-/few-device projects keep cycling). */
 export const AUTO_RETRY_PAYLOAD_KEY = '_autoRetry';
 
 export interface AutoRetryPayload {
-  /** Devices already attempted in this retry chain (accumulated, deduped). */
-  excludeDeviceIds?: string[];
+  round: number;
+  target: string | null;
+  tries: number;
+  done: string[];
 }
 
-/** Always returns a normalized `{ excludeDeviceIds }` — never undefined — so
- *  callers can `.includes`/spread without guards. Non-array / legacy payloads
- *  collapse to an empty set (clean-break: the old singular `excludeDeviceId`
- *  key is not honoured; a stale in-flight job loses at most one exclusion). */
-export function readAutoRetryPayload(payload: unknown): { excludeDeviceIds: string[] } {
-  if (!payload || typeof payload !== 'object') return { excludeDeviceIds: [] };
+/** Always returns a normalized state — never undefined — so callers can read
+ *  fields without guards. A first dispatch (no prior state) reads as the
+ *  round-1 zero state. */
+export function readAutoRetryPayload(payload: unknown): AutoRetryPayload {
+  const zero: AutoRetryPayload = { round: 1, target: null, tries: 0, done: [] };
+  if (!payload || typeof payload !== 'object') return zero;
   const raw = (payload as Record<string, unknown>)[AUTO_RETRY_PAYLOAD_KEY];
-  if (!raw || typeof raw !== 'object') return { excludeDeviceIds: [] };
-  const ids = (raw as AutoRetryPayload).excludeDeviceIds;
+  if (!raw || typeof raw !== 'object') return zero;
+  const r = raw as Partial<AutoRetryPayload>;
   return {
-    excludeDeviceIds: Array.isArray(ids) ? ids.filter((x): x is string => typeof x === 'string') : [],
+    round: typeof r.round === 'number' && r.round >= 1 ? r.round : 1,
+    target: typeof r.target === 'string' ? r.target : null,
+    tries: typeof r.tries === 'number' && r.tries >= 0 ? r.tries : 0,
+    done: Array.isArray(r.done) ? r.done.filter((x): x is string => typeof x === 'string') : [],
   };
 }
 
 /**
- * Verify-first auto-retry. See file header for the full state diagram.
- * Returns `{ scheduled: false, reason }` for every non-retry outcome so the
- * caller (lifecycle / watchdog) can park the issue at `waiting` only when the
- * reason isn't a recovery-via-verification skip.
+ * Compute the rotation state for the NEXT attempt, or `null` to stop (the
+ * 10-round budget is exhausted). Pure except for the online-device lookup.
  *
- * Idempotent: budget exhaustion + verification + classifier all guard the
- * insert path.
+ * Rules:
+ *   1. If the device that just ran is still the round's target and has tries
+ *      left → stay on it (tries + 1).
+ *   2. Otherwise the device is done for this round → add it (and the intended
+ *      target, if selection couldn't honour the pin) to `done`, then pick the
+ *      next online device not yet done this round.
+ *   3. If every online device is done → the round is complete. Advance to the
+ *      next round (reset `done`) unless we've hit RETRY_MAX_ROUNDS, in which
+ *      case return `null` to stop.
+ */
+async function nextRotation(
+  job: JobRow,
+  state: AutoRetryPayload,
+): Promise<AutoRetryPayload | null> {
+  const ranOn = job.deviceId ?? null;
+  // First failure has no prior target: the device that just ran IS this
+  // round's first target, and the original attempt counts as its first try.
+  const target = state.target ?? ranOn;
+  const tries = state.target ? state.tries : 1;
+
+  if (ranOn && target === ranOn && tries < RETRY_TRIES_PER_DEVICE) {
+    return { round: state.round, target: ranOn, tries: tries + 1, done: state.done };
+  }
+
+  const done = Array.from(
+    new Set([...state.done, target, ranOn].filter((x): x is string => Boolean(x))),
+  );
+  const required = (job.payload as { requiredCapabilities?: RequiredCapabilities } | null)
+    ?.requiredCapabilities;
+  const online = await onlineCapableDeviceIds(job.projectId, required);
+  const remaining = online.filter((d) => !done.includes(d));
+
+  if (remaining.length > 0) {
+    return { round: state.round, target: remaining[0] ?? null, tries: 1, done };
+  }
+
+  const nextRound = state.round + 1;
+  if (nextRound > RETRY_MAX_ROUNDS) return null;
+  // New sweep: clear `done`, start again from the first online device.
+  return { round: nextRound, target: online[0] ?? null, tries: 1, done: [] };
+}
+
+/**
+ * Schedule the next uniform round-robin retry, or return `{ scheduled: false }`
+ * so the caller parks the issue at `waiting`.
+ *
+ * Idempotent: cancellation + verify-first + round budget all guard the insert.
  */
 export async function scheduleAutoRetryWithVerify(
   job: JobRow,
@@ -130,16 +157,16 @@ export async function scheduleAutoRetryWithVerify(
     return { scheduled: false, reason: 'cancellation_requested' };
   }
 
-  const inputError =
-    typeof job.error === 'string' && job.error.length > 0 ? job.error : reason;
+  // --- DISPLAY ONLY ---------------------------------------------------------
+  // Classify the failure purely to label it for the operator UI / recovery
+  // stats. This NEVER influences whether or how we retry — every failure is
+  // retried by the same uniform round-robin policy below. Do not add a
+  // `if (classified.kind === …) return` branch here.
+  const inputError = typeof job.error === 'string' && job.error.length > 0 ? job.error : reason;
   const classified = classifyFailure({
     error: inputError,
     meta: (job.failureMeta as Record<string, unknown> | null) ?? null,
   });
-
-  // Persist classification on the failed job for the audit trail / operator
-  // UI, even when we decide not to retry. Best-effort: a classifier write
-  // failure must not break the recovery path.
   if (job.failureKind === null || job.failureKind === undefined) {
     try {
       await db
@@ -155,16 +182,9 @@ export async function scheduleAutoRetryWithVerify(
       job.failureReason = classified.reason;
       job.classifierVersion = classified.version;
     } catch (err) {
-      logger.warn(
-        { err, jobId: job.id },
-        'retry: failed to persist classification, continuing',
-      );
+      logger.warn({ err, jobId: job.id }, 'retry: failed to persist classification, continuing');
     }
   }
-
-  // ALWAYS increment recoveryStats — even on non-retryable kinds — so the
-  // operator UI shows the full failure history. Broadcasts only fire when
-  // the increment succeeds.
   if (job.agentSessionId) {
     try {
       await incrementRecoveryStats(job.agentSessionId, classified.kind);
@@ -176,46 +196,12 @@ export async function scheduleAutoRetryWithVerify(
       );
     }
   }
+  // --- END DISPLAY ONLY -----------------------------------------------------
 
-  // Step 3 — non-retryable kinds. Only `permission` and `permanent` are
-  // hard-stops; classification gave us evidence the failure won't recover.
-  // `transient`, `timeout`, and `unknown` share the phased budget — silent
-  // runner deaths classified as `unknown` (e.g. Tauri's "Agent completed
-  // with errors" fallback) are usually transient and deserve the same
-  // recovery window as classified blips.
-  if (classified.kind === 'permission' || classified.kind === 'permanent') {
-    if (isSentryEnabled()) {
-      Sentry.addBreadcrumb({
-        category: 'session.recovery_skipped',
-        data: { sessionId: job.agentSessionId, reason: `kind:${classified.kind}` },
-      });
-    }
-    logger.info(
-      {
-        jobId: job.id,
-        kind: classified.kind,
-        classifierVersion: CLASSIFIER_VERSION,
-      },
-      'retry: kind not retryable, no auto-retry',
-    );
-    return { scheduled: false, reason: `classifier:${classified.kind}` };
-  }
-
-  // Step 4 — budget. attempts starts at 1 for the original job; with the
-  // phased budget the cap kicks in at attempts >= AUTO_RETRY_MAX_TOTAL + 1.
-  const budget = autoRetryBudgetFor(classified.kind);
-  if (budget !== null && job.attempts >= budget + 1) {
-    logger.info(
-      { jobId: job.id, attempts: job.attempts, reason },
-      'retry: auto-retry budget exhausted',
-    );
-    return { scheduled: false, reason: 'retry_budget_exhausted' };
-  }
-
-  // Step 5 — verify-first. If the issue has already moved past the failed
-  // step, retrying is wasted token spend.
+  // Verify-first (structural, NOT error-type): if the issue already moved past
+  // this step, retrying is wasted spend.
   if (job.issueId) {
-    let verdict;
+    let verdict: 'advanced' | 'reverted' | 'pending';
     try {
       verdict = await verifyRecovery(job);
     } catch (err) {
@@ -223,18 +209,12 @@ export async function scheduleAutoRetryWithVerify(
         { err, jobId: job.id, issueId: job.issueId },
         'retry: verifyRecovery failed, defaulting to pending',
       );
-      verdict = 'pending' as const;
+      verdict = 'pending';
     }
     if (verdict === 'advanced') {
       if (job.agentSessionId) {
         await markSessionTerminal(job.agentSessionId, 'completed_via_recovery');
         await publishSessionRecoveryChanged(job.projectId, job.agentSessionId);
-      }
-      if (isSentryEnabled()) {
-        Sentry.addBreadcrumb({
-          category: 'session.recovery_skipped',
-          data: { sessionId: job.agentSessionId, currentStatus: 'advanced' },
-        });
       }
       return { scheduled: false, reason: 'completed_via_recovery' };
     }
@@ -243,40 +223,27 @@ export async function scheduleAutoRetryWithVerify(
         await markSessionTerminal(job.agentSessionId, 'cancelled_stale');
         await publishSessionRecoveryChanged(job.projectId, job.agentSessionId);
       }
-      if (isSentryEnabled()) {
-        Sentry.addBreadcrumb({
-          category: 'session.recovery_skipped',
-          data: { sessionId: job.agentSessionId, currentStatus: 'reverted' },
-        });
-      }
       return { scheduled: false, reason: 'cancelled_stale' };
     }
   }
 
-  // Step 6 — schedule with phase-aware cooldown + Retry-After respect.
-  // The phase cooldown grows from 60s (retries 1..30) to 300s (retries 31..40)
-  // so we don't burn provider quota with tight retries on slower recoveries.
-  // Provider Retry-After still wins when larger than the phase floor.
-  const phaseCooldownMs = autoRetryPhasedCooldownMs(job.attempts + 1);
-  const phaseFloor = new Date(Date.now() + phaseCooldownMs);
-  const retryAfterHint = classified.retryAfter;
-  const retryAfterAt =
-    retryAfterHint && retryAfterHint > phaseFloor ? retryAfterHint : phaseFloor;
-
-  // Rotate device on each retry by ACCUMULATING every device tried so far in
-  // this chain (not just the last one). The dispatcher reads
-  // `payload[AUTO_RETRY_PAYLOAD_KEY]` and excludes the whole set, so the chain
-  // sweeps all online runners before any device repeats; single-/few-device
-  // projects wrap around because the selector falls back without the exclusion
-  // once the set covers every online runner.
-  const basePayload = (job.payload ?? {}) as Record<string, unknown>;
-  const nextPayload: Record<string, unknown> = { ...basePayload };
-  if (job.deviceId) {
-    const prior = readAutoRetryPayload(basePayload);
-    nextPayload[AUTO_RETRY_PAYLOAD_KEY] = {
-      excludeDeviceIds: [...new Set([...prior.excludeDeviceIds, job.deviceId])],
-    } satisfies AutoRetryPayload;
+  // Uniform round-robin rotation. `null` → 10-round budget exhausted → park.
+  const state = readAutoRetryPayload(job.payload);
+  const next = await nextRotation(job, state);
+  if (next === null) {
+    logger.info(
+      { jobId: job.id, attempts: job.attempts, rounds: RETRY_MAX_ROUNDS, reason },
+      'retry: round budget exhausted',
+    );
+    return { scheduled: false, reason: 'retry_rounds_exhausted' };
   }
+
+  const retryAfterAt = new Date(Date.now() + RETRY_COOLDOWN_MS);
+  const basePayload = (job.payload ?? {}) as Record<string, unknown>;
+  const nextPayload: Record<string, unknown> = {
+    ...basePayload,
+    [AUTO_RETRY_PAYLOAD_KEY]: next,
+  };
 
   const [created] = await db
     .insert(jobs)
@@ -300,10 +267,7 @@ export async function scheduleAutoRetryWithVerify(
 
   if (!created) throw new Error('retry: insert returned no row');
 
-  const startAfterSeconds = Math.max(
-    0,
-    Math.ceil((retryAfterAt.getTime() - Date.now()) / 1000),
-  );
+  const startAfterSeconds = Math.max(0, Math.ceil((retryAfterAt.getTime() - Date.now()) / 1000));
   try {
     await enqueueJob(
       { jobId: created.id, issueId: job.issueId, type: job.type },
@@ -331,8 +295,9 @@ export async function scheduleAutoRetryWithVerify(
       data: {
         sessionId: job.agentSessionId,
         attempt: job.attempts + 1,
+        round: next.round,
+        target: next.target,
         cooldownUsed: startAfterSeconds,
-        retryAfter: retryAfterAt.toISOString(),
       },
     });
   }
@@ -341,8 +306,10 @@ export async function scheduleAutoRetryWithVerify(
     {
       originalJobId: job.id,
       newJobId: created.id,
+      round: next.round,
+      target: next.target,
+      tries: next.tries,
       cooldownSec: startAfterSeconds,
-      retryAfterAt: retryAfterAt.toISOString(),
       reason,
     },
     'retry: auto-retry scheduled',

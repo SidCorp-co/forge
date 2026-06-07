@@ -234,6 +234,52 @@ describe('selectRunnerForJob', () => {
     expect(r?.id).toBe('r-untried');
   });
 
+  it('skipPrimary: ignores the primary device and picks a standby (retry rotation)', async () => {
+    const next = {
+      id: 'r-next',
+      project_id: PROJECT_A,
+      type: 'claude-code',
+      host: 'device',
+      device_id: 'dev-next',
+      name: 'next',
+      labels: [],
+      capabilities: {},
+      config: {},
+      status: 'online',
+      last_seen_at: new Date().toISOString(),
+      last_error: null,
+    };
+    // pin (rotation target) is stale → empty.
+    execute.mockResolvedValueOnce([]);
+    // Project HAS a free primary, but skipPrimary means it is NOT preferred.
+    limit.mockResolvedValueOnce([{ defaultDeviceId: 'dev-primary' }]);
+    // Only the standby query runs (primary step skipped) → rotation winner.
+    execute.mockResolvedValueOnce([next]);
+    const r = await selectRunnerForJob({
+      projectId: PROJECT_A,
+      pinDeviceId: 'dev-target',
+      excludeDeviceIds: ['dev-done'],
+      skipPrimary: true,
+    });
+    expect(r?.id).toBe('r-next');
+  });
+
+  it('skipPrimary: returns null instead of wrapping around to primary when the sweep is dry', async () => {
+    limit.mockResolvedValueOnce([{ defaultDeviceId: 'dev-primary' }]);
+    // Standby query finds nothing; with skipPrimary the all-excluded
+    // wrap-around is DISABLED, so we get null (the retry policy owns rounds).
+    execute.mockResolvedValueOnce([]);
+    const r = await selectRunnerForJob({
+      projectId: PROJECT_A,
+      pinDeviceId: null,
+      excludeDeviceIds: ['dev-a', 'dev-b'],
+      skipPrimary: true,
+    });
+    expect(r).toBeNull();
+    // Exactly one selection query — NO second (empty-exclusion) wrap-around run.
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
   it('falls back to freshest when neither pin nor default are available', async () => {
     const fresh = {
       id: 'r-fresh',
