@@ -25,6 +25,7 @@ import { TestingTab } from "./testing-tab";
 import { PipelineTab } from "./pipeline-tab";
 import { LabelsTab } from "./labels-tab";
 import { MembersTab } from "./members-tab";
+import { AgentTab } from "./agent-tab";
 import { IntegrationsTab } from "./integrations-tab";
 import { AdvancedTab } from "./advanced-tab";
 
@@ -35,6 +36,7 @@ const TAB_VALUES = [
   "pipeline",
   "labels",
   "members",
+  "agent",
   "integrations",
   "advanced",
 ] as const;
@@ -47,6 +49,7 @@ const TABS: TabItem[] = [
   { value: "pipeline", label: "Pipeline" },
   { value: "labels", label: "Labels" },
   { value: "members", label: "Members" },
+  { value: "agent", label: "Agent" },
   { value: "integrations", label: "Integrations" },
   { value: "advanced", label: "Advanced" },
 ];
@@ -146,6 +149,9 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
         {tab === "pipeline" && <PipelineTab projectId={project.id} canEdit={canEdit} />}
         {tab === "labels" && <LabelsTab projectId={project.id} canEdit={canEdit} />}
         {tab === "members" && <MembersTab projectId={project.id} canEdit={canEdit} />}
+        {tab === "agent" && (
+          <AgentTab projectId={project.id} canEdit={canEdit || listItem.role === "admin"} />
+        )}
         {tab === "integrations" && <IntegrationsTab />}
         {tab === "advanced" && <AdvancedTab project={project} canEdit={canEdit} />}
       </div>
