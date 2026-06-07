@@ -1,5 +1,6 @@
+import { FILTERED } from '@forge/observability';
 import { describe, expect, it } from 'vitest';
-import { flattenLogs, tailLog } from './logs.js';
+import { flattenLogs, redactCoolifyEnvDump, tailLog } from './logs.js';
 
 describe('flattenLogs', () => {
   it('parses a JSON-encoded array of { output } lines', () => {
@@ -50,5 +51,66 @@ describe('tailLog', () => {
     expect(truncated).toBe(true);
     // the tail (last bytes) is preserved
     expect(text.endsWith(out)).toBe(true);
+  });
+});
+
+describe('redactCoolifyEnvDump (ISS-412)', () => {
+  it('redacts every KEY=value inside the env-dump block, regardless of suffix', () => {
+    const log = [
+      'Step 1/8: FROM node:20',
+      'Creating .env file with runtime variables for build phase.',
+      'POSTGRES_PASSWORD=p@ss',
+      'NODE_ENV=production',
+      'MY_PROVIDER_LOL=hunter2',
+      'export AWS_SECRET_ACCESS_KEY=aws',
+      'Container started',
+      'fetched https://example.com/health',
+    ].join('\n');
+    const out = redactCoolifyEnvDump(log);
+    expect(out).toBe(
+      [
+        'Step 1/8: FROM node:20',
+        'Creating .env file with runtime variables for build phase.',
+        `POSTGRES_PASSWORD=${FILTERED}`,
+        `NODE_ENV=${FILTERED}`,
+        `MY_PROVIDER_LOL=${FILTERED}`,
+        `export AWS_SECRET_ACCESS_KEY=${FILTERED}`,
+        'Container started',
+        'fetched https://example.com/health',
+      ].join('\n'),
+    );
+  });
+
+  it('is a no-op when the marker is absent', () => {
+    const log = [
+      'Step 1/8: FROM node:20',
+      'POSTGRES_PASSWORD=p@ss',
+      'NODE_ENV=production',
+      'Container started',
+    ].join('\n');
+    expect(redactCoolifyEnvDump(log)).toBe(log);
+  });
+
+  it('exits the block immediately when the marker is followed by a non-env line', () => {
+    const log = [
+      'Creating .env file with runtime variables for build phase.',
+      'no env vars set',
+      'POSTGRES_PASSWORD=p@ss',
+    ].join('\n');
+    // Block ends at "no env vars set"; the trailing assignment is OUTSIDE the
+    // block and passes through (the generic scrubLogText suffix rule still
+    // catches it downstream, but redactCoolifyEnvDump alone leaves it).
+    expect(redactCoolifyEnvDump(log)).toBe(log);
+  });
+
+  it('masks the full value of a quoted multi-word assignment inside the block', () => {
+    const log = [
+      'Creating .env file with runtime variables for build phase.',
+      'GREETING_SECRET="hello world with spaces"',
+      'Container started',
+    ].join('\n');
+    const out = redactCoolifyEnvDump(log);
+    expect(out).toContain(`GREETING_SECRET=${FILTERED}`);
+    expect(out).not.toContain('hello world');
   });
 });

@@ -2,10 +2,50 @@
 // (no db / client imports) so they can be unit-tested without env, and reused
 // by the adapter's `fetchCoolifyDeploymentLogs`.
 
+import { FILTERED } from '@forge/observability';
 import type { CoolifyDeploymentLogLine } from './types.js';
 
 export const LOG_MAX_LINES = 100;
 export const LOG_MAX_BYTES = 16 * 1024;
+
+// ISS-412 — Coolify emits this banner immediately before dumping every
+// runtime env var as a KEY=value line. We use it as the start delimiter of
+// an env-dump block; the block ends at the first non-env-shaped line.
+const ENV_DUMP_MARKER = /Creating \.env file with runtime variables/i;
+const ENV_ASSIGNMENT_LINE = /^(\s*(?:export\s+)?[A-Z][A-Z0-9_]*)\s*=\s*\S.*$/;
+
+/**
+ * Defense-in-depth before the generic {@link scrubLogText} runs. Inside the
+ * `Creating .env file with runtime variables` block we redact EVERY
+ * `KEY=value` value regardless of suffix — catches names like
+ * `MY_PROVIDER_LOL=...` that the suffix-list rule would miss. Outside the
+ * block, env-shape lines pass through untouched; the generic suffix rule in
+ * `scrubLogText` still catches secret-shaped names anywhere in the log.
+ *
+ * No-op when the marker is absent.
+ */
+export function redactCoolifyEnvDump(text: string): string {
+  if (!ENV_DUMP_MARKER.test(text)) return text;
+  let inBlock = false;
+  return text
+    .split('\n')
+    .map((line) => {
+      if (ENV_DUMP_MARKER.test(line)) {
+        inBlock = true;
+        return line;
+      }
+      if (!inBlock) return line;
+      const m = ENV_ASSIGNMENT_LINE.exec(line);
+      if (!m) {
+        // Block ends at the first non-env-shaped line (blank line,
+        // build-step output, FQDN, etc.).
+        inBlock = false;
+        return line;
+      }
+      return `${m[1]}=${FILTERED}`;
+    })
+    .join('\n');
+}
 
 /**
  * Normalise Coolify's `logs` field to plain text. The field is most commonly a
