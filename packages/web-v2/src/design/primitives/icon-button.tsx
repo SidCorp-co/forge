@@ -27,7 +27,7 @@ export function IconButton({ icon, variant = "ghost", size = "md", className, ..
     <button
       className={cn(
         "inline-flex items-center justify-center rounded-md border transition-colors duration-[120ms]",
-        "disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none",
+        "disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
         s.box,
         VARIANTS[variant],
         className,

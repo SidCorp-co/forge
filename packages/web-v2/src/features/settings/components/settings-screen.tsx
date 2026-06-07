@@ -1,6 +1,6 @@
 "use client";
 
-// Workspace-tier Settings (`/v2/settings`). User-scoped sub-tabs: Account, API
+// Workspace-tier Settings (`/settings`). User-scoped sub-tabs: Account, API
 // Tokens, MCP, Notifications. The unimplemented 'Sessions' tab is intentionally
 // dropped (ISS-299 AC). Tab state lives in `?tab=` via the shared `useTabParam`
 // hook (ISS-349) so a tab is linkable and the strip matches the other tabbed

@@ -1,6 +1,6 @@
 "use client";
 
-// Project-tier Issues view (`/v2/projects/[slug]/issues`). Resolve slug →
+// Project-tier Issues view (`/projects/[slug]/issues`). Resolve slug →
 // projectId via the project console list (same pattern as the sessions page),
 // then render the scoped screen. NavRail `proj-issues` is wired in the
 // workspace layout.

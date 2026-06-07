@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Icon, SegmentedControl, SlideOver, Tabs } from "@/design";
 import { useIntegrationsList } from "../hooks";
-import { DIRECTORY_STATUS_META, deriveDirectoryStatus, getCapabilities } from "../derive";
+import { DIRECTORY_STATUS_META, cardProvider, deriveDirectoryStatus, getCapabilities } from "../derive";
 import type { DrillableProvider } from "../derive";
 import type { IntegrationEnvironment, StatusCard } from "../types";
 import { CoolifySection } from "./coolify-section";
@@ -86,7 +86,7 @@ export function ConnectionDetailDrawer({
   card: StatusCard | null;
   onClose: () => void;
 }) {
-  const provider = card ? (card.key.split(":")[0] as DrillableProvider) : null;
+  const provider = card ? (cardProvider(card.key) as DrillableProvider) : null;
   const caps = getCapabilities(card);
   const [tab, setTab] = useState<"config" | "deliveries">("config");
 

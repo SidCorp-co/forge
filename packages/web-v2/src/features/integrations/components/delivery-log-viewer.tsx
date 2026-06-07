@@ -2,6 +2,7 @@
 
 import { Banner, Collapsible, EmptyState, ErrorState, Icon, type IconName, Skeleton } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { formatRelativeTime } from "@/lib/utils/format";
 import { useIntegrationDeliveries } from "../hooks";
 import { redactSensitive } from "../derive";
 import type { IntegrationDelivery } from "../types";
@@ -11,17 +12,6 @@ import type { IntegrationDelivery } from "../types";
  *  true — MCP-injection providers (postman/epodsystem) must not show an empty
  *  box, so the caller gates this component. No retry affordance: there is no
  *  backend replay route (deferred to ISS-404/F). */
-
-function relativeTime(iso: string | null): string {
-  if (!iso) return "—";
-  const secs = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
-  if (secs < 60) return `${secs}s ago`;
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
 
 const STATUS_META: Record<IntegrationDelivery["status"], { icon: IconName; fg: string; label: string }> = {
   ok: { icon: "check", fg: "var(--green-600)", label: "ok" },
@@ -49,7 +39,7 @@ function DeliveryRow({ row }: { row: IntegrationDelivery }) {
           </span>
           <span className="ml-auto inline-flex items-center gap-3 text-subtle">
             <span className="fg-body-sm">{duration}</span>
-            <span className="fg-body-sm">{relativeTime(row.createdAt)}</span>
+            <span className="fg-body-sm">{formatRelativeTime(row.createdAt, { emptyLabel: "—" })}</span>
           </span>
         </span>
       }

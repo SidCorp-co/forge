@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { formatRelativeTime } from "@/lib/utils/format";
 import {
   Banner,
   Button,
@@ -26,18 +27,6 @@ import {
   useUnbindRunner,
 } from "../hooks";
 import { deviceHealth, runnerHealth, type DeviceRow, type DeviceRunnerAssignment } from "../types";
-
-function relativeTime(iso: string | null): string {
-  if (!iso) return "never";
-  const then = new Date(iso).getTime();
-  const secs = Math.max(0, Math.floor((Date.now() - then) / 1000));
-  if (secs < 60) return `${secs}s ago`;
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
 
 /** A label/value row in the device summary grid. */
 function MetaRow({ label, children }: { label: string; children: React.ReactNode }) {
@@ -119,8 +108,8 @@ function DeviceSummary({ device }: { device: DeviceRow }) {
             "none"
           )}
         </MetaRow>
-        <MetaRow label="Last seen">{relativeTime(device.lastSeenAt)}</MetaRow>
-        <MetaRow label="Paired">{relativeTime(device.pairedAt)}</MetaRow>
+        <MetaRow label="Last seen">{formatRelativeTime(device.lastSeenAt, { emptyLabel: "never" })}</MetaRow>
+        <MetaRow label="Paired">{formatRelativeTime(device.pairedAt, { emptyLabel: "never" })}</MetaRow>
       </div>
     </div>
   );

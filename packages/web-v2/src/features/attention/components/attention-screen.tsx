@@ -7,6 +7,7 @@
 // so we fan out a `useRoom` per project (the Ops-monitor pattern) — the
 // `['attention']` invalidations in `lib/ws/event-router.ts` then refetch.
 import { useRouter } from "next/navigation";
+import { formatRelativeTime } from "@/lib/utils/format";
 import {
   EmptyState,
   ErrorState,
@@ -31,19 +32,6 @@ const KIND_META: Record<AttentionKind, { label: string; icon: IconName; fg: stri
   failed_job: { label: "Failed", icon: "alert", fg: "var(--red-600)", bg: "var(--red-50)" },
   runner_offline: { label: "Runner offline", icon: "server", fg: "var(--red-600)", bg: "var(--red-50)" },
 };
-
-function relativeTime(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return "";
-  const s = Math.max(0, Math.round((Date.now() - then) / 1000));
-  if (s < 60) return `${s}s ago`;
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.round(h / 24);
-  return `${d}d ago`;
-}
 
 /** Subscribes to one WS room for its lifetime (renders nothing) — lets us fan
  *  out subscriptions over the project list without breaking rules-of-hooks. */
@@ -78,7 +66,7 @@ function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: st
       {item.projectName && (
         <span className="fg-caption hidden truncate text-muted sm:inline">{item.projectName}</span>
       )}
-      <span className="fg-caption hidden flex-none text-subtle sm:inline">{relativeTime(item.since)}</span>
+      <span className="fg-caption hidden flex-none text-subtle sm:inline">{formatRelativeTime(item.since)}</span>
       <Icon name="chevronRight" size={15} className="flex-none text-subtle" />
     </button>
   );

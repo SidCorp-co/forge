@@ -15,24 +15,6 @@ export function buildShareLink(pathWithQuery: string): string {
   return `${origin}${BASE_PATH}${path}`;
 }
 
-type FilterValue = string | number | boolean | null | undefined;
-
-/**
- * Encode a flat filter object into a query string (leading `?`), skipping empty
- * / default-ish values so a clean view yields no query. Stable key order keeps
- * the resulting deep-link comparable.
- */
-export function encodeFilters(filters: Record<string, FilterValue>): string {
-  const params = new URLSearchParams();
-  for (const key of Object.keys(filters).sort()) {
-    const v = filters[key];
-    if (v === null || v === undefined || v === '' || v === false) continue;
-    params.set(key, String(v));
-  }
-  const q = params.toString();
-  return q ? `?${q}` : '';
-}
-
 /** Read a single typed filter back from URL search params with a fallback. */
 export function decodeFilter<T extends string>(
   params: URLSearchParams | null,

@@ -1,6 +1,6 @@
 "use client";
 
-// web-v2 Issue detail (`/v2/projects/[slug]/issues/[id]`). Simple + rich in one
+// web-v2 Issue detail (`/projects/[slug]/issues/[id]`). Simple + rich in one
 // derived layout: markdown description, AC checklist, collapsible agent plan,
 // full PipelineTracker, Comments/Activity/Tasks tabs, and a properties rail.
 // Live via WS (`['issue',id]` / `['comments',id]` / `['activities',id]`). ISS-294.

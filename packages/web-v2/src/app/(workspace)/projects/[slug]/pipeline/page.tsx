@@ -1,6 +1,6 @@
 "use client";
 
-// Project-tier Pipeline kanban (`/v2/projects/[slug]/pipeline`, ISS-295).
+// Project-tier Pipeline kanban (`/projects/[slug]/pipeline`, ISS-295).
 // Resolve slug → projectId via the project console list (same pattern as the
 // issues/sessions pages), then render the board screen.
 import { useParams } from "next/navigation";

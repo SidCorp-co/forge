@@ -39,7 +39,7 @@ export function cardProvider(key: string): string {
 }
 
 /** True when a status card represents a drillable connection provider. */
-export function isProviderCard(key: string): key is string {
+export function isProviderCard(key: string): boolean {
   return (DRILLABLE_PROVIDERS as readonly string[]).includes(cardProvider(key));
 }
 

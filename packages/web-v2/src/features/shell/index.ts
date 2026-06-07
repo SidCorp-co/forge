@@ -10,5 +10,5 @@ export {
   type SwitcherProject,
 } from './nav-rail-compact';
 export {
-  buildShareLink, encodeFilters, decodeFilter, decodeNumber,
+  buildShareLink, decodeFilter, decodeNumber,
 } from './deep-link';

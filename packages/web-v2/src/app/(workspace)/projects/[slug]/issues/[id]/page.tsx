@@ -1,6 +1,6 @@
 "use client";
 
-// Project-tier Issue detail (`/v2/projects/[slug]/issues/[id]`). Resolve slug →
+// Project-tier Issue detail (`/projects/[slug]/issues/[id]`). Resolve slug →
 // projectId via the project console list, read `id` from the route, render the
 // detail screen.
 import { useParams } from "next/navigation";

@@ -12,7 +12,6 @@
 const REPO = "SidCorp-co/forge";
 const CHANGELOG_RAW_URL = `https://raw.githubusercontent.com/${REPO}/main/CHANGELOG.md`;
 
-export const FORGE_REPO_URL = `https://github.com/${REPO}`;
 export const FORGE_RELEASES_URL = `https://github.com/${REPO}/releases`;
 
 export interface ChangelogSection {
