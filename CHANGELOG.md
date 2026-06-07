@@ -196,6 +196,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+- **Deploy logs no longer expose environment secrets in plaintext.**
+  *Technical: Coolify deploy-log scrubber now redacts secret-shaped KEY=value lines (segment-match on PASSWORD|SECRET|TOKEN|KEY|PASS|PEPPER|DSN|CREDENTIALS) and adds defense-in-depth around the build-stage .env dump. Touches @forge/observability scrubLogText + packages/core coolify/logs.ts; live-verified on forge-beta deploy ec8b1df2 (ISS-412). Merges 19e21c95, ec8b1df2.*
+
 ## [0.2.11] - 2026-05-31
 
 Device-centric runner management and a redesigned v2 navigation with a cross-project Attention inbox and mobile tab bar, plus self-healing pipelines — wedged runner slots now auto-recover within minutes.
