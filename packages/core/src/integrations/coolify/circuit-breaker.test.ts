@@ -5,11 +5,13 @@ vi.mock('../deliveries.js', () => ({
   recentOutboundDeliveries: (...a: unknown[]) => recentOutboundDeliveriesMock(...(a as [])),
 }));
 
-const findByIdMock = vi.fn();
-const updateIntegrationMock = vi.fn();
+const findConnectionByIdMock = vi.fn();
+const findBindingByIdMock = vi.fn();
+const updateConnectionMock = vi.fn();
 vi.mock('../store.js', () => ({
-  findById: (...a: unknown[]) => findByIdMock(...(a as [])),
-  updateIntegration: (...a: unknown[]) => updateIntegrationMock(...(a as [])),
+  findConnectionById: (...a: unknown[]) => findConnectionByIdMock(...(a as [])),
+  findBindingById: (...a: unknown[]) => findBindingByIdMock(...(a as [])),
+  updateConnection: (...a: unknown[]) => updateConnectionMock(...(a as [])),
 }));
 
 vi.mock('../../observability/sentry.js', () => ({
@@ -49,51 +51,52 @@ describe('coolify circuit breaker', () => {
     expect(ev.consecutiveFailures).toBe(BREAKER_FAILURE_THRESHOLD);
   });
 
-  it('maybeTripBreaker flips active=false + stamps breakerOpenedAt', async () => {
+  it('maybeTripBreaker flips connection active=false + stamps breakerOpenedAt', async () => {
     recentOutboundDeliveriesMock.mockResolvedValueOnce(failed(BREAKER_FAILURE_THRESHOLD));
-    findByIdMock.mockResolvedValueOnce({
-      id: 'int-1',
+    findConnectionByIdMock.mockResolvedValueOnce({
+      id: 'conn-1',
       provider: 'coolify',
-      environment: 'staging',
-      projectId: 'p-1',
       active: true,
     });
+    findBindingByIdMock.mockResolvedValueOnce({
+      id: 'bind-1',
+      projectId: 'p-1',
+      environment: 'staging',
+    });
 
-    const tripped = await maybeTripBreaker('int-1');
+    const tripped = await maybeTripBreaker({ bindingId: 'bind-1', connectionId: 'conn-1' });
     expect(tripped).toBe(true);
-    expect(updateIntegrationMock).toHaveBeenCalledWith(
-      'int-1',
+    expect(updateConnectionMock).toHaveBeenCalledWith(
+      'conn-1',
       expect.objectContaining({ active: false, breakerOpenedAt: expect.any(Date) }),
     );
   });
 
   it('maybeTripBreaker is a no-op when breaker already open', async () => {
     recentOutboundDeliveriesMock.mockResolvedValueOnce(failed(BREAKER_FAILURE_THRESHOLD));
-    findByIdMock.mockResolvedValueOnce({
-      id: 'int-1',
+    findConnectionByIdMock.mockResolvedValueOnce({
+      id: 'conn-1',
       provider: 'coolify',
-      environment: 'staging',
-      projectId: 'p-1',
       active: false,
     });
 
-    const tripped = await maybeTripBreaker('int-1');
+    const tripped = await maybeTripBreaker({ bindingId: 'bind-1', connectionId: 'conn-1' });
     expect(tripped).toBe(false);
-    expect(updateIntegrationMock).not.toHaveBeenCalled();
+    expect(updateConnectionMock).not.toHaveBeenCalled();
   });
 
-  it('maybeResetBreaker re-opens an inactive integration after a success', async () => {
-    findByIdMock.mockResolvedValueOnce({ id: 'int-1', active: false });
-    await maybeResetBreaker('int-1');
-    expect(updateIntegrationMock).toHaveBeenCalledWith(
-      'int-1',
+  it('maybeResetBreaker re-opens an inactive connection after a success', async () => {
+    findConnectionByIdMock.mockResolvedValueOnce({ id: 'conn-1', active: false });
+    await maybeResetBreaker('conn-1');
+    expect(updateConnectionMock).toHaveBeenCalledWith(
+      'conn-1',
       expect.objectContaining({ active: true, breakerOpenedAt: null }),
     );
   });
 
-  it('maybeResetBreaker is a no-op when integration is already active', async () => {
-    findByIdMock.mockResolvedValueOnce({ id: 'int-1', active: true });
-    await maybeResetBreaker('int-1');
-    expect(updateIntegrationMock).not.toHaveBeenCalled();
+  it('maybeResetBreaker is a no-op when connection is already active', async () => {
+    findConnectionByIdMock.mockResolvedValueOnce({ id: 'conn-1', active: true });
+    await maybeResetBreaker('conn-1');
+    expect(updateConnectionMock).not.toHaveBeenCalled();
   });
 });

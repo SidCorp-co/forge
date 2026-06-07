@@ -6,7 +6,10 @@ export interface AdapterContext<
   TConfig extends Record<string, unknown> = Record<string, unknown>,
   TSecrets extends Record<string, unknown> = Record<string, unknown>,
 > {
-  integrationId: string;
+  /** Owning connection (credential). Health/breaker mutations target this. */
+  connectionId: string;
+  /** Project+env binding. Deliveries + inbound HMAC are scoped to this. */
+  bindingId: string;
   projectId: string;
   provider: IntegrationProvider;
   environment: IntegrationEnvironment;

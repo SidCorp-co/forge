@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   type IntegrationEnvironment,
@@ -57,22 +57,6 @@ export async function findById(id: string): Promise<ProjectIntegrationRow | null
     .where(eq(projectIntegrations.id, id))
     .limit(1);
   return rows[0] ?? null;
-}
-
-export function buildContext<
-  TConfig extends Record<string, unknown> = Record<string, unknown>,
-  TSecrets extends Record<string, unknown> = Record<string, unknown>,
->(row: ProjectIntegrationRow): AdapterContext<TConfig, TSecrets> {
-  const secrets = row.secretsEnc ? decryptJson<TSecrets>(row.secretsEnc) : ({} as TSecrets);
-  return {
-    integrationId: row.id,
-    projectId: row.projectId,
-    provider: row.provider as IntegrationProvider,
-    environment: row.environment as IntegrationEnvironment,
-    config: (row.config ?? {}) as TConfig,
-    secrets,
-    integrationSecret: row.integrationSecret,
-  };
 }
 
 export interface UpsertIntegrationInput {
@@ -249,6 +233,29 @@ export function effectiveConfig<TConfig extends Record<string, unknown> = Record
   } as TConfig;
 }
 
+/**
+ * Build an {@link AdapterContext} from a binding+connection pair — the
+ * dispatch/inbound counterpart of the legacy {@link buildContext}. Threads
+ * `connectionId` (breaker/health target) + `bindingId` (delivery + inbound-HMAC
+ * scope); config is the effective overlay; secrets come from the connection;
+ * `integrationSecret` is the per-binding inbound HMAC.
+ */
+export function buildContextFromBinding<
+  TConfig extends Record<string, unknown> = Record<string, unknown>,
+  TSecrets extends Record<string, unknown> = Record<string, unknown>,
+>(pair: BindingWithConnection): AdapterContext<TConfig, TSecrets> {
+  return {
+    connectionId: pair.connection.id,
+    bindingId: pair.binding.id,
+    projectId: pair.binding.projectId,
+    provider: pair.binding.provider as IntegrationProvider,
+    environment: pair.binding.environment as IntegrationEnvironment,
+    config: effectiveConfig<TConfig>(pair),
+    secrets: decryptConnectionSecrets<TSecrets>(pair.connection),
+    integrationSecret: pair.binding.integrationSecret,
+  };
+}
+
 export interface CreateConnectionInput {
   ownerType?: IntegrationOwnerType;
   ownerId: string;
@@ -347,4 +354,66 @@ export async function softDeleteBinding(id: string): Promise<void> {
     .update(integrationBindings)
     .set({ active: false, updatedAt: new Date() })
     .where(eq(integrationBindings.id, id));
+}
+
+export interface UpdateBindingPatch {
+  config?: Record<string, unknown>;
+  integrationSecret?: string | null;
+  active?: boolean;
+}
+
+export async function updateBinding(
+  id: string,
+  patch: UpdateBindingPatch,
+): Promise<IntegrationBindingRow | null> {
+  const set: Record<string, unknown> = { updatedAt: new Date() };
+  if (patch.config !== undefined) set.config = patch.config;
+  if (patch.integrationSecret !== undefined) set.integrationSecret = patch.integrationSecret;
+  if (patch.active !== undefined) set.active = patch.active;
+  const [row] = await db
+    .update(integrationBindings)
+    .set(set)
+    .where(eq(integrationBindings.id, id))
+    .returning();
+  return row ?? null;
+}
+
+/** A single binding (+ its connection) by binding id, regardless of active state. */
+export async function findBindingWithConnectionById(
+  id: string,
+): Promise<BindingWithConnection | null> {
+  const rows = await db
+    .select({ binding: integrationBindings, connection: integrationConnections })
+    .from(integrationBindings)
+    .innerJoin(
+      integrationConnections,
+      eq(integrationBindings.connectionId, integrationConnections.id),
+    )
+    .where(eq(integrationBindings.id, id))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** All bindings (+ connections) for a project, any active state, newest first. */
+export async function listBindingsForProject(projectId: string): Promise<BindingWithConnection[]> {
+  return db
+    .select({ binding: integrationBindings, connection: integrationConnections })
+    .from(integrationBindings)
+    .innerJoin(
+      integrationConnections,
+      eq(integrationBindings.connectionId, integrationConnections.id),
+    )
+    .where(eq(integrationBindings.projectId, projectId))
+    .orderBy(desc(integrationBindings.createdAt));
+}
+
+/** Connections owned by a principal (owner-scoped CRUD list). */
+export async function listConnectionsForOwner(
+  ownerId: string,
+): Promise<IntegrationConnectionRow[]> {
+  return db
+    .select()
+    .from(integrationConnections)
+    .where(and(eq(integrationConnections.ownerId, ownerId), eq(integrationConnections.active, true)))
+    .orderBy(desc(integrationConnections.createdAt));
 }

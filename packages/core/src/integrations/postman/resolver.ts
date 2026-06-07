@@ -15,11 +15,13 @@
  * stop injecting the entry — no extra teardown needed.
  */
 
-import { and, eq } from 'drizzle-orm';
-import { db } from '../../db/client.js';
-import { projectIntegrations } from '../../db/schema.js';
 import { logger } from '../../logger.js';
-import { decryptJson } from '../vault.js';
+import {
+  type BindingWithConnection,
+  decryptConnectionSecrets,
+  effectiveConfig,
+  listActiveBindingsForProjectProvider,
+} from '../store.js';
 import { postmanMcpUrl } from './endpoints.js';
 import type { PostmanConfig, PostmanSecrets } from './types.js';
 
@@ -44,33 +46,24 @@ export function buildPostmanMcpEntry(
 export async function resolvePostmanMcpEntry(
   projectId: string,
 ): Promise<Record<string, unknown> | null> {
-  let row: typeof projectIntegrations.$inferSelect | undefined;
+  let pair: BindingWithConnection | undefined;
   try {
-    [row] = await db
-      .select()
-      .from(projectIntegrations)
-      .where(
-        and(
-          eq(projectIntegrations.projectId, projectId),
-          eq(projectIntegrations.provider, 'postman'),
-          eq(projectIntegrations.active, true),
-        ),
-      )
-      .limit(1);
+    // Single active postman binding per project (env unsplit). Take the first.
+    [pair] = await listActiveBindingsForProjectProvider(projectId, 'postman');
   } catch (err) {
     // Injection is best-effort: a DB hiccup must NOT crash a dispatch.
     logger.warn({ err, projectId }, 'postman-resolver: integration lookup failed, skipping inject');
     return null;
   }
-  if (!row || !row.secretsEnc) return null;
+  if (!pair || !pair.connection.secretsEnc) return null;
 
   try {
-    const secrets = decryptJson<PostmanSecrets>(row.secretsEnc);
+    const secrets = decryptConnectionSecrets<PostmanSecrets>(pair.connection);
     if (!secrets?.apiKey) return null;
-    return buildPostmanMcpEntry(row.config as PostmanConfig, secrets.apiKey);
+    return buildPostmanMcpEntry(effectiveConfig<PostmanConfig>(pair), secrets.apiKey);
   } catch (err) {
     logger.warn(
-      { err, projectId, integrationId: row.id },
+      { err, projectId, connectionId: pair.connection.id, bindingId: pair.binding.id },
       'postman-resolver: decrypt failed, skipping inject',
     );
     return null;

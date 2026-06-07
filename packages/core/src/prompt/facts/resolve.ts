@@ -5,9 +5,10 @@
 // surfaces return. Lives apart from registry.ts so the registry stays free of
 // DB/env coupling.
 
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { type IssueStatus, type JobType, projectIntegrations, projects } from '../../db/schema.js';
+import { type IssueStatus, type JobType, projects } from '../../db/schema.js';
+import { listBindingsForProject } from '../../integrations/store.js';
 import type { RESERVED_PROJECT_FACT_KEYS } from '../../projects/project-facts.js';
 import {
   CANONICAL_LADDER,
@@ -161,17 +162,16 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
     productionBranch = row?.productionBranch ?? null;
     repoPath = row?.repoPath ?? null;
 
-    const intRows = await db
-      .select({
-        provider: projectIntegrations.provider,
-        environment: projectIntegrations.environment,
-        lastHealthStatus: projectIntegrations.lastHealthStatus,
-      })
-      .from(projectIntegrations)
-      .where(
-        and(eq(projectIntegrations.projectId, projectId), eq(projectIntegrations.active, true)),
-      );
-    integrations = Array.isArray(intRows) ? intRows : [];
+    // Active bindings joined to their connection (health lives on the
+    // connection after the ISS-399 cutover).
+    const pairs = await listBindingsForProject(projectId);
+    integrations = pairs
+      .filter((p) => p.binding.active && p.connection.active)
+      .map((p) => ({
+        provider: p.binding.provider,
+        environment: p.binding.environment,
+        lastHealthStatus: p.connection.lastHealthStatus,
+      }));
   } catch {
     // defaults → full ladder, empty {{project:}} resolver
   }

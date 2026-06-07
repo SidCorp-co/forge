@@ -15,11 +15,13 @@
  * stop injecting the entry — no extra teardown needed (AC#6).
  */
 
-import { and, eq } from 'drizzle-orm';
-import { db } from '../../db/client.js';
-import { projectIntegrations } from '../../db/schema.js';
 import { logger } from '../../logger.js';
-import { decryptJson } from '../vault.js';
+import {
+  type BindingWithConnection,
+  decryptConnectionSecrets,
+  effectiveConfig,
+  listActiveBindingsForProjectProvider,
+} from '../store.js';
 import { epodsystemMcpUrl } from './endpoints.js';
 import type { EpodsystemConfig, EpodsystemSecrets } from './types.js';
 
@@ -44,19 +46,10 @@ export function buildEpodsystemMcpEntry(
 export async function resolveEpodsystemMcpEntry(
   projectId: string,
 ): Promise<Record<string, unknown> | null> {
-  let row: typeof projectIntegrations.$inferSelect | undefined;
+  let pair: BindingWithConnection | undefined;
   try {
-    [row] = await db
-      .select()
-      .from(projectIntegrations)
-      .where(
-        and(
-          eq(projectIntegrations.projectId, projectId),
-          eq(projectIntegrations.provider, 'epodsystem'),
-          eq(projectIntegrations.active, true),
-        ),
-      )
-      .limit(1);
+    // Single active epodsystem binding per project (env unsplit). Take the first.
+    [pair] = await listActiveBindingsForProjectProvider(projectId, 'epodsystem');
   } catch (err) {
     // Injection is best-effort: a DB hiccup must NOT crash a dispatch.
     logger.warn(
@@ -65,15 +58,15 @@ export async function resolveEpodsystemMcpEntry(
     );
     return null;
   }
-  if (!row || !row.secretsEnc) return null;
+  if (!pair || !pair.connection.secretsEnc) return null;
 
   try {
-    const secrets = decryptJson<EpodsystemSecrets>(row.secretsEnc);
+    const secrets = decryptConnectionSecrets<EpodsystemSecrets>(pair.connection);
     if (!secrets?.apiKey) return null;
-    return buildEpodsystemMcpEntry(row.config as EpodsystemConfig, secrets.apiKey);
+    return buildEpodsystemMcpEntry(effectiveConfig<EpodsystemConfig>(pair), secrets.apiKey);
   } catch (err) {
     logger.warn(
-      { err, projectId, integrationId: row.id },
+      { err, projectId, connectionId: pair.connection.id, bindingId: pair.binding.id },
       'epodsystem-resolver: decrypt failed, skipping inject',
     );
     return null;

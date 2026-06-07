@@ -1,7 +1,7 @@
 import { logger } from '../../logger.js';
 import { isSentryEnabled, Sentry } from '../../observability/sentry.js';
 import { recentOutboundDeliveries } from '../deliveries.js';
-import { findById, updateIntegration } from '../store.js';
+import { findBindingById, findConnectionById, updateConnection } from '../store.js';
 
 /** Per the issue's AC: 3 consecutive failed outbound deliveries within 5 minutes trips the breaker. */
 export const BREAKER_FAILURE_THRESHOLD = 3;
@@ -12,9 +12,16 @@ export interface BreakerEvaluation {
   consecutiveFailures: number;
 }
 
-export async function evaluateBreaker(projectIntegrationId: string): Promise<BreakerEvaluation> {
+/**
+ * Counts recent failures for a single binding. Breaker STATE lives on the
+ * owning connection (so a shared credential trips once). For the 1:1 backfill
+ * one binding maps to one connection, so per-binding counting == per-connection;
+ * aggregating failures across sibling bindings of a shared connection is a
+ * future concern.
+ */
+export async function evaluateBreaker(bindingId: string): Promise<BreakerEvaluation> {
   const recent = await recentOutboundDeliveries(
-    projectIntegrationId,
+    bindingId,
     BREAKER_FAILURE_THRESHOLD,
     BREAKER_WINDOW_MS,
   );
@@ -29,33 +36,38 @@ export async function evaluateBreaker(projectIntegrationId: string): Promise<Bre
 }
 
 /**
- * Called after a `failed` outbound delivery is recorded. If the recent
- * history meets the breaker threshold, flips active=false on the integration
- * row, stamps breaker_opened_at, and emits a Sentry event.
+ * Called after a `failed` outbound delivery is recorded. Evaluates the binding's
+ * recent failures; if the threshold is met, flips active=false on the owning
+ * CONNECTION, stamps breaker_opened_at, and emits a Sentry event.
  *
  * Returns true if the breaker was tripped by this call (caller uses this to
  * decide whether to auto-create a Forge issue for ops follow-up).
  */
-export async function maybeTripBreaker(projectIntegrationId: string): Promise<boolean> {
-  const evaluation = await evaluateBreaker(projectIntegrationId);
+export async function maybeTripBreaker(args: {
+  bindingId: string;
+  connectionId: string;
+}): Promise<boolean> {
+  const evaluation = await evaluateBreaker(args.bindingId);
   if (!evaluation.tripped) return false;
 
-  const row = await findById(projectIntegrationId);
-  if (!row || !row.active) {
+  const connection = await findConnectionById(args.connectionId);
+  if (!connection || !connection.active) {
     // Already tripped previously; nothing to do.
     return false;
   }
 
-  await updateIntegration(projectIntegrationId, {
+  await updateConnection(args.connectionId, {
     active: false,
     breakerOpenedAt: new Date(),
   });
 
+  const binding = await findBindingById(args.bindingId);
   logger.error(
     {
-      integrationId: projectIntegrationId,
-      provider: row.provider,
-      environment: row.environment,
+      connectionId: args.connectionId,
+      bindingId: args.bindingId,
+      provider: connection.provider,
+      environment: binding?.environment ?? null,
       consecutiveFailures: evaluation.consecutiveFailures,
     },
     'integration: circuit breaker tripped',
@@ -65,12 +77,13 @@ export async function maybeTripBreaker(projectIntegrationId: string): Promise<bo
     Sentry.captureMessage('integration.coolify.breaker_tripped', {
       level: 'error',
       tags: {
-        provider: row.provider,
-        environment: row.environment,
-        projectId: row.projectId,
+        provider: connection.provider,
+        environment: binding?.environment ?? 'unknown',
+        projectId: binding?.projectId ?? 'unknown',
       },
       extra: {
-        integrationId: projectIntegrationId,
+        connectionId: args.connectionId,
+        bindingId: args.bindingId,
         consecutiveFailures: evaluation.consecutiveFailures,
       },
     });
@@ -80,15 +93,15 @@ export async function maybeTripBreaker(projectIntegrationId: string): Promise<bo
 }
 
 /**
- * Called after a successful outbound delivery. If the breaker was previously
- * open, reset it. Otherwise no-op.
+ * Called after a successful outbound delivery. If the owning connection's
+ * breaker was previously open, reset it. Otherwise no-op.
  */
-export async function maybeResetBreaker(projectIntegrationId: string): Promise<void> {
-  const row = await findById(projectIntegrationId);
-  if (!row || row.active) return;
-  await updateIntegration(projectIntegrationId, {
+export async function maybeResetBreaker(connectionId: string): Promise<void> {
+  const connection = await findConnectionById(connectionId);
+  if (!connection || connection.active) return;
+  await updateConnection(connectionId, {
     active: true,
     breakerOpenedAt: null,
   });
-  logger.info({ integrationId: projectIntegrationId }, 'integration: circuit breaker reset');
+  logger.info({ connectionId }, 'integration: circuit breaker reset');
 }

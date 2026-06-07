@@ -23,14 +23,12 @@
  * has no runner dependency.
  */
 
-import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '../../db/client.js';
-import { projectIntegrations } from '../../db/schema.js';
 import { fetchCoolifyDeploymentLogs } from '../../integrations/coolify/adapter.js';
 import { CoolifyApiError } from '../../integrations/coolify/client.js';
 import type { CoolifyConfig } from '../../integrations/coolify/types.js';
 import { findLastOutbound } from '../../integrations/deliveries.js';
+import { effectiveConfig, listActiveBindingsForProjectProvider } from '../../integrations/store.js';
 import {
   dispatchCoolifyDeployDirect,
   resolveLatestIssueRunId,
@@ -60,18 +58,23 @@ async function resolveProjectId(input: Input, projectSlug: string | null): Promi
   return resolveProjectIdFromSlug(projectSlug);
 }
 
-/** Active Coolify integration rows for a project (mirrors the dispatch query). */
+/**
+ * Active Coolify bindings for a project, flattened to the shape the tool's
+ * actions consume. `id` is the BINDING id (== old project_integration id for
+ * backfilled rows, so the runner-facing `integrationId` values are stable).
+ * Health/breaker come from the owning connection; config is the effective
+ * connection⊕binding overlay. `pair` is retained for the `logs` action.
+ */
 async function activeCoolifyIntegrations(projectId: string) {
-  return db
-    .select()
-    .from(projectIntegrations)
-    .where(
-      and(
-        eq(projectIntegrations.projectId, projectId),
-        eq(projectIntegrations.provider, 'coolify'),
-        eq(projectIntegrations.active, true),
-      ),
-    );
+  const pairs = await listActiveBindingsForProjectProvider(projectId, 'coolify');
+  return pairs.map((pair) => ({
+    id: pair.binding.id,
+    environment: pair.binding.environment,
+    config: effectiveConfig<CoolifyConfig>(pair),
+    lastHealthStatus: pair.connection.lastHealthStatus,
+    breakerOpenedAt: pair.connection.breakerOpenedAt,
+    pair,
+  }));
 }
 
 export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = ({
@@ -259,7 +262,7 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = ({
         }
 
         try {
-          const result = await fetchCoolifyDeploymentLogs(row, deploymentUuid);
+          const result = await fetchCoolifyDeploymentLogs(row.pair, deploymentUuid);
           return { integrationId: row.id, ...result };
         } catch (err) {
           // Surface a clear message; NEVER echo the raw Coolify body (may leak).

@@ -27,6 +27,7 @@ function makeThenable(): any {
   // biome-ignore lint/suspicious/noExplicitAny: see above
   const p: any = {
     from: () => p,
+    innerJoin: () => p,
     where: () => p,
     orderBy: () => p,
     limit: () => p,
@@ -90,6 +91,29 @@ function pushMemberOk() {
   resultQueue.push([{ ownerId: OWNER_ID }]);
 }
 
+/** A binding+connection pair as `listActiveBindingsForProjectProvider` returns. */
+function pair(
+  id: string,
+  environment: string,
+  opts: {
+    config?: Record<string, unknown>;
+    lastHealthStatus?: string | null;
+    breakerOpenedAt?: Date | null;
+  } = {},
+) {
+  return {
+    binding: { id, environment, projectId: PROJECT_ID, provider: 'coolify', config: {}, active: true },
+    connection: {
+      id,
+      provider: 'coolify',
+      config: opts.config ?? {},
+      lastHealthStatus: opts.lastHealthStatus ?? null,
+      breakerOpenedAt: opts.breakerOpenedAt ?? null,
+      active: true,
+    },
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   resultQueue.length = 0;
@@ -104,20 +128,8 @@ describe('forge_coolify_deploy → list', () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     pushMemberOk();
     resultQueue.push([
-      {
-        id: STAGING_INT,
-        environment: 'staging',
-        config: { resourceUuid: 'res-staging' },
-        lastHealthStatus: 'ok',
-        breakerOpenedAt: null,
-      },
-      {
-        id: PROD_INT,
-        environment: 'prod',
-        config: {},
-        lastHealthStatus: null,
-        breakerOpenedAt: new Date(),
-      },
+      pair(STAGING_INT, 'staging', { config: { resourceUuid: 'res-staging' }, lastHealthStatus: 'ok' }),
+      pair(PROD_INT, 'prod', { breakerOpenedAt: new Date() }),
     ]);
 
     const result = (await tool.handler({ action: 'list', projectId: PROJECT_ID })) as {
@@ -167,7 +179,7 @@ describe('forge_coolify_deploy → deploy', () => {
   it('without issueId, single active integration → run-less deploy via dispatchCoolifyDeployDirect', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     pushMemberOk();
-    resultQueue.push([{ id: STAGING_INT, environment: 'staging' }]); // single active integration
+    resultQueue.push([pair(STAGING_INT, 'staging')]); // single active integration
     dispatchDirectSpy.mockResolvedValueOnce({
       dispatched: true,
       pendingHumanConfirm: false,
@@ -192,10 +204,7 @@ describe('forge_coolify_deploy → deploy', () => {
   it('without issueId, multiple active integrations and no integrationId → BAD_REQUEST ambiguous', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     pushMemberOk();
-    resultQueue.push([
-      { id: STAGING_INT, environment: 'staging' },
-      { id: PROD_INT, environment: 'prod' },
-    ]);
+    resultQueue.push([pair(STAGING_INT, 'staging'), pair(PROD_INT, 'prod')]);
 
     await expect(tool.handler({ action: 'deploy', projectId: PROJECT_ID })).rejects.toThrow(
       /multiple active Coolify integrations/,
@@ -207,10 +216,7 @@ describe('forge_coolify_deploy → deploy', () => {
   it('without issueId, explicit integrationId picks that integration', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     pushMemberOk();
-    resultQueue.push([
-      { id: STAGING_INT, environment: 'staging' },
-      { id: PROD_INT, environment: 'prod' },
-    ]);
+    resultQueue.push([pair(STAGING_INT, 'staging'), pair(PROD_INT, 'prod')]);
     dispatchDirectSpy.mockResolvedValueOnce({
       dispatched: true,
       pendingHumanConfirm: false,
@@ -300,13 +306,7 @@ describe('forge_coolify_deploy → status', () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     pushMemberOk();
     resultQueue.push([
-      {
-        id: STAGING_INT,
-        environment: 'staging',
-        config: { resourceUuid: 'res-staging' },
-        lastHealthStatus: 'ok',
-        breakerOpenedAt: null,
-      },
+      pair(STAGING_INT, 'staging', { config: { resourceUuid: 'res-staging' }, lastHealthStatus: 'ok' }),
     ]);
     findLastOutboundSpy.mockResolvedValueOnce({
       status: 'ok',

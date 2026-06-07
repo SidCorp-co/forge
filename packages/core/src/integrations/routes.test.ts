@@ -21,21 +21,36 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const createIntegration = vi.fn();
-const findById = vi.fn();
-const updateIntegration = vi.fn();
-const softDeleteIntegration = vi.fn();
-const listForProjectProvider = vi.fn();
-const buildContext = vi.fn();
+const createConnection = vi.fn();
+const createBinding = vi.fn();
+const findActiveBinding = vi.fn();
+const findBindingWithConnectionById = vi.fn();
+const findConnectionById = vi.fn();
+const updateConnection = vi.fn();
+const updateBinding = vi.fn();
+const softDeleteBinding = vi.fn();
+const softDeleteConnection = vi.fn();
+const listBindingsForProject = vi.fn();
+const listConnectionsForOwner = vi.fn();
 
 vi.mock('./store.js', () => ({
-  createIntegration: (args: unknown) => createIntegration(args),
-  findById: (id: string) => findById(id),
-  updateIntegration: (id: string, patch: unknown) => updateIntegration(id, patch),
-  softDeleteIntegration: (id: string) => softDeleteIntegration(id),
-  listForProjectProvider: (projectId: string, provider: string) =>
-    listForProjectProvider(projectId, provider),
-  buildContext: (row: unknown) => buildContext(row),
+  createConnection: (a: unknown) => createConnection(a),
+  createBinding: (a: unknown) => createBinding(a),
+  findActiveBinding: (...a: unknown[]) => findActiveBinding(...(a as [])),
+  findBindingWithConnectionById: (id: string) => findBindingWithConnectionById(id),
+  findConnectionById: (id: string) => findConnectionById(id),
+  updateConnection: (id: string, patch: unknown) => updateConnection(id, patch),
+  updateBinding: (id: string, patch: unknown) => updateBinding(id, patch),
+  softDeleteBinding: (id: string) => softDeleteBinding(id),
+  softDeleteConnection: (id: string) => softDeleteConnection(id),
+  listBindingsForProject: (id: string) => listBindingsForProject(id),
+  listConnectionsForOwner: (id: string) => listConnectionsForOwner(id),
+  buildContextFromBinding: vi.fn(),
+  // Real overlay so summaries carry the effective config.
+  effectiveConfig: (pair: { connection: { config?: object }; binding: { config?: object } }) => ({
+    ...(pair.connection.config ?? {}),
+    ...(pair.binding.config ?? {}),
+  }),
 }));
 
 const { integrationsRoutes } = await import('./routes.js');
@@ -121,25 +136,34 @@ describe('POST /api/projects/:projectId/integrations — vault guard', () => {
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('VAULT_NOT_CONFIGURED');
     expect(body.message).toMatch(/INTEGRATION_MASTER_KEY/);
-    expect(createIntegration).not.toHaveBeenCalled();
+    expect(createConnection).not.toHaveBeenCalled();
   });
 
   it('201 + integrationSecret when vault is configured (happy path)', async () => {
     process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
-    createIntegration.mockResolvedValueOnce({
-      id: 'int-1',
-      projectId: PROJECT_ID,
+    findActiveBinding.mockResolvedValueOnce(null); // no clash
+    createConnection.mockResolvedValueOnce({
+      id: 'conn-1',
       provider: 'coolify',
-      environment: 'staging',
       config: { ...VALID_BODY.config, environment: 'staging' },
       active: true,
       lastHealthStatus: null,
       lastHealthAt: null,
       breakerOpenedAt: null,
       secretsEnc: Buffer.from('enc'),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    createBinding.mockResolvedValueOnce({
+      id: 'int-1',
+      projectId: PROJECT_ID,
+      provider: 'coolify',
+      environment: 'staging',
+      config: {},
       integrationSecret: 'whsec_xxx',
+      active: true,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -150,9 +174,10 @@ describe('POST /api/projects/:projectId/integrations — vault guard', () => {
       integration: { id: string; provider: string };
       integrationSecret: string;
     };
-    expect(body.integration.id).toBe('int-1');
+    expect(body.integration.id).toBe('int-1'); // binding id
     expect(body.integrationSecret).toMatch(/^whsec_/);
-    expect(createIntegration).toHaveBeenCalledTimes(1);
+    expect(createConnection).toHaveBeenCalledTimes(1);
+    expect(createBinding).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -173,18 +198,27 @@ describe('POST /api/projects/:projectId/integrations — postman provider schema
     process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
-    createIntegration.mockResolvedValueOnce({
-      id: 'int-pm',
-      projectId: PROJECT_ID,
+    findActiveBinding.mockResolvedValueOnce(null);
+    createConnection.mockResolvedValueOnce({
+      id: 'conn-pm',
       provider: 'postman',
-      environment: 'prod',
       config: { ...POSTMAN_BODY.config, workspaceName: 'Forge Integration', environment: 'prod' },
       active: true,
       lastHealthStatus: null,
       lastHealthAt: null,
       breakerOpenedAt: null,
       secretsEnc: Buffer.from('enc'),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    createBinding.mockResolvedValueOnce({
+      id: 'int-pm',
+      projectId: PROJECT_ID,
+      provider: 'postman',
+      environment: 'prod',
+      config: {},
       integrationSecret: 'whsec_pm',
+      active: true,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -196,9 +230,10 @@ describe('POST /api/projects/:projectId/integrations — postman provider schema
     expect(raw).not.toContain('PMAK-abcdef123456');
     const body = JSON.parse(raw) as { integration: { id: string; provider: string } };
     expect(body.integration.provider).toBe('postman');
-    // The encrypted config the store persisted carries the target, not the key.
-    expect(createIntegration).toHaveBeenCalledTimes(1);
-    const arg = createIntegration.mock.calls[0]?.[0] as { secrets: { apiKey: string } };
+    // The credential is stored on the connection — verify the key was passed to
+    // createConnection (and never echoed back).
+    expect(createConnection).toHaveBeenCalledTimes(1);
+    const arg = createConnection.mock.calls[0]?.[0] as { secrets: { apiKey: string } };
     expect(arg.secrets.apiKey).toBe('PMAK-abcdef123456');
   });
 
@@ -209,7 +244,7 @@ describe('POST /api/projects/:projectId/integrations — postman provider schema
 
     const res = await post(token, { ...POSTMAN_BODY, secrets: {} });
     expect(res.status).toBe(400);
-    expect(createIntegration).not.toHaveBeenCalled();
+    expect(createConnection).not.toHaveBeenCalled();
   });
 
   it('400 — rejects an invalid region', async () => {
@@ -222,46 +257,49 @@ describe('POST /api/projects/:projectId/integrations — postman provider schema
       config: { ...POSTMAN_BODY.config, region: 'apac' },
     });
     expect(res.status).toBe(400);
-    expect(createIntegration).not.toHaveBeenCalled();
+    expect(createConnection).not.toHaveBeenCalled();
   });
 
   it('PATCH — a partial config does NOT reset region/mode to defaults', async () => {
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
-    // Existing eu/full integration; PATCH only the collectionId.
-    findById.mockResolvedValueOnce({
-      id: 'int-pm',
-      projectId: PROJECT_ID,
-      provider: 'postman',
-      config: { workspaceName: 'Forge Integration', region: 'eu', mode: 'full', environment: 'prod' },
-      secretsEnc: Buffer.from('enc'),
-    });
-    updateIntegration.mockResolvedValueOnce({
-      id: 'int-pm',
-      projectId: PROJECT_ID,
-      provider: 'postman',
-      environment: 'prod',
-      config: {
-        workspaceName: 'Forge Integration',
-        region: 'eu',
-        mode: 'full',
-        collectionId: 'col-new',
+    // Existing eu/full integration; PATCH only the collectionId. Config lives on
+    // the connection; the binding carries the project/env link.
+    findBindingWithConnectionById.mockResolvedValue({
+      binding: {
+        id: 'int-pm',
+        projectId: PROJECT_ID,
+        provider: 'postman',
         environment: 'prod',
+        config: {},
+        integrationSecret: null,
+        active: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       },
-      active: true,
-      lastHealthStatus: null,
-      lastHealthAt: null,
-      breakerOpenedAt: null,
-      secretsEnc: Buffer.from('enc'),
-      integrationSecret: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      connection: {
+        id: 'conn-pm',
+        provider: 'postman',
+        config: { workspaceName: 'Forge Integration', region: 'eu', mode: 'full', environment: 'prod' },
+        secretsEnc: Buffer.from('enc'),
+        active: true,
+        lastHealthStatus: null,
+        lastHealthAt: null,
+        breakerOpenedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
     });
+    updateConnection.mockResolvedValueOnce({ id: 'conn-pm' });
 
     const res = await patch(token, 'int-pm', { config: { collectionId: 'col-new' } });
     expect(res.status).toBe(200);
-    expect(updateIntegration).toHaveBeenCalledTimes(1);
-    const [, updatePatch] = updateIntegration.mock.calls[0] as [string, { config: Record<string, unknown> }];
+    expect(updateConnection).toHaveBeenCalledTimes(1);
+    const [connId, updatePatch] = updateConnection.mock.calls[0] as [
+      string,
+      { config: Record<string, unknown> },
+    ];
+    expect(connId).toBe('conn-pm');
     // The eu/full target must be preserved — only collectionId changes.
     expect(updatePatch.config).toMatchObject({ region: 'eu', mode: 'full', collectionId: 'col-new' });
   });
