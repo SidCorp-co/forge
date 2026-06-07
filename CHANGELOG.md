@@ -101,6 +101,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Project agent settings (custom system prompt, chat provider and model) can now be viewed and edited in the new web-v2 interface.**
   *Technical: New web-v2 features/app-config (api/hooks/types) + project-settings Agent tab, backed by GET/PUT /api/app-config/:projectId. Mirrors v1 Chat Agent (systemPromptOverride) + Providers/Tools (chatProviderId, chatModel). Antigravity/Device Integration dropped (v1 stubs); webhook/channels preview-only sections deferred (ISS-396). Merge dadac53f.*
 
+- **A redesigned Integrations directory shows each provider's real connection status, with an adaptive detail view for testing, rotating, and disconnecting a connection plus delivery logs where the provider supports them.**
+  *Technical: web-v2 integrations directory with a client-derived 4-state status machine (icon+text), capabilities-driven connection detail, read-only delivery-log viewer, and a render-layer secret-safety assertion (ADR 0013). Share/bind-existing tab, projects-using-connection list, Needs-reauth state, and delivery retry deferred to ISS-404 (F).*
+
 ### Changed
 
 - **The Forge MCP tools that were prefixed `forge_admin_*` have been renamed to reflect what they actually are — ordinary project-scoped tools, not system-admin tools. `forge_admin_runners` → `forge_runners`, `forge_admin_users` → `forge_collaborators`, `forge_admin_health` → `forge_ops_health`; project archive moved onto `forge_projects.archive`; and the cross-your-projects metrics tool is now `forge_metrics.step_durations`. Access is unchanged — every one stays gated by your role on each project. The token-creation dialog no longer claims the `admin` scope grants "cross-tenant admin tools".**
