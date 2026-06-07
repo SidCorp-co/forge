@@ -51,6 +51,7 @@ import {
 import { forgeRunnersTool } from './tools/forge-runners.js';
 import { forgeSkillFactsGetTool, forgeSkillFactsListTool } from './tools/forge-skill-facts.js';
 import {
+  forgeSkillsAdoptTool,
   forgeSkillsCreateTool,
   forgeSkillsDeleteTool,
   forgeSkillsEffectiveTool,
@@ -191,6 +192,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeSkillsUpdateTool(ctx),
     forgeSkillsDeleteTool(ctx),
     forgeSkillsEffectiveTool(ctx),
+    forgeSkillsAdoptTool(ctx),
     forgeSkillsSyncStatusTool(ctx),
     forgeSkillsPushTool(ctx),
     forgeSkillFactsListTool(ctx),

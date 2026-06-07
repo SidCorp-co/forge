@@ -1,8 +1,8 @@
-import { and, eq, or, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agents, appConfig, domainTemplates, projects, skills } from '../db/schema.js';
+import { agents, appConfig, domainTemplates, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { registerSkillForProject } from '../skills/service.js';
+import { registerSkillForProject, resolveOrAdoptProjectSkill } from '../skills/service.js';
 import type { DomainTemplateManifest } from './manifest.js';
 import { domainTemplateManifestSchema } from './manifest.js';
 
@@ -152,27 +152,21 @@ export async function applyTemplate(input: ApplyTemplateInput): Promise<ApplyTem
   const registeredSkillNames: string[] = [];
   const skippedSkillNames: string[] = [];
   for (const reg of manifest.skillRegistrations ?? []) {
-    const [skillRow] = await db
-      .select({ id: skills.id })
-      .from(skills)
-      .where(
-        and(
-          eq(skills.name, reg.skillName),
-          or(eq(skills.scope, 'global'), eq(skills.projectId, projectId)),
-        ),
-      )
-      .limit(1);
-    if (!skillRow) {
+    // Single path: materialise a project-owned skill (cloning the global
+    // template if the project hasn't adopted one yet), then register THAT.
+    // A global is never registered directly. See docs/skills-scope-playbook.md.
+    const skillId = await resolveOrAdoptProjectSkill(projectId, reg.skillName);
+    if (!skillId) {
       logger.warn(
         { templateKey, skillName: reg.skillName, stage: reg.stage },
-        'domain-templates.apply: skill not found, skipping registration',
+        'domain-templates.apply: no project or global skill of that name, skipping registration',
       );
       skippedSkillNames.push(reg.skillName);
       continue;
     }
     await registerSkillForProject({
       projectId,
-      skillId: skillRow.id,
+      skillId,
       stage: reg.stage,
       actorUserId,
     });

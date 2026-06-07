@@ -127,6 +127,23 @@ export class SkillDeleteBlockedError extends Error {
   }
 }
 
+/**
+ * Thrown when a stage registration targets a skill that is not a project skill
+ * owned by this project. Only project skills are usable — adopt the global
+ * template first (`applyGlobalSkillDefault`). See docs/skills-scope-playbook.md
+ * (Rule 4).
+ */
+export class SkillNotProjectScopedError extends Error {
+  readonly code = 'SKILL_NOT_PROJECT_SCOPED';
+  constructor(skillId: string) {
+    super(
+      `SKILL_NOT_PROJECT_SCOPED: skill '${skillId}' is not a project skill for this project; ` +
+        `adopt the global template into the project before registering it`,
+    );
+    this.name = 'SkillNotProjectScopedError';
+  }
+}
+
 export async function registerSkillForProject(
   input: RegisterSkillInput,
 ): Promise<RegisterSkillResult> {
@@ -173,6 +190,18 @@ export async function registerSkillForProject(
       );
     await hooks.emit('skillRegistered', { projectId, skillId, actorUserId, stage: null });
     return { projectId, skillId, stage: null };
+  }
+
+  // Single path: only a project skill owned by THIS project may be registered.
+  // Globals are templates — they must be adopted (cloned) into the project
+  // first. See docs/skills-scope-playbook.md (Rule 4).
+  const [target] = await db
+    .select({ scope: skills.scope, projectId: skills.projectId })
+    .from(skills)
+    .where(eq(skills.id, skillId))
+    .limit(1);
+  if (!target || target.scope !== 'project' || target.projectId !== projectId) {
+    throw new SkillNotProjectScopedError(skillId);
   }
 
   await db.transaction(async (tx) => {
@@ -392,6 +421,56 @@ export class SkillAlreadyShadowedError extends Error {
     super(`ALREADY_SHADOWED: a project skill named '${name}' already exists`);
     this.name = 'SkillAlreadyShadowedError';
   }
+}
+
+/**
+ * Single-path bridge for provisioning flows (project bootstrap, domain-template
+ * apply): return the id of the project skill named `skillName`, cloning the
+ * same-name global TEMPLATE into the project when the project does not own one
+ * yet. Returns null when neither a project skill nor a global template of that
+ * name exists (the caller decides whether to skip or error). Idempotent — a
+ * re-run returns the existing project skill instead of cloning again.
+ *
+ * This is how a global enters a project under the single-path model: choosing a
+ * skill for a stage materialises a project-owned copy; the global itself is
+ * never registered or dispatched. See docs/skills-scope-playbook.md.
+ */
+export async function resolveOrAdoptProjectSkill(
+  projectId: string,
+  skillName: string,
+): Promise<string | null> {
+  const [proj] = await db
+    .select({ id: skills.id })
+    .from(skills)
+    .where(
+      and(eq(skills.scope, 'project'), eq(skills.projectId, projectId), eq(skills.name, skillName)),
+    )
+    .limit(1);
+  if (proj) return proj.id;
+
+  const [global] = await db
+    .select({
+      name: skills.name,
+      description: skills.description,
+      skillMd: skills.skillMd,
+      prompt: skills.prompt,
+      target: skills.target,
+      files: skills.files,
+    })
+    .from(skills)
+    .where(and(eq(skills.scope, 'global'), eq(skills.name, skillName)))
+    .limit(1);
+  if (!global) return null;
+
+  const created = await createProjectSkill({
+    projectId,
+    name: global.name,
+    description: global.description,
+    skillMd: global.skillMd ?? global.prompt ?? '',
+    target: global.target,
+    files: (Array.isArray(global.files) ? global.files : []) as SkillFileInput[],
+  });
+  return created.id;
 }
 
 /**

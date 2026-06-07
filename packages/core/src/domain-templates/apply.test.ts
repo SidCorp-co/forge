@@ -31,8 +31,12 @@ vi.mock('../db/client.js', () => ({
 }));
 
 const registerSkillForProjectMock = vi.fn(async () => ({ projectId: '', skillId: '', stage: null }));
+const resolveOrAdoptProjectSkillMock = vi.fn(
+  async (_projectId: string, _skillName: string): Promise<string | null> => null,
+);
 vi.mock('../skills/service.js', () => ({
   registerSkillForProject: registerSkillForProjectMock,
+  resolveOrAdoptProjectSkill: resolveOrAdoptProjectSkillMock,
 }));
 
 const { applyTemplate, TemplateNotFoundError } = await import('./apply.js');
@@ -50,6 +54,8 @@ beforeEach(() => {
   updateReturning.mockReset();
   registerSkillForProjectMock.mockReset();
   registerSkillForProjectMock.mockResolvedValue({ projectId: '', skillId: '', stage: null });
+  resolveOrAdoptProjectSkillMock.mockReset();
+  resolveOrAdoptProjectSkillMock.mockResolvedValue(null);
 });
 
 const baseManifest = {
@@ -112,8 +118,10 @@ describe('applyTemplate', () => {
     selectLimit.mockResolvedValueOnce([]); // existing agent
     insertReturning.mockResolvedValueOnce([{ id: AGENT_ID }]); // agent
     insertReturning.mockResolvedValueOnce([{ id: APP_CONFIG_ID }]); // app_config
-    selectLimit.mockResolvedValueOnce([{ id: SKILL_ID }]); // forge-triage found
-    selectLimit.mockResolvedValueOnce([]); // unknown-skill not found
+    // forge-triage adopts to a project skill (SKILL_ID); unknown-skill resolves to nothing.
+    resolveOrAdoptProjectSkillMock.mockImplementation(async (_projectId: string, name: string) =>
+      name === 'forge-triage' ? SKILL_ID : null,
+    );
 
     const result = await applyTemplate({
       projectId: PROJECT_ID,

@@ -2,8 +2,11 @@ import { z } from 'zod';
 import { issueStatuses, skillTargets } from '../../db/schema.js';
 import { loadProjectSkillSyncStatus, resolveEffectiveSkillsForProject } from '../../skills/effective.js';
 import {
+  SkillAlreadyShadowedError,
   SkillDeleteBlockedError,
+  SkillNotProjectScopedError,
   type SkillRow,
+  applyGlobalSkillDefault,
   createProjectSkill,
   deleteProjectSkill,
   getSkillForProject,
@@ -67,6 +70,7 @@ const updateInputSchema = z
   .refine((o) => Object.keys(o).length > 2, { message: 'no fields to update' });
 
 const effectiveInputSchema = z.object({ projectId: z.uuid() }).strict();
+const adoptInputSchema = z.object({ projectId: z.uuid(), skillId: z.uuid() }).strict();
 const pushInputSchema = z
   .object({
     projectId: z.uuid(),
@@ -115,7 +119,7 @@ function dedupSkillsByName(rows: SkillRow[]): SkillListRow[] {
 export const forgeSkillsListTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_skills.list',
   description:
-    'List skills visible to a project, deduped by name: a project-scoped skill shadows the same-name global template (one row per name). Each row carries `shadowsGlobal` + `shadowedGlobalSkillId`. Requires device owner to be a project member.',
+    'Catalog of skills visible to a project, deduped by name. Each row has `scope`: `project` rows are USABLE (installable/dispatchable); `global` rows are adoptable TEMPLATES that do nothing at runtime until adopted (forge_skills.adopt) into the project. `shadowsGlobal`/`shadowedGlobalSkillId` are catalog hints (a same-name global exists), never a runtime fallback. Requires device owner to be a project member.',
   inputSchema: zodToMcpSchema(listInputSchema),
   handler: async (args) => {
     const { projectId } = listInputSchema.parse(args);
@@ -141,7 +145,7 @@ export const forgeSkillsGetTool: DeviceScopedMcpToolFactory = (device) => ({
 export const forgeSkillsRegisterTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_skills.register',
   description:
-    'Bind a skill to a pipeline stage for this project (or clear with stage=null). Requires device owner to be owner/admin of the project.',
+    'Bind a PROJECT skill to a pipeline stage for this project (or clear with stage=null). Only project-scoped skills may be registered — a global template must be adopted (forge_skills.adopt) into the project first, else this rejects with SKILL_NOT_PROJECT_SCOPED. Requires device owner to be owner/admin of the project.',
   inputSchema: zodToMcpSchema(registerInputSchema),
   handler: async (args) => {
     const input = registerInputSchema.parse(args);
@@ -156,6 +160,11 @@ export const forgeSkillsRegisterTool: DeviceScopedMcpToolFactory = (device) => (
       if (err instanceof SkillDeleteBlockedError) {
         throw new Error(
           `BAD_REQUEST: ${err.code}: stage '${err.stage}' has '${err.toggle}=true'. Disable the toggle in pipelineConfig before clearing the registration.`,
+        );
+      }
+      if (err instanceof SkillNotProjectScopedError) {
+        throw new Error(
+          `BAD_REQUEST: ${err.code}: only a project skill may be registered. Adopt the global template into this project first (forge_skills.adopt), then register the resulting project skill.`,
         );
       }
       throw err;
@@ -234,13 +243,48 @@ export const forgeSkillsDeleteTool: ContextScopedMcpToolFactory = (ctx) => ({
 export const forgeSkillsEffectiveTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_skills.effective',
   description:
-    "The project's effective skills — deduped by name, where a project-scoped skill shadows the same-name global template (one row per name). Each row carries the resolved skillMd, files, effectiveHash, and shadowsGlobal + shadowedGlobalSkillId. This is exactly what a device installs on sync. Requires project membership.",
+    "The project's CATALOG — deduped by name: project skills (scope='project', USABLE) plus global TEMPLATES (scope='global', adoptable, NOT usable). Each row carries skillMd, files, effectiveHash, scope, and shadowsGlobal/shadowedGlobalSkillId (catalog hints only). NOTE: this is NOT what a device installs — only the registered ∩ project subset is installed/dispatched (see forge_skills.sync_status). A global row here runs nowhere until adopted (forge_skills.adopt). Requires project membership.",
   inputSchema: zodToMcpSchema(effectiveInputSchema),
   handler: async (args) => {
     const { projectId } = effectiveInputSchema.parse(args);
     await assertPrincipalIsMember(ctx.principal, projectId);
     const skills = await resolveEffectiveSkillsForProject(projectId);
     return { skills };
+  },
+});
+
+export const forgeSkillsAdoptTool: ContextScopedMcpToolFactory = (ctx) => ({
+  name: 'forge_skills.adopt',
+  description:
+    'Adopt a global skill TEMPLATE into this project: clones the global (skillId must be a global) into a new project-scoped skill of the same name, which the project then owns and can edit + register. This is the ONLY way a global enters a project at runtime (globals never install/dispatch directly). Rejects with ALREADY_SHADOWED if a same-name project skill already exists. Requires owner/admin on the project. Returns the created project skill.',
+  inputSchema: zodToMcpSchema(adoptInputSchema),
+  handler: async (args) => {
+    const { projectId, skillId } = adoptInputSchema.parse(args);
+    await assertPrincipalIsAdmin(ctx.principal, projectId);
+    const global = await getSkillForProject(skillId, projectId);
+    if (!global) throw new Error('NOT_FOUND: skill not found');
+    if (global.scope !== 'global') {
+      throw new Error('BAD_REQUEST: skillId must be a global template to adopt');
+    }
+    try {
+      const skill = await applyGlobalSkillDefault({
+        projectId,
+        global: {
+          name: global.name,
+          description: global.description,
+          skillMd: global.skillMd,
+          prompt: global.prompt,
+          target: global.target,
+          files: global.files,
+        },
+      });
+      return { skill };
+    } catch (err) {
+      if (err instanceof SkillAlreadyShadowedError) {
+        throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
+      }
+      throw err;
+    }
   },
 });
 
