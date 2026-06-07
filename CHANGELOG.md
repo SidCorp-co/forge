@@ -25,6 +25,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **The pipeline run view now shows which device a run is executing on (by name) and its retry history, and Cancel now reliably stops a run instead of letting it silently restart.**
   *Technical: Part A: agent-sessions hydrator resolves deviceId→runner name (batch devices lookup, shared by list/search/detail); PipelineRunSummary gains jobs-sourced attempts[] + retrySummary {round/maxRounds/target} from the retry_of chain + payload._autoRetry; web-v2 run-detail renders a per-attempt timeline + round-robin badge. Part B: cancelPipelineRun atomically parks the linked issue at on_hold after the cascade (on_hold has no STATUS_TO_JOB_TYPE mapping → no auto-dispatch); orchestrator transition-subscriber guard blocks any non-user advance OUT of on_hold so the dying agent's termination-protocol can't silently re-dispatch — only a human Resume re-engages. Reuses the existing web-v2 on_hold banner + Resume CTA. Merge bf664dbf.*
 
+- **Postman and Epodsystem credential rotations now keep the previous key valid for 24h, matching Coolify, so in-flight requests don't fail mid-rotation.**
+  *Technical: Extract ROTATION_WINDOW_MS + mergeRotatedSecrets to a shared integrations helper; persist previousApiKey/previousTokenExpiresAt on apiKey-provider PATCH; add 401-fallback in postman/epodsystem clients gated by the expiry guard; extend scrubber to include previousApiKey.*
+
 ### Fixed
 
 - **A pipeline could silently stall for about an hour when a job was dispatched to a runner that never picked it up — the dead job held the runner's only slot and blocked the next stage. The system now detects an unclaimed dispatch within a few minutes and recovers automatically (re-dispatching the work, or moving the issue on if it had already completed elsewhere).**
