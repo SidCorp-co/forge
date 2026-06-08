@@ -48,8 +48,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Pipeline settings now tell you which stage is blocking a save and why — for example that "Auto triage" needs a registered skill — instead of a vague error that vanishes before you can read it.**
   *Technical: web-v2 project-settings now has a dedicated formatPipelineConfigError() that reads ApiError.details (stagesMissingSkill / stagesBlocked+blockingIssueIds / unreachable) to name the offending stage, plus a persistent inline danger Banner above Save replacing the <1s bottom-right toast. FRIENDLY_CODES/formatApiError untouched; no core changes. Merge bf1c056a (ISS-422).*
 
-- **Agent chat now clearly tells you when no runner or desktop client is online instead of silently failing to send — the message box is disabled with an explanation and a banner explaining how to start chatting.**
-  *Technical: web-v2 ChatScreen gates the Composer on project devicePool online status (mirrors FleetStrip) and surfaces send failures inline (e.g. 409 NO_CLAUDE_CLIENT) in addition to the toast; backend already fails fast, no backend change (ISS-426). Merge 1d77c562.*
+- **Agent chat no longer silently fails to send: when a message can't be delivered (no online Claude client), the chat shows a clear inline error instead of nothing. Chat is no longer incorrectly blocked when you have a runner online.**
+  *Technical: web-v2 ChatScreen surfaces the real /agent-sessions/send result (e.g. 409 NO_CLAUDE_CLIENT) inline in addition to the toast. The initial devicePool-based composer disable/banner was reverted — devicePool.status is devices.status, which the runner heartbeat never updates (only runners.status), so it false-blocked chat for active runners. Frontend-only, no backend change (ISS-426). Merges 1d77c562 + d725d311.*
 
 ### Added
 
@@ -218,8 +218,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Pipeline settings now tell you which stage is blocking a save and why — for example that "Auto triage" needs a registered skill — instead of a vague error that vanishes before you can read it.**
   *Technical: web-v2 project-settings now has a dedicated formatPipelineConfigError() that reads ApiError.details (stagesMissingSkill / stagesBlocked+blockingIssueIds / unreachable) to name the offending stage, plus a persistent inline danger Banner above Save replacing the <1s bottom-right toast. FRIENDLY_CODES/formatApiError untouched; no core changes. Merge bf1c056a (ISS-422).*
 
-- **Agent chat now clearly tells you when no runner or desktop client is online instead of silently failing to send — the message box is disabled with an explanation and a banner explaining how to start chatting.**
-  *Technical: web-v2 ChatScreen gates the Composer on project devicePool online status (mirrors FleetStrip) and surfaces send failures inline (e.g. 409 NO_CLAUDE_CLIENT) in addition to the toast; backend already fails fast, no backend change (ISS-426). Merge 1d77c562.*
+- **Agent chat no longer silently fails to send: when a message can't be delivered (no online Claude client), the chat shows a clear inline error instead of nothing. Chat is no longer incorrectly blocked when you have a runner online.**
+  *Technical: web-v2 ChatScreen surfaces the real /agent-sessions/send result (e.g. 409 NO_CLAUDE_CLIENT) inline in addition to the toast. The initial devicePool-based composer disable/banner was reverted — devicePool.status is devices.status, which the runner heartbeat never updates (only runners.status), so it false-blocked chat for active runners. Frontend-only, no backend change (ISS-426). Merges 1d77c562 + d725d311.*
 
 ### Security
 
