@@ -20,6 +20,11 @@ coverage
 playwright-report
 playwright/.cache
 .playwright-mcp/
+# Backstop: live-verify / clarify screenshot artifacts (convention is .playwright-mcp/
+# above, but if an agent saves one to the repo root it must never dirty the worktree
+# and block forge-test's clean-target merge gate). Anchored to root only.
+/iss-*.png
+/iss[0-9]*.png
 
 # OS
 .DS_Store
