@@ -20,7 +20,7 @@ Use the release skill: bumps every version file in lockstep, promotes `## [Unrel
   - `tauri-action@v0` builds + signs + uploads on macOS (Intel + ARM), Windows, Linux.
   - Tauri updater manifest `latest.json` generated alongside bundles.
   - Publish job flips release to non-draft.
-  - `/download` page (`packages/web`) reads GitHub Releases API, shows new bundles — no redeploy.
+  - No in-app `/download` page: the old `web-v1` `/download` route was dropped and not ported to `web-v2`. Users grab bundles from the GitHub Release page directly; `core/src/install/fetch-release.ts` reads the Releases API only to pull the latest `runner-v*` binary, not the Tauri desktop bundles.
 - Build job fails → release stays Draft, publish skipped. Logs: `gh run list -R <owner>/<repo> --workflow=release.yml`.
 
 ## Pipeline shape
@@ -88,7 +88,7 @@ Whole monorepo shares one version. The `cut-release.sh` script (in the maintaine
 | `packages/core/package.json` | `version` |
 | `packages/contracts/package.json` | `version` |
 | `packages/observability/package.json` | `version` |
-| `packages/web/package.json` | `version` |
+| `packages/web-v2/package.json` | `version` |
 | `packages/dev/package.json` | `version` |
 | `packages/dev/src-tauri/tauri.conf.json` | `version` |
 | `packages/dev/src-tauri/Cargo.toml` | `[package].version` |

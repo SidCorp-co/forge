@@ -25,7 +25,7 @@ PAT plaintext in a Sentry event, log line, or WS payload is replayable by observ
 
 - `packages/observability/src/index.ts` exports `PAT_STRING_PATTERN` (unanchored, global) + `scrubStringValues` / `scrubPatInString`.
 - `scrubSentryEvent` applies the PAT scrubber to request URL, body, breadcrumb messages, breadcrumb `data`, and recursively nested strings. Header values still redacted by existing key-based pass.
-- `packages/web/instrumentation*.ts` + `packages/core/src/observability/sentry.ts` already call `scrubSentryEvent` — canonical module flows to every surface, no per-adapter change.
+- `packages/core/src/observability/sentry.ts` is the only surface that calls `scrubSentryEvent` today (the canonical scrubber module). The retired web-v1 `packages/web/instrumentation*.ts` also called it, but the current `packages/web-v2` has no Sentry client wiring yet (no `instrumentation*.ts`, no Sentry dependency) — so when web Sentry is reinstated it must reuse this same scrubber.
 
 ### T3 — Privilege escalation through admin tools
 

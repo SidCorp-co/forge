@@ -75,15 +75,15 @@ A device is any machine that will run `claude` for your projects (commonly your 
 4. Web dashboard: **Account → Devices → Add device** → copy the pairing code.
 5. Desktop app: **Settings → Pair** → paste the code.
 
-### Option B: CLI daemon (`forged`)
+### Option B: CLI daemon (`forge-runner`)
 
 For CI runners, headless dev boxes, or terminal preference:
 
 ```bash
-# Install forged (example — actual install path TBD)
+# Install forge-runner via packages/runner/install.sh
 
 # Pair
-forged pair F9-3K7T-92XA
+forge-runner login --code F9-3K7T-92XA
 ```
 
 Token stored in the OS keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service); WebSocket connects; device appears **online** within seconds.
@@ -121,8 +121,8 @@ On triage complete the issue advances to `confirmed`. Continue through the pipel
 | Symptom | Fix |
 |---|---|
 | `docker compose up` hangs on "waiting for postgres" | `docker compose logs postgres`. Wrong `POSTGRES_PASSWORD` → `docker compose down -v` then restart fresh. Port conflict on 5432 → change host-side port in `docker-compose.yml`. |
-| Device shows `offline` | Confirm agent running (`forged status` or Tauri app). Check agent log for WebSocket connect errors. Server URL mismatch — agent must point at a reachable URL (not `localhost` if on a different machine). |
-| `forged pair` fails "pairing code expired" | Codes valid 5 minutes. Generate a new one from **Account → Devices → Add device**. |
+| Device shows `offline` | Confirm agent running (`forge-runner status` or Tauri app). Check agent log for WebSocket connect errors. Server URL mismatch — agent must point at a reachable URL (not `localhost` if on a different machine). |
+| `forge-runner login` fails "pairing code expired" | Codes valid 5 minutes. Generate a new one from **Account → Devices → Add device**. |
 | Device online but jobs stay `queued` | Project bound to this device? (**Project → Settings → Runtime**). Another job already `running`? (one per device). Is `claude` installed and in PATH? (agent spawns it as a subprocess). |
 | Email verification loop | Forge sends via configured SMTP. For local dev set `SMTP_DEBUG=true` in `.env` to print verification links to container logs. |
 

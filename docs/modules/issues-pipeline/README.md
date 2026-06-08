@@ -1,6 +1,6 @@
 # Issues & Pipeline
 
-The 17-status state machine that routes work through agent stages.
+The 18-status state machine that routes work through agent stages.
 
 - Project contains issues; each issue's status = where it is in the pipeline.
 - Transitions can trigger agent skills (jobs dispatched to paired devices); each is auto-run or human-gated per-project.
@@ -48,7 +48,7 @@ Input sources: Web UI (user creates issue) · Webhook ingestion (external platfo
 | `documentId` | Canonical ID |
 | `issueId` | `ISS-<number>` user-facing ID |
 | `title`, `description`, `priority`, `category` | User fields |
-| `status` | One of 17 statuses (see status lifecycle) |
+| `status` | One of 18 statuses (see status lifecycle) |
 | `project` | Belongs to one project |
 | `sessionContext` | JSON accumulator for agent session memory |
 | `changeHistory` | Audit log of status / priority / title changes |
@@ -60,10 +60,10 @@ Standard supporting entities. See code for schema detail.
 
 ## Status Lifecycle
 
-17 statuses + branches. Full reference (transition rules, allowed skills, reopen cycles, blocked transitions): [status-pipeline.md](status-pipeline.md).
+18 statuses + branches. Full reference (transition rules, allowed skills, reopen cycles, blocked transitions): [status-pipeline.md](status-pipeline.md).
 
 ```
-draft → open → confirmed → waiting → approved →
+draft → open → confirmed → clarified → waiting → approved →
 in_progress → developed → deploying → testing → tested → pass →
 staging → released → closed
 
@@ -72,7 +72,7 @@ with branches:
   on_hold, needs_info (manual)
 ```
 
-Each transition can map to a skill (triage, clarify, plan, code, review, test, release, fix). Per-project config toggles auto-run vs human-gate.
+`forge-test` auto-advances `tested → pass → staging → released` once its merge + live-verify gate passes; those statuses are traversed automatically, not gated. Each transition can map to a skill (triage, clarify, plan, code, review, test, release, fix). Per-project config toggles auto-run vs human-gate.
 
 ## Key Business Flows
 
@@ -104,12 +104,12 @@ Each transition can map to a skill (triage, clarify, plan, code, review, test, r
 
 | Command/Job | Description |
 |-------------|-------------|
-| `stale-job-detector` (cron) | Every 5 minutes (`*/5 * * * *`), flags jobs stuck `running` with no recent events |
+| `stale-job-detector` (cron) | Reaps jobs stuck in `dispatched`/`running` past a 60-minute threshold (bumped 5→60 min per ISS-258 — legit merges run >5 min between events). Slow backstop; the ~1-min fast path is `reconcileOrphanedJobs` |
 | `reopen-limit-check` | Part of transition logic — blocks reopen >5 cycles |
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
-| [status-pipeline.md](status-pipeline.md) | Full 17-status lifecycle reference — transition rules, skill mappings, gate semantics |
+| [status-pipeline.md](status-pipeline.md) | Full 18-status lifecycle reference — transition rules, skill mappings, gate semantics |
 | [decompose.md](decompose.md) | Epic → children decomposition lifecycle — create/approve cascade, children-first + parent-last gating |

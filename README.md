@@ -58,7 +58,7 @@ docker compose up -d
 
 Install the desktop agent (spawns `claude` on your machine) from
 [Releases](https://github.com/SidCorp-co/forge/releases), or run
-`forged pair <code>` once the CLI daemon ships.
+`forge-runner login --code <code>`.
 
 Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
 
@@ -69,7 +69,8 @@ Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
   ┌──────────────┐                     ┌──────────────────────┐
   │ web (Next.js)│                     │ Device agent         │
   │ dashboard    │                     │ - Tauri GUI (dev), or│
-  │              │                     │ - CLI daemon (forged)│
+  │              │                     │ - CLI daemon         │
+  │              │                     │   (forge-runner)     │
   └──────┬───────┘                     │                      │
          │ REST + WebSocket            │ runs `claude` locally│
          ▼                             │ in a git worktree    │
@@ -105,13 +106,13 @@ See [docs/architecture/system-overview.md](docs/architecture/system-overview.md)
 | [`packages/core/`](packages/core/) | Control plane: Hono + Drizzle + pg-boss + WebSocket + MCP | `pnpm dev` |
 | [`packages/web-v2/`](packages/web-v2/) | Next.js dashboard: kanban, replay, pipeline health, devices | `pnpm dev` |
 | [`packages/dev/`](packages/dev/) | Tauri desktop device agent (GUI form factor) | `pnpm tauri dev` |
-| `packages/forged/` | CLI daemon device agent (headless) — coming soon | — |
+| [`packages/runner/`](packages/runner/) | Rust CLI daemon device agent (headless) — forge-runner binary | `cargo run` |
 | [`packages/contracts/`](packages/contracts/) | Shared TypeScript contracts | — |
 
 ## How it works
 
 1. **Pair a device.** Account → Devices → "Add device" generates a pairing
-   code. Run `forged pair F9-3K7T-92XA` on your machine (or paste into the
+   code. Run `forge-runner login --code F9-3K7T-92XA` on your machine (or paste into the
    Tauri app). Token stored in the OS keychain. Device appears online in the
    dashboard.
 2. **Bind a project to a device.** Project → Settings → Runtime → pick a

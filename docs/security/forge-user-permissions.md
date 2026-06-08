@@ -26,7 +26,7 @@ User ──(own / member)──> Project ──> Issue ──> Task / Comment / 
 - **Lớp 1 — owner/member theo từng project.** Mọi user login là owner project của chính mình (toàn quyền trong phạm vi đó). Member được mời chỉ thấy/sửa project được mời. Mutation nhạy cảm (archive, mời người, quản runner) cần owner/admin của project đó. Không liên quan project → `403` / `NOT_FOUND`.
 - **Lớp 2 — admin REST, độc lập.** Chỉ email trong `ADMIN_EMAILS` (env, cấu hình khi deploy) mới vào `/api/admin/*`; còn lại `403 ADMIN_ONLY`.
 
-> AI tool `forge_admin_*` và metrics **giới hạn theo phạm vi user** (chỉ project own/member, **không cross-tenant**). `forge_admin_projects create` luôn đặt người gọi làm owner.
+> AI tool `forge_projects.*` / `forge_pm.*` và metrics **giới hạn theo phạm vi user** (chỉ project own/member, **không cross-tenant**). `forge_projects.create` luôn đặt người gọi làm owner.
 
 ## 4. Cửa nào làm được gì
 
@@ -34,10 +34,10 @@ User ──(own / member)──> Project ──> Issue ──> Task / Comment / 
 |---|---|---|---|
 | Xem/sửa Issue trong project mình là member | ✅ | ✅ (qua AI tool) | ✅ (qua AI tool) |
 | Tạo project qua web | ✅ | ❌ | ❌ |
-| Tạo project qua `forge_admin_projects create` | ❌ | ✅ (người gọi → owner) | ✅ (cần scope write; người gọi → owner) |
+| Tạo project qua `forge_projects.create` | ❌ | ✅ (người gọi → owner) | ✅ (cần scope write; người gọi → owner) |
 | Mời user vào project mình sở hữu | ✅ | ❌ | ❌ |
 | Admin toàn hệ thống qua REST `/api/admin/*` | chỉ khi email ∈ `ADMIN_EMAILS` | ❌ | ❌ |
-| `forge_admin_*` / metrics cross-project | ❌ | ✅ nhưng chỉ phạm vi own/member | ✅ nhưng chỉ phạm vi own/member |
+| `forge_projects.*` / `forge_pm.*` / metrics cross-project | ❌ | ✅ nhưng chỉ phạm vi own/member | ✅ nhưng chỉ phạm vi own/member |
 
 ## 5. Thiết lập user mới
 

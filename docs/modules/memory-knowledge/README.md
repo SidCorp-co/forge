@@ -96,10 +96,9 @@ Postgres `pgvector` semantic memory, project knowledge graph, RAG retrieval.
 
 | Method | Endpoint | Principal | Description |
 |--------|----------|-----------|-------------|
-| `GET` | `/api/projects/:id/memory/search?q=` | user / device | Query memory semantically |
-| `POST` | `/api/projects/:id/memory` | user | Add manual memory note |
+| `POST` | `/api/memory/search` | user / device | Query memory semantically (JSON body) |
+| `POST` | `/api/memory` | user | Add manual memory note |
 | `DELETE` | `/api/memory/:id` | user | Remove a memory entry |
-| `POST` | `/api/projects/:id/memory/reindex` | user | Trigger full reindex |
 
 MCP tool: `forge_memory` — exposes the same search to agents.
 

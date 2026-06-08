@@ -73,7 +73,7 @@ queued → dispatched → running → done / failed / cancelled
 | `issue` | Optional — the issue this job serves |
 | `device` | Set on dispatch; null while queued |
 | `createdBy` | User who enqueued (or `system` for auto-triggered) |
-| `type` | `triage` \| `clarify` \| `plan` \| `code` \| `review` \| `test` \| `release` \| `fix` \| `custom` |
+| `type` | `triage` \| `clarify` \| `plan` \| `code` \| `review` \| `test` \| `release` \| `fix` \| `custom` \| `pm` |
 | `payload` | `{ skillName, args, ... }` |
 | `status` | See flow above |
 | `queuedAt` / `dispatchedAt` / `startedAt` / `finishedAt` | Lifecycle timestamps |
@@ -111,10 +111,11 @@ queued → dispatched → running → done / failed / cancelled
 
 ### Stale detection + auto-retry
 
-1. Cron every 5 min: find jobs `running` with no JobEvent in 5+ min
-2. Mark stuck: `Job.update({ status: 'failed', error: 'stale' })`
-3. Retry count <3: re-enqueue new job with same payload
-4. Beyond 3 retries: leave failed, surface in health dashboard
+1. Slow backstop (`stale-job-detector`): reap jobs in `dispatched`/`running` past a 60-minute threshold (bumped 5→60 min per ISS-258 — legit merges run >5 min between events and tripped a false positive)
+2. Fast path (`reconcileOrphanedJobs`, `packages/core/src/pipeline/sweeper.ts`, ~1-min tick): session-driven reconciliation reaps orphaned `dispatched`/`running` jobs well before the 60-min backstop
+3. Mark stuck: `Job.update({ status: 'failed', error: 'stale' })`
+4. Retry count <3: re-enqueue new job with same payload
+5. Beyond 3 retries: leave failed, surface in health dashboard
 
 ## API Endpoints
 
@@ -143,7 +144,7 @@ queued → dispatched → running → done / failed / cancelled
 | Command/Job | Description |
 |-------------|-------------|
 | `job-dispatcher` (long-running) | Polls pg-boss queue, picks active device, dispatches |
-| `stale-job-detector` (cron 5m) | Finds stuck jobs, fails them, optionally retries |
+| `stale-job-detector` (cron) | Slow backstop: reaps `dispatched`/`running` jobs past a 60-minute threshold (5→60 min per ISS-258), optionally retries. Fast path is `reconcileOrphanedJobs` (`pipeline/sweeper.ts`, ~1-min tick) |
 | `job-event-sweeper` (cron daily) | Deletes JobEvents older than 30 days past parent terminal |
 | `job-usage-aggregator` (cron hourly) | Aggregates token usage by project / device for billing / quota dashboards |
 

@@ -54,7 +54,7 @@ Token sent as `Authorization: Bearer <token>` on every WS + REST call. Non-secre
 
 The daemon ([`daemon::run`](../../packages/runner/crates/forge-runner-core/src/daemon/mod.rs)) runs four concurrent loops:
 
-1. **WebSocket** ([`transport/ws.rs`](../../packages/runner/crates/forge-runner-core/src/transport/ws.rs)) — connect `/ws` with Bearer token, subscribe to `device:<id>` room, and (only when `runner.register_enabled` is set, gated behind core's `runnerFramework` flag) send one `runner:register` per assigned project. 25s ping / 15s pong liveness; jittered 1s→30s reconnect backoff; 401 stops the loop with a "re-pair" hint.
+1. **WebSocket** ([`transport/ws.rs`](../../packages/runner/crates/forge-runner-core/src/transport/ws.rs)) — connect `/ws` with Bearer token, subscribe to `device:<id>` room, and (only when the runner-local `runner.register_enabled` config is set) send one `runner:register` per assigned project (core accepts registration from any device principal). 25s ping / 15s pong liveness; jittered 1s→30s reconnect backoff; 401 stops the loop with a "re-pair" hint.
 2. **Heartbeat** — `POST /api/devices/heartbeat` every 30s ([`heartbeat.rs`](../../packages/runner/crates/forge-runner-core/src/transport/heartbeat.rs)).
 3. **Update check** — see [Release & self-update](#release--self-update).
 4. **Frame loop** — inbound WS frames ([`frames.rs`](../../packages/runner/crates/forge-runner-core/src/transport/frames.rs)): `job.assigned` → spawn dispatch task; `job.cancel` / `job.cancelRequested` → abort the matching process.

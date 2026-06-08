@@ -28,7 +28,7 @@ Cross-cutting:
 Trigger: user clicks **Account → Devices → Add device** in web UI.
 
 1. **[devices]** server generates pairing code (5-min TTL), returns to web UI.
-2. User runs `forged pair F9-3K7T-92XA`, or pastes code into Tauri app.
+2. User runs `forge-runner login --code F9-3K7T-92XA`, or pastes code into Tauri app.
 3. **[devices]** device POSTs code + capabilities (`{ claudeCode.version, git.version, node.version }`) to `/api/devices/pair`.
 4. Server verifies code, issues device token (argon2-hashed), returns it.
 5. Device stores token in OS keychain (macOS / Windows / Linux Secret Service).
@@ -50,8 +50,8 @@ Trigger: issue advances to a stage with a registered custom skill.
 5. JobEvents stream back; pipeline advances normally.
 
 Cross-cutting:
-- Skill version pinning tracked in `project.skillsSyncedAt`.
-- Skill install/update propagates via WebSocket `skills:updated`.
+- Skill sync is hash/report-based (no pinning column) via `GET /api/projects/:projectId/skill-sync-status` ([`devices/skills-routes.ts`](../../packages/core/src/devices/skills-routes.ts)).
+- Skill install/update propagates via WebSocket `skill.updated` (and `skill.sync` to push a pull to targeted devices) — see [`ws/broadcast-subscribers.ts`](../../packages/core/src/ws/broadcast-subscribers.ts).
 
 ## Flow: Device revocation
 

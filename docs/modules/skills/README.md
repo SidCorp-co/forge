@@ -86,7 +86,7 @@ Unique constraint: `(projectId, stage)` — at most one skill per stage per proj
 |--------|----------|-----------|-------------|
 | `GET` | `/api/projects/:id/skills` | user / device | List project's skills (global + project-scoped) |
 | `POST` | `/api/projects/:id/skills/sync` | device | Upsert a skill from local filesystem |
-| `PUT` | `/api/projects/:id/skills/:skillId/register` | user | Register skill to a pipeline stage |
+| `POST` | `/api/projects/:id/skills/:skillId/register` | user | Register skill to a pipeline stage |
 | `DELETE` | `/api/projects/:id/skills/:skillId` | user | Remove a project-scoped skill |
 
 ## Cross-Module Touchpoints
@@ -99,16 +99,16 @@ Unique constraint: `(projectId, stage)` — at most one skill per stage per proj
 
 ## Built-in skills (v0.1 pipeline)
 
-| Skill | Stage it maps to | Purpose |
-|-------|------------------|---------|
-| `forge-triage` | open → confirmed | Classify + priority set |
-| `forge-clarify` | confirmed → clarified | Reproduce bugs, verify UX |
-| `forge-plan` | clarified → approved | Write implementation plan |
-| `forge-code` | approved → deploying | Implement + commit + push |
-| `forge-review` | deploying → testing | Independent code review |
-| `forge-test` | testing → staging | QA against preview deployment |
-| `forge-release` | staging → released | Merge to production |
-| `forge-fix` | reopen → deploying | Address rejection feedback |
+| Skill | Trigger → exit status | Purpose |
+|-------|-----------------------|---------|
+| `forge-triage` | `open` → `confirmed` / `needs_info` | Validate completeness, classify complexity, detect relations, set category/priority |
+| `forge-clarify` | `confirmed` → `clarified` / `needs_info` | Reproduce bug / validate UX in live env, evidence + root-cause hypothesis |
+| `forge-plan` | `clarified` → `approved` (S/M) / `waiting` (C) | Explore code, write implementation plan + QA scenarios |
+| `forge-code` | `approved` → `developed` | Implement, build, tiered review, commit, push ISS-* branch |
+| `forge-review` | `developed` → `testing` / `reopen` | Independent fresh-context code review + diff smoke |
+| `forge-test` | `testing` → `released` (via tested/pass/staging) / `reopen` | Merge ISS-* + Coolify deploy beta + full live E2E gate (does not merge to production) |
+| `forge-release` | `released` → `closed` | Append release note, delete branch, close (does NOT merge) |
+| `forge-fix` | `reopen` → `developed` | Scoped fix on ISS-* branch |
 
 ## Scope & shadowing (ISS-388)
 

@@ -6,7 +6,7 @@ Feature documentation organized by business domain. Each module answers "where d
 
 | Module | Description |
 |--------|-------------|
-| [issues-pipeline](issues-pipeline/) | The 14-status issue pipeline. Projects, issues, comments, labels, activity log. The PM core. |
+| [issues-pipeline](issues-pipeline/) | The 18-status issue pipeline. Projects, issues, comments, labels, activity log. The PM core. |
 | [agents-jobs](agents-jobs/) | Job queue, dispatch, JobEvent streaming, session capture. The execution orchestration layer. |
 | [devices](devices/) | Device pairing, revocation, project binding, heartbeat. The runtime plane connection point. |
 | [skills](skills/) | Built-in `forge-*` pipeline skills + user-authored skills. Registration into pipeline stages. |

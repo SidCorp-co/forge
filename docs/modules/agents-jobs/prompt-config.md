@@ -31,7 +31,7 @@ Layers 1–4 are identical across every job in a project → prompt cache (5-min
 
 ### Built-in per-state blocks
 
-`packages/core/src/prompt/state-prompts/` holds one file per step (`triage.ts` … `release.ts`), exported via `index.ts` as `DEFAULT_STATE_SYSTEM_PROMPTS`, resolved with `getStatePrompt(step)`. Each is short, stable platform policy (objective + emphasis + exit/status contract); detailed procedure stays in the per-state skill. No default block for stepless intermediate states (`deploying`, `tested`, `staging`) or non-pipeline steps (`custom`, `pm`).
+`packages/core/src/prompt/state-prompts/` holds one file per step — 8 files: `triage.ts`, `clarify.ts`, `plan.ts`, `code.ts`, `review.ts`, `test.ts`, `fix.ts`, `release.ts` — exported via `index.ts` as `DEFAULT_STATE_SYSTEM_PROMPTS`, resolved with `getStatePrompt(step)`. Each is short, stable platform policy (objective + emphasis + exit/status contract); detailed procedure stays in the per-state skill. No default block for stepless intermediate states (`deploying`, `tested`, `staging`) or non-pipeline steps (`custom`, `pm`).
 
 ### Operator overrides — append vs replace
 
@@ -97,6 +97,6 @@ The `claude-code` adapter (`packages/core/src/runners/adapters/claude-code.ts`) 
 
 From the former pipeline-prompt-SSOT proposal, NOT in place:
 
-- **State Editor / Preview UI (PR-7b)** — Monaco raw-JSON editor + side-by-side prompt-diff UI in Project Settings → Pipeline. Only the backend `POST /api/prompts/preview` exists; web client has types (`packages/web/src/features/job/types-prompt.ts`) but no editor.
+- **State Editor / Preview UI (PR-7b)** — Monaco raw-JSON editor + side-by-side prompt-diff UI in Project Settings → Pipeline. Only the backend `POST /api/prompts/preview` exists; no editor.
 - **`systemPromptMode` on the Inspector** — `extractResolvedFlags` reads `payload.systemPromptMode`, but the dispatcher does not stamp it, so the Inspector always renders it null (defaults to append). The preview endpoint does report `resolvedFlags.systemPromptMode`.
 - **Empirical `--resume` flag-override verification (PR-5/A6)** — session group code ships with the `injectTurnLevelRules` fallback, but the CLI's honoring of `--model` / `--append-system-prompt` / `--allowed-tools` on resume was not empirically confirmed.

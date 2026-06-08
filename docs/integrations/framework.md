@@ -10,16 +10,17 @@ Origin: the former `integration-framework` proposal (retired). This doc = SHIPPE
 |-------|--------|
 | Framework foundation (registry, vault, store, delivery log, queue) | Shipped (ISS-234) |
 | **Coolify** adapter (deploy + logs + circuit breaker) | Shipped, live |
+| **Postman** + **Epodsystem** adapters (MCP-injecting) | Shipped, live |
 | Inbound webhook routing via adapter registry | Shipped (Coolify header only) |
 | **Sentry** | Shipped as *Forge's own* observability (breadcrumbs), NOT a per-project adapter |
 | GitHub inbound webhook | Shipped, but **legacy path** — not an `IntegrationAdapter` (see [README](README.md)) |
 
-`IntegrationProvider` = single literal `'coolify'` (`packages/core/src/integrations/types.ts`). Coolify is the only live adapter.
+`IntegrationProvider` = the 3-value union `'coolify' | 'postman' | 'epodsystem'` (`packages/core/src/integrations/types.ts`). All three adapters register at boot (`registerCoolifyAdapter()` / `registerPostmanAdapter()` / `registerEpodsystemAdapter()` in `src/index.ts`).
 
 ## Architecture (3 layers, as built)
 
 ```
-Layer 3 — Adapters    coolify/   (registered at boot)
+Layer 3 — Adapters    coolify/ · postman/ · epodsystem/   (all registered at boot)
 Layer 2 — Framework   registry · vault · store · deliveries · queue · circuit-breaker
 Layer 1 — Storage     project_integrations (1 row per project+provider+env)
                       integration_deliveries (audit / idempotency)
@@ -45,7 +46,7 @@ interface IntegrationAdapter<TConfig, TSecrets> {
 
 ### Registry
 
-`registry.ts` — in-memory `Map<provider, adapter>`. `registerAdapter` (dup = throw), `getAdapter`, `listAdapters`. Coolify registers at boot via `registerCoolifyAdapter()` in `src/index.ts`.
+`registry.ts` — in-memory `Map<provider, adapter>`. `registerAdapter` (dup = throw), `getAdapter`, `listAdapters`. All three adapters register at boot in `src/index.ts` (`registerCoolifyAdapter()` / `registerPostmanAdapter()` / `registerEpodsystemAdapter()`).
 
 ### Vault (secret encryption)
 

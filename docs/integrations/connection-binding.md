@@ -1,6 +1,6 @@
 # Integrations: Connection / Binding model
 
-Status: **core foundation landing** (this branch) · feature layer tracked as a Forge EPIC.
+Status: **core foundation + feature layer merged to main**. Only the deferred cleanup (item F: drop `project_integrations`, OAuth-first connect, org promotion) remains future.
 
 ## Problem
 
@@ -90,14 +90,15 @@ renders to them instead of one rigid layout:
 4. `store.ts` read/CRUD helpers for connection+binding (consumed by the feature issues).
 5. Contract test guarding archetype capabilities + healthcheck presence.
 
-**Feature (Forge EPIC — depends on core):**
-- A. REST cutover: owner-scoped connection CRUD + project-scoped binding CRUD; repoint
-  resolvers (`postman`/`epodsystem`), `forge_*` MCP tools, inbound router, `release-coolify`
-  to read via binding→connection.
-- B. `packages/contracts` types for connection/binding.
-- C. `packages/web` integrations feature (api/types/hooks) rework.
-- D. `packages/web-v2` Integrations directory + connection detail (adaptive by capabilities) +
-  per-project binding tab + delivery-log viewer + secret render-safety (ADR 0013).
-- E. Fold Epodsystem (ISS-387) onto the new model; expose Postman in the web UI.
-- F. Drop `project_integrations` after cutover verified; unify secret rotation; OAuth-first
-  connect; owner→org principal promotion.
+**Feature (Forge EPIC — A–E SHIPPED, depend on core):**
+- A. **SHIPPED (ISS-400)** — `packages/contracts` types for connection/binding
+  (`packages/contracts/src/integrations.ts`).
+- B. **SHIPPED (ISS-401)** — web data layer (api/types/hooks) for connection/binding.
+- C. **SHIPPED (ISS-402)** — `packages/web-v2` Integrations directory + adaptive
+  (capability-driven) connection UX. (Lives in `packages/web-v2`; `packages/web` is retired,
+  ISS-397.)
+- D. **SHIPPED (ISS-403)** — Epodsystem fold onto the new model + Postman generic path.
+- E. **SHIPPED (ISS-405)** — unified connection-level dual-token rotation
+  (`packages/core/src/integrations/rotation.ts`).
+- F. **Future** — drop `project_integrations` after cutover verified; OAuth-first connect;
+  owner→org principal promotion.

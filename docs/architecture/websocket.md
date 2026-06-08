@@ -1,6 +1,6 @@
 # WebSocket
 
-Real-time channel: `packages/core` ↔ clients (`packages/web`, `packages/dev`, embeddable widget). One endpoint, room-scoped, JSON envelopes.
+Real-time channel: `packages/core` ↔ clients (`packages/web-v2`, `packages/dev`). One endpoint, room-scoped, JSON envelopes.
 
 ## Endpoint & connection
 
@@ -31,7 +31,7 @@ Connection = authenticated principal (`user` or `device`). Principals join *room
 { "type": "unsubscribe", "room": "project:abc" }
 ```
 
-Runner control adds `{"type":"runner:register|unregister|update", ...}` — device-only, gated by `runnerFramework` feature flag.
+Runner control adds `{"type":"runner:register|unregister|update", ...}` — device-only (handled in `ws/server.ts` for device principals).
 
 **Server → client envelope** (every published event):
 
@@ -72,17 +72,15 @@ Event names dot-cased (`issue.updated`, not `issue:updated`). Categories and roo
 
 **No** session-targeted send, **no** `waitForSubscriber()` (both removed). Target a single user via `publish` to `user:<userId>`.
 
-## Client integration (packages/web)
+## Client integration (packages/web-v2)
 
-`packages/web/src/lib/ws/`:
+`packages/web-v2/src/lib/ws/`:
 
 - **`client.ts`** — `wsClient` singleton, one connection per tab. Resends all room subscriptions on every reopen. Reconnect = jittered exponential backoff (1s base, 30s cap). Browsers auth via `forge_auth` cookie automatically; cross-origin embeds call `setBearerToken(jwt)` before `connect()` for the subprotocol path.
 - **`use-websocket.ts`** — `useWebSocket()` mounts the singleton once under the auth provider; listens via `event-router.ts` (maps event names → React Query `invalidateQueries`).
 - **`use-room.ts`** — `useRoom(room)` subscribes a component to a room for its lifetime; pass null while loading.
 - **`event-router.ts`** — single dispatch table. Cache keys MUST match feature hook modules — renaming one side silently breaks realtime updates.
 - **`seq-tracker.ts`** — tracks last-seen `seq` per job for replay.
-
-Widget (`packages/web/src/widget/widget-root.tsx`) consumes the SSE response of `POST /api/widget/chat` directly (events `chat:text_delta`, `chat:tool_use`, `chat:done`, `chat:complete`, `chat:error`, `chat:session_ready`) for streaming AI chat — does NOT subscribe to any WS room for chat content.
 
 ## Design decisions
 
