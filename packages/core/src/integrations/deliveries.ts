@@ -9,8 +9,6 @@ import {
 export interface RecordDeliveryInput {
   /** Binding the delivery is scoped to (the post-cutover key). */
   bindingId: string;
-  /** Legacy column — null for new bindings with no backing project_integration. */
-  projectIntegrationId?: string | null;
   direction: IntegrationDeliveryDirection;
   eventName: string;
   payload: unknown;
@@ -31,7 +29,6 @@ export async function recordDelivery(input: RecordDeliveryInput): Promise<string
     .insert(integrationDeliveries)
     .values({
       bindingId: input.bindingId,
-      projectIntegrationId: input.projectIntegrationId ?? null,
       direction: input.direction,
       eventName: input.eventName,
       payload: (input.payload ?? {}) as Record<string, unknown>,
