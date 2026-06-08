@@ -6,7 +6,7 @@
 // the WS reconnect-replay (keyed `['projects']`) keeps live updates working.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
-import { formatApiError } from "@/lib/api/error";
+import { formatApiError, formatPipelineConfigError } from "@/lib/api/error";
 import { ApiError } from "@/lib/api/client";
 import { projectSettingsApi } from "./api";
 import type { PipelineConfig, ProjectUpdateInput } from "./types";
@@ -83,9 +83,20 @@ export function useUpdatePipelineConfig(id: string | undefined) {
     onSuccess: (data) => {
       qc.setQueryData(["project", id, "pipeline-config"], data);
       toast({ title: "Pipeline config saved", tone: "success" });
+      if (data.warnings?.length) {
+        toast({
+          title: "Saved with warnings",
+          description: data.warnings.join(" "),
+          tone: "info",
+        });
+      }
     },
     onError: (err) =>
-      toast({ title: "Couldn't save pipeline config", description: formatApiError(err), tone: "error" }),
+      toast({
+        title: "Couldn't save pipeline config",
+        description: formatPipelineConfigError(err),
+        tone: "error",
+      }),
   });
 }
 

@@ -34,12 +34,17 @@ export const projectSettingsApi = {
   getPipelineConfig: (id: string) =>
     apiClient<{ pipelineConfig: PipelineConfig }>(`/projects/${id}/pipeline-config`),
 
-  /** `PATCH /api/projects/:id/pipeline-config` — full config (owner only). */
+  /** `PATCH /api/projects/:id/pipeline-config` — full config (owner only).
+   *  Core returns `{ pipelineConfig, warnings }`; `warnings` are non-blocking
+   *  advisories (e.g. an enabled stage with no skill that will auto-skip). */
   updatePipelineConfig: (id: string, pipelineConfig: PipelineConfig) =>
-    apiClient<{ pipelineConfig: PipelineConfig }>(`/projects/${id}/pipeline-config`, {
-      method: "PATCH",
-      body: JSON.stringify(pipelineConfig),
-    }),
+    apiClient<{ pipelineConfig: PipelineConfig; warnings?: string[] }>(
+      `/projects/${id}/pipeline-config`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(pipelineConfig),
+      },
+    ),
 
   /** `GET /api/projects/:id/members` — members with emails. */
   listMembers: (id: string) =>
