@@ -5,134 +5,15 @@ import {
   type IntegrationOwnerType,
   integrationBindings,
   integrationConnections,
-  projectIntegrations,
 } from '../db/schema.js';
 import type { AdapterContext, IntegrationProvider } from './types.js';
 import { decryptJson, encryptJson } from './vault.js';
 
-export type ProjectIntegrationRow = typeof projectIntegrations.$inferSelect;
-
-/** Returns the active integration row for a project + provider + environment. */
-export async function findActive(
-  projectId: string,
-  provider: IntegrationProvider,
-  environment: IntegrationEnvironment,
-): Promise<ProjectIntegrationRow | null> {
-  const rows = await db
-    .select()
-    .from(projectIntegrations)
-    .where(
-      and(
-        eq(projectIntegrations.projectId, projectId),
-        eq(projectIntegrations.provider, provider),
-        eq(projectIntegrations.environment, environment),
-        eq(projectIntegrations.active, true),
-      ),
-    )
-    .limit(1);
-  return rows[0] ?? null;
-}
-
-/**
- * Loads ALL integrations for a project + provider (across environments).
- * Used by the inbound webhook router to find the right one to dispatch to
- * when the payload carries the environment hint (Coolify webhook embeds it).
- */
-export async function listForProjectProvider(
-  projectId: string,
-  provider: IntegrationProvider,
-): Promise<ProjectIntegrationRow[]> {
-  return db
-    .select()
-    .from(projectIntegrations)
-    .where(
-      and(eq(projectIntegrations.projectId, projectId), eq(projectIntegrations.provider, provider)),
-    );
-}
-
-export async function findById(id: string): Promise<ProjectIntegrationRow | null> {
-  const rows = await db
-    .select()
-    .from(projectIntegrations)
-    .where(eq(projectIntegrations.id, id))
-    .limit(1);
-  return rows[0] ?? null;
-}
-
-export interface UpsertIntegrationInput {
-  projectId: string;
-  provider: IntegrationProvider;
-  environment: IntegrationEnvironment;
-  config: Record<string, unknown>;
-  secrets?: Record<string, unknown> | null;
-  integrationSecret?: string | null;
-}
-
-export async function createIntegration(
-  input: UpsertIntegrationInput,
-): Promise<ProjectIntegrationRow> {
-  const secretsEnc = input.secrets ? encryptJson(input.secrets) : null;
-  const [row] = await db
-    .insert(projectIntegrations)
-    .values({
-      projectId: input.projectId,
-      provider: input.provider,
-      environment: input.environment,
-      config: input.config,
-      secretsEnc,
-      integrationSecret: input.integrationSecret ?? null,
-      active: true,
-    })
-    .returning();
-  if (!row) throw new Error('createIntegration: insert returned no row');
-  return row;
-}
-
-export interface UpdateIntegrationPatch {
-  config?: Record<string, unknown>;
-  secrets?: Record<string, unknown> | null;
-  integrationSecret?: string | null;
-  active?: boolean;
-  lastHealthStatus?: string | null;
-  lastHealthAt?: Date | null;
-  breakerOpenedAt?: Date | null;
-}
-
-export async function updateIntegration(
-  id: string,
-  patch: UpdateIntegrationPatch,
-): Promise<ProjectIntegrationRow | null> {
-  const set: Record<string, unknown> = { updatedAt: new Date() };
-  if (patch.config !== undefined) set.config = patch.config;
-  if (patch.secrets !== undefined) {
-    set.secretsEnc = patch.secrets ? encryptJson(patch.secrets) : null;
-  }
-  if (patch.integrationSecret !== undefined) set.integrationSecret = patch.integrationSecret;
-  if (patch.active !== undefined) set.active = patch.active;
-  if (patch.lastHealthStatus !== undefined) set.lastHealthStatus = patch.lastHealthStatus;
-  if (patch.lastHealthAt !== undefined) set.lastHealthAt = patch.lastHealthAt;
-  if (patch.breakerOpenedAt !== undefined) set.breakerOpenedAt = patch.breakerOpenedAt;
-  const [row] = await db
-    .update(projectIntegrations)
-    .set(set)
-    .where(eq(projectIntegrations.id, id))
-    .returning();
-  return row ?? null;
-}
-
-export async function softDeleteIntegration(id: string): Promise<void> {
-  await db
-    .update(projectIntegrations)
-    .set({ active: false, updatedAt: new Date() })
-    .where(eq(projectIntegrations.id, id));
-}
-
 // === Connection / Binding model (docs/integrations/connection-binding.md) ===
 //
-// Reads + CRUD over the additive successor tables. The REST cutover issue
-// consumes these to repoint resolvers / MCP tools / inbound router off
-// project_integrations. Nothing in core reads these yet, so they are inert and
-// safe to land.
+// Reads + CRUD over the integration tables. Since the ISS-399 cutover these are
+// the live read path for resolvers / MCP tools / inbound router; the legacy
+// project_integrations helpers they replaced were removed by ISS-410 (epic F5).
 
 export type IntegrationConnectionRow = typeof integrationConnections.$inferSelect;
 export type IntegrationBindingRow = typeof integrationBindings.$inferSelect;

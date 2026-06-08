@@ -93,9 +93,10 @@ export function decryptJson<T = unknown>(enc: Buffer): T {
 }
 
 /**
- * Boot-time guard. Throws if the master key is missing AND at least one
- * active project_integrations row exists. Fresh installs without any
- * integration stay bootable so OSS users can run core without minting a key.
+ * Boot-time guard. Throws if the master key is missing AND at least one active
+ * integration_connections row holds an encrypted secret (secrets_enc IS NOT
+ * NULL). Fresh installs without any integration stay bootable so OSS users can
+ * run core without minting a key.
  */
 export async function assertVaultBootSafety(): Promise<void> {
   const raw = readMasterKey();
@@ -111,20 +112,25 @@ export async function assertVaultBootSafety(): Promise<void> {
   }
   // Lazy-import db + schema so this module is safe to import in unit tests
   // that mock the database and never exercise the boot-time guard.
-  const [{ db }, { projectIntegrations }, drizzle] = await Promise.all([
+  const [{ db }, { integrationConnections }, drizzle] = await Promise.all([
     import('../db/client.js'),
     import('../db/schema.js'),
     import('drizzle-orm'),
   ]);
   const [row] = await db
     .select({ n: drizzle.count() })
-    .from(projectIntegrations)
-    .where(drizzle.eq(projectIntegrations.active, true));
+    .from(integrationConnections)
+    .where(
+      drizzle.and(
+        drizzle.eq(integrationConnections.active, true),
+        drizzle.isNotNull(integrationConnections.secretsEnc),
+      ),
+    );
   if (row && Number(row.n) > 0) {
     throw new Error(
-      'INTEGRATION_MASTER_KEY is not set but project_integrations contains active rows. ' +
-        'Refusing to boot — secrets cannot be decrypted. Set INTEGRATION_MASTER_KEY or ' +
-        'mark the affected rows inactive.',
+      'INTEGRATION_MASTER_KEY is not set but integration_connections contains active rows ' +
+        'with encrypted secrets. Refusing to boot — secrets cannot be decrypted. Set ' +
+        'INTEGRATION_MASTER_KEY or mark the affected connections inactive.',
     );
   }
   logger.warn(

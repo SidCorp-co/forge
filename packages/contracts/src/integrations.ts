@@ -105,11 +105,10 @@ export interface IntegrationsStatus {
 /**
  * Webhook/dispatch delivery row (`GET .../integrations/:id/deliveries`). Raw
  * `integration_deliveries` row with Date columns serialized to ISO strings.
- * `projectIntegrationId` is null for post-cutover dispatches (binding-only).
+ * Scoped by `bindingId` since the ISS-410 retirement of project_integrations.
  */
 export interface IntegrationDeliveryRow {
   id: string;
-  projectIntegrationId: string | null;
   bindingId: string | null;
   direction: IntegrationDeliveryDirection;
   eventName: string;

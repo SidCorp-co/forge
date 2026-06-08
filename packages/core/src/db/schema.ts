@@ -1960,13 +1960,10 @@ export const pipelineOutbox = pgTable('pipeline_outbox', {
   lastError: text('last_error'),
 });
 
-// ISS-234 — Integration Framework foundation. project_integrations stores
-// one row per (project, provider, environment); secrets_enc holds the
-// AES-256-GCM ciphertext produced by src/integrations/vault.ts.
-//
-// integration_secret is the HMAC key adapters use to verify inbound
-// webhook callbacks — kept separate from projects.webhookSecret so each
-// adapter has scoped credentials.
+// ISS-234 — Integration Framework foundation. secrets_enc columns hold the
+// AES-256-GCM ciphertext produced by src/integrations/vault.ts; the legacy
+// project_integrations table was retired by ISS-410 (epic ISS-404, F5) in
+// favour of the integration_connections / integration_bindings model below.
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   dataType() {
     return 'bytea';
@@ -1975,41 +1972,6 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({
 
 export const integrationEnvironments = ['staging', 'prod'] as const;
 export type IntegrationEnvironment = (typeof integrationEnvironments)[number];
-
-export const projectIntegrations = pgTable(
-  'project_integrations',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    provider: text('provider').notNull(),
-    environment: text('environment', { enum: integrationEnvironments }).notNull(),
-    config: jsonb('config').notNull().default({}),
-    secretsEnc: bytea('secrets_enc'),
-    integrationSecret: text('integration_secret'),
-    active: boolean('active').notNull().default(true),
-    breakerOpenedAt: timestamp('breaker_opened_at', { withTimezone: true }),
-    lastHealthStatus: text('last_health_status'),
-    lastHealthAt: timestamp('last_health_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    projectProviderIdx: index('project_integrations_project_provider_idx').on(
-      t.projectId,
-      t.provider,
-    ),
-    activeProviderIdx: index('project_integrations_active_provider_idx')
-      .on(t.provider, t.active)
-      .where(sql`active = true`),
-    projectProviderEnvUq: uniqueIndex('project_integrations_project_provider_env_uq').on(
-      t.projectId,
-      t.provider,
-      t.environment,
-    ),
-  }),
-);
 
 export const integrationDeliveryDirections = ['outbound', 'inbound'] as const;
 export type IntegrationDeliveryDirection = (typeof integrationDeliveryDirections)[number];
@@ -2021,17 +1983,8 @@ export const integrationDeliveries = pgTable(
   'integration_deliveries',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    // Legacy link. Nullable since the ISS-399 cutover: new bindings created via
-    // the connection/binding CRUD have no backing project_integrations row, so
-    // post-cutover dispatches write binding_id only (project_integration_id
-    // stays populated on backfilled historical rows). Dropped entirely in the
-    // table-retirement issue (epic F).
-    projectIntegrationId: uuid('project_integration_id').references(
-      () => projectIntegrations.id,
-      { onDelete: 'cascade' },
-    ),
     // Connection/Binding model: the dispatch/read key after the ISS-399 cutover.
-    // Backfilled 1:1 from project_integration_id by migration 0101.
+    // The legacy project-integration link column was dropped by ISS-410 (epic F5).
     bindingId: uuid('binding_id').references(() => integrationBindings.id, {
       onDelete: 'cascade',
     }),
@@ -2047,16 +2000,6 @@ export const integrationDeliveries = pgTable(
     completedAt: timestamp('completed_at', { withTimezone: true }),
   },
   (t) => ({
-    integrationCreatedIdx: index('integration_deliveries_integration_created_idx').on(
-      t.projectIntegrationId,
-      sql`${t.createdAt} DESC`,
-    ),
-    integrationStatusCreatedIdx: index('integration_deliveries_integration_status_created_idx')
-      .on(t.projectIntegrationId, t.status, sql`${t.createdAt} DESC`)
-      .where(sql`direction = 'outbound'`),
-    requestIdUq: uniqueIndex('integration_deliveries_request_id_uq')
-      .on(t.projectIntegrationId, t.requestId)
-      .where(sql`request_id IS NOT NULL`),
     bindingCreatedIdx: index('integration_deliveries_binding_created_idx').on(
       t.bindingId,
       sql`${t.createdAt} DESC`,
@@ -2069,19 +2012,7 @@ export const integrationDeliveries = pgTable(
   }),
 );
 
-export const projectIntegrationsRelations = relations(projectIntegrations, ({ one, many }) => ({
-  project: one(projects, {
-    fields: [projectIntegrations.projectId],
-    references: [projects.id],
-  }),
-  deliveries: many(integrationDeliveries),
-}));
-
 export const integrationDeliveriesRelations = relations(integrationDeliveries, ({ one }) => ({
-  integration: one(projectIntegrations, {
-    fields: [integrationDeliveries.projectIntegrationId],
-    references: [projectIntegrations.id],
-  }),
   binding: one(integrationBindings, {
     fields: [integrationDeliveries.bindingId],
     references: [integrationBindings.id],
