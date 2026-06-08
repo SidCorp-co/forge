@@ -2,13 +2,16 @@
 // against `packages/core/src/integrations/routes.ts` (ISS-305).
 import { apiClient } from "@/lib/api/client";
 import type {
+  BindExistingConnectionRequest,
   BindingListResponse,
   ConfirmProdDeployResult,
+  ConnectionBindingsResponse,
   ConnectionCreateInput,
   ConnectionListResponse,
   ConnectionResponse,
   ConnectionUpdateInput,
   CreateIntegrationInput,
+  DeliveryRetryResponse,
   IntegrationDelivery,
   IntegrationSummary,
   IntegrationTestResult,
@@ -73,6 +76,16 @@ export const integrationsApi = {
     apiClient<{ items: IntegrationDelivery[] }>(
       `/projects/${projectId}/integrations/${id}/deliveries`,
     ),
+
+  // === ISS-408 / F3 — re-dispatch a failed outbound delivery ===
+
+  /** `POST .../deliveries/:deliveryId/retry` — re-enqueue with a fresh requestId
+   *  (202). Server gates on `direction==='outbound' && status==='failed'`. */
+  retryDelivery: (projectId: string, bindingId: string, deliveryId: string) =>
+    apiClient<DeliveryRetryResponse>(
+      `/projects/${projectId}/integrations/${bindingId}/deliveries/${deliveryId}/retry`,
+      { method: "POST" },
+    ),
 };
 
 // === ISS-401/C — owner-scoped connection CRUD ===
@@ -103,4 +116,23 @@ export const integrationConnectionsApi = {
     apiClient<{ ok: boolean }>(`/integration-connections/${id}`, {
       method: "DELETE",
     }),
+
+  // === ISS-408 / F3 — bindings for a connection + bind-existing flow ===
+
+  /** `GET /api/integration-connections/:id/bindings` — every (project, env)
+   *  binding fed by this connection. Used by the connection-detail drawer's
+   *  "Projects using this connection" list. */
+  bindings: (id: string) =>
+    apiClient<ConnectionBindingsResponse>(`/integration-connections/${id}/bindings`),
+
+  /** `POST /api/integration-connections/:id/bindings` — bind an EXISTING
+   *  connection to a project+env (no secrets in the request — the connection
+   *  already holds the credential). Returns 201 with `{ integration,
+   *  integrationSecret }`; the freshly minted inbound HMAC `integrationSecret`
+   *  is shown exactly once (matches the rotate-secret pattern). */
+  bindExisting: (id: string, body: BindExistingConnectionRequest) =>
+    apiClient<{ integration: IntegrationSummary; integrationSecret: string }>(
+      `/integration-connections/${id}/bindings`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
 };

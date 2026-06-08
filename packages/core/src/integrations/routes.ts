@@ -708,6 +708,7 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
         meta: {
           environment: row.environment,
           breakerOpen: row.breakerOpenedAt !== null,
+          lastHealthStatus: row.lastHealthStatus,
           capabilities: coolifyCaps,
         },
       });
@@ -741,7 +742,12 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
           : 'never test-connected',
       lastSyncAt: toIso(postmanRow.lastHealthAt),
       configured: true,
-      meta: { region: pmCfg.region ?? 'us', mode: pmCfg.mode ?? 'minimal', capabilities: postmanCaps },
+      meta: {
+        region: pmCfg.region ?? 'us',
+        mode: pmCfg.mode ?? 'minimal',
+        lastHealthStatus: postmanRow.lastHealthStatus,
+        capabilities: postmanCaps,
+      },
     });
   }
 
@@ -776,6 +782,7 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
       meta: {
         storeSlug: epCfg.storeSlug ?? null,
         storeName: epCfg.storeName ?? null,
+        lastHealthStatus: epodsystemRow.lastHealthStatus,
         capabilities: epodsystemCaps,
       },
     });

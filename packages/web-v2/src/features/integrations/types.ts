@@ -43,6 +43,10 @@ export type {
   ConnectionResponse,
   ConnectionListResponse,
   BindingListResponse,
+  // === ISS-408 / F3 — share-existing-connection + delivery-retry ===
+  BindExistingConnectionRequest,
+  ConnectionBindingsResponse,
+  DeliveryRetryResponse,
 } from "@forge/contracts";
 
 // === ISS-336 — Postman integration config shape ===
