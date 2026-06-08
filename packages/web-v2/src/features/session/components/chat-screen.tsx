@@ -25,7 +25,6 @@ import {
   deriveStage,
   statusToChip,
 } from "@/features/sessions/types";
-import { useProject } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
@@ -55,15 +54,6 @@ export function ChatScreen({ projectId }: { projectId: string }) {
     queryFn: () => sessionApi.listByType(projectId, AGENT_TYPE, 20),
     enabled: !!projectId,
   });
-
-  // A web-origin chat send needs a live Claude-capable client (desktop app or a
-  // chat-capable CLI runner) — both register as devices in the project pool.
-  // With none online, core rejects /agent-sessions/send (409 NO_CLAUDE_CLIENT)
-  // or the session silently hangs. Gate the composer + warn up-front so the
-  // send isn't a dead end. Same online signal FleetStrip uses (ISS-426).
-  const projectQ = useProject(projectId);
-  const noOnlineClient =
-    !!projectQ.data && !(projectQ.data.devicePool ?? []).some((d) => d.status === "online");
 
   const [activeId, setActiveId] = useState<string | undefined>();
   const recentSessions = latestQ.data?.items ?? [];
@@ -194,15 +184,6 @@ export function ChatScreen({ projectId }: { projectId: string }) {
               </Banner>
             </div>
           )}
-          {noOnlineClient && (
-            <div className="mb-6">
-              <Banner tone="attention">
-                <span className="font-medium">No runner online for this project.</span> Chat can&apos;t
-                run until a chat-capable runner is online (or the desktop app is open). Bring one
-                online, then send.
-              </Banner>
-            </div>
-          )}
           {send.isError && (
             <div className="mb-6">
               <Banner tone="danger">
@@ -236,12 +217,7 @@ export function ChatScreen({ projectId }: { projectId: string }) {
         </div>
       </div>
 
-      <Composer
-        onSend={handleSend}
-        busy={busy}
-        disabled={noOnlineClient}
-        placeholder="Message the agent…"
-      />
+      <Composer onSend={handleSend} busy={busy} placeholder="Message the agent…" />
     </div>
   );
 }
