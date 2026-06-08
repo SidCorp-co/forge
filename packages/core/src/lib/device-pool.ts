@@ -1,6 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { devices, projects } from '../db/schema.js';
+import { devices, projects, runners } from '../db/schema.js';
 import { dispatchLivenessMs } from './dispatch-liveness.js';
 
 /**
@@ -67,5 +67,33 @@ export function resolveRepoPath(
   projectRepoPath: string | null,
 ): string | null {
   const v = (override ?? projectRepoPath ?? '').trim();
+  return v.length === 0 ? null : v;
+}
+
+/**
+ * Working dir for an interactive/schedule session dispatched to `deviceId`.
+ *
+ * Chat & schedule run `claude` with this as cwd ON THE CHOSEN RUNNER'S box, so
+ * it must be that runner's local binding path — NOT `projects.repoPath`, which
+ * is only a default hint valid on the owner's own machine. Sending the project
+ * path to a remote runner makes `claude` spawn in a non-existent cwd and fail
+ * with "No such file or directory"; the session then hangs `running` forever.
+ *
+ * Returns the runner binding `repo_path` for (project, device) when set, else
+ * `null` so the caller falls back to the project default — correct for the
+ * desktop client, which has no binding and runs on the owner's box. Mirrors the
+ * job path (`daemon/dispatch.rs resolve_repo`), keeping chat/schedule + jobs in
+ * lockstep.
+ */
+export async function resolveRunnerRepoPath(
+  projectId: string,
+  deviceId: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ repoPath: runners.repoPath })
+    .from(runners)
+    .where(and(eq(runners.projectId, projectId), eq(runners.deviceId, deviceId)))
+    .limit(1);
+  const v = (row?.repoPath ?? '').trim();
   return v.length === 0 ? null : v;
 }

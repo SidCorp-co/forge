@@ -4,7 +4,7 @@ import { syncTurnsWithMessages } from '../agent-sessions/turns-helpers.js';
 import { db } from '../db/client.js';
 import { agentSessions, projects, schedules } from '../db/schema.js';
 import { buildChatPreamble, TOOL_REFERENCE } from '../lib/chat-preamble.js';
-import { findAvailableDeviceForProject, resolveRepoPath } from '../lib/device-pool.js';
+import { findAvailableDeviceForProject, resolveRepoPath, resolveRunnerRepoPath } from '../lib/device-pool.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
 import { openOneShotRun } from '../pipeline/runs.js';
@@ -140,7 +140,9 @@ export async function dispatchScheduleRun(
     metadata: { source: 'schedule.run', scheduleId: schedule.id },
   });
 
-  const repoPath = resolveRepoPath(null, project.repoPath ?? null);
+  // cwd for `claude` runs on the chosen runner's box → prefer its binding path.
+  const bindingRepo = await resolveRunnerRepoPath(resolvedProjectId, deviceId);
+  const repoPath = resolveRepoPath(null, bindingRepo ?? project.repoPath ?? null);
   const nowDate = new Date();
   const userMessage = {
     role: 'user',
