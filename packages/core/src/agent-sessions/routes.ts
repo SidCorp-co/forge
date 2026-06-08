@@ -33,7 +33,7 @@ import { buildChatPreamble, TOOL_REFERENCE } from '../lib/chat-preamble.js';
 import { findAvailableDeviceForProject, resolveRepoPath, resolveRunnerRepoPath } from '../lib/device-pool.js';
 import { setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess, type ProjectAccess } from '../lib/project-access.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
@@ -164,7 +164,10 @@ function extractIssueId(metadata: unknown): string | null {
 // share the same fan-out shape (project room + owning device room).
 
 export const agentSessionRoutes = new Hono<{ Variables: AuthVars }>();
-agentSessionRoutes.use('*', requireAuth(), assertEmailVerified());
+// Dual-auth: user JWT (web/desktop) OR device token (a CLI runner streaming a
+// chat reply back via PATCH /:id). Non-device routes still authorize via
+// `loadProjectAccess(_, userId)`, which fails closed for a device principal.
+agentSessionRoutes.use('*', requireUserOrDevice(), assertEmailVerified());
 
 // === Static-path lifecycle routes (start / send / abort / build-prompt /
 // prompt-built). All mounted BEFORE the `:id` handlers to avoid uuid validator
@@ -1365,8 +1368,17 @@ agentSessionRoutes.patch(
       .limit(1);
     if (!existing) throw notFound('agent session not found');
 
-    const access = await loadProjectAccess(existing.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    // A CLI runner streams its chat reply back here with a device token. Scope
+    // it tightly: a device may write ONLY the session that was dispatched to it.
+    // Users (web/desktop) keep the project-membership check.
+    if (c.get('principal') === 'device') {
+      if (existing.deviceId !== c.get('deviceId')) {
+        throw forbidden('device does not own this session');
+      }
+    } else {
+      const access = await loadProjectAccess(existing.projectId, userId);
+      if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    }
 
     const patchNow = new Date();
     const updates: Record<string, unknown> = { updatedAt: patchNow };
