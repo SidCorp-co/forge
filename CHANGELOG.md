@@ -116,6 +116,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Integration connections now show a "needs re-authorization" status when their stored credential is rejected, so you know to re-enter it instead of seeing a generic error.**
   *Technical: New needs_reauth value in the connection health-status set (free-form text column, no migration); widen the HealthStatus/IntegrationHealthResult literals + card-status mapping. OAuth-first connect deferred — no provider supports an app-install OAuth flow today.*
 
+- **You can now share an existing integration connection with another project from project settings, see which projects use a connection, retry failed webhook deliveries, and spot a connection that needs re-authorization — all without re-entering the credential.**
+  *Technical: web-v2 features/integrations: bindExistingConnection / listConnectionBindings / retryDelivery on api+hooks; the connection-detail drawer renders a projects-using-this-connection list; the delivery-log viewer adds a Retry button on failed outbound deliveries; a new needs_reauth derived state reads raw lastHealthStatus==='needs_reauth' (IntegrationCardStatus stays a 4-value contract; needs_reauth maps to attention). Core surfaces lastHealthStatus on coolify/postman/epodsystem card.meta. Merge baf3afb0.*
+
 ### Changed
 
 - **The Forge MCP tools that were prefixed `forge_admin_*` have been renamed to reflect what they actually are — ordinary project-scoped tools, not system-admin tools. `forge_admin_runners` → `forge_runners`, `forge_admin_users` → `forge_collaborators`, `forge_admin_health` → `forge_ops_health`; project archive moved onto `forge_projects.archive`; and the cross-your-projects metrics tool is now `forge_metrics.step_durations`. Access is unchanged — every one stays gated by your role on each project. The token-creation dialog no longer claims the `admin` scope grants "cross-tenant admin tools".**
