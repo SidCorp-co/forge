@@ -6,8 +6,8 @@
 // surface — per-step runner/model overrides survive a save. When the
 // `pipelineControl` flag is off, core 404s and we render an info empty-state.
 import { useEffect, useState } from "react";
-import { Button, Card, CardContent, EmptyState, ErrorState, Skeleton, Toggle } from "@/design";
-import { formatApiError } from "@/lib/api/error";
+import { Banner, Button, Card, CardContent, EmptyState, ErrorState, Skeleton, Toggle } from "@/design";
+import { formatApiError, formatPipelineConfigError } from "@/lib/api/error";
 import { isFeatureOff, usePipelineConfig, useUpdatePipelineConfig } from "../hooks";
 import {
   STEP_TOGGLE_KEYS,
@@ -131,7 +131,12 @@ export function PipelineTab({ projectId, canEdit }: { projectId: string; canEdit
         </div>
 
         {canEdit && (
-          <div className="mt-4">
+          <div className="mt-4 space-y-3">
+            {update.isError && (
+              <Banner tone="danger" onDismiss={() => update.reset()}>
+                {formatPipelineConfigError(update.error)}
+              </Banner>
+            )}
             <Button
               variant="primary"
               loading={update.isPending}
