@@ -84,6 +84,9 @@ function neverClaimedThresholdMs(): number {
 export interface ZombieSweepResult {
   queueTimedOut: number;
   heartbeatTimedOut: number;
+  // chat/schedule/agent sessions created `running` that never got a working
+  // client (claudeSessionId still NULL) — see Pass 3 in sweepZombieSessions.
+  noClientAcked: number;
 }
 
 export interface OrphanReconcileResult {
@@ -280,17 +283,58 @@ export async function sweepZombieSessions(
     broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'heartbeat_timeout');
   }
 
+  // Pass 3: a chat/schedule/agent session (exempt from passes 1-2, which only
+  // reap pipeline/pm) created `running` that NEVER got a working client —
+  // claudeSessionId is still NULL and the heartbeat never advanced past
+  // creation. This is the dominant silent-hang (ISS-420: no online device, a
+  // CLI runner that ignored agent:start, etc.) that was never reaped. Safe:
+  // an idle chat between turns is `completed` (not running), and a real turn
+  // sets claudeSessionId within seconds of spawn — so neither is touched.
+  // COALESCE so a NULL/absent metadata.type (plain chat, schedule.run) counts
+  // as "not pipeline/pm" and is reaped.
+  const noClientFailed = await db
+    .update(agentSessions)
+    .set({ status: 'failed', failureReason: 'no_client_ack', updatedAt: now })
+    .where(
+      and(
+        eq(agentSessions.status, 'running'),
+        sql`${agentSessions.claudeSessionId} IS NULL`,
+        sql`COALESCE(${agentSessions.metadata}->>'type','') NOT IN ${PIPELINE_METADATA_TYPES}`,
+        or(
+          and(
+            isNotNull(agentSessions.lastHeartbeatAt),
+            lt(agentSessions.lastHeartbeatAt, heartbeatCutoff),
+          ),
+          and(
+            sql`${agentSessions.lastHeartbeatAt} IS NULL`,
+            lt(agentSessions.createdAt, heartbeatCutoff),
+          ),
+        ),
+        ...(projectFilter ? [projectFilter] : []),
+      ),
+    )
+    .returning({
+      id: agentSessions.id,
+      projectId: agentSessions.projectId,
+      deviceId: agentSessions.deviceId,
+    });
+
+  for (const z of noClientFailed) {
+    broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'no_client_ack');
+  }
+
   const queueTimedOut = queuedFailed.length;
   const heartbeatTimedOut = heartbeatFailed.length;
+  const noClientAcked = noClientFailed.length;
 
-  if (queueTimedOut > 0 || heartbeatTimedOut > 0) {
+  if (queueTimedOut > 0 || heartbeatTimedOut > 0 || noClientAcked > 0) {
     logger.info(
-      { queueTimedOut, heartbeatTimedOut, queueMs, heartbeatMs },
+      { queueTimedOut, heartbeatTimedOut, noClientAcked, queueMs, heartbeatMs },
       'pipeline-sweeper: zombie sessions failed',
     );
   }
 
-  return { queueTimedOut, heartbeatTimedOut };
+  return { queueTimedOut, heartbeatTimedOut, noClientAcked };
 }
 
 /**
@@ -463,7 +507,7 @@ function broadcastZombieTransition(
   sessionId: string,
   projectId: string,
   deviceId: string | null,
-  reason: 'queue_timeout' | 'heartbeat_timeout',
+  reason: 'queue_timeout' | 'heartbeat_timeout' | 'no_client_ack',
 ): void {
   broadcastSessionEvent(sessionId, projectId, deviceId, 'agent-session.status', {
     status: 'failed',
