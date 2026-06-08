@@ -345,6 +345,33 @@ describe('POST /api/agent-sessions/start', () => {
       ),
     ).toBeUndefined();
   });
+
+  it('409 NO_CLAUDE_CLIENT for an agent-type session with no online client (ISS-420)', async () => {
+    // ISS-420: the guard used to EXEMPT agent-type sessions, so a review/reindex
+    // dispatched with no online device was created `running` and hung silently.
+    // It must now fail fast like a chat does.
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    selectLimit
+      .mockResolvedValueOnce([
+        { id: PROJECT_ID, slug: 'apiflow', ownerId: USER_ID, repoPath: '/repo', defaultDeviceId: null },
+      ])
+      .mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: USER_ID }])
+      .mockResolvedValueOnce([{ role: 'owner' }]);
+    findAvailableDeviceForProject.mockResolvedValueOnce(null);
+
+    const app = buildApp();
+    const res = await app.fetch(
+      req('/api/agent-sessions/start', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ projectSlug: 'apiflow', type: 'qa' }),
+      }),
+    );
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { code?: string }).code).toBe('NO_CLAUDE_CLIENT');
+    expect(insertReturning).not.toHaveBeenCalled();
+  });
 });
 
 describe('POST /api/agent-sessions/send', () => {
@@ -382,6 +409,7 @@ describe('POST /api/agent-sessions/send', () => {
       ])
       .mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: USER_ID }])
       .mockResolvedValueOnce([{ role: 'owner' }])
+      .mockResolvedValueOnce([{ status: 'online' }]) // /send guard: pinned device online
       .mockResolvedValueOnce([{ slug: 'apiflow' }]);
     updateReturning.mockResolvedValueOnce([
       {
@@ -411,6 +439,42 @@ describe('POST /api/agent-sessions/send', () => {
     expect(sendCall).toBeDefined();
     expect((sendCall![1] as { data: any }).data.message).toBe('second');
     expect((sendCall![1] as { data: any }).data.projectSlug).toBe('apiflow');
+  });
+
+  it('409 NO_CLAUDE_CLIENT when the pinned device is offline (ISS-420)', async () => {
+    // ISS-420: /send used to set status=running + append the message, then
+    // silently skip the publish when the device was gone — an undeliverable
+    // follow-up that hung forever. It must fail fast without mutating.
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    selectLimit
+      .mockResolvedValueOnce([
+        {
+          id: SESSION_ID,
+          projectId: PROJECT_ID,
+          userId: USER_ID,
+          deviceId: DEVICE_ID,
+          messages: [{ role: 'user', content: 'first' }],
+          metadata: { deviceId: DEVICE_ID },
+          repoPath: '/repo',
+          claudeSessionId: null,
+        },
+      ])
+      .mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: USER_ID }])
+      .mockResolvedValueOnce([{ role: 'owner' }])
+      .mockResolvedValueOnce([{ status: 'offline' }]); // pinned device offline
+
+    const app = buildApp();
+    const res = await app.fetch(
+      req('/api/agent-sessions/send', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ sessionId: SESSION_ID, message: 'second' }),
+      }),
+    );
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { code?: string }).code).toBe('NO_CLAUDE_CLIENT');
+    expect(updateReturning).not.toHaveBeenCalled();
   });
 });
 

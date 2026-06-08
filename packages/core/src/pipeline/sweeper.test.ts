@@ -113,21 +113,34 @@ beforeEach(() => {
 });
 
 describe('sweepZombieSessions — interactive chat exemption (ISS-321)', () => {
-  it('scopes BOTH the queue-timeout and heartbeat-timeout passes to pipeline/pm sessions', async () => {
+  it('scopes the queue/heartbeat passes to pipeline/pm, and reaps only never-acked non-pipeline sessions (ISS-420)', async () => {
     sessionsWhere.mockResolvedValue([]); // no zombies
 
     await sweepZombieSessions(new Date('2026-06-05T00:00:00Z'), {});
 
-    // Two UPDATE passes: queued-past-timeout + running-with-stale-heartbeat.
-    expect(sweepWhereArgs.length).toBe(2);
-    // Both passes must carry `metadata->>'type' IN ('pipeline','pm')` so a plain
-    // chat session (created with metadata = {}) is never reaped while it sits
-    // idle waiting on the user. This guards the AC that the stale-detector must
-    // not kill a waiting chat — chat lives entirely off this predicate.
-    for (const arg of sweepWhereArgs) {
-      const text = sqlText(arg);
-      expect(text).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
-    }
+    // Three UPDATE passes: queued-past-timeout, running-with-stale-heartbeat,
+    // and the ISS-420 no-client-ack reaper for chat/schedule/agent sessions.
+    expect(sweepWhereArgs.length).toBe(3);
+    const [pass1, pass2, pass3] = sweepWhereArgs.map(sqlText);
+
+    // Passes 1-2 carry `metadata->>'type' IN ('pipeline','pm')` so a plain chat
+    // (metadata = {}) is never reaped by the queue/heartbeat timeouts while it
+    // sits idle waiting on the user — chat lives entirely off this predicate.
+    expect(pass1).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
+    expect(pass2).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
+
+    // Pass 3 reaps the INVERSE set (NOT pipeline/pm) but ONLY a session that
+    // never got a working client: `claude_session_id IS NULL`. An idle chat
+    // between turns has a claudeSessionId set (and is `completed`, not running),
+    // so this never kills a waiting chat — it only clears a true silent-hang.
+    // (sqlText renders SQL literals, not bound column names, so assert on the
+    // distinctive literal chunks of pass 3.)
+    expect(pass3).toMatch(/COALESCE/i);
+    expect(pass3).toMatch(/NOT\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
+    expect(pass3).toMatch(/IS\s+NULL/i); // the `claude_session_id IS NULL` guard
+    // passes 1-2 must NOT carry the inverse predicate.
+    expect(pass1).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
+    expect(pass2).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
   });
 });
 

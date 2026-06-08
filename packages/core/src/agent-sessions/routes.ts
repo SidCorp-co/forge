@@ -369,13 +369,15 @@ agentSessionRoutes.post(
       deviceId = project.defaultDeviceId;
     }
 
-    // ISS-321 — a user-driven chat needs a live Claude-capable client to run
-    // it (the desktop app or a chat-capable CLI runner). If none is online, the
-    // session would be created `running` but no `agent:start` listener exists,
-    // so it sits silent until the user gives up. Fail fast with a clear message
-    // instead. Agent sessions (review/reindex) and desktop-origin sessions —
-    // where the desktop runs Claude locally — are exempt.
-    if (!isAgentSession && input.origin !== 'desktop' && !onlineClient) {
+    // ISS-321 / ISS-420 — any non-desktop session (chat OR agent review/reindex)
+    // needs a live Claude-capable client: it's dispatched via `agent:start` /
+    // `agent:review` / `agent:reindex` to the device room, so with no online
+    // device it would be created `running` with no listener and hang silently
+    // forever (the sweeper only reaps pipeline/pm). Fail fast instead. Only
+    // desktop-origin sessions — where the desktop runs Claude locally — are
+    // exempt. (The desktop is the sole caller that creates agent sessions, and
+    // it always sends origin='desktop', so this does not regress review/reindex.)
+    if (input.origin !== 'desktop' && !onlineClient) {
       throw new HTTPException(409, {
         message:
           'No online Claude client for this project. Open the desktop app or bring a chat-capable runner online, then try again.',
@@ -619,6 +621,30 @@ agentSessionRoutes.post(
     if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
     if (session.userId && session.userId !== userId && !isOwnerOrAdmin(access, userId)) {
       throw forbidden('not the session owner');
+    }
+
+    // ISS-420 — a follow-up needs a live client to deliver `agent:send` to. The
+    // session is pinned to its original device; if that device is missing or
+    // offline the publish below is silently skipped and the turn hangs `running`
+    // forever. Fail fast (mirrors the `/start` NO_CLAUDE_CLIENT guard) instead of
+    // returning ok for an undeliverable message. Desktop runs Claude locally.
+    if (input.origin !== 'desktop') {
+      const pinnedDeviceId =
+        ((session.metadata ?? {}) as { deviceId?: string }).deviceId ?? session.deviceId ?? null;
+      const [pinnedDevice] = pinnedDeviceId
+        ? await db
+            .select({ status: devices.status })
+            .from(devices)
+            .where(eq(devices.id, pinnedDeviceId))
+            .limit(1)
+        : [];
+      if (pinnedDevice?.status !== 'online') {
+        throw new HTTPException(409, {
+          message:
+            'No online Claude client for this session. Open the desktop app or bring its runner online, then try again.',
+          cause: { code: 'NO_CLAUDE_CLIENT' },
+        });
+      }
     }
 
     const prevMeta = (session.metadata ?? {}) as Record<string, unknown> & {
