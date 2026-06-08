@@ -152,7 +152,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
         {tab === "agent" && (
           <AgentTab projectId={project.id} canEdit={canEdit || listItem.role === "admin"} />
         )}
-        {tab === "integrations" && <IntegrationsTab />}
+        {tab === "integrations" && <IntegrationsTab projectId={project.id} canEdit={canEdit} />}
         {tab === "advanced" && <AdvancedTab project={project} canEdit={canEdit} />}
       </div>
     </div>

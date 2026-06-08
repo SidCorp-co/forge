@@ -38,6 +38,44 @@ describe("deriveDirectoryStatus", () => {
       deriveDirectoryStatus(card({ status: "connected", meta: { breakerOpen: false } })),
     ).toBe("connected");
   });
+
+  it("surfaces needs_reauth from raw lastHealthStatus regardless of bucket", () => {
+    expect(
+      deriveDirectoryStatus(
+        card({ status: "attention", meta: { lastHealthStatus: "needs_reauth" } }),
+      ),
+    ).toBe("needs_reauth");
+    // Wins over an error bucket too — credentials rejected reads as actionable,
+    // not generic failure.
+    expect(
+      deriveDirectoryStatus(card({ status: "error", meta: { lastHealthStatus: "needs_reauth" } })),
+    ).toBe("needs_reauth");
+    // And over a healthy-looking connected bucket (paranoia path: server lag
+    // between adapter writing the signal and the card.status being recomputed).
+    expect(
+      deriveDirectoryStatus(
+        card({ status: "connected", meta: { lastHealthStatus: "needs_reauth" } }),
+      ),
+    ).toBe("needs_reauth");
+    // Wins over breaker too — needs_reauth is a more specific actionable state.
+    expect(
+      deriveDirectoryStatus(
+        card({ status: "connected", meta: { breakerOpen: true, lastHealthStatus: "needs_reauth" } }),
+      ),
+    ).toBe("needs_reauth");
+  });
+
+  it("does not light needs_reauth for other lastHealthStatus values", () => {
+    expect(
+      deriveDirectoryStatus(card({ status: "connected", meta: { lastHealthStatus: "ok" } })),
+    ).toBe("connected");
+    expect(
+      deriveDirectoryStatus(card({ status: "attention", meta: { lastHealthStatus: "degraded" } })),
+    ).toBe("degraded");
+    expect(
+      deriveDirectoryStatus(card({ status: "error", meta: { lastHealthStatus: "error" } })),
+    ).toBe("error");
+  });
 });
 
 describe("getCapabilities", () => {

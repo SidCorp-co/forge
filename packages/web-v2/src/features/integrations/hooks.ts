@@ -5,6 +5,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { integrationConnectionsApi, integrationsApi } from "./api";
 import type {
+  BindExistingConnectionRequest,
   ConnectionCreateInput,
   ConnectionUpdateInput,
   CreateIntegrationInput,
@@ -132,6 +133,26 @@ export function useIntegrationDeliveries(projectId: string | undefined, id: stri
   });
 }
 
+// === ISS-408 / F3 — retry failed outbound deliveries ===
+
+/** Re-dispatch a failed outbound delivery (202). Caller passes the deliveryId
+ *  to `mutate`. On success, invalidates the delivery-list key so the new row
+ *  appears once the worker records it. */
+export function useRetryDelivery(projectId: string | undefined, bindingId: string | null) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (deliveryId: string) =>
+      integrationsApi.retryDelivery(projectId as string, bindingId as string, deliveryId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["integrations", "deliveries", projectId, bindingId] });
+      toast({ title: "Retry queued", tone: "success" });
+    },
+    onError: (err) =>
+      toast({ title: "Couldn't retry delivery", description: formatApiError(err), tone: "error" }),
+  });
+}
+
 // === ISS-401/C — owner-scoped connection hooks ===
 // Connections belong to the authenticated principal, NOT a project, so these
 // keys are NOT project-scoped: a single `['integration-connections']` cache
@@ -194,5 +215,44 @@ export function useDeleteConnection() {
     },
     onError: (err) =>
       toast({ title: "Couldn't remove connection", description: formatApiError(err), tone: "error" }),
+  });
+}
+
+// === ISS-408 / F3 — list bindings for a connection + share-existing flow ===
+
+/**
+ * Project+env bindings fed by one connection. Keyed
+ * `['integration-connections', id, 'bindings']` — a CHILD of
+ * `['integration-connections']`, so the existing event-router invalidator on
+ * `integration.changed` cascades to this key with no extra wiring.
+ */
+export function useConnectionBindings(connectionId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["integration-connections", connectionId, "bindings"],
+    queryFn: () => integrationConnectionsApi.bindings(connectionId as string),
+    enabled: !!connectionId,
+  });
+}
+
+/**
+ * Bind an existing connection to a project+env without re-entering the
+ * credential. Returns the integration row + the one-time HMAC
+ * `integrationSecret`. Invalidates both the connection cache (new binding) AND
+ * the target project's integrations list/status (a new binding flips a card).
+ */
+export function useBindExistingConnection() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: BindExistingConnectionRequest }) =>
+      integrationConnectionsApi.bindExisting(id, body),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["integration-connections"] });
+      qc.invalidateQueries({ queryKey: ["integrations", "list", vars.body.projectId] });
+      qc.invalidateQueries({ queryKey: ["integrations", "status", vars.body.projectId] });
+      toast({ title: "Connection shared", tone: "success" });
+    },
+    onError: (err) =>
+      toast({ title: "Couldn't share connection", description: formatApiError(err), tone: "error" }),
   });
 }

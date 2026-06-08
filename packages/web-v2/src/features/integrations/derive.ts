@@ -10,10 +10,16 @@ import type { IntegrationCapabilities } from "@forge/contracts";
 import type { IconName } from "@/design";
 import type { StatusCard } from "./types";
 
-/** The four honest directory states (ISS-402, reporter comment e24438a1).
- *  No distinct "Needs-reauth" — that arrives with OAuth-first in ISS-404 (F);
- *  for now a broken credential (breaker open / degraded health) reads Degraded. */
-export type DirectoryStatus = "connected" | "degraded" | "error" | "not_connected";
+/** Five honest directory states. ISS-408/F3 added `needs_reauth`, surfaced from
+ *  the raw `lastHealthStatus` (F4 deliberately did NOT widen the 4-bucket
+ *  `IntegrationCardStatus`; needs_reauth still maps to `attention` on the
+ *  coarse server bucket, but the chip here reads the raw string). */
+export type DirectoryStatus =
+  | "connected"
+  | "degraded"
+  | "error"
+  | "not_connected"
+  | "needs_reauth";
 
 /** Conservative capabilities default — mirrors core `DEFAULT_CAPABILITIES`
  *  (packages/core/src/integrations/types.ts) so an absent `meta.capabilities`
@@ -51,6 +57,9 @@ export function isProviderCard(key: string): boolean {
  * unconfigured card stays `not_connected`.
  */
 export function deriveDirectoryStatus(card: Pick<StatusCard, "status" | "meta">): DirectoryStatus {
+  // needs_reauth wins over breaker/bucket — F4 surfaces the credential-rejected
+  // signal verbatim on `lastHealthStatus` (ISS-408/F3 + ISS-409/F4 contract).
+  if (card.meta?.lastHealthStatus === "needs_reauth") return "needs_reauth";
   const breakerOpen = card.meta?.breakerOpen === true;
   switch (card.status) {
     case "connected":
@@ -78,6 +87,15 @@ export const DIRECTORY_STATUS_META: Record<
     label: "Not connected",
     fg: "var(--fg-subtle)",
     bg: "var(--bg-sunken)",
+  },
+  // ISS-408/F3 — distinct actionable state: the credential was rejected and
+  // requires re-authorization. Lock icon (no `key` in the IconName union) +
+  // amber-700 fg so it reads as actionable, not telemetry like Degraded.
+  needs_reauth: {
+    icon: "lock",
+    label: "Needs re-auth",
+    fg: "var(--amberw-700)",
+    bg: "var(--amberw-50)",
   },
 };
 
