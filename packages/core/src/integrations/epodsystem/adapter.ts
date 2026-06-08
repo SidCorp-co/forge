@@ -136,15 +136,20 @@ export const epodsystemAdapter: IntegrationAdapter<EpodsystemConfig, EpodsystemS
       }
 
       if (result.kind !== 'ok') {
+        // unauthorized (HTTP 401/403 OR a 200 + GraphQL errors[] auth rejection)
+        // = key rejected even after the ISS-405 previous-key retry above, so the
+        // operator must re-enter it → needs_reauth (ISS-409). A non-auth HTTP
+        // error stays a generic error.
+        const healthStatus = result.kind === 'unauthorized' ? 'needs_reauth' : 'error';
         await updateConnection(ctx.connectionId, {
-          lastHealthStatus: 'error',
+          lastHealthStatus: healthStatus,
           lastHealthAt: new Date(),
         });
         if (result.kind === 'unauthorized') {
           return result.status === 200
-            ? { status: 'error', message: 'invalid Epodsystem API key' }
+            ? { status: healthStatus, message: 'invalid Epodsystem API key' }
             : {
-                status: 'error',
+                status: healthStatus,
                 message: 'invalid Epodsystem API key',
                 diagnostics: { httpStatus: result.status },
               };

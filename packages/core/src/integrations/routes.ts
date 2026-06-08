@@ -604,6 +604,9 @@ function coolifyHealthToStatus(lastHealthStatus: string | null, active: boolean)
   const s = lastHealthStatus.toLowerCase();
   if (s === 'ok' || s === 'healthy' || s === 'success') return 'connected';
   if (s === 'degraded' || s === 'pending' || s === 'unknown') return 'attention';
+  // needs_reauth (ISS-409) is operator-actionable (re-enter the credential), so
+  // it buckets to `attention`; F3 reads the raw lastHealthStatus for a re-auth chip.
+  if (s === 'needs_reauth') return 'attention';
   return 'error';
 }
 

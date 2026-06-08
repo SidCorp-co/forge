@@ -86,8 +86,13 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown error';
       const status = err instanceof CoolifyApiError ? err.status : null;
+      // A 401/403 here means the API token was rejected even after buildClient
+      // already retried any valid previous token (ISS-405 rotation window), so
+      // the operator must re-enter the credential — surface needs_reauth rather
+      // than a generic error (ISS-409). Any other status stays error.
+      const healthStatus = status === 401 || status === 403 ? 'needs_reauth' : 'error';
       await updateConnection(ctx.connectionId, {
-        lastHealthStatus: 'error',
+        lastHealthStatus: healthStatus,
         lastHealthAt: new Date(),
       });
       logger.warn(
@@ -95,7 +100,7 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
         'coolify: healthcheck failed',
       );
       return {
-        status: 'error',
+        status: healthStatus,
         message,
         diagnostics: { httpStatus: status },
       } satisfies HealthCheckResult;
@@ -180,6 +185,15 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
         durationMs,
         completedAt: new Date(),
       });
+      // Revocation discovered during a deploy (not just the healthcheck): a
+      // 401/403 means the token was rejected, so flag needs_reauth too (ISS-409)
+      // — keeps connection health truthful between healthchecks.
+      if (status === 401 || status === 403) {
+        await updateConnection(ctx.connectionId, {
+          lastHealthStatus: 'needs_reauth',
+          lastHealthAt: new Date(),
+        });
+      }
       const tripped = await maybeTripBreaker({
         bindingId: ctx.bindingId,
         connectionId: ctx.connectionId,

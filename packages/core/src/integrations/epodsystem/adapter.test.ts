@@ -144,8 +144,13 @@ describe('epodsystemAdapter.healthcheck — rotation-window fallback (ISS-405)',
     );
 
     expect(calls).toEqual(['Bearer crmk_current']);
-    expect(res.status).toBe('error');
+    // Key rejected (HTTP 401) and the rotation window expired → needs_reauth (ISS-409).
+    expect(res.status).toBe('needs_reauth');
     expect(res.message).toBe('invalid Epodsystem API key');
+    expect(updateConnectionMock).toHaveBeenCalledWith(
+      CONN_ID,
+      expect.objectContaining({ lastHealthStatus: 'needs_reauth' }),
+    );
   });
 
   it('does NOT retry when no previousApiKey is stored', async () => {
@@ -161,6 +166,11 @@ describe('epodsystemAdapter.healthcheck — rotation-window fallback (ISS-405)',
     const res = await epodsystemAdapter.healthcheck(buildCtx({ apiKey: 'crmk_current' }));
 
     expect(calls).toEqual(['Bearer crmk_current']);
-    expect(res.status).toBe('error');
+    // 200 + GraphQL errors[] auth rejection, no previous key → needs_reauth (ISS-409).
+    expect(res.status).toBe('needs_reauth');
+    expect(updateConnectionMock).toHaveBeenCalledWith(
+      CONN_ID,
+      expect.objectContaining({ lastHealthStatus: 'needs_reauth' }),
+    );
   });
 });
