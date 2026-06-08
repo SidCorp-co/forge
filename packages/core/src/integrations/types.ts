@@ -20,7 +20,13 @@ export interface AdapterContext<
   integrationSecret: string | null;
 }
 
-export type HealthStatus = 'ok' | 'degraded' | 'error';
+/**
+ * `needs_reauth` (ISS-409 / F4): the stored credential was rejected (HTTP
+ * 401/403, or an epodsystem GraphQL auth error) AND the ISS-405 previous-
+ * credential rotation fallback did not recover — the operator must re-enter the
+ * credential. Distinct from `error`, which covers transient/other failures.
+ */
+export type HealthStatus = 'ok' | 'degraded' | 'error' | 'needs_reauth';
 
 export interface HealthCheckResult {
   status: HealthStatus;

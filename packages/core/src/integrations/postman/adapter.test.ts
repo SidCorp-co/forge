@@ -81,8 +81,13 @@ describe('postmanAdapter.healthcheck — rotation-window 401 fallback (ISS-405)'
     );
 
     expect(calls).toEqual(['PMAK-current']);
-    expect(res.status).toBe('error');
+    // Key rejected and the rotation window expired → needs_reauth (ISS-409).
+    expect(res.status).toBe('needs_reauth');
     expect(res.message).toBe('invalid Postman API key');
+    expect(updateConnectionMock).toHaveBeenCalledWith(
+      CONN_ID,
+      expect.objectContaining({ lastHealthStatus: 'needs_reauth' }),
+    );
   });
 
   it('does NOT retry when no previousApiKey is stored', async () => {
@@ -95,7 +100,12 @@ describe('postmanAdapter.healthcheck — rotation-window 401 fallback (ISS-405)'
     const res = await postmanAdapter.healthcheck(buildCtx({ apiKey: 'PMAK-current' }));
 
     expect(calls).toEqual(['PMAK-current']);
-    expect(res.status).toBe('error');
+    // No previous key to fall back to → credential rejected → needs_reauth (ISS-409).
+    expect(res.status).toBe('needs_reauth');
+    expect(updateConnectionMock).toHaveBeenCalledWith(
+      CONN_ID,
+      expect.objectContaining({ lastHealthStatus: 'needs_reauth' }),
+    );
   });
 
   it('surfaces non-401 HTTP errors without retrying', async () => {

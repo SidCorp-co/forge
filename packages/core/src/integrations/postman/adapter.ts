@@ -91,15 +91,23 @@ export const postmanAdapter: IntegrationAdapter<PostmanConfig, PostmanSecrets> =
       }
 
       if (result.kind !== 'ok') {
+        // unauthorized = key rejected even after the ISS-405 previous-key retry
+        // above, so the operator must re-enter it → needs_reauth (ISS-409). A
+        // non-auth HTTP error stays a generic error.
+        const healthStatus = result.kind === 'unauthorized' ? 'needs_reauth' : 'error';
         await updateConnection(ctx.connectionId, {
-          lastHealthStatus: 'error',
+          lastHealthStatus: healthStatus,
           lastHealthAt: new Date(),
         });
         const reason =
           result.kind === 'unauthorized'
             ? 'invalid Postman API key'
             : `Postman API error (HTTP ${result.status})`;
-        return { status: 'error', message: reason, diagnostics: { httpStatus: result.status } };
+        return {
+          status: healthStatus,
+          message: reason,
+          diagnostics: { httpStatus: result.status },
+        };
       }
 
       const user = result.body.user ?? {};

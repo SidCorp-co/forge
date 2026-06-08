@@ -125,9 +125,15 @@ export interface IntegrationDeliveryRow {
 
 // === Health / test-connection result ===
 
-/** Result of the test-connection (`POST .../test`) call — an adapter `HealthCheckResult`. */
+/**
+ * Result of the test-connection (`POST .../test`) call — an adapter `HealthCheckResult`.
+ * `needs_reauth` (ISS-409 / F4) signals the stored credential was rejected and
+ * the rotation fallback did not recover; a consumer (F3) prompts re-authorization.
+ * It is surfaced verbatim on `lastHealthStatus`; `IntegrationCardStatus` stays a
+ * 4-value coarse bucket (needs_reauth maps to `attention`).
+ */
 export interface IntegrationHealthResult {
-  status: 'ok' | 'degraded' | 'error';
+  status: 'ok' | 'degraded' | 'error' | 'needs_reauth';
   message?: string;
   /** Free-form provider diagnostics surfaced to operators in the test-connection UI. */
   diagnostics?: Record<string, unknown>;
