@@ -45,6 +45,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Pipeline jobs that fail mechanically (crash or non-zero exit) now automatically retry from the stage's entry point instead of getting stuck waiting for manual intervention.**
   *Technical: Removed the manual-hold/on_hold-as-block model: finalizeFailedJob reverts issue.status to JOB_TYPE_ENTRY_STATUS so the orchestrator re-dispatches; budget-exhausted/non-retryable failures park at `waiting` + close the stuck pipeline_run; classifyVerdict treats in_progress as pending for code/fix (the ISS-34 no-op fix). manual_hold/manual_hold_until/failure_context columns dropped (migration 0099). Merge 25d1ad13.*
 
+- **Pipeline settings now tell you which stage is blocking a save and why — for example that "Auto triage" needs a registered skill — instead of a vague error that vanishes before you can read it.**
+  *Technical: web-v2 project-settings now has a dedicated formatPipelineConfigError() that reads ApiError.details (stagesMissingSkill / stagesBlocked+blockingIssueIds / unreachable) to name the offending stage, plus a persistent inline danger Banner above Save replacing the <1s bottom-right toast. FRIENDLY_CODES/formatApiError untouched; no core changes. Merge bf1c056a (ISS-422).*
+
 ### Added
 
 - **The pipeline now reproduces bugs before planning: a new `clarified` status sits between `confirmed` and `approved`, and the clarify step runs on the happy path — it reproduces the bug (or validates the UX) in a live environment, attaches evidence and a root-cause hypothesis, and only then hands the issue to planning. Trivially-sized issues (per-stage `skipComplexities`, e.g. xs/s) skip clarify automatically, and projects that never enabled clarify keep their exact previous flow.**
@@ -208,6 +211,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Web v2 pages no longer show a duplicated page title (the section label in the top bar stacked on top of each page's own heading).**
   *Technical: Stop the workspace TopBar from rendering the nav-section label as an <h1>; the page/screen header becomes the single title source. Single edit in (workspace)/layout.tsx.*
+
+- **Pipeline settings now tell you which stage is blocking a save and why — for example that "Auto triage" needs a registered skill — instead of a vague error that vanishes before you can read it.**
+  *Technical: web-v2 project-settings now has a dedicated formatPipelineConfigError() that reads ApiError.details (stagesMissingSkill / stagesBlocked+blockingIssueIds / unreachable) to name the offending stage, plus a persistent inline danger Banner above Save replacing the <1s bottom-right toast. FRIENDLY_CODES/formatApiError untouched; no core changes. Merge bf1c056a (ISS-422).*
 
 ### Security
 
