@@ -113,6 +113,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **New API endpoints to share an existing integration connection with another project/environment without re-entering its credentials, list which projects a connection is bound to, and retry a failed integration delivery.**
   *Technical: core: POST/GET /api/integration-connections/:id/bindings (bind-existing, no secrets, owner-only, 409 on provider+env clash) + POST /api/projects/:projectId/integrations/:id/deliveries/:deliveryId/retry (re-dispatch failed outbound via enqueueCoolifyDispatch). Adds findDeliveryById, listBindingsForConnection; type-only @forge/contracts shapes. web UI is F3 (ISS-408). Merge 34e38ad9.*
 
+- **Integration connections now show a "needs re-authorization" status when their stored credential is rejected, so you know to re-enter it instead of seeing a generic error.**
+  *Technical: New needs_reauth value in the connection health-status set (free-form text column, no migration); widen the HealthStatus/IntegrationHealthResult literals + card-status mapping. OAuth-first connect deferred — no provider supports an app-install OAuth flow today.*
+
 ### Changed
 
 - **The Forge MCP tools that were prefixed `forge_admin_*` have been renamed to reflect what they actually are — ordinary project-scoped tools, not system-admin tools. `forge_admin_runners` → `forge_runners`, `forge_admin_users` → `forge_collaborators`, `forge_admin_health` → `forge_ops_health`; project archive moved onto `forge_projects.archive`; and the cross-your-projects metrics tool is now `forge_metrics.step_durations`. Access is unchanged — every one stays gated by your role on each project. The token-creation dialog no longer claims the `admin` scope grants "cross-tenant admin tools".**
