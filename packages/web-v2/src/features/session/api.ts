@@ -99,8 +99,8 @@ export const sessionApi = {
    * `agent` sessions for a project (latest first), for the Chat resume-or-create
    * bootstrap.
    */
-  listByType: (projectId: string, metadataType: string) => {
-    const params = new URLSearchParams({ projectId, metadataType, pageSize: "1", page: "1" });
+  listByType: (projectId: string, metadataType: string, pageSize = 1) => {
+    const params = new URLSearchParams({ projectId, metadataType, pageSize: String(pageSize), page: "1" });
     return apiClientList<SessionRow>(`/agent-sessions?${params}`);
   },
 };

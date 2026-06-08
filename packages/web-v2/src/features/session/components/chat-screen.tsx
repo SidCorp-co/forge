@@ -9,13 +9,22 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   AgentWorking,
+  Banner,
+  Button,
   EmptyState,
   ErrorState,
+  Menu,
   ProjectLoader,
   StatusChip,
   useElapsed,
+  type MenuItem,
 } from "@/design";
-import { deriveSessionDisplayStatus, deriveStage, statusToChip } from "@/features/sessions/types";
+import {
+  classifySessionOutcome,
+  deriveSessionDisplayStatus,
+  deriveStage,
+  statusToChip,
+} from "@/features/sessions/types";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
@@ -38,15 +47,17 @@ const AGENT_TYPE = "agent";
 export function ChatScreen({ projectId }: { projectId: string }) {
   useRoom(projectRoom(projectId));
 
-  // Resume the latest interactive agent session for this project, if any.
+  // Resume the latest interactive agent session for this project, and list a
+  // page of recent ones to drive the history switcher (ISS-421).
   const latestQ = useQuery({
     queryKey: ["agent-sessions", "chat", projectId],
-    queryFn: () => sessionApi.listByType(projectId, AGENT_TYPE),
+    queryFn: () => sessionApi.listByType(projectId, AGENT_TYPE, 20),
     enabled: !!projectId,
   });
 
   const [activeId, setActiveId] = useState<string | undefined>();
-  const resolvedId = activeId ?? latestQ.data?.items[0]?.id;
+  const recentSessions = latestQ.data?.items ?? [];
+  const resolvedId = activeId ?? recentSessions[0]?.id;
 
   const sessionQ = useSession(resolvedId);
   const turnsQ = useSessionTurns(resolvedId);
@@ -63,6 +74,28 @@ export function ChatScreen({ projectId }: { projectId: string }) {
   const live = display === "running" || display === "stalled";
   const startMs = session?.startedAt ? new Date(session.startedAt).getTime() : undefined;
   const elapsed = useElapsed(startMs, live);
+
+  // Only a GENUINE failure (not a benign lifecycle/capacity cancel or pipeline
+  // cleanup) surfaces the recovery banner — mirrors the sessions list (ISS-322).
+  const outcome = session && display ? classifySessionOutcome(display, session.failureReason) : undefined;
+  const isFailed = outcome?.bucket === "failed";
+
+  // Start a fresh chat WITHOUT deleting the current one. useCreateSession's
+  // onSuccess invalidates ['agent-sessions'], which prefix-matches this list
+  // query, so the history switcher refetches with the new session.
+  const handleNewChat = async () => {
+    const created = await create.mutateAsync({
+      projectId,
+      title: "Chat",
+      metadata: { type: AGENT_TYPE },
+    });
+    setActiveId(created.id);
+  };
+
+  const historyItems: MenuItem[] = recentSessions.map((s) => ({
+    label: `${s.id === resolvedId ? "● " : ""}${s.title?.trim() || `Chat ${s.id.slice(0, 8)}`}`,
+    onSelect: () => setActiveId(s.id),
+  }));
 
   const handleSend = async (message: string) => {
     let id = resolvedId;
@@ -107,15 +140,50 @@ export function ChatScreen({ projectId }: { projectId: string }) {
           <h1 className="fg-h2">Agent chat</h1>
           <p className="fg-body-sm mt-1 text-muted">Ask the agent anything about this project.</p>
         </div>
-        {session && display && (
-          <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          {session && display && (
             <StatusChip status={statusToChip(display)} stage={deriveStage(session.metadata)} size="sm" domain="session" />
-          </div>
-        )}
+          )}
+          {historyItems.length > 1 && (
+            <Menu
+              align="right"
+              items={historyItems}
+              trigger={
+                <Button variant="secondary" size="sm" icon="clock">
+                  History
+                </Button>
+              }
+            />
+          )}
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="plus"
+            loading={create.isPending}
+            onClick={handleNewChat}
+          >
+            New chat
+          </Button>
+        </div>
       </header>
 
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-8">
+          {isFailed && (
+            <div className="mb-6">
+              <Banner
+                tone="danger"
+                action={
+                  <Button variant="secondary" size="sm" icon="plus" loading={create.isPending} onClick={handleNewChat}>
+                    Start new chat
+                  </Button>
+                }
+              >
+                <span className="font-medium">{outcome?.label ?? "Chat failed"}</span>
+                {outcome?.tooltip ? <> — {outcome.tooltip}</> : null}
+              </Banner>
+            </div>
+          )}
           {!resolvedId || items.length === 0 ? (
             <div className="grid min-h-[40dvh] place-items-center">
               <EmptyState
