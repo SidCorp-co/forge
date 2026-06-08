@@ -48,6 +48,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Pipeline settings now tell you which stage is blocking a save and why — for example that "Auto triage" needs a registered skill — instead of a vague error that vanishes before you can read it.**
   *Technical: web-v2 project-settings now has a dedicated formatPipelineConfigError() that reads ApiError.details (stagesMissingSkill / stagesBlocked+blockingIssueIds / unreachable) to name the offending stage, plus a persistent inline danger Banner above Save replacing the <1s bottom-right toast. FRIENDLY_CODES/formatApiError untouched; no core changes. Merge bf1c056a (ISS-422).*
 
+- **Agent chat now clearly tells you when no runner or desktop client is online instead of silently failing to send — the message box is disabled with an explanation and a banner explaining how to start chatting.**
+  *Technical: web-v2 ChatScreen gates the Composer on project devicePool online status (mirrors FleetStrip) and surfaces send failures inline (e.g. 409 NO_CLAUDE_CLIENT) in addition to the toast; backend already fails fast, no backend change (ISS-426). Merge 1d77c562.*
+
 ### Added
 
 - **The pipeline now reproduces bugs before planning: a new `clarified` status sits between `confirmed` and `approved`, and the clarify step runs on the happy path — it reproduces the bug (or validates the UX) in a live environment, attaches evidence and a root-cause hypothesis, and only then hands the issue to planning. Trivially-sized issues (per-stage `skipComplexities`, e.g. xs/s) skip clarify automatically, and projects that never enabled clarify keep their exact previous flow.**
@@ -214,6 +217,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Pipeline settings now tell you which stage is blocking a save and why — for example that "Auto triage" needs a registered skill — instead of a vague error that vanishes before you can read it.**
   *Technical: web-v2 project-settings now has a dedicated formatPipelineConfigError() that reads ApiError.details (stagesMissingSkill / stagesBlocked+blockingIssueIds / unreachable) to name the offending stage, plus a persistent inline danger Banner above Save replacing the <1s bottom-right toast. FRIENDLY_CODES/formatApiError untouched; no core changes. Merge bf1c056a (ISS-422).*
+
+- **Agent chat now clearly tells you when no runner or desktop client is online instead of silently failing to send — the message box is disabled with an explanation and a banner explaining how to start chatting.**
+  *Technical: web-v2 ChatScreen gates the Composer on project devicePool online status (mirrors FleetStrip) and surfaces send failures inline (e.g. 409 NO_CLAUDE_CLIENT) in addition to the toast; backend already fails fast, no backend change (ISS-426). Merge 1d77c562.*
 
 ### Security
 
