@@ -45,6 +45,7 @@ vi.mock('../lib/device-pool.js', () => ({
   findAvailableDeviceForProject: (id: string) => findAvailableDeviceForProject(id),
   resolveRepoPath: (override: string | null | undefined, repo: string | null) =>
     (override ?? repo ?? '').trim() || null,
+  resolveRunnerRepoPath: () => Promise.resolve(null),
 }));
 
 const buildChatPreamble = vi.fn(async () => '## Project Config\n\n---\n\n');

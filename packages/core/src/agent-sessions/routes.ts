@@ -30,7 +30,7 @@ import {
   truncateTurnsAfter,
 } from './turns-helpers.js';
 import { buildChatPreamble, TOOL_REFERENCE } from '../lib/chat-preamble.js';
-import { findAvailableDeviceForProject, resolveRepoPath } from '../lib/device-pool.js';
+import { findAvailableDeviceForProject, resolveRepoPath, resolveRunnerRepoPath } from '../lib/device-pool.js';
 import { setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess, type ProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -411,7 +411,10 @@ agentSessionRoutes.post(
         .slice(0, 120);
     }
 
-    const rp = resolveRepoPath(input.repoPath, project.repoPath);
+    // cwd for `claude` runs on the CHOSEN runner's box → prefer that runner's
+    // binding path; project.repoPath is only valid on the owner's own machine.
+    const bindingRepo = deviceId ? await resolveRunnerRepoPath(project.id, deviceId) : null;
+    const rp = resolveRepoPath(input.repoPath, bindingRepo ?? project.repoPath);
     const now = Date.now();
     const userMessage = { role: 'user', content: effectivePrompt, timestamp: now };
 

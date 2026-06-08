@@ -36,9 +36,13 @@ const findDeviceMock = vi.fn<(projectId: string) => Promise<string | null>>(asyn
 const resolveRepoPathMock = vi.fn(
   (_o: string | null | undefined, p: string | null): string | null => p ?? null,
 );
+const resolveRunnerRepoMock = vi.fn<(projectId: string, deviceId: string) => Promise<string | null>>(
+  async () => null,
+);
 vi.mock('../lib/device-pool.js', () => ({
   findAvailableDeviceForProject: findDeviceMock,
   resolveRepoPath: resolveRepoPathMock,
+  resolveRunnerRepoPath: resolveRunnerRepoMock,
 }));
 
 const syncTurnsMock = vi.fn(
@@ -113,6 +117,8 @@ beforeEach(() => {
   txInsertReturning.mockReset();
   findDeviceMock.mockReset();
   findDeviceMock.mockResolvedValue(DEVICE_ID);
+  resolveRunnerRepoMock.mockReset();
+  resolveRunnerRepoMock.mockResolvedValue(null);
   publishMock.mockReset();
   publishMock.mockReturnValue(undefined);
   syncTurnsMock.mockReset();
@@ -205,6 +211,34 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
       actorUserId: USER_ID,
     });
     expect(broadcastSessionMock).toHaveBeenCalledTimes(1);
+  });
+
+  // Regression: the chosen runner's binding repo_path MUST win over
+  // project.repoPath. The latter is only valid on the owner's box; sending it
+  // to a remote CLI runner makes `claude` spawn in a non-existent cwd and the
+  // chat/schedule session hangs `running` forever.
+  it('runner binding repo_path overrides project.repoPath in the agent:start cwd', async () => {
+    selectLimit.mockResolvedValueOnce([
+      { id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/home/owner/repo' },
+    ]);
+    resolveRunnerRepoMock.mockResolvedValueOnce('/home/services/forge');
+    seedDesktopHappy();
+
+    const result = await dispatchScheduleRun({
+      schedule: {
+        id: SCHEDULE_ID,
+        projectId: SOURCE_PROJECT_ID,
+        prompt: 'do thing',
+        runner: 'desktop',
+        targetProjectSlug: null,
+      },
+      actorUserId: USER_ID,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(resolveRunnerRepoMock).toHaveBeenCalledWith(SOURCE_PROJECT_ID, DEVICE_ID);
+    const [, msg] = publishMock.mock.calls[0] as [string, { data: Record<string, unknown> }];
+    expect(msg.data.repoPath).toBe('/home/services/forge');
   });
 
   it('tick + no device online → no-device / skipped (no inserts, no publish)', async () => {
