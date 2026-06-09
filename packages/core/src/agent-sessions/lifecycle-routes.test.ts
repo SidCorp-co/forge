@@ -197,13 +197,27 @@ describe('POST /api/agent-sessions/start', () => {
 
     findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID);
 
+    // createChatSessionRow inserts an EMPTY row (idle, no device, no claude id).
     insertReturning.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        deviceId: null,
+        status: 'idle',
+        title: 'hello',
+        messages: [],
+        claudeSessionId: null,
+      },
+    ]);
+    // dispatchChatTurn flips it to running + pins the device in the tx.update.
+    updateReturning.mockResolvedValueOnce([
       {
         id: SESSION_ID,
         projectId: PROJECT_ID,
         deviceId: DEVICE_ID,
         status: 'running',
         title: 'hello',
+        claudeSessionId: null,
       },
     ]);
 
@@ -404,13 +418,14 @@ describe('POST /api/agent-sessions/send', () => {
           messages: [{ role: 'user', content: 'first' }],
           metadata: { deviceId: DEVICE_ID },
           repoPath: '/repo',
-          claudeSessionId: null,
+          // A genuine follow-up already has a Claude session → agent:send.
+          claudeSessionId: 'claude-abc',
         },
       ])
       .mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: USER_ID }])
       .mockResolvedValueOnce([{ role: 'owner' }])
-      .mockResolvedValueOnce([{ status: 'online' }]) // /send guard: pinned device online
-      .mockResolvedValueOnce([{ slug: 'apiflow' }]);
+      .mockResolvedValueOnce([{ status: 'online' }]) // resolveChatDevice: pinned device online
+      .mockResolvedValueOnce([{ id: PROJECT_ID, slug: 'apiflow', repoPath: '/repo' }]);
     updateReturning.mockResolvedValueOnce([
       {
         id: SESSION_ID,
@@ -418,7 +433,7 @@ describe('POST /api/agent-sessions/send', () => {
         deviceId: DEVICE_ID,
         status: 'running',
         repoPath: '/repo',
-        claudeSessionId: null,
+        claudeSessionId: 'claude-abc',
         metadata: { deviceId: DEVICE_ID },
         messages: [],
       },

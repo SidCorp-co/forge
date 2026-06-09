@@ -1,15 +1,13 @@
 import { eq } from 'drizzle-orm';
-import { broadcastSession, broadcastTurnAppended } from '../agent-sessions/broadcast.js';
-import { syncTurnsWithMessages } from '../agent-sessions/turns-helpers.js';
+import {
+  createChatSessionRow,
+  dispatchChatTurn,
+  resolveChatDevice,
+} from '../agent-sessions/chat-turn.js';
 import { db } from '../db/client.js';
 import { agentSessions, projects, schedules } from '../db/schema.js';
-import { buildChatPreamble, TOOL_REFERENCE } from '../lib/chat-preamble.js';
-import { findAvailableDeviceForProject, resolveRepoPath, resolveRunnerRepoPath } from '../lib/device-pool.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
-import { openOneShotRun } from '../pipeline/runs.js';
-import { deviceRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
 
 export interface ScheduleRowForDispatch {
   id: string;
@@ -106,8 +104,7 @@ export async function dispatchScheduleRun(
   // because the activity-feed expectations want a real user. A sentinel
   // system user requires a separate migration — tracked for follow-up.
   // Consumers can detect tick-driven sessions by `metadata.tick === true`.
-  const userId =
-    input.actorUserId ?? (await loadOwnerId(resolvedProjectId, resolvedOwnerId));
+  const userId = input.actorUserId ?? (await loadOwnerId(resolvedProjectId, resolvedOwnerId));
   if (!userId) return { ok: false, reason: 'project-not-found', status: 'skipped' };
 
   // Look up project slug + repoPath in one shot for the WS payload.
@@ -127,119 +124,73 @@ export async function dispatchScheduleRun(
   //   and the next cron firing tries again).
   // Manual /run: no device → caller turns `skipped` into a 409 so the user
   //   knows nothing was started. There is no queue to wait on now.
-  const deviceId = await findAvailableDeviceForProject(resolvedProjectId);
-  if (!deviceId) {
+  // Schedules are always REMOTE (no desktop origin) — same device resolution as
+  // chat so the two cannot drift.
+  const client = await resolveChatDevice(
+    { projectId: resolvedProjectId, deviceId: null, metadata: null },
+    undefined,
+  );
+  if (!client.deviceId) {
     return { ok: false, reason: 'no-device', status: 'skipped' };
   }
 
-  // ISS-101 — schedule runs are project-scoped one-shots with no issueId;
-  // open a 'system' run so agent_sessions.pipeline_run_id can be satisfied.
-  const run = await openOneShotRun({
-    projectId: resolvedProjectId,
-    kind: 'system',
-    metadata: { source: 'schedule.run', scheduleId: schedule.id },
-  });
-
-  // cwd for `claude` runs on the chosen runner's box → prefer its binding path.
-  const bindingRepo = await resolveRunnerRepoPath(resolvedProjectId, deviceId);
-  const repoPath = resolveRepoPath(null, bindingRepo ?? project.repoPath ?? null);
-  const nowDate = new Date();
-  const userMessage = {
-    role: 'user',
-    content: schedule.prompt,
-    timestamp: nowDate.getTime(),
-  };
   const title = schedule.name?.trim() || 'Scheduled run';
-
-  const metadata: Record<string, unknown> = {
-    source: 'schedule.run',
-    scheduleId: schedule.id,
-    deviceId,
-  };
+  const metadata: Record<string, unknown> = { source: 'schedule.run', scheduleId: schedule.id };
   if (input.tick) metadata.tick = true;
 
-  let inserted: typeof agentSessions.$inferSelect;
+  // ISS-101 — schedule runs are project-scoped one-shots with no issueId; open a
+  // 'system' run via the shared chat-session creator, then deliver the prompt
+  // through the ONE chat-turn dispatcher (it pins the device + publishes
+  // `agent:start` with the tool reference + preamble, identical to /start).
+  let session: typeof agentSessions.$inferSelect;
   try {
-    const txResult = await db.transaction(async (tx) => {
-      const [row] = await tx
-        .insert(agentSessions)
-        .values({
-          projectId: resolvedProjectId,
-          userId,
-          deviceId,
-          pipelineRunId: run.id,
-          title,
-          status: 'running',
-          startedAt: nowDate,
-          lastHeartbeatAt: nowDate,
-          repoPath: repoPath ?? null,
-          messages: [userMessage] as never,
-          metadata: metadata as never,
-        })
-        .returning();
-      if (!row) throw new Error('agent_sessions: insert returned no row');
-      // Materialize the seed user turn inside the same transaction so the
-      // legacy blob and turn rows can never diverge if the turn insert throws.
-      const sync = await syncTurnsWithMessages(row.id, [], [userMessage], tx);
-      return { inserted: row, startSync: sync };
+    session = await createChatSessionRow({
+      projectId: resolvedProjectId,
+      userId,
+      title,
+      runKind: 'system',
+      runMetadata: { source: 'schedule.run', scheduleId: schedule.id },
+      metadata,
     });
-    inserted = txResult.inserted;
-    for (const t of txResult.startSync.appended) {
-      broadcastTurnAppended(inserted, t);
-    }
   } catch (err) {
     logger.error(
       { err, scheduleId: schedule.id },
-      'schedule.dispatch: agent_sessions insert failed',
+      'schedule.dispatch: agent_sessions create failed',
     );
     return { ok: false, reason: 'session-failed', status: 'failed' };
   }
 
-  // Best-effort preamble — gives the CLI project context (mirrors /start at
-  // packages/core/src/agent-sessions/routes.ts:549). Non-fatal: schedule
-  // prompts are typically self-contained.
-  let enrichedPrompt = schedule.prompt;
+  // If the WS publish (inside the dispatcher) throws, the row is left `running`
+  // with no claudeSessionId. Mark it failed so the schedule's `lastStatus` (and
+  // the UI) reflects reality on the next sweeper / retention pass — schedules
+  // are unattended, so we cannot rely on a user seeing a 500.
+  let inserted: typeof agentSessions.$inferSelect;
   try {
-    const preamble = await buildChatPreamble(resolvedProjectId);
-    enrichedPrompt = preamble + schedule.prompt;
-  } catch {
-    // non-fatal — proceed with raw prompt
-  }
-
-  // WS publish — fresh-session entry point on the desktop runner. Matches the
-  // non-desktop, non-agent branch of /start (routes.ts:558). If publish
-  // throws, the session row is orphan (status=running, no claudeSessionId).
-  // Mark it failed so the schedule's `lastStatus` (and the UI) reflects
-  // reality on the next ZapierSweeper / retention pass.
-  try {
-    roomManager.publish(deviceRoom(deviceId), {
-      event: 'agent:start',
-      data: {
-        sessionId: inserted.id,
-        repoPath,
-        prompt: enrichedPrompt,
-        projectSlug: project.slug,
-        preBuilt: false,
-        systemPrompt: TOOL_REFERENCE,
-      },
+    inserted = await dispatchChatTurn({
+      session,
+      project: { id: project.id, slug: project.slug, repoPath: project.repoPath },
+      client,
+      message: schedule.prompt,
+      // Parity with /start — web subscribers add the new session to their list.
+      broadcastEvent: 'agent-session.created',
     });
   } catch (err) {
     logger.error(
-      { err, sessionId: inserted.id, scheduleId: schedule.id },
-      'schedule.dispatch: agent:start publish failed',
+      { err, sessionId: session.id, scheduleId: schedule.id },
+      'schedule.dispatch: chat-turn dispatch failed',
     );
     try {
       await db
         .update(agentSessions)
         .set({ status: 'failed', failureReason: 'ws-publish-failed' })
-        .where(eq(agentSessions.id, inserted.id));
+        .where(eq(agentSessions.id, session.id));
     } catch (cleanupErr) {
       logger.error(
-        { err: cleanupErr, sessionId: inserted.id },
-        'schedule.dispatch: failed to mark session failed after publish failure',
+        { err: cleanupErr, sessionId: session.id },
+        'schedule.dispatch: failed to mark session failed after dispatch failure',
       );
     }
-    return { ok: false, reason: 'session-failed', status: 'failed', sessionId: inserted.id };
+    return { ok: false, reason: 'session-failed', status: 'failed', sessionId: session.id };
   }
 
   // Point lastSessionId at this attempt now that the WS publish committed.
@@ -256,9 +207,7 @@ export async function dispatchScheduleRun(
     );
   }
 
-  // Broadcast `agent-session.created` to the project room for parity with
-  // `/api/agent-sessions/start` — web subscribers refresh their session list.
-  broadcastSession(inserted, 'agent-session.created');
+  // (The `agent-session.created` broadcast happens inside `dispatchChatTurn`.)
 
   // Hook subscribers are best-effort — a throw here must not fail the
   // dispatch (the session row + WS publish already committed).

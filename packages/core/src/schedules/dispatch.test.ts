@@ -7,17 +7,19 @@ const selectLimit = vi.fn();
 const selectFrom = vi.fn((_payload: unknown) => ({
   where: vi.fn((_p: unknown) => ({ limit: selectLimit })),
 }));
+// `createChatSessionRow` inserts the EMPTY session via `db.insert(...).values(...).returning()`.
 const insertReturning = vi.fn();
 const insertValues = vi.fn((_payload: unknown) => ({ returning: insertReturning }));
+// schedule's publish-failure cleanup uses `db.update(...).set(...).where(...)`.
 const updateWhere = vi.fn(async (_payload: unknown) => undefined);
 const updateSet = vi.fn((_payload: unknown) => ({ where: updateWhere }));
 
-// `db.transaction(async (tx) => ...)` invokes the callback with a tx object
-// that mirrors the same select/insert/update surface — schedule.dispatch only
-// uses `tx.insert(...).values(...).returning()` and the helpers' `tx` param.
-const txInsertReturning = vi.fn();
-const txInsertValues = vi.fn((_payload: unknown) => ({ returning: txInsertReturning }));
-const txInsert = vi.fn((_payload: unknown) => ({ values: txInsertValues }));
+// `dispatchChatTurn` appends the turn inside `db.transaction(async (tx) => ...)`
+// via `tx.update(...).set(...).where(...).returning()`.
+const txUpdateReturning = vi.fn();
+const txUpdateWhere = vi.fn((_payload: unknown) => ({ returning: txUpdateReturning }));
+const txUpdateSet = vi.fn((_payload: unknown) => ({ where: txUpdateWhere }));
+const txUpdate = vi.fn((_payload: unknown) => ({ set: txUpdateSet }));
 
 vi.mock('../db/client.js', () => ({
   db: {
@@ -25,7 +27,7 @@ vi.mock('../db/client.js', () => ({
     insert: vi.fn(() => ({ values: insertValues })),
     update: vi.fn(() => ({ set: updateSet })),
     transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
-      cb({ insert: txInsert }),
+      cb({ update: txUpdate }),
     ),
   },
 }));
@@ -100,12 +102,31 @@ function seedDesktopHappy() {
   // 2nd .limit: project slug+repoPath lookup.
   // For most tests we set actorUserId so only one limit call is needed.
   findDeviceMock.mockResolvedValue(DEVICE_ID);
-  txInsertReturning.mockResolvedValueOnce([
+  // createChatSessionRow → empty row (status idle, no device, no messages).
+  insertReturning.mockResolvedValueOnce([
     {
       id: SESSION_ID,
       projectId: SOURCE_PROJECT_ID,
+      deviceId: null,
+      title: 'Scheduled run',
+      status: 'idle',
+      messages: [],
+      metadata: { source: 'schedule.run', scheduleId: SCHEDULE_ID },
+      repoPath: null,
+      claudeSessionId: null,
+      startedAt: null,
+    },
+  ]);
+  // dispatchChatTurn → the same row flipped to running with the turn appended.
+  txUpdateReturning.mockResolvedValueOnce([
+    {
+      id: SESSION_ID,
+      projectId: SOURCE_PROJECT_ID,
+      deviceId: DEVICE_ID,
       title: 'Scheduled run',
       status: 'running',
+      claudeSessionId: null,
+      metadata: { source: 'schedule.run', scheduleId: SCHEDULE_ID, deviceId: DEVICE_ID },
     },
   ]);
 }
@@ -114,7 +135,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   selectLimit.mockReset();
   insertReturning.mockReset();
-  txInsertReturning.mockReset();
+  txUpdateReturning.mockReset();
   findDeviceMock.mockReset();
   findDeviceMock.mockResolvedValue(DEVICE_ID);
   resolveRunnerRepoMock.mockReset();
@@ -140,7 +161,7 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
     });
 
     expect(result).toEqual({ ok: false, reason: 'unsupported-runner', status: 'skipped' });
-    expect(txInsertValues).not.toHaveBeenCalled();
+    expect(insertValues).not.toHaveBeenCalled();
     expect(publishMock).not.toHaveBeenCalled();
     expect(findDeviceMock).not.toHaveBeenCalled();
   });
@@ -176,24 +197,30 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
       resolvedProjectId: SOURCE_PROJECT_ID,
     });
 
-    const insertCall = txInsertValues.mock.calls[0]?.[0] as unknown as {
+    // createChatSessionRow seeds the EMPTY row (no device, default idle).
+    const insertCall = insertValues.mock.calls[0]?.[0] as unknown as {
       projectId?: string;
       userId?: string;
-      deviceId?: string;
       title?: string;
-      status?: string;
       metadata?: Record<string, unknown>;
     };
     expect(insertCall?.projectId).toBe(SOURCE_PROJECT_ID);
     expect(insertCall?.userId).toBe(USER_ID);
-    expect(insertCall?.deviceId).toBe(DEVICE_ID);
     expect(insertCall?.title).toBe('Daily Dream');
-    expect(insertCall?.status).toBe('running');
     expect(insertCall?.metadata).toMatchObject({
       source: 'schedule.run',
       scheduleId: SCHEDULE_ID,
-      deviceId: DEVICE_ID,
     });
+
+    // dispatchChatTurn pins the device + flips to running in the tx.update.
+    const turnUpdate = txUpdateSet.mock.calls[0]?.[0] as unknown as {
+      status?: string;
+      deviceId?: string;
+      metadata?: Record<string, unknown>;
+    };
+    expect(turnUpdate?.status).toBe('running');
+    expect(turnUpdate?.deviceId).toBe(DEVICE_ID);
+    expect(turnUpdate?.metadata).toMatchObject({ deviceId: DEVICE_ID });
 
     expect(publishMock).toHaveBeenCalledTimes(1);
     const [room, msg] = publishMock.mock.calls[0] as [string, { event: string; data: Record<string, unknown> }];
@@ -261,7 +288,7 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
     });
 
     expect(result).toEqual({ ok: false, reason: 'no-device', status: 'skipped' });
-    expect(txInsertValues).not.toHaveBeenCalled();
+    expect(insertValues).not.toHaveBeenCalled();
     expect(publishMock).not.toHaveBeenCalled();
   });
 
@@ -283,7 +310,7 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
     });
 
     expect(result).toEqual({ ok: false, reason: 'no-device', status: 'skipped' });
-    expect(txInsertValues).not.toHaveBeenCalled();
+    expect(insertValues).not.toHaveBeenCalled();
     expect(publishMock).not.toHaveBeenCalled();
   });
 
@@ -321,7 +348,7 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
       expect(result.resolvedProjectId).toBe(TARGET_PROJECT_ID);
       expect(result.sessionId).toBe(SESSION_ID);
     }
-    const insertCall = txInsertValues.mock.calls[0]?.[0] as unknown as { projectId?: string };
+    const insertCall = insertValues.mock.calls[0]?.[0] as unknown as { projectId?: string };
     expect(insertCall?.projectId).toBe(TARGET_PROJECT_ID);
     expect(captured.value?.projectId).toBe(TARGET_PROJECT_ID);
     expect(captured.value?.sessionId).toBe(SESSION_ID);
@@ -342,7 +369,7 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
     });
 
     expect(result).toEqual({ ok: false, reason: 'project-not-found', status: 'skipped' });
-    expect(txInsertValues).not.toHaveBeenCalled();
+    expect(insertValues).not.toHaveBeenCalled();
     expect(publishMock).not.toHaveBeenCalled();
   });
 
@@ -423,7 +450,7 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
     });
 
     expect(result.ok).toBe(true);
-    const insertCall = txInsertValues.mock.calls[0]?.[0] as unknown as {
+    const insertCall = insertValues.mock.calls[0]?.[0] as unknown as {
       userId?: string;
       metadata?: { tick?: boolean };
     };
