@@ -184,6 +184,13 @@ export function ChatScreen({ projectId }: { projectId: string }) {
               </Banner>
             </div>
           )}
+          {send.isError && (
+            <div className="mb-6">
+              <Banner tone="danger">
+                <span className="font-medium">Couldn&apos;t send.</span> {formatApiError(send.error)}
+              </Banner>
+            </div>
+          )}
           {!resolvedId || items.length === 0 ? (
             <div className="grid min-h-[40dvh] place-items-center">
               <EmptyState

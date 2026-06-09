@@ -48,6 +48,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Pipeline settings now tell you which stage is blocking a save and why — for example that "Auto triage" needs a registered skill — instead of a vague error that vanishes before you can read it.**
   *Technical: web-v2 project-settings now has a dedicated formatPipelineConfigError() that reads ApiError.details (stagesMissingSkill / stagesBlocked+blockingIssueIds / unreachable) to name the offending stage, plus a persistent inline danger Banner above Save replacing the <1s bottom-right toast. FRIENDLY_CODES/formatApiError untouched; no core changes. Merge bf1c056a (ISS-422).*
 
+- **Agent chat no longer silently fails to send: when a message can't be delivered (no online Claude client), the chat shows a clear inline error instead of nothing. Chat is no longer incorrectly blocked when you have a runner online.**
+  *Technical: web-v2 ChatScreen surfaces the real /agent-sessions/send result (e.g. 409 NO_CLAUDE_CLIENT) inline in addition to the toast. The initial devicePool-based composer disable/banner was reverted — devicePool.status is devices.status, which the runner heartbeat never updates (only runners.status), so it false-blocked chat for active runners. Frontend-only, no backend change (ISS-426). Merges 1d77c562 + d725d311.*
+
 ### Added
 
 - **The pipeline now reproduces bugs before planning: a new `clarified` status sits between `confirmed` and `approved`, and the clarify step runs on the happy path — it reproduces the bug (or validates the UX) in a live environment, attaches evidence and a root-cause hypothesis, and only then hands the issue to planning. Trivially-sized issues (per-stage `skipComplexities`, e.g. xs/s) skip clarify automatically, and projects that never enabled clarify keep their exact previous flow.**
@@ -214,6 +217,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Pipeline settings now tell you which stage is blocking a save and why — for example that "Auto triage" needs a registered skill — instead of a vague error that vanishes before you can read it.**
   *Technical: web-v2 project-settings now has a dedicated formatPipelineConfigError() that reads ApiError.details (stagesMissingSkill / stagesBlocked+blockingIssueIds / unreachable) to name the offending stage, plus a persistent inline danger Banner above Save replacing the <1s bottom-right toast. FRIENDLY_CODES/formatApiError untouched; no core changes. Merge bf1c056a (ISS-422).*
+
+- **Agent chat no longer silently fails to send: when a message can't be delivered (no online Claude client), the chat shows a clear inline error instead of nothing. Chat is no longer incorrectly blocked when you have a runner online.**
+  *Technical: web-v2 ChatScreen surfaces the real /agent-sessions/send result (e.g. 409 NO_CLAUDE_CLIENT) inline in addition to the toast. The initial devicePool-based composer disable/banner was reverted — devicePool.status is devices.status, which the runner heartbeat never updates (only runners.status), so it false-blocked chat for active runners. Frontend-only, no backend change (ISS-426). Merges 1d77c562 + d725d311.*
 
 ### Security
 
