@@ -29,11 +29,13 @@ import {
 } from "@/design";
 import { formatApiError, formatPipelineConfigError } from "@/lib/api/error";
 import {
+  useAdoptSkill,
   useRegisterSkill,
   useSkillRegistrations,
   useSkills,
   useUnregisterSkill,
 } from "@/features/skills/hooks";
+import { usableSkillOptions } from "@/features/skills/types";
 import { isFeatureOff, usePipelineConfig, useUpdatePipelineConfig } from "../hooks";
 import {
   STEP_TOGGLE_KEYS,
@@ -120,7 +122,8 @@ export function PipelineTab({
   const regsQ = useSkillRegistrations(projectId);
   const register = useRegisterSkill(projectId);
   const unregister = useUnregisterSkill(projectId);
-  const skillPending = register.isPending || unregister.isPending;
+  const adopt = useAdoptSkill(projectId);
+  const skillPending = register.isPending || unregister.isPending || adopt.isPending;
 
   // Local working copy of the full config — preserves opaque keys on save.
   const [draft, setDraft] = useState<PipelineConfig | null>(null);
@@ -135,10 +138,16 @@ export function PipelineTab({
     return m;
   }, [regsQ.data]);
 
+  // One option per skill name: a project skill registers directly; a global
+  // template (not yet adopted) is offered as `adopt:<id>` and cloned on select.
   const skillOptions = useMemo<SelectOption[]>(
     () => [
       { value: "", label: "— No skill —" },
-      ...(skillsQ.data ?? []).map((s) => ({ value: s.id, label: s.name })),
+      ...usableSkillOptions(skillsQ.data ?? []).map((o) =>
+        o.kind === "project"
+          ? { value: o.skillId, label: o.name }
+          : { value: `adopt:${o.globalSkillId}`, label: `${o.name} · template` },
+      ),
     ],
     [skillsQ.data],
   );
@@ -205,9 +214,19 @@ export function PipelineTab({
     setDraft((d) => (d ? { ...d, [key]: value } : d));
   }
 
-  function changeSkill(stage: string, skillId: string) {
-    if (skillId) register.mutate({ skillId, stage });
-    else if (skillByStage.has(stage)) unregister.mutate(stage);
+  async function changeSkill(stage: string, value: string) {
+    if (!value) {
+      if (skillByStage.has(stage)) unregister.mutate(stage);
+      return;
+    }
+    if (value.startsWith("adopt:")) {
+      // Adopt-on-select: clone the global template into a project skill, then
+      // bind that copy — the global itself is never registrable.
+      const created = await adopt.mutateAsync(value.slice("adopt:".length));
+      await register.mutateAsync({ skillId: created.id, stage });
+      return;
+    }
+    register.mutate({ skillId: value, stage });
   }
 
   const skillDisabled = !canEdit || skillsQ.isLoading || regsQ.isLoading || skillPending;
@@ -275,7 +294,7 @@ export function PipelineTab({
                 skillOptions={skillOptions}
                 skillValue={skillByStage.get(stage) ?? ""}
                 skillDisabled={skillDisabled}
-                onSkillChange={(v) => changeSkill(stage, v)}
+                onSkillChange={(v) => void changeSkill(stage, v)}
                 showWarning={masterEnabled && on && !skillByStage.has(stage)}
               />
             );

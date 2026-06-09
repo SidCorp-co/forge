@@ -36,8 +36,8 @@ export function useSkillRegistrations(projectId: string | undefined) {
   });
 }
 
-function useSkillMutation<TArgs>(
-  fn: (args: TArgs) => Promise<unknown>,
+function useSkillMutation<TArgs, TData = unknown>(
+  fn: (args: TArgs) => Promise<TData>,
   projectId: string | undefined,
   successMessage: string,
 ) {
@@ -69,5 +69,16 @@ export function useUnregisterSkill(projectId: string | undefined) {
     (stage: string) => skillsApi.unregister(projectId as string, stage),
     projectId,
     "Skill disabled for stage",
+  );
+}
+
+/** Clone a global template into a project skill so it becomes usable. The
+ *  mutation resolves to the new project SkillRow — callers (e.g. the Pipeline
+ *  picker's adopt-on-select) read `.id` to register it to a stage. */
+export function useAdoptSkill(projectId: string | undefined) {
+  return useSkillMutation(
+    (globalSkillId: string) => skillsApi.adopt(projectId as string, globalSkillId),
+    projectId,
+    "Skill adopted into project",
   );
 }

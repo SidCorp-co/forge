@@ -13,8 +13,14 @@ import {
   Stat,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { useRegisterSkill, useSkills, useSkillSyncStatus, useUnregisterSkill } from "../hooks";
-import { mergeSkills, type SkillScope } from "../types";
+import {
+  useAdoptSkill,
+  useRegisterSkill,
+  useSkills,
+  useSkillSyncStatus,
+  useUnregisterSkill,
+} from "../hooks";
+import { mergeSkills, projectSkillNames, type SkillScope } from "../types";
 import { SkillCard } from "./skill-card";
 
 interface SkillsScreenProps {
@@ -35,6 +41,7 @@ export function SkillsScreen({ scope }: SkillsScreenProps) {
   const syncQ = useSkillSyncStatus(projectId);
   const register = useRegisterSkill(projectId);
   const unregister = useUnregisterSkill(projectId);
+  const adopt = useAdoptSkill(projectId);
 
   const isLoading = skillsQ.isLoading || syncQ.isLoading;
   const isError = skillsQ.isError || syncQ.isError;
@@ -44,7 +51,11 @@ export function SkillsScreen({ scope }: SkillsScreenProps) {
     () => mergeSkills(skillsQ.data ?? [], syncQ.data ?? []),
     [skillsQ.data, syncQ.data],
   );
-  const pending = register.isPending || unregister.isPending;
+  const pending = register.isPending || unregister.isPending || adopt.isPending;
+
+  // A global template whose name already has a project copy is redundant in the
+  // list — the project card represents it, so hide the global.
+  const shadowedGlobalNames = useMemo(() => projectSkillNames(skills), [skills]);
 
   const [query, setQuery] = useState("");
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
@@ -52,6 +63,7 @@ export function SkillsScreen({ scope }: SkillsScreenProps) {
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return skills.filter((s) => {
+      if (s.scope === "global" && shadowedGlobalNames.has(s.name)) return false;
       if (scopeFilter !== "all" && s.scope !== scopeFilter) return false;
       if (!q) return true;
       return (
@@ -59,7 +71,7 @@ export function SkillsScreen({ scope }: SkillsScreenProps) {
         (s.description?.toLowerCase().includes(q) ?? false)
       );
     });
-  }, [skills, query, scopeFilter]);
+  }, [skills, query, scopeFilter, shadowedGlobalNames]);
 
   const isFiltered = query.trim() !== "" || scopeFilter !== "all";
 
@@ -147,6 +159,7 @@ export function SkillsScreen({ scope }: SkillsScreenProps) {
               showScope={!singleScope}
               onRegister={(skillId, stage) => register.mutate({ skillId, stage })}
               onUnregister={(stage) => unregister.mutate(stage)}
+              onAdopt={(globalSkillId) => adopt.mutate(globalSkillId)}
             />
           ))}
         </div>

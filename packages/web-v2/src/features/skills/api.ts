@@ -22,6 +22,15 @@ export const skillsApi = {
       `/projects/${encodeURIComponent(projectId)}/skill-registrations`,
     ),
 
+  /** `POST /api/projects/:projectId/skills/apply-default` — clone a global
+   *  template into a new same-name project skill (owner/admin). Returns the new
+   *  project SkillRow; only project skills may then be registered to a stage. */
+  adopt: (projectId: string, globalSkillId: string) =>
+    apiClient<SkillRow>(
+      `/projects/${encodeURIComponent(projectId)}/skills/apply-default`,
+      { method: "POST", body: JSON.stringify({ globalSkillId }) },
+    ),
+
   /** `POST /api/projects/:projectId/skills/:skillId/register` — bind to stage. */
   register: (projectId: string, skillId: string, stage: string) =>
     apiClient<unknown>(

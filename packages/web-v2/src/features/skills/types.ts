@@ -87,6 +87,43 @@ export interface SkillView extends SkillRow {
   synced: boolean;
 }
 
+/**
+ * A pick-able skill for stage binding. Only `scope='project'` skills are
+ * registrable; a `global` template that has NOT yet been adopted surfaces as an
+ * `adopt` option so the UI can clone-then-register it in one step. See
+ * docs/skills-scope-playbook.md.
+ */
+export type UsableSkillOption =
+  | { kind: "project"; skillId: string; name: string }
+  | { kind: "adopt"; globalSkillId: string; name: string };
+
+/**
+ * Collapse a raw `scope=all` skill list (global ∪ project) into one entry per
+ * name (project wins — it's the usable copy). A name with only a global becomes
+ * an `adopt` option. Sorted by name for a stable picker order.
+ */
+export function usableSkillOptions(rows: SkillRow[]): UsableSkillOption[] {
+  const project = new Map<string, SkillRow>();
+  const global = new Map<string, SkillRow>();
+  for (const r of rows) {
+    if (r.scope === "project") project.set(r.name, r);
+    else if (r.scope === "global") global.set(r.name, r);
+  }
+  const out: UsableSkillOption[] = [];
+  for (const name of new Set([...project.keys(), ...global.keys()])) {
+    const p = project.get(name);
+    if (p) out.push({ kind: "project", skillId: p.id, name });
+    else out.push({ kind: "adopt", globalSkillId: global.get(name)!.id, name });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Names that already have a project-scoped skill — used to hide the redundant
+ *  same-name global template card in the Library (the project copy stands in). */
+export function projectSkillNames(rows: { scope: SkillScope; name: string }[]): Set<string> {
+  return new Set(rows.filter((r) => r.scope === "project").map((r) => r.name));
+}
+
 /** Join the skill list with the sync-status rows (by skillId). */
 export function mergeSkills(rows: SkillRow[], sync: SkillSyncStatus[]): SkillView[] {
   const byId = new Map(sync.map((s) => [s.skillId, s]));
