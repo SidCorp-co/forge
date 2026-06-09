@@ -93,6 +93,18 @@ vi.mock('../../ws/server.js', () => ({
   roomManager: { publish: vi.fn() },
 }));
 
+// Keep the real create-path helpers (decode/persist) but stub the read-side
+// attachment join so get/transition/update/etc. don't need a programmed query
+// chain. The real join is its own concern (tested via the helper).
+const listIssueAttachmentsMock = vi.fn(async () => [] as unknown[]);
+vi.mock('../../issues/attachment-service.js', async (importActual) => {
+  const actual = await importActual<typeof import('../../issues/attachment-service.js')>();
+  return {
+    ...actual,
+    listIssueAttachments: (...args: unknown[]) => listIssueAttachmentsMock(...args),
+  };
+});
+
 const { forgeIssuesTool } = await import('./forge-issues.js');
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
@@ -228,6 +240,34 @@ describe('forge_issues tool', () => {
     expect(result.documentId).toBe(ISSUE_ID);
     expect(result.issueId).toBe('ISS-1');
     expect(result.status).toBe('open');
+  });
+
+  it('get attaches the issue attachments[] from the join', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    selectLimit.mockResolvedValueOnce([baseIssueRow]);
+    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    listIssueAttachmentsMock.mockResolvedValueOnce([
+      {
+        id: 'att-1',
+        name: 'repro.png',
+        mime: 'image/png',
+        size: 42,
+        url: '/api/attachments/att-1/download',
+        createdAt: new Date(),
+      },
+    ]);
+
+    const result = (await tool.handler({ action: 'get', documentId: ISSUE_ID })) as {
+      attachments: Array<{ id: string; url: string; mime: string }>;
+    };
+    expect(listIssueAttachmentsMock).toHaveBeenCalledWith(ISSUE_ID);
+    expect(result.attachments).toHaveLength(1);
+    expect(result.attachments[0]?.id).toBe('att-1');
+    expect(result.attachments[0]?.url).toBe('/api/attachments/att-1/download');
   });
 
   it('get throws FORBIDDEN when device owner is not a project member', async () => {

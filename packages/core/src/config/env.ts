@@ -77,6 +77,15 @@ const EnvSchema = z.object({
     .int()
     .positive()
     .default(10 * 1024 * 1024),
+  // Max bytes an attachment may have before `forge_uploads` action=fetch
+  // inlines it into the model context (image block / text). Larger files
+  // return metadata + the download URL instead, so a big file never blows the
+  // context window or the output-token limit (re-emitted base64 truncates).
+  UPLOADS_INLINE_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(5 * 1024 * 1024),
   // Storage backend for comment attachments. `local` writes under UPLOADS_DIR;
   // `s3` is stubbed (calls throw) until the S3 adapter is implemented.
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),

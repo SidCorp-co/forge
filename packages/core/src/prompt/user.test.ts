@@ -9,21 +9,35 @@ const SAMPLE: IssueSnapshot = {
   sessionContext: null,
 };
 
+describe('buildJobPromptString thin-prompt default (fetch-via-tool)', () => {
+  it('inlines NO issue body fields by default for every stage; carries a forge_step_start pointer', () => {
+    for (const jobType of ['triage', 'clarify', 'plan', 'code', 'review', 'test', 'fix'] as const) {
+      const out = buildJobPromptString({ jobType, issueId: 'iss-1', issueSnapshot: SAMPLE });
+      expect(out, jobType).not.toContain('Description:');
+      expect(out, jobType).not.toContain('Plan:');
+      expect(out, jobType).not.toContain('Acceptance:');
+      // Title still orients the agent; the pointer tells it where the rest lives.
+      expect(out, jobType).toContain('Title: Add rate limiting');
+      expect(out, jobType).toContain('forge_step_start');
+    }
+  });
+});
+
 describe('buildJobPromptString policy overrides', () => {
-  it('includeFields override expands beyond per-state default', () => {
-    // Default for `triage` is [description]. Override should add plan + AC.
+  it('includeFields override re-inlines fields above the empty default', () => {
+    // Default is now [] for every state. Override opts description+plan+AC back in.
     const out = buildJobPromptString({
       jobType: 'triage',
       issueId: 'iss-1',
       issueSnapshot: SAMPLE,
       policy: { includeFields: ['description', 'plan', 'acceptanceCriteria'] },
     });
+    expect(out).toContain('Description:');
     expect(out).toContain('Plan:');
     expect(out).toContain('Acceptance:');
   });
 
-  it('includeFields override narrows below per-state default', () => {
-    // Default for `code` is [desc, plan, AC]. Override → only AC.
+  it('includeFields override can re-inline a single field only', () => {
     const out = buildJobPromptString({
       jobType: 'code',
       issueId: 'iss-1',
@@ -35,24 +49,28 @@ describe('buildJobPromptString policy overrides', () => {
     expect(out).not.toContain('Plan:');
   });
 
-  it('fieldCaps override changes truncation threshold', () => {
+  it('fieldCaps override changes truncation threshold (with field re-inlined)', () => {
     const desc = 'x'.repeat(5000);
     const out = buildJobPromptString({
       jobType: 'code',
       issueId: 'iss-1',
       issueSnapshot: { ...SAMPLE, description: desc },
-      policy: { fieldCaps: { description: 1000 } },
+      policy: { includeFields: ['description'], fieldCaps: { description: 1000 } },
     });
     expect(out).toMatch(/\[truncated at \d+\/5000 chars/);
   });
 
-  it('byte-cut strategy skips paragraph search', () => {
+  it('byte-cut strategy skips paragraph search (with field re-inlined)', () => {
     const desc = `${'A'.repeat(900)}\n\n${'B'.repeat(500)}`;
     const out = buildJobPromptString({
       jobType: 'code',
       issueId: 'iss-1',
       issueSnapshot: { ...SAMPLE, description: desc },
-      policy: { fieldCaps: { description: 1000 }, truncationStrategy: 'byte-cut' },
+      policy: {
+        includeFields: ['description'],
+        fieldCaps: { description: 1000 },
+        truncationStrategy: 'byte-cut',
+      },
     });
     // Byte-cut cuts at exactly 1000 → marker reports cap=1000
     expect(out).toMatch(/\[truncated at 1000\/\d+ chars/);
@@ -89,7 +107,7 @@ describe('buildJobPromptString policy overrides', () => {
         ...SAMPLE,
         sessionContext: { sessionCount: 5, decisions },
       },
-      policy: { sessionContext: { depth: 3 } },
+      policy: { sessionContext: { fields: ['decisions'], depth: 3 } },
     });
     // Should include the last 3 decisions only
     expect(out).toContain('decision-19');
@@ -206,7 +224,10 @@ describe('buildJobPromptString — step-handoff (proposal Y)', () => {
       jobType: 'plan',
       issueId: 'iss-1',
       issueSnapshot: snapshot,
-      policy: { handoffs: { enabled: true, injectFromSteps: ['triage'] } },
+      policy: {
+        includeFields: ['description'],
+        handoffs: { enabled: true, injectFromSteps: ['triage'] },
+      },
       priorHandoffs: [
         {
           step: 'triage',
@@ -231,7 +252,10 @@ describe('buildJobPromptString — step-handoff (proposal Y)', () => {
       jobType: 'code',
       issueId: 'iss-1',
       issueSnapshot: snapshot,
-      policy: { handoffs: { enabled: true, injectFromSteps: ['triage', 'plan'] } },
+      policy: {
+        includeFields: ['description', 'plan', 'acceptanceCriteria'],
+        handoffs: { enabled: true, injectFromSteps: ['triage', 'plan'] },
+      },
       priorHandoffs: [
         {
           step: 'plan',
@@ -250,12 +274,17 @@ describe('buildJobPromptString — step-handoff (proposal Y)', () => {
     expect(out).not.toContain('Investigate cookie SameSite');
   });
 
-  it('keeps raw fields when priorHandoffs is empty (rollout-safe fallback)', () => {
+  it('keeps re-inlined raw fields when priorHandoffs is empty (rollout-safe fallback)', () => {
+    // With description re-inlined via includeFields, an enabled-but-empty
+    // handoff set still falls back to the raw field (not skipped).
     const out = buildJobPromptString({
       jobType: 'plan',
       issueId: 'iss-1',
       issueSnapshot: snapshot,
-      policy: { handoffs: { enabled: true, injectFromSteps: ['triage'] } },
+      policy: {
+        includeFields: ['description'],
+        handoffs: { enabled: true, injectFromSteps: ['triage'] },
+      },
       priorHandoffs: [],
     });
     expect(out).toContain('Description:');

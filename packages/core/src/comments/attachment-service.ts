@@ -1,7 +1,9 @@
+import { asc, eq } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
-import { commentAttachments } from '../db/schema.js';
+import { commentAttachments, comments } from '../db/schema.js';
 import { getStorage } from '../storage/index.js';
+import type { CommentAttachmentLite } from './tree.js';
 
 export const ALLOWED_MIMES = new Set([
   'image/png',
@@ -102,4 +104,44 @@ export async function persistCommentAttachment(
     ...inserted,
     url: `/api/comments/attachments/${inserted.id}`,
   };
+}
+
+/**
+ * Group every attachment on an issue's comments by commentId. Shared by the
+ * REST comment-tree endpoint (`comments/routes.ts`) and the MCP read surfaces
+ * (`forge_comments.list`, `forge_step_start`) so all three render the same
+ * `{id,name,mime,size,url,createdAt}` rows from one query. Comments with no
+ * attachment simply have no map entry (caller defaults to `[]`).
+ */
+export async function listCommentAttachmentsForIssue(
+  issueId: string,
+): Promise<Map<string, CommentAttachmentLite[]>> {
+  const rows = await db
+    .select({
+      id: commentAttachments.id,
+      commentId: commentAttachments.commentId,
+      name: commentAttachments.name,
+      mime: commentAttachments.mime,
+      size: commentAttachments.size,
+      createdAt: commentAttachments.createdAt,
+    })
+    .from(commentAttachments)
+    .innerJoin(comments, eq(comments.id, commentAttachments.commentId))
+    .where(eq(comments.issueId, issueId))
+    .orderBy(asc(commentAttachments.createdAt));
+
+  const byCommentId = new Map<string, CommentAttachmentLite[]>();
+  for (const a of rows) {
+    const list = byCommentId.get(a.commentId) ?? [];
+    list.push({
+      id: a.id,
+      name: a.name,
+      mime: a.mime,
+      size: a.size,
+      createdAt: a.createdAt,
+      url: `/api/comments/attachments/${a.id}`,
+    });
+    byCommentId.set(a.commentId, list);
+  }
+  return byCommentId;
 }

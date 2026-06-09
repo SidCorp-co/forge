@@ -2,7 +2,8 @@ import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
-import { comments, issues } from '../../db/schema.js';
+import { commentAttachments, comments, issueAttachments, issues } from '../../db/schema.js';
+import { getStorage } from '../../storage/index.js';
 import {
   UPLOAD_TICKET_TTL_MS,
   UploadTicketError,
@@ -15,17 +16,26 @@ import {
   zodToMcpSchema,
 } from './lib.js';
 
+// Single top-level object schema (NOT a discriminated union) — MCP tool
+// inputSchemas MUST be `type:object`, so per-action fields are optional here
+// and validated in the handler. `action=request` needs data.targetId+name;
+// `action=fetch` needs data.attachmentId.
 const inputSchema = z
   .object({
-    action: z.literal('request'),
+    action: z.enum(['request', 'fetch']),
     data: z
       .object({
         target: z.enum(['issue', 'comment']),
-        targetId: z.uuid(),
-        name: z.string().trim().min(1).max(200),
+        // request: the file to upload
+        targetId: z.uuid().optional(),
+        name: z.string().trim().min(1).max(200).optional(),
         // Optional — inferred from the file extension when omitted; the ticket
         // service rejects anything outside ALLOWED_MIMES regardless.
         mime: z.string().trim().min(1).max(255).optional(),
+        // fetch: the attachment to read (issue_attachments.id /
+        // comment_attachments.id), as returned in any `attachments[].id` from
+        // forge_issues / forge_step_start / forge_comments.
+        attachmentId: z.uuid().optional(),
       })
       .strict(),
   })
@@ -73,25 +83,143 @@ async function loadCommentProjectId(commentId: string): Promise<string> {
   return row.projectId;
 }
 
+interface AttachmentForFetch {
+  name: string;
+  mime: string;
+  size: number;
+  path: string;
+  projectId: string;
+  url: string;
+}
+
+async function loadAttachmentForFetch(
+  target: 'issue' | 'comment',
+  attachmentId: string,
+): Promise<AttachmentForFetch> {
+  if (target === 'issue') {
+    const [row] = await db
+      .select({
+        name: issueAttachments.name,
+        mime: issueAttachments.mime,
+        size: issueAttachments.size,
+        path: issueAttachments.path,
+        projectId: issues.projectId,
+      })
+      .from(issueAttachments)
+      .innerJoin(issues, eq(issues.id, issueAttachments.issueId))
+      .where(eq(issueAttachments.id, attachmentId))
+      .limit(1);
+    if (!row) throw new Error('NOT_FOUND: attachment not found');
+    return { ...row, url: `/api/attachments/${attachmentId}/download` };
+  }
+  const [row] = await db
+    .select({
+      name: commentAttachments.name,
+      mime: commentAttachments.mime,
+      size: commentAttachments.size,
+      path: commentAttachments.path,
+      projectId: issues.projectId,
+    })
+    .from(commentAttachments)
+    .innerJoin(comments, eq(comments.id, commentAttachments.commentId))
+    .innerJoin(issues, eq(issues.id, comments.issueId))
+    .where(eq(commentAttachments.id, attachmentId))
+    .limit(1);
+  if (!row) throw new Error('NOT_FOUND: attachment not found');
+  return { ...row, url: `/api/comments/attachments/${attachmentId}` };
+}
+
+const INLINE_TEXT_MIMES = new Set(['text/plain', 'text/markdown']);
+
 export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_uploads',
   description:
-    'Mint a short-lived, single-use upload URL for attaching a local file to an ' +
-    'issue or comment WITHOUT base64-inlining bytes through the model context ' +
-    '(presigned-URL pattern). action=request, data={target:"issue"|"comment", ' +
-    'targetId:<uuid>, name:"<filename>", mime?:"<type>"}. Returns {uploadId, ' +
-    'method:"PUT", uploadUrl, uploadPath, expiresIn (~300s), maxBytes}. Then upload ' +
-    'the bytes out-of-band with NO auth header: `curl -X PUT -T <localPath> ' +
-    '"<uploadUrl>"` (if uploadUrl is null, prepend your Forge API origin to ' +
-    'uploadPath). The PUT returns the attachment {id, name, mime, size, url}; ' +
-    'reference that url in the issue/comment body. The capability is bound to the ' +
-    'target, your identity, name and mime server-side and is single-use — re-request ' +
-    'for each file. Allowed mimes match the issue/comment attachment limits.',
+    'Upload (action=request) or READ (action=fetch) an issue/comment attachment.\n' +
+    'action=request — mint a short-lived, single-use upload URL WITHOUT base64-inlining ' +
+    'bytes through the model context (presigned-URL pattern). data={target:"issue"|"comment", ' +
+    'targetId:<uuid>, name:"<filename>", mime?:"<type>"}. Returns {uploadId, method:"PUT", ' +
+    'uploadUrl, uploadPath, expiresIn (~300s), maxBytes}. Upload out-of-band with NO auth ' +
+    'header: `curl -X PUT -T <localPath> "<uploadUrl>"` (if uploadUrl is null, prepend your ' +
+    'Forge API origin to uploadPath). The PUT returns the attachment {id,name,mime,size,url}.\n' +
+    "action=fetch — read an EXISTING attachment's content so you can analyze it. " +
+    'data={target:"issue"|"comment", attachmentId:<uuid from any attachments[].id>}. Images ' +
+    '(png/jpeg/gif/webp) return as a viewable image block (you SEE the screenshot); text/markdown ' +
+    'return inline as text. PDFs/video and oversized files (> inline cap) return metadata + the ' +
+    'download url only (not inlined). Use this whenever an issue/comment references an attached ' +
+    'image or file — the prompt does NOT inline attachment bytes.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
     const { principal } = ctx;
+
+    if (input.action === 'fetch') {
+      const { target, attachmentId } = input.data;
+      if (!attachmentId) {
+        throw new Error('BAD_REQUEST: data.attachmentId is required for fetch');
+      }
+      const att = await loadAttachmentForFetch(target, attachmentId);
+      await assertPrincipalIsMember(principal, att.projectId);
+
+      const meta = {
+        attachmentId,
+        name: att.name,
+        mime: att.mime,
+        size: att.size,
+        url: att.url,
+      };
+
+      const isImage = att.mime.startsWith('image/');
+      const isText = INLINE_TEXT_MIMES.has(att.mime);
+
+      // Decide inlinability from metadata BEFORE touching storage, so a PDF /
+      // video / oversized file never costs a (potentially large) read.
+      if (!isImage && !isText) {
+        return {
+          ...meta,
+          inlined: false,
+          reason: 'unsupported_inline',
+          note: `mime '${att.mime}' can't be inlined for the model; download it via \`url\`.`,
+        };
+      }
+
+      if (att.size > env.UPLOADS_INLINE_MAX_BYTES) {
+        return {
+          ...meta,
+          inlined: false,
+          reason: 'too_large',
+          note: `Attachment is ${att.size} bytes (> inline cap ${env.UPLOADS_INLINE_MAX_BYTES}). Download it via \`url\` instead of inlining.`,
+        };
+      }
+
+      const bytes = await getStorage().get(att.path);
+
+      if (isImage) {
+        return {
+          _mcpContent: [
+            { type: 'text', text: `Attachment "${att.name}" (${att.mime}):` },
+            { type: 'image', data: bytes.toString('base64'), mimeType: att.mime },
+          ],
+          ...meta,
+          inlined: true,
+        };
+      }
+
+      return {
+        _mcpContent: [
+          {
+            type: 'text',
+            text: `Attachment "${att.name}" (${att.mime}):\n\n${bytes.toString('utf8')}`,
+          },
+        ],
+        ...meta,
+        inlined: true,
+      };
+    }
+
     const { target, targetId, name } = input.data;
+    if (!targetId || !name) {
+      throw new Error('BAD_REQUEST: data.targetId and data.name are required for request');
+    }
 
     const projectId =
       target === 'issue'

@@ -16,6 +16,7 @@ import {
   AttachmentError,
   type DecodedAttachment,
   decodeAndValidateAttachments,
+  listIssueAttachments,
   persistDecodedIssueAttachments,
 } from '../../issues/attachment-service.js';
 import { type ReleaseNotes, ReleaseNotesSchema } from '../../issues/release-notes.js';
@@ -212,6 +213,18 @@ export async function loadIssue(documentId: string): Promise<IssueRow> {
   return row as IssueRow;
 }
 
+/**
+ * `serialize` + the issue's attachment metadata (`attachments[]`). Used by the
+ * focused single-issue surfaces an agent acts on — `get`, the write-returns,
+ * and `forge_step_start` — so the agent always sees which files are attached
+ * (then reads their bytes via `forge_uploads` action=fetch). NOT used by
+ * `list` (a summary/browse surface) to avoid an attachment query per row.
+ */
+export async function serializeWithAttachments(row: IssueRow): Promise<Record<string, unknown>> {
+  const attachments = await listIssueAttachments(row.id);
+  return { ...serialize(row), attachments };
+}
+
 type TaskRow = {
   id: string;
   issueId: string;
@@ -352,7 +365,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for get');
         const issue = await loadIssue(input.documentId);
         await assertPrincipalIsMember(principal, issue.projectId);
-        return serialize(issue);
+        return serializeWithAttachments(issue);
       }
 
       case 'create': {
@@ -494,7 +507,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
 
         const fresh = await loadIssue(issue.id);
-        return { ...serialize(fresh), status: 'updated' };
+        return { ...(await serializeWithAttachments(fresh)), status: 'updated' };
       }
 
       case 'transition': {
@@ -507,7 +520,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         await assertPrincipalIsMember(principal, issue.projectId);
         await applyStatusTransition(issue, target, device);
         const fresh = await loadIssue(issue.id);
-        return serialize(fresh);
+        return serializeWithAttachments(fresh);
       }
 
       // ISS-286 — explicit, idempotent, auditable merge-marker. Decouples
@@ -573,7 +586,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         // instead of waiting for the 60s pg-boss backstop (AC3).
         void dispatchTickForProject(issue.projectId);
 
-        return { ...serialize(fresh), status: 'merged' };
+        return { ...(await serializeWithAttachments(fresh)), status: 'merged' };
       }
 
       case 'unmark': {
@@ -619,7 +632,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         });
         // No dispatcher tick: clearing only adds a block, never unblocks.
 
-        return { ...serialize(fresh), status: 'unmarked' };
+        return { ...(await serializeWithAttachments(fresh)), status: 'unmarked' };
       }
 
       case 'listTasks': {
