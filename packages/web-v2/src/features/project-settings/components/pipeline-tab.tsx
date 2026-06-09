@@ -35,7 +35,7 @@ import {
   useSkills,
   useUnregisterSkill,
 } from "@/features/skills/hooks";
-import { usableSkillOptions } from "@/features/skills/types";
+import { usableSkillOptions, type UsableSkillOption } from "@/features/skills/types";
 import { isFeatureOff, usePipelineConfig, useUpdatePipelineConfig } from "../hooks";
 import {
   STEP_TOGGLE_KEYS,
@@ -57,6 +57,8 @@ function StageRow({
   skillDisabled,
   onSkillChange,
   showWarning,
+  recommendedValue,
+  recommendedName,
 }: {
   label: string;
   hint?: string;
@@ -70,6 +72,9 @@ function StageRow({
   skillDisabled: boolean;
   onSkillChange: (v: string) => void;
   showWarning: boolean;
+  /** Picker value of this stage's conventional skill, if available/adoptable. */
+  recommendedValue?: string | null;
+  recommendedName?: string;
 }) {
   return (
     <div className="flex items-center justify-between gap-3 py-2.5">
@@ -77,13 +82,25 @@ function StageRow({
         <p className="fg-label text-fg">{label}</p>
         {hint && <p className="fg-caption text-muted">{hint}</p>}
         {showWarning && (
-          <p
-            className="fg-caption mt-0.5 flex items-center gap-1"
-            style={{ color: "var(--amberw-600)" }}
-          >
-            <Icon name="alert" size={12} />
-            No skill registered — this stage won&apos;t run automatically.
-          </p>
+          <div className="mt-0.5">
+            <p
+              className="fg-caption flex items-center gap-1"
+              style={{ color: "var(--amberw-600)" }}
+            >
+              <Icon name="alert" size={12} />
+              No skill registered — this stage won&apos;t run automatically.
+            </p>
+            {recommendedValue && recommendedName && (
+              <button
+                type="button"
+                disabled={skillDisabled}
+                onClick={() => onSkillChange(recommendedValue)}
+                className="fg-caption mt-0.5 text-accent-text hover:underline disabled:opacity-50"
+              >
+                Use {recommendedName}
+              </button>
+            )}
+          </div>
         )}
       </div>
       <div className="flex flex-none items-center gap-3">
@@ -138,20 +155,35 @@ export function PipelineTab({
     return m;
   }, [regsQ.data]);
 
-  // One option per skill name: a project skill registers directly; a global
+  // One pickable entry per skill name: a project skill binds directly; a global
   // template (not yet adopted) is offered as `adopt:<id>` and cloned on select.
-  const skillOptions = useMemo<SelectOption[]>(
-    () => [
-      { value: "", label: "— No skill —" },
-      ...usableSkillOptions(skillsQ.data ?? []).map((o) =>
-        o.kind === "project"
-          ? { value: o.skillId, label: o.name }
-          : { value: `adopt:${o.globalSkillId}`, label: `${o.name} · template` },
-      ),
-    ],
-    [skillsQ.data],
-  );
+  const usable = useMemo(() => usableSkillOptions(skillsQ.data ?? []), [skillsQ.data]);
   const noSkillsAtAll = (skillsQ.data?.length ?? 0) === 0;
+
+  const optionValue = (o: UsableSkillOption) =>
+    o.kind === "project" ? o.skillId : `adopt:${o.globalSkillId}`;
+
+  // Per-stage picker: the stage's conventional skill (e.g. forge-triage) is
+  // sorted first and tagged "(recommended)"; any other skill stays selectable.
+  function stagePicker(recommendedName: string): {
+    options: SelectOption[];
+    recommendedValue: string | null;
+  } {
+    const ordered = [...usable].sort((a, b) => {
+      if (a.name === recommendedName) return -1;
+      if (b.name === recommendedName) return 1;
+      return a.name.localeCompare(b.name);
+    });
+    const options: SelectOption[] = [
+      { value: "", label: "— No skill —" },
+      ...ordered.map((o) => {
+        const base = o.kind === "project" ? o.name : `${o.name} · template`;
+        return { value: optionValue(o), label: o.name === recommendedName ? `${base} (recommended)` : base };
+      }),
+    ];
+    const rec = usable.find((o) => o.name === recommendedName);
+    return { options, recommendedValue: rec ? optionValue(rec) : null };
+  }
 
   if (cfgQ.isLoading) {
     return (
@@ -273,29 +305,32 @@ export function PipelineTab({
             toggleDisabled={!canEdit}
             onToggle={(v) => setDraft((d) => (d ? { ...d, enabled: v } : d))}
             skill={false}
-            skillOptions={skillOptions}
+            skillOptions={[]}
             skillValue=""
             skillDisabled
             onSkillChange={() => {}}
             showWarning={false}
           />
           {STEP_TOGGLE_KEYS.map((k) => {
-            const stage = STEP_TOGGLE_LABELS[k].stage;
+            const meta = STEP_TOGGLE_LABELS[k];
             const on = toggleEnabled(draft[k]);
+            const { options, recommendedValue } = stagePicker(meta.skillName);
             return (
               <StageRow
                 key={k}
-                label={STEP_TOGGLE_LABELS[k].label}
-                hint={STEP_TOGGLE_LABELS[k].hint}
+                label={meta.label}
+                hint={meta.hint}
                 checked={on}
                 toggleDisabled={!canEdit || !masterEnabled}
                 onToggle={(v) => setToggle(k, v)}
                 skill
-                skillOptions={skillOptions}
-                skillValue={skillByStage.get(stage) ?? ""}
+                skillOptions={options}
+                skillValue={skillByStage.get(meta.stage) ?? ""}
                 skillDisabled={skillDisabled}
-                onSkillChange={(v) => void changeSkill(stage, v)}
-                showWarning={masterEnabled && on && !skillByStage.has(stage)}
+                onSkillChange={(v) => void changeSkill(meta.stage, v)}
+                showWarning={masterEnabled && on && !skillByStage.has(meta.stage)}
+                recommendedValue={recommendedValue}
+                recommendedName={meta.skillName}
               />
             );
           })}

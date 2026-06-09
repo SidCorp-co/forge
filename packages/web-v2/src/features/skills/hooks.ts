@@ -6,7 +6,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
-import { skillsApi } from "./api";
+import { skillsApi, type SkillCreateInput, type SkillUpdateInput } from "./api";
 
 export function useSkills(projectId: string | undefined) {
   return useQuery({
@@ -69,6 +69,25 @@ export function useUnregisterSkill(projectId: string | undefined) {
     (stage: string) => skillsApi.unregister(projectId as string, stage),
     projectId,
     "Skill disabled for stage",
+  );
+}
+
+/** Create a new project skill (Skill Studio). Resolves to the new SkillRow. */
+export function useCreateSkill(projectId: string | undefined) {
+  return useSkillMutation(
+    (body: SkillCreateInput) => skillsApi.create(projectId as string, body),
+    projectId,
+    "Skill created",
+  );
+}
+
+/** Update an existing project skill's content/metadata (Skill Studio). */
+export function useUpdateSkill(projectId: string | undefined) {
+  return useSkillMutation(
+    ({ skillId, patch }: { skillId: string; patch: SkillUpdateInput }) =>
+      skillsApi.update(skillId, patch),
+    projectId,
+    "Skill saved",
   );
 }
 

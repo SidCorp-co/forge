@@ -108,16 +108,16 @@ export interface PipelineConfig {
  */
 export const STEP_TOGGLE_LABELS: Record<
   StepToggleKey,
-  { label: string; hint: string; stage: string }
+  { label: string; hint: string; stage: string; skillName: string }
 > = {
-  autoTriage: { label: "Auto triage", hint: "open → confirmed", stage: "open" },
-  autoClarify: { label: "Auto clarify", hint: "confirmed → clarified", stage: "confirmed" },
-  autoPlan: { label: "Auto plan", hint: "clarified → approved", stage: "clarified" },
-  autoCode: { label: "Auto code", hint: "approved → developed", stage: "approved" },
-  autoReview: { label: "Auto review", hint: "developed → testing", stage: "developed" },
-  autoTest: { label: "Auto test", hint: "testing → released", stage: "testing" },
-  autoFix: { label: "Auto fix", hint: "reopen → developed", stage: "reopen" },
-  autoRelease: { label: "Auto release", hint: "released → closed", stage: "released" },
+  autoTriage: { label: "Auto triage", hint: "open → confirmed", stage: "open", skillName: "forge-triage" },
+  autoClarify: { label: "Auto clarify", hint: "confirmed → clarified", stage: "confirmed", skillName: "forge-clarify" },
+  autoPlan: { label: "Auto plan", hint: "clarified → approved", stage: "clarified", skillName: "forge-plan" },
+  autoCode: { label: "Auto code", hint: "approved → developed", stage: "approved", skillName: "forge-code" },
+  autoReview: { label: "Auto review", hint: "developed → testing", stage: "developed", skillName: "forge-review" },
+  autoTest: { label: "Auto test", hint: "testing → released", stage: "testing", skillName: "forge-test" },
+  autoFix: { label: "Auto fix", hint: "reopen → developed", stage: "reopen", skillName: "forge-fix" },
+  autoRelease: { label: "Auto release", hint: "released → closed", stage: "released", skillName: "forge-release" },
 };
 
 /** Normalize a stored toggle (boolean | { enabled }) to a plain boolean. */

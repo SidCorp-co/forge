@@ -7,6 +7,19 @@
 //  - DELETE /api/projects/:id/skills/registrations/:stage
 export type SkillScope = "global" | "project";
 
+/** Runtime context a skill targets — mirrors core `skillTargets`. */
+export const SKILL_TARGETS = ["dev", "cloud", "all"] as const;
+export type SkillTarget = (typeof SKILL_TARGETS)[number];
+
+/** A supporting file inside a skill's folder (e.g. `references/foo.md`,
+ *  `scripts/run.sh`). `SKILL.md` is NOT here — it lives in the `skillMd`
+ *  column. Mirrors core `fileSchema` (`{ path, content, encoding }`). */
+export interface SkillFile {
+  path: string;
+  content: string;
+  encoding?: "utf8" | "base64";
+}
+
 /** A registerable pipeline stage = an `issueStatus` value (core enum). The
  *  register endpoint accepts the full status set; these are the 8 pipeline
  *  states that actually drive a skill in this project's ladder — one per
@@ -41,7 +54,8 @@ export const STAGE_LABELS: Record<RegisterableStage, string> = {
   released: "Release",
 };
 
-/** Flat skill row from `GET /api/skills`. */
+/** Flat skill row from `GET /api/skills`. The list endpoint returns the full
+ *  row, so `skillMd` + `files` are present and drive the Studio editor. */
 export interface SkillRow {
   id: string;
   name: string;
@@ -50,9 +64,13 @@ export interface SkillRow {
   projectId: string | null;
   version: number | null;
   contentHash: string | null;
-  target: string | null;
+  target: SkillTarget | null;
   source: string | null;
   tools: string[] | null;
+  /** The SKILL.md body+frontmatter. Null only for legacy prompt-only rows. */
+  skillMd: string | null;
+  /** Supporting files in the skill folder (default []). */
+  files: SkillFile[];
   updatedAt: string;
   createdAt: string;
 }
@@ -122,6 +140,30 @@ export function usableSkillOptions(rows: SkillRow[]): UsableSkillOption[] {
  *  same-name global template card in the Library (the project copy stands in). */
 export function projectSkillNames(rows: { scope: SkillScope; name: string }[]): Set<string> {
   return new Set(rows.filter((r) => r.scope === "project").map((r) => r.name));
+}
+
+/**
+ * Wrap a Studio form (name/description/body) into a full SKILL.md string —
+ * a YAML frontmatter block (`name`, `description`) the runner writes verbatim
+ * to disk, followed by the markdown body. Values are JSON-quoted (a valid YAML
+ * subset) so colons/quotes in the description can't break the frontmatter.
+ * `target` is a DB column, not a frontmatter key, so it is NOT emitted here.
+ */
+export function buildSkillMd(input: { name: string; description: string; body: string }): string {
+  const fm = `---\nname: ${JSON.stringify(input.name)}\ndescription: ${JSON.stringify(
+    input.description,
+  )}\n---\n`;
+  const body = input.body.replace(/^\s+/, "");
+  return `${fm}\n${body}\n`;
+}
+
+/** Strip a leading YAML frontmatter block from a stored SKILL.md, returning the
+ *  editable body. Mirrors core `parse-manifest.ts` FRONTMATTER_RE; tolerates a
+ *  file with no frontmatter (returns it unchanged). */
+export function splitSkillMd(skillMd: string | null): string {
+  if (!skillMd) return "";
+  const m = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(skillMd);
+  return m ? skillMd.slice(m[0].length).replace(/^\s+/, "") : skillMd;
 }
 
 /** Join the skill list with the sync-status rows (by skillId). */

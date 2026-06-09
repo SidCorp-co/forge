@@ -2,7 +2,19 @@
 // shared `apiClient` (no raw fetch). Routes verified against
 // `packages/core/src/skills/{crud-routes,routes}.ts` for ISS-299.
 import { apiClient } from "@/lib/api/client";
-import type { SkillRegistration, SkillRow, SkillSyncStatus } from "./types";
+import type { SkillFile, SkillRegistration, SkillRow, SkillSyncStatus, SkillTarget } from "./types";
+
+/** Body for `POST /api/skills` (project skill — `isGlobal` omitted). */
+export interface SkillCreateInput {
+  name: string;
+  description: string;
+  skillMd: string;
+  target?: SkillTarget;
+  files?: SkillFile[];
+}
+
+/** Partial patch for `PUT /api/skills/:id`. */
+export type SkillUpdateInput = Partial<SkillCreateInput>;
 
 export const skillsApi = {
   /** `GET /api/skills?projectId&scope=all` — global + project skills. */
@@ -21,6 +33,21 @@ export const skillsApi = {
     apiClient<{ registrations: SkillRegistration[] }>(
       `/projects/${encodeURIComponent(projectId)}/skill-registrations`,
     ),
+
+  /** `POST /api/skills` — create a project skill (owner/admin). `projectId`
+   *  required; `isGlobal` omitted so the row is always project-scoped. */
+  create: (projectId: string, body: SkillCreateInput) =>
+    apiClient<SkillRow>(`/skills`, {
+      method: "POST",
+      body: JSON.stringify({ ...body, projectId }),
+    }),
+
+  /** `PUT /api/skills/:id` — update a project skill (owner/admin). */
+  update: (skillId: string, patch: SkillUpdateInput) =>
+    apiClient<SkillRow>(`/skills/${encodeURIComponent(skillId)}`, {
+      method: "PUT",
+      body: JSON.stringify(patch),
+    }),
 
   /** `POST /api/projects/:projectId/skills/apply-default` — clone a global
    *  template into a new same-name project skill (owner/admin). Returns the new

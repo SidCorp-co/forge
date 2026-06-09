@@ -21,6 +21,8 @@ interface SkillCardProps {
   onUnregister: (stage: string) => void;
   /** Clone a global template into this project (only called for global cards). */
   onAdopt: (globalSkillId: string) => void;
+  /** Open the Skill Studio to edit this skill (project cards only). */
+  onEdit: () => void;
   pending: boolean;
   /** Show the scope badge. Suppressed when the surrounding view is single-scope. */
   showScope?: boolean;
@@ -32,6 +34,7 @@ export function SkillCard({
   onRegister,
   onUnregister,
   onAdopt,
+  onEdit,
   pending,
   showScope = true,
 }: SkillCardProps) {
@@ -81,7 +84,7 @@ export function SkillCard({
         {isGlobal ? (
           <div className="mt-3">
             <p className="fg-caption text-muted">
-              Org template — adopt a project copy to edit it and enable it on a stage.
+              Org template — adopt a project copy you can then edit and enable on a stage.
             </p>
             {canManage && (
               <Button
@@ -98,6 +101,13 @@ export function SkillCard({
           </div>
         ) : (
           <>
+            {canManage && (
+              <div className="mt-3">
+                <Button variant="secondary" size="sm" onClick={onEdit} className="min-h-11">
+                  Edit skill
+                </Button>
+              </div>
+            )}
             <div className="mt-3">
               <p className="fg-overline mb-1.5">Enabled stages</p>
               {skill.registeredStages.length === 0 ? (

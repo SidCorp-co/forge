@@ -5,6 +5,7 @@
 // chips, and an owner/admin enable control. ISS-299.
 import { useMemo, useState } from "react";
 import {
+  Button,
   EmptyState,
   ErrorState,
   Input,
@@ -20,8 +21,9 @@ import {
   useSkillSyncStatus,
   useUnregisterSkill,
 } from "../hooks";
-import { mergeSkills, projectSkillNames, type SkillScope } from "../types";
+import { mergeSkills, projectSkillNames, type SkillScope, type SkillView } from "../types";
 import { SkillCard } from "./skill-card";
+import { SkillStudioDrawer } from "./skill-studio-drawer";
 
 interface SkillsScreenProps {
   scope: { projectId: string; canManage: boolean };
@@ -31,7 +33,8 @@ type ScopeFilter = "all" | SkillScope;
 
 const SCOPE_OPTIONS: { value: ScopeFilter; label: string }[] = [
   { value: "all", label: "All" },
-  { value: "global", label: "Global" },
+  // `global` skills are org templates you adopt; `project` skills are usable.
+  { value: "global", label: "Templates" },
   { value: "project", label: "Project" },
 ];
 
@@ -59,6 +62,8 @@ export function SkillsScreen({ scope }: SkillsScreenProps) {
 
   const [query, setQuery] = useState("");
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
+  // Skill Studio drawer: null = closed; { skill: null } = create; { skill } = edit.
+  const [studio, setStudio] = useState<{ skill: SkillView | null } | null>(null);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -85,11 +90,19 @@ export function SkillsScreen({ scope }: SkillsScreenProps) {
 
   return (
     <div className="mx-auto w-full min-h-dvh max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
-      <header className="mb-6">
-        <h1 className="fg-h2">Skills</h1>
-        <p className="fg-body-sm mt-1">
-          Global and project skills, and the pipeline stages they run on.
-        </p>
+      <header className="mb-6 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="fg-h2">Skills</h1>
+          <p className="fg-body-sm mt-1">
+            Project skills (usable) and org templates you can adopt, plus the pipeline stages they
+            run on.
+          </p>
+        </div>
+        {canManage && (
+          <Button variant="primary" icon="plus" onClick={() => setStudio({ skill: null })}>
+            New skill
+          </Button>
+        )}
       </header>
 
       {!isLoading && !isError && skills.length > 0 && (
@@ -160,9 +173,19 @@ export function SkillsScreen({ scope }: SkillsScreenProps) {
               onRegister={(skillId, stage) => register.mutate({ skillId, stage })}
               onUnregister={(stage) => unregister.mutate(stage)}
               onAdopt={(globalSkillId) => adopt.mutate(globalSkillId)}
+              onEdit={() => setStudio({ skill })}
             />
           ))}
         </div>
+      )}
+
+      {canManage && (
+        <SkillStudioDrawer
+          open={studio !== null}
+          onClose={() => setStudio(null)}
+          projectId={projectId}
+          skill={studio?.skill}
+        />
       )}
     </div>
   );
