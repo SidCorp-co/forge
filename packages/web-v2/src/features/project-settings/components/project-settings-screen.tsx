@@ -146,7 +146,9 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
         {tab === "basics" && <BasicsTab project={project} canEdit={canEdit} />}
         {tab === "repo" && <RepoTab project={project} canEdit={canEdit} />}
         {tab === "testing" && <TestingTab project={project} canEdit={canEdit} />}
-        {tab === "pipeline" && <PipelineTab projectId={project.id} canEdit={canEdit} />}
+        {tab === "pipeline" && (
+          <PipelineTab projectId={project.id} canEdit={canEdit} slug={project.slug} />
+        )}
         {tab === "labels" && <LabelsTab projectId={project.id} canEdit={canEdit} />}
         {tab === "members" && <MembersTab projectId={project.id} canEdit={canEdit} />}
         {tab === "agent" && (

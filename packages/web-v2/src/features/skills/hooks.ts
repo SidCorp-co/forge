@@ -24,6 +24,18 @@ export function useSkillSyncStatus(projectId: string | undefined) {
   });
 }
 
+/** Per-stage skill bindings for a project (`GET /skill-registrations`). Keyed
+ *  under `['skills', projectId]` so register/unregister mutations invalidate it
+ *  alongside the list + sync-status. The Pipeline settings tab reads this to
+ *  show which skill is wired to each stage and to gate the auto-toggles. */
+export function useSkillRegistrations(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["skills", projectId, "registrations"],
+    queryFn: () => skillsApi.registrations(projectId as string),
+    enabled: !!projectId,
+  });
+}
+
 function useSkillMutation<TArgs>(
   fn: (args: TArgs) => Promise<unknown>,
   projectId: string | undefined,

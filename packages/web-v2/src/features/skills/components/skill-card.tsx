@@ -11,7 +11,7 @@ import {
   Select,
   type SelectOption,
 } from "@/design";
-import { REGISTERABLE_STAGES, type SkillView } from "../types";
+import { REGISTERABLE_STAGES, STAGE_LABELS, type SkillView } from "../types";
 
 interface SkillCardProps {
   skill: SkillView;
@@ -35,7 +35,10 @@ export function SkillCard({
   const registered = new Set(skill.registeredStages);
   const stageOptions = useMemo<SelectOption[]>(
     () =>
-      REGISTERABLE_STAGES.filter((s) => !registered.has(s)).map((s) => ({ value: s, label: s })),
+      REGISTERABLE_STAGES.filter((s) => !registered.has(s)).map((s) => ({
+        value: s,
+        label: `${STAGE_LABELS[s]} (${s})`,
+      })),
     [skill.registeredStages],
   );
   const [stage, setStage] = useState("");

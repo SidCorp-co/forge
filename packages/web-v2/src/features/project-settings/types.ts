@@ -99,15 +99,25 @@ export interface PipelineConfig {
   [key: string]: unknown;
 }
 
-export const STEP_TOGGLE_LABELS: Record<StepToggleKey, { label: string; hint: string }> = {
-  autoTriage: { label: "Auto triage", hint: "open → confirmed" },
-  autoClarify: { label: "Auto clarify", hint: "confirmed → clarified" },
-  autoPlan: { label: "Auto plan", hint: "clarified → approved" },
-  autoCode: { label: "Auto code", hint: "approved → developed" },
-  autoReview: { label: "Auto review", hint: "developed → testing" },
-  autoTest: { label: "Auto test", hint: "testing → released" },
-  autoFix: { label: "Auto fix", hint: "reopen → developed" },
-  autoRelease: { label: "Auto release", hint: "released → closed" },
+/**
+ * Per-toggle metadata. `stage` is the SOURCE `issueStatus` the toggle dispatches
+ * from — it's the key a skill is registered against (mirrors `PIPELINE_STEPS`
+ * in core's `pipeline/registry.ts`). The Pipeline tab uses it to wire each row's
+ * skill picker to the right stage, so a stage's toggle and its skill binding
+ * live on one line instead of across two screens.
+ */
+export const STEP_TOGGLE_LABELS: Record<
+  StepToggleKey,
+  { label: string; hint: string; stage: string }
+> = {
+  autoTriage: { label: "Auto triage", hint: "open → confirmed", stage: "open" },
+  autoClarify: { label: "Auto clarify", hint: "confirmed → clarified", stage: "confirmed" },
+  autoPlan: { label: "Auto plan", hint: "clarified → approved", stage: "clarified" },
+  autoCode: { label: "Auto code", hint: "approved → developed", stage: "approved" },
+  autoReview: { label: "Auto review", hint: "developed → testing", stage: "developed" },
+  autoTest: { label: "Auto test", hint: "testing → released", stage: "testing" },
+  autoFix: { label: "Auto fix", hint: "reopen → developed", stage: "reopen" },
+  autoRelease: { label: "Auto release", hint: "released → closed", stage: "released" },
 };
 
 /** Normalize a stored toggle (boolean | { enabled }) to a plain boolean. */

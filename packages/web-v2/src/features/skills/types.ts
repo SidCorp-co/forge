@@ -8,17 +8,38 @@
 export type SkillScope = "global" | "project";
 
 /** A registerable pipeline stage = an `issueStatus` value (core enum). The
- *  register endpoint accepts the full status set; these are the pipeline
- *  states that actually drive a skill in this project's ladder. */
+ *  register endpoint accepts the full status set; these are the 8 pipeline
+ *  states that actually drive a skill in this project's ladder — one per
+ *  `auto*` toggle in the Pipeline settings tab (`PIPELINE_STEPS` in core's
+ *  `pipeline/registry.ts`). `clarified` (plan) and `reopen` (fix) were missing
+ *  here, which made those two stages impossible to bind from the web UI even
+ *  though their toggles still demand a registered skill — a hard dead-end. */
 export const REGISTERABLE_STAGES = [
   "open",
   "confirmed",
+  "clarified",
   "approved",
   "developed",
   "testing",
+  "reopen",
   "released",
 ] as const;
 export type RegisterableStage = (typeof REGISTERABLE_STAGES)[number];
+
+/** Human label for each registerable stage — the raw `issueStatus` value is
+ *  what gets stored, but `open`/`reopen`/`developed` read poorly in a picker.
+ *  The label names the JOB that runs there so it lines up with the Pipeline
+ *  tab's `Auto triage`/`Auto plan`/… rows. */
+export const STAGE_LABELS: Record<RegisterableStage, string> = {
+  open: "Triage",
+  confirmed: "Clarify",
+  clarified: "Plan",
+  approved: "Code",
+  developed: "Review",
+  testing: "Test",
+  reopen: "Fix",
+  released: "Release",
+};
 
 /** Flat skill row from `GET /api/skills`. */
 export interface SkillRow {
