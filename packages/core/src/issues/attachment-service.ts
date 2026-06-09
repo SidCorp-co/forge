@@ -1,3 +1,4 @@
+import { asc, eq } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { issueAttachments } from '../db/schema.js';
@@ -225,4 +226,35 @@ export async function persistIssueAttachmentsFromBase64(
 ): Promise<{ persisted: PersistedIssueAttachment[]; errors: AttachmentErrorEntry[] }> {
   const decoded = decodeAndValidateAttachments(items);
   return persistDecodedIssueAttachments(issueId, decoded, uploaderId);
+}
+
+/** Metadata view of an issue attachment (no bytes). Mirrors the comment
+ * `CommentAttachmentLite` shape so MCP serializers render both uniformly. */
+export interface IssueAttachmentLite {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+  url: string;
+  createdAt: Date;
+}
+
+/**
+ * List an issue's attachments (metadata only) for read surfaces — the MCP
+ * `forge_issues`/`forge_step_start` serializers. `url` is the same download
+ * path the REST attachment routes expose so every surface points at one route.
+ */
+export async function listIssueAttachments(issueId: string): Promise<IssueAttachmentLite[]> {
+  const rows = await db
+    .select({
+      id: issueAttachments.id,
+      name: issueAttachments.name,
+      mime: issueAttachments.mime,
+      size: issueAttachments.size,
+      createdAt: issueAttachments.createdAt,
+    })
+    .from(issueAttachments)
+    .where(eq(issueAttachments.issueId, issueId))
+    .orderBy(asc(issueAttachments.createdAt));
+  return rows.map((r) => ({ ...r, url: `/api/attachments/${r.id}/download` }));
 }

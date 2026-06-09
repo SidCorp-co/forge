@@ -3,8 +3,10 @@ import { z } from 'zod';
 import {
   AttachmentError,
   type PersistedCommentAttachment,
+  listCommentAttachmentsForIssue,
   persistCommentAttachment,
 } from '../../comments/attachment-service.js';
+import type { CommentAttachmentLite } from '../../comments/tree.js';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { comments, issues, projectMembers, projects } from '../../db/schema.js';
@@ -63,7 +65,10 @@ type CommentRow = {
   updatedAt: Date;
 };
 
-function serialize(row: CommentRow): Record<string, unknown> {
+function serialize(
+  row: CommentRow,
+  attachments: CommentAttachmentLite[] = [],
+): Record<string, unknown> {
   return {
     documentId: row.id,
     issueId: row.issueId,
@@ -72,6 +77,7 @@ function serialize(row: CommentRow): Record<string, unknown> {
     parentId: row.parentId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    attachments,
   };
 }
 
@@ -155,7 +161,12 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
           .orderBy(asc(comments.createdAt))
           .limit(input.limit ?? 50);
 
-        return { comments: rows.map((r) => serialize(r as CommentRow)) };
+        const attachmentsByCommentId = await listCommentAttachmentsForIssue(issueId);
+        return {
+          comments: rows.map((r) =>
+            serialize(r as CommentRow, attachmentsByCommentId.get(r.id) ?? []),
+          ),
+        };
       }
 
       case 'create': {
@@ -177,9 +188,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
             const a = rawAttachments[i]!;
             const buf = decodeBase64Strict(a.dataBase64);
             if (!buf) {
-              throw new Error(
-                `BAD_REQUEST: data.attachments[${i}].dataBase64 is not valid base64`,
-              );
+              throw new Error(`BAD_REQUEST: data.attachments[${i}].dataBase64 is not valid base64`);
             }
             decoded.push({ name: a.name, mime: a.mime, bytes: buf });
           }
@@ -303,10 +312,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
   },
 });
 
-async function assertCommentDeletePermission(
-  userId: string,
-  projectId: string,
-): Promise<void> {
+async function assertCommentDeletePermission(userId: string, projectId: string): Promise<void> {
   const [project] = await db
     .select({ ownerId: projects.ownerId })
     .from(projects)

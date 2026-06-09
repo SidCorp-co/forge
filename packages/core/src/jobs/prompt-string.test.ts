@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildJobPromptString, type IssueSnapshot } from './prompt-string.js';
+import { type IssueSnapshot, buildJobPromptString } from './prompt-string.js';
 
 const SAMPLE: IssueSnapshot = {
   title: 'Add rate limiting to /api/agents',
@@ -8,7 +8,8 @@ const SAMPLE: IssueSnapshot = {
   complexity: 'm',
   description: 'Throttle /api/agents/* to 10 req/min/user. Returns 429 with Retry-After header.',
   plan: '1. Add middleware in core/src/middleware/rate-limit.ts\n2. Wire into /api/agents routes\n3. Test with vitest',
-  acceptanceCriteria: '- [ ] 429 returned after 10 req\n- [ ] Retry-After header present\n- [ ] Per-user not per-IP',
+  acceptanceCriteria:
+    '- [ ] 429 returned after 10 req\n- [ ] Retry-After header present\n- [ ] Per-user not per-IP',
   sessionContext: null,
 };
 
@@ -44,27 +45,25 @@ describe('buildJobPromptString', () => {
     expect(out).not.toContain('## Issue');
   });
 
-  describe('per-state issueSnapshot rendering', () => {
-    it('triage: title + description only (no plan, no AC)', () => {
-      const out = buildJobPromptString({
-        jobType: 'triage',
-        issueId: 'iss-1',
-        issueSnapshot: SAMPLE,
-      });
-      expect(out).toContain('/forge-triage iss-1');
-      expect(out).toContain('## Issue');
-      expect(out).toContain('Title: Add rate limiting');
-      expect(out).toContain('Description:');
-      expect(out).toContain('Throttle /api/agents');
-      expect(out).not.toContain('Plan:');
-      expect(out).not.toContain('Acceptance:');
+  describe('per-state issueSnapshot rendering (thin default — fetch-via-tool)', () => {
+    it('every stage inlines NO body fields by default; carries title + forge_step_start pointer', () => {
+      for (const jobType of ['triage', 'code', 'review', 'test', 'release'] as const) {
+        const out = buildJobPromptString({ jobType, issueId: 'iss-1', issueSnapshot: SAMPLE });
+        expect(out, jobType).toContain('## Issue');
+        expect(out, jobType).toContain('Title: Add rate limiting');
+        expect(out, jobType).not.toContain('Description:');
+        expect(out, jobType).not.toContain('Plan:');
+        expect(out, jobType).not.toContain('Acceptance:');
+        expect(out, jobType).toContain('forge_step_start');
+      }
     });
 
-    it('code: full snapshot (title + description + plan + AC)', () => {
+    it('includeFields override re-inlines the requested fields', () => {
       const out = buildJobPromptString({
         jobType: 'code',
         issueId: 'iss-1',
         issueSnapshot: SAMPLE,
+        policy: { includeFields: ['description', 'plan', 'acceptanceCriteria'] },
       });
       expect(out).toContain('Description:');
       expect(out).toContain('Plan:');
@@ -73,41 +72,7 @@ describe('buildJobPromptString', () => {
       expect(out).toContain('429 returned');
     });
 
-    it('review: plan + AC, no description', () => {
-      const out = buildJobPromptString({
-        jobType: 'review',
-        issueId: 'iss-1',
-        issueSnapshot: SAMPLE,
-      });
-      expect(out).toContain('Plan:');
-      expect(out).toContain('Acceptance:');
-      expect(out).not.toContain('Description:');
-    });
-
-    it('test: AC only (no plan, no description)', () => {
-      const out = buildJobPromptString({
-        jobType: 'test',
-        issueId: 'iss-1',
-        issueSnapshot: SAMPLE,
-      });
-      expect(out).toContain('Acceptance:');
-      expect(out).not.toContain('Plan:');
-      expect(out).not.toContain('Description:');
-    });
-
-    it('release: title only (no description / plan / AC)', () => {
-      const out = buildJobPromptString({
-        jobType: 'release',
-        issueId: 'iss-1',
-        issueSnapshot: SAMPLE,
-      });
-      expect(out).toContain('Title: Add rate limiting');
-      expect(out).not.toContain('Description:');
-      expect(out).not.toContain('Plan:');
-      expect(out).not.toContain('Acceptance:');
-    });
-
-    it('renders metadata line with status/priority/complexity', () => {
+    it('renders metadata line with status/priority/complexity (always, no override needed)', () => {
       const out = buildJobPromptString({
         jobType: 'plan',
         issueId: 'iss-1',
@@ -122,9 +87,12 @@ describe('buildJobPromptString', () => {
         jobType: 'code',
         issueId: 'iss-1',
         issueSnapshot: { ...SAMPLE, description: longDesc },
+        policy: { includeFields: ['description', 'plan'] },
       });
       // Marker includes the cut position + original length + tool hint
-      expect(out).toMatch(/… \[truncated at \d+\/9000 chars — call forge_issues\.get for full body\]/);
+      expect(out).toMatch(
+        /… \[truncated at \d+\/9000 chars — call forge_issues\.get for full body\]/,
+      );
       const descSection = out.slice(out.indexOf('Description:'), out.indexOf('Plan:'));
       expect(descSection.length).toBeLessThan(9000);
     });
@@ -139,6 +107,7 @@ describe('buildJobPromptString', () => {
         jobType: 'code',
         issueId: 'iss-1',
         issueSnapshot: { ...SAMPLE, description: desc },
+        policy: { includeFields: ['description', 'plan'] },
       });
       // Body must end at the head paragraph — no B's should leak through.
       const descSection = out.slice(out.indexOf('Description:'), out.indexOf('Plan:'));
@@ -154,6 +123,7 @@ describe('buildJobPromptString', () => {
         jobType: 'code',
         issueId: 'iss-1',
         issueSnapshot: { ...SAMPLE, description: desc },
+        policy: { includeFields: ['description', 'plan'] },
       });
       const descSection = out.slice(out.indexOf('Description:'), out.indexOf('Plan:'));
       // Cut should be at the cap (8000); marker reports it.
@@ -178,7 +148,7 @@ describe('buildJobPromptString', () => {
       expect(out).not.toContain('## Previous Session Context');
     });
 
-    it('renders the block for code when sessionCount >= 1', () => {
+    it('renders the block for code when sessionCount >= 1 (fields re-enabled via override)', () => {
       const out = buildJobPromptString({
         jobType: 'code',
         issueId: 'iss-1',
@@ -194,6 +164,11 @@ describe('buildJobPromptString', () => {
             lastUpdated: '2026-05-20T12:00:00Z',
           },
         },
+        policy: {
+          sessionContext: {
+            fields: ['decisions', 'filesModified', 'errorsResolved', 'reviewFeedback'],
+          },
+        },
       });
       expect(out).toContain('## Previous Session Context');
       expect(out).toContain('**Current state:** mid-implementation');
@@ -207,7 +182,7 @@ describe('buildJobPromptString', () => {
       expect(out).toContain('Context from 2 previous session(s)');
     });
 
-    it('review only includes decisions + filesModified (not errors / feedback)', () => {
+    it('sessionContext.fields override gates which fields render (decisions + filesModified only)', () => {
       const out = buildJobPromptString({
         jobType: 'review',
         issueId: 'iss-1',
@@ -221,6 +196,7 @@ describe('buildJobPromptString', () => {
             reviewFeedback: ['fb1'],
           },
         },
+        policy: { sessionContext: { fields: ['decisions', 'filesModified'] } },
       });
       expect(out).toContain('**Key decisions:**');
       expect(out).toContain('**Files touched:**');
@@ -263,8 +239,6 @@ describe('buildJobPromptString', () => {
     const lines = out.split('\n');
     expect(lines[0]).toBe('/forge-code iss-42');
     expect(out.indexOf('## Issue')).toBeGreaterThan(0);
-    expect(out.indexOf('## Previous Session Context')).toBeGreaterThan(
-      out.indexOf('## Issue'),
-    );
+    expect(out.indexOf('## Previous Session Context')).toBeGreaterThan(out.indexOf('## Issue'));
   });
 });

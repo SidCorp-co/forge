@@ -27,8 +27,20 @@ vi.mock('../../db/client.js', () => ({
 const loadIssue = vi.fn();
 vi.mock('./forge-issues.js', () => ({
   loadIssue: (...args: unknown[]) => loadIssue(...args),
-  // identity serializer — bundle assertions read the raw row
+  // identity serializer — bundle assertions read the raw row. The
+  // attachment-aware variant just adds an empty `attachments[]` here (the
+  // real DB join is exercised in forge-issues.test.ts).
   serialize: (row: unknown) => row,
+  serializeWithAttachments: async (row: Record<string, unknown>) => ({
+    ...row,
+    attachments: [],
+  }),
+}));
+
+// Comment attachments are joined separately in the handler; stub to empty so
+// the bundle shape is exercised without programming another db chain.
+vi.mock('../../comments/attachment-service.js', () => ({
+  listCommentAttachmentsForIssue: vi.fn(async () => new Map()),
 }));
 
 const applyStatusTransition = vi.fn(async () => {});
@@ -115,6 +127,21 @@ describe('forge_step_start', () => {
     expect(result.issue.status).toBe('in_progress');
     expect(result.comments).toHaveLength(1);
     expect(result.handoffs).toHaveLength(1);
+  });
+
+  it('bundle carries attachments[] on the issue and on each comment', async () => {
+    const tool = forgeStepStartTool(ctx);
+    loadIssue.mockResolvedValue(makeIssue());
+    queueHappyPath({ comments: [{ documentId: 'c1', body: 'has a screenshot' }] });
+
+    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as Record<
+      string,
+      // biome-ignore lint/suspicious/noExplicitAny: test readback
+      any
+    >;
+
+    expect(result.issue.attachments).toEqual([]);
+    expect(result.comments[0].attachments).toEqual([]);
   });
 
   it('is idempotent on resume — already at working status, no transition', async () => {

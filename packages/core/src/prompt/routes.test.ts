@@ -219,8 +219,11 @@ describe('POST /api/prompts/preview', () => {
     });
     expect(res.status).toBe(200);
     const data = await res.json();
+    // Thin-prompt default (fetch-via-tool): the snapshot carries the title +
+    // a forge_step_start pointer, NOT the inlined description/plan/AC.
     expect(data.userPrompt).toContain('## Issue');
     expect(data.userPrompt).toContain('Rate-limit /api/agents');
-    expect(data.userPrompt).toContain('Throttle the agents endpoint');
+    expect(data.userPrompt).toContain('forge_step_start');
+    expect(data.userPrompt).not.toContain('Throttle the agents endpoint');
   });
 });

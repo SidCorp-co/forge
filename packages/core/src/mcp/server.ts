@@ -2,6 +2,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import pkg from '../../package.json' with { type: 'json' };
 import { type AuditResultCode, digestArgs, writeMcpAudit } from '../auth/mcp-audit.js';
+import { toToolCallContent } from './tool-result.js';
 import {
   forgeAgentSessionsGetTool,
   forgeAgentSessionsListTool,
@@ -310,15 +311,8 @@ export function createMcpServer(ctx: McpContext): Server {
 
     try {
       const result = await tool.handler(args);
-      const structured =
-        result && typeof result === 'object' && !Array.isArray(result)
-          ? (result as Record<string, unknown>)
-          : { value: result };
       writeMcpAudit({ ...auditBase, resultCode: 'ok' });
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result) }],
-        structuredContent: structured,
-      };
+      return toToolCallContent(result);
     } catch (err) {
       const { code, message } = classifyError(err);
       writeMcpAudit({ ...auditBase, resultCode: code });

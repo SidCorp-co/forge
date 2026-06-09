@@ -93,16 +93,26 @@ const SESSION_CAPS = {
   reviewFeedback: 5,
 } as const;
 
+/**
+ * Per-state issue fields inlined into the user prompt. Default is now EMPTY for
+ * every state (fetch-via-tool): the agent calls `forge_step_start` first, which
+ * returns the full issue + comments + attachments + handoffs, so duplicating
+ * description/plan/AC into the prompt only burns tokens and creates a second,
+ * staler source of truth. The prompt instead carries a one-line pointer (see
+ * `formatIssueSnapshot`). Operators who want a field re-inlined for a state set
+ * `appConfig.pipeline.states[state].userPromptPolicy.includeFields` — the
+ * override still flows through `resolveIssueFields`.
+ */
 const ISSUE_FIELDS_PER_STATE: Record<JobType, IssueField[]> = {
-  triage: ['description'],
-  clarify: ['description', 'acceptanceCriteria'],
-  plan: ['description', 'acceptanceCriteria'],
-  code: ['description', 'plan', 'acceptanceCriteria'],
-  review: ['plan', 'acceptanceCriteria'],
-  test: ['acceptanceCriteria'],
+  triage: [],
+  clarify: [],
+  plan: [],
+  code: [],
+  review: [],
+  test: [],
   release: [],
-  fix: ['description', 'plan', 'acceptanceCriteria'],
-  custom: ['description'],
+  fix: [],
+  custom: [],
   pm: [],
 };
 
@@ -113,35 +123,34 @@ interface SessionFieldPolicy {
   reviewFeedback: boolean;
 }
 
+/**
+ * Per-state `sessionContext` fields inlined into the prompt. Default is now ALL
+ * OFF (fetch-via-tool): `forge_step_start` / `forge_issues.get` return the full
+ * `sessionContext`, so the agent reads it from the tool bundle rather than from
+ * a prompt copy. Operators re-enable per state via
+ * `appConfig.pipeline.states[state].userPromptPolicy.sessionContext.fields`.
+ */
 const SESSION_FIELDS_PER_STATE: Record<JobType, SessionFieldPolicy> = {
-  triage:   { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  clarify:  { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  plan:     { decisions: true,  filesModified: false, errorsResolved: false, reviewFeedback: false },
-  code:     { decisions: true,  filesModified: true,  errorsResolved: true,  reviewFeedback: true  },
-  review:   { decisions: true,  filesModified: true,  errorsResolved: false, reviewFeedback: false },
-  test:     { decisions: false, filesModified: true,  errorsResolved: false, reviewFeedback: false },
-  release:  { decisions: true,  filesModified: true,  errorsResolved: false, reviewFeedback: false },
-  fix:      { decisions: true,  filesModified: true,  errorsResolved: true,  reviewFeedback: true  },
-  custom:   { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  pm:       { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
+  triage: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
+  clarify: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
+  plan: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
+  code: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
+  review: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
+  test: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
+  release: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
+  fix: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
+  custom: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
+  pm: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
 };
 
-function truncate(
-  text: string,
-  cap: number,
-  strategy: 'paragraph-boundary' | 'byte-cut',
-): string {
+function truncate(text: string, cap: number, strategy: 'paragraph-boundary' | 'byte-cut'): string {
   if (text.length <= cap) return text;
   if (strategy === 'byte-cut') {
     return `${text.slice(0, cap)}\n\n… [truncated at ${cap}/${text.length} chars — call forge_issues.get for full body]`;
   }
   const minStart = Math.max(0, Math.floor(cap * 0.8));
   const head = text.slice(0, cap);
-  const candidates = [
-    head.lastIndexOf('\n\n'),
-    head.lastIndexOf('\n'),
-    head.lastIndexOf(' '),
-  ];
+  const candidates = [head.lastIndexOf('\n\n'), head.lastIndexOf('\n'), head.lastIndexOf(' ')];
   const cut = candidates.find((idx) => idx >= minStart) ?? cap;
   const body = text.slice(0, cut).replace(/\s+$/, '');
   return `${body}\n\n… [truncated at ${cut}/${text.length} chars — call forge_issues.get for full body]`;
@@ -160,7 +169,10 @@ function resolveSessionPolicy(
   override?: UserPromptPolicyOverride['sessionContext'],
 ): { policy: SessionFieldPolicy; depth: number } {
   const base = SESSION_FIELDS_PER_STATE[jobType] ?? {
-    decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false,
+    decisions: false,
+    filesModified: false,
+    errorsResolved: false,
+    reviewFeedback: false,
   };
   if (override?.fields) {
     const set = new Set(override.fields);
@@ -214,7 +226,9 @@ function formatIssueSnapshot(
   // properties carry `| undefined` in their value type).
   const fieldCaps: Record<IssueField, number> = { ...DEFAULT_FIELD_CAPS };
   if (policy?.fieldCaps) {
-    for (const [k, v] of Object.entries(policy.fieldCaps) as Array<[IssueField, number | undefined]>) {
+    for (const [k, v] of Object.entries(policy.fieldCaps) as Array<
+      [IssueField, number | undefined]
+    >) {
       if (typeof v === 'number') fieldCaps[k] = v;
     }
   }
@@ -228,8 +242,7 @@ function formatIssueSnapshot(
   if (meta.length > 0) lines.push(meta.join(' · '));
 
   const skipDescription =
-    policy?.handoffs?.fallbackToRawIssueFieldIfMissing === false ||
-    injectedSteps?.has('triage');
+    policy?.handoffs?.fallbackToRawIssueFieldIfMissing === false || injectedSteps?.has('triage');
   const skipPlan =
     policy?.handoffs?.fallbackToRawIssueFieldIfMissing === false || injectedSteps?.has('plan');
 
@@ -240,8 +253,19 @@ function formatIssueSnapshot(
     lines.push('', 'Plan:', truncate(snapshot.plan, fieldCaps.plan, strategy));
   }
   if (fields.includes('acceptanceCriteria') && snapshot.acceptanceCriteria) {
-    lines.push('', 'Acceptance:', truncate(snapshot.acceptanceCriteria, fieldCaps.acceptanceCriteria, strategy));
+    lines.push(
+      '',
+      'Acceptance:',
+      truncate(snapshot.acceptanceCriteria, fieldCaps.acceptanceCriteria, strategy),
+    );
   }
+  // Fetch-via-tool pointer: the prompt no longer inlines the issue body by
+  // default. Tell the agent where the full data lives so it never works off
+  // the title alone.
+  lines.push(
+    '',
+    'Full issue body, comments, attachments, and prior step handoffs are NOT inlined here — call `forge_step_start` first to load them. Read an attached image/file with `forge_uploads` action=fetch.',
+  );
   return lines.join('\n');
 }
 
@@ -407,10 +431,7 @@ export function buildJobPromptString(args: {
 
   const snapshot = args.issueSnapshot;
   if (snapshot) {
-    lines.push(
-      '',
-      formatIssueSnapshot(snapshot, args.jobType, args.policy ?? null, injectedSteps),
-    );
+    lines.push('', formatIssueSnapshot(snapshot, args.jobType, args.policy ?? null, injectedSteps));
 
     if (handoffsToRender.length > 0) {
       lines.push('', formatPriorHandoffs(handoffsToRender));
