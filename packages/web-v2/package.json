@@ -1,6 +1,6 @@
 {
   "name": "web-v2",
-  "version": "0.2.10",
+  "version": "0.2.12",
   "private": true,
   "license": "Apache-2.0",
   "scripts": {

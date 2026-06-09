@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.12] - 2026-06-09
+
+The redesigned web app (v2) lands across Overview, Issues, issue detail, Integrations and Settings — plus agent-chat fixes, self-recovering pipelines, and auto-updating runners.
+
 - Fixed web agent chat returning "no online Claude client" even with a runner online — chat now picks an available runner (unified chat/schedule dispatch into one path)
 - Chat: agent chat now shows a clear inline error when a message can't be delivered, and no longer blocks sending when a runner is online
 - Pipeline now auto-recovers a job a runner accepted but never started (used to stall the next stage for ~1h)
