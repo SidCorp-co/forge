@@ -1,5 +1,14 @@
 "use client";
 
+import {
+  Button,
+  PageContainer,
+  type SegmentOption,
+  SegmentedControl,
+} from "@/design";
+import { PipelineBoard } from "@/features/pipeline/components/pipeline-board";
+import { useProjects } from "@/features/projects/hooks";
+import { useTabParam } from "@/lib/utils/use-tab-param";
 // web-v2 Issues screen (`/projects/[slug]/issues`). Redesigned to the
 // 3-view layout from `design/draft-screen/02 Issues.html` (ISS-364): a
 // Board / List / Insights switcher in the header.
@@ -10,15 +19,6 @@
 // Active view persists in `?tab=` (param-preserving, ISS-331) so it survives
 // reload and never clobbers the List view's `?q/filter/groupBy/sort/page`.
 import { useEffect, useState } from "react";
-import {
-  Button,
-  PageContainer,
-  SegmentedControl,
-  type SegmentOption,
-} from "@/design";
-import { useProjects } from "@/features/projects/hooks";
-import { useTabParam } from "@/lib/utils/use-tab-param";
-import { PipelineBoard } from "@/features/pipeline/components/pipeline-board";
 import { IssuesInsightsView } from "./issues-insights-view";
 import { IssuesListView } from "./issues-list-view";
 import { NewIssueDialog } from "./new-issue-dialog";
@@ -43,7 +43,8 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
   const [view, setView] = useTabParam<IssuesView>(VIEWS, "board");
   // Viewer = read-only: hide write affordances (the server 403s regardless).
   const projectsQ = useProjects();
-  const canWrite = projectsQ.data?.find((p) => p.id === scope.projectId)?.role !== "viewer";
+  const canWrite =
+    projectsQ.data?.find((p) => p.id === scope.projectId)?.role !== "viewer";
   // New-issue dialog — opened locally or via a `?new=1` deep-link (the global
   // TopBar / ⌘K "New issue" actions route here with that param).
   const [newOpen, setNewOpen] = useState(false);
@@ -62,16 +63,27 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
     <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
       <div>
         <h1 className="fg-h2">Issues</h1>
-        <p className="fg-body-sm mt-1 text-muted">One strict pipeline, left to right.</p>
+        <p className="fg-body-sm mt-1 text-muted">
+          One strict pipeline, left to right.
+        </p>
       </div>
       <div className="flex items-center gap-3">
         {canWrite && (
-          <Button variant="primary" size="sm" icon="plus" onClick={() => setNewOpen(true)}>
+          <Button
+            variant="primary"
+            size="sm"
+            icon="plus"
+            onClick={() => setNewOpen(true)}
+          >
             New issue
           </Button>
         )}
         <div className="overflow-x-auto">
-          <SegmentedControl options={VIEW_OPTIONS} value={view} onChange={setView} />
+          <SegmentedControl
+            options={VIEW_OPTIONS}
+            value={view}
+            onChange={setView}
+          />
         </div>
       </div>
     </header>
@@ -85,7 +97,7 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
         <div className="flex h-full min-h-0 flex-col">
           <div className="flex-none px-4 pt-5 sm:px-6 sm:pt-6">{header}</div>
           <div className="min-h-0 flex-1">
-            <PipelineBoard scope={scope} embedded />
+            <PipelineBoard scope={scope} embedded canWrite={canWrite} />
           </div>
         </div>
       ) : (
@@ -94,6 +106,7 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
           {view === "list" ? (
             <IssuesListView
               scope={scope}
+              canWrite={canWrite}
               onNewIssue={canWrite ? () => setNewOpen(true) : undefined}
             />
           ) : (
@@ -102,7 +115,11 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
         </PageContainer>
       )}
 
-      <NewIssueDialog open={newOpen && canWrite} onClose={() => setNewOpen(false)} scope={scope} />
+      <NewIssueDialog
+        open={newOpen && canWrite}
+        onClose={() => setNewOpen(false)}
+        scope={scope}
+      />
     </>
   );
 }

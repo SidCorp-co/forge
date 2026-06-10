@@ -736,6 +736,13 @@
       "when": 1783123200000,
       "tag": "0106_org_layer",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1783209600000,
+      "tag": "0107_org_invitations",
+      "breakpoints": true
     }
   ]
 }

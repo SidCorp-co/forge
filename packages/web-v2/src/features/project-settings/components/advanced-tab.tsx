@@ -1,16 +1,31 @@
 "use client";
 
-// Project settings → Advanced. Soft archive / unarchive the project (ISS-353).
-// Owner-only (the buttons are disabled for non-owners and the server returns
-// 403). Archiving requires type-to-confirm of the project name; it hides the
-// project from the default list and pauses auto-pipeline dispatch but destroys
-// nothing — issues, comments, runs, and sessions are retained and unarchive
-// restores it. Mirrors the destructive-action confirmation pattern used by the
-// members-tab remove flow.
-import { useState } from "react";
-import { Button, Card, CardContent, Field, Input } from "@/design";
+import {
+  Button,
+  Card,
+  CardContent,
+  Field,
+  Input,
+  Select,
+  type SelectOption,
+} from "@/design";
+import { useOrgs } from "@/features/orgs/hooks";
+import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import type { ProjectDetail } from "@/features/projects/types";
-import { useArchiveProject, useUnarchiveProject } from "../hooks";
+// Project settings → Advanced. Move-to-org + soft archive / unarchive
+// (ISS-353). Owner-only (the buttons are disabled for non-owners and the
+// server returns 403). Archiving requires type-to-confirm of the project name;
+// it hides the project from the default list and pauses auto-pipeline dispatch
+// but destroys nothing — issues, comments, runs, and sessions are retained and
+// unarchive restores it. Moving to another org requires org admin on BOTH orgs
+// (core enforces) — we offer only orgs where the caller is owner/admin and
+// confirm before the PATCH since the destination org's admins gain control.
+import { useState } from "react";
+import {
+  useArchiveProject,
+  useUnarchiveProject,
+  useUpdateProject,
+} from "../hooks";
 
 export function AdvancedTab({
   project,
@@ -30,15 +45,18 @@ export function AdvancedTab({
 
   return (
     <div className="space-y-6">
+      {canEdit && <MoveToOrgCard project={project} />}
+
       <Card>
         <CardContent>
           <h2 className="fg-h3 mb-1">Archive project</h2>
           {isArchived ? (
             <>
               <p className="fg-caption mb-4 text-muted">
-                This project is <strong>archived</strong>. It is hidden from the default project
-                list and no new pipeline jobs are dispatched. All issues, comments, runs, and
-                sessions are retained. Unarchive to make it active again.
+                This project is <strong>archived</strong>. It is hidden from the
+                default project list and no new pipeline jobs are dispatched.
+                All issues, comments, runs, and sessions are retained. Unarchive
+                to make it active again.
               </p>
               {canEdit && (
                 <Button
@@ -54,9 +72,9 @@ export function AdvancedTab({
           ) : (
             <>
               <p className="fg-caption mb-4 text-muted">
-                Archiving hides this project from the default list and pauses auto-pipeline
-                dispatch. Nothing is deleted — issues, comments, runs, and sessions are kept and
-                you can unarchive at any time.
+                Archiving hides this project from the default list and pauses
+                auto-pipeline dispatch. Nothing is deleted — issues, comments,
+                runs, and sessions are kept and you can unarchive at any time.
               </p>
               {canEdit &&
                 (confirming ? (
@@ -116,5 +134,75 @@ export function AdvancedTab({
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/** Move the project to another org the caller administers (owner/admin on the
+ *  destination; core also requires admin on the current org). */
+function MoveToOrgCard({ project }: { project: ProjectDetail }) {
+  const orgsQ = useOrgs();
+  const projectsQ = useProjectsIncludingArchived();
+  const update = useUpdateProject(project.id);
+  const [targetOrgId, setTargetOrgId] = useState("");
+
+  const currentOrgId =
+    (projectsQ.data ?? []).find((p) => p.id === project.id)?.orgId ?? null;
+
+  const targets = (orgsQ.data ?? []).filter(
+    (o) => (o.role === "owner" || o.role === "admin") && o.id !== currentOrgId,
+  );
+  const options: SelectOption[] = targets.map((o) => ({
+    value: o.id,
+    label: o.name,
+  }));
+
+  if (targets.length === 0) return null;
+
+  function move() {
+    const target = targets.find((o) => o.id === targetOrgId);
+    if (!target) return;
+    const ok = window.confirm(
+      `Move "${project.name}" to the organization "${target.name}"? ` +
+        `Owners and admins of "${target.name}" will gain full admin control of this project.`,
+    );
+    if (!ok) return;
+    update.mutate(
+      { orgId: target.id },
+      { onSuccess: () => setTargetOrgId("") },
+    );
+  }
+
+  return (
+    <Card>
+      <CardContent>
+        <h2 className="fg-h3 mb-1">Move to organization</h2>
+        <p className="fg-caption mb-4 text-muted">
+          Transfer this project to another organization you administer. Owners
+          and admins of the destination org will manage the project; per-project
+          members are kept.
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <div className="flex-1 sm:max-w-80">
+            <Field label="Destination organization">
+              <Select
+                options={options}
+                value={targetOrgId}
+                onChange={(v) => setTargetOrgId(v)}
+                placeholder="Select an organization…"
+              />
+            </Field>
+          </div>
+          <Button
+            variant="primary"
+            loading={update.isPending}
+            disabled={!targetOrgId}
+            onClick={move}
+            className="min-h-11"
+          >
+            Move
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

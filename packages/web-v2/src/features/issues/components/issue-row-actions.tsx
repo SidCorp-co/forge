@@ -10,7 +10,6 @@
 // enum + every priority / complexity / assignee option, committing through the
 // same `actions.patch` / `actions.transition` mutations the screen passes down.
 
-import { useRouter } from "next/navigation";
 import {
   Avatar,
   Badge,
@@ -18,13 +17,14 @@ import {
   CardContent,
   IconButton,
   Menu,
+  type MenuItem,
   MonoTag,
   PipelineTracker,
   StatusChip,
   TD,
   TR,
-  type MenuItem,
 } from "@/design";
+import { useRouter } from "next/navigation";
 import {
   allowedTransitions,
   complexityLabel,
@@ -63,12 +63,17 @@ const PRIORITY_TONE: Record<IssuePriority, "red" | "amber" | "neutral"> = {
 
 /** Read-only priority pill. `none` collapses to a muted dash. */
 function PriorityCell({ priority }: { priority: IssuePriority }) {
-  if (priority === "none") return <span className="fg-caption text-subtle">—</span>;
-  return <Badge tone={PRIORITY_TONE[priority]}>{priorityLabel(priority)}</Badge>;
+  if (priority === "none")
+    return <span className="fg-caption text-subtle">—</span>;
+  return (
+    <Badge tone={PRIORITY_TONE[priority]}>{priorityLabel(priority)}</Badge>
+  );
 }
 
 /** Read-only complexity pill (was the cryptic "Cx" column). */
-function ComplexityCell({ complexity }: { complexity: IssueRow["complexity"] }) {
+function ComplexityCell({
+  complexity,
+}: { complexity: IssueRow["complexity"] }) {
   if (!complexity) return <span className="fg-caption text-subtle">—</span>;
   return <MonoTag>{complexityLabel(complexity)}</MonoTag>;
 }
@@ -84,30 +89,55 @@ function useRowMenuItems(
   actions: RowActions,
   open: () => void,
 ): MenuItem[] {
-  const items: MenuItem[] = [{ label: "Open issue", icon: "arrowRight", onSelect: open }];
+  const items: MenuItem[] = [
+    { label: "Open issue", icon: "arrowRight", onSelect: open },
+  ];
+
+  // Viewer = read-only: keep navigation, drop every mutation item (the server
+  // 403s them regardless — this is UX).
+  if (actions.canWrite === false) return items;
 
   // Only valid next states (mirrors core's runtime guard) so a pick can't 409
   // and silently snap back (ISS-308 E1).
   for (const s of allowedTransitions(row.status)) {
-    items.push({ label: `Status: ${statusLabel(s)}`, onSelect: () => actions.transition({ id: row.id, toStatus: s }) });
+    items.push({
+      label: `Status: ${statusLabel(s)}`,
+      onSelect: () => actions.transition({ id: row.id, toStatus: s }),
+    });
   }
   for (const p of ISSUE_PRIORITIES) {
     if (p === row.priority) continue;
-    items.push({ label: `Priority: ${priorityLabel(p)}`, onSelect: () => actions.patch({ id: row.id, body: { priority: p } }) });
+    items.push({
+      label: `Priority: ${priorityLabel(p)}`,
+      onSelect: () => actions.patch({ id: row.id, body: { priority: p } }),
+    });
   }
   for (const c of ISSUE_COMPLEXITIES) {
     if (c === row.complexity) continue;
-    items.push({ label: `Complexity: ${complexityLabel(c)}`, onSelect: () => actions.patch({ id: row.id, body: { complexity: c } }) });
+    items.push({
+      label: `Complexity: ${complexityLabel(c)}`,
+      onSelect: () => actions.patch({ id: row.id, body: { complexity: c } }),
+    });
   }
   if (row.complexity) {
-    items.push({ label: "Complexity: clear", onSelect: () => actions.patch({ id: row.id, body: { complexity: null } }) });
+    items.push({
+      label: "Complexity: clear",
+      onSelect: () => actions.patch({ id: row.id, body: { complexity: null } }),
+    });
   }
   for (const m of members ?? []) {
     if (m.userId === row.assigneeId) continue;
-    items.push({ label: `Assign: ${m.email}`, onSelect: () => actions.patch({ id: row.id, body: { assigneeId: m.userId } }) });
+    items.push({
+      label: `Assign: ${m.email}`,
+      onSelect: () =>
+        actions.patch({ id: row.id, body: { assigneeId: m.userId } }),
+    });
   }
   if (row.assigneeId) {
-    items.push({ label: "Unassign", onSelect: () => actions.patch({ id: row.id, body: { assigneeId: null } }) });
+    items.push({
+      label: "Unassign",
+      onSelect: () => actions.patch({ id: row.id, body: { assigneeId: null } }),
+    });
   }
   return items;
 }
@@ -179,7 +209,9 @@ export function IssueTableRow({
           aria-label={`Open ${row.displayId}: ${row.title}`}
           className="block w-full rounded-sm text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
         >
-          <span className="fg-body-sm block truncate text-fg group-hover:text-accent-text">{row.title}</span>
+          <span className="fg-body-sm block truncate text-fg group-hover:text-accent-text">
+            {row.title}
+          </span>
         </button>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
           {row.category && <MonoTag>{row.category}</MonoTag>}
@@ -187,12 +219,18 @@ export function IssueTableRow({
         </div>
       </TD>
       <TD>
-        <PipelineTracker stage={stage} status={statusToRun(row.status, row.agentStatus)} variant="mini" />
+        <PipelineTracker
+          stage={stage}
+          status={statusToRun(row.status, row.agentStatus)}
+          variant="mini"
+        />
       </TD>
       <TD>
         <StatusChip
           status={statusToChip(row.status, row.agentStatus)}
-          label={hasLiveAgent(row.agentStatus) ? undefined : statusLabel(row.status)}
+          label={
+            hasLiveAgent(row.agentStatus) ? undefined : statusLabel(row.status)
+          }
         />
       </TD>
       <TD>
@@ -206,8 +244,13 @@ export function IssueTableRow({
       </TD>
       <TD>
         <div className="flex items-center gap-2">
-          <Avatar initials={initials(memberLabel(row.assigneeId, members))} size={22} />
-          <span className="fg-caption truncate text-muted">{memberLabel(row.assigneeId, members)}</span>
+          <Avatar
+            initials={initials(memberLabel(row.assigneeId, members))}
+            size={22}
+          />
+          <span className="fg-caption truncate text-muted">
+            {memberLabel(row.assigneeId, members)}
+          </span>
         </div>
       </TD>
       <TD className="text-right">
@@ -245,9 +288,17 @@ export function IssueMobileCard({
             className="min-w-0 rounded-sm text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
           >
             <MonoTag hue="cobalt">{row.displayId}</MonoTag>
-            <span className="fg-body-sm mt-1.5 block truncate text-fg">{row.title}</span>
+            <span className="fg-body-sm mt-1.5 block truncate text-fg">
+              {row.title}
+            </span>
           </button>
-          <RowMenu row={row} members={members} actions={actions} open={open} side="bottom" />
+          <RowMenu
+            row={row}
+            members={members}
+            actions={actions}
+            open={open}
+            side="bottom"
+          />
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -256,14 +307,22 @@ export function IssueMobileCard({
         </div>
 
         <div className="mt-3">
-          <PipelineTracker stage={stage} status={statusToRun(row.status, row.agentStatus)} variant="mini" />
+          <PipelineTracker
+            stage={stage}
+            status={statusToRun(row.status, row.agentStatus)}
+            variant="mini"
+          />
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <StatusChip
             status={statusToChip(row.status, row.agentStatus)}
             size="sm"
-            label={hasLiveAgent(row.agentStatus) ? undefined : statusLabel(row.status)}
+            label={
+              hasLiveAgent(row.agentStatus)
+                ? undefined
+                : statusLabel(row.status)
+            }
           />
           <PriorityCell priority={row.priority} />
           <ComplexityCell complexity={row.complexity} />
@@ -273,8 +332,13 @@ export function IssueMobileCard({
         </div>
 
         <div className="mt-3 flex items-center gap-2">
-          <Avatar initials={initials(memberLabel(row.assigneeId, members))} size={22} />
-          <span className="fg-caption truncate text-muted">{memberLabel(row.assigneeId, members)}</span>
+          <Avatar
+            initials={initials(memberLabel(row.assigneeId, members))}
+            size={22}
+          />
+          <span className="fg-caption truncate text-muted">
+            {memberLabel(row.assigneeId, members)}
+          </span>
         </div>
       </CardContent>
     </Card>

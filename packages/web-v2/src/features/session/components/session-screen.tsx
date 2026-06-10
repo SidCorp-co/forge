@@ -1,11 +1,5 @@
 "use client";
 
-// Run-conversation orchestrator (ISS-292). Header (id/title/status + Stop /
-// Rerun / Fork), two-pane body (thread + context rail), sticky composer.
-// Subscribes to the project WS room so persisted-turn invalidations stream the
-// caret + live updates (ISS-291 model — no client-side stream reducer).
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   AgentWorking,
   Badge,
@@ -20,18 +14,24 @@ import {
   StatusChip,
   useElapsed,
 } from "@/design";
-import { useToast } from "@/providers/toast-provider";
-import { usePersistedState } from "@/lib/utils/use-persisted-state";
-import { useRecents, buildShareLink } from "@/features/shell";
+import { useProjects } from "@/features/projects/hooks";
 import {
   deriveSessionDisplayStatus,
   deriveStage,
   statusToChip,
 } from "@/features/sessions/types";
+import { buildShareLink, useRecents } from "@/features/shell";
 import { formatApiError } from "@/lib/api/error";
+import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { deriveAgentTasks, parseMessages, parseTurns } from "../types";
+import { useToast } from "@/providers/toast-provider";
+import { useRouter } from "next/navigation";
+// Run-conversation orchestrator (ISS-292). Header (id/title/status + Stop /
+// Rerun / Fork), two-pane body (thread + context rail), sticky composer.
+// Subscribes to the project WS room so persisted-turn invalidations stream the
+// caret + live updates (ISS-291 model — no client-side stream reducer).
+import { useEffect, useMemo, useState } from "react";
 import {
   useCancelSession,
   useEditTurn,
@@ -42,9 +42,10 @@ import {
   useSession,
   useSessionTurns,
 } from "../hooks";
-import { Composer } from "./composer";
-import { Conversation } from "./conversation";
+import { deriveAgentTasks, parseMessages, parseTurns } from "../types";
+import { Composer, ReadOnlyComposerNote } from "./composer";
 import { ContextRail } from "./context-rail";
+import { Conversation } from "./conversation";
 
 interface SessionScreenProps {
   sessionId: string;
@@ -60,10 +61,21 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
   const turnsQ = useSessionTurns(sessionId);
   const [railOpen, setRailOpen] = useState(false);
   // Desktop context-rail collapse (persisted). Below lg the rail is a SlideOver.
-  const [railCollapsed, setRailCollapsed] = usePersistedState("web-v2:context-rail", false);
+  const [railCollapsed, setRailCollapsed] = usePersistedState(
+    "web-v2:context-rail",
+    false,
+  );
 
   const session = sessionQ.data;
   const issueId = session?.metadata?.issueId;
+
+  // Viewer = read-only: hide the composer (the server 403s sends regardless).
+  // The session row carries the projectId; until both load we stay writable —
+  // this is UX affordance only.
+  const projectsQ = useProjects();
+  const canWrite =
+    !session ||
+    projectsQ.data?.find((p) => p.id === session.projectId)?.role !== "viewer";
 
   // Track this session as recently-viewed (surfaces in the ⌘K Recent group).
   useEffect(() => {
@@ -98,7 +110,8 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
     if (session?.messages?.length) return parseMessages(session.messages);
     return [];
   }, [turnsQ.data, session?.messages]);
-  const fromMessages = (turnsQ.data?.turns?.length ?? 0) === 0 && items.length > 0;
+  const fromMessages =
+    (turnsQ.data?.turns?.length ?? 0) === 0 && items.length > 0;
   // Task-count indicator (ISS-391) — surfaces "this session ran N agents/skills"
   // in the header without opening the context rail. Same derivation the rail uses.
   const taskCount = useMemo(() => deriveAgentTasks(items).length, [items]);
@@ -112,15 +125,21 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
 
   const display = session ? deriveSessionDisplayStatus(session) : "queued";
   const live = display === "running" || display === "stalled";
-  const startMs = session?.startedAt ? new Date(session.startedAt).getTime() : undefined;
+  const startMs = session?.startedAt
+    ? new Date(session.startedAt).getTime()
+    : undefined;
   const elapsed = useElapsed(startMs, live);
 
   const lastTurnId = items.length ? items[items.length - 1].turnId : undefined;
 
-  const goToSession = (id: string) => router.push(`/projects/${projectSlug ?? ""}/agents/${id}`);
+  const goToSession = (id: string) =>
+    router.push(`/projects/${projectSlug ?? ""}/agents/${id}`);
 
   const handleFork = (fromTurnId: string) =>
-    fork.mutate({ fromTurnId }, { onSuccess: (s) => projectSlug && goToSession(s.id) });
+    fork.mutate(
+      { fromTurnId },
+      { onSuccess: (s) => projectSlug && goToSession(s.id) },
+    );
 
   if (sessionQ.isLoading) {
     return (
@@ -163,15 +182,29 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
               <MonoTag hue="cobalt">{session.id.slice(0, 8)}</MonoTag>
             </div>
             <div className="mt-1 flex items-center gap-2">
-              <StatusChip status={statusToChip(display)} stage={deriveStage(session.metadata)} size="sm" domain="session" />
+              <StatusChip
+                status={statusToChip(display)}
+                stage={deriveStage(session.metadata)}
+                size="sm"
+                domain="session"
+              />
               {taskCount > 0 && (
-                <Badge tone="neutral">{taskCount} {taskCount === 1 ? "task" : "tasks"}</Badge>
+                <Badge tone="neutral">
+                  {taskCount} {taskCount === 1 ? "task" : "tasks"}
+                </Badge>
               )}
             </div>
           </div>
           <div className="flex items-center gap-1.5">
             {live ? (
-              <Button variant="danger" size="sm" icon="stop" className="min-h-11" loading={cancel.isPending} onClick={() => cancel.mutate()}>
+              <Button
+                variant="danger"
+                size="sm"
+                icon="stop"
+                className="min-h-11"
+                loading={cancel.isPending}
+                onClick={() => cancel.mutate()}
+              >
                 Stop
               </Button>
             ) : (
@@ -181,7 +214,11 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
                 icon="rerun"
                 className="min-h-11"
                 loading={rerun.isPending}
-                onClick={() => rerun.mutate(undefined, { onSuccess: (r) => projectSlug && goToSession(r.id) })}
+                onClick={() =>
+                  rerun.mutate(undefined, {
+                    onSuccess: (r) => projectSlug && goToSession(r.id),
+                  })
+                }
               >
                 Rerun
               </Button>
@@ -192,7 +229,9 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
                 size="sm"
                 icon="list"
                 className="min-h-11"
-                onClick={() => router.push(`/projects/${projectSlug}/issues/${issueId}`)}
+                onClick={() =>
+                  router.push(`/projects/${projectSlug}/issues/${issueId}`)
+                }
               >
                 Open issue
               </Button>
@@ -213,11 +252,27 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
                     ]
                   : []),
                 ...(session.deviceId
-                  ? [{ label: "Open runner", icon: "server" as const, onSelect: () => router.push("/runners") }]
+                  ? [
+                      {
+                        label: "Open runner",
+                        icon: "server" as const,
+                        onSelect: () => router.push("/runners"),
+                      },
+                    ]
                   : []),
-                { label: "Copy link", icon: "link" as const, onSelect: copyLink },
+                {
+                  label: "Copy link",
+                  icon: "link" as const,
+                  onSelect: copyLink,
+                },
               ]}
-              trigger={<IconButton icon="more" aria-label="Session actions" className="min-h-11 min-w-11" />}
+              trigger={
+                <IconButton
+                  icon="more"
+                  aria-label="Session actions"
+                  className="min-h-11 min-w-11"
+                />
+              }
             />
             <IconButton
               icon="rows"
@@ -227,7 +282,9 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
             />
             <IconButton
               icon={railCollapsed ? "chevronLeft" : "panelLeft"}
-              aria-label={railCollapsed ? "Show context rail" : "Hide context rail"}
+              aria-label={
+                railCollapsed ? "Show context rail" : "Hide context rail"
+              }
               aria-pressed={railCollapsed}
               className="hidden min-h-11 min-w-11 lg:inline-flex"
               onClick={() => setRailCollapsed((c) => !c)}
@@ -246,17 +303,28 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
               ) : items.length === 0 ? (
                 <EmptyState
                   title="No messages yet"
-                  message={live ? "The agent is starting up…" : "This session has no turns."}
+                  message={
+                    live
+                      ? "The agent is starting up…"
+                      : "This session has no turns."
+                  }
                 />
               ) : (
                 <Conversation
                   items={items}
                   streaming={live && !fromMessages}
                   readOnly={fromMessages}
-                  busy={live || send.isPending || regenerate.isPending || editTurn.isPending}
+                  busy={
+                    live ||
+                    send.isPending ||
+                    regenerate.isPending ||
+                    editTurn.isPending
+                  }
                   onRegenerate={(turnId) => regenerate.mutate(turnId)}
                   onFork={handleFork}
-                  onEditTurn={(turnId, content, expectedEditedAt) => editTurn.mutate({ turnId, content, expectedEditedAt })}
+                  onEditTurn={(turnId, content, expectedEditedAt) =>
+                    editTurn.mutate({ turnId, content, expectedEditedAt })
+                  }
                 />
               )}
               {live && (
@@ -266,11 +334,15 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
               )}
             </div>
           </div>
-          <Composer
-            onSend={(message) => send.mutate({ sessionId, message })}
-            busy={live || send.isPending}
-            disabled={!session.deviceId}
-          />
+          {canWrite ? (
+            <Composer
+              onSend={(message) => send.mutate({ sessionId, message })}
+              busy={live || send.isPending}
+              disabled={!session.deviceId}
+            />
+          ) : (
+            <ReadOnlyComposerNote />
+          )}
         </div>
 
         {/* Desktop rail — collapsible (persisted); hidden when collapsed so main
@@ -279,13 +351,22 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
             scrolls; its own `overflow-y-auto` keeps a long rail usable. */}
         {!railCollapsed && (
           <aside className="hidden w-80 shrink-0 self-start overflow-y-auto border-l border-line px-5 py-6 lg:sticky lg:top-16 lg:block lg:max-h-[calc(100dvh-4rem)]">
-            <ContextRail session={session} items={items} projectSlug={projectSlug} />
+            <ContextRail
+              session={session}
+              items={items}
+              projectSlug={projectSlug}
+            />
           </aside>
         )}
       </div>
 
       {/* Mobile rail */}
-      <SlideOver open={railOpen} onClose={() => setRailOpen(false)} title="Context" width={360}>
+      <SlideOver
+        open={railOpen}
+        onClose={() => setRailOpen(false)}
+        title="Context"
+        width={360}
+      >
         <div className="px-4 py-4">
           <ContextRail session={session} items={items} />
         </div>

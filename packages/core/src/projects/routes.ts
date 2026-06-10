@@ -105,6 +105,9 @@ export const updateProjectSchema = z
     previewDeploy: previewDeployPatchSchema.nullable().optional(),
     webhookSecret: z.string().min(16).max(128).nullable().optional(),
     stateContext: stateContextSchema.nullable().optional(),
+    // Move the project to another org. Requires org owner/admin on BOTH the
+    // current org (route gate) and the target org (checked in the handler).
+    orgId: z.uuid().optional(),
   })
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
 
@@ -261,11 +264,17 @@ projectRoutes.get('/', async (c) => {
   // the desktop MCP install (key.length < 16 → 401) and the web widget
   // snippet generator.
   return c.json(
-    rows.map(({ memberRole, orgRole, ...row }) => ({
-      ...row,
-      role: maxProjectRole(memberRole ?? null, orgDerivedProjectRole(orgRole ?? null)),
-      orgRole: orgRole ?? null,
-    })),
+    rows.map(({ memberRole, orgRole, apiKey, ...row }) => {
+      const role = maxProjectRole(memberRole ?? null, orgDerivedProjectRole(orgRole ?? null));
+      return {
+        ...row,
+        // Viewer is read-only: the apiKey can pair MCP devices / install the
+        // widget (execution-grade), so it is withheld from the viewer tier.
+        apiKey: role === 'viewer' ? null : apiKey,
+        role,
+        orgRole: orgRole ?? null,
+      };
+    }),
   );
 });
 
@@ -333,10 +342,11 @@ projectRoutes.get(
         and(eq(runners.projectId, id), eq(runners.type, 'claude-code'), eq(runners.host, 'device')),
       );
 
-    // apiKey returned as-is — caller passed the access gate above. See the
-    // GET / list comment for the same reasoning.
+    // apiKey is returned for member+ (ADR 0013); the viewer tier is read-only
+    // and the key is execution-grade (MCP pairing / widget), so it's withheld.
     return c.json({
       ...project,
+      apiKey: access.role === 'viewer' ? null : project.apiKey,
       role: access.role,
       orgRole: access.orgRole,
       members,
@@ -414,6 +424,10 @@ projectRoutes.patch(
     assertOrgRoleOnProject(access, 'admin', 'org admin required');
 
     const updates: Record<string, unknown> = {};
+    if (patch.orgId !== undefined && patch.orgId !== access.orgId) {
+      await assertOrgAccess(patch.orgId, userId, 'admin');
+      updates.orgId = patch.orgId;
+    }
     if (patch.name !== undefined) updates.name = patch.name;
     if (patch.description !== undefined) updates.description = patch.description;
     if (patch.repoPath !== undefined) updates.repoPath = patch.repoPath;

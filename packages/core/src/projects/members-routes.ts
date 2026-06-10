@@ -12,7 +12,7 @@ import {
   projects,
   users,
 } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertProjectRole, loadOrgRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { sendInvitationEmail } from './invitation-email.js';
@@ -22,6 +22,13 @@ import { issueInvitationToken } from './invitation-token.js';
 // project 'owner' anymore; the org tier carries ownership.
 const inviteSchema = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email().max(254)),
+  role: z.enum(projectMemberRoles),
+});
+
+// Direct-add (no email-token round trip) — only for users who are ALREADY a
+// member of the project's org; everyone else goes through the invite flow.
+const directAddSchema = z.object({
+  userId: z.uuid(),
   role: z.enum(projectMemberRoles),
 });
 
@@ -111,6 +118,58 @@ memberRoutes.get(
     // the UI can hint at stale invites that are still cancellable.
     const now = Date.now();
     return c.json(rows.map((r) => ({ ...r, expired: new Date(r.expiresAt).getTime() < now })));
+  },
+);
+
+memberRoutes.post(
+  '/:projectId/members',
+  zValidator('param', projectParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  zValidator('json', directAddSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { projectId } = c.req.valid('param');
+    const { userId: targetUserId, role } = c.req.valid('json');
+    const callerId = c.get('userId');
+
+    const access = await loadProjectAccess(projectId, callerId);
+    assertProjectRole(access, 'admin', 'requires project admin');
+
+    // Same-org guard: direct-add skips the email handshake, which is only
+    // safe for someone the org has already vetted.
+    const targetOrgRole = await loadOrgRole(access.orgId, targetUserId);
+    if (!targetOrgRole) {
+      throw new HTTPException(409, {
+        message: 'user is not a member of this org — use the email invite',
+        cause: { code: 'NOT_ORG_MEMBER' },
+      });
+    }
+
+    const [inserted] = await db
+      .insert(projectMembers)
+      .values({ userId: targetUserId, projectId, role })
+      .onConflictDoNothing()
+      .returning({
+        userId: projectMembers.userId,
+        projectId: projectMembers.projectId,
+        role: projectMembers.role,
+        createdAt: projectMembers.createdAt,
+      });
+    if (!inserted) {
+      throw new HTTPException(409, {
+        message: 'user is already a member',
+        cause: { code: 'ALREADY_MEMBER' },
+      });
+    }
+
+    const [email] = await db
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.id, targetUserId))
+      .limit(1);
+    return c.json({ ...inserted, email: email?.email ?? null }, 201);
   },
 );
 

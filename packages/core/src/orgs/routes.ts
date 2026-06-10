@@ -1,10 +1,12 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, count, eq } from 'drizzle-orm';
+import { and, count, eq, isNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import {
+  orgInvitations,
   orgMemberRoles,
   organizationMembers,
   organizations,
@@ -13,7 +15,10 @@ import {
 } from '../db/schema.js';
 import { assertOrgAccess, orgRoleAtLeast } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
+import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { sendOrgInvitationEmail } from '../projects/invitation-email.js';
+import { issueOrgInvitationToken } from './invitations.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -171,6 +176,34 @@ orgRoutes.delete(
   },
 );
 
+// In-org transparency: any org member can SEE which projects the org holds
+// (name+slug only) — access to a project's content still requires an
+// effective role on it.
+orgRoutes.get(
+  '/:orgId/projects',
+  zValidator('param', orgParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { orgId } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    await assertOrgAccess(orgId, userId, 'member');
+
+    const rows = await db
+      .select({
+        id: projects.id,
+        slug: projects.slug,
+        name: projects.name,
+        archivedAt: projects.archivedAt,
+        createdAt: projects.createdAt,
+      })
+      .from(projects)
+      .where(eq(projects.orgId, orgId));
+    return c.json(rows);
+  },
+);
+
 orgRoutes.get(
   '/:orgId/members',
   zValidator('param', orgParamSchema, (result) => {
@@ -224,7 +257,42 @@ orgRoutes.post(
       .from(users)
       .where(eq(users.email, email))
       .limit(1);
-    if (!target) throw notFound('no user with that email', 'USER_NOT_FOUND');
+
+    // No account yet → fall back to an email-token invitation (accepting
+    // after signup inserts the membership). 'owner' is never invitable.
+    if (!target) {
+      if (role === 'owner') {
+        throw forbidden('the owner role cannot be granted by email invitation');
+      }
+      const [org] = await db
+        .select({ name: organizations.name })
+        .from(organizations)
+        .where(eq(organizations.id, orgId))
+        .limit(1);
+      const [inviter] = await db
+        .select({ email: users.email })
+        .from(users)
+        .where(eq(users.id, callerId))
+        .limit(1);
+      const { token, expiresAt } = await issueOrgInvitationToken({
+        orgId,
+        inviterId: callerId,
+        email,
+        role,
+      });
+      try {
+        await sendOrgInvitationEmail(email, {
+          orgName: org?.name ?? 'an organization',
+          inviterEmail: inviter?.email ?? 'a teammate',
+          token,
+        });
+      } catch (sendErr) {
+        logger.error({ err: sendErr, orgId, email }, 'failed to send org invitation email');
+      }
+      const body: { invited: true; expiresAt: Date; token?: string } = { invited: true, expiresAt };
+      if (env.SMTP_DEBUG || env.NODE_ENV === 'test') body.token = token;
+      return c.json(body, 202);
+    }
 
     const [inserted] = await db
       .insert(organizationMembers)
@@ -237,6 +305,69 @@ orgRoutes.post(
       });
     if (!inserted) throw conflict('user is already an org member', 'ALREADY_MEMBER');
     return c.json({ ...inserted, email }, 201);
+  },
+);
+
+orgRoutes.get(
+  '/:orgId/invitations',
+  zValidator('param', orgParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { orgId } = c.req.valid('param');
+    const userId = c.get('userId');
+    await assertOrgAccess(orgId, userId, 'admin');
+
+    const rows = await db
+      .select({
+        email: orgInvitations.email,
+        role: orgInvitations.role,
+        expiresAt: orgInvitations.expiresAt,
+        createdAt: orgInvitations.createdAt,
+        inviterEmail: users.email,
+      })
+      .from(orgInvitations)
+      .innerJoin(users, eq(users.id, orgInvitations.inviterId))
+      .where(and(eq(orgInvitations.orgId, orgId), isNull(orgInvitations.acceptedAt)));
+
+    // Never leak `token` (the accept secret / PK).
+    const now = Date.now();
+    return c.json(rows.map((r) => ({ ...r, expired: new Date(r.expiresAt).getTime() < now })));
+  },
+);
+
+orgRoutes.delete(
+  '/:orgId/invitations',
+  zValidator('param', orgParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  zValidator(
+    'query',
+    z.object({ email: z.string().trim().toLowerCase().pipe(z.email().max(254)) }),
+    (result) => {
+      if (!result.success) throw badRequest(z.flattenError(result.error));
+    },
+  ),
+  async (c) => {
+    const { orgId } = c.req.valid('param');
+    const { email } = c.req.valid('query');
+    const userId = c.get('userId');
+    await assertOrgAccess(orgId, userId, 'admin');
+
+    const deleted = await db
+      .delete(orgInvitations)
+      .where(
+        and(
+          eq(orgInvitations.orgId, orgId),
+          eq(orgInvitations.email, email),
+          isNull(orgInvitations.acceptedAt),
+        ),
+      )
+      .returning({ token: orgInvitations.token });
+    if (deleted.length === 0) {
+      throw notFound('pending invitation not found', 'INVITATION_NOT_FOUND');
+    }
+    return c.body(null, 204);
   },
 );
 

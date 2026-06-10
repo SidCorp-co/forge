@@ -1,10 +1,5 @@
 "use client";
 
-// Project settings → Members. List (email + role) + invite by email + remove +
-// inline role change, plus a pending-invitations list (cancel). Invite / remove
-// / role-change / invitation controls are owner-gated by core; we surface them
-// only when the caller is the owner (`canEdit`).
-import { useState } from "react";
 import {
   Badge,
   Button,
@@ -15,11 +10,21 @@ import {
   IconButton,
   Input,
   Select,
-  Skeleton,
   type SelectOption,
+  Skeleton,
 } from "@/design";
+import { useOrgMembers } from "@/features/orgs/hooks";
+import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
+// Project settings → Members. List (email + role) + direct-add from the org +
+// invite by email + remove + inline role change, plus a pending-invitations
+// list (cancel). Invite / remove / role-change / invitation controls are
+// owner-gated by core; we surface them only when the caller is the owner
+// (`canEdit`). The "Add from organization" block direct-adds a same-org user
+// (no email round trip) and is hidden for personal-org projects.
+import { useState } from "react";
 import {
+  useDirectAddMember,
   useInvitations,
   useInviteMember,
   useMembers,
@@ -34,7 +39,10 @@ const ROLE_OPTIONS: SelectOption[] = [
   { value: "admin", label: "Admin" },
 ];
 
-export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+export function MembersTab({
+  projectId,
+  canEdit,
+}: { projectId: string; canEdit: boolean }) {
   const membersQ = useMembers(projectId);
   const invitationsQ = useInvitations(canEdit ? projectId : undefined);
   const invite = useInviteMember(projectId);
@@ -45,10 +53,39 @@ export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit:
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"admin" | "member">("member");
 
+  // Direct-add from the project's org (hidden for personal-org projects).
+  const projectsQ = useProjectsIncludingArchived();
+  const listItem = (projectsQ.data ?? []).find((p) => p.id === projectId);
+  const orgId =
+    listItem && !listItem.orgIsPersonal ? listItem.orgId : undefined;
+  const orgMembersQ = useOrgMembers(canEdit ? orgId : undefined);
+  const directAdd = useDirectAddMember(projectId);
+  const [addUserId, setAddUserId] = useState("");
+  const [addRole, setAddRole] = useState<"admin" | "member" | "viewer">(
+    "member",
+  );
+
+  const memberIds = new Set((membersQ.data ?? []).map((m) => m.userId));
+  const orgCandidates = (orgMembersQ.data ?? []).filter(
+    (m) => !memberIds.has(m.userId),
+  );
+  const orgCandidateOptions: SelectOption[] = orgCandidates.map((m) => ({
+    value: m.userId,
+    label: m.email,
+  }));
+
   function send() {
     const trimmed = email.trim();
     if (!trimmed) return;
     invite.mutate({ email: trimmed, role }, { onSuccess: () => setEmail("") });
+  }
+
+  function addFromOrg() {
+    if (!addUserId) return;
+    directAdd.mutate(
+      { userId: addUserId, role: addRole },
+      { onSuccess: () => setAddUserId("") },
+    );
   }
 
   return (
@@ -62,7 +99,10 @@ export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit:
             <Skeleton className="h-9 w-3/4 rounded-md" />
           </div>
         ) : membersQ.isError ? (
-          <ErrorState message={formatApiError(membersQ.error)} onRetry={() => membersQ.refetch()} />
+          <ErrorState
+            message={formatApiError(membersQ.error)}
+            onRetry={() => membersQ.refetch()}
+          />
         ) : (
           <ul className="space-y-1.5">
             {(membersQ.data ?? []).map((m) => (
@@ -85,7 +125,9 @@ export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit:
                       disabled={updateRole.isPending}
                     />
                   ) : (
-                    <Badge tone={m.role === "admin" ? "accent" : "neutral"}>{m.role}</Badge>
+                    <Badge tone={m.role === "admin" ? "accent" : "neutral"}>
+                      {m.role}
+                    </Badge>
                   )}
                   {canEdit && (
                     <IconButton
@@ -120,7 +162,9 @@ export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit:
                     key={inv.email}
                     className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"
                   >
-                    <span className="min-w-0 truncate text-fg">{inv.email}</span>
+                    <span className="min-w-0 truncate text-fg">
+                      {inv.email}
+                    </span>
                     <span className="flex shrink-0 items-center gap-2">
                       {inv.expired && <Badge tone="amber">Expired</Badge>}
                       <Badge tone="neutral">{inv.role}</Badge>
@@ -138,9 +182,50 @@ export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit:
           </div>
         )}
 
+        {canEdit && orgId && orgCandidates.length > 0 && (
+          <div className="mt-4 space-y-3 border-t border-line pt-4">
+            <h3 className="fg-label text-fg">Add from organization</h3>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+              <div className="flex-1">
+                <Field label="Org member">
+                  <Select
+                    options={orgCandidateOptions}
+                    value={addUserId}
+                    onChange={(v) => setAddUserId(v)}
+                    placeholder="Select an org member…"
+                  />
+                </Field>
+              </div>
+              <div className="sm:w-40">
+                <Field label="Role">
+                  <Select
+                    options={ROLE_OPTIONS}
+                    value={addRole}
+                    onChange={(v) =>
+                      setAddRole(v as "admin" | "member" | "viewer")
+                    }
+                  />
+                </Field>
+              </div>
+              <Button
+                variant="primary"
+                icon="plus"
+                loading={directAdd.isPending}
+                disabled={!addUserId}
+                onClick={addFromOrg}
+                className="min-h-11"
+              >
+                Add
+              </Button>
+            </div>
+          </div>
+        )}
+
         {canEdit && (
           <div className="mt-4 space-y-3 border-t border-line pt-4">
-            <h3 className="fg-label text-fg">Invite a member</h3>
+            <h3 className="fg-label text-fg">
+              Invite by email (outside the org)
+            </h3>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
               <div className="flex-1">
                 <Field label="Email">

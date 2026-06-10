@@ -57,6 +57,10 @@ interface RunDetailProps {
   runId: string | null;
   /** Active project slug — enables the "Open issue" cross-link when present. */
   slug?: string;
+  /** False for project viewers (read-only): hides the issue quick-action bar
+   *  and the Pause/Resume/Stop run controls (the server 403s them anyway).
+   *  Optional, defaults true so existing callers keep their behaviour. */
+  canWrite?: boolean;
 }
 
 const TABS = [
@@ -65,7 +69,7 @@ const TABS = [
   { value: "cost", label: "Cost" },
 ];
 
-export function RunDetail({ open, onClose, issue, runId, slug }: RunDetailProps) {
+export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }: RunDetailProps) {
   const [tab, setTab] = useState("timeline");
   const { toast } = useToast();
   const router = useRouter();
@@ -147,8 +151,9 @@ export function RunDetail({ open, onClose, issue, runId, slug }: RunDetailProps)
   // Related / Jump-to cross-links (run ↔ issue) + shareable deep-link. When an
   // issue row is present the quick-action bar already exposes a first-class
   // "Open issue" control, so the menu only carries it in the run-only context
-  // (e.g. the Ops Runs tab, where there is no issue row + quick bar).
-  if (slug && taskIssueId && !issue) {
+  // (e.g. the Ops Runs tab, where there is no issue row + quick bar) — or for
+  // read-only viewers, whose quick bar is hidden.
+  if (slug && taskIssueId && (!issue || !canWrite)) {
     menuItems.push({ label: "Open issue", icon: "list", onSelect: openIssue });
   }
   if (runId) {
@@ -181,8 +186,9 @@ export function RunDetail({ open, onClose, issue, runId, slug }: RunDetailProps)
               most-used issue mutations (status / priority / assignee) + the
               full-detail link are reachable in one glance without scrolling.
               Only when opened from an issue card (the Ops run-only view has no
-              issue row to edit). */}
-          {issue && (
+              issue row to edit) and for writers — viewers get a read-only
+              drawer ("Open issue" moves into the overflow menu). */}
+          {issue && canWrite && (
             <div className="sticky -top-4 z-10 -mx-5 -mt-4 border-b border-line bg-surface/95 px-5 pb-3 pt-4 backdrop-blur-sm">
               <IssueQuickActions
                 issueId={issue.id}
@@ -215,7 +221,7 @@ export function RunDetail({ open, onClose, issue, runId, slug }: RunDetailProps)
               visually + verbally distinct: a primary Pause vs a danger Stop. */}
           <div className="flex flex-col gap-2.5">
             <div className="flex flex-wrap items-center gap-2">
-              {run?.status === "running" && (
+              {canWrite && run?.status === "running" && (
                 <Tooltip label="Finishes the in-flight step, then halts before the next step. Does NOT stop the running agent.">
                   <Button
                     variant="primary"
@@ -227,7 +233,7 @@ export function RunDetail({ open, onClose, issue, runId, slug }: RunDetailProps)
                   </Button>
                 </Tooltip>
               )}
-              {run?.status === "paused" && (
+              {canWrite && run?.status === "paused" && (
                 <Button
                   variant="primary"
                   icon="play"
@@ -239,7 +245,7 @@ export function RunDetail({ open, onClose, issue, runId, slug }: RunDetailProps)
               )}
               {/* Distinct destructive abort — present whenever an agent could
                   still be running (running, or the finishing step while pausing). */}
-              {runId && (run?.status === "running" || isPausing) && (
+              {canWrite && runId && (run?.status === "running" || isPausing) && (
                 <Tooltip label="Aborts the running agent immediately (cancellationRequested + agent:abort). Terminal — the run cannot be resumed.">
                   <Button
                     variant="danger"

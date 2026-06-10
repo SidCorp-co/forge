@@ -242,6 +242,31 @@ export const organizationMembers = pgTable(
   }),
 );
 
+export const orgInvitations = pgTable(
+  'org_invitations',
+  {
+    token: text('token').primaryKey(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    // 'owner' is never invitable — granting owner is an explicit in-app act.
+    role: text('role', { enum: orgMemberRoles }).notNull(),
+    inviterId: uuid('inviter_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    orgEmailIdx: index('org_invitations_org_email_idx').on(t.orgId, t.email),
+    orgEmailPendingUq: uniqueIndex('org_invitations_org_email_pending_uq')
+      .on(t.orgId, t.email)
+      .where(sql`accepted_at IS NULL`),
+  }),
+);
+
 export const organizationsRelations = relations(organizations, ({ one, many }) => ({
   creator: one(users, { fields: [organizations.createdBy], references: [users.id] }),
   members: many(organizationMembers),

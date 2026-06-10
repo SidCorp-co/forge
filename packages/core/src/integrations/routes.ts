@@ -411,6 +411,17 @@ integrationsRoutes.patch(
 
     const patch = c.req.valid('json');
 
+    // Connection-level fields (config/secrets/active) of an ORG-owned
+    // credential are managed at the org tier — a project admin alone must not
+    // rotate or reconfigure a credential shared across the org's projects.
+    if (
+      connection.ownerType === 'org' &&
+      (patch.config !== undefined || patch.secrets !== undefined || patch.active !== undefined)
+    ) {
+      const access = await effectiveProjectRole(userId, projectId);
+      if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
+    }
+
     // Re-validate the loose config against the existing provider so a PATCH can
     // never strip the wrong provider's fields. Config lives on the connection.
     let mergedConfig: Record<string, unknown> | undefined;

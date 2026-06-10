@@ -5,10 +5,31 @@
 // images resolve via the design Markdown's `coreFileUrl` mapping), author
 // initials resolved against the project members, and reply/add boxes.
 
-import { type ClipboardEvent, type DragEvent, useCallback, useRef, useState } from "react";
+import {
+  Avatar,
+  Badge,
+  Banner,
+  Button,
+  EmptyState,
+  Icon,
+  IconButton,
+  Markdown,
+  Textarea,
+} from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
-import { Avatar, Badge, Banner, Button, EmptyState, Icon, IconButton, Markdown, Textarea } from "@/design";
-import { COMMENT_KIND_META, deriveCommentKind, initials, memberLabel } from "../derive";
+import {
+  type ClipboardEvent,
+  type DragEvent,
+  useCallback,
+  useRef,
+  useState,
+} from "react";
+import {
+  COMMENT_KIND_META,
+  deriveCommentKind,
+  initials,
+  memberLabel,
+} from "../derive";
 import { useCreateComment } from "../detail-hooks";
 import type { CommentNode, ProjectMember } from "../types";
 import { AttachmentList } from "./attachment-list";
@@ -115,7 +136,11 @@ function AddCommentBox({
             blobs.push(file);
           } else {
             const ext = item.type.split("/")[1] ?? "png";
-            blobs.push(new File([file], `pasted-${blobs.length + 1}.${ext}`, { type: item.type }));
+            blobs.push(
+              new File([file], `pasted-${blobs.length + 1}.${ext}`, {
+                type: item.type,
+              }),
+            );
           }
         }
       }
@@ -190,7 +215,10 @@ function AddCommentBox({
                 size={15}
                 className="flex-none text-subtle"
               />
-              <span className="fg-body-sm min-w-0 flex-1 truncate text-fg" title={f.name}>
+              <span
+                className="fg-body-sm min-w-0 flex-1 truncate text-fg"
+                title={f.name}
+              >
                 {f.name}
               </span>
               <span className="fg-caption flex-none">{formatSize(f.size)}</span>
@@ -216,7 +244,13 @@ function AddCommentBox({
         >
           Attach
         </Button>
-        <input ref={fileInputRef} type="file" multiple className="hidden" onChange={onPick} />
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={onPick}
+        />
         <div className="flex gap-2">
           {onDone && (
             <Button variant="ghost" size="sm" onClick={onDone}>
@@ -257,14 +291,18 @@ function CommentItem({
   const meta = COMMENT_KIND_META[kind];
   const author = memberLabel(node.authorId, members);
   return (
-    <div className={depth > 0 ? "border-l border-line-subtle pl-3 sm:pl-4" : ""}>
+    <div
+      className={depth > 0 ? "border-l border-line-subtle pl-3 sm:pl-4" : ""}
+    >
       <div className="flex items-start gap-2.5">
         <Avatar initials={initials(author)} size={26} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="fg-label text-fg">{author}</span>
             {kind !== "comment" && <Badge tone={meta.tone}>{meta.label}</Badge>}
-            <span className="fg-caption">{formatRelativeTime(node.createdAt)}</span>
+            <span className="fg-caption">
+              {formatRelativeTime(node.createdAt)}
+            </span>
           </div>
           <div className="mt-1">
             <Markdown>{node.body}</Markdown>
@@ -335,9 +373,15 @@ export function CommentThread({
   );
   return (
     <div className="space-y-5">
-      {!readOnly && <AddCommentBox issueId={issueId} placeholder="Add a comment…" />}
+      {!readOnly && (
+        <AddCommentBox issueId={issueId} placeholder="Add a comment…" />
+      )}
       {ordered.length === 0 ? (
-        <EmptyState title="No comments yet" message="Start the conversation." mascot={false} />
+        <EmptyState
+          title="No comments yet"
+          message="Start the conversation."
+          mascot={false}
+        />
       ) : (
         <div className="space-y-5">
           {ordered.map((node) => (

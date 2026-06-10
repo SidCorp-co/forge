@@ -37,6 +37,11 @@ interface PipelineBoardProps {
    *  host renders the page header + view switcher, so the board hides its own
    *  `<header>` and trims its top padding. */
   embedded?: boolean;
+  /** False for project viewers (read-only). The board itself has no
+   *  drag-and-drop (cards are click-to-open), so this gates the mutation
+   *  affordances in the RunDetail drawer (quick actions + run controls).
+   *  Optional, defaults true so other callers keep their behaviour. */
+  canWrite?: boolean;
 }
 
 interface Selection {
@@ -44,7 +49,7 @@ interface Selection {
   runId: string | null;
 }
 
-export function PipelineBoard({ scope, embedded = false }: PipelineBoardProps) {
+export function PipelineBoard({ scope, embedded = false, canWrite = true }: PipelineBoardProps) {
   const { projectId, slug } = scope;
   const [selected, setSelected] = useState<Selection | null>(null);
 
@@ -139,6 +144,7 @@ export function PipelineBoard({ scope, embedded = false }: PipelineBoardProps) {
         issue={selectedIssue}
         runId={selected?.runId ?? null}
         slug={slug}
+        canWrite={canWrite}
       />
     </div>
   );

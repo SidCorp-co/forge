@@ -6,17 +6,27 @@
 // in `issue-row-actions.tsx` (ISS-293 redesign) and consume these exports; the
 // rail and new-issue dialog reuse the option lists.
 
+import {
+  Icon,
+  type IconName,
+  Menu,
+  type MenuItem,
+  type SelectOption,
+  Stat,
+} from "@/design";
 import { useRouter } from "next/navigation";
-import { Icon, Menu, Stat, type IconName, type MenuItem, type SelectOption } from "@/design";
 import type { PatchIssueInput } from "../api";
-import { useIssueCost, useIssueDeps } from "../hooks";
 import { COMPLEXITY_LABELS, PRIORITY_LABELS } from "../derive";
+import { useIssueCost, useIssueDeps } from "../hooks";
 import type { IssueDependencyEdge, IssueStatus, ProjectMember } from "../types";
 
 export interface RowActions {
   patch: (args: { id: string; body: PatchIssueInput }) => void;
   transition: (args: { id: string; toStatus: IssueStatus }) => void;
   isPending: boolean;
+  /** False for project viewers (read-only): the row menu drops every mutation
+   *  item and keeps only navigation. Optional — omitted means writable. */
+  canWrite?: boolean;
 }
 
 // Option lists keep the raw enum `value` (server contract) but show humanized
@@ -39,14 +49,17 @@ export const COMPLEXITY_OPTIONS: SelectOption[] = [
   { value: "xl", label: COMPLEXITY_LABELS.xl },
 ];
 
-export function assigneeOptions(members: ProjectMember[] | undefined): SelectOption[] {
+export function assigneeOptions(
+  members: ProjectMember[] | undefined,
+): SelectOption[] {
   return [
     { value: "", label: "Unassigned" },
     ...(members ?? []).map((m) => ({ value: m.userId, label: m.email })),
   ];
 }
 
-const isParentEdge = (k: IssueDependencyEdge["kind"]) => k === "decomposes" || k === "parent";
+const isParentEdge = (k: IssueDependencyEdge["kind"]) =>
+  k === "decomposes" || k === "parent";
 
 /** Build a Menu item for the OTHER endpoint of a relation edge. `dir` says which
  *  endpoint is "the other one": for an INCOMING edge it's the `from`, for an
@@ -60,7 +73,9 @@ function edgeToMenuItem(
 ): MenuItem {
   const isIncoming = dir === "in";
   const otherId = isIncoming ? e.fromIssueId : e.toIssueId;
-  const displayId = (isIncoming ? e.fromDisplayId : e.toDisplayId) ?? `ISS-${otherId.slice(0, 6)}`;
+  const displayId =
+    (isIncoming ? e.fromDisplayId : e.toDisplayId) ??
+    `ISS-${otherId.slice(0, 6)}`;
   const title = isIncoming ? e.fromTitle : e.toTitle;
   return {
     label: title ? `${displayId} · ${title}` : displayId,
@@ -73,7 +88,11 @@ function edgeToMenuItem(
  *  The trigger reads as a labelled pill (icon + "Blocked by 2") instead of a
  *  cryptic emoji+count; the dropdown lists the actual `ISS-X · title` issues,
  *  each navigating to that issue (ISS-366 D3). Renders nothing when empty. */
-function RelationChip({ icon, label, items }: { icon: IconName; label: string; items: MenuItem[] }) {
+function RelationChip({
+  icon,
+  label,
+  items,
+}: { icon: IconName; label: string; items: MenuItem[] }) {
   if (items.length === 0) return null;
   return (
     <Menu
@@ -101,7 +120,8 @@ function RelationChip({ icon, label, items }: { icon: IconName; label: string; i
 export function DepBadges({ id, slug }: { id: string; slug: string }) {
   const router = useRouter();
   const { data } = useIssueDeps(id);
-  const navigate = (otherId: string) => router.push(`/projects/${slug}/issues/${otherId}`);
+  const navigate = (otherId: string) =>
+    router.push(`/projects/${slug}/issues/${otherId}`);
 
   const incoming = data?.incoming ?? [];
   const outgoing = data?.outgoing ?? [];
@@ -114,7 +134,13 @@ export function DepBadges({ id, slug }: { id: string; slug: string }) {
   const subtasks = outgoing.filter((e) => isParentEdge(e.kind));
   const parents = incoming.filter((e) => isParentEdge(e.kind));
 
-  if (!blockedBy.length && !blocks.length && !subtasks.length && !parents.length) return null;
+  if (
+    !blockedBy.length &&
+    !blocks.length &&
+    !subtasks.length &&
+    !parents.length
+  )
+    return null;
 
   return (
     <span className="inline-flex items-center gap-1.5">
@@ -135,7 +161,9 @@ export function DepBadges({ id, slug }: { id: string; slug: string }) {
       />
       <RelationChip
         icon="fork"
-        label={parents.length > 1 ? `Subtask of ${parents.length}` : "Subtask of"}
+        label={
+          parents.length > 1 ? `Subtask of ${parents.length}` : "Subtask of"
+        }
         items={parents.map((e) => edgeToMenuItem(e, "in", slug, navigate))}
       />
     </span>

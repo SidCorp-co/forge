@@ -1,5 +1,27 @@
 "use client";
 
+import {
+  BoardRowSkeleton,
+  Button,
+  EmptyState,
+  ErrorState,
+  Input,
+  Pagination,
+  type SegmentOption,
+  SegmentedControl,
+  Select,
+  type SelectOption,
+  TBody,
+  TH,
+  THead,
+  TR,
+  Table,
+} from "@/design";
+import { decodeFilter, decodeNumber, usePinnedViews } from "@/features/shell";
+import { formatApiError } from "@/lib/api/error";
+import { projectRoom } from "@/lib/ws/rooms";
+import { useRoom } from "@/lib/ws/use-room";
+import { usePathname } from "next/navigation";
 // Issues List view (the "List" tab of the redesigned Issues screen, ISS-364).
 // Extracted verbatim from the former single-view `IssuesScreen` body: server-
 // side search / filter / sort / pagination via the search endpoint, per-row
@@ -11,34 +33,17 @@
 // query string (never rebuilds it) so the host screen's `?tab=` survives a
 // filter change — rebuilding from scratch would drop the active-view param.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
-import {
-  BoardRowSkeleton,
-  Button,
-  EmptyState,
-  ErrorState,
-  Input,
-  Pagination,
-  SegmentedControl,
-  Select,
-  Table,
-  TBody,
-  TH,
-  THead,
-  TR,
-  type SegmentOption,
-  type SelectOption,
-} from "@/design";
-import { formatApiError } from "@/lib/api/error";
-import { projectRoom } from "@/lib/ws/rooms";
-import { useRoom } from "@/lib/ws/use-room";
-import { usePinnedViews, decodeFilter, decodeNumber } from "@/features/shell";
 import { ISSUES_PAGE_SIZE } from "../api";
 import { groupRows } from "../derive";
-import { useIssues, usePatchIssue, useProjectMembers, useTransitionIssue } from "../hooks";
+import {
+  useIssues,
+  usePatchIssue,
+  useProjectMembers,
+  useTransitionIssue,
+} from "../hooks";
 import type { GroupBy, IssueFilter, IssueSort } from "../types";
-import type { RowActions } from "./issue-table-row";
 import { IssueMobileCard, IssueTableRow } from "./issue-row-actions";
+import type { RowActions } from "./issue-table-row";
 
 // ISS-360: four tabs only. "All" now includes drafts (no separate Drafts /
 // "All + drafts" tabs — that split was the confusing behaviour the reporter
@@ -70,9 +75,17 @@ interface IssuesListViewProps {
   scope: { projectId: string; slug: string };
   /** Open the New-issue dialog (owned by the host screen). */
   onNewIssue?: () => void;
+  /** False for project viewers (read-only): row quick-action mutations
+   *  (transition / priority / complexity / assign) are hidden. Optional,
+   *  defaults true so other callers keep their behaviour. */
+  canWrite?: boolean;
 }
 
-export function IssuesListView({ scope, onNewIssue }: IssuesListViewProps) {
+export function IssuesListView({
+  scope,
+  onNewIssue,
+  canWrite = true,
+}: IssuesListViewProps) {
   const { projectId, slug } = scope;
   const pathname = usePathname() || `/projects/${slug}/issues`;
   const pinnedViews = usePinnedViews();
@@ -90,7 +103,10 @@ export function IssuesListView({ scope, onNewIssue }: IssuesListViewProps) {
   // deep-links (route + ?filters) restore the exact view. Read from
   // window.location to avoid forcing a Suspense boundary around the screen.
   useEffect(() => {
-    const sp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    const sp =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search)
+        : null;
     if (sp) {
       const qv = sp.get("q") ?? "";
       setRawQ(qv);
@@ -141,13 +157,20 @@ export function IssuesListView({ scope, onNewIssue }: IssuesListViewProps) {
       else sp.delete(key);
     }
     const qs = sp.toString();
-    window.history.replaceState(window.history.state, "", `${pathname}${qs ? `?${qs}` : ""}`);
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${pathname}${qs ? `?${qs}` : ""}`,
+    );
   }, [pathname, filterParams]);
 
   // Build the pinnable href from the merged params (carry `tab` so the pinned
   // link reopens the List view).
   const viewHref = useMemo(() => {
-    const sp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+    const sp =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search)
+        : new URLSearchParams();
     for (const [key, value] of Object.entries(filterParams)) {
       if (value) sp.set(key, value);
       else sp.delete(key);
@@ -159,7 +182,13 @@ export function IssuesListView({ scope, onNewIssue }: IssuesListViewProps) {
 
   useRoom(projectRoom(projectId));
 
-  const issuesQ = useIssues(projectId, { q, filter, sort, page, pageSize: ISSUES_PAGE_SIZE });
+  const issuesQ = useIssues(projectId, {
+    q,
+    filter,
+    sort,
+    page,
+    pageSize: ISSUES_PAGE_SIZE,
+  });
   const membersQ = useProjectMembers(projectId);
   const patch = usePatchIssue();
   const transition = useTransitionIssue();
@@ -177,6 +206,7 @@ export function IssuesListView({ scope, onNewIssue }: IssuesListViewProps) {
     patch: patch.mutate,
     transition: transition.mutate,
     isPending: patch.isPending || transition.isPending,
+    canWrite,
   };
 
   const isFiltered = q !== "" || filter !== "all";
@@ -192,7 +222,11 @@ export function IssuesListView({ scope, onNewIssue }: IssuesListViewProps) {
           className="w-full sm:w-64"
         />
         <div className="overflow-x-auto">
-          <SegmentedControl options={FILTERS} value={filter} onChange={setFilter} />
+          <SegmentedControl
+            options={FILTERS}
+            value={filter}
+            onChange={setFilter}
+          />
         </div>
         <Select
           aria-label="Group by"
@@ -253,7 +287,9 @@ export function IssuesListView({ scope, onNewIssue }: IssuesListViewProps) {
           }
           mascot={!isFiltered}
           action={
-            !isFiltered && onNewIssue ? { label: "New issue", onClick: onNewIssue } : undefined
+            !isFiltered && onNewIssue
+              ? { label: "New issue", onClick: onNewIssue }
+              : undefined
           }
         />
       )}
@@ -329,7 +365,11 @@ export function IssuesListView({ scope, onNewIssue }: IssuesListViewProps) {
 
           {pageCount > 1 && (
             <div className="mt-6 flex justify-end">
-              <Pagination page={page} pageCount={pageCount} onChange={setPage} />
+              <Pagination
+                page={page}
+                pageCount={pageCount}
+                onChange={setPage}
+              />
             </div>
           )}
         </>

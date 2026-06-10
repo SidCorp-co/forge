@@ -1,9 +1,9 @@
 "use client";
 
+import { Button, Textarea } from "@/design";
 // Sticky message composer — Textarea + Send. Enter sends, Shift+Enter inserts a
 // newline. Shared by the run thread + Chat. ≥44px touch targets, sticky bottom.
-import { useState, type KeyboardEvent } from "react";
-import { Button, Textarea } from "@/design";
+import { type KeyboardEvent, useState } from "react";
 
 interface ComposerProps {
   onSend: (message: string) => void;
@@ -14,7 +14,21 @@ interface ComposerProps {
   placeholder?: string;
 }
 
-export function Composer({ onSend, disabled, busy, placeholder = "Send a message…" }: ComposerProps) {
+/** Rendered in place of the Composer for project viewers (read-only role). */
+export function ReadOnlyComposerNote() {
+  return (
+    <div className="sticky bottom-0 z-10 border-t border-line bg-app/95 px-4 py-4 backdrop-blur sm:px-6">
+      <p className="fg-body-sm text-center text-muted">Read-only access</p>
+    </div>
+  );
+}
+
+export function Composer({
+  onSend,
+  disabled,
+  busy,
+  placeholder = "Send a message…",
+}: ComposerProps) {
   const [value, setValue] = useState("");
   const canSend = !disabled && !busy && value.trim().length > 0;
 
@@ -40,7 +54,11 @@ export function Composer({ onSend, disabled, busy, placeholder = "Send a message
           onKeyDown={onKeyDown}
           disabled={disabled}
           rows={1}
-          placeholder={disabled ? "No device online — start a runner to chat." : placeholder}
+          placeholder={
+            disabled
+              ? "No device online — start a runner to chat."
+              : placeholder
+          }
           className="max-h-40 min-h-11 flex-1"
           aria-label="Message"
         />

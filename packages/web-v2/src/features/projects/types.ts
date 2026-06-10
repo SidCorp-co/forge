@@ -25,7 +25,8 @@ export interface ProjectListItem {
   role: ProjectMember['role'] | null;
   /** Caller's role in the project's org — null when not an org member. */
   orgRole: 'owner' | 'admin' | 'member' | null;
-  apiKey: string;
+  /** null for the read-only viewer tier (execution-grade key is withheld). */
+  apiKey: string | null;
   createdAt: string;
 }
 

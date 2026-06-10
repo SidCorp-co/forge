@@ -99,6 +99,7 @@ import { requireDevice } from './middleware/require-device.js';
 import { requirePatOrDevice } from './middleware/require-pat-or-device.js';
 import { registerNotifyMentionsSubscriber } from './notifications/notify-mentions.js';
 import { notificationRoutes } from './notifications/routes.js';
+import { orgInvitationRoutes } from './orgs/invitations-routes.js';
 import { orgRoutes } from './orgs/routes.js';
 import { patRoutes } from './pat/routes.js';
 import {
@@ -315,6 +316,7 @@ app.route('/api/projects', projectHealthRoutes);
 app.route('/api/projects', projectMetricsRoutes);
 app.route('/api/projects', projectRoutes);
 app.route('/api/orgs', orgRoutes);
+app.route('/api/org-invitations', orgInvitationRoutes);
 app.route('/api/projects', integrationsRoutes);
 app.route('/api/integration-connections', integrationConnectionsRoutes);
 app.route('/api/projects', docsRoutes);

@@ -1,12 +1,5 @@
 "use client";
 
-// Single-assistant Chat surface (`/projects/[slug]/agent`). Reuses the same
-// conversation primitives as the run thread — Conversation + Composer + the
-// `['agent-session', …]` hooks — but lighter: no pipeline rail, no fork/rerun.
-// Bootstrap = resume the latest interactive `agent` session for the project,
-// else create one on first send (ISS-292).
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import {
   AgentWorking,
   Banner,
@@ -14,11 +7,12 @@ import {
   EmptyState,
   ErrorState,
   Menu,
+  type MenuItem,
   ProjectLoader,
   StatusChip,
   useElapsed,
-  type MenuItem,
 } from "@/design";
+import { useProjects } from "@/features/projects/hooks";
 import {
   classifySessionOutcome,
   deriveSessionDisplayStatus,
@@ -28,6 +22,13 @@ import {
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
+import { useQuery } from "@tanstack/react-query";
+// Single-assistant Chat surface (`/projects/[slug]/agent`). Reuses the same
+// conversation primitives as the run thread — Conversation + Composer + the
+// `['agent-session', …]` hooks — but lighter: no pipeline rail, no fork/rerun.
+// Bootstrap = resume the latest interactive `agent` session for the project,
+// else create one on first send (ISS-292).
+import { useMemo, useState } from "react";
 import { sessionApi } from "../api";
 import {
   useCreateSession,
@@ -39,13 +40,18 @@ import {
   useSessionTurns,
 } from "../hooks";
 import { parseTurns } from "../types";
-import { Composer } from "./composer";
+import { Composer, ReadOnlyComposerNote } from "./composer";
 import { Conversation } from "./conversation";
 
 const AGENT_TYPE = "agent";
 
 export function ChatScreen({ projectId }: { projectId: string }) {
   useRoom(projectRoom(projectId));
+
+  // Viewer = read-only: hide the composer (the server 403s sends regardless).
+  const projectsQ = useProjects();
+  const canWrite =
+    projectsQ.data?.find((p) => p.id === projectId)?.role !== "viewer";
 
   // Resume the latest interactive agent session for this project, and list a
   // page of recent ones to drive the history switcher (ISS-421).
@@ -61,7 +67,10 @@ export function ChatScreen({ projectId }: { projectId: string }) {
 
   const sessionQ = useSession(resolvedId);
   const turnsQ = useSessionTurns(resolvedId);
-  const items = useMemo(() => parseTurns(turnsQ.data?.turns ?? []), [turnsQ.data]);
+  const items = useMemo(
+    () => parseTurns(turnsQ.data?.turns ?? []),
+    [turnsQ.data],
+  );
 
   const create = useCreateSession();
   const send = useSendMessage(resolvedId ?? "");
@@ -72,12 +81,17 @@ export function ChatScreen({ projectId }: { projectId: string }) {
   const session = sessionQ.data;
   const display = session ? deriveSessionDisplayStatus(session) : undefined;
   const live = display === "running" || display === "stalled";
-  const startMs = session?.startedAt ? new Date(session.startedAt).getTime() : undefined;
+  const startMs = session?.startedAt
+    ? new Date(session.startedAt).getTime()
+    : undefined;
   const elapsed = useElapsed(startMs, live);
 
   // Only a GENUINE failure (not a benign lifecycle/capacity cancel or pipeline
   // cleanup) surfaces the recovery banner — mirrors the sessions list (ISS-322).
-  const outcome = session && display ? classifySessionOutcome(display, session.failureReason) : undefined;
+  const outcome =
+    session && display
+      ? classifySessionOutcome(display, session.failureReason)
+      : undefined;
   const isFailed = outcome?.bucket === "failed";
 
   // Start a fresh chat WITHOUT deleting the current one. useCreateSession's
@@ -138,11 +152,18 @@ export function ChatScreen({ projectId }: { projectId: string }) {
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-line bg-app/95 px-4 py-4 backdrop-blur sm:px-8">
         <div className="min-w-0">
           <h1 className="fg-h2">Agent chat</h1>
-          <p className="fg-body-sm mt-1 text-muted">Ask the agent anything about this project.</p>
+          <p className="fg-body-sm mt-1 text-muted">
+            Ask the agent anything about this project.
+          </p>
         </div>
         <div className="ml-auto flex items-center gap-2">
           {session && display && (
-            <StatusChip status={statusToChip(display)} stage={deriveStage(session.metadata)} size="sm" domain="session" />
+            <StatusChip
+              status={statusToChip(display)}
+              stage={deriveStage(session.metadata)}
+              size="sm"
+              domain="session"
+            />
           )}
           {historyItems.length > 1 && (
             <Menu
@@ -174,12 +195,20 @@ export function ChatScreen({ projectId }: { projectId: string }) {
               <Banner
                 tone="danger"
                 action={
-                  <Button variant="secondary" size="sm" icon="plus" loading={create.isPending} onClick={handleNewChat}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon="plus"
+                    loading={create.isPending}
+                    onClick={handleNewChat}
+                  >
                     Start new chat
                   </Button>
                 }
               >
-                <span className="font-medium">{outcome?.label ?? "Chat failed"}</span>
+                <span className="font-medium">
+                  {outcome?.label ?? "Chat failed"}
+                </span>
                 {outcome?.tooltip ? <> — {outcome.tooltip}</> : null}
               </Banner>
             </div>
@@ -187,7 +216,8 @@ export function ChatScreen({ projectId }: { projectId: string }) {
           {send.isError && (
             <div className="mb-6">
               <Banner tone="danger">
-                <span className="font-medium">Couldn&apos;t send.</span> {formatApiError(send.error)}
+                <span className="font-medium">Couldn&apos;t send.</span>{" "}
+                {formatApiError(send.error)}
               </Banner>
             </div>
           )}
@@ -206,7 +236,9 @@ export function ChatScreen({ projectId }: { projectId: string }) {
               busy={busy || regenerate.isPending || editTurn.isPending}
               onRegenerate={(turnId) => regenerate.mutate(turnId)}
               onFork={(fromTurnId) => fork.mutate({ fromTurnId })}
-              onEditTurn={(turnId, content, expectedEditedAt) => editTurn.mutate({ turnId, content, expectedEditedAt })}
+              onEditTurn={(turnId, content, expectedEditedAt) =>
+                editTurn.mutate({ turnId, content, expectedEditedAt })
+              }
             />
           )}
           {live && (
@@ -217,7 +249,15 @@ export function ChatScreen({ projectId }: { projectId: string }) {
         </div>
       </div>
 
-      <Composer onSend={handleSend} busy={busy} placeholder="Message the agent…" />
+      {canWrite ? (
+        <Composer
+          onSend={handleSend}
+          busy={busy}
+          placeholder="Message the agent…"
+        />
+      ) : (
+        <ReadOnlyComposerNote />
+      )}
     </div>
   );
 }

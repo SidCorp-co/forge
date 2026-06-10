@@ -62,6 +62,41 @@ export async function sendInvitationEmail(to: string, ctx: InvitationEmailContex
   });
 }
 
+export interface OrgInvitationEmailContext {
+  orgName: string;
+  inviterEmail: string;
+  token: string;
+}
+
+/** Org-tier variant — same transport/link landing, `kind=org` selects the
+ *  org accept endpoint on the web accept page. */
+export async function sendOrgInvitationEmail(
+  to: string,
+  ctx: OrgInvitationEmailContext,
+): Promise<void> {
+  const link = `${buildInvitationLink(ctx.token)}&kind=org`;
+
+  if (env.SMTP_DEBUG || !env.SMTP_HOST) {
+    logger.info({ to, link }, 'org invitation (debug/no-SMTP — not sent)');
+    return;
+  }
+
+  const subject = `You're invited to join ${ctx.orgName} on Forge`;
+  const bodyText = `${ctx.inviterEmail} invited you to join the "${ctx.orgName}" organization on Forge.\n\nAccept the invitation by opening this link (valid for 7 days):\n\n${link}\n`;
+  const safeOrgName = escapeHtml(ctx.orgName);
+  const safeInviterEmail = escapeHtml(ctx.inviterEmail);
+  const safeLink = escapeHtml(link);
+  const bodyHtml = `<p><strong>${safeInviterEmail}</strong> invited you to join the "<strong>${safeOrgName}</strong>" organization on Forge.</p><p>Accept the invitation by opening this link (valid for 7 days):</p><p><a href="${safeLink}">${safeLink}</a></p>`;
+
+  await getTransport().sendMail({
+    from: env.SMTP_FROM ?? 'noreply@localhost',
+    to,
+    subject,
+    text: bodyText,
+    html: bodyHtml,
+  });
+}
+
 export function __resetTransportForTests(): void {
   transport = null;
 }
