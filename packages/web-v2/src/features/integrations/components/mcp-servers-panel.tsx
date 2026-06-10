@@ -13,7 +13,7 @@ import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useMcpPreview, useTestIntegration } from "../hooks";
 import type { IntegrationTestResult, McpServerPreviewEntry } from "../types";
-import { ENV_LABEL } from "./status-pill";
+import { ENV_LABEL, Pill } from "./status-pill";
 
 const REASON_META: Record<
   McpServerPreviewEntry["reason"],
@@ -37,16 +37,7 @@ const REASON_META: Record<
 };
 
 function ReasonPill({ reason }: { reason: McpServerPreviewEntry["reason"] }) {
-  const m = REASON_META[reason];
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-[12px] font-semibold"
-      style={{ color: m.fg, background: m.bg }}
-    >
-      <Icon name={m.icon} size={13} />
-      {m.label}
-    </span>
-  );
+  return <Pill {...REASON_META[reason]} />;
 }
 
 function VerifyResult({ result }: { result: IntegrationTestResult | { errorMessage: string } }) {

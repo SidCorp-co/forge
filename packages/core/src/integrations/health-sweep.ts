@@ -24,6 +24,7 @@ import { db } from '../db/client.js';
 import { integrationBindings, integrationConnections } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
+import { raceWithTimeout } from './probe.js';
 import { getAdapter } from './registry.js';
 import { type BindingWithConnection, buildContextFromBinding } from './store.js';
 
@@ -34,13 +35,6 @@ const MIN_PROBE_AGE_MS = 30 * 60 * 1000;
 
 /** A probe that takes longer than this counts as failed and is abandoned. */
 const PROBE_TIMEOUT_MS = 10_000;
-
-function probeTimeout(): Promise<'timeout'> {
-  return new Promise((resolve) => {
-    const t = setTimeout(() => resolve('timeout'), PROBE_TIMEOUT_MS);
-    t.unref?.();
-  });
-}
 
 /** All (binding, connection) pairs where BOTH sides are active. */
 async function listActivePairs(): Promise<BindingWithConnection[]> {
@@ -91,12 +85,11 @@ export async function runIntegrationsHealthSweep(): Promise<{
     const adapter = getAdapter(pair.binding.provider);
     if (!adapter) continue;
     try {
-      const probe = adapter.healthcheck(buildContextFromBinding(pair));
-      // A rejection after the timeout already won must not surface as an
-      // unhandled rejection — the adapter records its own failure state.
-      probe.catch(() => {});
-      const result = await Promise.race([probe, probeTimeout()]);
-      if (result === 'timeout') {
+      const result = await raceWithTimeout(
+        adapter.healthcheck(buildContextFromBinding(pair)),
+        PROBE_TIMEOUT_MS,
+      );
+      if (result === null) {
         failed++;
         logger.warn(
           { connectionId: pair.connection.id, provider: pair.binding.provider },

@@ -16,6 +16,7 @@ import {
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { ConnectionOwnerField } from "./connection-owner-field";
+import { ENV_OPTIONS } from "./status-pill";
 import {
   useConfirmProdDeploy,
   useCreateProviderIntegration,
@@ -31,11 +32,6 @@ import type {
   IntegrationTestResult,
   ProviderConfig,
 } from "../types";
-
-const ENV_OPTIONS: { value: IntegrationEnvironment; label: string }[] = [
-  { value: "staging", label: "Staging" },
-  { value: "prod", label: "Production" },
-];
 
 interface BadgeView {
   label: string;
