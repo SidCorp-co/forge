@@ -1,126 +1,103 @@
 # Memory & Knowledge
 
-Postgres `pgvector` semantic memory, project knowledge graph, RAG retrieval.
+Postgres `pgvector` semantic memory, project knowledge edges, and pipeline learning loops.
 
-> Sub-doc: [step-handoffs.md](step-handoffs.md) — per-step structured handoff context passed between pipeline stages.
+> Sub-doc: [step-handoffs.md](step-handoffs.md) — per-step structured handoff context passed between pipeline stages (own table, not `memories`).
+>
+> Roadmap: [../../proposals/memory-v2-cognitive-layer.md](../../proposals/memory-v2-cognitive-layer.md) — plan to port the cognitive memory features (hybrid retrieval, usage tracking, dedup, decay, extraction, consolidation) from the `forge-agents` predecessor.
 
 ## Overview
 
-- Claude Code has no cross-session memory; Forge adds persistent memory.
-- Captures issue content, agent session outputs, decisions, resolved errors → embeds → stores vectors in Postgres `pgvector` (same connection as the rest of the data).
-- Surfaces relevant context to agents at the start of each session.
+- Claude Code has no cross-session memory; Forge adds persistent, project-scoped memory.
+- Memory is **pull-based**: agents are instructed (via prompt facts, `prompt/facts/registry.ts`) to call `forge_memory.search` / `forge_memory.write` themselves. The only automatic injection is CI-fix-pattern context added to forge-code job payloads.
+- Storage is a single `memories` table in the same Postgres instance as everything else (pgvector extension, HNSW cosine index). No separate vector DB.
 
-## Data Flow
+## Data Flow (current implementation)
 
 ```
-  Sources of memory:
-    - Issue title + description
-    - Comment bodies
-    - Job outputs (stdout, tool results)
-    - sessionContext (decisions, resolved errors, files modified)
-    - User-added memory notes
+  Writers:
+    issue create/update ──── lifecycle hooks ──┐  (best-effort, detached)
+    PM decisions / escalations ────────────────┤  (detached, logged on failure)
+    PM policy create/update ───────────────────┤  (best-effort; delete cleans up row)
+    CI fix patterns (reopen→developed) ────────┤  (source:'note', kind:'ci_fix_pattern')
+    knowledge ingest (.forge/knowledge.json) ──┤  (strict — errors reported)
+    forge_memory.write (MCP) / POST /api/memory┘  (strict — errors reported)
           │
-          ▼ lifecycle hooks
-  ┌────────────────────┐
-  │ Embed + normalize  │ (via embeddings service)
-  └────────┬───────────┘
-           │
-           ▼
-  ┌────────────────────┐
-  │ pgvector upsert    │ row in `memories` with metadata cols + vector
-  └────────────────────┘
+          ▼
+  embed (LiteLLM-compatible service, truncate at 8192 chars)
+          │
+          ▼
+  UPSERT into memories on (project_id, source, source_ref)
 
-  Retrieval:
-  ┌────────────────────┐
-  │ Query embedding    │ ← agent session start, or user query
-  └────────┬───────────┘
-           │
-           ▼
-  ┌────────────────────┐
-  │ Multi-strategy      │
-  │ search (semantic +  │ ← project-scoped by default
-  │  keyword + graph)   │
-  └────────┬───────────┘
-           │
-           ▼
-  Relevant context snippets returned to agent's system prompt
+  Readers:
+    forge_memory.search (MCP) / POST /api/memory/search   semantic top-K, agent-initiated
+    forge_memory.get (MCP) / GET /api/memory               natural-key + JSONB metadata filter
+    ci-fix-pattern-query                                   auto-injected into forge-code payloads
 ```
 
-### Input Sources
+Comments are **deliberately not auto-indexed**: in a pipeline-driven project most comments are bot status chatter, and no automatic read path consumes `source:'comment'`. Agents that want a comment-worth lesson remembered write it explicitly as `source:'knowledge'` (see `memory/indexer.ts`). Job outputs are likewise not auto-indexed; agents persist what matters via step handoffs or explicit writes.
 
-| Data | Source | Indexed when |
-|------|--------|--------------|
-| Issue description | `issues-pipeline` lifecycle `issue:created` / `issue:updated` | On save |
-| Comment body | `comments` lifecycle | On save |
-| Job result + sessionContext | `agents-jobs` lifecycle `job:completed` | On terminal |
-| User memory note | User explicitly added via UI | On save |
-| Project knowledge snapshot | `.forge/knowledge.json` from device | On project sync |
+## `memories` table
 
-### ID Resolution
+| Column | Notes |
+|--------|-------|
+| `id` | uuid PK |
+| `project_id` | FK → projects, cascade delete; every query filters on it |
+| `source` | enum: `issue` \| `comment` \| `job` \| `note` \| `knowledge` \| `decision` \| `policy` (`comment`/`job` are currently write-dead, kept for compat) |
+| `source_ref` | natural key paired with (project, source); max 512 chars |
+| `text_content` | the embedded text (truncated to 8192 chars before embed **and** store) |
+| `embedding` | `vector(1536)` — dimension hardcoded as `MEMORY_EMBEDDING_DIM`; must match `EMBEDDINGS_DIM` env |
+| `metadata` | jsonb, queried via `@>` containment |
+| `embedded_at` / `created_at` / `updated_at` | timestamps |
 
-| Input | Transform | Stored as |
-|-------|-----------|-----------|
-| Issue/comment/job text | Embedding (model per project config) | `vector` column in `memories` table |
-| Source type | Column | `source: 'issue' \| 'comment' \| 'job' \| 'note' \| 'knowledge'` |
-| Project scope | Column | `project_id: <uuid>` (indexed) |
+Indexes: unique `(project_id, source, source_ref)` (upsert target — natural-key dedup), `(project_id, source)`, `(project_id, source_ref)`, HNSW on `embedding` (`vector_cosine_ops`).
 
-## Core Entities
+## Module layout (`packages/core/src/memory/`)
 
-### `Memory` (DB record — canonical form before embedding)
+| File | Role |
+|------|------|
+| `indexer.ts` | `indexMemory` (strict, throws) / `indexMemoryBestEffort` (logs + swallows) / `deleteMemory`; hook subscriptions for issue create/update |
+| `write-service.ts`, `get-service.ts`, `search-service.ts` | shared service layer — REST routes and MCP tools wrap the **same** functions so validation and response shapes are identical. Services do NOT check authorization; callers must. |
+| `search.ts` | pgvector cosine query (`score = 1 - distance`), source + metadata filters, topK ≤ 50 |
+| `write-routes.ts`, `list-routes.ts`, `search-routes.ts` | Hono REST routes; auth = `requireAuth` + email verified + `assertProjectMemberAccess` |
+| `step-handoff-schema.ts` | structured handoff payloads (separate `step_handoffs` table — see sub-doc) |
 
-| Field | Description |
-|-------|-------------|
-| `documentId` | Canonical ID |
-| `project` | Belongs to one project |
-| `source` | `issue` \| `comment` \| `job` \| `note` \| `knowledge` |
-| `sourceRef` | Reference to the source record |
-| `text` | The content embedded |
-| `metadata` | Additional tags (priority, status, tools used, etc.) |
-| `embeddedAt` | Timestamp of vector upsert |
-
-### `memories` table layout (Postgres + pgvector)
-
-- Single table for all projects, partitioned by `project_id` filter on every query (project scope enforced in policy layer)
-- `vector vector(N)` column — N matches embedding model dimension (default 1536)
-- Index: HNSW on `vector` (`USING hnsw (vector vector_cosine_ops)`) per ADR 0011
-- Indexed columns: `(project_id, source)`, `(project_id, source_ref)`
-- Payload columns: `source`, `source_ref`, `project_id`, `metadata jsonb`, `embedded_at`
-
-## Key Business Flows
-
-- **Indexing on issue create:** `issue:created` hook → embeddings service normalizes text (strip markdown, canonicalize whitespace) → POST to embedding provider (LiteLLM) → INSERT/UPDATE into `memories` (vector + metadata) in one statement → `embeddedAt` set; broadcast `memory:indexed` over ws to subscribed clients.
-- **Retrieval at session start:** Agent session starts on device → system prompt builder calls `forge_memory.search(query, projectId)` via MCP → server runs `SELECT ... FROM memories WHERE project_id = $1 ORDER BY vector <=> $2 LIMIT K` (cosine distance via HNSW index) → top-K sorted by relevance returned as context snippets in system prompt → session runs with context.
-- **Project knowledge indexing (manual trigger):** User clicks "Reindex codebase" → device runs `index-codebase` skill (scans filesystem, `grep` + semantic search) → generates `.forge/knowledge.json` (architecture notes, key files, conventions) → uploads to server → server embeds and stores as `source: 'knowledge'` memory.
+MCP tools (`mcp/tools/forge-memory.ts`): `forge_memory.search` / `.get` / `.write` / `.delete`, device-scoped via `assertDeviceOwnerIsMember`.
 
 ## API Endpoints
 
-| Method | Endpoint | Principal | Description |
-|--------|----------|-----------|-------------|
-| `POST` | `/api/memory/search` | user / device | Query memory semantically (JSON body) |
-| `POST` | `/api/memory` | user | Add manual memory note |
-| `DELETE` | `/api/memory/:id` | user | Remove a memory entry |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/memory/search` | Semantic query: `{projectId, query, topK≤50, sourceFilter?}` → `{hits, model, took_ms}`; 503 on embeddings outage |
+| `POST` | `/api/memory` | Upsert a memory row → `{id, embeddedAt, truncated}` (201) |
+| `GET` | `/api/memory` | List by project (+ optional source), paginated |
+| `DELETE` | `/api/memory/by-source` | Delete by natural key → `{deleted: n}` |
+| `DELETE` | `/api/memory/:id` | Idempotent; always 204 for unauthorized callers (no id-existence leak) |
 
-MCP tool: `forge_memory` — exposes the same search to agents.
+## Invariants
+
+- **Natural-key upsert**: re-writing the same `(projectId, source, sourceRef)` refines the row instead of duplicating — this is the only dedup mechanism (exact-key, not semantic).
+- **Strict vs best-effort**: explicit callers (REST, MCP, knowledge ingest) get errors; hook subscribers swallow them (eventually consistent — a later edit re-indexes). Detached work uses `queueMicrotask`; durability upgrade path is pg-boss (queue already running).
+- **Truncation**: text > 8192 chars is cut before embedding *and* before storing; callers see `truncated: true`.
+- **Auth at the edges**: every REST/MCP surface asserts project membership before touching services.
+
+## Learning loops (current)
+
+| Loop | Mechanism |
+|------|-----------|
+| CI fix patterns (`pipeline/ci-fix-pattern-learn.ts`) | On `reopen → developed`, capture (errorTypes, fileTypes, diffSummary) as `source:'note'`, `kind:'ci_fix_pattern'`; capped at 5 per error type; query side injects matches into forge-code payloads |
+| Knowledge convention notes | Prompt facts instruct agents: search first (`sourceFilter:['knowledge']`, score > 0.8), else write with a stable kebab `sourceRef` |
+| Knowledge edges (`knowledge-edges/`) | `knowledge_edges` table: subject/predicate/object triples with `confidence`, `sourceMemoryId`, temporal validity (`validFrom`/`validUntil`); CRUD-only today — not yet used as a retrieval strategy |
+
+## Known gaps
+
+Tracked in the [memory-v2 proposal](../../proposals/memory-v2-cognitive-layer.md): no hybrid/keyword retrieval (semantic-only), no usage tracking or decay, no semantic dedup, no extraction from sessions, no consolidation job, deleted issues leave their memory rows behind, writes hard-fail when embeddings are down (no degraded path).
 
 ## Cross-Module Touchpoints
 
-| Direction | Module | What | When |
-|-----------|--------|------|------|
-| Receives from | [issues-pipeline](../issues-pipeline/README.md) | Issue / comment embeddings | On lifecycle save |
-| Receives from | [agents-jobs](../agents-jobs/README.md) | Job result + sessionContext | On job completion |
-| Read by | [agents-jobs](../agents-jobs/README.md) | Relevant context via `forge_memory` MCP tool | At session start |
-| Read by | [chat](../chat/README.md) | Same retrieval surface for chat conversations | On each turn |
-
-## Commands / Jobs
-
-| Command/Job | Description |
-|-------------|-------------|
-| `memory-reindexer` (manual trigger) | Rebuild all embeddings for a project (e.g., after model change) |
-| `knowledge-sync` (device → server) | Upload `.forge/knowledge.json` changes |
-
-## Future (v0.2+)
-
-- Knowledge graph edges (explicit entity relations, not just embeddings)
-- Semantic search UI (currently agents-only via MCP)
-- Memory decay / forgetting policies
-- Per-user memory (separate from project memory)
+| Direction | Module | What |
+|-----------|--------|------|
+| Receives from | [issues-pipeline](../issues-pipeline/README.md) | Issue title/description on create/update (hooks) |
+| Receives from | PM module | Decisions, escalations, policies |
+| Read by | [agents-jobs](../agents-jobs/README.md) | Pull-based via `forge_memory` MCP; CI-fix patterns pushed into forge-code payloads |
+| Adjacent | knowledge-edges, skill-facts, step-handoffs | Separate tables, separate surfaces |
