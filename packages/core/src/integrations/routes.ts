@@ -147,18 +147,24 @@ const createSchema = z.discriminatedUnion('provider', [
     environment: environmentSchema,
     config: coolifyConfigSchema,
     secrets: coolifySecretsSchema,
+    // Present = mint the credential as ORG-owned (shared across the org's
+    // projects); must equal the project's own org and the caller must be an
+    // org admin. Absent = personal (user-owned), the historical default.
+    orgId: z.uuid().optional(),
   }),
   z.object({
     provider: z.literal('postman'),
     environment: environmentSchema.default('prod'),
     config: postmanConfigSchema,
     secrets: postmanSecretsSchema,
+    orgId: z.uuid().optional(),
   }),
   z.object({
     provider: z.literal('epodsystem'),
     environment: environmentSchema.default('prod'),
     config: epodsystemConfigBase,
     secrets: epodsystemSecretsSchema,
+    orgId: z.uuid().optional(),
   }),
 ]);
 
@@ -307,12 +313,24 @@ integrationsRoutes.post(
     // Auto-mint a per-binding HMAC secret for inbound webhook verification.
     const integrationSecret = `whsec_${randomBytes(24).toString('hex')}`;
 
-    // Create the credential (connection, owned by the caller) then bind it into
-    // this project+env. Config lives on the connection; the binding carries the
-    // env + inbound HMAC. (Per-binding config overrides arrive with the shared-
-    // connection UX in a later epic issue.)
+    // Create the credential (connection) then bind it into this project+env.
+    // Config lives on the connection; the binding carries the env + inbound
+    // HMAC. orgId present = org-owned credential: it must be the project's own
+    // org and the caller must be an org admin (org connections only bind
+    // within their org).
+    if (body.orgId) {
+      const access = await effectiveProjectRole(userId, projectId);
+      if (!access || access.orgId !== body.orgId) {
+        throw new HTTPException(409, {
+          message: 'org connection must belong to the project’s own org',
+          cause: { code: 'ORG_MISMATCH' },
+        });
+      }
+      if (!orgRoleAtLeast(access.orgRole, 'admin')) throw forbidden();
+    }
     const connection = await createConnection({
-      ownerId: userId,
+      ownerType: body.orgId ? 'org' : 'user',
+      ownerId: body.orgId ?? userId,
       provider: body.provider,
       config: { ...body.config, environment: body.environment },
       secrets: body.secrets,

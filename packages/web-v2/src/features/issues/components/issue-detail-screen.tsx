@@ -35,6 +35,7 @@ import type { StatusKey } from "@/design/status";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
+import { useProjects } from "@/features/projects/hooks";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
 import { STAGES, type StageKey } from "@/design/stages";
@@ -107,6 +108,11 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
   const [expandedStage, setExpandedStage] = useState<StageKey | null>(null);
 
   useRoom(projectRoom(projectId));
+
+  // Viewer role is read-only: hide transition/edit/comment affordances (the
+  // server 403s regardless — this is UX, not the gate).
+  const projectsQ = useProjects();
+  const canWrite = projectsQ.data?.find((p) => p.id === projectId)?.role !== "viewer";
 
   const issueQ = useIssue(id);
   const commentsQ = useComments(id);
@@ -221,10 +227,10 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
 
   const moreItems: MenuItem[] = [
     { label: "Open pipeline", icon: "pipeline", onSelect: openPipeline },
-    ...(isTerminal || isParked
+    ...(isTerminal || isParked || !canWrite
       ? []
       : [{ label: "Pause (hold)", icon: "stop", onSelect: () => onTransition("on_hold") } as MenuItem]),
-    ...(isTerminal
+    ...(isTerminal || !canWrite
       ? []
       : [{ label: "Reopen", icon: "rerun", onSelect: () => onTransition("reopen") } as MenuItem]),
     { label: "Copy link", icon: "link", onSelect: copyLink },
@@ -286,10 +292,16 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
             ]}
             shortcuts={[{ keys: "⌘K", desc: "Open the command palette" }]}
           />
-          {isTerminal ? (
-            <Button variant="primary" size="sm" icon="rerun" loading={pending} onClick={() => onTransition("reopen")}>
-              Reopen
-            </Button>
+          {!canWrite || isTerminal ? (
+            canWrite ? (
+              <Button variant="primary" size="sm" icon="rerun" loading={pending} onClick={() => onTransition("reopen")}>
+                Reopen
+              </Button>
+            ) : (
+              <Button variant="primary" size="sm" icon="pipeline" onClick={openPipeline}>
+                View pipeline
+              </Button>
+            )
           ) : isRunActive ? (
             <Button variant="secondary" size="sm" icon="stop" loading={pending} onClick={() => onTransition("on_hold")}>
               Pause
@@ -318,7 +330,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
             <BlockerBanner
               blocker={blocker}
               slug={slug}
-              pending={pending}
+              pending={pending || !canWrite}
               onApprove={() => onTransition("approved")}
               onResume={() => onTransition("reopen")}
               onProvideInfo={() => setTab("comments")}
@@ -438,6 +450,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
                       issueId={id}
                       comments={commentsQ.data ?? []}
                       members={membersQ.data}
+                      readOnly={!canWrite}
                     />
                   ))}
                 {tab === "activity" &&
@@ -486,7 +499,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
                 members={membersQ.data}
                 cost={costQ.data}
                 deps={depsQ.data}
-                pending={pending}
+                pending={pending || !canWrite}
                 onPatch={onPatch}
                 onTransition={onTransition}
               />
@@ -501,7 +514,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
               members={membersQ.data}
               cost={costQ.data}
               deps={depsQ.data}
-              pending={pending}
+              pending={pending || !canWrite}
               onPatch={onPatch}
               onTransition={onTransition}
             />

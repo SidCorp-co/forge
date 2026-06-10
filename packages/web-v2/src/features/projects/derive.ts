@@ -123,16 +123,33 @@ export function filterProjects(
   items: ProjectConsoleItem[],
   query: string,
   attentionOnly: boolean,
+  orgId: string | null = null,
 ): ProjectConsoleItem[] {
   const q = query.trim().toLowerCase();
   return items.filter((p) => {
     const matches =
       !q ||
       p.name.toLowerCase().includes(q) ||
+      p.orgName.toLowerCase().includes(q) ||
       (p.repoPath?.toLowerCase().includes(q) ?? false) ||
       (p.description?.toLowerCase().includes(q) ?? false);
-    return matches && (!attentionOnly || isAttention(p));
+    return matches && (!attentionOnly || isAttention(p)) && (!orgId || p.orgId === orgId);
   });
+}
+
+/** Distinct orgs across the console items (for the toolbar org filter). */
+export function distinctOrgs(
+  items: ProjectConsoleItem[],
+): Array<{ id: string; name: string; isPersonal: boolean }> {
+  const byId = new Map<string, { id: string; name: string; isPersonal: boolean }>();
+  for (const p of items) {
+    if (!byId.has(p.orgId)) {
+      byId.set(p.orgId, { id: p.orgId, name: p.orgName, isPersonal: p.orgIsPersonal });
+    }
+  }
+  return [...byId.values()].sort(
+    (a, b) => Number(b.isPersonal) - Number(a.isPersonal) || a.name.localeCompare(b.name),
+  );
 }
 
 /** `$13.38` — trailing-24h spend, two decimals. */

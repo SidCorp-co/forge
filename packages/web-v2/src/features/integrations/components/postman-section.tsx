@@ -15,6 +15,7 @@ import {
   Toggle,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { ConnectionOwnerField } from "./connection-owner-field";
 import {
   useCreateProviderIntegration,
   useDeleteProviderIntegration,
@@ -79,6 +80,7 @@ export function PostmanSection({ projectId }: { projectId: string }) {
   );
 
   const create = useCreateProviderIntegration(projectId);
+  const [ownerOrgId, setOwnerOrgId] = useState<string | undefined>(undefined);
   const update = useUpdateProviderIntegration(projectId);
   const test = useTestIntegration(projectId);
   const remove = useDeleteProviderIntegration(projectId);
@@ -118,6 +120,7 @@ export function PostmanSection({ projectId }: { projectId: string }) {
         environment: "prod",
         config: toConfig(form),
         secrets: { apiKey: form.apiKey.trim() },
+        ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
       });
       setForm((f) => ({ ...f, apiKey: "" }));
     }
@@ -179,6 +182,9 @@ export function PostmanSection({ projectId }: { projectId: string }) {
             />
           </Field>
 
+          {!existing && (
+            <ConnectionOwnerField projectId={projectId} value={ownerOrgId} onChange={setOwnerOrgId} />
+          )}
           <Field label="Workspace name" hint="The Postman workspace this project writes into.">
             <Input
               value={form.workspaceName}

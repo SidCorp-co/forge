@@ -244,11 +244,13 @@ function CommentItem({
   issueId,
   members,
   depth,
+  readOnly = false,
 }: {
   node: CommentNode;
   issueId: string;
   members: ProjectMember[] | undefined;
   depth: number;
+  readOnly?: boolean;
 }) {
   const [replying, setReplying] = useState(false);
   const kind = deriveCommentKind(node.body);
@@ -272,15 +274,17 @@ function CommentItem({
               <AttachmentList rows={node.attachments} />
             </div>
           )}
-          <div className="mt-1">
-            <button
-              type="button"
-              onClick={() => setReplying((r) => !r)}
-              className="fg-caption hover:text-fg"
-            >
-              {replying ? "Cancel" : "Reply"}
-            </button>
-          </div>
+          {!readOnly && (
+            <div className="mt-1">
+              <button
+                type="button"
+                onClick={() => setReplying((r) => !r)}
+                className="fg-caption hover:text-fg"
+              >
+                {replying ? "Cancel" : "Reply"}
+              </button>
+            </div>
+          )}
           {replying && (
             <div className="mt-2">
               <AddCommentBox
@@ -302,6 +306,7 @@ function CommentItem({
               issueId={issueId}
               members={members}
               depth={depth + 1}
+              readOnly={readOnly}
             />
           ))}
         </div>
@@ -314,10 +319,13 @@ export function CommentThread({
   issueId,
   comments,
   members,
+  readOnly = false,
 }: {
   issueId: string;
   comments: CommentNode[];
   members: ProjectMember[] | undefined;
+  /** Viewer role: render the thread without composer/reply affordances. */
+  readOnly?: boolean;
 }) {
   // Newest top-level comment first so the latest activity is reachable without
   // scrolling past a long history (ISS-347). Sort a COPY — nested `replies`
@@ -327,13 +335,20 @@ export function CommentThread({
   );
   return (
     <div className="space-y-5">
-      <AddCommentBox issueId={issueId} placeholder="Add a comment…" />
+      {!readOnly && <AddCommentBox issueId={issueId} placeholder="Add a comment…" />}
       {ordered.length === 0 ? (
         <EmptyState title="No comments yet" message="Start the conversation." mascot={false} />
       ) : (
         <div className="space-y-5">
           {ordered.map((node) => (
-            <CommentItem key={node.id} node={node} issueId={issueId} members={members} depth={0} />
+            <CommentItem
+              key={node.id}
+              node={node}
+              issueId={issueId}
+              members={members}
+              depth={0}
+              readOnly={readOnly}
+            />
           ))}
         </div>
       )}

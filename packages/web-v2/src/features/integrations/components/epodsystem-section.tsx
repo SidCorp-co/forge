@@ -14,6 +14,7 @@ import {
   type BadgeProps,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { ConnectionOwnerField } from "./connection-owner-field";
 import {
   useCreateProviderIntegration,
   useDeleteProviderIntegration,
@@ -57,6 +58,7 @@ export function EpodsystemSection({ projectId }: { projectId: string }) {
   );
 
   const create = useCreateProviderIntegration(projectId);
+  const [ownerOrgId, setOwnerOrgId] = useState<string | undefined>(undefined);
   const update = useUpdateProviderIntegration(projectId);
   const test = useTestIntegration(projectId);
   const remove = useDeleteProviderIntegration(projectId);
@@ -85,6 +87,7 @@ export function EpodsystemSection({ projectId }: { projectId: string }) {
           provider: "epodsystem",
           config: {},
           secrets: { apiKey: apiKey.trim() },
+          ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
         });
       }
       setApiKey("");
@@ -130,6 +133,9 @@ export function EpodsystemSection({ projectId }: { projectId: string }) {
             theme (staging); release promotes draft → main (production).
           </p>
 
+          {!existing && (
+            <ConnectionOwnerField projectId={projectId} value={ownerOrgId} onChange={setOwnerOrgId} />
+          )}
           <Field
             label={existing ? "API key" : "API key"}
             hint={

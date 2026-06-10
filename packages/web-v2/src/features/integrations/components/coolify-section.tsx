@@ -15,6 +15,7 @@ import {
   type BadgeProps,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { ConnectionOwnerField } from "./connection-owner-field";
 import {
   useConfirmProdDeploy,
   useCreateProviderIntegration,
@@ -103,6 +104,7 @@ interface EnvPanelProps {
 
 function EnvironmentPanel({ projectId, environment, existing, onRefetch }: EnvPanelProps) {
   const create = useCreateProviderIntegration(projectId);
+  const [ownerOrgId, setOwnerOrgId] = useState<string | undefined>(undefined);
   const update = useUpdateProviderIntegration(projectId);
   const remove = useDeleteProviderIntegration(projectId);
   const test = useTestIntegration(projectId);
@@ -145,6 +147,7 @@ function EnvironmentPanel({ projectId, environment, existing, onRefetch }: EnvPa
           environment,
           config: { baseUrl, resourceUuid, branch },
           secrets: { apiToken: apiToken.trim() },
+          ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
         });
         // Surface the auto-minted HMAC secret once — the operator must paste it
         // into Coolify's webhook settings or inbound callbacks fail sig checks.
@@ -200,6 +203,9 @@ function EnvironmentPanel({ projectId, environment, existing, onRefetch }: EnvPa
           : "Staging — auto-dispatch on release."}
       </p>
 
+      {!existing && (
+        <ConnectionOwnerField projectId={projectId} value={ownerOrgId} onChange={setOwnerOrgId} />
+      )}
       <Field label="Base URL" required>
         <Input
           type="url"

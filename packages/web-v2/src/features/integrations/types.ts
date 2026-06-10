@@ -125,18 +125,22 @@ export type CreateIntegrationInput =
       environment: "staging" | "prod";
       config: CoolifyConfigInput;
       secrets: CoolifySecretsInput;
+      /** Present = org-owned credential (project's own org, org admin only). */
+      orgId?: string;
     }
   | {
       provider: "epodsystem";
       environment?: "staging" | "prod";
       config: EpodsystemConfigInput;
       secrets: EpodsystemSecretsInput;
+      orgId?: string;
     }
   | {
       provider: "postman";
       environment?: "staging" | "prod";
       config: PostmanConfigInput;
       secrets: PostmanSecretsInput;
+      orgId?: string;
     };
 
 /** Partial patch for `PATCH .../integrations/:id`. */
