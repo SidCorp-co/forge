@@ -230,6 +230,8 @@ projectRoutes.get('/', async (c) => {
       slug: projects.slug,
       name: projects.name,
       orgId: projects.orgId,
+      orgName: organizations.name,
+      orgIsPersonal: organizations.isPersonal,
       createdBy: projects.createdBy,
       memberRole: projectMembers.role,
       orgRole: organizationMembers.role,
@@ -238,6 +240,7 @@ projectRoutes.get('/', async (c) => {
       createdAt: projects.createdAt,
     })
     .from(projects)
+    .innerJoin(organizations, eq(organizations.id, projects.orgId))
     .leftJoin(
       projectMembers,
       and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, userId)),

@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import { ErrorState, Icon, SegmentedControl, Skeleton, SlideOver, Tabs } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
-import { useConnectionBindings, useIntegrationsList } from "../hooks";
+import { useConnectionBindings,
+  useConnections, useIntegrationsList } from "../hooks";
 import { DIRECTORY_STATUS_META, cardProvider, deriveDirectoryStatus, getCapabilities } from "../derive";
 import type { DrillableProvider } from "../derive";
 import type { BindingSummary, IntegrationEnvironment, StatusCard } from "../types";
@@ -88,6 +89,11 @@ function BindingsSection({
 }) {
   const bindingsQ = useConnectionBindings(connectionId);
   const projectsQ = useProjectsIncludingArchived();
+  // Org-owned connections (shared across the org) get a badge so it's clear
+  // the credential isn't personal; managing it requires org admin.
+  const connectionsQ = useConnections();
+  const isOrgOwned =
+    connectionsQ.data?.items.find((c) => c.id === connectionId)?.ownerType === "org";
 
   // Project-id -> display name for friendly rendering (falls back to the raw
   // id so a missing/archived project still reads correctly).
@@ -99,7 +105,14 @@ function BindingsSection({
 
   return (
     <section className="mt-4 flex flex-col gap-2">
-      <h3 className="fg-h4">Projects using this connection</h3>
+      <div className="flex items-center gap-2">
+        <h3 className="fg-h4">Projects using this connection</h3>
+        {isOrgOwned && (
+          <span className="fg-body-sm rounded-pill bg-sunken px-2 py-0.5 text-subtle">
+            org-shared
+          </span>
+        )}
+      </div>
       {bindingsQ.isLoading ? (
         <div className="flex flex-col gap-2">
           <Skeleton className="h-8 w-full" />

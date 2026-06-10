@@ -18,6 +18,8 @@ export interface ProjectListItem {
   slug: string;
   name: string;
   orgId: string;
+  orgName: string;
+  orgIsPersonal: boolean;
   createdBy: string;
   /** Effective role (org owner/admin surface as 'admin'). */
   role: ProjectMember['role'] | null;
@@ -87,6 +89,8 @@ export interface CreateProjectInput {
   slug: string;
   name: string;
   description?: string | null;
+  /** Target org — omitted = the caller's personal org. */
+  orgId?: string;
 }
 
 /**
@@ -117,6 +121,9 @@ export interface ProjectConsoleItem {
   id: string;
   slug: string;
   name: string;
+  orgId: string;
+  orgName: string;
+  orgIsPersonal: boolean;
   role: ProjectListItem['role'];
   createdAt: string;
   description: string | null;

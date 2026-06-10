@@ -52,6 +52,13 @@ export function ProjectCard({ project, now, onTogglePin }: ProjectCardProps) {
             </button>
           </div>
           <div className="mt-0.5 flex items-center gap-1.5 text-subtle">
+            {!project.orgIsPersonal && (
+              <>
+                <Icon name="users" size={12} />
+                <span className="max-w-[40%] truncate text-[11.5px]">{project.orgName}</span>
+                <span aria-hidden>·</span>
+              </>
+            )}
             <Icon name="github" size={12} />
             <span className="truncate font-mono text-[11.5px]">{project.repoPath ?? '—'}</span>
           </div>

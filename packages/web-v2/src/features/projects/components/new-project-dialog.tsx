@@ -7,7 +7,8 @@
 // `['projects']` (done by the hook) and navigate to the new project.
 import { type FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Banner, Button, Field, Input, SlideOver, Textarea } from '@/design';
+import { Banner, Button, Field, Input, Select, SlideOver, Textarea } from '@/design';
+import { useOrgs } from '@/features/orgs/hooks';
 import { ApiError } from '@/lib/api/client';
 import { formatApiError } from '@/lib/api/error';
 import { useToast } from '@/providers/toast-provider';
@@ -38,6 +39,10 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
   const [slug, setSlug] = useState('');
   const [slugEdited, setSlugEdited] = useState(false);
   const [description, setDescription] = useState('');
+  // Target org — '' = the caller's personal org (server default).
+  const [orgId, setOrgId] = useState('');
+  const orgsQ = useOrgs();
+  const teamOrgs = (orgsQ.data ?? []).filter((o) => !o.isPersonal);
   const [errors, setErrors] = useState<{ name?: string; slug?: string; form?: string }>({});
 
   // Reset the whole form each time the dialog opens — never leak a prior draft
@@ -48,6 +53,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
       setSlug('');
       setSlugEdited(false);
       setDescription('');
+      setOrgId('');
       setErrors({});
       create.reset();
     }
@@ -94,6 +100,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
         slug: trimmedSlug,
         name: trimmedName,
         ...(trimmedDesc ? { description: trimmedDesc } : {}),
+        ...(orgId ? { orgId } : {}),
       });
       toast({ title: 'Project created', description: created.name, tone: 'success' });
       onClose();
@@ -136,6 +143,19 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
             maxLength={64}
           />
         </Field>
+
+        {teamOrgs.length > 0 && (
+          <Field label="Organization" hint="Where this project lives. Org owners/admins manage all of its projects.">
+            <Select
+              value={orgId}
+              onChange={(v) => setOrgId(v)}
+              options={[
+                { value: '', label: 'Personal' },
+                ...teamOrgs.map((o) => ({ value: o.id, label: o.name })),
+              ]}
+            />
+          </Field>
+        )}
 
         <Field label="Description" hint="Optional — a short line about this project.">
           <Textarea

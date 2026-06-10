@@ -16,6 +16,7 @@ import {
   SegmentedControl,
   type SegmentOption,
 } from "@/design";
+import { useProjects } from "@/features/projects/hooks";
 import { useTabParam } from "@/lib/utils/use-tab-param";
 import { PipelineBoard } from "@/features/pipeline/components/pipeline-board";
 import { IssuesInsightsView } from "./issues-insights-view";
@@ -40,6 +41,9 @@ interface IssuesScreenProps {
 
 export function IssuesScreen({ scope }: IssuesScreenProps) {
   const [view, setView] = useTabParam<IssuesView>(VIEWS, "board");
+  // Viewer = read-only: hide write affordances (the server 403s regardless).
+  const projectsQ = useProjects();
+  const canWrite = projectsQ.data?.find((p) => p.id === scope.projectId)?.role !== "viewer";
   // New-issue dialog — opened locally or via a `?new=1` deep-link (the global
   // TopBar / ⌘K "New issue" actions route here with that param).
   const [newOpen, setNewOpen] = useState(false);
@@ -61,9 +65,11 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
         <p className="fg-body-sm mt-1 text-muted">One strict pipeline, left to right.</p>
       </div>
       <div className="flex items-center gap-3">
-        <Button variant="primary" size="sm" icon="plus" onClick={() => setNewOpen(true)}>
-          New issue
-        </Button>
+        {canWrite && (
+          <Button variant="primary" size="sm" icon="plus" onClick={() => setNewOpen(true)}>
+            New issue
+          </Button>
+        )}
         <div className="overflow-x-auto">
           <SegmentedControl options={VIEW_OPTIONS} value={view} onChange={setView} />
         </div>
@@ -86,14 +92,17 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
         <PageContainer width="wide" className="min-h-dvh">
           {header}
           {view === "list" ? (
-            <IssuesListView scope={scope} onNewIssue={() => setNewOpen(true)} />
+            <IssuesListView
+              scope={scope}
+              onNewIssue={canWrite ? () => setNewOpen(true) : undefined}
+            />
           ) : (
             <IssuesInsightsView scope={scope} />
           )}
         </PageContainer>
       )}
 
-      <NewIssueDialog open={newOpen} onClose={() => setNewOpen(false)} scope={scope} />
+      <NewIssueDialog open={newOpen && canWrite} onClose={() => setNewOpen(false)} scope={scope} />
     </>
   );
 }

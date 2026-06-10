@@ -20,13 +20,15 @@ const selectFrom = vi.fn(() => ({
   // chained without limit/where (e.g. project_members for /:id detail)
 }));
 
-// GET / visibility query: selectDistinctOn(...).from().leftJoin().leftJoin().where()
+// GET / visibility query:
+// selectDistinctOn(...).from().innerJoin(orgs).leftJoin().leftJoin().where()
 const distinctWhere = vi.fn((): Promise<unknown[]> => Promise.resolve([]));
 const distinctLeftJoin = vi.fn((): Record<string, unknown> => ({
   leftJoin: distinctLeftJoin,
   where: distinctWhere,
 }));
-const distinctFrom = vi.fn(() => ({ leftJoin: distinctLeftJoin }));
+const distinctInnerJoin = vi.fn(() => ({ leftJoin: distinctLeftJoin }));
+const distinctFrom = vi.fn(() => ({ innerJoin: distinctInnerJoin, leftJoin: distinctLeftJoin }));
 
 const txInsertProjectReturning = vi.fn();
 const txInsertProjectValues = vi.fn(() => ({ returning: txInsertProjectReturning }));

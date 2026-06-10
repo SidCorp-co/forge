@@ -233,18 +233,22 @@ export type ConnectionCreateInput =
       displayName?: string;
       config: CoolifyConfigInput;
       secrets: CoolifySecretsInput;
+      /** Present = org-owned connection (requires org admin); absent = personal. */
+      orgId?: string;
     }
   | {
       provider: 'postman';
       displayName?: string;
       config: PostmanConfigInput;
       secrets: PostmanSecretsInput;
+      orgId?: string;
     }
   | {
       provider: 'epodsystem';
       displayName?: string;
       config: EpodsystemConfigInput;
       secrets: EpodsystemSecretsInput;
+      orgId?: string;
     };
 
 /** Body for `PATCH /integration-connections/:id` — re-validated against the existing provider. */

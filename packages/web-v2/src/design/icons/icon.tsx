@@ -5,7 +5,7 @@ import {
   LayoutGrid, Link as LinkIcon, List, Lock, LogOut, type LucideIcon, Mail,
   Menu as MenuIcon, Monitor, MoreHorizontal, PanelLeftClose, Pause, Pin, Play,
   Plus, RotateCw, Rows3, Search, Server, Settings, Shield, Sparkles, Square,
-  Star, Trash2, TriangleAlert, Workflow, X,
+  Star, Trash2, TriangleAlert, Users, Workflow, X,
 } from "lucide-react";
 
 /* Semantic icon names (carried over from the prototype's Icon.jsx) mapped to
@@ -41,6 +41,7 @@ const ICONS = {
   arrowRight: ArrowRight,
   agent: Sparkles,
   folder: Folder,
+  users: Users,
   calendar: Calendar,
   shield: Shield,
   cpu: Cpu,
