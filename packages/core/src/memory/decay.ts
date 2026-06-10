@@ -30,10 +30,10 @@ export const PRUNE_LOW_RETRIEVAL_DAYS = 90;
 export const PRUNE_LOW_RETRIEVAL_THRESHOLD = 3;
 export const PURGE_ARCHIVED_AFTER_DAYS = 90;
 
+// UTC arithmetic — setDate() math is local-time/DST-dependent and the
+// compared columns are timestamptz.
 function daysAgo(days: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d;
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
 
 export interface DecayResult {

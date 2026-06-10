@@ -162,9 +162,13 @@ export async function indexMemory(input: IndexInput, opts?: IndexOptions): Promi
       target: [memories.projectId, memories.source, memories.sourceRef],
       set: {
         textContent: sql`excluded.text_content`,
-        // On a degraded re-write this nulls a previously good vector — wanted:
-        // the old vector embeds STALE text; null forces the backfill re-embed.
-        embedding: sql`excluded.embedding`,
+        // Degraded re-write: null the vector ONLY when the text actually
+        // changed (the old vector embeds stale text; null forces the backfill
+        // re-embed). When the text is identical, the existing vector is still
+        // valid — keep it instead of losing a good embedding to an outage.
+        embedding: degraded
+          ? sql`CASE WHEN ${memories.textContent} = excluded.text_content THEN ${memories.embedding} ELSE excluded.embedding END`
+          : sql`excluded.embedding`,
         metadata: sql`excluded.metadata`,
         // A fresh write revives a decayed/consolidated-away row.
         archivedAt: sql`null`,

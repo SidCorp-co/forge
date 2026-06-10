@@ -183,6 +183,20 @@ describe('indexMemory semantic dedup', () => {
     expect(searchMemoriesMock).not.toHaveBeenCalled();
     expect(result.degraded).toBe(true);
   });
+
+  it('falls back to a normal insert when the dedup target vanishes mid-flight', async () => {
+    searchMemoriesMock.mockResolvedValueOnce([
+      { id: 'm-doomed', sourceRef: 'old-ref', score: 0.93 },
+    ]);
+    // Concurrent delete/purge between the similarity search and the update.
+    updateReturningMock.mockResolvedValueOnce([]);
+
+    const result = await indexMemory(input, { semanticDedup: true });
+
+    expect(result.dedupedInto).toBeUndefined();
+    expect(result.id).toBe('m-1');
+    expect(valuesMock).toHaveBeenCalled();
+  });
 });
 
 describe('indexMemoryBestEffort', () => {

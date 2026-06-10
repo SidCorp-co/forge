@@ -11,6 +11,9 @@ import { logger } from '../logger.js';
  * Returns null when the endpoint is unconfigured or the call fails — callers
  * treat null as "feature off / skip this run".
  */
+/** Hard cap so a hung endpoint can never wedge a pg-boss worker. */
+const COMPLETION_TIMEOUT_MS = 60_000;
+
 export async function callFastModel(prompt: string, maxTokens: number): Promise<string | null> {
   if (!env.LITELLM_API_URL) return null;
   let response: Response;
@@ -27,6 +30,7 @@ export async function callFastModel(prompt: string, maxTokens: number): Promise<
         max_tokens: maxTokens,
         temperature: 0,
       }),
+      signal: AbortSignal.timeout(COMPLETION_TIMEOUT_MS),
     });
   } catch (err) {
     logger.warn({ err: (err as Error).message }, 'memory.llm: completion request failed');
