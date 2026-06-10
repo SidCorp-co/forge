@@ -64,12 +64,22 @@ export const NON_TARGETABLE_STATUSES: ReadonlySet<IssueStatus> = new Set(['draft
  *
  * Two guardrails survive (the "moderate" in moderately-strict):
  *   1. `draft` is never a target (issues only enter draft at creation).
- *   2. A `draft` may only be promoted to `open` or discarded to `closed` —
- *      an unaccepted AI proposal cannot teleport mid-pipeline.
+ *   2. A `draft` may only be promoted to `open`, discarded to `closed`, or
+ *      handed off DIRECT-SHIP to `developed` (ISS-431) — an unaccepted AI
+ *      proposal cannot teleport into early/mid pipeline stages.
+ *
+ * Direct-ship (`draft → developed`): work implemented OUTSIDE the pipeline
+ * (an operator/assistant session pushing its own ISS-* branch) enters at the
+ * review gate instead of bypassing it. `developed` dispatches forge-review;
+ * the dispatcher opens the issue run on first dispatch (`openIssueRun` is
+ * get-or-create), so no prior pipeline stage needs to have run. Walking
+ * draft→open instead would auto-dispatch triage/clarify/plan/code onto
+ * already-finished work. Callers should set `sessionContext.branch` so the
+ * reviewer knows what to diff.
  */
 export function canTransitionFree(from: IssueStatus, to: IssueStatus): boolean {
   if (NON_TARGETABLE_STATUSES.has(to)) return false;
-  if (from === 'draft') return to === 'open' || to === 'closed';
+  if (from === 'draft') return to === 'open' || to === 'closed' || to === 'developed';
   return true;
 }
 

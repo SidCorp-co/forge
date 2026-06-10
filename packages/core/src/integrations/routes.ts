@@ -250,6 +250,11 @@ function broadcastIntegrationChanged(
   }
 }
 
+/** The create/bind 201 must not hang on a slow provider — past this the
+ *  response returns `health: null` and the probe result lands via the
+ *  adapter's own write + the next refetch (ISS-431). */
+const INITIAL_PROBE_TIMEOUT_MS = 5_000;
+
 /**
  * Best-effort immediate healthcheck after a binding is created or bound
  * (ISS-429): the operator gets a REAL health state right away instead of an
@@ -257,7 +262,8 @@ function broadcastIntegrationChanged(
  * health onto the connection (epodsystem additionally fills store identity
  * into config), so callers should re-read the pair afterwards. Never throws —
  * a failed probe is a valid result, and a crashed probe must not undo a
- * successful create.
+ * successful create. Time-boxed: the adapter keeps running past the deadline
+ * (its result still persists), only the response stops waiting.
  */
 async function runInitialHealthcheck(
   pair: BindingWithConnection,
@@ -265,7 +271,15 @@ async function runInitialHealthcheck(
   const adapter = getAdapter(pair.binding.provider);
   if (!adapter) return null;
   try {
-    return await adapter.healthcheck(buildContextFromBinding(pair));
+    const deadline = new Promise<null>((resolve) => {
+      const t = setTimeout(() => resolve(null), INITIAL_PROBE_TIMEOUT_MS);
+      t.unref?.();
+    });
+    const probe = adapter.healthcheck(buildContextFromBinding(pair));
+    // A rejection after the deadline already won must not surface as an
+    // unhandled rejection — the adapter recorded its own failure state.
+    probe.catch(() => {});
+    return await Promise.race([probe, deadline]);
   } catch {
     // The adapter records its own failure states; a transport-level crash here
     // simply leaves the connection `unverified`.
@@ -678,6 +692,69 @@ function providerCapabilities(provider: IntegrationProvider) {
   return capabilitiesFor(getAdapter(provider));
 }
 
+/** Flattened binding+connection row the status cards render from. */
+interface ProviderRow {
+  provider: string;
+  environment: string;
+  config: Record<string, unknown>;
+  active: boolean;
+  lastHealthStatus: string | null;
+  lastHealthAt: Date | null;
+  breakerOpenedAt: Date | null;
+}
+
+/**
+ * Shared builder for the coolify/postman/epodsystem status cards (ISS-431) —
+ * the three blocks were ~95% identical; they differ only in env-keying, the
+ * never-checked wording, and provider-specific meta fields.
+ */
+function buildProviderCards(opts: {
+  rows: ProviderRow[];
+  provider: IntegrationProvider;
+  label: string;
+  /** Coolify is env-split by design, so even a single binding keys by env;
+   *  MCP providers keep the bare key unless a second binding appears (keeps
+   *  existing drill-ins stable, ISS-429). */
+  alwaysEnvKeyed: boolean;
+  neverCheckedDetail: string;
+  extraMeta?: (row: ProviderRow) => Record<string, unknown>;
+}): StatusCard[] {
+  const caps = providerCapabilities(opts.provider);
+  if (opts.rows.length === 0) {
+    return [
+      {
+        key: opts.provider,
+        label: opts.label,
+        status: 'not_configured',
+        detail: `no ${opts.label} integration configured`,
+        lastSyncAt: null,
+        configured: false,
+        meta: { capabilities: caps },
+      },
+    ];
+  }
+  const envKeyed = opts.alwaysEnvKeyed || opts.rows.length > 1;
+  return opts.rows.map((row) => ({
+    key: envKeyed ? `${opts.provider}:${row.environment}` : opts.provider,
+    label: envKeyed ? `${opts.label} (${row.environment})` : opts.label,
+    status: healthToStatus(row.lastHealthStatus, row.active),
+    detail: !row.active
+      ? 'integration disabled'
+      : row.lastHealthStatus
+        ? `last health: ${row.lastHealthStatus}`
+        : opts.neverCheckedDetail,
+    lastSyncAt: toIso(row.lastHealthAt),
+    configured: true,
+    meta: {
+      environment: row.environment,
+      breakerOpen: row.breakerOpenedAt !== null,
+      lastHealthStatus: row.lastHealthStatus,
+      capabilities: caps,
+      ...(opts.extraMeta?.(row) ?? {}),
+    },
+  }));
+}
+
 integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
   const projectId = c.req.param('projectId');
   const userId = c.get('userId');
@@ -739,126 +816,41 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
     meta: { transport, remoteUrl, baseBranch: project.baseBranch, deviceCreds },
   });
 
-  // --- Coolify (one card per configured binding) ---
-  const coolifyRows = integrationRows.filter((r) => r.provider === 'coolify');
-  const coolifyCaps = providerCapabilities('coolify');
-  if (coolifyRows.length === 0) {
-    cards.push({
-      key: 'coolify',
-      label: 'Coolify',
-      status: 'not_configured',
-      detail: 'no Coolify integration configured',
-      lastSyncAt: null,
-      configured: false,
-      meta: { capabilities: coolifyCaps },
-    });
-  } else {
-    for (const row of coolifyRows) {
-      cards.push({
-        key: `coolify:${row.environment}`,
-        label: `Coolify (${row.environment})`,
-        status: healthToStatus(row.lastHealthStatus, row.active),
-        detail: !row.active
-          ? 'integration disabled'
-          : row.lastHealthStatus
-            ? `last health: ${row.lastHealthStatus}`
-            : 'never health-checked',
-        lastSyncAt: toIso(row.lastHealthAt),
-        configured: true,
-        meta: {
-          environment: row.environment,
-          breakerOpen: row.breakerOpenedAt !== null,
-          lastHealthStatus: row.lastHealthStatus,
-          capabilities: coolifyCaps,
-        },
-      });
-    }
-  }
-
-  // --- Postman (ISS-336) — one card PER BINDING (ISS-429; a project can hold
-  // a staging + a prod binding, and a disabled binding must not shadow an
-  // active one the way the previous newest-first `.find()` did). Single-binding
-  // projects keep the bare `postman` key so existing drill-ins stay stable. ---
-  const postmanRows = integrationRows.filter((r) => r.provider === 'postman');
-  const postmanCaps = providerCapabilities('postman');
-  if (postmanRows.length === 0) {
-    cards.push({
-      key: 'postman',
-      label: 'Postman',
-      status: 'not_configured',
-      detail: 'no Postman integration configured',
-      lastSyncAt: null,
-      configured: false,
-      meta: { capabilities: postmanCaps },
-    });
-  } else {
-    const envKeyed = postmanRows.length > 1;
-    for (const row of postmanRows) {
-      const pmCfg = (row.config ?? {}) as { region?: string; mode?: string };
-      cards.push({
-        key: envKeyed ? `postman:${row.environment}` : 'postman',
-        label: envKeyed ? `Postman (${row.environment})` : 'Postman',
-        status: healthToStatus(row.lastHealthStatus, row.active),
-        detail: !row.active
-          ? 'integration disabled'
-          : row.lastHealthStatus
-            ? `last health: ${row.lastHealthStatus}`
-            : 'never test-connected',
-        lastSyncAt: toIso(row.lastHealthAt),
-        configured: true,
-        meta: {
-          environment: row.environment,
-          region: pmCfg.region ?? 'us',
-          mode: pmCfg.mode ?? 'minimal',
-          breakerOpen: row.breakerOpenedAt !== null,
-          lastHealthStatus: row.lastHealthStatus,
-          capabilities: postmanCaps,
-        },
-      });
-    }
-  }
-
-  // --- Epodsystem (ISS-387) — one card PER BINDING (ISS-429, same rationale as
-  // Postman). Carries only non-secret store identity in meta — never the crmk_
+  // --- Provider cards: one card PER BINDING (ISS-429 — a disabled binding
+  // must not shadow an active one), built by the shared builder (ISS-431).
+  // Epodsystem meta carries only non-secret store identity — never the crmk_
   // key. ---
-  const epodsystemRows = integrationRows.filter((r) => r.provider === 'epodsystem');
-  const epodsystemCaps = providerCapabilities('epodsystem');
-  if (epodsystemRows.length === 0) {
-    cards.push({
-      key: 'epodsystem',
+  cards.push(
+    ...buildProviderCards({
+      rows: integrationRows.filter((r) => r.provider === 'coolify'),
+      provider: 'coolify',
+      label: 'Coolify',
+      alwaysEnvKeyed: true,
+      neverCheckedDetail: 'never health-checked',
+    }),
+    ...buildProviderCards({
+      rows: integrationRows.filter((r) => r.provider === 'postman'),
+      provider: 'postman',
+      label: 'Postman',
+      alwaysEnvKeyed: false,
+      neverCheckedDetail: 'never test-connected',
+      extraMeta: (row) => {
+        const cfg = (row.config ?? {}) as { region?: string; mode?: string };
+        return { region: cfg.region ?? 'us', mode: cfg.mode ?? 'minimal' };
+      },
+    }),
+    ...buildProviderCards({
+      rows: integrationRows.filter((r) => r.provider === 'epodsystem'),
+      provider: 'epodsystem',
       label: 'Epodsystem',
-      status: 'not_configured',
-      detail: 'no Epodsystem integration configured',
-      lastSyncAt: null,
-      configured: false,
-      meta: { capabilities: epodsystemCaps },
-    });
-  } else {
-    const envKeyed = epodsystemRows.length > 1;
-    for (const row of epodsystemRows) {
-      const epCfg = (row.config ?? {}) as { storeSlug?: string; storeName?: string };
-      cards.push({
-        key: envKeyed ? `epodsystem:${row.environment}` : 'epodsystem',
-        label: envKeyed ? `Epodsystem (${row.environment})` : 'Epodsystem',
-        status: healthToStatus(row.lastHealthStatus, row.active),
-        detail: !row.active
-          ? 'integration disabled'
-          : row.lastHealthStatus
-            ? `last health: ${row.lastHealthStatus}`
-            : 'never test-connected',
-        lastSyncAt: toIso(row.lastHealthAt),
-        configured: true,
-        meta: {
-          environment: row.environment,
-          storeSlug: epCfg.storeSlug ?? null,
-          storeName: epCfg.storeName ?? null,
-          breakerOpen: row.breakerOpenedAt !== null,
-          lastHealthStatus: row.lastHealthStatus,
-          capabilities: epodsystemCaps,
-        },
-      });
-    }
-  }
+      alwaysEnvKeyed: false,
+      neverCheckedDetail: 'never test-connected',
+      extraMeta: (row) => {
+        const cfg = (row.config ?? {}) as { storeSlug?: string; storeName?: string };
+        return { storeSlug: cfg.storeSlug ?? null, storeName: cfg.storeName ?? null };
+      },
+    }),
+  );
 
   // --- Runners / devices online ---
   const totalRunners = runnerRows.length;

@@ -51,6 +51,7 @@ import { registerRunnerReleaseRefetch } from './install/fetch-release.js';
 import { installRoutes } from './install/routes.js';
 import { registerCoolifyAdapter } from './integrations/coolify/adapter.js';
 import { registerEpodsystemAdapter } from './integrations/epodsystem/adapter.js';
+import { registerIntegrationsHealthSweep } from './integrations/health-sweep.js';
 import { registerPostmanAdapter } from './integrations/postman/adapter.js';
 import { registerIntegrationsWorker } from './integrations/queue.js';
 import { integrationConnectionsRoutes, integrationsRoutes } from './integrations/routes.js';
@@ -98,6 +99,7 @@ import { requireDevice } from './middleware/require-device.js';
 import { requirePatOrDevice } from './middleware/require-pat-or-device.js';
 import { registerNotifyMentionsSubscriber } from './notifications/notify-mentions.js';
 import { notificationRoutes } from './notifications/routes.js';
+import { orgRoutes } from './orgs/routes.js';
 import { patRoutes } from './pat/routes.js';
 import {
   pipelineAnalyticsRoutes,
@@ -131,7 +133,6 @@ import { projectHealthRoutes } from './projects/health-routes.js';
 import { invitationRoutes } from './projects/invitations-routes.js';
 import { memberRoutes } from './projects/members-routes.js';
 import { projectRoutes } from './projects/routes.js';
-import { orgRoutes } from './orgs/routes.js';
 import { promptRoutes } from './prompt/routes.js';
 import { isBossStarted, startBoss, stopBoss } from './queue/boss.js';
 import { bootstrapRunnerAdapters } from './runners/bootstrap.js';
@@ -444,6 +445,7 @@ if (isMain) {
   await registerDispatcher();
   await registerPmDispatcher();
   await registerStaleDetector();
+  await registerIntegrationsHealthSweep();
   await registerDeviceStaleDetector();
   await registerEmbeddingBackfill();
   await registerMemoryDecay();

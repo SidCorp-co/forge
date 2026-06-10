@@ -10,6 +10,12 @@ import type { StatusCard } from "../types";
 
 export const ENV_LABEL: Record<string, string> = { staging: "Staging", prod: "Production" };
 
+export const PROVIDER_LABEL: Record<string, string> = {
+  coolify: "Coolify deploy",
+  postman: "Postman",
+  epodsystem: "Epodsystem",
+};
+
 export function DirectoryStatusPill({ status }: { status: DirectoryStatus }) {
   const m = DIRECTORY_STATUS_META[status];
   return (

@@ -12,7 +12,7 @@ import { CoolifySection } from "./coolify-section";
 import { DeliveryLogViewer } from "./delivery-log-viewer";
 import { EpodsystemSection } from "./epodsystem-section";
 import { PostmanSection } from "./postman-section";
-import { ENV_LABEL, StatusPill } from "./status-pill";
+import { ENV_LABEL, PROVIDER_LABEL, StatusPill } from "./status-pill";
 
 /** Adaptive connection detail (ISS-402). Opened from a directory provider card;
  *  renders the provider's existing config+actions section (Test / Rotate /
@@ -25,12 +25,6 @@ import { ENV_LABEL, StatusPill } from "./status-pill";
  *  listing every project + environment the underlying connection is bound to
  *  (the "Projects using this connection" payoff of the connection-sharing
  *  cutover). */
-
-const PROVIDER_LABEL: Record<DrillableProvider, string> = {
-  coolify: "Coolify deploy",
-  postman: "Postman",
-  epodsystem: "Epodsystem",
-};
 
 const ENV_OPTIONS: { value: IntegrationEnvironment; label: string }[] = [
   { value: "staging", label: "Staging" },

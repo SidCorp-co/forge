@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   type IntegrationEnvironment,
@@ -78,21 +78,31 @@ export async function listActiveBindingsForProjectProvider(
   projectId: string,
   provider: IntegrationProvider,
 ): Promise<BindingWithConnection[]> {
-  return db
-    .select({ binding: integrationBindings, connection: integrationConnections })
-    .from(integrationBindings)
-    .innerJoin(
-      integrationConnections,
-      eq(integrationBindings.connectionId, integrationConnections.id),
-    )
-    .where(
-      and(
-        eq(integrationBindings.projectId, projectId),
-        eq(integrationBindings.provider, provider),
-        eq(integrationBindings.active, true),
-        eq(integrationConnections.active, true),
-      ),
-    );
+  return (
+    db
+      .select({ binding: integrationBindings, connection: integrationConnections })
+      .from(integrationBindings)
+      .innerJoin(
+        integrationConnections,
+        eq(integrationBindings.connectionId, integrationConnections.id),
+      )
+      .where(
+        and(
+          eq(integrationBindings.projectId, projectId),
+          eq(integrationBindings.provider, provider),
+          eq(integrationBindings.active, true),
+          eq(integrationConnections.active, true),
+        ),
+      )
+      // Oldest binding first — the MCP resolvers inject row [0] into the single
+      // `mcpServers.<provider>` slot, so the pick must be DETERMINISTIC
+      // (ISS-431): without an ORDER BY the winner was whatever the planner
+      // returned, and adding a second binding could silently flip which
+      // credential agents receive. Oldest-first keeps the originally
+      // configured binding stable; the mcp-preview `shadowed` reason mirrors
+      // this same ordering.
+      .orderBy(asc(integrationBindings.createdAt))
+  );
 }
 
 /** Decrypt a connection's secrets blob, or `{}` when it has none. */

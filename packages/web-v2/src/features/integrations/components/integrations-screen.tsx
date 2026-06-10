@@ -28,13 +28,7 @@ import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import { useConnectionBindings, useConnections, useUpdateConnection } from "../hooks";
 import { deriveConnectionStatus } from "../derive";
 import type { ConnectionSummary } from "../types";
-import { DirectoryStatusPill, ENV_LABEL } from "./status-pill";
-
-const PROVIDER_LABEL: Record<string, string> = {
-  coolify: "Coolify deploy",
-  postman: "Postman",
-  epodsystem: "Epodsystem",
-};
+import { DirectoryStatusPill, ENV_LABEL, PROVIDER_LABEL } from "./status-pill";
 
 const PROVIDER_ICON: Record<string, IconName> = {
   coolify: "server",

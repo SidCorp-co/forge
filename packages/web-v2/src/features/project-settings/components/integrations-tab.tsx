@@ -16,6 +16,7 @@ import {
   type SelectOption,
 } from "@/design";
 import { ProjectIntegrationsPanel } from "@/features/integrations/components/project-integrations-panel";
+import { PROVIDER_LABEL } from "@/features/integrations/components/status-pill";
 import { useBindExistingConnection, useConnections } from "@/features/integrations/hooks";
 import type { ConnectionSummary, IntegrationEnvironment } from "@/features/integrations/types";
 
@@ -23,12 +24,6 @@ const ENVIRONMENT_OPTIONS: SelectOption[] = [
   { value: "staging", label: "Staging" },
   { value: "prod", label: "Production" },
 ];
-
-const PROVIDER_LABEL: Record<string, string> = {
-  coolify: "Coolify deploy",
-  postman: "Postman",
-  epodsystem: "Epodsystem",
-};
 
 function connectionLabel(c: ConnectionSummary): string {
   const provider = PROVIDER_LABEL[c.provider] ?? c.provider;
