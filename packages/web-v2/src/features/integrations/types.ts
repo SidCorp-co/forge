@@ -47,6 +47,9 @@ export type {
   BindExistingConnectionRequest,
   ConnectionBindingsResponse,
   DeliveryRetryResponse,
+  // === ISS-429 — MCP injection preview ===
+  McpServerPreviewEntry,
+  McpPreviewResponse,
 } from "@forge/contracts";
 
 // === ISS-336 — Postman integration config shape ===

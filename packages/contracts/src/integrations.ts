@@ -82,7 +82,20 @@ export interface BindingSummary {
 
 // === Composed status card (read-only hub) ===
 
-export type IntegrationCardStatus = 'connected' | 'attention' | 'error' | 'not_configured';
+/**
+ * Coarse card-status bucket for the composed status read model.
+ * - `disabled`   — a binding/connection EXISTS but was switched off (distinct
+ *                  from `not_configured`, which means nothing is set up).
+ * - `unverified` — active binding whose connection has never been health-checked
+ *                  (no signal ≠ degraded). ISS-429.
+ */
+export type IntegrationCardStatus =
+  | 'connected'
+  | 'attention'
+  | 'error'
+  | 'not_configured'
+  | 'disabled'
+  | 'unverified';
 
 /** One card in the composed integrations-status read model (`GET .../integrations/status`). */
 export interface IntegrationStatusCard {
@@ -284,6 +297,12 @@ export interface ConnectionResponse {
 export interface BindingResponse {
   integration: BindingSummary;
   integrationSecret?: string;
+  /**
+   * Immediate post-create/bind health probe (ISS-429) — create + bind-existing
+   * run the adapter healthcheck right away so the integration starts from a
+   * real state. `null` when the probe crashed at the transport layer.
+   */
+  health?: IntegrationHealthResult | null;
 }
 
 // These list routes return a bare `{ items }` object (not the X-Total-Count +
@@ -305,6 +324,44 @@ export interface IntegrationDeliveryListResponse {
 /** List envelope for a connection's bindings (`GET /integration-connections/:id/bindings`). */
 export interface ConnectionBindingsResponse {
   items: BindingSummary[];
+}
+
+// === MCP injection preview (ISS-429) ===
+
+/**
+ * One entry of `GET /:projectId/integrations/mcp-preview` — exactly what the
+ * dispatch-time resolver will inject into a runner's `mcpServers` for this
+ * project (same builders + filters server-side, so the URL cannot drift).
+ * `headers.Authorization` is redacted BY CONSTRUCTION — the real key is never
+ * rendered into the preview.
+ *
+ * `reason`:
+ * - `ok`             — this binding's entry WILL be injected on the next dispatch.
+ * - `not_configured` — no binding exists for the provider (synthetic row).
+ * - `disabled`       — binding or connection is switched off.
+ * - `no_credential`  — active but the connection stores no secret.
+ * - `shadowed`       — active with credential, but another binding of the same
+ *                      provider wins the single `mcpServers.<provider>` slot.
+ */
+export interface McpServerPreviewEntry {
+  provider: IntegrationProvider;
+  serverName: string;
+  /** Binding id backing this entry — null for the synthetic not_configured row. */
+  bindingId: string | null;
+  environment: IntegrationEnvironment | null;
+  configured: boolean;
+  active: boolean;
+  willInject: boolean;
+  reason: 'ok' | 'not_configured' | 'disabled' | 'no_credential' | 'shadowed';
+  url: string | null;
+  headers: Record<string, string> | null;
+  lastHealthStatus: string | null;
+  lastHealthAt: string | null;
+}
+
+/** Envelope for `GET /:projectId/integrations/mcp-preview`. */
+export interface McpPreviewResponse {
+  servers: McpServerPreviewEntry[];
 }
 
 /**

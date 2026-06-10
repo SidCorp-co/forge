@@ -22,6 +22,8 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { findDeliveryById } from './deliveries.js';
+import { buildEpodsystemMcpEntry } from './epodsystem/resolver.js';
+import { buildPostmanMcpEntry } from './postman/resolver.js';
 import { enqueueCoolifyDispatch } from './queue.js';
 import { getAdapter } from './registry.js';
 import { type RotatingProvider, isRotatingProvider, mergeRotatedSecrets } from './rotation.js';
@@ -35,6 +37,7 @@ import {
   findActiveBinding,
   findBindingWithConnectionById,
   findConnectionById,
+  listActiveBindingsForProjectProvider,
   listBindingsForConnection,
   listBindingsForProject,
   listConnectionsForPrincipalUser,
@@ -43,7 +46,7 @@ import {
   updateBinding,
   updateConnection,
 } from './store.js';
-import { type IntegrationProvider, capabilitiesFor } from './types.js';
+import { type HealthCheckResult, type IntegrationProvider, capabilitiesFor } from './types.js';
 import { isVaultConfigured } from './vault.js';
 
 // `assertVaultBootSafety` lets core boot when the integration tables are empty,
@@ -241,6 +244,29 @@ function broadcastIntegrationChanged(
   }
 }
 
+/**
+ * Best-effort immediate healthcheck after a binding is created or bound
+ * (ISS-429): the operator gets a REAL health state right away instead of an
+ * `unverified` card until someone presses Test. Adapter healthchecks persist
+ * health onto the connection (epodsystem additionally fills store identity
+ * into config), so callers should re-read the pair afterwards. Never throws —
+ * a failed probe is a valid result, and a crashed probe must not undo a
+ * successful create.
+ */
+async function runInitialHealthcheck(
+  pair: BindingWithConnection,
+): Promise<HealthCheckResult | null> {
+  const adapter = getAdapter(pair.binding.provider);
+  if (!adapter) return null;
+  try {
+    return await adapter.healthcheck(buildContextFromBinding(pair));
+  } catch {
+    // The adapter records its own failure states; a transport-level crash here
+    // simply leaves the connection `unverified`.
+    return null;
+  }
+}
+
 export const integrationsRoutes = new Hono<{ Variables: AuthVars }>();
 integrationsRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -291,22 +317,15 @@ integrationsRoutes.post(
       config: { ...body.config, environment: body.environment },
       secrets: body.secrets,
     });
+    let binding: Awaited<ReturnType<typeof createBinding>>;
     try {
-      const binding = await createBinding({
+      binding = await createBinding({
         connectionId: connection.id,
         projectId,
         provider: body.provider,
         environment: body.environment,
         integrationSecret,
       });
-      broadcastIntegrationChanged(projectId, {
-        bindingId: binding.id,
-        connectionId: connection.id,
-      });
-      return c.json(
-        { integration: summarizeBinding({ binding, connection }), integrationSecret },
-        201,
-      );
     } catch (err) {
       // Roll the just-created connection back so a binding-unique collision
       // doesn't leave a dangling credential.
@@ -321,6 +340,24 @@ integrationsRoutes.post(
       }
       throw err;
     }
+    // Probe immediately so the new integration starts with real health (and
+    // epodsystem store identity) instead of an unverified card (ISS-429).
+    const health = await runInitialHealthcheck({ binding, connection });
+    let refreshed: BindingWithConnection | null | undefined;
+    try {
+      refreshed = await findBindingWithConnectionById(binding.id);
+    } catch {
+      refreshed = null;
+    }
+    broadcastIntegrationChanged(projectId, { bindingId: binding.id, connectionId: connection.id });
+    return c.json(
+      {
+        integration: summarizeBinding(refreshed ?? { binding, connection }),
+        integrationSecret,
+        health,
+      },
+      201,
+    );
   },
 );
 
@@ -566,7 +603,13 @@ integrationsRoutes.post('/:projectId/integrations/:id/deliveries/:deliveryId/ret
 
 const pExecFile = promisify(execFile);
 
-type CardStatus = 'connected' | 'attention' | 'error' | 'not_configured';
+type CardStatus =
+  | 'connected'
+  | 'attention'
+  | 'error'
+  | 'not_configured'
+  | 'disabled'
+  | 'unverified';
 
 interface StatusCard {
   key: string;
@@ -592,9 +635,12 @@ async function readGitRemote(repoPath: string): Promise<string | null> {
   }
 }
 
-function coolifyHealthToStatus(lastHealthStatus: string | null, active: boolean): CardStatus {
-  if (!active) return 'not_configured';
-  if (!lastHealthStatus) return 'attention';
+function healthToStatus(lastHealthStatus: string | null, active: boolean): CardStatus {
+  // The binding/connection exists but is switched off — distinct from
+  // not_configured (nothing set up at all). ISS-429.
+  if (!active) return 'disabled';
+  // Active but never health-checked: no signal is not the same as degraded.
+  if (!lastHealthStatus) return 'unverified';
   const s = lastHealthStatus.toLowerCase();
   if (s === 'ok' || s === 'healthy' || s === 'success') return 'connected';
   if (s === 'degraded' || s === 'pending' || s === 'unknown') return 'attention';
@@ -693,10 +739,12 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
       cards.push({
         key: `coolify:${row.environment}`,
         label: `Coolify (${row.environment})`,
-        status: coolifyHealthToStatus(row.lastHealthStatus, row.active),
-        detail: row.lastHealthStatus
-          ? `last health: ${row.lastHealthStatus}`
-          : 'never health-checked',
+        status: healthToStatus(row.lastHealthStatus, row.active),
+        detail: !row.active
+          ? 'integration disabled'
+          : row.lastHealthStatus
+            ? `last health: ${row.lastHealthStatus}`
+            : 'never health-checked',
         lastSyncAt: toIso(row.lastHealthAt),
         configured: true,
         meta: {
@@ -709,11 +757,13 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
     }
   }
 
-  // --- Postman (ISS-336) — one card; reflects the active binding's last
-  // test-connection health, or 'not_configured' when absent. ---
-  const postmanRow = integrationRows.find((r) => r.provider === 'postman');
+  // --- Postman (ISS-336) — one card PER BINDING (ISS-429; a project can hold
+  // a staging + a prod binding, and a disabled binding must not shadow an
+  // active one the way the previous newest-first `.find()` did). Single-binding
+  // projects keep the bare `postman` key so existing drill-ins stay stable. ---
+  const postmanRows = integrationRows.filter((r) => r.provider === 'postman');
   const postmanCaps = providerCapabilities('postman');
-  if (!postmanRow) {
+  if (postmanRows.length === 0) {
     cards.push({
       key: 'postman',
       label: 'Postman',
@@ -724,33 +774,38 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
       meta: { capabilities: postmanCaps },
     });
   } else {
-    const pmCfg = (postmanRow.config ?? {}) as { region?: string; mode?: string };
-    cards.push({
-      key: 'postman',
-      label: 'Postman',
-      status: coolifyHealthToStatus(postmanRow.lastHealthStatus, postmanRow.active),
-      detail: !postmanRow.active
-        ? 'integration disabled'
-        : postmanRow.lastHealthStatus
-          ? `last health: ${postmanRow.lastHealthStatus}`
-          : 'never test-connected',
-      lastSyncAt: toIso(postmanRow.lastHealthAt),
-      configured: true,
-      meta: {
-        region: pmCfg.region ?? 'us',
-        mode: pmCfg.mode ?? 'minimal',
-        lastHealthStatus: postmanRow.lastHealthStatus,
-        capabilities: postmanCaps,
-      },
-    });
+    const envKeyed = postmanRows.length > 1;
+    for (const row of postmanRows) {
+      const pmCfg = (row.config ?? {}) as { region?: string; mode?: string };
+      cards.push({
+        key: envKeyed ? `postman:${row.environment}` : 'postman',
+        label: envKeyed ? `Postman (${row.environment})` : 'Postman',
+        status: healthToStatus(row.lastHealthStatus, row.active),
+        detail: !row.active
+          ? 'integration disabled'
+          : row.lastHealthStatus
+            ? `last health: ${row.lastHealthStatus}`
+            : 'never test-connected',
+        lastSyncAt: toIso(row.lastHealthAt),
+        configured: true,
+        meta: {
+          environment: row.environment,
+          region: pmCfg.region ?? 'us',
+          mode: pmCfg.mode ?? 'minimal',
+          breakerOpen: row.breakerOpenedAt !== null,
+          lastHealthStatus: row.lastHealthStatus,
+          capabilities: postmanCaps,
+        },
+      });
+    }
   }
 
-  // --- Epodsystem (ISS-387) — one card; reflects the active binding's last
-  // test-connection health, or 'not_configured' when absent. Carries only
-  // non-secret store identity in meta — never the crmk_ key. ---
-  const epodsystemRow = integrationRows.find((r) => r.provider === 'epodsystem');
+  // --- Epodsystem (ISS-387) — one card PER BINDING (ISS-429, same rationale as
+  // Postman). Carries only non-secret store identity in meta — never the crmk_
+  // key. ---
+  const epodsystemRows = integrationRows.filter((r) => r.provider === 'epodsystem');
   const epodsystemCaps = providerCapabilities('epodsystem');
-  if (!epodsystemRow) {
+  if (epodsystemRows.length === 0) {
     cards.push({
       key: 'epodsystem',
       label: 'Epodsystem',
@@ -761,25 +816,30 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
       meta: { capabilities: epodsystemCaps },
     });
   } else {
-    const epCfg = (epodsystemRow.config ?? {}) as { storeSlug?: string; storeName?: string };
-    cards.push({
-      key: 'epodsystem',
-      label: 'Epodsystem',
-      status: coolifyHealthToStatus(epodsystemRow.lastHealthStatus, epodsystemRow.active),
-      detail: !epodsystemRow.active
-        ? 'integration disabled'
-        : epodsystemRow.lastHealthStatus
-          ? `last health: ${epodsystemRow.lastHealthStatus}`
-          : 'never test-connected',
-      lastSyncAt: toIso(epodsystemRow.lastHealthAt),
-      configured: true,
-      meta: {
-        storeSlug: epCfg.storeSlug ?? null,
-        storeName: epCfg.storeName ?? null,
-        lastHealthStatus: epodsystemRow.lastHealthStatus,
-        capabilities: epodsystemCaps,
-      },
-    });
+    const envKeyed = epodsystemRows.length > 1;
+    for (const row of epodsystemRows) {
+      const epCfg = (row.config ?? {}) as { storeSlug?: string; storeName?: string };
+      cards.push({
+        key: envKeyed ? `epodsystem:${row.environment}` : 'epodsystem',
+        label: envKeyed ? `Epodsystem (${row.environment})` : 'Epodsystem',
+        status: healthToStatus(row.lastHealthStatus, row.active),
+        detail: !row.active
+          ? 'integration disabled'
+          : row.lastHealthStatus
+            ? `last health: ${row.lastHealthStatus}`
+            : 'never test-connected',
+        lastSyncAt: toIso(row.lastHealthAt),
+        configured: true,
+        meta: {
+          environment: row.environment,
+          storeSlug: epCfg.storeSlug ?? null,
+          storeName: epCfg.storeName ?? null,
+          breakerOpen: row.breakerOpenedAt !== null,
+          lastHealthStatus: row.lastHealthStatus,
+          capabilities: epodsystemCaps,
+        },
+      });
+    }
   }
 
   // --- Runners / devices online ---
@@ -840,6 +900,113 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
   });
 
   return c.json({ cards });
+});
+
+// === MCP injection preview (ISS-429) ===
+
+/** One MCP-injection provider entry in the preview (mirrors contracts type). */
+interface McpServerPreviewEntry {
+  provider: IntegrationProvider;
+  serverName: string;
+  /** Binding id backing this entry — null for the synthetic not_configured row. */
+  bindingId: string | null;
+  environment: IntegrationEnvironment | null;
+  configured: boolean;
+  active: boolean;
+  willInject: boolean;
+  reason: 'ok' | 'not_configured' | 'disabled' | 'no_credential' | 'shadowed';
+  url: string | null;
+  headers: Record<string, string> | null;
+  lastHealthStatus: string | null;
+  lastHealthAt: string | null;
+}
+
+/** The providers whose adapters inject an mcpServers entry at dispatch time. */
+const MCP_PROVIDERS = ['postman', 'epodsystem'] as const;
+
+function buildMcpEntryFor(
+  provider: (typeof MCP_PROVIDERS)[number],
+  pair: BindingWithConnection,
+): Record<string, unknown> {
+  // Same builders the dispatch resolvers use — the URL can't drift from what a
+  // runner actually receives. The key argument is a placeholder; the headers
+  // are replaced wholesale below so secret bytes never reach the response.
+  return provider === 'postman'
+    ? buildPostmanMcpEntry(effectiveConfig(pair), '')
+    : buildEpodsystemMcpEntry(effectiveConfig(pair), '');
+}
+
+/**
+ * Render exactly what the dispatch-time resolvers will inject into a runner's
+ * `mcpServers` for this project — same builders, same active/secret filters,
+ * same first-active-binding pick — so the UI can show a truthful "these MCP
+ * servers reach your agents" panel without fabricating URLs client-side.
+ * `Authorization` is redacted BY CONSTRUCTION (the real key is never built
+ * into the preview entry).
+ */
+integrationsRoutes.get('/:projectId/integrations/mcp-preview', async (c) => {
+  const projectId = c.req.param('projectId');
+  const userId = c.get('userId');
+  await assertProjectMember(projectId, userId);
+
+  const pairs = await listBindingsForProject(projectId);
+  const servers: McpServerPreviewEntry[] = [];
+
+  for (const provider of MCP_PROVIDERS) {
+    const rows = pairs.filter((p) => p.binding.provider === provider);
+    if (rows.length === 0) {
+      servers.push({
+        provider,
+        serverName: provider,
+        bindingId: null,
+        environment: null,
+        configured: false,
+        active: false,
+        willInject: false,
+        reason: 'not_configured',
+        url: null,
+        headers: null,
+        lastHealthStatus: null,
+        lastHealthAt: null,
+      });
+      continue;
+    }
+
+    // The resolver injects ONE entry per provider key — the first row of the
+    // same active-bindings query. Resolve that pick here so a multi-binding
+    // project sees which binding actually wins (`shadowed` marks the losers).
+    const [resolverPick] = await listActiveBindingsForProjectProvider(projectId, provider);
+
+    for (const pair of rows) {
+      const active = pair.binding.active && pair.connection.active;
+      const hasSecrets = pair.connection.secretsEnc !== null;
+      const isPick = resolverPick?.binding.id === pair.binding.id;
+      const willInject = active && hasSecrets && isPick;
+      const entry = buildMcpEntryFor(provider, pair);
+      servers.push({
+        provider,
+        serverName: provider,
+        bindingId: pair.binding.id,
+        environment: pair.binding.environment as IntegrationEnvironment,
+        configured: true,
+        active,
+        willInject,
+        reason: willInject
+          ? 'ok'
+          : !active
+            ? 'disabled'
+            : !hasSecrets
+              ? 'no_credential'
+              : 'shadowed',
+        url: typeof entry.url === 'string' ? entry.url : null,
+        headers: willInject ? { Authorization: 'Bearer [redacted]' } : null,
+        lastHealthStatus: pair.connection.lastHealthStatus,
+        lastHealthAt: toIso(pair.connection.lastHealthAt),
+      });
+    }
+  }
+
+  return c.json({ servers });
 });
 
 // === Owner-scoped connection CRUD ===
@@ -986,19 +1153,15 @@ integrationConnectionsRoutes.post(
 
     // Auto-mint a per-binding HMAC secret for inbound webhook verification.
     const integrationSecret = `whsec_${randomBytes(24).toString('hex')}`;
+    let binding: Awaited<ReturnType<typeof createBinding>>;
     try {
-      const binding = await createBinding({
+      binding = await createBinding({
         connectionId: id,
         projectId: body.projectId,
         provider,
         environment: body.environment,
         integrationSecret,
       });
-      broadcastIntegrationChanged(body.projectId, { bindingId: binding.id, connectionId: id });
-      return c.json(
-        { integration: summarizeBinding({ binding, connection }), integrationSecret },
-        201,
-      );
     } catch (err) {
       // No connection rollback here — we did not create one (contrast the create
       // path, which soft-deletes its just-minted connection on a binding clash).
@@ -1012,6 +1175,24 @@ integrationConnectionsRoutes.post(
       }
       throw err;
     }
+    // Re-probe on bind so the target project starts from current health rather
+    // than whatever the connection last recorded (ISS-429).
+    const health = await runInitialHealthcheck({ binding, connection });
+    let refreshed: BindingWithConnection | null | undefined;
+    try {
+      refreshed = await findBindingWithConnectionById(binding.id);
+    } catch {
+      refreshed = null;
+    }
+    broadcastIntegrationChanged(body.projectId, { bindingId: binding.id, connectionId: id });
+    return c.json(
+      {
+        integration: summarizeBinding(refreshed ?? { binding, connection }),
+        integrationSecret,
+        health,
+      },
+      201,
+    );
   },
 );
 

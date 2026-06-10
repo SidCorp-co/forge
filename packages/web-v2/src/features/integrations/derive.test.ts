@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   cardProvider,
   DEFAULT_CAPABILITIES,
+  deriveConnectionStatus,
   deriveDirectoryStatus,
   getCapabilities,
   isProviderCard,
@@ -23,11 +24,20 @@ function card(over: Partial<StatusCard>): StatusCard {
 }
 
 describe("deriveDirectoryStatus", () => {
-  it("maps the server buckets to the 4 honest directory states", () => {
+  it("maps the server buckets to the honest directory states", () => {
     expect(deriveDirectoryStatus(card({ status: "connected" }))).toBe("connected");
     expect(deriveDirectoryStatus(card({ status: "attention" }))).toBe("degraded");
     expect(deriveDirectoryStatus(card({ status: "error" }))).toBe("error");
     expect(deriveDirectoryStatus(card({ status: "not_configured" }))).toBe("not_connected");
+    // ISS-429 — existing-but-off ≠ unset, and never-checked ≠ degraded.
+    expect(deriveDirectoryStatus(card({ status: "disabled" }))).toBe("disabled");
+    expect(deriveDirectoryStatus(card({ status: "unverified" }))).toBe("unverified");
+  });
+
+  it("unverified still reads Degraded when the breaker is open", () => {
+    expect(
+      deriveDirectoryStatus(card({ status: "unverified", meta: { breakerOpen: true } })),
+    ).toBe("degraded");
   });
 
   it("forces Degraded when the breaker is open even if status reads connected", () => {
@@ -75,6 +85,37 @@ describe("deriveDirectoryStatus", () => {
     expect(
       deriveDirectoryStatus(card({ status: "error", meta: { lastHealthStatus: "error" } })),
     ).toBe("error");
+  });
+});
+
+describe("deriveConnectionStatus", () => {
+  const conn = (over: Partial<Parameters<typeof deriveConnectionStatus>[0]>) => ({
+    active: true,
+    lastHealthStatus: null as string | null,
+    breakerOpenedAt: null as string | null,
+    ...over,
+  });
+
+  it("maps owner-scoped connection rows like the server buckets cards", () => {
+    expect(deriveConnectionStatus(conn({ lastHealthStatus: "ok" }))).toBe("connected");
+    expect(deriveConnectionStatus(conn({ lastHealthStatus: "error" }))).toBe("error");
+    expect(deriveConnectionStatus(conn({ lastHealthStatus: "degraded" }))).toBe("degraded");
+    expect(deriveConnectionStatus(conn({}))).toBe("unverified");
+    expect(deriveConnectionStatus(conn({ active: false }))).toBe("disabled");
+    expect(deriveConnectionStatus(conn({ lastHealthStatus: "needs_reauth" }))).toBe(
+      "needs_reauth",
+    );
+  });
+
+  it("disabled wins over health; breaker wins over ok", () => {
+    expect(
+      deriveConnectionStatus(conn({ active: false, lastHealthStatus: "ok" })),
+    ).toBe("disabled");
+    expect(
+      deriveConnectionStatus(
+        conn({ lastHealthStatus: "ok", breakerOpenedAt: "2026-06-01T00:00:00Z" }),
+      ),
+    ).toBe("degraded");
   });
 });
 

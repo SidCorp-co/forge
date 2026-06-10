@@ -307,7 +307,10 @@ export async function listBindingsForConnection(
 /**
  * Connections visible to a user: their own (ownerType=user) plus org-owned
  * connections of every org they belong to (any role — managing them is
- * gated separately at the route layer).
+ * gated separately at the route layer). Returns ALL active states — the
+ * directory must show a disabled connection as Disabled (and allow
+ * re-enabling it) rather than silently dropping it (ISS-429);
+ * share-eligibility filtering (`active && hasSecrets`) happens client-side.
  */
 export async function listConnectionsForPrincipalUser(
   userId: string,
@@ -321,20 +324,17 @@ export async function listConnectionsForPrincipalUser(
     .select()
     .from(integrationConnections)
     .where(
-      and(
-        eq(integrationConnections.active, true),
-        or(
-          and(
-            eq(integrationConnections.ownerType, 'user'),
-            eq(integrationConnections.ownerId, userId),
-          ),
-          orgIds.length > 0
-            ? and(
-                eq(integrationConnections.ownerType, 'org'),
-                inArray(integrationConnections.ownerId, orgIds),
-              )
-            : sql`false`,
+      or(
+        and(
+          eq(integrationConnections.ownerType, 'user'),
+          eq(integrationConnections.ownerId, userId),
         ),
+        orgIds.length > 0
+          ? and(
+              eq(integrationConnections.ownerType, 'org'),
+              inArray(integrationConnections.ownerId, orgIds),
+            )
+          : sql`false`,
       ),
     )
     .orderBy(desc(integrationConnections.createdAt));
