@@ -176,11 +176,13 @@ export function statusToChip(status: IssueStatus, agentStatus?: IssueAgentStatus
  * (`pipeline/state-machine.ts`): the lifecycle is permissive — any state may
  * branch to needs_info / on_hold / reopen / forward — the ONLY hard rules are
  * (1) `draft` is never a transition target and (2) a `draft` may only be
- * promoted to `open` or discarded to `closed`. Filtering to this set stops the
- * menu from offering picks that 409 and silently snap back (ISS-308 E1).
+ * promoted to `open`, handed off direct-ship to `developed` (ISS-431 — work
+ * done outside the pipeline enters at the review gate), or discarded to
+ * `closed`. Filtering to this set stops the menu from offering picks that 409
+ * and silently snap back (ISS-308 E1).
  */
 export function allowedTransitions(from: IssueStatus): IssueStatus[] {
-  if (from === "draft") return ["open", "closed"];
+  if (from === "draft") return ["open", "developed", "closed"];
   return ISSUE_STATUSES.filter((s) => s !== from && s !== "draft");
 }
 

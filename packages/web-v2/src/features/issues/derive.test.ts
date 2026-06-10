@@ -106,8 +106,8 @@ describe("allowedTransitions", () => {
     expect(from).toContain("on_hold");
     expect(from).toContain("reopen");
   });
-  it("restricts draft to promote or discard only", () => {
-    expect(allowedTransitions("draft")).toEqual(["open", "closed"]);
+  it("restricts draft to promote, direct-ship, or discard (ISS-431)", () => {
+    expect(allowedTransitions("draft")).toEqual(["open", "developed", "closed"]);
   });
 });
 
