@@ -1,11 +1,11 @@
 import crypto from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
-import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { type JobType, comments, issues, knowledgeEdges, memories } from '../db/schema.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
 import { indexMemory } from './indexer.js';
+import { callFastModel, fastModelConfigured } from './llm.js';
 
 /**
  * memory-v2 phase 3 — session-end fact extraction, ported from forge-agents
@@ -147,31 +147,6 @@ export function parseExtractionOutput(raw: string): ParsedExtraction | null {
   return { facts, edges };
 }
 
-async function callExtractionModel(prompt: string): Promise<string | null> {
-  if (!env.LITELLM_API_URL) return null;
-  const response = await fetch(`${env.LITELLM_API_URL}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(env.LITELLM_API_KEY ? { Authorization: `Bearer ${env.LITELLM_API_KEY}` } : {}),
-    },
-    body: JSON.stringify({
-      model: env.LITELLM_MODEL,
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 400,
-      temperature: 0,
-    }),
-  });
-  if (!response.ok) {
-    logger.warn({ status: response.status }, 'memory.extraction: LLM call failed');
-    return null;
-  }
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  return data.choices?.[0]?.message?.content?.trim() || null;
-}
-
 export interface ExtractionResult {
   facts: number;
   edges: number;
@@ -182,7 +157,7 @@ export async function runExtractionForIssue(
   projectId: string,
   issueId: string,
 ): Promise<ExtractionResult> {
-  if (!env.LITELLM_API_URL) return { facts: 0, edges: 0, skipped: 'disabled' };
+  if (!fastModelConfigured()) return { facts: 0, edges: 0, skipped: 'disabled' };
 
   const [issue] = await db
     .select({ title: issues.title })
@@ -224,7 +199,7 @@ export async function runExtractionForIssue(
     .replace('{issue_title}', issue?.title ?? 'unknown')
     .replace('{comments}', commentsStr);
 
-  const raw = await callExtractionModel(prompt);
+  const raw = await callFastModel(prompt, 400);
   if (!raw) return { facts: 0, edges: 0, skipped: 'llm-failed' };
   const parsed = parseExtractionOutput(raw);
   if (!parsed) {

@@ -82,6 +82,7 @@ import { isEnabled } from './lib/feature-flags.js';
 import { logger } from './logger.js';
 import { mcpHandler } from './mcp/handler.js';
 import { meAttentionRoutes } from './me/attention-routes.js';
+import { registerMemoryConsolidation } from './memory/consolidation.js';
 import { registerMemoryDecay } from './memory/decay.js';
 import { registerEmbeddingBackfill } from './memory/embedding-backfill.js';
 import { registerMemoryExtraction } from './memory/extraction.js';
@@ -444,6 +445,7 @@ if (isMain) {
   await registerDeviceStaleDetector();
   await registerEmbeddingBackfill();
   await registerMemoryDecay();
+  await registerMemoryConsolidation();
   await registerDevicePrune();
   await registerRunnerStaleDetector();
   await registerRetentionSweeper();
