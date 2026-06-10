@@ -95,7 +95,7 @@ export const forgeMemoryDeleteTool: DeviceScopedMcpToolFactory = (device) => ({
 export const forgeMemoryWriteTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_memory.write',
   description:
-    'Write (upsert) a memory row for a project. Embeds textContent via the configured embedding model and stores under the unique key (projectId, source, sourceRef). Returns {id, embeddedAt, truncated}. Requires the device owner to be a project member.',
+    'Write (upsert) a memory row for a project. Embeds textContent via the configured embedding model and stores under the unique key (projectId, source, sourceRef). Returns {id, embeddedAt, truncated, degraded, dedupedInto?}. For note/knowledge a semantically near-identical existing row absorbs the write instead of duplicating — dedupedInto then holds the absorbing sourceRef; reuse it for future refinements. degraded:true means embeddings were down and the row is keyword-searchable only until the backfill re-embeds it. Requires the device owner to be a project member.',
   inputSchema: zodToMcpSchema(writeMemoryInputSchema),
   handler: async (args) => {
     const input = writeMemoryInputSchema.parse(args);

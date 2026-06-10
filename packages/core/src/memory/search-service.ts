@@ -8,6 +8,7 @@ import {
   hybridSearchMemories,
   keywordSearchMemories,
   searchMemories,
+  touchMemories,
 } from './search.js';
 
 /**
@@ -88,6 +89,20 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
 
   const tookMs = Date.now() - startedAt;
   logRetrieval(input, hits, resolved, requested, tookMs);
+
+  // Usage tracking (phase 2) — detached; a tracking failure never fails the
+  // search. Natural-key reads (forge_memory.get) intentionally do NOT count.
+  if (hits.length > 0) {
+    const hitIds = hits.map((h) => h.id);
+    queueMicrotask(() => {
+      touchMemories(hitIds).catch((err) => {
+        logger.warn(
+          { err: (err as Error).message, projectId: input.projectId },
+          'memory.search: usage tracking failed',
+        );
+      });
+    });
+  }
 
   return {
     hits,

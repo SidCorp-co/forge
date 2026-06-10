@@ -182,6 +182,22 @@ export function reciprocalRankFusion(
 }
 
 /**
+ * memory-v2 phase 2 — usage tracking. One statement, fire-and-forget from
+ * callers (a tracking failure must never fail a search). Feeds the decay
+ * job: rows that are never retrieved are the first to be archived.
+ */
+export async function touchMemories(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await db
+    .update(memories)
+    .set({
+      retrievalCount: sql`${memories.retrievalCount} + 1`,
+      lastRetrievedAt: sql`now()`,
+    })
+    .where(inArray(memories.id, ids));
+}
+
+/**
  * Hybrid strategy — dense + keyword in parallel, fused with weighted RRF
  * (alpha 0.7 dense / 0.3 keyword). Returned `score` is the fused RRF value
  * (≈0.005–0.03), NOT a cosine similarity — callers that threshold on

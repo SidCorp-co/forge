@@ -19,10 +19,18 @@ vi.mock('../logger.js', () => ({
   },
 }));
 
-// Chainable stub for db.insert(...).values(...).onConflictDoUpdate(...).returning(...)
+const searchMemoriesMock = vi.fn();
+vi.mock('./search.js', () => ({
+  searchMemories: (input: unknown) => searchMemoriesMock(input),
+}));
+
+// Chainable stubs for the drizzle call shapes the indexer uses.
 const valuesMock = vi.fn();
 const conflictMock = vi.fn();
 const returningMock = vi.fn();
+const selectLimitMock = vi.fn();
+const updateSetMock = vi.fn();
+const updateReturningMock = vi.fn();
 vi.mock('../db/client.js', () => ({
   db: {
     insert: () => ({
@@ -34,6 +42,17 @@ vi.mock('../db/client.js', () => ({
             return { returning: () => returningMock() };
           },
         };
+      },
+    }),
+    select: () => ({
+      from: () => ({
+        where: () => ({ limit: () => selectLimitMock() }),
+      }),
+    }),
+    update: () => ({
+      set: (s: unknown) => {
+        updateSetMock(s);
+        return { where: () => ({ returning: () => updateReturningMock() }) };
       },
     }),
   },
@@ -48,9 +67,16 @@ beforeEach(() => {
   valuesMock.mockReset();
   conflictMock.mockReset();
   returningMock.mockReset();
+  selectLimitMock.mockReset();
+  updateSetMock.mockReset();
+  updateReturningMock.mockReset();
+  searchMemoriesMock.mockReset();
   warnMock.mockReset();
   embedMock.mockResolvedValue([0.1, 0.2]);
   returningMock.mockResolvedValue([{ id: 'm-1', embeddedAt: new Date() }]);
+  selectLimitMock.mockResolvedValue([]);
+  updateReturningMock.mockResolvedValue([{ id: 'm-existing', embeddedAt: new Date() }]);
+  searchMemoriesMock.mockResolvedValue([]);
 });
 
 describe('indexMemory', () => {
@@ -103,6 +129,59 @@ describe('indexMemory', () => {
     await expect(
       indexMemory({ projectId: PROJECT_ID, source: 'note', sourceRef: 'n-4', text: 't' }),
     ).rejects.toThrow('dimension mismatch');
+  });
+});
+
+describe('indexMemory semantic dedup', () => {
+  const input = {
+    projectId: PROJECT_ID,
+    source: 'knowledge' as const,
+    sourceRef: 'new-ref',
+    text: 'always use python3',
+  };
+
+  it('does not search for duplicates when the option is off', async () => {
+    await indexMemory(input);
+    expect(searchMemoriesMock).not.toHaveBeenCalled();
+  });
+
+  it('absorbs the write into a near-identical existing row', async () => {
+    searchMemoriesMock.mockResolvedValueOnce([
+      { id: 'm-existing', sourceRef: 'old-ref', score: 0.93 },
+    ]);
+
+    const result = await indexMemory(input, { semanticDedup: true });
+
+    expect(result.id).toBe('m-existing');
+    expect(result.dedupedInto).toBe('old-ref');
+    // No new row inserted.
+    expect(valuesMock).not.toHaveBeenCalled();
+    // The absorbing row is revived and refreshed.
+    const set = updateSetMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(set.archivedAt).toBeNull();
+    expect(set.textContent).toBe('always use python3');
+  });
+
+  it('skips dedup when the exact natural key already exists (upsert refines it)', async () => {
+    selectLimitMock.mockResolvedValueOnce([{ id: 'm-1' }]);
+    const result = await indexMemory(input, { semanticDedup: true });
+    expect(searchMemoriesMock).not.toHaveBeenCalled();
+    expect(result.dedupedInto).toBeUndefined();
+    expect(valuesMock).toHaveBeenCalled();
+  });
+
+  it('inserts normally when the best match is below the threshold', async () => {
+    searchMemoriesMock.mockResolvedValueOnce([{ id: 'm-far', sourceRef: 'far', score: 0.7 }]);
+    const result = await indexMemory(input, { semanticDedup: true });
+    expect(result.dedupedInto).toBeUndefined();
+    expect(valuesMock).toHaveBeenCalled();
+  });
+
+  it('skips dedup on degraded writes (no vector to compare)', async () => {
+    embedMock.mockRejectedValueOnce(new FakeEmbeddingUnavailableError('down'));
+    const result = await indexMemory(input, { semanticDedup: true });
+    expect(searchMemoriesMock).not.toHaveBeenCalled();
+    expect(result.degraded).toBe(true);
   });
 });
 
