@@ -3,7 +3,7 @@ import { memorySources } from '../../db/schema.js';
 import { EmbeddingUnavailableError } from '../../embeddings/index.js';
 import { getMemoryInputSchema, runMemoryGet } from '../../memory/get-service.js';
 import { deleteMemory } from '../../memory/indexer.js';
-import { runMemorySearch } from '../../memory/search-service.js';
+import { memorySearchStrategies, runMemorySearch } from '../../memory/search-service.js';
 import { runMemoryWrite, writeMemoryInputSchema } from '../../memory/write-service.js';
 import { assertDeviceOwnerIsMember, zodToMcpSchema } from './lib.js';
 import type { DeviceScopedMcpToolFactory } from './lib.js';
@@ -20,6 +20,9 @@ const searchInputSchema = z.object({
   // Match REST default so MCP callers omitting topK get the same 10 hits.
   topK: z.number().int().min(1).max(50).default(10),
   sourceFilter: z.array(z.enum(memorySources)).optional(),
+  // Match REST: semantic default because its scores are cosine similarity
+  // and existing prompt facts threshold on them (knowledge dedup > 0.8).
+  strategy: z.enum(memorySearchStrategies).default('semantic'),
 });
 
 /**
@@ -30,7 +33,7 @@ const searchInputSchema = z.object({
 export const forgeMemorySearchTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_memory.search',
   description:
-    'Semantic search over project memory (issues, comments, jobs, notes, knowledge, decisions, policies). Step handoffs live in their own table — use `forge_step_handoff.get` for those. Requires the authenticated device owner to be a member of the given projectId.',
+    'Search project memory (issues, comments, jobs, notes, knowledge, decisions, policies). strategy: "semantic" (default, cosine-similarity scores), "keyword" (Postgres FTS — exact identifiers, error codes), or "hybrid" (RRF fusion of both; scores are fused ranks, not similarity). Step handoffs live in their own table — use `forge_step_handoff.get` for those. Requires the authenticated device owner to be a member of the given projectId.',
   inputSchema: zodToMcpSchema(searchInputSchema),
   handler: async (args) => {
     const input = searchInputSchema.parse(args);

@@ -38,13 +38,21 @@ export interface IndexResult {
    * to the embedding model is trimmed.
    */
   truncated: boolean;
+  /**
+   * True when the embeddings service was unavailable and the row was stored
+   * WITHOUT a vector (memory-v2 phase 1 degraded write). The row is
+   * keyword-searchable immediately; the backfill job re-embeds it once the
+   * service recovers. `embeddedAt` is stale/meaningless until then.
+   */
+  degraded: boolean;
 }
 
 /**
- * Strict variant — throws on embedding failure or DB upsert failure. Returns
- * the upserted row's id + embeddedAt + a `truncated` flag so explicit callers
- * (REST `POST /api/memory`, MCP `forge_memory.write`, knowledge ingest) can
- * report it.
+ * Strict variant — throws on DB upsert failure or non-outage embedding
+ * failure. An embeddings OUTAGE (`EmbeddingUnavailableError`) no longer
+ * throws: the row is written without a vector and flagged `degraded` so
+ * explicit callers (REST `POST /api/memory`, MCP `forge_memory.write`,
+ * knowledge ingest) can report it instead of losing the write.
  */
 export async function indexMemory(input: IndexInput): Promise<IndexResult> {
   const truncated = input.text.length > MAX_EMBED_CHARS;
@@ -61,7 +69,17 @@ export async function indexMemory(input: IndexInput): Promise<IndexResult> {
     );
   }
 
-  const vector = await embed(embedText);
+  let vector: number[] | null = null;
+  try {
+    vector = await embed(embedText);
+  } catch (err) {
+    if (!(err instanceof EmbeddingUnavailableError)) throw err;
+    logger.warn(
+      { projectId: input.projectId, source: input.source, sourceRef: input.sourceRef },
+      'memory.indexer: embeddings unavailable, storing degraded row for backfill',
+    );
+  }
+  const degraded = vector === null;
 
   const [row] = await db
     .insert(memories)
@@ -77,11 +95,14 @@ export async function indexMemory(input: IndexInput): Promise<IndexResult> {
       target: [memories.projectId, memories.source, memories.sourceRef],
       set: {
         textContent: sql`excluded.text_content`,
+        // On a degraded re-write this nulls a previously good vector — wanted:
+        // the old vector embeds STALE text; null forces the backfill re-embed.
         embedding: sql`excluded.embedding`,
         metadata: sql`excluded.metadata`,
         // A fresh write revives a decayed/consolidated-away row.
         archivedAt: sql`null`,
-        embeddedAt: sql`now()`,
+        // embeddedAt only advances when a vector was actually written.
+        ...(degraded ? {} : { embeddedAt: sql`now()` }),
         updatedAt: sql`now()`,
       },
     })
@@ -91,31 +112,30 @@ export async function indexMemory(input: IndexInput): Promise<IndexResult> {
     // Shouldn't happen — UPSERT with returning always returns a row.
     throw new Error('memory.indexer: upsert returned no row');
   }
-  return { id: row.id, embeddedAt: row.embeddedAt, truncated };
+  return { id: row.id, embeddedAt: row.embeddedAt, truncated, degraded };
 }
 
 /**
- * Best-effort variant — swallows embedding and DB failures with rich
- * structured logging. Use from hook subscribers where the request path must
- * not see indexer errors and a later edit will re-attempt indexing.
+ * Best-effort variant — swallows failures with structured logging. Use from
+ * hook subscribers where the request path must not see indexer errors and a
+ * later edit will re-attempt indexing. Embeddings OUTAGES never reach here —
+ * `indexMemory` absorbs them as degraded writes — so anything caught is a DB
+ * failure or a non-outage embed error (e.g. dimension mismatch).
  */
 export async function indexMemoryBestEffort(input: IndexInput): Promise<void> {
   try {
     await indexMemory(input);
   } catch (err) {
-    const meta = {
-      err: (err as Error).message,
-      projectId: input.projectId,
-      source: input.source,
-      sourceRef: input.sourceRef,
-    };
-    // Both are logged at warn so a bursty embed outage doesn't flood error
-    // counters.
-    if (err instanceof EmbeddingUnavailableError) {
-      logger.warn(meta, 'memory.indexer: embed failed, skipping');
-    } else {
-      logger.warn(meta, 'memory.indexer: upsert failed');
-    }
+    // warn, not error, so a bursty outage doesn't flood error counters.
+    logger.warn(
+      {
+        err: (err as Error).message,
+        projectId: input.projectId,
+        source: input.source,
+        sourceRef: input.sourceRef,
+      },
+      'memory.indexer: write failed',
+    );
   }
 }
 

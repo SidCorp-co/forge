@@ -8,13 +8,16 @@ import { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError } from '../embeddings/
 import { assertProjectMemberAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
-import { runMemorySearch } from './search-service.js';
+import { memorySearchStrategies, runMemorySearch } from './search-service.js';
 
 const searchBodySchema = z.object({
   projectId: z.uuid(),
   query: z.string().trim().min(1).max(4000),
   topK: z.number().int().min(1).max(50).default(10),
   sourceFilter: z.array(z.enum(memorySources)).optional(),
+  // semantic stays the default: its scores are cosine similarity, which
+  // existing consumers threshold on. hybrid/keyword scores are RRF/ts_rank.
+  strategy: z.enum(memorySearchStrategies).default('semantic'),
 });
 
 const badRequest = (details: unknown) =>
