@@ -1,7 +1,16 @@
 # Memory v2 — Cognitive Layer (forge-agents parity)
 
-**Status:** Draft
+**Status:** Phases 0–4 implemented (branch `memory-v2-cognitive-layer`, 2026-06-10); Phase 5 not started
 **Target:** v0.2 (Phases 0–2) → v0.3 (Phases 3–4) → later (Phase 5)
+
+> Implementation deviations from the plan below:
+> - `strategy` default stayed **semantic** (not hybrid): semantic scores are
+>   cosine similarity and existing prompt facts threshold on them (knowledge
+>   dedup > 0.8). Hybrid/keyword are opt-in until those consumers migrate.
+> - Cross-encoder rerank and contextual chunk prefixes were deferred (both
+>   were marked optional/deferred candidates).
+> - Decay runs as a sibling cron (03:30) after consolidation (03:00) rather
+>   than inside the same job — same ordering, simpler registration.
 
 The `forge-agents` predecessor (`~/ai-project/forge-agents`, Strapi + Qdrant) implemented a full *cognitive* memory system: memories were extracted, deduplicated, usage-tracked, consolidated, and pruned over time. The forge rewrite kept the storage layer (better engineered: typed, authz'd, relational) but dropped the learning loop — today memory only accumulates. This proposal ports the predecessor's strengths onto forge's architecture.
 
