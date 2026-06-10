@@ -33,6 +33,7 @@ const softDeleteConnection = vi.fn();
 const listBindingsForProject = vi.fn();
 const listBindingsForConnection = vi.fn();
 const listConnectionsForOwner = vi.fn();
+const listActiveBindingsForProjectProvider = vi.fn();
 const findDeliveryById = vi.fn();
 const enqueueCoolifyDispatch = vi.fn();
 
@@ -57,6 +58,8 @@ vi.mock('./store.js', () => ({
   listBindingsForProject: (id: string) => listBindingsForProject(id),
   listBindingsForConnection: (id: string) => listBindingsForConnection(id),
   listConnectionsForOwner: (id: string) => listConnectionsForOwner(id),
+  listActiveBindingsForProjectProvider: (...a: unknown[]) =>
+    listActiveBindingsForProjectProvider(...(a as [])),
   buildContextFromBinding: vi.fn(),
   // Real overlay so summaries carry the effective config.
   effectiveConfig: (pair: { connection: { config?: object }; binding: { config?: object } }) => ({
@@ -294,7 +297,12 @@ describe('POST /api/projects/:projectId/integrations — postman provider schema
       connection: {
         id: 'conn-pm',
         provider: 'postman',
-        config: { workspaceName: 'Forge Integration', region: 'eu', mode: 'full', environment: 'prod' },
+        config: {
+          workspaceName: 'Forge Integration',
+          region: 'eu',
+          mode: 'full',
+          environment: 'prod',
+        },
         secretsEnc: Buffer.from('enc'),
         active: true,
         lastHealthStatus: null,
@@ -315,7 +323,11 @@ describe('POST /api/projects/:projectId/integrations — postman provider schema
     ];
     expect(connId).toBe('conn-pm');
     // The eu/full target must be preserved — only collectionId changes.
-    expect(updatePatch.config).toMatchObject({ region: 'eu', mode: 'full', collectionId: 'col-new' });
+    expect(updatePatch.config).toMatchObject({
+      region: 'eu',
+      mode: 'full',
+      collectionId: 'col-new',
+    });
   });
 });
 
@@ -558,6 +570,11 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
       createdAt: new Date(),
       updatedAt: new Date(),
     });
+    // The route re-reads the pair after the post-bind healthcheck (ISS-429);
+    // undefined → it falls back to the just-created pair. (A persistent
+    // mockResolvedValue from earlier tests would otherwise leak in here —
+    // clearAllMocks resets calls, not implementations.)
+    findBindingWithConnectionById.mockResolvedValueOnce(undefined);
 
     const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, environment: 'staging' });
     expect(res.status).toBe(201);
@@ -769,5 +786,107 @@ describe('POST /api/projects/:projectId/integrations/:id/deliveries/:deliveryId/
     const res = await retryReq(token, 'bind-1', 'del-4');
     expect(res.status).toBe(404);
     expect(enqueueCoolifyDispatch).not.toHaveBeenCalled();
+  });
+});
+
+// === ISS-429 — MCP injection preview ===
+
+describe('GET /api/projects/:projectId/integrations/mcp-preview', () => {
+  function previewReq(token: string) {
+    return buildApp().request(`/api/projects/${PROJECT_ID}/integrations/mcp-preview`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+  }
+
+  function postmanPair(over: { bindingActive?: boolean; secretsEnc?: string | null } = {}) {
+    return {
+      binding: {
+        id: 'bind-pm',
+        connectionId: CONN_ID,
+        projectId: PROJECT_ID,
+        provider: 'postman',
+        environment: 'prod',
+        config: {},
+        integrationSecret: null,
+        active: over.bindingActive ?? true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      connection: ownedConnection({
+        provider: 'postman',
+        config: { region: 'eu', mode: 'full' },
+        secretsEnc: over.secretsEnc === undefined ? 'enc-bytes' : over.secretsEnc,
+      }),
+    };
+  }
+
+  it('200 — injectable postman binding renders the resolver URL with a redacted header', async () => {
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    const pair = postmanPair();
+    listBindingsForProject.mockResolvedValueOnce([pair]);
+    // The resolver pick query — called once per MCP provider.
+    listActiveBindingsForProjectProvider.mockImplementation((_pid: string, provider: string) =>
+      Promise.resolve(provider === 'postman' ? [pair] : []),
+    );
+
+    const res = await previewReq(token);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      servers: {
+        provider: string;
+        willInject: boolean;
+        reason: string;
+        url: string | null;
+        headers: Record<string, string> | null;
+      }[];
+    };
+    const pm = body.servers.find((s) => s.provider === 'postman');
+    expect(pm?.willInject).toBe(true);
+    expect(pm?.reason).toBe('ok');
+    // Same URL the dispatch resolver builds (region=eu, mode=full → /mcp path).
+    expect(pm?.url).toBe('https://mcp.eu.postman.com/mcp');
+    expect(pm?.headers?.Authorization).toBe('Bearer [redacted]');
+    // No secret bytes anywhere in the payload.
+    expect(JSON.stringify(body)).not.toContain('enc-bytes');
+    // Unconfigured provider gets a synthetic row, not silence.
+    const epod = body.servers.find((s) => s.provider === 'epodsystem');
+    expect(epod?.configured).toBe(false);
+    expect(epod?.reason).toBe('not_configured');
+  });
+
+  it('200 — disabled binding reads disabled and never willInject', async () => {
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    listBindingsForProject.mockResolvedValueOnce([postmanPair({ bindingActive: false })]);
+    listActiveBindingsForProjectProvider.mockResolvedValue([]);
+
+    const res = await previewReq(token);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      servers: { provider: string; willInject: boolean; reason: string }[];
+    };
+    const pm = body.servers.find((s) => s.provider === 'postman');
+    expect(pm?.willInject).toBe(false);
+    expect(pm?.reason).toBe('disabled');
+  });
+
+  it('200 — active binding without a stored credential reads no_credential', async () => {
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    const pair = postmanPair({ secretsEnc: null });
+    listBindingsForProject.mockResolvedValueOnce([pair]);
+    listActiveBindingsForProjectProvider.mockImplementation((_pid: string, provider: string) =>
+      Promise.resolve(provider === 'postman' ? [pair] : []),
+    );
+
+    const res = await previewReq(token);
+    const body = (await res.json()) as {
+      servers: { provider: string; willInject: boolean; reason: string; headers: unknown }[];
+    };
+    const pm = body.servers.find((s) => s.provider === 'postman');
+    expect(pm?.willInject).toBe(false);
+    expect(pm?.reason).toBe('no_credential');
+    expect(pm?.headers).toBeNull();
   });
 });

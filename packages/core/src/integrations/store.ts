@@ -303,13 +303,16 @@ export async function listBindingsForConnection(
     .orderBy(desc(integrationBindings.createdAt));
 }
 
-/** Connections owned by a principal (owner-scoped CRUD list). */
+/** Connections owned by a principal (owner-scoped CRUD list). Returns ALL
+ *  active states — the directory must show a disabled connection as Disabled
+ *  (and allow re-enabling it) rather than silently dropping it (ISS-429).
+ *  Share-eligibility filtering (`active && hasSecrets`) happens client-side. */
 export async function listConnectionsForOwner(
   ownerId: string,
 ): Promise<IntegrationConnectionRow[]> {
   return db
     .select()
     .from(integrationConnections)
-    .where(and(eq(integrationConnections.ownerId, ownerId), eq(integrationConnections.active, true)))
+    .where(eq(integrationConnections.ownerId, ownerId))
     .orderBy(desc(integrationConnections.createdAt));
 }

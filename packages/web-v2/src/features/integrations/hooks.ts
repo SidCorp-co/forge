@@ -35,7 +35,18 @@ function useInvalidateIntegrations(projectId: string | undefined) {
   return () => {
     qc.invalidateQueries({ queryKey: ["integrations", "list", projectId] });
     qc.invalidateQueries({ queryKey: ["integrations", "status", projectId] });
+    qc.invalidateQueries({ queryKey: ["integrations", "mcp-preview", projectId] });
   };
+}
+
+/** What the dispatch resolvers will inject into this project's runners
+ *  (`mcpServers`), redacted server-side. Keyed `['integrations','mcp-preview',id]`. */
+export function useMcpPreview(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["integrations", "mcp-preview", projectId],
+    queryFn: () => integrationsApi.mcpPreview(projectId as string),
+    enabled: !!projectId,
+  });
 }
 
 /** Test connection. Does NOT toast on its own — the caller renders the result

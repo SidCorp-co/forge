@@ -16,6 +16,7 @@ import type {
   IntegrationSummary,
   IntegrationTestResult,
   IntegrationsStatus,
+  McpPreviewResponse,
   UpdateIntegrationInput,
 } from "./types";
 
@@ -23,6 +24,11 @@ export const integrationsApi = {
   /** `GET /api/projects/:projectId/integrations/status` — composed real status. */
   status: (projectId: string) =>
     apiClient<IntegrationsStatus>(`/projects/${projectId}/integrations/status`),
+
+  /** `GET .../integrations/mcp-preview` — exactly what the dispatch resolvers
+   *  will inject into a runner's `mcpServers` (redacted by construction). ISS-429. */
+  mcpPreview: (projectId: string) =>
+    apiClient<McpPreviewResponse>(`/projects/${projectId}/integrations/mcp-preview`),
 
   /** `GET /api/projects/:projectId/integrations` — bindings for the project
    *  (project-facing `BindingSummary` rows, projected from binding + connection). */

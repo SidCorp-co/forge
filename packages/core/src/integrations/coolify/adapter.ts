@@ -8,6 +8,7 @@ import { closeRun, setCurrentStepForce } from '../../pipeline/runs.js';
 import { verifyHmacSignature } from '../../webhooks/hmac.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
 import { getAdapter, registerAdapter } from '../registry.js';
+import { isPreviousCredentialValid } from '../rotation.js';
 import {
   type BindingWithConnection,
   buildContextFromBinding,
@@ -22,7 +23,6 @@ import type {
   OutboundDispatchInput,
   OutboundDispatchResult,
 } from '../types.js';
-import { isPreviousCredentialValid } from '../rotation.js';
 import { maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
 import { CoolifyApiError, CoolifyClient } from './client.js';
 import { flattenLogs, redactCoolifyEnvDump, tailLog } from './logs.js';
@@ -96,7 +96,12 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
         lastHealthAt: new Date(),
       });
       logger.warn(
-        { connectionId: ctx.connectionId, bindingId: ctx.bindingId, err: message, httpStatus: status },
+        {
+          connectionId: ctx.connectionId,
+          bindingId: ctx.bindingId,
+          err: message,
+          httpStatus: status,
+        },
         'coolify: healthcheck failed',
       );
       return {
@@ -173,6 +178,13 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
         completedAt: new Date(),
       });
       await maybeResetBreaker(ctx.connectionId);
+      // A successful deploy dispatch IS a health signal (API reachable + token
+      // accepted) — record it so the card can't stay stuck on a stale `error`
+      // from a one-off healthcheck while deploys keep succeeding (ISS-429).
+      await updateConnection(ctx.connectionId, {
+        lastHealthStatus: 'ok',
+        lastHealthAt: new Date(),
+      });
       return { deliveryId, externalId: deploymentUuid, durationMs };
     } catch (err) {
       const durationMs = Date.now() - started;
@@ -200,7 +212,11 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
       });
       if (tripped) {
         logger.error(
-          { connectionId: ctx.connectionId, bindingId: ctx.bindingId, environment: ctx.environment },
+          {
+            connectionId: ctx.connectionId,
+            bindingId: ctx.bindingId,
+            environment: ctx.environment,
+          },
           'coolify: circuit breaker tripped — ops follow-up required',
         );
       }

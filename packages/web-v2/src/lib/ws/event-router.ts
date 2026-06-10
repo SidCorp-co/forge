@@ -207,6 +207,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
       if (data?.projectId) {
         qc.invalidateQueries({ queryKey: ['integrations', 'list', data.projectId] });
         qc.invalidateQueries({ queryKey: ['integrations', 'status', data.projectId] });
+        qc.invalidateQueries({ queryKey: ['integrations', 'mcp-preview', data.projectId] });
       }
       qc.invalidateQueries({ queryKey: ['integration-connections'] });
       return;
