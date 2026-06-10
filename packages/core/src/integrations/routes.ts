@@ -24,6 +24,7 @@ import { roomManager } from '../ws/server.js';
 import { findDeliveryById } from './deliveries.js';
 import { buildEpodsystemMcpEntry } from './epodsystem/resolver.js';
 import { buildPostmanMcpEntry } from './postman/resolver.js';
+import { raceWithTimeout } from './probe.js';
 import { enqueueCoolifyDispatch } from './queue.js';
 import { getAdapter } from './registry.js';
 import { type RotatingProvider, isRotatingProvider, mergeRotatedSecrets } from './rotation.js';
@@ -271,20 +272,42 @@ async function runInitialHealthcheck(
   const adapter = getAdapter(pair.binding.provider);
   if (!adapter) return null;
   try {
-    const deadline = new Promise<null>((resolve) => {
-      const t = setTimeout(() => resolve(null), INITIAL_PROBE_TIMEOUT_MS);
-      t.unref?.();
-    });
-    const probe = adapter.healthcheck(buildContextFromBinding(pair));
-    // A rejection after the deadline already won must not surface as an
-    // unhandled rejection — the adapter recorded its own failure state.
-    probe.catch(() => {});
-    return await Promise.race([probe, deadline]);
+    return await raceWithTimeout(
+      adapter.healthcheck(buildContextFromBinding(pair)),
+      INITIAL_PROBE_TIMEOUT_MS,
+    );
   } catch {
     // The adapter records its own failure states; a transport-level crash here
     // simply leaves the connection `unverified`.
     return null;
   }
+}
+
+/**
+ * Shared tail of the two binding-creating endpoints (create + bind-existing,
+ * ISS-429/431): immediate probe, re-read for fresh health/config (the probe
+ * mutates the connection), broadcast, and the 201 payload.
+ */
+async function buildCreatedBindingResponse(
+  pair: BindingWithConnection,
+  integrationSecret: string,
+): Promise<{
+  integration: ReturnType<typeof summarizeBinding>;
+  integrationSecret: string;
+  health: HealthCheckResult | null;
+}> {
+  const health = await runInitialHealthcheck(pair);
+  let refreshed: BindingWithConnection | null | undefined;
+  try {
+    refreshed = await findBindingWithConnectionById(pair.binding.id);
+  } catch {
+    refreshed = null;
+  }
+  broadcastIntegrationChanged(pair.binding.projectId, {
+    bindingId: pair.binding.id,
+    connectionId: pair.connection.id,
+  });
+  return { integration: summarizeBinding(refreshed ?? pair), integrationSecret, health };
 }
 
 export const integrationsRoutes = new Hono<{ Variables: AuthVars }>();
@@ -374,20 +397,8 @@ integrationsRoutes.post(
     }
     // Probe immediately so the new integration starts with real health (and
     // epodsystem store identity) instead of an unverified card (ISS-429).
-    const health = await runInitialHealthcheck({ binding, connection });
-    let refreshed: BindingWithConnection | null | undefined;
-    try {
-      refreshed = await findBindingWithConnectionById(binding.id);
-    } catch {
-      refreshed = null;
-    }
-    broadcastIntegrationChanged(projectId, { bindingId: binding.id, connectionId: connection.id });
     return c.json(
-      {
-        integration: summarizeBinding(refreshed ?? { binding, connection }),
-        integrationSecret,
-        health,
-      },
+      await buildCreatedBindingResponse({ binding, connection }, integrationSecret),
       201,
     );
   },
@@ -1198,20 +1209,8 @@ integrationConnectionsRoutes.post(
     }
     // Re-probe on bind so the target project starts from current health rather
     // than whatever the connection last recorded (ISS-429).
-    const health = await runInitialHealthcheck({ binding, connection });
-    let refreshed: BindingWithConnection | null | undefined;
-    try {
-      refreshed = await findBindingWithConnectionById(binding.id);
-    } catch {
-      refreshed = null;
-    }
-    broadcastIntegrationChanged(body.projectId, { bindingId: binding.id, connectionId: id });
     return c.json(
-      {
-        integration: summarizeBinding(refreshed ?? { binding, connection }),
-        integrationSecret,
-        health,
-      },
+      await buildCreatedBindingResponse({ binding, connection }, integrationSecret),
       201,
     );
   },
