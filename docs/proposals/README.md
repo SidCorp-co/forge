@@ -7,6 +7,7 @@ Planned features that are not yet implemented. When a proposal ships, its doc mo
 | Proposal | Status | Target |
 |----------|--------|--------|
 | [cost-aware-model-routing.md](cost-aware-model-routing.md) | Draft | v0.2 (manual hint) → v0.3 (auto-classify) → v1.0 (budget) |
+| [memory-v2-cognitive-layer.md](memory-v2-cognitive-layer.md) | Phases 0–4 implemented | Shipped: hybrid retrieval, degraded writes, usage tracking, dedup, decay, extraction, consolidation. Later: graph retrieval, global scope (phase 5) |
 | [web-v2-redesign.md](web-v2-redesign.md) | In progress | Parallel `packages/web-v2`: brand reskin (light/flame), IA cleanup (~40→18 surfaces), 2-layer tokens (dark drop-in), UI-switch + big-bang cutover |
 | [web-v2-v1-retirement-parity.md](web-v2-v1-retirement-parity.md) | Decided (matrix) | Port-or-drop matrix for every legacy v1 surface — the gate before `packages/web` can be deleted |
 

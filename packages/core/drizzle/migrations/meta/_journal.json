@@ -715,6 +715,20 @@
 			"when": 1782864000000,
 			"tag": "0103_drop_project_integrations",
 			"breakpoints": true
+		},
+		{
+			"idx": 104,
+			"version": "7",
+			"when": 1782950400000,
+			"tag": "0104_memory_v2_phase0",
+			"breakpoints": true
+		},
+		{
+			"idx": 105,
+			"version": "7",
+			"when": 1783036800000,
+			"tag": "0105_memory_v2_fts",
+			"breakpoints": true
 		}
 	]
 }

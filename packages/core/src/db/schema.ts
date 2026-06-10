@@ -1,4 +1,4 @@
-import { relations, sql } from 'drizzle-orm';
+import { type SQL, relations, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   bigint,
@@ -1201,6 +1201,17 @@ export type MemorySource = (typeof memorySources)[number];
 
 export const MEMORY_EMBEDDING_DIM = 1536;
 
+/**
+ * Postgres full-text search vector. Generated column — never written by the
+ * app; Postgres derives it from `text_content`. Read via `@@` / `ts_rank` in
+ * the keyword retrieval strategy (memory-v2 phase 1).
+ */
+const tsVector = customType<{ data: string; driverData: string }>({
+  dataType() {
+    return 'tsvector';
+  },
+});
+
 export const memories = pgTable(
   'memories',
   {
@@ -1211,8 +1222,23 @@ export const memories = pgTable(
     source: text('source', { enum: memorySources }).notNull(),
     sourceRef: text('source_ref').notNull(),
     textContent: text('text_content').notNull(),
-    embedding: pgVector(MEMORY_EMBEDDING_DIM)('embedding').notNull(),
+    // Nullable since memory-v2 phase 1: a degraded write (embeddings outage)
+    // stores the row without a vector and the re-embed backfill fills it in.
+    // Semantic search filters `embedding IS NOT NULL`.
+    embedding: pgVector(MEMORY_EMBEDDING_DIM)('embedding'),
     metadata: jsonb('metadata').notNull().default({}),
+    // memory-v2 phase 2 usage tracking: bumped on semantic-search hits only
+    // (not natural-key gets) and read by the decay/consolidation jobs.
+    retrievalCount: integer('retrieval_count').notNull().default(0),
+    lastRetrievedAt: timestamp('last_retrieved_at', { withTimezone: true }),
+    // Soft delete for decay/consolidation. Archived rows are excluded from
+    // every read surface; hard purge happens after a further grace period.
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    // memory-v2 phase 1 keyword retrieval. GENERATED ALWAYS in Postgres
+    // (migration 0105) — drizzle must never include it in INSERT/UPDATE.
+    textSearch: tsVector('text_search').generatedAlwaysAs(
+      (): SQL => sql`to_tsvector('english', left(${memories.textContent}, 100000))`,
+    ),
     embeddedAt: timestamp('embedded_at', { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1229,6 +1255,7 @@ export const memories = pgTable(
       'hnsw',
       sql`"embedding" vector_cosine_ops`,
     ),
+    textSearchIdx: index('memories_text_search_idx').using('gin', t.textSearch),
   }),
 );
 

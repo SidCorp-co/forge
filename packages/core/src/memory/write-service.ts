@@ -31,12 +31,22 @@ export type WriteMemoryInput = z.infer<typeof writeMemoryInputSchema>;
 
 export type WriteMemoryResult = IndexResult;
 
+/**
+ * Sources where agents author free-form content and near-duplicates
+ * accumulate without semantic dedup. Lifecycle mirrors (issue/decision/
+ * policy) track their source records 1:1 and must never be merged.
+ */
+const SEMANTIC_DEDUP_SOURCES = new Set<string>(['note', 'knowledge']);
+
 export async function runMemoryWrite(input: WriteMemoryInput): Promise<WriteMemoryResult> {
-  return indexMemory({
-    projectId: input.projectId,
-    source: input.source,
-    sourceRef: input.sourceRef,
-    text: input.textContent,
-    ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
-  });
+  return indexMemory(
+    {
+      projectId: input.projectId,
+      source: input.source,
+      sourceRef: input.sourceRef,
+      text: input.textContent,
+      ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+    },
+    { semanticDedup: SEMANTIC_DEDUP_SOURCES.has(input.source) },
+  );
 }

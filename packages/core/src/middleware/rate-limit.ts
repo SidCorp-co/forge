@@ -32,7 +32,11 @@ export function getClientIp(c: Context): string | undefined {
 
 function getUserId(c: Context): string | undefined {
   const user = c.get('user' as never) as { id?: string } | undefined;
-  return user?.id;
+  if (user?.id) return user.id;
+  // `requireAuth` (middleware/auth.ts) sets only `userId`, not `user` —
+  // routes behind it (e.g. memory) would otherwise silently key by IP.
+  const userId = c.get('userId' as never) as string | undefined;
+  return userId;
 }
 
 function getPatTokenId(c: Context): string | undefined {

@@ -4,14 +4,6 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { registerIssueCommentRoutes } from '../comments/routes.js';
-import {
-  AttachmentError,
-  type AttachmentErrorEntry,
-  type DecodedAttachment,
-  type PersistedIssueAttachment,
-  decodeAndValidateAttachments,
-  persistDecodedIssueAttachments,
-} from './attachment-service.js';
 import { db } from '../db/client.js';
 import {
   type IssueStatus,
@@ -28,15 +20,21 @@ import {
 } from '../db/schema.js';
 import { paginationSchema, setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess } from '../lib/project-access.js';
+import { logger } from '../logger.js';
+import { deleteMemory } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { recordActivityTx } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import {
-  type PipelineHealth,
-  hydratePipelineHealthForIssues,
-} from './pipeline-health.js';
-import { logger } from '../logger.js';
+  AttachmentError,
+  type AttachmentErrorEntry,
+  type DecodedAttachment,
+  type PersistedIssueAttachment,
+  decodeAndValidateAttachments,
+  persistDecodedIssueAttachments,
+} from './attachment-service.js';
+import { type PipelineHealth, hydratePipelineHealthForIssues } from './pipeline-health.js';
 
 // Defence against partial drizzle mocks in unit tests + transient DB blips:
 // pipelineHealth is derived; the list/single endpoints must not 500 if the
@@ -56,11 +54,7 @@ async function safeHydratePipelineHealth(
   }
 }
 import type { IssueBranchOverride } from '../branches/resolve.js';
-import {
-  DecomposeError,
-  IntegrationBranchError,
-  decomposeParent,
-} from './decompose.js';
+import { DecomposeError, IntegrationBranchError, decomposeParent } from './decompose.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 
 const attachmentInputSchema = z
@@ -71,7 +65,7 @@ const attachmentInputSchema = z
   })
   .strict();
 
-import { issueMetadataSchema, isSelfReferentialBranch } from './metadata.js';
+import { isSelfReferentialBranch, issueMetadataSchema } from './metadata.js';
 export {
   branchNameSchema,
   branchConfigOverrideSchema,
@@ -786,6 +780,19 @@ issueRoutes.delete(
     }
 
     await db.delete(issues).where(eq(issues.id, id));
+
+    // The issue's memory row references it only by sourceRef (no FK), so a
+    // hard delete would otherwise leave the title/description searchable
+    // forever. Detached: memory cleanup must not delay or fail the delete.
+    queueMicrotask(() => {
+      deleteMemory(issue.projectId, 'issue', id).catch((err) => {
+        logger.warn(
+          { err: (err as Error).message, issueId: id, projectId: issue.projectId },
+          'issues.delete: memory cleanup failed',
+        );
+      });
+    });
+
     return c.body(null, 204);
   },
 );

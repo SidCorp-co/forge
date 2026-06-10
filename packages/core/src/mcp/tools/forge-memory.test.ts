@@ -41,6 +41,9 @@ vi.mock('../../memory/write-service.js', async () => {
 
 vi.mock('../../memory/search-service.js', () => ({
   runMemorySearch: (input: unknown) => runMemorySearchMock(input),
+  // forge-memory.ts imports this at module load for the `strategy` enum;
+  // the mock must export it or the tool module throws on import.
+  memorySearchStrategies: ['semantic', 'keyword', 'hybrid'] as const,
 }));
 
 vi.mock('../../memory/get-service.js', async () => {
