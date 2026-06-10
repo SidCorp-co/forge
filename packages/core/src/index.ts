@@ -84,6 +84,7 @@ import { mcpHandler } from './mcp/handler.js';
 import { meAttentionRoutes } from './me/attention-routes.js';
 import { registerMemoryDecay } from './memory/decay.js';
 import { registerEmbeddingBackfill } from './memory/embedding-backfill.js';
+import { registerMemoryExtraction } from './memory/extraction.js';
 import { registerMemoryIndexer } from './memory/indexer.js';
 import { memoryListRoutes } from './memory/list-routes.js';
 import { memorySearchRoutes } from './memory/search-routes.js';
@@ -257,6 +258,7 @@ registerPipelineSentryBreadcrumbs(hooks);
 registerWsBroadcastSubscribers(hooks);
 registerMemoryIndexer(hooks);
 registerCiFixPatternLearner(hooks);
+registerMemoryExtraction(hooks);
 registerNotifyMentionsSubscriber(hooks);
 registerPmSubscribers(hooks);
 
