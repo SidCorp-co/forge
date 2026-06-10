@@ -94,6 +94,15 @@ describe('ISS-186 prompt-snapshot write path', () => {
     return id;
   }
 
+  async function insertPipelineRun(projectId: string, issueId: string): Promise<string> {
+    const id = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
+      VALUES (${id}, ${projectId}, ${issueId}, 'issue', 'running', now())
+    `);
+    return id;
+  }
+
   async function insertJob(args: {
     projectId: string;
     issueId: string;
@@ -101,13 +110,12 @@ describe('ISS-186 prompt-snapshot write path', () => {
     promptString?: string;
   }): Promise<string> {
     const id = randomUUID();
-    const payload = args.promptString
-      ? JSON.stringify({ promptString: args.promptString })
-      : '{}';
+    const payload = args.promptString ? JSON.stringify({ promptString: args.promptString }) : '{}';
+    const pipelineRunId = await insertPipelineRun(args.projectId, args.issueId);
     await harness.db.execute(sql`
-      INSERT INTO jobs (id, project_id, issue_id, type, status, payload, created_by)
+      INSERT INTO jobs (id, project_id, issue_id, type, status, payload, pipeline_run_id, created_by)
       VALUES (
-        ${id}, ${args.projectId}, ${args.issueId}, 'triage', 'queued', ${payload}::jsonb, ${args.ownerId}
+        ${id}, ${args.projectId}, ${args.issueId}, 'triage', 'queued', ${payload}::jsonb, ${pipelineRunId}, ${args.ownerId}
       )
     `);
     return id;

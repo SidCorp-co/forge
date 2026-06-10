@@ -22,7 +22,9 @@ import {
 type Mods = {
   checkLayer4RunnerFull: typeof import('../../src/jobs/dispatch-gates.js').checkLayer4RunnerFull;
   countInFlightForRunner: typeof import('../../src/jobs/dispatch-gates.js').countInFlightForRunner;
+  // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   pickNextDispatchableJobForProject: typeof import('../../src/jobs/dispatch-gates.js').pickNextDispatchableJobForProject;
+  // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   DEFAULT_MAX_CONCURRENT_ISSUES: typeof import('../../src/jobs/dispatch-gates.js').DEFAULT_MAX_CONCURRENT_ISSUES;
 };
 
@@ -86,7 +88,7 @@ describe('ISS-162 stateless-gates picker E2E', () => {
     await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
       VALUES (
-        ${id}, ${projectId}, ${issSeq}, ${'Issue ' + issSeq}, ${status}, ${priority},
+        ${id}, ${projectId}, ${issSeq}, ${`Issue ${issSeq}`}, ${status}, ${priority},
         (SELECT owner_id FROM projects WHERE id = ${projectId})
       )
     `);
@@ -100,18 +102,31 @@ describe('ISS-162 stateless-gates picker E2E', () => {
     const id = randomUUID();
     const status = args.status ?? 'queued';
     const metadata = args.issueId ? JSON.stringify({ issueId: args.issueId }) : '{}';
+    const pipelineRunId = await insertPipelineRun(projectId, args.issueId ?? null);
     await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, status, metadata)
-      VALUES (${id}, ${projectId}, ${status}, ${metadata}::jsonb)
+      INSERT INTO agent_sessions (id, project_id, status, metadata, pipeline_run_id)
+      VALUES (${id}, ${projectId}, ${status}, ${metadata}::jsonb, ${pipelineRunId})
     `);
     return id;
   }
 
   async function insertPipelineRun(projectId: string, issueId?: string | null): Promise<string> {
+    // At most one OPEN issue-run per issue (`pipeline_runs_issue_open_uq`).
+    // A session + the job for the same issue must therefore SHARE one run —
+    // reuse the existing open run if present, otherwise insert a fresh one.
+    if (issueId) {
+      const existing = await harness.db.execute<{ id: string }>(sql`
+        SELECT id FROM pipeline_runs
+        WHERE issue_id = ${issueId} AND kind = 'issue' AND status IN ('running','paused')
+        LIMIT 1
+      `);
+      if (existing[0]?.id) return existing[0].id;
+    }
     const id = randomUUID();
+    const kind = issueId ? 'issue' : 'system';
     await harness.db.execute(sql`
-      INSERT INTO pipeline_runs (id, project_id, issue_id, status, started_at)
-      VALUES (${id}, ${projectId}, ${issueId ?? null}, 'running', now())
+      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
+      VALUES (${id}, ${projectId}, ${issueId ?? null}, ${kind}, 'running', now())
     `);
     return id;
   }
@@ -133,7 +148,8 @@ describe('ISS-162 stateless-gates picker E2E', () => {
     const status = args.status ?? 'queued';
     const type = args.type ?? 'plan';
     const queuedAt = args.queuedAt ?? new Date();
-    const pipelineRunId = args.pipelineRunId ?? (await insertPipelineRun(projectId, args.issueId ?? null));
+    const pipelineRunId =
+      args.pipelineRunId ?? (await insertPipelineRun(projectId, args.issueId ?? null));
     await harness.db.execute(sql`
       INSERT INTO jobs (
         id, project_id, issue_id, type, status, runner_id,
@@ -161,11 +177,28 @@ describe('ISS-162 stateless-gates picker E2E', () => {
     await harness.db.execute(sql`
       INSERT INTO runners (id, project_id, type, host, device_id, name, capabilities, status)
       VALUES (
-        ${id}, ${projectId}, ${type}, 'device', ${deviceId}, ${'runner-' + id.slice(0, 8)},
+        ${id}, ${projectId}, ${type}, 'device', ${deviceId}, ${`runner-${id.slice(0, 8)}`},
         ${JSON.stringify(caps)}::jsonb, 'online'
       )
     `);
     return id;
+  }
+
+  // Picker requires a FRESH capable runner (EXISTS fresh_capable_runners
+  // WHERE in_flight < cap). Seed an online claude-code runner with a fresh
+  // last_seen_at so any positive-pick assertion isn't starved by L4/L5.
+  async function seedFreshRunner(projectId: string, ownerId: string): Promise<string> {
+    const device = await createTestDevice(harness.db, ownerId, { status: 'online' });
+    await harness.db.execute(sql`UPDATE devices SET last_seen_at = now() WHERE id = ${device.id}`);
+    const runnerId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO runners (id, project_id, type, host, device_id, name, capabilities, status, last_seen_at)
+      VALUES (
+        ${runnerId}, ${projectId}, 'claude-code', 'device', ${device.id},
+        ${`runner-${runnerId.slice(0, 8)}`}, '{}'::jsonb, 'online', now()
+      )
+    `);
+    return runnerId;
   }
 
   async function insertBlocksEdge(
@@ -198,28 +231,17 @@ describe('ISS-162 stateless-gates picker E2E', () => {
     });
 
     it('fails when in-flight jobs reach the runner cap', async () => {
+      // ISS-232 — runner cap is hardcoded to 1; one in-flight job fills it.
       const { owner, project } = await seedProject();
       const device = await createTestDevice(harness.db, owner.id);
-      const runnerId = await insertRunner(project.id, device.id, { maxConcurrent: 2 });
+      const runnerId = await insertRunner(project.id, device.id);
       await insertJob(project.id, { runnerId, status: 'running' });
-      await insertJob(project.id, { runnerId, status: 'dispatched' });
       const result = await mods.checkLayer4RunnerFull(runnerId);
       expect(result.pass).toBe(false);
       if (!result.pass) {
         expect(result.reason).toBe('runner_full');
-        expect(result.metadata).toMatchObject({ cap: 2, inFlight: 2 });
+        expect(result.metadata).toMatchObject({ cap: 1, inFlight: 1 });
       }
-    });
-
-    it('uses the antigravity default cap (5) when capabilities.maxConcurrent is unset', async () => {
-      const { owner, project } = await seedProject();
-      const device = await createTestDevice(harness.db, owner.id);
-      const runnerId = await insertRunner(project.id, device.id, { type: 'antigravity' });
-      for (let i = 0; i < 4; i++) {
-        await insertJob(project.id, { runnerId, status: 'running' });
-      }
-      const result = await mods.checkLayer4RunnerFull(runnerId);
-      expect(result.pass).toBe(true);
     });
 
     it('respects excludeJobId so the candidate itself is not counted', async () => {
@@ -259,7 +281,8 @@ describe('ISS-162 stateless-gates picker E2E', () => {
     });
 
     it('orders by priority (critical>high>medium>low>none), then run.started_at, then queued_at ASC', async () => {
-      const { project } = await seedProject({ maxConcurrentIssues: 10 });
+      const { owner, project } = await seedProject({ maxConcurrentIssues: 10 });
+      await seedFreshRunner(project.id, owner.id);
       const i1 = await insertIssue(project.id, { priority: 'low', issSeq: 71 });
       const i2 = await insertIssue(project.id, { priority: 'critical', issSeq: 72 });
       const i3 = await insertIssue(project.id, { priority: 'high', issSeq: 73 });
@@ -275,7 +298,8 @@ describe('ISS-162 stateless-gates picker E2E', () => {
     });
 
     it('skips jobs whose blocking parent is non-terminal (L2 blocks inline)', async () => {
-      const { project } = await seedProject({ maxConcurrentIssues: 10 });
+      const { owner, project } = await seedProject({ maxConcurrentIssues: 10 });
+      await seedFreshRunner(project.id, owner.id);
       const parent = await insertIssue(project.id, { status: 'in_progress' });
       const blocked = await insertIssue(project.id);
       const free = await insertIssue(project.id);
@@ -287,7 +311,8 @@ describe('ISS-162 stateless-gates picker E2E', () => {
     });
 
     it('skips jobs whose issue has an active sibling session (L1 inline)', async () => {
-      const { project } = await seedProject({ maxConcurrentIssues: 10 });
+      const { owner, project } = await seedProject({ maxConcurrentIssues: 10 });
+      await seedFreshRunner(project.id, owner.id);
       const busy = await insertIssue(project.id);
       const free = await insertIssue(project.id);
       // Active session for `busy` without linking to the candidate job — the
@@ -310,8 +335,9 @@ describe('ISS-162 stateless-gates picker E2E', () => {
       expect(result).toBeNull();
     });
 
-    it("does not block a candidate whose own issue is already counted toward the cap (L3 self-exclusion)", async () => {
-      const { project } = await seedProject({ maxConcurrentIssues: 1 });
+    it('does not block a candidate whose own issue is already counted toward the cap (L3 self-exclusion)', async () => {
+      const { owner, project } = await seedProject({ maxConcurrentIssues: 1 });
+      await seedFreshRunner(project.id, owner.id);
       const single = await insertIssue(project.id);
       // The candidate's issue already has a queued session — Layer 1 would
       // normally catch that, but here we use a `completed` placeholder so
@@ -322,19 +348,26 @@ describe('ISS-162 stateless-gates picker E2E', () => {
       expect(result?.id).toBe(j);
     });
 
-    it('blocks a release job until its decompose parent terminates (L2 decompose inline)', async () => {
-      const { project } = await seedProject({ maxConcurrentIssues: 10 });
+    it("blocks a decompose PARENT's forward job until its children terminate (L2 decompose inline)", async () => {
+      // Decompose redesign — the PARENT runs its integration LAST. The
+      // dependency is one-directional now: a parent's code/review/test/fix
+      // job waits for every `kind='decomposes'` child to land (merged_at set
+      // OR closed). Children are NOT gated on the parent (the old
+      // releaseDecomposePending gate was removed — it deadlocked umbrella
+      // epics that never code-merge themselves).
+      const { owner, project } = await seedProject({ maxConcurrentIssues: 10 });
+      await seedFreshRunner(project.id, owner.id);
       const parent = await insertIssue(project.id, { status: 'approved', issSeq: 91 });
       const child = await insertIssue(project.id, { status: 'developed', issSeq: 92 });
       await insertBlocksEdge(project.id, parent, child, { kind: 'decomposes' });
-      const release = await insertJob(project.id, { issueId: child, type: 'release' });
-      // While parent is non-released, the release job is filtered.
+      const parentCode = await insertJob(project.id, { issueId: parent, type: 'code' });
+      // While the child is non-terminal, the parent's code job is filtered.
       let result = await mods.pickNextDispatchableJobForProject(project.id);
       expect(result).toBeNull();
-      // Flip parent to released — release job becomes pickable.
-      await harness.db.execute(sql`UPDATE issues SET status='released' WHERE id=${parent}`);
+      // Close the child — parent's code job becomes pickable.
+      await harness.db.execute(sql`UPDATE issues SET status='closed' WHERE id=${child}`);
       result = await mods.pickNextDispatchableJobForProject(project.id);
-      expect(result?.id).toBe(release);
+      expect(result?.id).toBe(parentCode);
     });
 
     it('skips PM jobs (`type=pm`)', async () => {

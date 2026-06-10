@@ -22,6 +22,7 @@ import {
 
 type PipelineMods = {
   HooksBus: typeof import('../../src/pipeline/hooks.js').HooksBus;
+  // biome-ignore format: esbuild's TS transform cannot parse a line break inside import(); keep on one line
   registerActivitySubscribers: typeof import('../../src/pipeline/subscribers.js').registerActivitySubscribers;
   searchRoutes: typeof import('../../src/issues/search.js').searchRoutes;
   signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
@@ -187,7 +188,7 @@ describe('F6 pipeline E2E', () => {
       const bus = new mods.HooksBus();
       mods.registerActivitySubscribers(bus);
 
-      const steps = ['open→confirmed', 'confirmed→approved', 'approved→in_progress'] as const;
+      const steps = ['open→confirmed', 'confirmed→clarified', 'clarified→approved'] as const;
       for (const step of steps) {
         const [from, to] = step.split('→') as [
           Parameters<typeof mods.canTransition>[0],
