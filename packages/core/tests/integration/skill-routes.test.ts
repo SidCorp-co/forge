@@ -522,7 +522,10 @@ describe('F2 skill routes integration', () => {
     expect(res.status).toBe(404);
   });
 
-  it('register: global skill registrable by any admin', async () => {
+  it('register: global skill is not directly registrable (must adopt first)', async () => {
+    // ISS-388 — global skills are read-only templates. Registering one directly
+    // is rejected with 400 SKILL_NOT_PROJECT_SCOPED; the project must adopt the
+    // template (clone it into a project-scoped skill) before registering it.
     const { user, project } = await seedProjectWith('owner');
     const globalSkillId = await seedSkill(null, 'forge-plan');
     const token = await signUserToken(user.id);
@@ -534,7 +537,9 @@ describe('F2 skill routes integration', () => {
       },
       body: JSON.stringify({ stage: 'approved' }),
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('SKILL_NOT_PROJECT_SCOPED');
   });
 
   it('register: admin (non-owner) can register a skill', async () => {

@@ -23,6 +23,7 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
+// biome-ignore format: esbuild's TS transform cannot parse a line break inside import(); keep each typeof import(...) on one line
 type Mods = {
   findDecompositionChildren: typeof import('../../src/pipeline/decomposition.js').findDecompositionChildren;
   findDecompositionParent: typeof import('../../src/pipeline/decomposition.js').findDecompositionParent;
@@ -30,6 +31,7 @@ type Mods = {
   registerDecompositionSubscribers: typeof import('../../src/pipeline/decomposition-subscribers.js').registerDecompositionSubscribers;
   applyStatusTransition: typeof import('../../src/issues/apply-transition.js').applyStatusTransition;
   hooks: typeof import('../../src/pipeline/hooks.js').hooks;
+  drainOutboxOnce: typeof import('../../src/pipeline/outbox-worker.js').drainOutboxOnce;
 };
 
 describe('ISS-119 decomposition lifecycle E2E', () => {
@@ -50,12 +52,13 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
 
-    const [decompMod, gatesMod, subsMod, applyMod, hooksMod] = await Promise.all([
+    const [decompMod, gatesMod, subsMod, applyMod, hooksMod, outboxMod] = await Promise.all([
       import('../../src/pipeline/decomposition.js'),
       import('../../src/jobs/dispatch-gates.js'),
       import('../../src/pipeline/decomposition-subscribers.js'),
       import('../../src/issues/apply-transition.js'),
       import('../../src/pipeline/hooks.js'),
+      import('../../src/pipeline/outbox-worker.js'),
     ]);
     mods = {
       findDecompositionChildren: decompMod.findDecompositionChildren,
@@ -64,6 +67,7 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
       registerDecompositionSubscribers: subsMod.registerDecompositionSubscribers,
       applyStatusTransition: applyMod.applyStatusTransition,
       hooks: hooksMod.hooks,
+      drainOutboxOnce: outboxMod.drainOutboxOnce,
     };
     // Register subscribers ONCE for this suite — the bus is a module-level
     // singleton so duplicate registration would multiply handler firings.
@@ -91,7 +95,7 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
     await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
       VALUES (
-        ${id}, ${projectId}, ${issSeq}, ${'Issue ' + issSeq}, ${status},
+        ${id}, ${projectId}, ${issSeq}, ${`Issue ${issSeq}`}, ${status},
         'medium', ${ownerId}
       )
     `);
@@ -111,7 +115,11 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
     return id;
   }
 
-  async function insertReleaseJob(projectId: string, issueId: string, ownerId: string): Promise<string> {
+  async function insertReleaseJob(
+    projectId: string,
+    issueId: string,
+    ownerId: string,
+  ): Promise<string> {
     const runId = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status)
@@ -150,6 +158,31 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
       )
     `);
     return id;
+  }
+
+  // The picker's `fresh_capable_runners` CTE now requires at least one online,
+  // fresh runner before any job (release/triage) is dispatchable — otherwise
+  // the EXISTS gate parks every job with `runner_stale`. Seed a fresh online
+  // claude-code runner bound to a device so the picker tests assert their
+  // decomposition-specific gating, not the runner-presence gate.
+  async function seedFreshRunner(projectId: string, ownerId: string): Promise<string> {
+    const deviceId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO devices (id, owner_id, name, platform, token_hash, token_prefix, status)
+      VALUES (
+        ${deviceId}, ${ownerId}, ${`device-${deviceId.slice(0, 8)}`}, 'linux',
+        ${`!test-device-hash-${deviceId}`}, ${deviceId.slice(0, 8)}, 'online'
+      )
+    `);
+    const runnerId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO runners (id, project_id, type, host, device_id, name, capabilities, status, last_seen_at)
+      VALUES (
+        ${runnerId}, ${projectId}, 'claude-code', 'device', ${deviceId},
+        ${`runner-${runnerId.slice(0, 8)}`}, '{}'::jsonb, 'online', now()
+      )
+    `);
+    return runnerId;
   }
 
   async function insertBlocksEdge(
@@ -254,6 +287,7 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
     it('admits the release job once the parent reaches released', async () => {
       const owner = await createTestUser(harness.db);
       const project = await createTestProject(harness.db, owner.id);
+      await seedFreshRunner(project.id, owner.id);
       const parent = await insertIssue(project.id, owner.id, { status: 'released', issSeq: 71 });
       const child = await insertIssue(project.id, owner.id, { status: 'staging', issSeq: 72 });
       await insertDecomposesEdge(project.id, parent, child);
@@ -275,6 +309,7 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
     it('sibling blocks edges within a decomposition gate downstream triage dispatch', async () => {
       const owner = await createTestUser(harness.db);
       const project = await createTestProject(harness.db, owner.id);
+      await seedFreshRunner(project.id, owner.id);
       const parent = await insertIssue(project.id, owner.id, { status: 'approved', issSeq: 200 });
       const sub1 = await insertIssue(project.id, owner.id, { status: 'approved', issSeq: 201 });
       const sub2 = await insertIssue(project.id, owner.id, { status: 'approved', issSeq: 202 });
@@ -300,10 +335,13 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
       expect((first as unknown as { id: string; issue_id: string })?.issue_id).toBe(sub1);
 
       // Simulate sub1 reaching terminal — sub2 unblocks, sub3 still waits.
+      // ISS-232 — the `blockedBy` gate is satisfied only when the blocker has
+      // `merged_at` stamped OR is `closed` (a bare `released` no longer
+      // unblocks). Drive sub1 to `closed` so the gate releases sub2.
       await harness.db.execute(sql`
         UPDATE jobs SET status = 'completed', finished_at = now() WHERE id = ${j1}
       `);
-      await harness.db.execute(sql`UPDATE issues SET status = 'released' WHERE id = ${sub1}`);
+      await harness.db.execute(sql`UPDATE issues SET status = 'closed' WHERE id = ${sub1}`);
 
       const second = await mods.pickNextDispatchableJobForProject(project.id);
       expect(second).not.toBeNull();
@@ -326,10 +364,13 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
     it('flips open children to approved when parent transitions waiting → approved', async () => {
       const owner = await createTestUser(harness.db);
       const project = await createTestProject(harness.db, owner.id);
+      // Children parked at `draft` — CASCADE_APPROVE_FROM_STATUSES is
+      // {draft, on_hold} (decomposition-subscribers.ts). An `open` child is
+      // never promoted by the cascade.
       const parent = await insertIssue(project.id, owner.id, { status: 'waiting', issSeq: 81 });
-      const childA = await insertIssue(project.id, owner.id, { status: 'open', issSeq: 82 });
-      const childB = await insertIssue(project.id, owner.id, { status: 'open', issSeq: 83 });
-      const childC = await insertIssue(project.id, owner.id, { status: 'open', issSeq: 84 });
+      const childA = await insertIssue(project.id, owner.id, { status: 'draft', issSeq: 82 });
+      const childB = await insertIssue(project.id, owner.id, { status: 'draft', issSeq: 83 });
+      const childC = await insertIssue(project.id, owner.id, { status: 'draft', issSeq: 84 });
       await insertDecomposesEdge(project.id, parent, childA);
       await insertDecomposesEdge(project.id, parent, childB);
       await insertDecomposesEdge(project.id, parent, childC);
@@ -339,6 +380,11 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
         'approved',
         { id: owner.id, ownerId: owner.id },
       );
+      // ISS-196 — applyStatusTransition no longer emits `transition` inline; it
+      // writes a pipeline_outbox row via trigger. Drain it so the decomposition
+      // subscriber fires the cascade. (Children flip to approved → their own
+      // outbox rows, but no subscriber acts on a `draft→approved` child here.)
+      await mods.drainOutboxOnce();
 
       expect(await readIssueStatus(childA)).toBe('approved');
       expect(await readIssueStatus(childB)).toBe('approved');
@@ -363,6 +409,8 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
         'closed',
         { id: owner.id, ownerId: owner.id },
       );
+      // ISS-196 — drain the outbox so the close-cascade subscriber fires.
+      await mods.drainOutboxOnce();
 
       expect(await readIssueStatus(parent)).toBe('closed');
       expect(await readIssueStatus(childA)).toBe('closed');
@@ -391,6 +439,9 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
         { id: owner.id, ownerId: owner.id },
         { skip: true },
       );
+      // ISS-196 — drain the outbox so the watcher subscriber fires on the
+      // child's staging transition.
+      await mods.drainOutboxOnce();
 
       // Now BOTH children are at staging — watcher posts exactly one comment.
       // The triggerPipelineStepManual call inside the watcher fails with

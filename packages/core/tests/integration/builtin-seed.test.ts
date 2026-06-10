@@ -132,14 +132,16 @@ describe('seedBuiltinSkills', () => {
     await expect(seedBuiltinSkills(harness.db as never, { skillsRoot })).rejects.toThrow(/name/);
   });
 
-  it('seeds every bundled forge-* skill from the real package directory', async () => {
+  it('seeds every bundled forge-* / shop-* skill from the real package directory', async () => {
     // Use the real `packages/core/skills/` root — ensures the shipped files parse
     // and the seeder works end-to-end without the tmp-dir fixture. Derive the
-    // expected set from disk so adding a new forge-* skill does not break this.
+    // expected set from disk so adding a new builtin skill does not break this.
+    // The seeder seeds BOTH `forge-` (core pipeline) and `shop-` (Epodsystem
+    // storefront) prefixes — see BUILTIN_SKILL_PREFIXES in builtin-seed.ts.
     const realRoot = new URL('../../skills/', import.meta.url).pathname;
     const dirents = await readdir(realRoot, { withFileTypes: true });
     const expectedNames = dirents
-      .filter((d) => d.isDirectory() && d.name.startsWith('forge-'))
+      .filter((d) => d.isDirectory() && (d.name.startsWith('forge-') || d.name.startsWith('shop-')))
       .map((d) => d.name)
       .sort();
     expect(expectedNames.length).toBeGreaterThan(0);

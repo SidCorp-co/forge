@@ -116,7 +116,11 @@ describe('ISS-195 session-group resume end-to-end', () => {
     await harness.db.execute(sql`UPDATE devices SET last_seen_at = now() WHERE id = ${device.id}`);
     // Online claude-code runner bound to the device so `selectRunnerForJob`
     // resolves it (single runner → picked via the standby step).
-    await createTestRunner({ projectId: project.id, deviceId: device.id, lastSeenOffsetSeconds: 1 });
+    await createTestRunner({
+      projectId: project.id,
+      deviceId: device.id,
+      lastSeenOffsetSeconds: 1,
+    });
     const token = await signUserToken(owner.id);
     return { ownerId: owner.id, projectId: project.id, deviceId: device.id, token };
   }
@@ -446,8 +450,11 @@ describe('ISS-195 session-group resume end-to-end', () => {
       await harness.db.execute(sql`
         UPDATE runners SET last_seen_at = now() WHERE id = ${runnerA}
       `);
+      // Dispatch liveness tightened to 30s (src/lib/dispatch-liveness.ts), so
+      // age runner B only 5s — still fresher-than-A-flipped yet inside the
+      // window, so it stays pinnable for stage 2.
       await harness.db.execute(sql`
-        UPDATE runners SET last_seen_at = now() - interval '30 seconds' WHERE id = ${runnerB}
+        UPDATE runners SET last_seen_at = now() - interval '5 seconds' WHERE id = ${runnerB}
       `);
 
       const jobId2 = await insertStageJob({

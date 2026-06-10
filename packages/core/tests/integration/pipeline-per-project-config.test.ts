@@ -27,16 +27,14 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
+// biome-ignore format: esbuild's TS transform cannot parse a line break inside import(); keep each typeof import(...) on one line
 type Mods = {
   hooks: typeof import('../../src/pipeline/hooks.js').hooks;
-  registerPipelineOrchestrator:
-    typeof import('../../src/pipeline/orchestrator.js').registerPipelineOrchestrator;
-  registerActivitySubscribers:
-    typeof import('../../src/pipeline/subscribers.js').registerActivitySubscribers;
-  applyStatusTransition:
-    typeof import('../../src/issues/apply-transition.js').applyStatusTransition;
-  defaultStatesConfig:
-    typeof import('../../src/pipeline/pipeline-config-schema.js').defaultStatesConfig;
+  registerPipelineOrchestrator: typeof import('../../src/pipeline/orchestrator.js').registerPipelineOrchestrator;
+  registerActivitySubscribers: typeof import('../../src/pipeline/subscribers.js').registerActivitySubscribers;
+  applyStatusTransition: typeof import('../../src/issues/apply-transition.js').applyStatusTransition;
+  defaultStatesConfig: typeof import('../../src/pipeline/pipeline-config-schema.js').defaultStatesConfig;
+  drainOutboxOnce: typeof import('../../src/pipeline/outbox-worker.js').drainOutboxOnce;
 };
 
 type IssueRow = {
@@ -58,6 +56,7 @@ type ActivityRow = {
 
 const DEFAULT_SKILL_NAMES = [
   'forge-triage',
+  'forge-clarify',
   'forge-plan',
   'forge-code',
   'forge-review',
@@ -84,12 +83,13 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
 
-    const [hooksMod, orchMod, subsMod, applyMod, schemaMod] = await Promise.all([
+    const [hooksMod, orchMod, subsMod, applyMod, schemaMod, outboxMod] = await Promise.all([
       import('../../src/pipeline/hooks.js'),
       import('../../src/pipeline/orchestrator.js'),
       import('../../src/pipeline/subscribers.js'),
       import('../../src/issues/apply-transition.js'),
       import('../../src/pipeline/pipeline-config-schema.js'),
+      import('../../src/pipeline/outbox-worker.js'),
     ]);
 
     mods = {
@@ -98,6 +98,7 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
       registerActivitySubscribers: subsMod.registerActivitySubscribers,
       applyStatusTransition: applyMod.applyStatusTransition,
       defaultStatesConfig: schemaMod.defaultStatesConfig,
+      drainOutboxOnce: outboxMod.drainOutboxOnce,
     };
   }, 60_000);
 
@@ -123,9 +124,11 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     return id;
   }
 
-  async function seedProject(args: {
-    statesOverride?: Record<string, { enabled?: boolean; mode?: 'auto' | 'manual' }>;
-  } = {}) {
+  async function seedProject(
+    args: {
+      statesOverride?: Record<string, { enabled?: boolean; mode?: 'auto' | 'manual' }>;
+    } = {},
+  ) {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
     await createTestProjectMember(harness.db, {
@@ -141,9 +144,13 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
 
     // Bootstrap-equivalent: one registration per mapped stage pointing at the
     // default `forge-<type>` global skill.
+    // Stage→skill map mirrors the current PIPELINE_STEPS (registry.ts):
+    // open→triage, confirmed→clarify, clarified→plan, approved→code,
+    // developed→review, testing→test, reopen→fix, released→release.
     const stagePairs: Array<[string, string]> = [
       ['open', 'forge-triage'],
-      ['confirmed', 'forge-plan'],
+      ['confirmed', 'forge-clarify'],
+      ['clarified', 'forge-plan'],
       ['approved', 'forge-code'],
       ['developed', 'forge-review'],
       ['testing', 'forge-test'],
@@ -163,6 +170,7 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     const pipelineConfig = {
       enabled: true,
       autoTriage: true,
+      autoClarify: true,
       autoPlan: true,
       autoCode: true,
       autoReview: true,
@@ -226,12 +234,52 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
    * `to` already. The orchestrator catches pg-boss errors so the test does not
    * need a running queue.
    */
+  // Forward order of the happy-path lifecycle, used so `drive` can tell whether
+  // the orchestrator's eager soft-skip already carried the issue to OR PAST a
+  // target stage (and the explicit drive should be a no-op rather than a
+  // backward transition).
+  const PIPELINE_ORDER: import('../../src/db/schema.js').IssueStatus[] = [
+    'open',
+    'confirmed',
+    'clarified',
+    'approved',
+    'in_progress',
+    'developed',
+    'deploying',
+    'testing',
+    'pass',
+    'staging',
+    'released',
+    'closed',
+  ];
+  const orderOf = (s: import('../../src/db/schema.js').IssueStatus): number => {
+    const i = PIPELINE_ORDER.indexOf(s);
+    return i === -1 ? Number.POSITIVE_INFINITY : i;
+  };
+
   async function drive(
     issue: IssueRow,
     to: import('../../src/db/schema.js').IssueStatus,
     ownerId: string,
   ): Promise<IssueRow> {
-    await mods.applyStatusTransition(issue, to, { id: ownerId, ownerId });
+    // Re-read the live status: a prior drive's outbox drain may have auto-skip
+    // advanced the issue TO or PAST `to` already (e.g. unmapped/no-skill stages
+    // like `deploying`/`pass`/`staging` collapse forward through the chain). If
+    // the issue is already at-or-beyond the target, this drive is a no-op —
+    // driving it would either throw NO_OP or move the issue BACKWARD. Skip
+    // cleanly so the test's explicit walk tolerates the eager soft-skip.
+    const live = await readIssue(issue.id);
+    if (orderOf(live.status) >= orderOf(to)) return live;
+    await mods.applyStatusTransition(live, to, { id: ownerId, ownerId });
+    // ISS-196 — applyStatusTransition no longer emits `transition` inline; it
+    // writes a pipeline_outbox row via the AFTER UPDATE trigger. Drain it so
+    // the orchestrator subscriber fires and enqueues the stage's job. Drain in
+    // a loop because each enqueue/skip may chain (auto-skip re-emits a
+    // transition, producing more outbox rows) until the queue settles.
+    let guard = 0;
+    while ((await mods.drainOutboxOnce()).processed > 0 && guard++ < 20) {
+      /* keep draining until no rows remain */
+    }
     return await readIssue(issue.id);
   }
 
@@ -240,6 +288,8 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
       issueId: issue.id,
       projectId: issue.projectId,
       actor: { type: 'user', id: ownerId },
+      // ISS-130 — issueCreated payload now requires the inserted row's status.
+      status: 'open',
       snapshot: {
         title: 'epic integration',
         description: null,
@@ -258,7 +308,8 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
 
     // `open` → triage (issueCreated path; status stays open until we transition).
     await emitIssueCreated(issue, owner.id);
-    issue = await drive(issue, 'confirmed', owner.id); // → plan
+    issue = await drive(issue, 'confirmed', owner.id); // → clarify
+    issue = await drive(issue, 'clarified', owner.id); // → plan
     issue = await drive(issue, 'approved', owner.id); // → code
     issue = await drive(issue, 'in_progress', owner.id); // human-gated, no job
     issue = await drive(issue, 'developed', owner.id); // → review
@@ -275,6 +326,7 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     const summary = allJobs.map((j) => ({ type: j.type, skillName: j.payload.skillName }));
     expect(summary).toEqual([
       { type: 'triage', skillName: 'forge-triage' },
+      { type: 'clarify', skillName: 'forge-clarify' },
       { type: 'plan', skillName: 'forge-plan' },
       { type: 'code', skillName: 'forge-code' },
       { type: 'review', skillName: 'forge-review' },
@@ -283,23 +335,24 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     ]);
   });
 
-  it('fixture 2 — custom skill override at `confirmed` runs the custom skill there; defaults elsewhere', async () => {
+  it('fixture 2 — custom skill override at the plan stage (`clarified`) runs the custom skill there; defaults elsewhere', async () => {
     const { owner, project } = await seedProject();
 
-    // Swap `confirmed`'s registration to point at a custom global skill.
+    // Swap `clarified`'s registration (the plan stage) to a custom global skill.
     const customSkillId = await insertGlobalSkill('custom-planner');
     await harness.db.execute(sql`
       DELETE FROM skill_registrations
-      WHERE project_id = ${project.id} AND stage = 'confirmed'
+      WHERE project_id = ${project.id} AND stage = 'clarified'
     `);
     await harness.db.execute(sql`
       INSERT INTO skill_registrations (project_id, skill_id, stage, registered_by)
-      VALUES (${project.id}, ${customSkillId}, 'confirmed', ${owner.id})
+      VALUES (${project.id}, ${customSkillId}, 'clarified', ${owner.id})
     `);
 
     let issue = await insertOpenIssue(project.id, owner.id);
     await emitIssueCreated(issue, owner.id);
     issue = await drive(issue, 'confirmed', owner.id);
+    issue = await drive(issue, 'clarified', owner.id);
     issue = await drive(issue, 'approved', owner.id);
     issue = await drive(issue, 'in_progress', owner.id);
     issue = await drive(issue, 'developed', owner.id);
@@ -321,6 +374,7 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     const nonPlan = allJobs.filter((j) => j.type !== 'plan');
     const expectedDefaults: Record<string, string> = {
       triage: 'forge-triage',
+      clarify: 'forge-clarify',
       code: 'forge-code',
       review: 'forge-review',
       test: 'forge-test',
@@ -339,6 +393,7 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     let issue = await insertOpenIssue(project.id, owner.id);
     await emitIssueCreated(issue, owner.id);
     issue = await drive(issue, 'confirmed', owner.id);
+    issue = await drive(issue, 'clarified', owner.id);
     issue = await drive(issue, 'approved', owner.id);
     issue = await drive(issue, 'in_progress', owner.id);
 

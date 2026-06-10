@@ -17,6 +17,7 @@ import { sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   type TestDatabase,
+  createTestDevice,
   createTestProject,
   createTestUser,
   setupTestDatabase,
@@ -103,7 +104,24 @@ describe('W2.3.2 monthly budget gate E2E', () => {
                                  ))
       WHERE id = ${project.id}
     `);
+    await seedRunner(project.id, owner.id);
     return { owner, project, stage };
+  }
+
+  // Seed an online `claude-code` runner so the dispatch barrier (L4/L5) passes
+  // and `handleDispatch` reaches the monthly-budget gate. Without it the
+  // barrier short-circuits with `runner_stale` and the gate never runs.
+  async function seedRunner(projectId: string, ownerId: string): Promise<void> {
+    const device = await createTestDevice(harness.db, ownerId, { status: 'online' });
+    const runnerId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO runners (id, project_id, type, host, device_id, name, capabilities, status, last_seen_at)
+      VALUES (
+        ${runnerId}, ${projectId}, 'claude-code', 'device', ${device.id},
+        ${`runner-${runnerId.slice(0, 8)}`}, ${'{"pm": true}'}::jsonb,
+        'online', now()
+      )
+    `);
   }
 
   async function insertIssue(projectId: string): Promise<string> {
@@ -131,19 +149,27 @@ describe('W2.3.2 monthly budget gate E2E', () => {
     const runId = randomUUID();
     const jobId = randomUUID();
     const jobType = args.jobType ?? 'code';
-    await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, status, metadata)
-      VALUES (${sessionId}, ${projectId}, 'completed', '{}'::jsonb)
-    `);
+    // pipeline_runs first — both agent_sessions.pipeline_run_id and
+    // jobs.pipeline_run_id are NOT NULL (migration 0054) and FK this row.
     await harness.db.execute(sql`
       INSERT INTO pipeline_runs (id, project_id, issue_id, status, started_at)
-      VALUES (${runId}, ${projectId}, ${args.issueId ?? null}, 'succeeded', now())
+      VALUES (${runId}, ${projectId}, ${args.issueId ?? null}, 'completed', now())
+    `);
+    // jobs.started_at was dropped (migration 0057). The
+    // pipeline_run_step_durations view now derives the step's started_at from
+    // COALESCE(agent_sessions.started_at, jobs.dispatched_at); set the session's
+    // started_at so the row falls in the current month, and use the job's
+    // dispatched_at/finished_at (both required: the view filters on
+    // finished_at IS NOT NULL).
+    await harness.db.execute(sql`
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, started_at, metadata)
+      VALUES (${sessionId}, ${projectId}, ${runId}, 'completed', now() - interval '10 minutes', '{}'::jsonb)
     `);
     await harness.db.execute(sql`
       INSERT INTO jobs (
         id, project_id, issue_id, type, status,
         payload, created_by, agent_session_id, pipeline_run_id,
-        started_at, finished_at, queued_at
+        dispatched_at, finished_at, queued_at
       )
       VALUES (
         ${jobId}, ${projectId}, ${args.issueId ?? null}, ${jobType}, 'completed',
@@ -173,16 +199,41 @@ describe('W2.3.2 monthly budget gate E2E', () => {
     const id = randomUUID();
     const type = args.type ?? 'code';
     const payload = JSON.stringify({ stageStatus: args.stageStatus ?? 'approved' });
+    // jobs.pipeline_run_id is NOT NULL (migration 0054); the run is left
+    // `running` so the job under test is treated as live by the dispatcher.
+    // Reuse the issue's existing open run when one is present — a single issue
+    // may have at most one open run (`pipeline_runs_issue_open_uq`), and tests
+    // that dispatch two jobs for the same issue share that run.
+    const runId = await (async () => {
+      if (args.issueId) {
+        const existing = await harness.db.execute<{ id: string }>(sql`
+          SELECT id FROM pipeline_runs
+          WHERE issue_id = ${args.issueId} AND status IN ('running', 'paused')
+          LIMIT 1
+        `);
+        const found = (existing[0] as { id: string } | undefined)?.id;
+        if (found) return found;
+      }
+      const newRunId = randomUUID();
+      await harness.db.execute(sql`
+        INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
+        VALUES (
+          ${newRunId}, ${projectId}, ${args.issueId},
+          ${args.issueId ? 'issue' : 'system'}, 'running', now()
+        )
+      `);
+      return newRunId;
+    })();
     await harness.db.execute(sql`
       INSERT INTO jobs (
         id, project_id, issue_id, type, status,
-        payload, created_by, queued_at
+        payload, created_by, pipeline_run_id, queued_at
       )
       VALUES (
         ${id}, ${projectId}, ${args.issueId}, ${type}, 'queued',
         ${payload}::jsonb,
         (SELECT owner_id FROM projects WHERE id = ${projectId}),
-        now()
+        ${runId}, now()
       )
     `);
     return id;
@@ -251,6 +302,11 @@ describe('W2.3.2 monthly budget gate E2E', () => {
     // Two dispatches in the same hour bucket — only the first should warn.
     const jobA = await insertQueuedJob(project.id, { issueId, type: 'code' });
     await mods.handleDispatch({ jobId: jobA });
+    // Free the (issue_id, type) active-unique slot (jobs_active_unique covers
+    // queued|dispatched|running) so the second job can be inserted for the same
+    // issue+type. The warn dedup is in-process per (project, stage, hour), so
+    // terminating jobA does not reset it.
+    await harness.db.execute(sql`UPDATE jobs SET status = 'completed' WHERE id = ${jobA}`);
     const jobB = await insertQueuedJob(project.id, { issueId, type: 'code' });
     await mods.handleDispatch({ jobId: jobB });
 
@@ -302,13 +358,15 @@ describe('W2.3.2 monthly budget gate E2E', () => {
       budget: 1,
     });
 
-    // One operator comment posted on the issue.
-    const commentRows = await harness.db.execute<{ body: string; is_ai: boolean }>(sql`
-      SELECT body, is_ai FROM comments WHERE issue_id = ${issueId}
+    // One operator comment posted on the issue. The `comments.is_ai` flag was
+    // removed; the budget comment is authored by the project owner, so assert
+    // body + a non-null author_id instead.
+    const commentRows = await harness.db.execute<{ body: string; author_id: string | null }>(sql`
+      SELECT body, author_id FROM comments WHERE issue_id = ${issueId}
     `);
     expect(commentRows.length).toBeGreaterThanOrEqual(1);
     expect(commentRows[0]?.body).toContain('Budget cap reached');
-    expect(commentRows[0]?.is_ai).toBe(true);
+    expect(commentRows[0]?.author_id).toBeTruthy();
   });
 
   // ---------- action='warn' (no enforcement) -----------------------------
@@ -341,6 +399,7 @@ describe('W2.3.2 monthly budget gate E2E', () => {
   it('passes through cleanly when no budget is configured on the stage', async () => {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
+    await seedRunner(project.id, owner.id);
     const issueId = await insertIssue(project.id);
     // Plenty of spend, but no budget → no gate.
     await seedHistoricalSpend(project.id, { costUsd: 999, jobType: 'code', issueId });
