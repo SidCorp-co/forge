@@ -49,12 +49,15 @@ export const integrationsApi = {
 
   // === ISS-395 — generic provider CRUD (Coolify + Epodsystem) ===
 
-  /** `POST .../integrations` — create with a discriminated provider body. */
+  /** `POST .../integrations` — create with a discriminated provider body. The
+   *  server probes the new integration immediately (ISS-429) and returns the
+   *  result as `health` (null when the probe crashed at transport level). */
   create: (projectId: string, body: CreateIntegrationInput) =>
-    apiClient<{ integration: IntegrationSummary; integrationSecret: string }>(
-      `/projects/${projectId}/integrations`,
-      { method: "POST", body: JSON.stringify(body) },
-    ),
+    apiClient<{
+      integration: IntegrationSummary;
+      integrationSecret: string;
+      health?: IntegrationTestResult | null;
+    }>(`/projects/${projectId}/integrations`, { method: "POST", body: JSON.stringify(body) }),
 
   /** `PATCH .../integrations/:id` — update config/secrets/active. */
   update: (projectId: string, id: string, body: UpdateIntegrationInput) =>
@@ -137,8 +140,9 @@ export const integrationConnectionsApi = {
    *  integrationSecret }`; the freshly minted inbound HMAC `integrationSecret`
    *  is shown exactly once (matches the rotate-secret pattern). */
   bindExisting: (id: string, body: BindExistingConnectionRequest) =>
-    apiClient<{ integration: IntegrationSummary; integrationSecret: string }>(
-      `/integration-connections/${id}/bindings`,
-      { method: "POST", body: JSON.stringify(body) },
-    ),
+    apiClient<{
+      integration: IntegrationSummary;
+      integrationSecret: string;
+      health?: IntegrationTestResult | null;
+    }>(`/integration-connections/${id}/bindings`, { method: "POST", body: JSON.stringify(body) }),
 };

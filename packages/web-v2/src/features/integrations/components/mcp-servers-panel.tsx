@@ -13,6 +13,7 @@ import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useMcpPreview, useTestIntegration } from "../hooks";
 import type { IntegrationTestResult, McpServerPreviewEntry } from "../types";
+import { ENV_LABEL } from "./status-pill";
 
 const REASON_META: Record<
   McpServerPreviewEntry["reason"],
@@ -34,8 +35,6 @@ const REASON_META: Record<
   },
   shadowed: { label: "Shadowed", fg: "var(--fg-subtle)", bg: "var(--bg-sunken)", icon: "dot" },
 };
-
-const ENV_LABEL: Record<string, string> = { staging: "Staging", prod: "Production" };
 
 function ReasonPill({ reason }: { reason: McpServerPreviewEntry["reason"] }) {
   const m = REASON_META[reason];

@@ -26,8 +26,9 @@ import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import { useConnectionBindings, useConnections, useUpdateConnection } from "../hooks";
-import { DIRECTORY_STATUS_META, deriveConnectionStatus } from "../derive";
+import { deriveConnectionStatus } from "../derive";
 import type { ConnectionSummary } from "../types";
+import { DirectoryStatusPill, ENV_LABEL } from "./status-pill";
 
 const PROVIDER_LABEL: Record<string, string> = {
   coolify: "Coolify deploy",
@@ -41,19 +42,8 @@ const PROVIDER_ICON: Record<string, IconName> = {
   epodsystem: "command",
 };
 
-const ENV_LABEL: Record<string, string> = { staging: "Staging", prod: "Production" };
-
 function ConnectionStatusPill({ connection }: { connection: ConnectionSummary }) {
-  const m = DIRECTORY_STATUS_META[deriveConnectionStatus(connection)];
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-[12px] font-semibold"
-      style={{ color: m.fg, background: m.bg }}
-    >
-      <Icon name={m.icon} size={13} />
-      {m.label}
-    </span>
-  );
+  return <DirectoryStatusPill status={deriveConnectionStatus(connection)} />;
 }
 
 /** "Projects using this connection" — fetched lazily once the row expands. */

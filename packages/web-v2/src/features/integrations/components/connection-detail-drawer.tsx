@@ -1,17 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ErrorState, Icon, SegmentedControl, Skeleton, SlideOver, Tabs } from "@/design";
+import { ErrorState, SegmentedControl, Skeleton, SlideOver, Tabs } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import { useConnectionBindings, useIntegrationsList } from "../hooks";
-import { DIRECTORY_STATUS_META, cardProvider, deriveDirectoryStatus, getCapabilities } from "../derive";
+import { cardProvider, getCapabilities } from "../derive";
 import type { DrillableProvider } from "../derive";
 import type { BindingSummary, IntegrationEnvironment, StatusCard } from "../types";
 import { CoolifySection } from "./coolify-section";
 import { DeliveryLogViewer } from "./delivery-log-viewer";
 import { EpodsystemSection } from "./epodsystem-section";
 import { PostmanSection } from "./postman-section";
+import { ENV_LABEL, StatusPill } from "./status-pill";
 
 /** Adaptive connection detail (ISS-402). Opened from a directory provider card;
  *  renders the provider's existing config+actions section (Test / Rotate /
@@ -35,24 +36,6 @@ const ENV_OPTIONS: { value: IntegrationEnvironment; label: string }[] = [
   { value: "staging", label: "Staging" },
   { value: "prod", label: "Production" },
 ];
-
-const ENV_LABEL: Record<IntegrationEnvironment, string> = {
-  staging: "Staging",
-  prod: "Production",
-};
-
-function StatusPill({ card }: { card: StatusCard }) {
-  const m = DIRECTORY_STATUS_META[deriveDirectoryStatus(card)];
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-[12px] font-semibold"
-      style={{ color: m.fg, background: m.bg }}
-    >
-      <Icon name={m.icon} size={13} />
-      {m.label}
-    </span>
-  );
-}
 
 function ProviderSection({ provider, projectId }: { provider: DrillableProvider; projectId: string }) {
   if (provider === "coolify") return <CoolifySection projectId={projectId} />;

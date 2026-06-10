@@ -11,10 +11,11 @@ import { Button, Card, CardContent, ErrorState, Icon, type IconName, Skeleton } 
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useIntegrationsStatus } from "../hooks";
-import { DIRECTORY_STATUS_META, deriveDirectoryStatus, isProviderCard } from "../derive";
+import { isProviderCard } from "../derive";
 import type { StatusCard } from "../types";
 import { ConnectionDetailDrawer } from "./connection-detail-drawer";
 import { McpServersPanel } from "./mcp-servers-panel";
+import { StatusPill } from "./status-pill";
 
 const PROVIDER_ICON: Record<string, IconName> = {
   github: "github",
@@ -30,20 +31,6 @@ function providerIcon(key: string): IconName {
   return PROVIDER_ICON[key.split(":")[0] ?? key] ?? "link";
 }
 
-/** Status dot rendered as icon + text + tinted pill (never color-only — a11y). */
-function StatusPill({ card }: { card: StatusCard }) {
-  const m = DIRECTORY_STATUS_META[deriveDirectoryStatus(card)];
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-[12px] font-semibold"
-      style={{ color: m.fg, background: m.bg }}
-    >
-      <Icon name={m.icon} size={13} />
-      {m.label}
-    </span>
-  );
-}
-
 function externalRepoUrl(card: StatusCard): string | null {
   if (card.key !== "github") return null;
   const remote = card.meta?.remoteUrl;
@@ -53,7 +40,7 @@ function externalRepoUrl(card: StatusCard): string | null {
   return null;
 }
 
-export function IntegrationCard({ card, onOpen }: { card: StatusCard; onOpen?: () => void }) {
+function IntegrationCard({ card, onOpen }: { card: StatusCard; onOpen?: () => void }) {
   const lastSync = formatRelativeTime(card.lastSyncAt);
   const repoUrl = externalRepoUrl(card);
   const transport =
