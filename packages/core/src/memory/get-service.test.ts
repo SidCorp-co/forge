@@ -74,15 +74,23 @@ describe('runMemoryGet', () => {
     // 1st select: count → returns [{n: 3}]
     // 2nd select: rows → returns 3 rows
     const fakeRows = [
-      { id: 'm-1', projectId: PROJECT_ID, source: 'note', sourceRef: 'r-1',
-        textContent: 't', metadata: {}, embeddedAt: new Date(), createdAt: new Date(),
-        updatedAt: new Date() },
+      {
+        id: 'm-1',
+        projectId: PROJECT_ID,
+        source: 'note',
+        sourceRef: 'r-1',
+        textContent: 't',
+        metadata: {},
+        embeddedAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
     ];
     // count query: select().from().where() → returns array directly
     // rows query: select().from().where().orderBy().limit().offset() → returns array
     where
       .mockReturnValueOnce(Promise.resolve([{ n: 3 }]) as never) // count terminates at .where()
-      .mockReturnValueOnce({ orderBy, limit } as never);          // rows continues chain
+      .mockReturnValueOnce({ orderBy, limit } as never); // rows continues chain
     offset.mockResolvedValueOnce(fakeRows);
 
     const r = await runMemoryGet({

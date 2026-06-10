@@ -2,10 +2,12 @@ import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { RULES } from '../config/rate-limits.js';
 import { memorySources } from '../db/schema.js';
 import { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError } from '../embeddings/index.js';
 import { assertProjectMemberAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { rateLimit } from '../middleware/rate-limit.js';
 import { runMemorySearch } from './search-service.js';
 
 const searchBodySchema = z.object({
@@ -22,7 +24,13 @@ const badRequest = (details: unknown) =>
   });
 
 export const memorySearchRoutes = new Hono<{ Variables: AuthVars }>();
-memorySearchRoutes.use('/search', requireAuth(), assertEmailVerified());
+// rateLimit after requireAuth so the bucket keys on the authenticated user.
+memorySearchRoutes.use(
+  '/search',
+  requireAuth(),
+  assertEmailVerified(),
+  rateLimit(RULES.memorySearch, { name: 'memory-search' }),
+);
 memorySearchRoutes.post(
   '/search',
   zValidator('json', searchBodySchema, (result) => {

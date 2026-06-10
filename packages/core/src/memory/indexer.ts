@@ -1,7 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type MemorySource, memories } from '../db/schema.js';
-import { embed } from '../embeddings/index.js';
+import { EmbeddingUnavailableError, embed } from '../embeddings/index.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
 
@@ -32,7 +32,11 @@ export interface IndexInput {
 export interface IndexResult {
   id: string;
   embeddedAt: Date;
-  /** True when text exceeded MAX_EMBED_CHARS and was cut before embedding. */
+  /**
+   * True when text exceeded MAX_EMBED_CHARS and was cut before embedding.
+   * The stored `textContent` is always the full text — only the string sent
+   * to the embedding model is trimmed.
+   */
   truncated: boolean;
 }
 
@@ -44,7 +48,7 @@ export interface IndexResult {
  */
 export async function indexMemory(input: IndexInput): Promise<IndexResult> {
   const truncated = input.text.length > MAX_EMBED_CHARS;
-  const trimmed = truncated ? input.text.slice(0, MAX_EMBED_CHARS) : input.text;
+  const embedText = truncated ? input.text.slice(0, MAX_EMBED_CHARS) : input.text;
   if (truncated) {
     logger.warn(
       {
@@ -57,7 +61,7 @@ export async function indexMemory(input: IndexInput): Promise<IndexResult> {
     );
   }
 
-  const vector = await embed(trimmed);
+  const vector = await embed(embedText);
 
   const [row] = await db
     .insert(memories)
@@ -65,7 +69,7 @@ export async function indexMemory(input: IndexInput): Promise<IndexResult> {
       projectId: input.projectId,
       source: input.source,
       sourceRef: input.sourceRef,
-      textContent: trimmed,
+      textContent: input.text,
       embedding: vector,
       metadata: input.metadata ?? {},
     })
@@ -75,6 +79,8 @@ export async function indexMemory(input: IndexInput): Promise<IndexResult> {
         textContent: sql`excluded.text_content`,
         embedding: sql`excluded.embedding`,
         metadata: sql`excluded.metadata`,
+        // A fresh write revives a decayed/consolidated-away row.
+        archivedAt: sql`null`,
         embeddedAt: sql`now()`,
         updatedAt: sql`now()`,
       },
@@ -103,9 +109,9 @@ export async function indexMemoryBestEffort(input: IndexInput): Promise<void> {
       source: input.source,
       sourceRef: input.sourceRef,
     };
-    // Distinguish embed vs DB by inspecting the error message prefix — both
-    // are logged at warn so a bursty embed outage doesn't flood error counters.
-    if ((err as Error).message?.includes('embed')) {
+    // Both are logged at warn so a bursty embed outage doesn't flood error
+    // counters.
+    if (err instanceof EmbeddingUnavailableError) {
       logger.warn(meta, 'memory.indexer: embed failed, skipping');
     } else {
       logger.warn(meta, 'memory.indexer: upsert failed');

@@ -1,4 +1,4 @@
-import { type SQL, and, asc, desc, eq, sql } from 'drizzle-orm';
+import { type SQL, and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { memories, memorySources } from '../db/schema.js';
@@ -21,9 +21,7 @@ export const getMemoryInputSchema = z.object({
    * `metadata`. Supports strings, numbers, booleans. Example for handoff
    * lookup: `{ run_id: "<uuid>", step: "plan", attempt: 1 }`.
    */
-  metadataFilter: z
-    .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
-    .optional(),
+  metadataFilter: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),
   orderBy: z.enum(['createdAt', 'updatedAt', 'embeddedAt']).default('createdAt'),
@@ -50,13 +48,12 @@ export interface GetMemoryResult {
 }
 
 export async function runMemoryGet(input: GetMemoryInput): Promise<GetMemoryResult> {
-  const conditions: SQL[] = [eq(memories.projectId, input.projectId)];
+  // Archived rows (decay/consolidation soft delete) are invisible to reads.
+  const conditions: SQL[] = [eq(memories.projectId, input.projectId), isNull(memories.archivedAt)];
   if (input.source) conditions.push(eq(memories.source, input.source));
   if (input.sourceRef) conditions.push(eq(memories.sourceRef, input.sourceRef));
   if (input.metadataFilter && Object.keys(input.metadataFilter).length > 0) {
-    conditions.push(
-      sql`${memories.metadata} @> ${JSON.stringify(input.metadataFilter)}::jsonb`,
-    );
+    conditions.push(sql`${memories.metadata} @> ${JSON.stringify(input.metadataFilter)}::jsonb`);
   }
   const where = conditions.length === 1 ? conditions[0] : and(...conditions);
 

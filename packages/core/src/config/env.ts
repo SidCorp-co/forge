@@ -53,6 +53,12 @@ const EnvSchema = z.object({
   RATE_LIMIT_DESKTOP_PAIR_INIT_WINDOW_MS: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_DESKTOP_APPROVE_MAX: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_DESKTOP_APPROVE_WINDOW_MS: z.coerce.number().int().positive().optional(),
+  // memory-v2 phase 0 — memory write/search both call the embeddings provider
+  // per request; the cap bounds per-member LiteLLM spend.
+  RATE_LIMIT_MEMORY_WRITE_MAX: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_MEMORY_WRITE_WINDOW_MS: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_MEMORY_SEARCH_MAX: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_MEMORY_SEARCH_WINDOW_MS: z.coerce.number().int().positive().optional(),
   // LiteLLM-compatible embeddings service (ADR 0011, Phase 2.5-F3).
   // Required only when memory indexing / semantic search is exercised; the
   // singleton defers client creation until first use.

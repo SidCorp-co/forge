@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
 import { type MemorySource, memories } from '../db/schema.js';
@@ -34,14 +34,18 @@ const MAX_TOP_K = 50;
 export async function searchMemories(input: SearchInput): Promise<MemoryHit[]> {
   const topK = Math.min(Math.max(input.topK ?? 10, MIN_TOP_K), MAX_TOP_K);
 
-  const whereClauses = [eq(memories.projectId, input.projectId)];
+  const whereClauses = [
+    eq(memories.projectId, input.projectId),
+    // Degraded writes (embeddings outage) have no vector until the backfill
+    // re-embeds them; archived rows are soft-deleted by decay/consolidation.
+    isNotNull(memories.embedding),
+    isNull(memories.archivedAt),
+  ];
   if (input.sourceFilter && input.sourceFilter.length > 0) {
     whereClauses.push(inArray(memories.source, input.sourceFilter));
   }
   if (input.metadataFilter && Object.keys(input.metadataFilter).length > 0) {
-    whereClauses.push(
-      sql`${memories.metadata} @> ${JSON.stringify(input.metadataFilter)}::jsonb`,
-    );
+    whereClauses.push(sql`${memories.metadata} @> ${JSON.stringify(input.metadataFilter)}::jsonb`);
   }
 
   const rows = await db
