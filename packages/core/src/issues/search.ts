@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issueLabels, issuePriorities, issueStatuses, issues } from '../db/schema.js';
 import { setTotalCount } from '../lib/pagination.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
@@ -82,7 +82,7 @@ searchRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden();
+    if (!access.role) throw forbidden();
 
     const conditions = [eq(issues.projectId, projectId)];
 

@@ -27,6 +27,7 @@ import {
   assertPrincipalIsMember,
   resolveProjectIdFromSlug,
   zodToMcpSchema,
+  assertPrincipalIsWriter,
 } from './lib.js';
 
 /**
@@ -371,7 +372,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'create': {
         if (!input.data?.title) throw new Error('BAD_REQUEST: data.title is required for create');
         const projectId = await resolveProjectId(input, projectSlug);
-        await assertPrincipalIsMember(principal, projectId);
+        await assertPrincipalIsWriter(principal, projectId);
 
         // ISS-130 — narrow allow-list for entry status. `open` is the normal
         // triage entry, `on_hold` is the decomposition parking state, and
@@ -457,7 +458,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for update');
         if (!input.data) throw new Error('BAD_REQUEST: data is required for update');
         const issue = await loadIssue(input.documentId);
-        await assertPrincipalIsMember(principal, issue.projectId);
+        await assertPrincipalIsWriter(principal, issue.projectId);
 
         // Status changes always route through the state machine so the
         // transitions stay aligned with REST `/transition` (reopen-cap +
@@ -517,7 +518,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         const target = input.data?.status;
         if (!target) throw new Error('BAD_REQUEST: data.status is required for transition');
         const issue = await loadIssue(input.documentId);
-        await assertPrincipalIsMember(principal, issue.projectId);
+        await assertPrincipalIsWriter(principal, issue.projectId);
         await applyStatusTransition(issue, target, device);
         const fresh = await loadIssue(issue.id);
         return serializeWithAttachments(fresh);
@@ -538,7 +539,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           throw new Error('BAD_REQUEST: data.target is required for mark_merged');
         }
         const issue = await loadIssue(issueId);
-        await assertPrincipalIsMember(principal, issue.projectId);
+        await assertPrincipalIsWriter(principal, issue.projectId);
 
         // COALESCE keeps the first stamp: a second mark_merged call is a no-op
         // on the timestamp (AC2 idempotency). `mergedAt` overrides the default
@@ -595,7 +596,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           throw new Error('BAD_REQUEST: data.issueId is required for unmark');
         }
         const issue = await loadIssue(issueId);
-        await assertPrincipalIsMember(principal, issue.projectId);
+        await assertPrincipalIsWriter(principal, issue.projectId);
 
         // Clearing `merged_at` re-blocks downstream children (AC4 — supports
         // rolling back an epic whose merge was reverted).
@@ -660,7 +661,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!data?.issueId) throw new Error('BAD_REQUEST: data.issueId required for createTask');
         if (!data.taskTitle) throw new Error('BAD_REQUEST: data.taskTitle required for createTask');
         const projectId = await loadIssueProjectId(data.issueId);
-        await assertPrincipalIsMember(principal, projectId);
+        await assertPrincipalIsWriter(principal, projectId);
 
         const [created] = await db
           .insert(tasks)
@@ -684,7 +685,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           throw new Error('BAD_REQUEST: documentId required for updateTask');
         }
         const row = await loadTaskForAccess(input.documentId);
-        await assertPrincipalIsMember(principal, row.projectId);
+        await assertPrincipalIsWriter(principal, row.projectId);
 
         const data = input.data ?? {};
         const updates: Record<string, unknown> = { updatedAt: new Date() };
@@ -711,7 +712,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           throw new Error('BAD_REQUEST: documentId required for deleteTask');
         }
         const row = await loadTaskForAccess(input.documentId);
-        await assertPrincipalIsMember(principal, row.projectId);
+        await assertPrincipalIsWriter(principal, row.projectId);
         await db.delete(tasks).where(eq(tasks.id, input.documentId));
         return { deleted: true, documentId: input.documentId };
       }

@@ -14,6 +14,7 @@ import {
   assertPrincipalIsMember,
   principalUserId,
   zodToMcpSchema,
+  assertPrincipalIsWriter,
 } from './lib.js';
 
 // Single top-level object schema (NOT a discriminated union) — MCP tool
@@ -158,7 +159,7 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
         throw new Error('BAD_REQUEST: data.attachmentId is required for fetch');
       }
       const att = await loadAttachmentForFetch(target, attachmentId);
-      await assertPrincipalIsMember(principal, att.projectId);
+      await assertPrincipalIsWriter(principal, att.projectId);
 
       const meta = {
         attachmentId,
@@ -225,7 +226,7 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
       target === 'issue'
         ? await loadIssueProjectId(targetId)
         : await loadCommentProjectId(targetId);
-    await assertPrincipalIsMember(principal, projectId);
+    await assertPrincipalIsWriter(principal, projectId);
 
     const mime = input.data.mime ?? mimeFromName(name);
 

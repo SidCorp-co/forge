@@ -2,7 +2,7 @@ import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { BUCKETS, METRICS, runTimeseries } from './queries.js';
 
@@ -44,9 +44,9 @@ projectMetricsRoutes.get(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    // Same owner-or-member visibility as /api/projects/health.
+    // Same member visibility as /api/projects/health.
     const access = await loadProjectAccess(id, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     const { metric, days, bucket, groupBy } = c.req.valid('query');
     const result = await runTimeseries({

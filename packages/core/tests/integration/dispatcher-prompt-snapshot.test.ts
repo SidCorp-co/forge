@@ -144,7 +144,7 @@ describe('ISS-186 prompt-snapshot write path', () => {
       SELECT system_prompt_hash, user_prompt_snapshot, prompt_input_token_est, model_used, prompt_blocks
       FROM jobs WHERE id = ${jobId}
     `);
-    const row = rows[0];
+    const row = rows[0]!;
     expect(row).toBeDefined();
     expect(row.system_prompt_hash).toMatch(/^[0-9a-f]{64}$/);
     expect(row.user_prompt_snapshot).toBe('/forge-triage iss-1');
@@ -184,13 +184,13 @@ describe('ISS-186 prompt-snapshot write path', () => {
       SELECT hash, ref_count FROM prompt_blobs
     `);
     expect(blobs).toHaveLength(1);
-    expect(Number(blobs[0].ref_count)).toBe(2);
+    expect(Number(blobs[0]!.ref_count)).toBe(2);
 
     const jobRows = await harness.db.execute<{ system_prompt_hash: string }>(sql`
       SELECT system_prompt_hash FROM jobs WHERE id IN (${jobA}, ${jobB})
     `);
-    expect(jobRows[0].system_prompt_hash).toBe(jobRows[1].system_prompt_hash);
-    expect(jobRows[0].system_prompt_hash).toBe(blobs[0].hash);
+    expect(jobRows[0]!.system_prompt_hash).toBe(jobRows[1]!.system_prompt_hash);
+    expect(jobRows[0]!.system_prompt_hash).toBe(blobs[0]!.hash);
   });
 
   it('writes empty-string userPromptSnapshot when payload omits promptString', async () => {
@@ -203,6 +203,6 @@ describe('ISS-186 prompt-snapshot write path', () => {
     const rows = await harness.db.execute<{ user_prompt_snapshot: string | null }>(sql`
       SELECT user_prompt_snapshot FROM jobs WHERE id = ${jobId}
     `);
-    expect(rows[0].user_prompt_snapshot).toBe('');
+    expect(rows[0]!.user_prompt_snapshot).toBe('');
   });
 });

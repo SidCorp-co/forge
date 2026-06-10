@@ -7,16 +7,18 @@
 // screens; the form body stays in a narrower reading column.
 import { ScreenTabs, type TabItem } from "@/design";
 import { useTabParam } from "@/lib/utils/use-tab-param";
+import { OrgsTab } from "@/features/orgs/components/orgs-tab";
 import { AccountTab } from "./account-tab";
 import { McpTab } from "./mcp-tab";
 import { NotificationsTab } from "./notifications-tab";
 import { TokensTab } from "./tokens-tab";
 
-const TAB_VALUES = ["account", "tokens", "mcp", "notifications"] as const;
+const TAB_VALUES = ["account", "orgs", "tokens", "mcp", "notifications"] as const;
 type SettingsTab = (typeof TAB_VALUES)[number];
 
 const TABS: TabItem[] = [
   { value: "account", label: "Account" },
+  { value: "orgs", label: "Organizations" },
   { value: "tokens", label: "API Tokens" },
   { value: "mcp", label: "MCP" },
   { value: "notifications", label: "Notifications" },
@@ -41,6 +43,7 @@ export function SettingsScreen() {
 
       <div className="mx-auto w-full max-w-4xl px-4 pb-8 pt-6 sm:px-8">
         {tab === "account" && <AccountTab />}
+        {tab === "orgs" && <OrgsTab />}
         {tab === "tokens" && <TokensTab />}
         {tab === "mcp" && <McpTab />}
         {tab === "notifications" && <NotificationsTab />}

@@ -5,7 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { projects, schedules } from '../db/schema.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { nextRunFor, validateCron } from './cron.js';
@@ -59,13 +59,11 @@ const badRequest = (details: unknown) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
-// Cross-project routing via `targetProjectSlug` would otherwise let the source
-// project's owner plant jobs on any project they know the slug of. Require the
-// actor to be a member of the target project before accepting the slug, both
-// when persisting it (POST/PUT) and when manually triggering (`/:id/run`).
+// Cross-project routing via `targetProjectSlug` would otherwise let a source
+// project's admin plant jobs on any project they know the slug of. Require the
+// actor to hold at least `member` on the target project before accepting the
+// slug, both when persisting it (POST/PUT) and when manually triggering
+// (`/:id/run`).
 // Reset `lastStatus` to 'failed' after a dispatcher throw so the row never
 // gets pinned to 'running' or a stale 'success'. Errors during the reset are
 // logged but never propagated — the original dispatch failure is what matters.
@@ -83,9 +81,9 @@ async function markScheduleFailed(scheduleId: string, ctx: string): Promise<void
 async function assertTargetProjectAccess(
   slug: string,
   userId: string,
-): Promise<{ id: string; ownerId: string }> {
+): Promise<{ id: string; createdBy: string }> {
   const [target] = await db
-    .select({ id: projects.id, ownerId: projects.ownerId })
+    .select({ id: projects.id, createdBy: projects.createdBy })
     .from(projects)
     .where(eq(projects.slug, slug))
     .limit(1);
@@ -96,9 +94,7 @@ async function assertTargetProjectAccess(
     });
   }
   const access = await loadProjectAccess(target.id, userId);
-  if (!access.role && access.ownerId !== userId) {
-    throw forbidden('not a member of target project');
-  }
+  assertProjectRole(access, 'member', 'not a member of target project');
   return target;
 }
 
@@ -115,7 +111,7 @@ scheduleRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'viewer', 'not a project member');
 
     const conditions = [eq(schedules.projectId, projectId)];
     if (enabled !== undefined) conditions.push(eq(schedules.enabled, enabled === 'true'));
@@ -143,7 +139,7 @@ scheduleRoutes.get(
     if (!row) throw notFound('schedule not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'viewer', 'not a project member');
 
     return c.json(row);
   },
@@ -159,7 +155,7 @@ scheduleRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(input.projectId, userId);
-    if (access.ownerId !== userId && access.role !== 'owner') throw forbidden('not a project owner');
+    assertProjectRole(access, 'admin', 'not a project admin');
 
     const validation = validateCron(input.cron);
     if (!validation.ok) {
@@ -216,7 +212,7 @@ scheduleRoutes.put(
     if (!row) throw notFound('schedule not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    if (access.ownerId !== userId && access.role !== 'owner') throw forbidden('not a project owner');
+    assertProjectRole(access, 'admin', 'not a project admin');
 
     if (patch.targetProjectSlug !== undefined && patch.targetProjectSlug !== null) {
       await assertTargetProjectAccess(patch.targetProjectSlug, userId);
@@ -276,7 +272,7 @@ scheduleRoutes.delete(
     if (!row) throw notFound('schedule not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    if (access.ownerId !== userId && access.role !== 'owner') throw forbidden('not a project owner');
+    assertProjectRole(access, 'admin', 'not a project admin');
 
     await db.delete(schedules).where(eq(schedules.id, id));
     return c.body(null, 204);
@@ -296,11 +292,11 @@ scheduleRoutes.post(
     if (!schedule) throw notFound('schedule not found');
 
     const access = await loadProjectAccess(schedule.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member', 'not a project member');
 
     // Defensive re-check: rows persisted before the create/update gate landed
     // could carry a `targetProjectSlug` the actor has no business triggering.
-    let resolvedTarget: { id: string; ownerId: string } | undefined;
+    let resolvedTarget: { id: string; createdBy: string } | undefined;
     if (schedule.targetProjectSlug) {
       resolvedTarget = await assertTargetProjectAccess(schedule.targetProjectSlug, userId);
     }
@@ -392,11 +388,11 @@ export async function runScheduleTickOnce(now: Date = new Date()): Promise<strin
             targetProjectSlug: schedule.targetProjectSlug ?? null,
           },
           // FIXME(iss-257): system-initiated sessions attribute to the
-          // project owner because activity-feed expectations want a real
-          // user. A sentinel system user requires a separate migration —
-          // tracked for follow-up. Consumers can detect tick-driven
-          // sessions by `metadata.source === 'schedule.run'` &&
-          // `metadata.tick === true`.
+          // project creator (audit `projects.created_by`) because
+          // activity-feed expectations want a real user. A sentinel system
+          // user requires a separate migration — tracked for follow-up.
+          // Consumers can detect tick-driven sessions by
+          // `metadata.source === 'schedule.run'` && `metadata.tick === true`.
           tick: true,
         });
       } catch (dispatchErr) {

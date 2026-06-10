@@ -63,7 +63,7 @@ describe('F1 jobs integration', () => {
     await createTestProjectMember(harness.db, {
       userId: owner.id,
       projectId: project.id,
-      role: 'owner',
+      role: 'admin',
     });
     return { owner, project };
   }

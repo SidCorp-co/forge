@@ -121,7 +121,7 @@ export default function ProjectOverviewPage() {
           <h1 className="fg-h2">{project.name}</h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <MonoTag>{project.slug}</MonoTag>
-            <Badge tone={project.role === "owner" ? "accent" : "neutral"}>{project.role}</Badge>
+            <Badge tone={project.role === "admin" ? "accent" : "neutral"}>{project.role ?? "org"}</Badge>
             {runsLive.length > 0 && (
               <span
                 className="fg-caption inline-flex items-center gap-1.5 font-semibold"

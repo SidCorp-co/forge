@@ -133,20 +133,21 @@ export interface PostBudgetExhaustedCommentInput {
 
 /**
  * Post the operator-facing comment that explains a dispatch was blocked
- * by the monthly budget cap. Authored by the project owner so the comment
- * carries a real author_id (issue-level comments are not nullable on that
- * column). No-op if the issue (or its project owner) cannot be resolved.
+ * by the monthly budget cap. Authored by the project creator (audit
+ * `projects.created_by`) so the comment carries a real author_id (issue-level
+ * comments are not nullable on that column). No-op if the issue (or its
+ * project creator) cannot be resolved.
  */
 export async function postBudgetExhaustedComment(
   input: PostBudgetExhaustedCommentInput,
 ): Promise<void> {
   const [row] = await db
-    .select({ ownerId: projects.ownerId })
+    .select({ createdBy: projects.createdBy })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(eq(issues.id, input.issueId))
     .limit(1);
-  if (!row?.ownerId) return;
+  if (!row?.createdBy) return;
 
   const budgetStr =
     typeof input.result.budget === 'number' ? `$${input.result.budget.toFixed(2)}` : 'n/a';
@@ -162,7 +163,7 @@ export async function postBudgetExhaustedComment(
   try {
     await db.insert(comments).values({
       issueId: input.issueId,
-      authorId: row.ownerId,
+      authorId: row.createdBy,
       body,
       isAi: true,
     } as never);

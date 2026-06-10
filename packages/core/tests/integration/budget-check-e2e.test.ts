@@ -131,7 +131,7 @@ describe('W2.3.2 monthly budget gate E2E', () => {
       VALUES (
         ${id}, ${projectId}, ${Math.floor(Math.random() * 1_000_000)},
         'Issue', 'approved', 'medium',
-        (SELECT owner_id FROM projects WHERE id = ${projectId})
+        (SELECT created_by FROM projects WHERE id = ${projectId})
       )
     `);
     return id;
@@ -174,7 +174,7 @@ describe('W2.3.2 monthly budget gate E2E', () => {
       VALUES (
         ${jobId}, ${projectId}, ${args.issueId ?? null}, ${jobType}, 'completed',
         '{}'::jsonb,
-        (SELECT owner_id FROM projects WHERE id = ${projectId}),
+        (SELECT created_by FROM projects WHERE id = ${projectId}),
         ${sessionId}, ${runId},
         now() - interval '10 minutes', now() - interval '5 minutes', now() - interval '11 minutes'
       )
@@ -232,7 +232,7 @@ describe('W2.3.2 monthly budget gate E2E', () => {
       VALUES (
         ${id}, ${projectId}, ${args.issueId}, ${type}, 'queued',
         ${payload}::jsonb,
-        (SELECT owner_id FROM projects WHERE id = ${projectId}),
+        (SELECT created_by FROM projects WHERE id = ${projectId}),
         ${runId}, now()
       )
     `);

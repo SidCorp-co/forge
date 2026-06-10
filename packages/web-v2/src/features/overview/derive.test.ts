@@ -36,7 +36,7 @@ function consoleItem(over: Partial<ProjectConsoleItem> & { id: string }): Projec
     id: over.id,
     slug: over.slug ?? over.id,
     name: over.name ?? over.id,
-    role: over.role ?? 'owner',
+    role: over.role ?? 'admin',
     createdAt: over.createdAt ?? '2026-01-01T00:00:00.000Z',
     description: over.description ?? null,
     repoPath: over.repoPath ?? null,

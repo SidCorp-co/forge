@@ -9,10 +9,9 @@ import {
   issueDependencies,
   issueStatuses,
   issues,
-  projectMembers,
-  projects,
 } from '../db/schema.js';
 import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
+import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { withActorContext } from '../pipeline/outbox-session.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
@@ -191,12 +190,8 @@ transitionRoutes.post(
 
     const fromStatus = issue.status as IssueStatus;
 
-    const [member] = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(and(eq(projectMembers.projectId, issue.projectId), eq(projectMembers.userId, userId)))
-      .limit(1);
-    if (!member) throw forbidden('not a project member');
+    const access = await loadProjectAccess(issue.projectId, userId);
+    assertProjectRole(access, 'member');
 
     if (fromStatus === toStatus) {
       throw new HTTPException(409, {
@@ -228,13 +223,9 @@ transitionRoutes.post(
         });
       }
       if (override) {
-        const [project] = await db
-          .select({ ownerId: projects.ownerId })
-          .from(projects)
-          .where(eq(projects.id, issue.projectId))
-          .limit(1);
-        const isOwner = (project && project.ownerId === userId) || member.role === 'owner';
-        if (!isOwner) throw forbidden('override requires project owner', 'OVERRIDE_DENIED');
+        if (!projectRoleAtLeast(access.role, 'admin')) {
+          throw forbidden('override requires project admin', 'OVERRIDE_DENIED');
+        }
       }
     }
 

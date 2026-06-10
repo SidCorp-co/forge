@@ -37,7 +37,7 @@ vi.mock('../db/client.js', () => {
 
 // ISS-411 — observe the operator-cancel → issue `on_hold` park without the
 // real state-machine. parkIssueOnCancel is best-effort, so the spy resolves.
-const applyStatusTransitionSpy = vi.fn(async () => undefined);
+const applyStatusTransitionSpy = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('../issues/apply-transition.js', () => ({
   applyStatusTransition: (...args: unknown[]) => applyStatusTransitionSpy(...args),
 }));
@@ -230,7 +230,7 @@ describe('cancelPipelineRun', () => {
         projectId: PROJECT_ID,
         status: 'in_progress',
         reopenCount: 0,
-        ownerId: 'owner-1',
+        createdBy: 'owner-1',
       },
     ]);
 
@@ -253,7 +253,7 @@ describe('cancelPipelineRun', () => {
     updateReturning.mockResolvedValueOnce([runRow('cancelled', { finishedAt: new Date() })]);
     updateReturning.mockResolvedValueOnce([]);
     selectLimit.mockResolvedValueOnce([
-      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'closed', reopenCount: 0, ownerId: 'owner-1' },
+      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'closed', reopenCount: 0, createdBy: 'owner-1' },
     ]);
 
     await cancelPipelineRun(RUN_ID);

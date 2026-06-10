@@ -15,7 +15,7 @@ import {
   runnerTypes,
   runners,
 } from '../db/schema.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { projectRoom } from '../ws/rooms.js';
@@ -157,9 +157,7 @@ runnerRoutes.post(
     const userId = c.get('userId');
     const input = c.req.valid('json');
     const access = await loadProjectAccess(input.projectId, userId);
-    if (access.role !== 'owner' && access.role !== 'admin' && access.ownerId !== userId) {
-      throw forbidden('owner or admin only');
-    }
+    assertProjectRole(access, 'admin', 'project admin only');
 
     const adapter = getRunnerAdapter(input.type);
     if (!adapter) throw badRequest({ type: 'no adapter registered for type' });
@@ -206,9 +204,7 @@ runnerRoutes.patch(
     const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
-    if (access.role !== 'owner' && access.role !== 'admin' && access.ownerId !== userId) {
-      throw forbidden('owner or admin only');
-    }
+    assertProjectRole(access, 'admin', 'project admin only');
 
     let nextConfig = existing.config as Record<string, unknown>;
     if (input.config) {
@@ -257,9 +253,7 @@ runnerRoutes.delete(
     const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
-    if (access.ownerId !== userId && access.role !== 'owner') {
-      throw forbidden('owner only');
-    }
+    assertProjectRole(access, 'admin', 'project admin only');
     await db.delete(runners).where(eq(runners.id, id));
     roomManager.publish(projectRoom(existing.projectId), {
       event: 'runner.deleted',
@@ -299,7 +293,7 @@ runnerRoutes.post(
     const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
     const adapter = getRunnerAdapter(existing.type);
     if (!adapter || !adapter.refreshQuota) {
       return c.json({ remaining: null, limit: null });
@@ -335,7 +329,8 @@ runnerRoutes.post(
     const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    // Same gate as PATCH `status` — exclude/include are status mutations.
+    assertProjectRole(access, 'admin', 'project admin only');
     await setRunnerStatus({ runnerId: id, newStatus: 'disabled', reason: 'operator_exclude' });
     return c.json({ ok: true });
   },
@@ -352,7 +347,8 @@ runnerRoutes.post(
     const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    // Same gate as PATCH `status` — exclude/include are status mutations.
+    assertProjectRole(access, 'admin', 'project admin only');
     await setRunnerStatus({ runnerId: id, newStatus: 'offline', reason: 'operator_include' });
     return c.json({ ok: true });
   },

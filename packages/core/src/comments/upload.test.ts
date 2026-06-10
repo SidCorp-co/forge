@@ -25,7 +25,8 @@ vi.mock('../db/client.js', () => ({
 }));
 
 const projectAccess = vi.fn();
-vi.mock('../lib/project-access.js', () => ({
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
   loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
 }));
 
@@ -62,7 +63,7 @@ function buildApp() {
   }>();
   app.use('*', requestId());
   app.route('/api/comments', commentUploadRoutes);
-  app.onError(errorHandler);
+  app.onError(errorHandler as unknown as Parameters<typeof app.onError>[0]);
   return app;
 }
 
@@ -106,8 +107,9 @@ describe('POST /api/comments/:commentId/attachments — auth paths', () => {
     ]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: USER_ID,
-      role: 'owner',
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
     });
     persistCommentAttachmentMock.mockResolvedValueOnce({
       id: ATT_ID,
@@ -133,8 +135,9 @@ describe('POST /api/comments/:commentId/attachments — auth paths', () => {
     ]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: USER_ID,
-      role: 'owner',
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
     });
     persistCommentAttachmentMock.mockResolvedValueOnce({
       id: ATT_ID,
@@ -162,8 +165,9 @@ describe('POST /api/comments/:commentId/attachments — auth paths', () => {
     ]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: USER_ID,
-      role: 'owner',
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
     });
     persistCommentAttachmentMock.mockResolvedValueOnce({
       id: ATT_ID,
@@ -195,7 +199,7 @@ describe('POST /api/comments/:commentId/attachments — auth paths', () => {
     selectInnerJoinLimit.mockResolvedValueOnce([
       { id: COMMENT_ID, issueId: ISSUE_ID, projectId: PROJECT_ID },
     ]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: 'other', role: null });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: null, orgRole: null });
     const res = await buildApp().request(`/api/comments/${COMMENT_ID}/attachments`, {
       method: 'POST',
       headers: { authorization: `Bearer ${await userJwt()}` },

@@ -21,7 +21,7 @@ export interface ScheduleRowForDispatch {
 export interface DispatchScheduleInput {
   schedule: ScheduleRowForDispatch;
   // Manual triggers attribute the session to the calling user; tick triggers
-  // fall back to the resolved project's owner (agent_sessions.user_id is
+  // fall back to the resolved project's creator (agent_sessions.user_id is
   // nullable but useful to populate for audit + activity feeds).
   actorUserId?: string;
   // Marks the resulting session metadata so consumers can distinguish
@@ -29,7 +29,7 @@ export interface DispatchScheduleInput {
   tick?: boolean;
   // When the caller has already resolved `targetProjectSlug` (e.g. the route's
   // auth gate), pass the resolved project here to skip a redundant lookup.
-  resolvedTarget?: { id: string; ownerId: string };
+  resolvedTarget?: { id: string; createdBy: string };
 }
 
 // `success` here means: the agent_sessions row was created + WS publish was
@@ -83,28 +83,29 @@ export async function dispatchScheduleRun(
   }
 
   let resolvedProjectId = schedule.projectId;
-  let resolvedOwnerId: string | undefined;
+  let resolvedCreatedBy: string | undefined;
 
   if (schedule.targetProjectSlug) {
     const target =
       input.resolvedTarget ??
       (
         await db
-          .select({ id: projects.id, ownerId: projects.ownerId })
+          .select({ id: projects.id, createdBy: projects.createdBy })
           .from(projects)
           .where(eq(projects.slug, schedule.targetProjectSlug))
           .limit(1)
       )[0];
     if (!target) return { ok: false, reason: 'project-not-found', status: 'skipped' };
     resolvedProjectId = target.id;
-    resolvedOwnerId = target.ownerId;
+    resolvedCreatedBy = target.createdBy;
   }
 
-  // FIXME(iss-257): tick-driven sessions attribute to the project owner
-  // because the activity-feed expectations want a real user. A sentinel
-  // system user requires a separate migration — tracked for follow-up.
-  // Consumers can detect tick-driven sessions by `metadata.tick === true`.
-  const userId = input.actorUserId ?? (await loadOwnerId(resolvedProjectId, resolvedOwnerId));
+  // FIXME(iss-257): tick-driven sessions attribute to the project creator
+  // (audit `projects.created_by`) because the activity-feed expectations want
+  // a real user. A sentinel system user requires a separate migration —
+  // tracked for follow-up. Consumers can detect tick-driven sessions by
+  // `metadata.tick === true`.
+  const userId = input.actorUserId ?? (await loadCreatedBy(resolvedProjectId, resolvedCreatedBy));
   if (!userId) return { ok: false, reason: 'project-not-found', status: 'skipped' };
 
   // Look up project slug + repoPath in one shot for the WS payload.
@@ -228,12 +229,12 @@ export async function dispatchScheduleRun(
   return { ok: true, sessionId: inserted.id, status: 'success', resolvedProjectId };
 }
 
-async function loadOwnerId(projectId: string, hint?: string): Promise<string | undefined> {
+async function loadCreatedBy(projectId: string, hint?: string): Promise<string | undefined> {
   if (hint) return hint;
   const [row] = await db
-    .select({ ownerId: projects.ownerId })
+    .select({ createdBy: projects.createdBy })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  return row?.ownerId;
+  return row?.createdBy;
 }

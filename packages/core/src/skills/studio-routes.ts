@@ -4,7 +4,8 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { projectMembers, projects, skills } from '../db/schema.js';
+import { skills } from '../db/schema.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { globalEffectiveMd } from './effective.js';
 import { SkillAlreadyShadowedError, applyGlobalSkillDefault } from './service.js';
@@ -31,31 +32,6 @@ const notFound = (message: string) =>
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
-async function loadCallerRole(projectId: string, userId: string) {
-  const [project] = await db
-    .select({ ownerId: projects.ownerId })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project) throw notFound('project not found');
-
-  const [member] = await db
-    .select({ role: projectMembers.role })
-    .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
-    .limit(1);
-
-  return { ownerId: project.ownerId, role: member?.role ?? null };
-}
-
-function isMember(ctx: { ownerId: string; role: string | null }, userId: string): boolean {
-  return ctx.ownerId === userId || ctx.role !== null;
-}
-
-function isOwnerOrAdmin(ctx: { ownerId: string; role: string | null }, userId: string): boolean {
-  return ctx.ownerId === userId || ctx.role === 'owner' || ctx.role === 'admin';
-}
-
 export const skillStudioRoutes = new Hono<{ Variables: AuthVars }>();
 skillStudioRoutes.use('/:projectId/skills/effective', requireAuth(), assertEmailVerified());
 skillStudioRoutes.use('/:projectId/skills/apply-default', requireAuth(), assertEmailVerified());
@@ -78,8 +54,8 @@ skillStudioRoutes.get(
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const ctx = await loadCallerRole(projectId, userId);
-    if (!isMember(ctx, userId)) throw forbidden('not a project member');
+    const access = await loadProjectAccess(projectId, userId);
+    if (!access.role) throw forbidden('not a project member');
 
     const globals = await db
       .select()
@@ -121,7 +97,7 @@ skillStudioRoutes.get(
 );
 
 // Apply default — copy a global template into a new same-name project skill
-// (the project skill then shadows the global). Owner/admin only. Rejects when a
+// (the project skill then shadows the global). Project admin only. Rejects when a
 // same-name project skill already exists (one shadow per name).
 skillStudioRoutes.post(
   '/:projectId/skills/apply-default',
@@ -136,10 +112,8 @@ skillStudioRoutes.post(
     const { globalSkillId } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const ctx = await loadCallerRole(projectId, userId);
-    if (!isOwnerOrAdmin(ctx, userId)) {
-      throw forbidden('only project owner or admin can apply a default skill');
-    }
+    const access = await loadProjectAccess(projectId, userId);
+    assertProjectRole(access, 'admin', 'only a project admin can apply a default skill');
 
     const [global] = await db.select().from(skills).where(eq(skills.id, globalSkillId)).limit(1);
     if (!global) throw notFound('skill not found');

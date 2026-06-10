@@ -18,7 +18,13 @@ const selectWhere = vi.fn(() => ({
     return Promise.resolve(result).then(cb);
   },
 }));
-const selectFrom = vi.fn(() => ({ where: selectWhere }));
+// loadProjectAccess (lib/authz) runs select().from().leftJoin().leftJoin()
+// .where().limit() — route the join chain back into the same where/limit FIFO.
+const selectLeftJoin = vi.fn((): Record<string, unknown> => ({
+  leftJoin: selectLeftJoin,
+  where: selectWhere,
+}));
+const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
 const insertReturning = vi.fn();
 const insertValues = vi.fn(() => ({ returning: insertReturning }));
 const updateReturning = vi.fn();
@@ -67,13 +73,11 @@ function authVerified() {
 
 function projectAccessAsMember() {
   // loadProjectAccess: first .limit() = project lookup, second = membership
-  selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: 'someone-else' }]);
-  selectLimit.mockResolvedValueOnce([{ role: 'member' }]);
+  selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 }
 
 function projectAccessAsOwner() {
-  selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: USER_ID }]);
-  selectLimit.mockResolvedValueOnce([]);
+  selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: 'owner' }]);
 }
 
 async function token() {
@@ -111,8 +115,7 @@ describe('GET /api/agents', () => {
 
   it('403 when not a member and not owner', async () => {
     authVerified();
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: 'someone-else' }]);
-    selectLimit.mockResolvedValueOnce([]);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
     const res = await buildApp().request(`/api/agents?projectId=${PROJECT_ID}`, {
       headers: { authorization: `Bearer ${await token()}` },
     });

@@ -190,13 +190,85 @@ export const refreshTokens = pgTable(
   }),
 );
 
+// === Organizations (org-level permission tier) ===
+//
+// Every project belongs to exactly ONE org (`projects.org_id` NOT NULL). Each
+// user gets a personal org at signup (and via the 0106 backfill); team orgs are
+// created explicitly. Org owner/admin derive an implicit project `admin` role
+// on every project in the org; org `member` derives NOTHING — project access
+// for plain members still requires a project_members row (or being in a
+// project of an org they admin). The single resolution rule lives in
+// `lib/authz.ts effectiveProjectRole` — do not re-implement it.
+
+export const orgMemberRoles = ['owner', 'admin', 'member'] as const;
+export type OrgMemberRole = (typeof orgMemberRoles)[number];
+
+export const organizations = pgTable(
+  'organizations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    slug: text('slug').notNull().unique(),
+    name: text('name').notNull(),
+    // Personal orgs are auto-created (one per user, partial-unique below),
+    // cannot be deleted, and are the default target for project creation.
+    isPersonal: boolean('is_personal').notNull().default(false),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    personalOwnerUq: uniqueIndex('organizations_personal_owner_uq')
+      .on(t.createdBy)
+      .where(sql`is_personal = true`),
+  }),
+);
+
+export const organizationMembers = pgTable(
+  'organization_members',
+  {
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role', { enum: orgMemberRoles }).notNull().default('member'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.orgId, t.userId] }),
+    userIdIdx: index('organization_members_user_id_idx').on(t.userId),
+  }),
+);
+
+export const organizationsRelations = relations(organizations, ({ one, many }) => ({
+  creator: one(users, { fields: [organizations.createdBy], references: [users.id] }),
+  members: many(organizationMembers),
+  projects: many(projects),
+}));
+
+export const organizationMembersRelations = relations(organizationMembers, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [organizationMembers.orgId],
+    references: [organizations.id],
+  }),
+  user: one(users, { fields: [organizationMembers.userId], references: [users.id] }),
+}));
+
 export const projects = pgTable(
   'projects',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     slug: text('slug').notNull().unique(),
     name: text('name').notNull(),
-    ownerId: uuid('owner_id')
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
+    // Audit-only: who created the project. Carries NO authz semantics — the
+    // creator is granted a project_members `admin` row at create time and the
+    // effective role is always resolved via lib/authz.ts.
+    createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
     description: text('description'),
@@ -222,7 +294,8 @@ export const projects = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    ownerIdIdx: index('projects_owner_id_idx').on(t.ownerId),
+    orgIdIdx: index('projects_org_id_idx').on(t.orgId),
+    createdByIdx: index('projects_created_by_idx').on(t.createdBy),
     apiKeyUq: uniqueIndex('projects_api_key_uq').on(t.apiKey).where(sql`api_key IS NOT NULL`),
     defaultDeviceIdx: index('projects_default_device_id_idx').on(t.defaultDeviceId),
     archivedAtIdx: index('projects_archived_at_idx').on(t.archivedAt),
@@ -234,7 +307,9 @@ export const projects = pgTable(
 export const projectKinds = ['standard', 'website'] as const;
 export type ProjectKind = (typeof projectKinds)[number];
 
-export const projectMemberRoles = ['owner', 'admin', 'member'] as const;
+// Project roles (no `owner` — project "ownership" is an org concern; the org
+// owner/admin get implicit project `admin`). `viewer` is read-only.
+export const projectMemberRoles = ['admin', 'member', 'viewer'] as const;
 export type ProjectMemberRole = (typeof projectMemberRoles)[number];
 
 export const projectMembers = pgTable(
@@ -256,7 +331,8 @@ export const projectMembers = pgTable(
 );
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
-  owner: one(users, { fields: [projects.ownerId], references: [users.id] }),
+  organization: one(organizations, { fields: [projects.orgId], references: [organizations.id] }),
+  creator: one(users, { fields: [projects.createdBy], references: [users.id] }),
   members: many(projectMembers),
   defaultDevice: one(devices, {
     fields: [projects.defaultDeviceId],

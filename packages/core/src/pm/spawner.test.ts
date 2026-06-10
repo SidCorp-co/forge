@@ -10,7 +10,7 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const enqueueMock = vi.fn(async () => undefined);
+const enqueueMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('../jobs/enqueue.js', () => ({
   enqueuePmJob: (...args: unknown[]) => enqueueMock(...(args as [string])),
 }));

@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { memories, memorySources } from '../db/schema.js';
 import { paginationSchema, setTotalCount } from '../lib/pagination.js';
-import { assertProjectMemberAccess } from '../lib/project-access.js';
+import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { runMemoryGet } from './get-service.js';
 
@@ -35,7 +35,7 @@ memoryListRoutes.get(
   async (c) => {
     const { projectId, source, limit, offset } = c.req.valid('query');
     const userId = c.get('userId');
-    await assertProjectMemberAccess(projectId, userId);
+    await assertProjectAccess(projectId, userId, 'viewer');
 
     const { rows, total } = await runMemoryGet({
       projectId,
@@ -59,7 +59,7 @@ memoryListRoutes.delete(
   async (c) => {
     const { projectId, source, sourceRef } = c.req.valid('query');
     const userId = c.get('userId');
-    await assertProjectMemberAccess(projectId, userId);
+    await assertProjectAccess(projectId, userId);
 
     const result = await db
       .delete(memories)
@@ -98,7 +98,7 @@ memoryListRoutes.delete(
     if (!row) return c.body(null, 204);
 
     try {
-      await assertProjectMemberAccess(row.projectId, userId);
+      await assertProjectAccess(row.projectId, userId);
     } catch {
       return c.body(null, 204);
     }

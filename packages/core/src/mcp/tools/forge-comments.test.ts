@@ -26,7 +26,14 @@ const selectLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
 const selectInnerJoin = vi.fn(() => ({ where: selectWhere }));
-const selectFrom = vi.fn(() => ({ where: selectWhere, innerJoin: selectInnerJoin }));
+// lib/authz.ts effectiveProjectRole chains TWO leftJoins before where().limit(1).
+const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
+const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
+const selectFrom = vi.fn(() => ({
+  where: selectWhere,
+  innerJoin: selectInnerJoin,
+  leftJoin: selectLeftJoin,
+}));
 const insertReturning = vi.fn();
 const insertValues = vi.fn(() => ({ returning: insertReturning }));
 const deleteWhere = vi.fn();
@@ -45,7 +52,9 @@ vi.mock('../../pipeline/hooks.js', () => ({
 
 // Keep the real create-path helper (persistCommentAttachment) but stub the
 // read-side join so `list` doesn't need a programmed query chain for it.
-const listCommentAttachmentsForIssueMock = vi.fn(async () => new Map<string, unknown[]>());
+const listCommentAttachmentsForIssueMock = vi.fn(
+  async (..._args: unknown[]) => new Map<string, unknown[]>(),
+);
 vi.mock('../../comments/attachment-service.js', async (importActual) => {
   const actual = await importActual<typeof import('../../comments/attachment-service.js')>();
   return {
@@ -63,6 +72,11 @@ const COMMENT_ID = '55555555-5555-4555-8555-555555555555';
 const OWNER_ID = '33333333-3333-4333-8333-333333333333';
 const OTHER_USER_ID = '66666666-6666-4666-8666-666666666666';
 const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
+const ORG_ID = '88888888-8888-4888-8888-888888888888';
+
+// effectiveProjectRole (lib/authz.ts) result rows — ONE org-aware select.
+const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
+const adminAccessRow = { orgId: ORG_ID, memberRole: 'admin', orgRole: null };
 
 const fakeDevice = {
   id: DEVICE_ID,
@@ -70,6 +84,8 @@ const fakeDevice = {
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -123,7 +139,7 @@ describe('forge_comments tool', () => {
     // 1. loadIssueProjectId
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
     // 2. assertDeviceOwnerIsMember → project owned by device owner
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
     // 3. comment list query
     selectLimit.mockResolvedValueOnce([baseCommentRow]);
 
@@ -146,7 +162,7 @@ describe('forge_comments tool', () => {
       projectSlug: null,
     });
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
     selectLimit.mockResolvedValueOnce([baseCommentRow]);
     const att = {
       id: 'att-1',
@@ -201,7 +217,7 @@ describe('forge_comments tool', () => {
       projectSlug: null,
     });
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]); // loadIssueProjectId
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]); // membership
+    selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership
     insertReturning.mockResolvedValueOnce([baseCommentRow]); // insert
 
     const result = (await tool.handler({
@@ -227,7 +243,7 @@ describe('forge_comments tool', () => {
       { id: COMMENT_ID, issueId: ISSUE_ID, authorId: OWNER_ID, projectId: PROJECT_ID },
     ]);
     // membership check (author path uses assertDeviceOwnerIsMember)
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
     deleteWhere.mockResolvedValueOnce(undefined);
 
     const result = (await tool.handler({
@@ -239,7 +255,7 @@ describe('forge_comments tool', () => {
     expect(deleteWhere).toHaveBeenCalled();
   });
 
-  it('delete by non-author non-owner throws FORBIDDEN', async () => {
+  it('delete by non-author non-admin throws FORBIDDEN', async () => {
     const tool = forgeCommentsTool({
       principal: { kind: 'device', device: fakeDevice },
       device: fakeDevice,
@@ -248,16 +264,38 @@ describe('forge_comments tool', () => {
     selectLimit.mockResolvedValueOnce([
       { id: COMMENT_ID, issueId: ISSUE_ID, authorId: OTHER_USER_ID, projectId: PROJECT_ID },
     ]);
-    // assertPrincipalIsMember (device path) → project owner check first
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
-    // assertCommentDeletePermission: project owned by someone else
-    selectLimit.mockResolvedValueOnce([{ ownerId: 'somebody-else' }]);
-    // membership row exists but role is 'member' (not owner)
-    selectLimit.mockResolvedValueOnce([{ role: 'member' }]);
+    // assertPrincipalIsMember (device path) → effective-role lookup
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    // assertCommentDeletePermission: effective role is member, below admin
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
 
     await expect(tool.handler({ action: 'delete', documentId: COMMENT_ID })).rejects.toThrow(
-      /FORBIDDEN/,
+      /FORBIDDEN: only the comment author or a project admin can delete/,
     );
+  });
+
+  it('delete by non-author project admin succeeds', async () => {
+    const tool = forgeCommentsTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: null,
+    });
+    selectLimit.mockResolvedValueOnce([
+      { id: COMMENT_ID, issueId: ISSUE_ID, authorId: OTHER_USER_ID, projectId: PROJECT_ID },
+    ]);
+    // assertPrincipalIsMember (device path) → effective-role lookup
+    selectLimit.mockResolvedValueOnce([adminAccessRow]);
+    // assertCommentDeletePermission: effective project admin passes
+    selectLimit.mockResolvedValueOnce([adminAccessRow]);
+    deleteWhere.mockResolvedValueOnce(undefined);
+
+    const result = (await tool.handler({
+      action: 'delete',
+      documentId: COMMENT_ID,
+    })) as { status: string };
+
+    expect(result.status).toBe('deleted');
+    expect(deleteWhere).toHaveBeenCalled();
   });
 
   // ISS-150 cross-tenant regression — the documentId-resolved delete path
@@ -296,18 +334,16 @@ describe('forge_comments tool', () => {
       expect(deleteWhere).not.toHaveBeenCalled();
     });
 
-    it("delete succeeds when comment's project is inside the PAT allowlist and user is project owner", async () => {
+    it("delete succeeds when comment's project is inside the PAT allowlist and user is project admin", async () => {
       const tool = makePatTool([PROJECT_ID]);
       // loadCommentForAccess — non-author branch.
       selectLimit.mockResolvedValueOnce([
         { id: COMMENT_ID, issueId: ISSUE_ID, authorId: OTHER_USER_ID, projectId: PROJECT_ID },
       ]);
-      // assertPrincipalIsMember (PAT path) → loadUserProjectRole → projects lookup
-      // returns the PAT user as the project owner.
-      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
-      // assertCommentDeletePermission still runs: project owner check passes
-      // because the underlying user owns the project.
-      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      // assertPrincipalIsMember (PAT path) → effective-role lookup
+      selectLimit.mockResolvedValueOnce([adminAccessRow]);
+      // assertCommentDeletePermission still runs: effective project admin passes.
+      selectLimit.mockResolvedValueOnce([adminAccessRow]);
       deleteWhere.mockResolvedValueOnce(undefined);
 
       const result = (await tool.handler({
@@ -347,7 +383,7 @@ describe('forge_comments tool', () => {
         projectSlug: null,
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]); // loadIssueProjectId
-      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]); // membership
+      selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership
       insertReturning.mockResolvedValueOnce([baseCommentRow]); // comment insert
       insertReturning.mockResolvedValueOnce([makeAttachmentRow(0)]); // attachment insert
 
@@ -381,7 +417,7 @@ describe('forge_comments tool', () => {
         projectSlug: null,
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
-      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
       insertReturning.mockResolvedValueOnce([baseCommentRow]);
       for (let i = 0; i < 5; i++) insertReturning.mockResolvedValueOnce([makeAttachmentRow(i)]);
 
@@ -409,7 +445,7 @@ describe('forge_comments tool', () => {
         projectSlug: null,
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
-      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
       insertReturning.mockResolvedValueOnce([baseCommentRow]);
       insertReturning.mockResolvedValueOnce([makeAttachmentRow(0)]);
 
@@ -442,7 +478,7 @@ describe('forge_comments tool', () => {
         projectSlug: null,
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
-      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
 
       // 4MB each x 3 = 12MB > 10MB limit, no single entry over limit.
       const fourMb = Buffer.alloc(4 * 1024 * 1024, 7);
@@ -473,7 +509,7 @@ describe('forge_comments tool', () => {
         projectSlug: null,
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
-      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
 
       const elevenMb = Buffer.alloc(11 * 1024 * 1024, 7);
       const b64 = elevenMb.toString('base64');
@@ -497,7 +533,7 @@ describe('forge_comments tool', () => {
         projectSlug: null,
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
-      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
       insertReturning.mockResolvedValueOnce([baseCommentRow]);
 
       const result = (await tool.handler({
@@ -528,7 +564,7 @@ describe('forge_comments tool', () => {
         projectSlug: null,
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
-      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
 
       await expect(
         tool.handler({

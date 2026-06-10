@@ -1,10 +1,11 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   type IntegrationEnvironment,
   type IntegrationOwnerType,
   integrationBindings,
   integrationConnections,
+  organizationMembers,
 } from '../db/schema.js';
 import type { AdapterContext, IntegrationProvider } from './types.js';
 import { decryptJson, encryptJson } from './vault.js';
@@ -303,13 +304,38 @@ export async function listBindingsForConnection(
     .orderBy(desc(integrationBindings.createdAt));
 }
 
-/** Connections owned by a principal (owner-scoped CRUD list). */
-export async function listConnectionsForOwner(
-  ownerId: string,
+/**
+ * Connections visible to a user: their own (ownerType=user) plus org-owned
+ * connections of every org they belong to (any role — managing them is
+ * gated separately at the route layer).
+ */
+export async function listConnectionsForPrincipalUser(
+  userId: string,
 ): Promise<IntegrationConnectionRow[]> {
+  const orgRows = await db
+    .select({ orgId: organizationMembers.orgId })
+    .from(organizationMembers)
+    .where(eq(organizationMembers.userId, userId));
+  const orgIds = orgRows.map((r) => r.orgId);
   return db
     .select()
     .from(integrationConnections)
-    .where(and(eq(integrationConnections.ownerId, ownerId), eq(integrationConnections.active, true)))
+    .where(
+      and(
+        eq(integrationConnections.active, true),
+        or(
+          and(
+            eq(integrationConnections.ownerType, 'user'),
+            eq(integrationConnections.ownerId, userId),
+          ),
+          orgIds.length > 0
+            ? and(
+                eq(integrationConnections.ownerType, 'org'),
+                inArray(integrationConnections.ownerId, orgIds),
+              )
+            : sql`false`,
+        ),
+      ),
+    )
     .orderBy(desc(integrationConnections.createdAt));
 }

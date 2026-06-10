@@ -29,6 +29,7 @@ import {
 } from "../hooks";
 
 const ROLE_OPTIONS: SelectOption[] = [
+  { value: "viewer", label: "Viewer" },
   { value: "member", label: "Member" },
   { value: "admin", label: "Admin" },
 ];
@@ -71,19 +72,22 @@ export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit:
               >
                 <span className="min-w-0 truncate text-fg">{m.email}</span>
                 <span className="flex shrink-0 items-center gap-2">
-                  {canEdit && m.role !== "owner" ? (
+                  {canEdit ? (
                     <Select
                       options={ROLE_OPTIONS}
                       value={m.role}
                       onChange={(v) =>
-                        updateRole.mutate({ userId: m.userId, role: v as "admin" | "member" })
+                        updateRole.mutate({
+                          userId: m.userId,
+                          role: v as "admin" | "member" | "viewer",
+                        })
                       }
                       disabled={updateRole.isPending}
                     />
                   ) : (
-                    <Badge tone={m.role === "owner" ? "accent" : "neutral"}>{m.role}</Badge>
+                    <Badge tone={m.role === "admin" ? "accent" : "neutral"}>{m.role}</Badge>
                   )}
-                  {canEdit && m.role !== "owner" && (
+                  {canEdit && (
                     <IconButton
                       icon="trash"
                       aria-label={`Remove ${m.email}`}

@@ -4,6 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
+import { ensurePersonalOrg } from '../orgs/service.js';
 import { users } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { rateLimit } from '../middleware/rate-limit.js';
@@ -61,14 +62,20 @@ authRoutes.post(
     const passwordHash = await hashPassword(password);
 
     try {
-      const inserted = await db
-        .insert(users)
-        .values({ email, passwordHash })
-        .returning({ userId: users.id, email: users.email });
-      const row = inserted[0];
-      if (!row) {
-        throw new Error('register: insert returned no row');
-      }
+      // User + personal org are one atomic unit — a half-provisioned user
+      // (no personal org) would 500 every project create later.
+      const row = await db.transaction(async (tx) => {
+        const inserted = await tx
+          .insert(users)
+          .values({ email, passwordHash })
+          .returning({ userId: users.id, email: users.email });
+        const created = inserted[0];
+        if (!created) {
+          throw new Error('register: insert returned no row');
+        }
+        await ensurePersonalOrg(tx, created.userId, created.email);
+        return created;
+      });
 
       try {
         const token = await issueVerificationToken(row.userId);

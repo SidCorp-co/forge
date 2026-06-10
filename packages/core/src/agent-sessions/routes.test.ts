@@ -66,7 +66,7 @@ vi.mock('../lib/device-pool.js', () => ({
     (override ?? projectRepoPath ?? '').trim() || null,
 }));
 
-const safeRecordActivitySpy = vi.fn(async () => {});
+const safeRecordActivitySpy = vi.fn(async (..._args: unknown[]) => {});
 vi.mock('../pipeline/activity.js', () => ({
   safeRecordActivity: safeRecordActivitySpy,
 }));
@@ -82,6 +82,16 @@ vi.mock('../pipeline/runs.js', () => ({
   closeOpenRunForIssue: vi.fn(async () => undefined),
   setCurrentStep: vi.fn(async () => undefined),
   setCurrentStepForOpenIssueRun: vi.fn(async () => undefined),
+}));
+
+// Org-level authz: stub the db-touching resolvers; pure helpers
+// (assertProjectRole, projectRoleAtLeast) stay real.
+const projectAccessMock = vi.fn();
+const visibleIdsMock = vi.fn(async (_userId: string) => [] as string[]);
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
+  loadProjectAccess: (...args: unknown[]) => projectAccessMock(...args),
+  loadVisibleProjectIds: (...args: unknown[]) => visibleIdsMock(...(args as [string])),
 }));
 
 const { agentSessionRoutes } = await import('./routes.js');
@@ -112,6 +122,9 @@ beforeEach(() => {
   selectOrderBy.mockClear();
   insertReturning.mockReset();
   updateReturning.mockReset();
+  projectAccessMock.mockReset();
+  visibleIdsMock.mockReset();
+  visibleIdsMock.mockResolvedValue([]);
   whereResults.length = 0;
 });
 
@@ -120,13 +133,21 @@ function authVerified() {
 }
 
 function projectAccessAsMember() {
-  selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: 'someone-else' }]);
-  selectLimit.mockResolvedValueOnce([{ role: 'member' }]);
+  projectAccessMock.mockResolvedValueOnce({
+    projectId: PROJECT_ID,
+    orgId: 'org-1',
+    role: 'member',
+    orgRole: null,
+  });
 }
 
 function projectAccessAsOwner() {
-  selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: USER_ID }]);
-  selectLimit.mockResolvedValueOnce([]);
+  projectAccessMock.mockResolvedValueOnce({
+    projectId: PROJECT_ID,
+    orgId: 'org-1',
+    role: 'admin',
+    orgRole: 'owner',
+  });
 }
 
 async function token() {

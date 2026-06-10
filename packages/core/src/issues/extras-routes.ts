@@ -16,7 +16,7 @@ import {
 import { sql } from 'drizzle-orm';
 import { enqueueJob } from '../jobs/enqueue.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -159,7 +159,8 @@ issueExtrasRoutes.patch(
           const access = await loadProjectAccess(projectId, userId);
           return [
             projectId,
-            { allowed: !!(access.role || access.ownerId === userId) },
+            // Batch patch mutates issues — viewer (read-only) is not allowed.
+            { allowed: projectRoleAtLeast(access.role, 'member') },
           ];
         } catch (err) {
           if (err instanceof HTTPException && err.status === 404) {
@@ -370,7 +371,7 @@ issueExtrasRoutes.post(
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     // ISS-101 — enrich jobs run alongside the issue pipeline; attach to its open run.
     const run = await openIssueRun({ projectId: issue.projectId, issueId: issue.id });
@@ -440,7 +441,7 @@ issueExtrasRoutes.post(
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     try {
       const result = await triggerPipelineStepManual({
@@ -490,7 +491,7 @@ issueExtrasRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     const conditions = [
       eq(issues.projectId, projectId),
@@ -586,7 +587,7 @@ issueExtrasRoutes.get(
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     // DISTINCT agent-session ids that worked this issue (via its jobs).
     const sessionIdSubquery = sql`(

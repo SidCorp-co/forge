@@ -51,7 +51,7 @@ export const projectSettingsApi = {
     apiClient<ProjectMemberRow[]>(`/projects/${id}/members`),
 
   /** `POST /api/projects/:id/members/invite` — invite by email (owner/admin). */
-  inviteMember: (id: string, email: string, role: "admin" | "member") =>
+  inviteMember: (id: string, email: string, role: "admin" | "member" | "viewer") =>
     apiClient<unknown>(`/projects/${id}/members/invite`, {
       method: "POST",
       body: JSON.stringify({ email, role }),
@@ -62,7 +62,7 @@ export const projectSettingsApi = {
     apiClient<unknown>(`/projects/${id}/members/${userId}`, { method: "DELETE" }),
 
   /** `PATCH /api/projects/:id/members/:userId` — change a member's role (owner only). */
-  updateMemberRole: (id: string, userId: string, role: "admin" | "member") =>
+  updateMemberRole: (id: string, userId: string, role: "admin" | "member" | "viewer") =>
     apiClient<unknown>(`/projects/${id}/members/${userId}`, {
       method: "PATCH",
       body: JSON.stringify({ role }),

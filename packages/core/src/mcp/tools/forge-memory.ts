@@ -5,7 +5,9 @@ import { getMemoryInputSchema, runMemoryGet } from '../../memory/get-service.js'
 import { deleteMemory } from '../../memory/indexer.js';
 import { memorySearchStrategies, runMemorySearch } from '../../memory/search-service.js';
 import { runMemoryWrite, writeMemoryInputSchema } from '../../memory/write-service.js';
-import { assertDeviceOwnerIsMember, zodToMcpSchema } from './lib.js';
+import { assertDeviceOwnerIsMember, zodToMcpSchema,
+  assertDeviceOwnerIsWriter,
+} from './lib.js';
 import type { DeviceScopedMcpToolFactory } from './lib.js';
 
 const deleteInputSchema = z.object({
@@ -81,7 +83,7 @@ export const forgeMemoryDeleteTool: DeviceScopedMcpToolFactory = (device) => ({
   inputSchema: zodToMcpSchema(deleteInputSchema),
   handler: async (args) => {
     const input = deleteInputSchema.parse(args);
-    await assertDeviceOwnerIsMember(device, input.projectId);
+    await assertDeviceOwnerIsWriter(device, input.projectId);
     const removed = await deleteMemory(input.projectId, input.source, input.sourceRef);
     return { deleted: removed > 0 };
   },
@@ -99,7 +101,7 @@ export const forgeMemoryWriteTool: DeviceScopedMcpToolFactory = (device) => ({
   inputSchema: zodToMcpSchema(writeMemoryInputSchema),
   handler: async (args) => {
     const input = writeMemoryInputSchema.parse(args);
-    await assertDeviceOwnerIsMember(device, input.projectId);
+    await assertDeviceOwnerIsWriter(device, input.projectId);
     try {
       return await runMemoryWrite(input);
     } catch (err) {

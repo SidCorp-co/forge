@@ -4,7 +4,12 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { issueStatuses, projectMembers, projects, skillRegistrations, skills } from '../db/schema.js';
+import { issueStatuses, skillRegistrations, skills } from '../db/schema.js';
+import {
+  assertProjectRole,
+  loadProjectAccess,
+  projectRoleAtLeast,
+} from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -54,46 +59,13 @@ const notFound = (code = 'NOT_FOUND', message = 'not found') =>
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
-async function loadCallerRole(
-  projectId: string,
-  userId: string,
-): Promise<{ ownerId: string; role: string | null } | null> {
-  const [project] = await db
-    .select({ ownerId: projects.ownerId })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project) return null;
-
-  const [member] = await db
-    .select({ role: projectMembers.role })
-    .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
-    .limit(1);
-
-  return { ownerId: project.ownerId, role: member?.role ?? null };
-}
-
 async function loadDeviceProjectRole(
   deviceOwnerId: string,
   projectId: string,
-): Promise<{ isOwnerOrAdmin: boolean }> {
-  const [project] = await db
-    .select({ ownerId: projects.ownerId })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project) throw notFound('NOT_FOUND', 'project not found');
-
-  if (project.ownerId === deviceOwnerId) return { isOwnerOrAdmin: true };
-
-  const [member] = await db
-    .select({ role: projectMembers.role })
-    .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, deviceOwnerId)))
-    .limit(1);
-  if (!member) throw forbidden('device owner is not a project member');
-  return { isOwnerOrAdmin: member.role === 'owner' || member.role === 'admin' };
+): Promise<{ isAdmin: boolean }> {
+  const access = await loadProjectAccess(projectId, deviceOwnerId);
+  if (!access.role) throw forbidden('device owner is not a project member');
+  return { isAdmin: projectRoleAtLeast(access.role, 'admin') };
 }
 
 export const skillSyncRoutes = new Hono<{ Variables: DeviceVars }>();
@@ -111,9 +83,9 @@ skillSyncRoutes.post(
     const body = c.req.valid('json');
     const device = c.get('device');
 
-    const { isOwnerOrAdmin } = await loadDeviceProjectRole(device.ownerId, projectId);
-    if (body.mode === 'full' && !isOwnerOrAdmin) {
-      throw forbidden("mode 'full' requires owner or admin device");
+    const { isAdmin } = await loadDeviceProjectRole(device.ownerId, projectId);
+    if (body.mode === 'full' && !isAdmin) {
+      throw forbidden("mode 'full' requires a project-admin device");
     }
 
     // Single SERIALIZABLE transaction: read existing inside the tx, categorise,
@@ -216,12 +188,8 @@ skillRegisterRoutes.post(
     const { stage } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const ctx = await loadCallerRole(projectId, userId);
-    if (!ctx) throw notFound('NOT_FOUND', 'project not found');
-
-    const isOwner = ctx.role === 'owner' || ctx.ownerId === userId;
-    const isAdmin = ctx.role === 'admin';
-    if (!isOwner && !isAdmin) throw forbidden('requires owner or admin');
+    const access = await loadProjectAccess(projectId, userId);
+    assertProjectRole(access, 'admin');
 
     const skill = await getSkillForProject(skillId, projectId);
     if (!skill) throw notFound('NOT_FOUND', 'skill not found');
@@ -272,11 +240,8 @@ skillRegisterRoutes.get(
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const ctx = await loadCallerRole(projectId, userId);
-    if (!ctx) throw notFound('NOT_FOUND', 'project not found');
-    if (ctx.ownerId !== userId && ctx.role === null) {
-      throw forbidden('not a project member');
-    }
+    const access = await loadProjectAccess(projectId, userId);
+    if (!access.role) throw forbidden('not a project member');
 
     const rows = await db
       .select({
@@ -312,11 +277,8 @@ skillRegisterRoutes.delete(
     const { projectId, stage } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const ctx = await loadCallerRole(projectId, userId);
-    if (!ctx) throw notFound('NOT_FOUND', 'project not found');
-    const isOwner = ctx.role === 'owner' || ctx.ownerId === userId;
-    const isAdmin = ctx.role === 'admin';
-    if (!isOwner && !isAdmin) throw forbidden('requires owner or admin');
+    const access = await loadProjectAccess(projectId, userId);
+    assertProjectRole(access, 'admin');
 
     const [row] = await db
       .select({ skillId: skillRegistrations.skillId })

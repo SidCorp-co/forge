@@ -153,7 +153,7 @@ function mockRunnerDispatch(opts: { deviceId?: string } = {}): ReturnType<typeof
     type: 'claude-code',
     deviceId: opts.deviceId ?? 'd1',
   });
-  const dispatchSpy = vi.fn(async () => ({ status: 'dispatched' }));
+  const dispatchSpy = vi.fn(async (..._args: unknown[]) => ({ status: 'dispatched' }));
   (getRunnerAdapter as ReturnType<typeof vi.fn>).mockReturnValueOnce({ dispatch: dispatchSpy });
   return dispatchSpy;
 }
@@ -219,7 +219,7 @@ describe('jobs/dispatcher', () => {
       // biome-ignore lint/suspicious/noExplicitAny: test-only mock chain
       expect((db as any).update).toHaveBeenCalledTimes(1);
       expect(dispatchSpy).toHaveBeenCalledTimes(1);
-      const arg = dispatchSpy.mock.calls[0][0] as {
+      const arg = dispatchSpy.mock.calls[0]?.[0] as {
         job: Record<string, unknown>;
         runner: Record<string, unknown>;
       };
@@ -292,7 +292,7 @@ describe('jobs/dispatcher', () => {
     await handleDispatch({ jobId: 'j-snap' });
 
     expect(persistPromptSnapshot).toHaveBeenCalledTimes(1);
-    const args = (persistPromptSnapshot as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const args = (persistPromptSnapshot as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
     expect(args).toMatchObject({
       jobId: 'j-snap',
       userPrompt: 'user-prompt-body',
@@ -305,7 +305,7 @@ describe('jobs/dispatcher', () => {
     // Ordering: snapshot fires before adapter.dispatch.
     const snapInvocation = (persistPromptSnapshot as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0];
     const adapterInvocation = dispatchSpy.mock.invocationCallOrder[0];
-    expect(snapInvocation).toBeLessThan(adapterInvocation);
+    expect(snapInvocation).toBeLessThan(adapterInvocation ?? Number.NEGATIVE_INFINITY);
   });
 
   // ISS-228 — SSOT barrier replaces ISS-226's narrow L1-only check. When
@@ -429,7 +429,7 @@ describe('jobs/dispatcher', () => {
 
     await handleDispatch({ jobId: 'j-default-model' });
 
-    const args = (persistPromptSnapshot as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const args = (persistPromptSnapshot as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
     expect(args.model).toBe('default');
     expect(args.userPrompt).toBe('');
   });
@@ -469,10 +469,10 @@ describe('jobs/dispatcher', () => {
 
     expect(await handleDispatch({ jobId: 'j-pm-off' })).toBe('dispatched');
 
-    const payloadWith = (spyWith.mock.calls[0][0] as { job: { payload: Record<string, unknown> } })
+    const payloadWith = (spyWith.mock.calls[0]?.[0] as { job: { payload: Record<string, unknown> } })
       .job.payload;
     const payloadWithout = (
-      spyWithout.mock.calls[0][0] as { job: { payload: Record<string, unknown> } }
+      spyWithout.mock.calls[0]?.[0] as { job: { payload: Record<string, unknown> } }
     ).job.payload;
     const mcpWith = payloadWith.mcpServersOverride as Record<string, unknown> | undefined;
     const mcpWithout = payloadWithout.mcpServersOverride as Record<string, unknown> | undefined;
@@ -502,7 +502,7 @@ describe('jobs/dispatcher PM path', () => {
       type: 'claude-code',
       deviceId: 'd1',
     });
-    const dispatchSpy = vi.fn(async () => ({ status: 'dispatched' }));
+    const dispatchSpy = vi.fn(async (..._args: unknown[]) => ({ status: 'dispatched' }));
     (getRunnerAdapter as ReturnType<typeof vi.fn>).mockReturnValueOnce({ dispatch: dispatchSpy });
     mockUpdateReturn([{ id: 'pm-1' }]);
     mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]);
@@ -519,13 +519,13 @@ describe('jobs/dispatcher PM path', () => {
 
     // ISS-186 — snapshot must persist on runner path too, before adapter.dispatch.
     expect(persistPromptSnapshot).toHaveBeenCalledTimes(1);
-    const snapArgs = (persistPromptSnapshot as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const snapArgs = (persistPromptSnapshot as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
     expect(snapArgs).toMatchObject({ jobId: 'pm-1', userPrompt: '' });
     expect(typeof snapArgs.systemPrompt).toBe('string');
     expect(Array.isArray(snapArgs.blocks)).toBe(true);
     const snapInvocation = (persistPromptSnapshot as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0];
     const adapterInvocation = dispatchSpy.mock.invocationCallOrder[0];
-    expect(snapInvocation).toBeLessThan(adapterInvocation);
+    expect(snapInvocation).toBeLessThan(adapterInvocation ?? Number.NEGATIVE_INFINITY);
   });
 
   it('forces the {pm:true} filter even when payload tries to override it', async () => {
@@ -629,7 +629,7 @@ describe('jobs/dispatcher PM path', () => {
 
     const result = await handleDispatch({ jobId: 'j-prompt' });
     expect(result).toBe('dispatched');
-    const arg = dispatchSpy.mock.calls[0][0] as { job: { id: string; promptString: unknown } };
+    const arg = dispatchSpy.mock.calls[0]?.[0] as { job: { id: string; promptString: unknown } };
     expect(arg.job.id).toBe('j-prompt');
     expect(arg.job.promptString).toBe('/forge-plan iss-1');
   });

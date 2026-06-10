@@ -69,7 +69,7 @@ describe('integration smoke', () => {
     await createTestProjectMember(harness.db, {
       userId: owner.id,
       projectId: project.id,
-      role: 'owner',
+      role: 'admin',
     });
 
     const N = 50;
@@ -127,7 +127,7 @@ describe('integration smoke', () => {
     await createTestProjectMember(harness.db, {
       userId: owner.id,
       projectId: project.id,
-      role: 'owner',
+      role: 'admin',
     });
 
     await harness.db.execute(sql`
@@ -174,7 +174,7 @@ describe('integration smoke', () => {
     await createTestProjectMember(harness.db, {
       userId: owner.id,
       projectId: project.id,
-      role: 'owner',
+      role: 'admin',
     });
 
     await harness.db.execute(sql`

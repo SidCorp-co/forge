@@ -131,6 +131,7 @@ import { projectHealthRoutes } from './projects/health-routes.js';
 import { invitationRoutes } from './projects/invitations-routes.js';
 import { memberRoutes } from './projects/members-routes.js';
 import { projectRoutes } from './projects/routes.js';
+import { orgRoutes } from './orgs/routes.js';
 import { promptRoutes } from './prompt/routes.js';
 import { isBossStarted, startBoss, stopBoss } from './queue/boss.js';
 import { bootstrapRunnerAdapters } from './runners/bootstrap.js';
@@ -312,6 +313,7 @@ app.route('/api/projects', projectHealthRoutes);
 // health-routes precedent and keep the static-before-param ordering intent.
 app.route('/api/projects', projectMetricsRoutes);
 app.route('/api/projects', projectRoutes);
+app.route('/api/orgs', orgRoutes);
 app.route('/api/projects', integrationsRoutes);
 app.route('/api/integration-connections', integrationConnectionsRoutes);
 app.route('/api/projects', docsRoutes);

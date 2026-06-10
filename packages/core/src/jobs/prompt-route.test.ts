@@ -55,9 +55,9 @@ describe('redactMcpSecrets', () => {
       { url: 'https://a', headers: { Authorization: 'Bearer aaa' } },
       { url: 'https://b', headers: { Authorization: 'Bearer bbbbb' } },
     ]) as Array<{ url: string; headers: { Authorization: string } }>;
-    expect(out[0].headers.Authorization).toBe('[REDACTED 10 chars]');
-    expect(out[1].headers.Authorization).toBe('[REDACTED 12 chars]');
-    expect(out[0].url).toBe('https://a');
+    expect(out[0]?.headers.Authorization).toBe('[REDACTED 10 chars]');
+    expect(out[1]?.headers.Authorization).toBe('[REDACTED 12 chars]');
+    expect(out[0]?.url).toBe('https://a');
   });
 
   it('collapses non-string secret values to [REDACTED]', () => {

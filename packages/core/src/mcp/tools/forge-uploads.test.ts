@@ -16,6 +16,7 @@ const queue: unknown[] = [];
 const chain: any = {};
 chain.from = () => chain;
 chain.innerJoin = () => chain;
+chain.leftJoin = () => chain;
 chain.where = () => chain;
 chain.orderBy = () => chain;
 chain.limit = () => chain;
@@ -53,6 +54,8 @@ const fakeDevice = {
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -68,9 +71,9 @@ const ctx = {
   projectSlug: null,
 };
 
-/** Queue: attachment row → membership (project owned by device owner). */
+/** Queue: attachment row → effective-role row (lib/authz.ts single query). */
 function queueFetch(att: Record<string, unknown>) {
-  queue.push([att], [{ ownerId: OWNER_ID }]);
+  queue.push([att], [{ orgId: '66666666-6666-4666-8666-666666666666', memberRole: 'member', orgRole: null }]);
 }
 
 beforeEach(() => {

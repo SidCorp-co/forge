@@ -11,7 +11,6 @@ import {
   agentSessions,
   devices,
   issues,
-  projectMembers,
   projects,
   usageRecords,
 } from '../db/schema.js';
@@ -38,7 +37,12 @@ import {
 } from './turns-helpers.js';
 import { findAvailableDeviceForProject, resolveRepoPath, resolveRunnerRepoPath } from '../lib/device-pool.js';
 import { setTotalCount } from '../lib/pagination.js';
-import { loadProjectAccess, type ProjectAccess } from '../lib/project-access.js';
+import {
+  assertProjectRole,
+  loadProjectAccess,
+  loadVisibleProjectIds,
+  projectRoleAtLeast,
+} from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
@@ -128,11 +132,6 @@ const forbidden = (message: string) =>
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-function isOwnerOrAdmin(access: ProjectAccess, userId: string): boolean {
-  if (access.ownerId === userId) return true;
-  return access.role === 'owner' || access.role === 'admin';
-}
 
 /**
  * Extract a non-empty string prompt from a `messages[i].content` value. The
@@ -236,7 +235,6 @@ async function loadProjectBySlug(slug: string) {
     .select({
       id: projects.id,
       slug: projects.slug,
-      ownerId: projects.ownerId,
       repoPath: projects.repoPath,
       defaultDeviceId: projects.defaultDeviceId,
     })
@@ -266,7 +264,7 @@ agentSessionRoutes.post(
     if (!project) throw notFound('project not found');
 
     const access = await loadProjectAccess(project.id, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     // Single device-resolution shared with /send + schedule: desktop runs
     // Claude locally (no device); web/automation needs an online runner or 409.
@@ -415,8 +413,8 @@ agentSessionRoutes.post(
     if (!session) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(session.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
-    if (session.userId && session.userId !== userId && !isOwnerOrAdmin(access, userId)) {
+    assertProjectRole(access, 'member');
+    if (session.userId && session.userId !== userId && !projectRoleAtLeast(access.role, 'admin')) {
       throw forbidden('not the session owner');
     }
 
@@ -464,8 +462,8 @@ agentSessionRoutes.post(
     if (!session) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(session.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
-    if (session.userId && session.userId !== userId && !isOwnerOrAdmin(access, userId)) {
+    assertProjectRole(access, 'member');
+    if (session.userId && session.userId !== userId && !projectRoleAtLeast(access.role, 'admin')) {
       throw forbidden('not the session owner');
     }
 
@@ -522,8 +520,8 @@ agentSessionRoutes.post(
     if (!session) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(session.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
-    if (session.userId && session.userId !== userId && !isOwnerOrAdmin(access, userId)) {
+    assertProjectRole(access, 'member');
+    if (session.userId && session.userId !== userId && !projectRoleAtLeast(access.role, 'admin')) {
       throw forbidden('not the session owner');
     }
 
@@ -599,7 +597,7 @@ agentSessionRoutes.post(
     if (!session) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(session.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     const meta = (session.metadata ?? {}) as { type?: string; issueId?: string };
     if (!meta.type || !PIPELINE_SESSION_TYPES.has(meta.type)) {
@@ -666,7 +664,7 @@ agentSessionRoutes.get(
     if (!session) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(session.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     const sessionMatch = sql`${usageRecords.sessionId} ~ '^[0-9a-fA-F-]{36}$' AND ${usageRecords.sessionId}::uuid = ${id}`;
 
@@ -732,7 +730,7 @@ agentSessionRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     // Group counts by deviceId × status. Devices without any active session
     // simply don't appear; the UI lists those via the standard devices API.
@@ -781,7 +779,7 @@ agentSessionRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!isOwnerOrAdmin(access, userId)) throw forbidden('owner or admin role required');
+    assertProjectRole(access, 'admin', 'owner or admin role required');
 
     const { sweepZombieSessions } = await import('../pipeline/sweeper.js');
     const result = await sweepZombieSessions(new Date(), { projectId });
@@ -802,7 +800,7 @@ agentSessionRoutes.post(
     if (!project) throw notFound('project not found');
 
     const access = await loadProjectAccess(project.id, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     const deviceId =
       (await findAvailableDeviceForProject(project.id)) ?? project.defaultDeviceId;
@@ -865,7 +863,7 @@ agentSessionRoutes.post(
     if (!existing) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(existing.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     const [updated] = await db
       .update(agentSessions)
@@ -945,30 +943,21 @@ agentSessionRoutes.get(
 
     if (projectId) {
       const access = await loadProjectAccess(projectId, userId);
-      if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+      if (!access.role) throw forbidden('not a project member');
       conditions.push(eq(agentSessions.projectId, projectId));
     } else if (deviceId) {
       conditions.push(eq(agentSessions.deviceId, deviceId));
     } else {
-      // Cross-project view: restrict to caller-visible projects
-      // (owned + member). Pattern mirrors packages/core/src/chat-logs/routes.ts.
-      const visible = await db
-        .selectDistinct({ id: projects.id })
-        .from(projects)
-        .leftJoin(projectMembers, eq(projectMembers.projectId, projects.id))
-        .where(sql`${projects.ownerId} = ${userId} OR ${projectMembers.userId} = ${userId}`);
+      // Cross-project view: restrict to caller-visible projects (explicit
+      // membership of any role, or org owner/admin).
+      const visible = await loadVisibleProjectIds(userId);
 
       if (visible.length === 0) {
         setTotalCount(c, 0);
         return c.json([]);
       }
 
-      conditions.push(
-        inArray(
-          agentSessions.projectId,
-          visible.map((v) => v.id),
-        ),
-      );
+      conditions.push(inArray(agentSessions.projectId, visible));
     }
 
     if (status) conditions.push(eq(agentSessions.status, status));
@@ -1038,7 +1027,7 @@ agentSessionRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(input.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     // Chat bootstrap: an EMPTY session row. The first turn is dispatched later
     // through `POST /send` → the shared chat-turn dispatcher (which picks the
@@ -1084,7 +1073,7 @@ agentSessionRoutes.get(
     if (!row) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     return c.json(row);
   },
@@ -1119,7 +1108,14 @@ agentSessionRoutes.patch(
       }
     } else {
       const access = await loadProjectAccess(existing.projectId, userId);
-      if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+      assertProjectRole(access, 'member');
+      if (
+        existing.userId &&
+        existing.userId !== userId &&
+        !projectRoleAtLeast(access.role, 'admin')
+      ) {
+        throw forbidden('not the session owner');
+      }
     }
 
     const patchNow = new Date();
@@ -1248,9 +1244,7 @@ agentSessionRoutes.delete(
     if (!existing) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(existing.projectId, userId);
-    if (access.ownerId !== userId && access.role !== 'owner' && access.role !== 'admin') {
-      throw forbidden('insufficient permission');
-    }
+    assertProjectRole(access, 'admin', 'insufficient permission');
 
     await db.delete(agentSessions).where(eq(agentSessions.id, id));
     broadcastSession(existing, 'agent-session.deleted');
@@ -1279,7 +1273,7 @@ agentSessionRoutes.post(
     if (!existing) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(existing.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     broadcastSession(existing, `agent-session.relay.${event}`, { payload: data });
     return c.json({ relayed: true });
@@ -1307,7 +1301,7 @@ agentSessionRoutes.get(
     if (!row) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     return c.json(normalisePipelineControl(row.pipelineControl));
   },
@@ -1334,9 +1328,9 @@ agentSessionRoutes.post(
     if (!existing) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(existing.projectId, userId);
-    // Pause/resume is a privileged operation — only owner or admin role.
+    // Pause/resume is a privileged operation — effective admin only.
     // Plain members can read state but cannot mutate it.
-    if (!isOwnerOrAdmin(access, userId)) throw forbidden('owner or admin role required');
+    assertProjectRole(access, 'admin', 'owner or admin role required');
 
     const prev = existing.pipelineControl as PipelineControl | null;
     const merged = buildPipelineControl(prev, input, userId);
@@ -1396,7 +1390,7 @@ agentSessionRoutes.get(
     if (!row) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     return c.json((row.pipelineHealth as PipelineHealth | null) ?? DEFAULT_PIPELINE_HEALTH);
   },
@@ -1426,7 +1420,7 @@ agentSessionRoutes.post(
     if (!existing) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(existing.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     const merged = buildPipelineHealth(existing.pipelineHealth as PipelineHealth | null, input);
 
@@ -1463,7 +1457,7 @@ agentSessionRoutes.get(
     if (!row) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     return c.json(row.pipelineTelemetry ?? null);
   },
@@ -1490,7 +1484,7 @@ agentSessionRoutes.post(
     if (!existing) throw notFound('agent session not found');
 
     const access = await loadProjectAccess(existing.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     const [updated] = await db
       .update(agentSessions)
@@ -1536,7 +1530,9 @@ async function ensureSessionMember(sessionId: string, userId: string) {
     .limit(1);
   if (!session) throw notFound('agent session not found');
   const access = await loadProjectAccess(session.projectId, userId);
-  if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+  // Reads are project-visible: any effective role (incl. viewer) may see the
+  // session. Mutating callers must additionally gate via assertProjectRole.
+  if (!access.role) throw forbidden('not a project member');
   return { session, access };
 }
 
@@ -1580,10 +1576,10 @@ agentSessionRoutes.patch(
     const { content, expectedEditedAt } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const { session } = await ensureSessionMember(id, userId);
-    if (session.userId && session.userId !== userId) {
-      const access = await loadProjectAccess(session.projectId, userId);
-      if (!isOwnerOrAdmin(access, userId)) throw forbidden('not the session owner');
+    const { session, access } = await ensureSessionMember(id, userId);
+    assertProjectRole(access, 'member');
+    if (session.userId && session.userId !== userId && !projectRoleAtLeast(access.role, 'admin')) {
+      throw forbidden('not the session owner');
     }
 
     const turn = await findTurnInSession(id, turnId);
@@ -1654,10 +1650,10 @@ agentSessionRoutes.post(
     const { id, turnId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const { session } = await ensureSessionMember(id, userId);
-    if (session.userId && session.userId !== userId) {
-      const access = await loadProjectAccess(session.projectId, userId);
-      if (!isOwnerOrAdmin(access, userId)) throw forbidden('not the session owner');
+    const { session, access } = await ensureSessionMember(id, userId);
+    assertProjectRole(access, 'member');
+    if (session.userId && session.userId !== userId && !projectRoleAtLeast(access.role, 'admin')) {
+      throw forbidden('not the session owner');
     }
 
     if (session.status === 'running') {
@@ -1750,7 +1746,8 @@ agentSessionRoutes.post(
     const { fromTurnId, title } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const { session } = await ensureSessionMember(id, userId);
+    const { session, access } = await ensureSessionMember(id, userId);
+    assertProjectRole(access, 'member');
     const turn = await findTurnInSession(id, fromTurnId);
     if (!turn) throw notFound('turn not found');
 
@@ -1824,7 +1821,8 @@ agentSessionRoutes.post(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const { session } = await ensureSessionMember(id, userId);
+    const { session, access } = await ensureSessionMember(id, userId);
+    assertProjectRole(access, 'member');
     const messages = Array.isArray(session.messages) ? session.messages : [];
     const firstUser = messages.find((m) => {
       return !!m && typeof m === 'object' && (m as { role?: string }).role === 'user';

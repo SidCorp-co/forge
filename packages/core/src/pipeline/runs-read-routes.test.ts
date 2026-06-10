@@ -40,7 +40,13 @@ function selectWhere(): unknown {
   };
 }
 
-const selectFrom = vi.fn(() => ({ where: selectWhere }));
+// loadProjectAccess (lib/authz) runs select().from().leftJoin().leftJoin()
+// .where().limit() — route the join chain back into the same where/limit FIFO.
+const selectLeftJoin = vi.fn((): Record<string, unknown> => ({
+  leftJoin: selectLeftJoin,
+  where: selectWhere,
+}));
+const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
 
 function setupSelectChain() {
   whereThenableValues.length = 0;
@@ -95,13 +101,11 @@ function runProjectMissing() {
 }
 
 function projectAccessAsMember() {
-  selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: OTHER_USER_ID }]);
-  selectLimit.mockResolvedValueOnce([{ role: 'member' }]);
+  selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 }
 
 function projectAccessAsNonMember() {
-  selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: OTHER_USER_ID }]);
-  selectLimit.mockResolvedValueOnce([]);
+  selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
 }
 
 async function token() {

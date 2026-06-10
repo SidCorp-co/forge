@@ -5,7 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { knowledgeEdges } from '../db/schema.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
@@ -56,7 +56,7 @@ knowledgeEdgeRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     const conditions: SQL[] = [eq(knowledgeEdges.projectId, projectId)];
     if (subject) conditions.push(eq(knowledgeEdges.subject, subject));
@@ -84,9 +84,7 @@ knowledgeEdgeRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(input.projectId, userId);
-    if (access.ownerId !== userId && access.role !== 'owner' && access.role !== 'admin') {
-      throw forbidden('only project owner or admin can create edges');
-    }
+    assertProjectRole(access, 'admin', 'only a project admin can create edges');
 
     // Application-layer dedup on (project_id, subject, predicate, object, value).
     // Without this an extraction pipeline that re-runs on the same source memory
@@ -148,9 +146,7 @@ knowledgeEdgeRoutes.delete(
     if (!row) throw notFound('knowledge edge not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    if (access.ownerId !== userId && access.role !== 'owner') {
-      throw forbidden('not a project owner');
-    }
+    assertProjectRole(access, 'admin', 'only a project admin can delete edges');
 
     await db.delete(knowledgeEdges).where(eq(knowledgeEdges.id, id));
     return c.body(null, 204);

@@ -12,7 +12,9 @@ import {
   WORKING_STATUS_BY_JOB_TYPE,
 } from '../../pipeline/registry.js';
 import { type IssueRow, loadIssue, serializeWithAttachments } from './forge-issues.js';
-import { assertPrincipalIsMember, zodToMcpSchema } from './lib.js';
+import { assertPrincipalIsMember, zodToMcpSchema,
+  assertPrincipalIsWriter,
+} from './lib.js';
 import type { ContextScopedMcpToolFactory } from './lib.js';
 
 /**
@@ -62,7 +64,7 @@ export const forgeStepStartTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    await assertPrincipalIsMember(ctx.principal, input.projectId);
+    await assertPrincipalIsWriter(ctx.principal, input.projectId);
 
     const issue: IssueRow = await loadIssue(input.issueId);
     if (issue.projectId !== input.projectId) {

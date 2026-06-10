@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+- Organizations: every project now lives in an org; each user gets a personal org automatically, and team orgs share projects and integration connections
+- Org roles (owner/admin/member): org owners and admins manage every project in their org without per-project invites; plain org members still need an invite per project
+- New read-only "viewer" project role for stakeholders who should see boards, runs and sessions without being able to change anything
+- Project settings, deletion and archiving now require an org owner/admin; invited project admins manage members, labels, runners and skills
+- API tokens: the admin scope is now actually enforced for administrative actions; existing tokens keep working unchanged
+- Integration connections can now be owned by an org and shared across all of its projects (bindable only within that org)
+- New Organizations tab in Settings to create orgs and manage their members
+
 ## [0.2.12] - 2026-06-09
 
 The redesigned web app (v2) lands across Overview, Issues, issue detail, Integrations and Settings — plus agent-chat fixes, self-recovering pipelines, and auto-updating runners.

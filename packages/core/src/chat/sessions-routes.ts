@@ -5,8 +5,8 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { chatSessionSources, chatSessions } from '../db/schema.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { setTotalCount } from '../lib/pagination.js';
-import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
@@ -66,7 +66,7 @@ chatSessionRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'viewer', 'not a project member');
 
     const where = and(eq(chatSessions.projectId, projectId), eq(chatSessions.userId, userId));
 
@@ -95,7 +95,7 @@ chatSessionRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(input.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member', 'not a project member');
 
     const [inserted] = await db
       .insert(chatSessions)
@@ -128,7 +128,7 @@ chatSessionRoutes.get(
     if (row.userId && row.userId !== userId) throw forbidden('not your chat session');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'viewer', 'not a project member');
 
     return c.json(row);
   },

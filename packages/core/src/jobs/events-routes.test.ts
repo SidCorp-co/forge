@@ -59,13 +59,13 @@ const dbSelect = vi.fn(() => ({ from: selectFrom }));
 // bump) ends at .where(). Both branches exercised in dedicated tests below.
 const updateReturning = vi.fn(async () => [] as unknown[]);
 const updateWhere = vi.fn(() => {
-  const p: { returning: typeof updateReturning } & PromiseLike<unknown> = {
+  const p = {
     returning: updateReturning,
     then: (resolve: (v: unknown) => unknown) => Promise.resolve(undefined).then(resolve),
   };
-  return p;
+  return p as unknown as { returning: typeof updateReturning } & PromiseLike<unknown>;
 });
-const updateSet = vi.fn(() => ({ where: updateWhere }));
+const updateSet = vi.fn((..._args: unknown[]) => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
 vi.mock('../db/client.js', () => ({

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { RequestIdVars } from '../../src/middleware/request-id.js';
 import {
   type TestDatabase,
   createTestProject,
@@ -32,7 +33,7 @@ interface SeedJobOpts {
 
 describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
   let harness: TestDatabase;
-  let app: Hono;
+  let app: Hono<{ Variables: RequestIdVars }>;
   let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
 
   beforeAll(async () => {
@@ -55,7 +56,7 @@ describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
     const jwtMod = await import('../../src/auth/jwt.js');
     signUserToken = jwtMod.signUserToken;
 
-    app = new Hono();
+    app = new Hono<{ Variables: RequestIdVars }>();
     app.use('*', requestId());
     app.route('/api/jobs', jobRoutes);
     app.onError(errorHandler);
@@ -69,11 +70,9 @@ describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
     await truncateAll(harness.db);
   });
 
-  async function seedUserProject(role: 'owner' | 'admin' | 'member' = 'owner') {
+  async function seedUserProject(role: 'admin' | 'member' | 'viewer' = 'admin') {
     const user = await createTestUser(harness.db);
-    await harness.db.execute(
-      sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`,
-    );
+    await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
     const project = await createTestProject(harness.db, user.id);
     await createTestProjectMember(harness.db, {
       userId: user.id,
@@ -133,7 +132,7 @@ describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
   }
 
   it('returns full envelope for a job with snapshot columns populated', async () => {
-    const { user, project } = await seedUserProject('owner');
+    const { user, project } = await seedUserProject('admin');
     const systemHash = await seedPromptBlob('# PIPELINE_RULES\nbe excellent');
     const sessionUuid = randomUUID();
     const jobId = await seedJob({
@@ -188,7 +187,7 @@ describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
   });
 
   it('returns 403 when the caller is not a project member', async () => {
-    const { user: owner, project } = await seedUserProject('owner');
+    const { user: owner, project } = await seedUserProject('admin');
     const stranger = await createTestUser(harness.db);
     await harness.db.execute(
       sql`UPDATE users SET email_verified_at = now() WHERE id = ${stranger.id}`,
@@ -208,7 +207,7 @@ describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
   });
 
   it('returns 404 when the job has no snapshot (pre-W2.1.1)', async () => {
-    const { user, project } = await seedUserProject('owner');
+    const { user, project } = await seedUserProject('admin');
     const jobId = await seedJob({
       projectId: project.id,
       ownerId: user.id,
@@ -221,7 +220,7 @@ describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
   });
 
   it('returns 410 with {archived,path} when archive_path is set and snapshot is empty', async () => {
-    const { user, project } = await seedUserProject('owner');
+    const { user, project } = await seedUserProject('admin');
     const jobId = await seedJob({
       projectId: project.id,
       ownerId: user.id,
@@ -238,7 +237,7 @@ describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
   });
 
   it('redacts Authorization / X-Device-Token / Cookie headers in mcpServers', async () => {
-    const { user, project } = await seedUserProject('owner');
+    const { user, project } = await seedUserProject('admin');
     const systemHash = await seedPromptBlob('preamble');
     const auth = 'Bearer secret-token-123';
     const deviceTok = 'dt-456';
@@ -272,14 +271,14 @@ describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
     expect(raw).not.toContain('session=foo');
 
     const headers = (body as { mcpConfig: Array<{ headers: Record<string, string> }> })
-      .mcpConfig[0].headers;
+      .mcpConfig[0]!.headers;
     expect(headers.Authorization).toBe(`[REDACTED ${auth.length} chars]`);
     expect(headers['X-Device-Token']).toBe(`[REDACTED ${deviceTok.length} chars]`);
     expect(headers.Cookie).toBe(`[REDACTED ${cookie.length} chars]`);
   });
 
   it('actualUsage is null when agentSessionId is set but no usage_records match', async () => {
-    const { user, project } = await seedUserProject('owner');
+    const { user, project } = await seedUserProject('admin');
     const systemHash = await seedPromptBlob('preamble');
     const jobId = await seedJob({
       projectId: project.id,
@@ -296,7 +295,7 @@ describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
   });
 
   it('actualUsage sums usage_records rows joined by session_id::uuid = job.id', async () => {
-    const { user, project } = await seedUserProject('owner');
+    const { user, project } = await seedUserProject('admin');
     const systemHash = await seedPromptBlob('preamble');
     const jobId = await seedJob({
       projectId: project.id,
@@ -346,7 +345,7 @@ describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
   });
 
   it('returns 401 without an Authorization header', async () => {
-    const { user, project } = await seedUserProject('owner');
+    const { user, project } = await seedUserProject('admin');
     const systemHash = await seedPromptBlob('preamble');
     const jobId = await seedJob({
       projectId: project.id,
@@ -359,7 +358,7 @@ describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
   });
 
   it('returns 404 for an unknown job id', async () => {
-    const { user } = await seedUserProject('owner');
+    const { user } = await seedUserProject('admin');
     const token = await signUserToken(user.id);
     const res = await getPrompt(randomUUID(), token);
     expect(res.status).toBe(404);

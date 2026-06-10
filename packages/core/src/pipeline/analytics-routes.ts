@@ -5,6 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { activityLog, issues, jobTypes, projectMembers, projects } from '../db/schema.js';
+import { effectiveProjectRole, loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
 const badRequest = (details: unknown) =>
@@ -19,21 +20,9 @@ const notFound = (message: string) =>
 // Project-member gate for the per-project cost analytics endpoints. 404 when
 // the project does not exist so we don't leak existence to non-members.
 async function assertProjectMember(projectId: string, userId: string): Promise<void> {
-  const [project] = await db
-    .select({ ownerId: projects.ownerId })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project) throw notFound('project not found');
-
-  if (project.ownerId === userId) return;
-
-  const [member] = await db
-    .select({ userId: projectMembers.userId })
-    .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
-    .limit(1);
-  if (!member) throw forbidden('not a project member');
+  const access = await effectiveProjectRole(userId, projectId);
+  if (!access) throw notFound('project not found');
+  if (!access.role) throw forbidden('not a project member');
 }
 
 const querySchema = z.object({
@@ -51,14 +40,8 @@ const stepDurationsQuerySchema = z.object({
   step: z.enum(jobTypes).optional(),
 });
 
-async function loadVisibleProjectIds(userId: string, scopedTo?: string): Promise<string[]> {
-  const visible = await db
-    .selectDistinct({ id: projects.id })
-    .from(projects)
-    .leftJoin(projectMembers, eq(projectMembers.projectId, projects.id))
-    .where(sql`${projects.ownerId} = ${userId} OR ${projectMembers.userId} = ${userId}`);
-
-  const ids = visible.map((r) => r.id);
+async function loadVisibleProjectIdsScoped(userId: string, scopedTo?: string): Promise<string[]> {
+  const ids = await loadVisibleProjectIds(userId);
   if (!scopedTo) return ids;
   return ids.includes(scopedTo) ? [scopedTo] : [];
 }
@@ -80,7 +63,7 @@ pipelineAnalyticsRoutes.get(
     const { days, projectId } = c.req.valid('query');
     const userId = c.get('userId');
 
-    const projectIds = await loadVisibleProjectIds(userId, projectId);
+    const projectIds = await loadVisibleProjectIdsScoped(userId, projectId);
     if (projectIds.length === 0) return c.json([]);
 
     // Bucket by UTC day. The `now() - interval` cutoff is computed in SQL
@@ -128,7 +111,7 @@ pipelineAnalyticsRoutes.get(
     const { projectId } = c.req.valid('query');
     const userId = c.get('userId');
 
-    const projectIds = await loadVisibleProjectIds(userId, projectId);
+    const projectIds = await loadVisibleProjectIdsScoped(userId, projectId);
     if (projectIds.length === 0) return c.json([]);
 
     const rows = await db.execute(sql`
@@ -188,7 +171,7 @@ pipelineAnalyticsRoutes.get(
     const { days, projectId, step } = c.req.valid('query');
     const userId = c.get('userId');
 
-    const projectIds = await loadVisibleProjectIds(userId, projectId);
+    const projectIds = await loadVisibleProjectIdsScoped(userId, projectId);
     if (projectIds.length === 0) return c.json([]);
 
     const stepFilter = step ? sql`AND step = ${step}` : sql``;
@@ -277,9 +260,7 @@ projectCostAnalyticsRoutes.get(
       WHERE project_id = ${id}
         AND started_at >= now() - (${days}::int * interval '1 day')
     `);
-    const total = Number(
-      (totalRows as unknown as Array<{ total: number }>)[0]?.total ?? 0,
-    );
+    const total = Number((totalRows as unknown as Array<{ total: number }>)[0]?.total ?? 0);
 
     const byStateRows = await db.execute(sql`
       SELECT step, SUM(cost_usd)::float AS total, COUNT(*)::int AS runs
@@ -314,9 +295,9 @@ projectCostAnalyticsRoutes.get(
       };
     });
 
-    const byIssue = (
-      byIssueRows as unknown as Array<{ issue_id: string; total: number }>
-    ).map((r) => ({ issueId: r.issue_id, total: Number(r.total) }));
+    const byIssue = (byIssueRows as unknown as Array<{ issue_id: string; total: number }>).map(
+      (r) => ({ issueId: r.issue_id, total: Number(r.total) }),
+    );
 
     return c.json({ total, byState, byIssue });
   },
@@ -366,9 +347,9 @@ projectCostAnalyticsRoutes.get(
       ORDER BY ${activityLog.createdAt} ASC
     `);
 
-    const daily = (
-      dailyRows as unknown as Array<{ date: string; cost: number; runs: number }>
-    ).map((r) => ({ date: r.date, cost: Number(r.cost), runs: Number(r.runs) }));
+    const daily = (dailyRows as unknown as Array<{ date: string; cost: number; runs: number }>).map(
+      (r) => ({ date: r.date, cost: Number(r.cost), runs: Number(r.runs) }),
+    );
 
     const annotations = (
       annotationRows as unknown as Array<{ ts: string | Date; message: string }>

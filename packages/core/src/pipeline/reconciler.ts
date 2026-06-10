@@ -46,9 +46,9 @@ export async function runReconcilerOnce(): Promise<{ rescued: number; stale: num
     id: string;
     project_id: string;
     status: string;
-    owner_id: string | null;
+    created_by: string | null;
   }>(sql`
-    SELECT i.id, i.project_id, i.status, p.owner_id
+    SELECT i.id, i.project_id, i.status, p.created_by
     FROM issues i
     INNER JOIN projects p ON p.id = i.project_id
     WHERE i.status IN (${statusList})
@@ -63,7 +63,7 @@ export async function runReconcilerOnce(): Promise<{ rescued: number; stale: num
 
   for (const row of stuck) {
     try {
-      const actorId = row.owner_id ?? '<reconciler>';
+      const actorId = row.created_by ?? '<reconciler>';
       await reEnqueueForIssue({
         projectId: row.project_id,
         issueId: row.id,

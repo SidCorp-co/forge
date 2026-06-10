@@ -13,6 +13,7 @@ const queue: unknown[] = [];
 // biome-ignore lint/suspicious/noExplicitAny: chainable mock proxy
 const chain: any = {};
 chain.from = () => chain;
+chain.leftJoin = () => chain;
 chain.where = () => chain;
 chain.orderBy = () => chain;
 chain.limit = () => chain;
@@ -68,6 +69,8 @@ const fakeDevice = {
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -88,7 +91,7 @@ const ctx = {
 // owns the project that short-circuits as both member + admin without a
 // `projectMembers` lookup.
 function pushMemberOk() {
-  queue.push([{ ownerId: OWNER_ID }]);
+  queue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 }
 
 beforeEach(() => {

@@ -32,7 +32,7 @@ vi.mock('../queue/boss.js', () => ({
 }));
 
 // Manual fetch mock
-const fetchMock = vi.fn(async () => new Response('', { status: 200 }));
+const fetchMock = vi.fn(async (..._args: unknown[]) => new Response('', { status: 200 }));
 vi.stubGlobal('fetch', fetchMock);
 
 const { enqueueDelivery, handleDelivery } = await import('./outbound.js');

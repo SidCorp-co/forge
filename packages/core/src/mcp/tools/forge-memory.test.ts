@@ -12,7 +12,10 @@ vi.mock('../../config/env.js', () => ({
 
 const limit = vi.fn();
 const where = vi.fn(() => ({ limit }));
-const from = vi.fn(() => ({ where }));
+// lib/authz.ts effectiveProjectRole chains TWO leftJoins before where().limit(1).
+const leftJoin2 = vi.fn(() => ({ where }));
+const leftJoin = vi.fn(() => ({ leftJoin: leftJoin2, where }));
+const from = vi.fn(() => ({ where, leftJoin }));
 const select = vi.fn(() => ({ from }));
 
 vi.mock('../../db/client.js', () => ({
@@ -74,6 +77,8 @@ const fakeDevice = {
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -108,7 +113,7 @@ describe('forge_memory.write tool', () => {
 
   it('writes when the device owner is a project member', async () => {
     // 1st db.select: project ownership lookup → owner matches.
-    limit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    limit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     runMemoryWriteMock.mockResolvedValueOnce({
       id: 'm-1',
       embeddedAt: new Date('2026-05-28T00:00:00Z'),
@@ -148,7 +153,7 @@ describe('forge_memory.write tool', () => {
   });
 
   it('surfaces embeddings outage with UNAVAILABLE prefix', async () => {
-    limit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    limit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     runMemoryWriteMock.mockRejectedValueOnce(
       new EmbeddingUnavailableError('breaker open until 2026'),
     );
@@ -194,7 +199,7 @@ describe('forge_memory.get tool', () => {
   });
 
   it('returns rows + total when device owner is a member', async () => {
-    limit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    limit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     runMemoryGetMock.mockResolvedValueOnce({
       rows: [{ id: 'm-1', projectId: PROJECT_ID, source: 'step_handoff' }],
       total: 1,
@@ -226,7 +231,7 @@ describe('forge_memory.get tool', () => {
 
 describe('forge_memory.delete tool', () => {
   it('returns {deleted:true} when a row was removed', async () => {
-    limit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    limit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     deleteMemoryMock.mockResolvedValueOnce(1);
 
     const tool = forgeMemoryDeleteTool(fakeDevice);
@@ -245,7 +250,7 @@ describe('forge_memory.delete tool', () => {
   });
 
   it('returns {deleted:false} when no row matched (idempotent)', async () => {
-    limit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    limit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     deleteMemoryMock.mockResolvedValueOnce(0);
 
     const tool = forgeMemoryDeleteTool(fakeDevice);
@@ -258,9 +263,7 @@ describe('forge_memory.delete tool', () => {
   });
 
   it('rejects non-member device with FORBIDDEN', async () => {
-    limit
-      .mockResolvedValueOnce([{ ownerId: 'other' }])
-      .mockResolvedValueOnce([]);
+    limit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
 
     const tool = forgeMemoryDeleteTool(fakeDevice);
     await expect(
@@ -281,7 +284,7 @@ describe('forge_memory.search tool (regression after enum + description change)'
   });
 
   it('still routes to runMemorySearch with the parsed input', async () => {
-    limit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    limit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     runMemorySearchMock.mockResolvedValueOnce({ hits: [], model: 'gemini-embedding', took_ms: 1 });
 
     const tool = forgeMemorySearchTool(fakeDevice);

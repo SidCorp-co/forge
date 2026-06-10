@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { commentAttachments, comments, issues } from '../db/schema.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AnyAuthVars, requireAnyAuth } from '../middleware/require-any-auth.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import { AttachmentError, persistCommentAttachment } from './attachment-service.js';
@@ -75,7 +75,7 @@ commentUploadRoutes.post(
     if (!comment) throw notFound('comment not found');
 
     const access = await loadProjectAccess(comment.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     const body = await c.req.parseBody();
     const file = body['file'];
@@ -127,7 +127,7 @@ commentUploadRoutes.get(
     if (!row) throw notFound('attachment not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     let buffer: Buffer;
     try {

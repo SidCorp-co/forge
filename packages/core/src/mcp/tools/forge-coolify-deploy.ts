@@ -39,6 +39,7 @@ import {
   assertPrincipalIsMember,
   resolveProjectIdFromSlug,
   zodToMcpSchema,
+  assertPrincipalIsWriter,
 } from './lib.js';
 
 const inputSchema = z
@@ -131,7 +132,7 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = ({
 
       case 'deploy': {
         const projectId = await resolveProjectId(input, projectSlug);
-        await assertPrincipalIsMember(principal, projectId);
+        await assertPrincipalIsWriter(principal, projectId);
 
         // issueId present → run-tracked deploy (unchanged): resolve the issue's
         // latest run and dispatch via the shared release path.

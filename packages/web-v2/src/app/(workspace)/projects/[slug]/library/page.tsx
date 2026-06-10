@@ -43,6 +43,6 @@ export default function ProjectLibraryPage() {
     );
   }
 
-  const canManage = project.role === "owner" || project.role === "admin";
+  const canManage = project.role === "admin";
   return <LibraryScreen scope={{ projectId: project.id, canManage }} />;
 }

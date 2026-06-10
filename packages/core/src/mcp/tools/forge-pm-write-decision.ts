@@ -117,7 +117,7 @@ export async function pmWriteDecisionHandler(
   if (input.escalate) {
     const escalate = input.escalate;
     const [project] = await db
-      .select({ ownerId: projects.ownerId })
+      .select({ createdBy: projects.createdBy })
       .from(projects)
       .where(eq(projects.id, input.projectId))
       .limit(1);
@@ -138,7 +138,7 @@ export async function pmWriteDecisionHandler(
     const [insertedNotification] = await db
       .insert(notifications)
       .values({
-        userId: project.ownerId,
+        userId: project.createdBy,
         projectId: input.projectId,
         type: 'pm_escalation',
         title,
@@ -151,7 +151,7 @@ export async function pmWriteDecisionHandler(
 
     await hooks.emit('notificationCreated', {
       notificationId: insertedNotification.id,
-      userId: project.ownerId,
+      userId: project.createdBy,
       projectId: input.projectId,
       type: 'pm_escalation',
       title,

@@ -5,8 +5,8 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issueLabels, labels } from '../db/schema.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { loadProjectAccess } from '../lib/project-access.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
 const colorRegex = /^#[0-9a-f]{6}$/i;
@@ -55,12 +55,7 @@ labelProjectRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (access.ownerId !== userId && access.role !== 'owner') {
-      throw new HTTPException(403, {
-        message: 'not a project owner',
-        cause: { code: 'FORBIDDEN' },
-      });
-    }
+    assertProjectRole(access, 'admin', 'not a project admin');
 
     try {
       const [inserted] = await db.insert(labels).values({ projectId, name, color }).returning({
@@ -91,12 +86,7 @@ labelProjectRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) {
-      throw new HTTPException(403, {
-        message: 'not a project member',
-        cause: { code: 'FORBIDDEN' },
-      });
-    }
+    assertProjectRole(access, 'viewer', 'not a project member');
 
     const rows = await db
       .select({
@@ -141,12 +131,7 @@ labelRoutes.patch(
 
     const label = await loadLabel(id);
     const access = await loadProjectAccess(label.projectId, userId);
-    if (access.ownerId !== userId && access.role !== 'owner') {
-      throw new HTTPException(403, {
-        message: 'not a project owner',
-        cause: { code: 'FORBIDDEN' },
-      });
-    }
+    assertProjectRole(access, 'admin', 'not a project admin');
 
     const updates: Record<string, unknown> = {};
     if (patch.name !== undefined) updates.name = patch.name;
@@ -182,12 +167,7 @@ labelRoutes.delete(
 
     const label = await loadLabel(id);
     const access = await loadProjectAccess(label.projectId, userId);
-    if (access.ownerId !== userId && access.role !== 'owner') {
-      throw new HTTPException(403, {
-        message: 'not a project owner',
-        cause: { code: 'FORBIDDEN' },
-      });
-    }
+    assertProjectRole(access, 'admin', 'not a project admin');
 
     const [attached] = await db
       .select({ n: count() })

@@ -89,7 +89,7 @@ describe('ISS-162 stateless-gates picker E2E', () => {
       INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
       VALUES (
         ${id}, ${projectId}, ${issSeq}, ${`Issue ${issSeq}`}, ${status}, ${priority},
-        (SELECT owner_id FROM projects WHERE id = ${projectId})
+        (SELECT created_by FROM projects WHERE id = ${projectId})
       )
     `);
     return id;
@@ -160,7 +160,7 @@ describe('ISS-162 stateless-gates picker E2E', () => {
         ${id}, ${projectId}, ${args.issueId ?? null}, ${type}, ${status},
         ${args.runnerId ?? null}, ${args.agentSessionId ?? null}, ${pipelineRunId},
         '{}'::jsonb, ${queuedAt.toISOString()},
-        (SELECT owner_id FROM projects WHERE id = ${projectId})
+        (SELECT created_by FROM projects WHERE id = ${projectId})
       )
     `);
     return id;

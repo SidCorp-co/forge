@@ -31,14 +31,14 @@ vi.mock('../auth/deviceToken.js', () => ({
 const insertValues = vi.fn(async () => []);
 const dbInsert = vi.fn(() => ({ values: insertValues }));
 
-const updateReturning = vi.fn(async () => [{ id: 'dev-1' }]);
+const updateReturning = vi.fn(async (): Promise<Record<string, unknown>[]> => [{ id: 'dev-1' }]);
 const updateWhere = vi.fn(() => ({ returning: updateReturning, then: undefined }));
 const updateSet = vi.fn(() => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn();
-const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
+const selectWhere = vi.fn((): unknown => ({ limit: selectLimit, orderBy: selectOrderBy }));
 const selectInnerJoin = vi.fn(() => ({ where: selectWhere }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, innerJoin: selectInnerJoin }));
 const dbSelect = vi.fn(() => ({ from: selectFrom }));
@@ -71,12 +71,22 @@ vi.mock('../db/client.js', () => ({
 }));
 
 // Bypass auth for user-route tests via loadProjectAccess mock + assertEmailVerified noop.
-const loadProjectAccess = vi.fn(async () => ({
-  projectId: 'proj-1',
-  ownerId: 'u-1',
-  role: 'owner',
-}));
-vi.mock('../lib/project-access.js', () => ({
+type MockAccess = {
+  projectId: string;
+  orgId: string;
+  role: 'admin' | 'member' | 'viewer' | null;
+  orgRole: 'owner' | 'admin' | 'member' | null;
+};
+const loadProjectAccess = vi.fn(
+  async (..._args: unknown[]): Promise<MockAccess> => ({
+    projectId: 'proj-1',
+    orgId: 'org-1',
+    role: 'admin',
+    orgRole: 'owner',
+  }),
+);
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
   loadProjectAccess: (a: string, b: string) => loadProjectAccess(a, b),
 }));
 
@@ -152,7 +162,7 @@ describe('POST /api/devices/pair', () => {
       }),
     );
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.deviceId).toBe('dev-new');
     expect(body.deviceToken).toBe('tok');
     expect(body.projectId).toBe('proj-1');
@@ -178,7 +188,7 @@ describe('POST /api/projects/:id/devices/pairing-codes', () => {
       }),
     );
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>;
     expect(typeof body.code).toBe('string');
     expect(body.code).toMatch(/^[A-Z0-9]{2}-[A-Z0-9]{4}-[A-Z0-9]{4}$/);
     expect(typeof body.expiresAt).toBe('string');
@@ -188,8 +198,9 @@ describe('POST /api/projects/:id/devices/pairing-codes', () => {
   it('returns 403 for non-members', async () => {
     loadProjectAccess.mockResolvedValueOnce({
       projectId: 'proj-1',
-      ownerId: 'someone-else',
+      orgId: 'org-1',
       role: null,
+      orgRole: null,
     });
     const app = buildApp();
     const res = await app.fetch(
@@ -234,7 +245,7 @@ describe('POST /api/devices/heartbeat', () => {
       }),
     );
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.ok).toBe(true);
     expect(typeof body.serverTime).toBe('string');
     expect(updateSet).toHaveBeenCalled();

@@ -9,7 +9,7 @@ vi.mock('../db/client.js', () => ({
   db: { select: dbSelect },
 }));
 
-const publishSpy = vi.fn(() => 0);
+const publishSpy = vi.fn((..._args: unknown[]) => 0);
 vi.mock('../ws/server.js', () => ({
   roomManager: { publish: publishSpy },
 }));

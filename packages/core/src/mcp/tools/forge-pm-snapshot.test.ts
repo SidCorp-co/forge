@@ -40,6 +40,8 @@ const fakeDevice = {
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -63,7 +65,7 @@ beforeEach(() => {
 describe('forge_pm.snapshot', () => {
   it('rejects non-member with FORBIDDEN', async () => {
     const tool = forgePmSnapshotTool(ctx);
-    queue.push([{ ownerId: 'other' }]); // project lookup
+    queue.push([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // project lookup
     queue.push([]); // no member row
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
   });
@@ -76,7 +78,7 @@ describe('forge_pm.snapshot', () => {
   it('returns digest with expected shape under 2KB', async () => {
     const tool = forgePmSnapshotTool(ctx);
     queue.push(
-      [{ ownerId: OWNER_ID }], // assertDeviceOwnerIsMember: project (owner match)
+      [{ orgId: 'org-1', memberRole: 'member', orgRole: null }], // assertDeviceOwnerIsMember: project (owner match)
       [
         // countsByStatus
         { status: 'open', n: 3 },

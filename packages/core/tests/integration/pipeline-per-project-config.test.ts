@@ -134,7 +134,7 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     await createTestProjectMember(harness.db, {
       userId: owner.id,
       projectId: project.id,
-      role: 'owner',
+      role: 'admin',
     });
 
     const skillIdByName = new Map<string, string>();

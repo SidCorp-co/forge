@@ -93,7 +93,7 @@ describe('ISS-276 comment mentions', () => {
       await createTestProjectMember(harness.db, {
         userId: u.id,
         projectId: project.id,
-        role: u.id === owner.id ? 'owner' : 'member',
+        role: u.id === owner.id ? 'admin' : 'member',
       });
     }
     const issueRows = await harness.db.execute<{ id: string }>(sql`

@@ -47,7 +47,8 @@ vi.mock('../db/client.js', () => ({
 }));
 
 const projectAccess = vi.fn();
-vi.mock('../lib/project-access.js', () => ({
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
   loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
 }));
 
@@ -99,6 +100,7 @@ describe('GET /api/chat-logs', () => {
 
   it('200 across visible projects when projectSlug omitted', async () => {
     authVerified();
+    queryQueue.push([{ id: 'p-a' }, { id: 'p-b' }]); // loadVisibleProjectIds
     queryQueue.push([{ slug: 'alpha' }, { slug: 'beta' }]); // visible projects
     queryQueue.push([
       { id: LOG_ID, projectSlug: 'alpha', query: 'q1', reply: 'r1' },
@@ -130,7 +132,7 @@ describe('GET /api/chat-logs/:id', () => {
     authVerified();
     queryQueue.push([{ id: LOG_ID, projectSlug: SLUG, query: 'q', reply: 'r' }]); // log row
     queryQueue.push([{ id: PROJECT_ID }]); // resolveProjectIdBySlug
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'member' });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'member', orgRole: null });
 
     const res = await buildApp().request(`/api/chat-logs/${LOG_ID}`, {
       headers: { authorization: `Bearer ${await token()}` },
@@ -146,7 +148,7 @@ describe('PATCH /api/chat-logs/:id', () => {
     authVerified();
     queryQueue.push([{ id: LOG_ID, projectSlug: SLUG }]);
     queryQueue.push([{ id: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: 'x', role: 'member' });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'member', orgRole: null });
 
     const res = await buildApp().request(`/api/chat-logs/${LOG_ID}`, {
       method: 'PATCH',
@@ -160,7 +162,7 @@ describe('PATCH /api/chat-logs/:id', () => {
     authVerified();
     queryQueue.push([{ id: LOG_ID, projectSlug: SLUG }]);
     queryQueue.push([{ id: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'owner' });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'admin', orgRole: 'owner' });
     queryQueue.push([{ id: LOG_ID, qaRating: 'good' }]); // update returning
 
     const res = await buildApp().request(`/api/chat-logs/${LOG_ID}`, {

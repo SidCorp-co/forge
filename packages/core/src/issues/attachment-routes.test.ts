@@ -24,7 +24,9 @@ const selectListWhere = vi.fn(() => ({ orderBy: selectOrderBy }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({
   where: (...args: unknown[]) => {
-    return { limit: selectLimit, orderBy: selectOrderBy, ...selectWhere(...args), ...selectListWhere(...args) };
+    selectWhere(...(args as []));
+    selectListWhere(...(args as []));
+    return { limit: selectLimit, orderBy: selectOrderBy };
   },
   innerJoin: selectInnerJoin,
 }));
@@ -42,7 +44,8 @@ vi.mock('../db/client.js', () => ({
 }));
 
 const projectAccess = vi.fn();
-vi.mock('../lib/project-access.js', () => ({
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
   loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
 }));
 
@@ -57,7 +60,7 @@ vi.mock('../storage/index.js', async () => {
   };
 });
 
-const safeRecordActivityMock = vi.fn(async () => undefined);
+const safeRecordActivityMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('../pipeline/activity.js', () => ({
   safeRecordActivity: (...args: unknown[]) => safeRecordActivityMock(...args),
 }));
@@ -87,7 +90,7 @@ function buildApp() {
   app.use('*', requestId());
   app.route('/api/issues', issueAttachmentRoutes);
   app.route('/api/attachments', attachmentRoutes);
-  app.onError(errorHandler);
+  app.onError(errorHandler as unknown as Parameters<typeof app.onError>[0]);
   return app;
 }
 
@@ -143,7 +146,7 @@ describe('POST /api/issues/:id/attachments', () => {
 
   it('403 when not a project member', async () => {
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: OTHER_USER, role: null });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: null, orgRole: null });
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/attachments`, {
       method: 'POST',
       headers: { authorization: `Bearer ${await userJwt()}` },
@@ -156,8 +159,9 @@ describe('POST /api/issues/:id/attachments', () => {
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: USER_ID,
-      role: 'owner',
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
     });
     const fd = new FormData();
     fd.append('file', new File(['x'], 'evil.exe', { type: 'application/x-msdownload' }));
@@ -175,8 +179,9 @@ describe('POST /api/issues/:id/attachments', () => {
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: USER_ID,
-      role: 'owner',
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
     });
     const fd = new FormData();
     fd.append('file', new File([''], 'pic.png', { type: 'image/png' }));
@@ -192,8 +197,9 @@ describe('POST /api/issues/:id/attachments', () => {
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: USER_ID,
-      role: 'owner',
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
     });
     storagePut.mockResolvedValueOnce({ path: '/tmp/issues/x/y.png' });
     insertReturning.mockResolvedValueOnce([
@@ -231,8 +237,9 @@ describe('POST /api/issues/:id/attachments', () => {
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: USER_ID,
-      role: 'owner',
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
     });
     storagePut.mockResolvedValueOnce({ path: '/tmp/issues/x/y.png' });
     insertReturning.mockResolvedValueOnce([
@@ -266,8 +273,9 @@ describe('POST /api/issues/:id/attachments', () => {
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: USER_ID,
-      role: 'owner',
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
     });
     storagePut.mockResolvedValueOnce({ path: '/tmp/issues/x/y.png' });
     insertReturning.mockResolvedValueOnce([
@@ -310,8 +318,9 @@ describe('GET /api/issues/:id/attachments', () => {
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: USER_ID,
-      role: 'owner',
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
     });
     selectOrderBy.mockResolvedValueOnce([
       {
@@ -330,7 +339,7 @@ describe('GET /api/issues/:id/attachments', () => {
     expect(res.status).toBe(200);
     const json = (await res.json()) as Array<{ id: string; url: string }>;
     expect(json).toHaveLength(1);
-    expect(json[0].url).toBe(`/api/attachments/${ATT_ID}/download`);
+    expect(json[0]?.url).toBe(`/api/attachments/${ATT_ID}/download`);
   });
 });
 
@@ -347,8 +356,9 @@ describe('GET /api/attachments/:id/download', () => {
     ]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: USER_ID,
-      role: 'owner',
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
     });
     storageGet.mockResolvedValueOnce(Buffer.from([1, 2, 3]));
     const res = await buildApp().request(`/api/attachments/${ATT_ID}/download`, {
@@ -373,8 +383,9 @@ describe('GET /api/attachments/:id/download', () => {
     ]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: USER_ID,
-      role: 'owner',
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
     });
     storageGet.mockRejectedValueOnce(Object.assign(new Error('enoent'), { code: 'ENOENT' }));
     const res = await buildApp().request(`/api/attachments/${ATT_ID}/download`, {
@@ -398,8 +409,9 @@ describe('DELETE /api/attachments/:id', () => {
     ]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: OTHER_USER,
+      orgId: 'org-1',
       role: 'member',
+      orgRole: null,
     });
     storageDelete.mockResolvedValueOnce(undefined);
     const res = await buildApp().request(`/api/attachments/${ATT_ID}`, {
@@ -427,8 +439,9 @@ describe('DELETE /api/attachments/:id', () => {
     ]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: USER_ID,
-      role: 'owner',
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
     });
     storageDelete.mockResolvedValueOnce(undefined);
     const res = await buildApp().request(`/api/attachments/${ATT_ID}`, {
@@ -451,8 +464,9 @@ describe('DELETE /api/attachments/:id', () => {
     ]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: OTHER_USER,
+      orgId: 'org-1',
       role: 'member',
+      orgRole: null,
     });
     const res = await buildApp().request(`/api/attachments/${ATT_ID}`, {
       method: 'DELETE',

@@ -12,24 +12,21 @@ import {
   projects,
   users,
 } from '../db/schema.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { sendInvitationEmail } from './invitation-email.js';
 import { issueInvitationToken } from './invitation-token.js';
 
-// Subset of projectMemberRoles usable as invite target / role assignment.
-// 'owner' is reserved for project creation / dedicated transfer flow.
-const assignableRoles = projectMemberRoles.filter((r) => r !== 'owner') as Array<
-  Exclude<(typeof projectMemberRoles)[number], 'owner'>
->;
-
+// Every project role is assignable (admin|member|viewer) — there is no
+// project 'owner' anymore; the org tier carries ownership.
 const inviteSchema = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email().max(254)),
-  role: z.enum(assignableRoles as [string, ...string[]]),
+  role: z.enum(projectMemberRoles),
 });
 
 const patchRoleSchema = z.object({
-  role: z.enum(assignableRoles as [string, ...string[]]),
+  role: z.enum(projectMemberRoles),
 });
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
@@ -53,31 +50,6 @@ const notFound = (code = 'NOT_FOUND', message = 'not found') =>
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
-async function loadProjectAndCallerRole(projectId: string, userId: string) {
-  const [project] = await db
-    .select({ id: projects.id, name: projects.name, ownerId: projects.ownerId })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project) throw notFound('NOT_FOUND', 'project not found');
-
-  const [member] = await db
-    .select({ role: projectMembers.role })
-    .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
-    .limit(1);
-
-  return { project, role: member?.role ?? null };
-}
-
-function isOwner(role: string | null, project: { ownerId: string }, userId: string) {
-  return role === 'owner' || project.ownerId === userId;
-}
-
-function isOwnerOrAdmin(role: string | null, project: { ownerId: string }, userId: string) {
-  return isOwner(role, project, userId) || role === 'admin';
-}
-
 export const memberRoutes = new Hono<{ Variables: AuthVars }>();
 
 memberRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -91,8 +63,8 @@ memberRoutes.get(
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const { project, role } = await loadProjectAndCallerRole(projectId, userId);
-    if (!role && project.ownerId !== userId) throw forbidden('not a project member');
+    const access = await loadProjectAccess(projectId, userId);
+    if (!access.role) throw forbidden('not a project member');
 
     const rows = await db
       .select({
@@ -118,10 +90,8 @@ memberRoutes.get(
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const { project, role } = await loadProjectAndCallerRole(projectId, userId);
-    if (!isOwnerOrAdmin(role, project, userId)) {
-      throw forbidden('requires owner or admin');
-    }
+    const access = await loadProjectAccess(projectId, userId);
+    assertProjectRole(access, 'admin', 'requires project admin');
 
     const rows = await db
       .select({
@@ -140,9 +110,7 @@ memberRoutes.get(
     // Never leak `token` (the accept secret / PK). Surface an `expired` flag so
     // the UI can hint at stale invites that are still cancellable.
     const now = Date.now();
-    return c.json(
-      rows.map((r) => ({ ...r, expired: new Date(r.expiresAt).getTime() < now })),
-    );
+    return c.json(rows.map((r) => ({ ...r, expired: new Date(r.expiresAt).getTime() < now })));
   },
 );
 
@@ -158,14 +126,18 @@ memberRoutes.post(
     const { projectId } = c.req.valid('param');
     const { email, role } = c.req.valid('json') as {
       email: string;
-      role: (typeof assignableRoles)[number];
+      role: (typeof projectMemberRoles)[number];
     };
     const inviterId = c.get('userId');
 
-    const { project, role: callerRole } = await loadProjectAndCallerRole(projectId, inviterId);
-    if (!isOwnerOrAdmin(callerRole, project, inviterId)) {
-      throw forbidden('requires owner or admin');
-    }
+    const access = await loadProjectAccess(projectId, inviterId);
+    assertProjectRole(access, 'admin', 'requires project admin');
+    const [project] = await db
+      .select({ name: projects.name })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    if (!project) throw notFound('NOT_FOUND', 'project not found');
 
     const [inviter] = await db
       .select({ email: users.email })
@@ -231,13 +203,11 @@ memberRoutes.patch(
   }),
   async (c) => {
     const { projectId, userId: targetUserId } = c.req.valid('param');
-    const { role } = c.req.valid('json') as { role: (typeof assignableRoles)[number] };
+    const { role } = c.req.valid('json') as { role: (typeof projectMemberRoles)[number] };
     const callerId = c.get('userId');
 
-    const { project, role: callerRole } = await loadProjectAndCallerRole(projectId, callerId);
-    if (!isOwner(callerRole, project, callerId)) {
-      throw forbidden('not a project owner');
-    }
+    const access = await loadProjectAccess(projectId, callerId);
+    assertProjectRole(access, 'admin', 'requires project admin');
 
     const [target] = await db
       .select({ role: projectMembers.role })
@@ -245,13 +215,6 @@ memberRoutes.patch(
       .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, targetUserId)))
       .limit(1);
     if (!target) throw notFound('NOT_FOUND', 'membership not found');
-
-    if (target.role === 'owner' || project.ownerId === targetUserId) {
-      throw new HTTPException(409, {
-        message: 'cannot change owner role',
-        cause: { code: 'OWNER_ROLE_IMMUTABLE', hint: 'transfer ownership first' },
-      });
-    }
 
     const [updated] = await db
       .update(projectMembers)
@@ -282,10 +245,8 @@ memberRoutes.delete(
     const { email } = c.req.valid('query');
     const callerId = c.get('userId');
 
-    const { project, role: callerRole } = await loadProjectAndCallerRole(projectId, callerId);
-    if (!isOwnerOrAdmin(callerRole, project, callerId)) {
-      throw forbidden('requires owner or admin');
-    }
+    const access = await loadProjectAccess(projectId, callerId);
+    assertProjectRole(access, 'admin', 'requires project admin');
 
     const deleted = await db
       .delete(projectInvitations)
@@ -297,7 +258,8 @@ memberRoutes.delete(
         ),
       )
       .returning({ token: projectInvitations.token });
-    if (deleted.length === 0) throw notFound('INVITATION_NOT_FOUND', 'pending invitation not found');
+    if (deleted.length === 0)
+      throw notFound('INVITATION_NOT_FOUND', 'pending invitation not found');
 
     return c.body(null, 204);
   },
@@ -312,10 +274,10 @@ memberRoutes.delete(
     const { projectId, userId: targetUserId } = c.req.valid('param');
     const callerId = c.get('userId');
 
-    const { project, role: callerRole } = await loadProjectAndCallerRole(projectId, callerId);
+    const access = await loadProjectAccess(projectId, callerId);
     const selfLeave = targetUserId === callerId;
-    if (!selfLeave && !isOwner(callerRole, project, callerId)) {
-      throw forbidden('not a project owner');
+    if (!selfLeave) {
+      assertProjectRole(access, 'admin', 'requires project admin');
     }
 
     const [target] = await db
@@ -324,13 +286,6 @@ memberRoutes.delete(
       .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, targetUserId)))
       .limit(1);
     if (!target) throw notFound('NOT_FOUND', 'membership not found');
-
-    if (target.role === 'owner' || project.ownerId === targetUserId) {
-      throw new HTTPException(409, {
-        message: 'cannot remove project owner',
-        cause: { code: 'OWNER_REMOVAL_BLOCKED', hint: 'transfer ownership first' },
-      });
-    }
 
     await db
       .delete(projectMembers)

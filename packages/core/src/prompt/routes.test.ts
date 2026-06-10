@@ -13,7 +13,10 @@ vi.mock('../config/env.js', () => ({
 const limitResults: unknown[][] = [];
 const limit = vi.fn(() => Promise.resolve(limitResults.shift() ?? []));
 const where = vi.fn(() => ({ limit }));
-const from = vi.fn(() => ({ where }));
+// loadProjectAccess (lib/authz) runs select().from().leftJoin().leftJoin()
+// .where().limit() — route the join chain back into the same where/limit FIFO.
+const leftJoin = vi.fn((): Record<string, unknown> => ({ leftJoin, where }));
+const from = vi.fn(() => ({ where, leftJoin }));
 
 vi.mock('../db/client.js', () => ({
   db: { select: vi.fn(() => ({ from })) },
@@ -28,7 +31,7 @@ function buildApp() {
   const app = new Hono();
   app.use('*', requestId());
   app.route('/api/prompts', promptRoutes);
-  app.onError(errorHandler);
+  app.onError(errorHandler as unknown as Parameters<typeof app.onError>[0]);
   return app;
 }
 
@@ -42,14 +45,16 @@ async function authHeader(): Promise<string> {
   return `Bearer ${token}`;
 }
 
-// Queue the 3 selects done in the auth + project-access path.
-// 1) assertEmailVerified — users-by-id        → [{ emailVerifiedAt }]
-// 2) loadProjectAccess   — projects           → [{ id, ownerId }]
-// 3) loadProjectAccess   — project_members    → [{ role }] (or empty for owner)
+// Queue the 2 selects done in the auth + project-access path.
+// 1) assertEmailVerified — users-by-id → [{ emailVerifiedAt }]
+// 2) loadProjectAccess   — joined row  → [{ orgId, memberRole, orgRole }]
 function queueAuth(opts?: { asMember?: boolean }) {
   limitResults.push([{ emailVerifiedAt: NOW }]);
-  limitResults.push([{ id: PROJECT_ID, ownerId: opts?.asMember ? '99' : USER_ID }]);
-  limitResults.push(opts?.asMember ? [{ role: 'admin' }] : []);
+  limitResults.push([
+    opts?.asMember
+      ? { orgId: 'org-1', memberRole: 'admin', orgRole: null }
+      : { orgId: 'org-1', memberRole: null, orgRole: 'owner' },
+  ]);
 }
 
 beforeEach(() => {
@@ -74,7 +79,7 @@ describe('POST /api/prompts/preview', () => {
       body: JSON.stringify({ projectId: PROJECT_ID, state: 'code' }),
     });
     expect(res.status).toBe(200);
-    const data = await res.json();
+    const data = (await res.json()) as Record<string, unknown>;
     expect(data.systemPrompt).toContain('Pipeline Rules');
     expect(data.systemPrompt).toContain('baseBranch: main');
     expect(data.userPrompt).toContain('/forge-code preview-no-issue');
@@ -108,10 +113,10 @@ describe('POST /api/prompts/preview', () => {
       }),
     });
     expect(res.status).toBe(200);
-    const data = await res.json();
+    const data = (await res.json()) as Record<string, unknown>;
     expect(data.systemPrompt).toBe('ONLY THIS RULE.');
     expect(data.systemPrompt).not.toContain('Pipeline Rules');
-    expect(data.resolvedFlags.systemPromptMode).toBe('replace');
+    expect((data.resolvedFlags as Record<string, unknown>).systemPromptMode).toBe('replace');
   });
 
   it('append mode adds extras after the static prefix', async () => {
@@ -134,15 +139,14 @@ describe('POST /api/prompts/preview', () => {
       }),
     });
     expect(res.status).toBe(200);
-    const data = await res.json();
+    const data = (await res.json()) as Record<string, unknown>;
     expect(data.systemPrompt).toContain('Pipeline Rules');
     expect(data.systemPrompt).toContain('Custom rule.');
   });
 
   it('403 when user is not a project member or owner', async () => {
     limitResults.push([{ emailVerifiedAt: NOW }]);
-    limitResults.push([{ id: PROJECT_ID, ownerId: '99' }]); // not us
-    limitResults.push([]); // no member row
+    limitResults.push([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // no access
 
     const app = buildApp();
     const res = await app.request('/api/prompts/preview', {
@@ -218,7 +222,7 @@ describe('POST /api/prompts/preview', () => {
       body: JSON.stringify({ projectId: PROJECT_ID, state: 'code', issueId: ISSUE_ID }),
     });
     expect(res.status).toBe(200);
-    const data = await res.json();
+    const data = (await res.json()) as Record<string, unknown>;
     // Thin-prompt default (fetch-via-tool): the snapshot carries the title +
     // a forge_step_start pointer, NOT the inlined description/plan/AC.
     expect(data.userPrompt).toContain('## Issue');

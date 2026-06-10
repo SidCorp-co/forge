@@ -66,22 +66,22 @@ function stageConfigFor(cfg: PipelineConfig | null, status: IssueStatus): StageC
 
 async function loadPipelineConfig(
   projectId: string,
-): Promise<{ cfg: PipelineConfig | null; ownerId: string | null }> {
+): Promise<{ cfg: PipelineConfig | null; projectCreatedBy: string | null }> {
   const [row] = await db
     .select({
       agentConfig: projects.agentConfig,
-      ownerId: projects.ownerId,
+      createdBy: projects.createdBy,
       archivedAt: projects.archivedAt,
     })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  if (!row) return { cfg: null, ownerId: null };
+  if (!row) return { cfg: null, projectCreatedBy: null };
   // ISS-353 — archived projects pause auto-pipeline dispatch. cfg=null falls
   // through to the same "no auto pipeline" path as a missing/invalid config,
   // so no NEW agent jobs are queued. In-flight jobs are untouched (this only
   // gates dispatch, not running work).
-  if (row.archivedAt != null) return { cfg: null, ownerId: row.ownerId ?? null };
+  if (row.archivedAt != null) return { cfg: null, projectCreatedBy: row.createdBy ?? null };
   const ac = (row.agentConfig as { pipelineConfig?: unknown } | null) ?? {};
   // Parse through the canonical schema so the typed read path stays in
   // lockstep with what was validated on write. Bad data → cfg=null (caller
@@ -89,7 +89,7 @@ async function loadPipelineConfig(
   const parsed = pipelineConfigSchema.safeParse(ac.pipelineConfig ?? {});
   return {
     cfg: parsed.success ? parsed.data : null,
-    ownerId: row.ownerId ?? null,
+    projectCreatedBy: row.createdBy ?? null,
   };
 }
 
@@ -118,10 +118,11 @@ async function findActiveJob(issueId: string, type: JobType): Promise<string | n
   return row?.id ?? null;
 }
 
-function resolveCreatedBy(actor: Actor, ownerId: string | null): string {
-  // Device-triggered triggers: fall back to project owner (jobs.createdBy FK is users.id).
+function resolveCreatedBy(actor: Actor, projectCreatedBy: string | null): string {
+  // Device-triggered triggers: fall back to the project creator (audit user;
+  // jobs.createdBy FK is users.id).
   if (actor.type === 'user') return actor.id;
-  if (ownerId) return ownerId;
+  if (projectCreatedBy) return projectCreatedBy;
   throw new Error('orchestrator: no valid createdBy available');
 }
 
@@ -243,12 +244,12 @@ export async function triggerPipelineStepManual(args: {
   }
   if (!skill) throw new Error('NO_SKILL_REGISTERED: no skill registration for this status');
 
-  const { cfg, ownerId } = await loadPipelineConfig(args.projectId);
+  const { cfg, projectCreatedBy } = await loadPipelineConfig(args.projectId);
 
   const existing = await findActiveJob(args.issueId, skill.type);
   if (existing) throw new ActiveJobConflictError(existing, skill.type);
 
-  const createdBy = resolveCreatedBy(args.actor, ownerId);
+  const createdBy = resolveCreatedBy(args.actor, projectCreatedBy);
 
   const [preventiveContext, issueSnapshot] = await Promise.all([
     buildPreventiveContext(skill.type, args.projectId, args.issueId),
@@ -324,14 +325,15 @@ async function considerEnqueue(args: {
   reason: Record<string, unknown>;
   preloaded?: {
     cfg: PipelineConfig | null;
-    ownerId: string | null;
+    projectCreatedBy: string | null;
     resolver?: ProjectSkillResolver;
   };
 }): Promise<void> {
   const jobMap = resolveJobTypeForStatus(args.status);
   if (!jobMap) return; // human-gated status
 
-  const { cfg, ownerId } = args.preloaded ?? (await loadPipelineConfig(args.projectId));
+  const { cfg, projectCreatedBy } =
+    args.preloaded ?? (await loadPipelineConfig(args.projectId));
   if (!cfg?.enabled) return;
   // Belt-and-suspenders: if the landing stage is disabled in `states`, never
   // enqueue a job. autoSkipDisabledStages should have moved the issue past
@@ -390,7 +392,7 @@ async function considerEnqueue(args: {
     return;
   }
 
-  const createdBy = resolveCreatedBy(args.actor, ownerId);
+  const createdBy = resolveCreatedBy(args.actor, projectCreatedBy);
 
   const [preventiveContext, issueSnapshot] = await Promise.all([
     buildPreventiveContext(skill.type, args.projectId, args.issueId),
@@ -496,11 +498,11 @@ async function autoSkipDisabledStages(
   payload: HookPayloads['transition'],
   preloaded: {
     cfg: PipelineConfig | null;
-    ownerId: string | null;
+    projectCreatedBy: string | null;
     resolver: ProjectSkillResolver;
   },
 ): Promise<boolean> {
-  const { cfg, ownerId, resolver } = preloaded;
+  const { cfg, projectCreatedBy, resolver } = preloaded;
   if (!cfg?.enabled) return false;
 
   // ISS-239 — build the hasSkill predicate up-front so the resolver walks
@@ -580,7 +582,7 @@ async function autoSkipDisabledStages(
     if (issue.status !== payload.to) return false; // raced with another writer
   }
 
-  const device = resolveSkipDevice(payload.actor, ownerId);
+  const device = resolveSkipDevice(payload.actor, projectCreatedBy);
   if (!device) {
     logger.warn(
       { issueId: issue.id, projectId: issue.projectId },
@@ -725,17 +727,18 @@ function chainMayUseComplexity(start: IssueStatus, cfg: PipelineConfig): boolean
   return false;
 }
 
-function resolveSkipDevice(actor: Actor, ownerId: string | null): DeviceLite | null {
+function resolveSkipDevice(actor: Actor, projectCreatedBy: string | null): DeviceLite | null {
   // applyStatusTransition needs a DeviceLite for its WS broadcast / hook
   // payload. The skip is system-initiated; route it through the original
   // actor when it's already device-typed, otherwise synthesize from the
-  // project owner. activity_log.actorId has no FK so attributing the skip
-  // to the owner is harmless and matches the WS event's actorId field.
+  // project creator (`projects.createdBy`, audit-only). activity_log.actorId
+  // has no FK so attributing the skip to the creator is harmless and matches
+  // the WS event's actorId field.
   if (actor.type === 'device') {
-    return { id: actor.id, ownerId: ownerId ?? actor.id };
+    return { id: actor.id, ownerId: projectCreatedBy ?? actor.id };
   }
-  if (ownerId) {
-    return { id: ownerId, ownerId };
+  if (projectCreatedBy) {
+    return { id: projectCreatedBy, ownerId: projectCreatedBy };
   }
   return null;
 }
@@ -770,14 +773,14 @@ export function registerPipelineOrchestrator(bus: HooksBus): void {
       // Short-circuit BEFORE loading cfg if the target isn't even mapped to a
       // skill — saves a DB hit on human-gated transitions.
       if (!resolveJobTypeForStatus(payload.to) && !SKIPPABLE_STAGES.has(payload.to)) return;
-      const { cfg, ownerId } = await loadPipelineConfig(payload.projectId);
+      const { cfg, projectCreatedBy } = await loadPipelineConfig(payload.projectId);
       // ISS-239 — build the resolver once and thread it through both phases
       // so skill_registrations is read exactly once per transition hook.
       const resolver = createProjectSkillResolver(payload.projectId);
       // When the skip chain advanced the issue, the re-emitted transition
       // hook owns the new status — do NOT considerEnqueue for the stage the
       // issue just left (it would enqueue a job for a stage already skipped).
-      const advanced = await autoSkipDisabledStages(payload, { cfg, ownerId, resolver });
+      const advanced = await autoSkipDisabledStages(payload, { cfg, projectCreatedBy, resolver });
       if (advanced) return;
       await considerEnqueue({
         projectId: payload.projectId,
@@ -785,7 +788,7 @@ export function registerPipelineOrchestrator(bus: HooksBus): void {
         status: payload.to,
         actor: payload.actor,
         reason: { transition: { from: payload.from, to: payload.to } },
-        preloaded: { cfg, ownerId, resolver },
+        preloaded: { cfg, projectCreatedBy, resolver },
       });
     } catch (err) {
       logger.error(

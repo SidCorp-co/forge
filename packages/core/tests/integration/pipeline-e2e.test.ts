@@ -95,7 +95,7 @@ describe('F6 pipeline E2E', () => {
     await createTestProjectMember(harness.db, {
       userId: user.id,
       projectId: project.id,
-      role: 'owner',
+      role: 'admin',
     });
     return { user, project };
   }
@@ -166,11 +166,13 @@ describe('F6 pipeline E2E', () => {
         issueId,
         projectId: project.id,
         actor: { type: 'user', id: user.id },
+        status: 'open',
         snapshot: {
           title: 't',
           description: null,
           priority: 'high',
           category: null,
+          reportedBy: null,
           assigneeId: null,
           labels: [],
         },
@@ -245,11 +247,13 @@ describe('F6 pipeline E2E', () => {
         issueId,
         projectId: project.id,
         actor: { type: 'user', id: user.id },
+        status: 'open',
         snapshot: {
           title: 't',
           description: null,
           priority: 'medium',
           category: null,
+          reportedBy: null,
           assigneeId: null,
           labels: [],
         },

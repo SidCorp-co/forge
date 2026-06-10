@@ -101,7 +101,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
     await createTestProjectMember(harness.db, {
       userId: user.id,
       projectId: project.id,
-      role: 'owner',
+      role: 'admin',
     });
     // Inject the handoff policy onto the project's agentConfig — the
     // verifier reads it from the same path the prompt builder consumes.
@@ -154,7 +154,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
     await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, title, status, priority, created_by_id)
       VALUES (${issueId}, ${args.projectId}, 'test issue', 'approved', 'medium',
-        (SELECT owner_id FROM projects WHERE id = ${args.projectId}))
+        (SELECT created_by FROM projects WHERE id = ${args.projectId}))
     `);
     await harness.db.execute(sql`
       INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, current_step)
@@ -167,7 +167,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
       ) VALUES (
         ${jobId}, ${args.projectId}, ${issueId}, ${runId}, ${jobType}, 'running',
         ${args.deviceId},
-        (SELECT owner_id FROM projects WHERE id = ${args.projectId}),
+        (SELECT created_by FROM projects WHERE id = ${args.projectId}),
         1, now(),
         ${JSON.stringify({ stageStatus: 'approved' })}::jsonb
       )
@@ -318,7 +318,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
     await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, title, status, priority, created_by_id)
       VALUES (${issueId}, ${projectId}, 't', 'approved', 'medium',
-        (SELECT owner_id FROM projects WHERE id = ${projectId}))
+        (SELECT created_by FROM projects WHERE id = ${projectId}))
     `);
     await harness.db.execute(sql`
       INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, current_step)
@@ -329,7 +329,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
         device_id, created_by, attempts, dispatched_at, payload)
       VALUES (${jobId}, ${projectId}, ${issueId}, ${runId}, 'clarify', 'running',
         ${device.id},
-        (SELECT owner_id FROM projects WHERE id = ${projectId}),
+        (SELECT created_by FROM projects WHERE id = ${projectId}),
         1, now(), ${JSON.stringify({ stageStatus: 'approved' })}::jsonb)
     `);
 

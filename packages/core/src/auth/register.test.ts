@@ -8,13 +8,17 @@ vi.mock('../config/env.js', () => ({
 const insertValues = vi.fn();
 const insertReturning = vi.fn();
 
-vi.mock('../db/client.js', () => ({
-  db: {
+vi.mock('../db/client.js', () => {
+  const dbMock = {
     insert: vi.fn(() => ({
       values: insertValues,
     })),
-  },
-}));
+    // register wraps user insert + personal-org provisioning in one tx; the
+    // callback receives the same mock handle.
+    transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(dbMock)),
+  };
+  return { db: dbMock };
+});
 
 vi.mock('./password.js', () => ({
   hashPassword: vi.fn(async (plain: string) => `hashed:${plain}`),
@@ -26,6 +30,13 @@ vi.mock('./verification-token.js', () => ({
 
 vi.mock('./email.js', () => ({
   sendVerificationEmail: vi.fn(async () => undefined),
+}));
+
+// Org-level authz: register provisions the user's personal org after the
+// user insert. Stub it — the org service has its own coverage.
+const ensurePersonalOrgMock = vi.fn(async (..._args: unknown[]) => 'org-1');
+vi.mock('../orgs/service.js', () => ({
+  ensurePersonalOrg: (...args: unknown[]) => ensurePersonalOrgMock(...args),
 }));
 
 const { authRoutes } = await import('./register.js');
@@ -74,6 +85,7 @@ describe('POST /api/auth/register', () => {
     expect(values.emailVerifiedAt).toBeUndefined();
     expect(issueVerificationToken).toHaveBeenCalledWith('uuid-1');
     expect(sendVerificationEmail).toHaveBeenCalledWith('a@b.co', 'tok-mock');
+    expect(ensurePersonalOrgMock).toHaveBeenCalledWith(expect.anything(), 'uuid-1', 'a@b.co');
   });
 
   it('still returns 201 when sending the verification email fails', async () => {

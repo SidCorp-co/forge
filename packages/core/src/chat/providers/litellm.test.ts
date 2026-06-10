@@ -26,7 +26,7 @@ async function collect(iter: AsyncIterable<ChatStreamEvent>): Promise<ChatStream
 describe('litellm provider', () => {
   it('emits chunk events for delta content then done on [DONE]', async () => {
     const fetchImpl = vi.fn(
-      async () =>
+      async (..._args: unknown[]) =>
         new Response(
           sseBody([
             'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
@@ -93,7 +93,7 @@ describe('litellm provider', () => {
   });
 
   it('yields error event on non-2xx response', async () => {
-    const fetchImpl = vi.fn(async () => new Response('rate limited', { status: 429 }));
+    const fetchImpl = vi.fn(async (..._args: unknown[]) => new Response('rate limited', { status: 429 }));
     const provider = createLiteLLMProvider({
       baseUrl: 'http://lite',
       apiKey: 'k',
@@ -114,7 +114,7 @@ describe('litellm provider', () => {
   });
 
   it('yields error event when fetch throws', async () => {
-    const fetchImpl = vi.fn(async () => {
+    const fetchImpl = vi.fn(async (..._args: unknown[]) => {
       throw new Error('network down');
     });
     const provider = createLiteLLMProvider({

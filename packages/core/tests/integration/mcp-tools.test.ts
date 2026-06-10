@@ -65,7 +65,7 @@ describe('F4 MCP tools integration', () => {
     await truncateAll(harness.db);
   });
 
-  async function seedProject(role: 'owner' | 'admin' | 'member') {
+  async function seedProject(role: 'admin' | 'member' | 'viewer') {
     const user = await createTestUser(harness.db);
     await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
     const project = await createTestProject(harness.db, user.id);
@@ -150,7 +150,7 @@ describe('F4 MCP tools integration', () => {
   // ---------- tools/list ----------
 
   it('tools/list: includes the known tools with input schemas', async () => {
-    const { user } = await seedProject('owner');
+    const { user } = await seedProject('admin');
     const { plaintext } = await issueDeviceToken({
       ownerId: user.id,
       name: 'd',
@@ -182,7 +182,7 @@ describe('F4 MCP tools integration', () => {
   // ---------- forge_memory.search ----------
 
   it('forge_memory.search: happy path returns hits', async () => {
-    const { user, project } = await seedProject('owner');
+    const { user, project } = await seedProject('admin');
     await insertMemory(project.id, {
       source: 'issue',
       sourceRef: randomUUID(),
@@ -216,7 +216,7 @@ describe('F4 MCP tools integration', () => {
   });
 
   it('forge_memory.search: device not on project → FORBIDDEN via isError', async () => {
-    const { project } = await seedProject('owner');
+    const { project } = await seedProject('admin');
     const stranger = await createTestUser(harness.db);
     const { plaintext } = await issueDeviceToken({
       ownerId: stranger.id,
@@ -239,7 +239,7 @@ describe('F4 MCP tools integration', () => {
   });
 
   it('forge_memory.search: invalid arguments → isError (zod parse)', async () => {
-    const { user } = await seedProject('owner');
+    const { user } = await seedProject('admin');
     const { plaintext } = await issueDeviceToken({
       ownerId: user.id,
       name: 'd',
@@ -260,7 +260,7 @@ describe('F4 MCP tools integration', () => {
   // ---------- forge_skills.list / get ----------
 
   it('forge_skills.list: returns global + project-scoped skills only', async () => {
-    const { user, project } = await seedProject('owner');
+    const { user, project } = await seedProject('admin');
     const otherProject = await createTestProject(harness.db, user.id, { slug: 'other' });
     await insertSkill(null, 'forge-plan', 'global');
     await insertSkill(project.id, 'project-a-custom', 'project');
@@ -288,7 +288,7 @@ describe('F4 MCP tools integration', () => {
   });
 
   it('forge_skills.get: returns null for foreign project-scoped skill', async () => {
-    const { user, project } = await seedProject('owner');
+    const { user, project } = await seedProject('admin');
     const otherProject = await createTestProject(harness.db, user.id, { slug: 'other2' });
     const foreignSkillId = await insertSkill(otherProject.id, 'foreign', 'project');
 
@@ -313,7 +313,7 @@ describe('F4 MCP tools integration', () => {
   // ---------- forge_skills.register ----------
 
   it('forge_skills.register: admin device succeeds', async () => {
-    const { user, project } = await seedProject('owner');
+    const { user, project } = await seedProject('admin');
     const skillId = await insertSkill(project.id, 'r-skill');
     const { plaintext } = await issueDeviceToken({
       ownerId: user.id,
@@ -340,7 +340,7 @@ describe('F4 MCP tools integration', () => {
   });
 
   it('forge_skills.register: member device → FORBIDDEN isError', async () => {
-    const owner = await seedProject('owner');
+    const owner = await seedProject('admin');
     const memberUser = await createTestUser(harness.db);
     await createTestProjectMember(harness.db, {
       userId: memberUser.id,
@@ -361,14 +361,14 @@ describe('F4 MCP tools integration', () => {
       })) as { isError?: boolean; content: Array<{ text: string }> };
       expect(res.isError).toBe(true);
       // FORBIDDEN: prefix is stripped before returning to the caller.
-      expect(res.content[0]?.text).toMatch(/owner or admin/i);
+      expect(res.content[0]?.text).toMatch(/project admin/i);
     } finally {
       await ctx.close();
     }
   });
 
   it('forge_skills.register: unknown skill → NOT_FOUND isError', async () => {
-    const { user, project } = await seedProject('owner');
+    const { user, project } = await seedProject('admin');
     const { plaintext } = await issueDeviceToken({
       ownerId: user.id,
       name: 'd',
@@ -393,7 +393,7 @@ describe('F4 MCP tools integration', () => {
   });
 
   it('forge_skills.register: stage=null clears the binding', async () => {
-    const { user, project } = await seedProject('owner');
+    const { user, project } = await seedProject('admin');
     const skillId = await insertSkill(project.id, 'r3');
     const { plaintext } = await issueDeviceToken({
       ownerId: user.id,

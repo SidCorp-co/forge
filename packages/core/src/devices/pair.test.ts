@@ -7,7 +7,7 @@ vi.mock('../config/env.js', () => ({
   env: { DEVICE_TOKEN_PEPPER: TEST_PEPPER, NODE_ENV: 'test' },
 }));
 
-const issueDeviceToken = vi.fn(async () => ({
+const issueDeviceToken = vi.fn(async (..._args: unknown[]) => ({
   device: { id: 'dev-new', ownerId: 'u-1', name: 'laptop', platform: 'linux', status: 'offline' },
   plaintext: 'tok-plaintext',
 }));

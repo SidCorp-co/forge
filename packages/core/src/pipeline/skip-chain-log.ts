@@ -77,8 +77,8 @@ export function buildSkipChainCappedCommentBody(
 
 /**
  * Insert an operator-facing comment for a capped skip chain. Mirrors the
- * owner-resolution + try/catch pattern from `postMissingSkillComment` so a
- * missing owner / insert failure does not break the orchestrator hook.
+ * creator-resolution + try/catch pattern from `postMissingSkillComment` so a
+ * missing creator / insert failure does not break the orchestrator hook.
  */
 export async function postSkipChainCappedComment(args: {
   projectId: string;
@@ -87,17 +87,17 @@ export async function postSkipChainCappedComment(args: {
   visited: IssueStatus[];
 }): Promise<void> {
   const [row] = await db
-    .select({ ownerId: projects.ownerId })
+    .select({ createdBy: projects.createdBy })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(eq(issues.id, args.issueId))
     .limit(1);
-  if (!row?.ownerId) return;
+  if (!row?.createdBy) return;
 
   try {
     await db.insert(comments).values({
       issueId: args.issueId,
-      authorId: row.ownerId,
+      authorId: row.createdBy,
       body: buildSkipChainCappedCommentBody(args.from, args.visited),
       isAi: true,
     } as never);

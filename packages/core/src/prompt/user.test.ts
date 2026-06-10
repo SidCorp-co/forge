@@ -9,6 +9,26 @@ const SAMPLE: IssueSnapshot = {
   sessionContext: null,
 };
 
+
+// The zod schema defaults these flags; the inferred TS type requires them, so
+// tests build a full handoffs policy from the schema defaults.
+function handoffsPolicy(
+  enabled: boolean,
+  injectFromSteps: Array<
+    'triage' | 'clarify' | 'plan' | 'code' | 'review' | 'test' | 'release' | 'fix'
+  >,
+) {
+  return {
+    handoffs: {
+      enabled,
+      injectFromSteps,
+      fallbackToRawIssueFieldIfMissing: true,
+      requireHandoffWrite: true,
+      missingMarkerPolicy: 'warn' as const,
+    },
+  };
+}
+
 describe('buildJobPromptString thin-prompt default (fetch-via-tool)', () => {
   it('inlines NO issue body fields by default for every stage; carries a forge_step_start pointer', () => {
     for (const jobType of ['triage', 'clarify', 'plan', 'code', 'review', 'test', 'fix'] as const) {
@@ -196,9 +216,7 @@ describe('buildJobPromptString — step-handoff (proposal Y)', () => {
       jobType: 'plan',
       issueId: 'iss-1',
       issueSnapshot: snapshot,
-      policy: {
-        handoffs: { enabled: true, injectFromSteps: ['triage'] },
-      },
+      policy: handoffsPolicy(true, ['triage']),
       priorHandoffs: [
         {
           step: 'triage',
@@ -226,7 +244,7 @@ describe('buildJobPromptString — step-handoff (proposal Y)', () => {
       issueSnapshot: snapshot,
       policy: {
         includeFields: ['description'],
-        handoffs: { enabled: true, injectFromSteps: ['triage'] },
+        ...handoffsPolicy(true, ['triage']),
       },
       priorHandoffs: [
         {
@@ -254,7 +272,7 @@ describe('buildJobPromptString — step-handoff (proposal Y)', () => {
       issueSnapshot: snapshot,
       policy: {
         includeFields: ['description', 'plan', 'acceptanceCriteria'],
-        handoffs: { enabled: true, injectFromSteps: ['triage', 'plan'] },
+        ...handoffsPolicy(true, ['triage', 'plan']),
       },
       priorHandoffs: [
         {
@@ -283,7 +301,7 @@ describe('buildJobPromptString — step-handoff (proposal Y)', () => {
       issueSnapshot: snapshot,
       policy: {
         includeFields: ['description'],
-        handoffs: { enabled: true, injectFromSteps: ['triage'] },
+        ...handoffsPolicy(true, ['triage']),
       },
       priorHandoffs: [],
     });
@@ -297,7 +315,7 @@ describe('buildJobPromptString — step-handoff (proposal Y)', () => {
       jobType: 'code',
       issueId: 'iss-1',
       issueSnapshot: snapshot,
-      policy: { handoffs: { enabled: true, injectFromSteps: ['triage'] } },
+      policy: handoffsPolicy(true, ['triage']),
       priorHandoffs: [
         {
           step: 'triage',
@@ -333,7 +351,7 @@ describe('buildJobPromptString — step-handoff (proposal Y)', () => {
       jobType: 'triage',
       issueId: 'iss-1',
       issueSnapshot: snapshot,
-      policy: { handoffs: { enabled: true, injectFromSteps: [] } },
+      policy: handoffsPolicy(true, []),
       handoffScope: { projectId: 'p-1', issueId: 'iss-1', runId: 'r-1', attempt: 1 },
     });
     expect(out).toContain('## Termination protocol');
@@ -350,7 +368,7 @@ describe('buildJobPromptString — step-handoff (proposal Y)', () => {
       jobType: 'release',
       issueId: 'iss-1',
       issueSnapshot: snapshot,
-      policy: { handoffs: { enabled: true, injectFromSteps: [] } },
+      policy: handoffsPolicy(true, []),
       handoffScope: { projectId: 'p-1', issueId: 'iss-1', runId: 'r-1', attempt: 1 },
     });
     expect(out).not.toContain('## Termination protocol');
@@ -361,7 +379,7 @@ describe('buildJobPromptString — step-handoff (proposal Y)', () => {
       jobType: 'plan',
       issueId: 'iss-1',
       issueSnapshot: snapshot,
-      policy: { handoffs: { enabled: false, injectFromSteps: [] } },
+      policy: handoffsPolicy(false, []),
       handoffScope: { projectId: 'p-1', issueId: 'iss-1', runId: 'r-1', attempt: 1 },
     });
     expect(out).not.toContain('## Termination protocol');

@@ -115,9 +115,10 @@ export async function pausePipelineRunMissingSkill(
 }
 
 /**
- * Insert an operator-facing comment authored by the project owner. FK on
- * `comments.author_id` is satisfied by the owner; no-op when the project has
- * no resolvable owner (defensive — mirrors `budget-check.postBudgetExhaustedComment`).
+ * Insert an operator-facing comment authored by the project creator
+ * (`projects.createdBy`, audit-only). FK on `comments.author_id` is satisfied
+ * by the creator; no-op when the project has no resolvable creator
+ * (defensive — mirrors `budget-check.postBudgetExhaustedComment`).
  */
 export async function postMissingSkillComment(args: {
   projectId: string;
@@ -125,17 +126,17 @@ export async function postMissingSkillComment(args: {
   stage: IssueStatus;
 }): Promise<void> {
   const [row] = await db
-    .select({ ownerId: projects.ownerId })
+    .select({ createdBy: projects.createdBy })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(eq(issues.id, args.issueId))
     .limit(1);
-  if (!row?.ownerId) return;
+  if (!row?.createdBy) return;
 
   try {
     await db.insert(comments).values({
       issueId: args.issueId,
-      authorId: row.ownerId,
+      authorId: row.createdBy,
       body: buildMissingSkillCommentBody(args.stage),
       isAi: true,
     } as never);

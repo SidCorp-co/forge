@@ -85,7 +85,7 @@ describe('ISS-164 pipelineHealth E2E', () => {
       INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
       VALUES (
         ${id}, ${projectId}, ${issSeq}, ${'Issue ' + issSeq}, ${status}, 'medium',
-        (SELECT owner_id FROM projects WHERE id = ${projectId})
+        (SELECT created_by FROM projects WHERE id = ${projectId})
       )
     `);
     return id;
@@ -161,7 +161,7 @@ describe('ISS-164 pipelineHealth E2E', () => {
       VALUES (
         ${id}, ${projectId}, ${args.issueId ?? null}, ${runId}, ${type}, ${status},
         '{}'::jsonb, ${queuedAt.toISOString()},
-        (SELECT owner_id FROM projects WHERE id = ${projectId})
+        (SELECT created_by FROM projects WHERE id = ${projectId})
       )
     `);
     return id;

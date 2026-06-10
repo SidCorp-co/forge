@@ -22,7 +22,13 @@ const selectWhere = vi.fn(() => ({
     return Promise.resolve(result).then(cb);
   },
 }));
-const selectFrom = vi.fn(() => ({ where: selectWhere }));
+// loadProjectAccess (lib/authz) runs select().from().leftJoin().leftJoin()
+// .where().limit() — route the join chain back into the same where/limit FIFO.
+const selectLeftJoin = vi.fn((): Record<string, unknown> => ({
+  leftJoin: selectLeftJoin,
+  where: selectWhere,
+}));
+const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
 
 const insertReturning = vi.fn();
 const insertOnConflictReturning = vi.fn();
@@ -66,7 +72,7 @@ vi.mock('../memory/indexer.js', () => ({
 // /run + /respond import the spawner; routes-crud tests don't exercise those
 // endpoints but the module is loaded for its side effects. Stub it so we
 // don't transitively pull in pg-boss / DATABASE_URL just to register routes.
-const spawnMock = vi.fn(async () => ({ ok: true, jobId: 'pm-1' }) as const);
+const spawnMock = vi.fn(async (..._args: unknown[]) => ({ ok: true, jobId: 'pm-1' }) as const);
 vi.mock('./spawner.js', () => ({
   spawnPmSession: (...args: unknown[]) => spawnMock(...(args as [unknown])),
 }));
@@ -110,17 +116,17 @@ function authVerified() {
 }
 
 function projectAccessAs(role: 'owner' | 'admin' | 'member' | null) {
-  selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: OTHER_USER_ID }]);
-  if (role) {
-    selectLimit.mockResolvedValueOnce([{ role }]);
-  } else {
-    selectLimit.mockResolvedValueOnce([]);
-  }
+  // Single joined loadProjectAccess row. Legacy 'owner' maps to org owner
+  // (implicit project admin) under org-level authz.
+  selectLimit.mockResolvedValueOnce([
+    role === 'owner'
+      ? { orgId: 'org-1', memberRole: null, orgRole: 'owner' }
+      : { orgId: 'org-1', memberRole: role, orgRole: null },
+  ]);
 }
 
 function projectAccessAsOwner() {
-  selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: USER_ID }]);
-  selectLimit.mockResolvedValueOnce([]);
+  projectAccessAs('owner');
 }
 
 async function token() {

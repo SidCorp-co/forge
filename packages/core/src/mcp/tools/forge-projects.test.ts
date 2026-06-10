@@ -9,6 +9,7 @@ vi.mock('../../config/env.js', () => ({
 }));
 
 const selectImpl = vi.fn();
+const selectDistinctImpl = vi.fn();
 const insertImpl = vi.fn();
 const updateImpl = vi.fn();
 const deleteImpl = vi.fn();
@@ -17,6 +18,7 @@ const transactionImpl = vi.fn();
 vi.mock('../../db/client.js', () => ({
   db: {
     select: (...args: unknown[]) => selectImpl(...args),
+    selectDistinct: (...args: unknown[]) => selectDistinctImpl(...args),
     insert: (...args: unknown[]) => insertImpl(...args),
     update: (...args: unknown[]) => updateImpl(...args),
     delete: (...args: unknown[]) => deleteImpl(...args),
@@ -33,10 +35,10 @@ const {
 } = await import('./forge-projects.js');
 
 const OWNER_ID = '11111111-1111-4111-8111-111111111111';
-const OTHER_OWNER_ID = '22222222-2222-4222-8222-222222222222';
 const PROJECT_A = '33333333-3333-4333-8333-333333333333';
 const PROJECT_B = '44444444-4444-4444-8444-444444444444';
 const DEVICE_ID = '55555555-5555-4555-8555-555555555555';
+const ORG_ID = '77777777-7777-4777-8777-777777777777';
 
 const fakeDevice = {
   id: DEVICE_ID,
@@ -44,6 +46,8 @@ const fakeDevice = {
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -56,147 +60,55 @@ const fakeDevice = {
 beforeEach(() => {
   vi.clearAllMocks();
   selectImpl.mockReset();
+  selectDistinctImpl.mockReset();
   insertImpl.mockReset();
   updateImpl.mockReset();
   deleteImpl.mockReset();
   transactionImpl.mockReset();
 });
 
-function mockOwnedQuery(rows: unknown[]) {
-  // db.select({...}).from(projects).where(eq(projects.ownerId, owner))
-  selectImpl.mockImplementationOnce(() => ({
-    from: () => ({
-      where: () => Promise.resolve(rows),
-    }),
-  }));
+/**
+ * Generic thenable Drizzle-chain mock: every builder method returns the chain
+ * itself and awaiting any point in the chain resolves to `rows`. Covers both
+ * `...where(...)` (awaited directly) and `...where(...).limit(1)` shapes,
+ * including the org-authz single query `from(projects).leftJoin().leftJoin()
+ * .where().limit(1)` (lib/authz.ts effectiveProjectRole).
+ */
+function chainOnce(impl: ReturnType<typeof vi.fn>, rows: unknown[]) {
+  // biome-ignore lint/suspicious/noExplicitAny: chainable mock proxy
+  const chain: any = {};
+  for (const m of ['from', 'leftJoin', 'innerJoin', 'where', 'orderBy', 'limit']) {
+    chain[m] = () => chain;
+  }
+  // biome-ignore lint/suspicious/noThenProperty: drizzle chains resolve via await
+  // biome-ignore lint/suspicious/noExplicitAny: thenable bridge
+  chain.then = (resolve: any, reject: any) => Promise.resolve(rows).then(resolve, reject);
+  impl.mockImplementationOnce(() => chain);
 }
 
-function mockMemberQuery(rows: unknown[]) {
-  // db.select({...}).from(projectMembers).innerJoin(projects, ...).where(...)
-  selectImpl.mockImplementationOnce(() => ({
-    from: () => ({
-      innerJoin: () => ({
-        where: () => Promise.resolve(rows),
-      }),
-    }),
-  }));
+/** loadVisibleProjectIds — db.selectDistinct({id}).from(projects).leftJoin x2.where(). */
+function mockVisibleIds(ids: string[]) {
+  chainOnce(
+    selectDistinctImpl,
+    ids.map((id) => ({ id })),
+  );
 }
 
-describe('forge_projects.list', () => {
-  it('returns owned + member projects with correct role mapping', async () => {
-    const tool = forgeProjectsListTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
-      projectSlug: null,
-    });
-    mockOwnedQuery([{ id: PROJECT_A, slug: 'a', name: 'A', ownerId: OWNER_ID }]);
-    mockMemberQuery([
-      { id: PROJECT_B, slug: 'b', name: 'B', ownerId: OTHER_OWNER_ID, role: 'admin' },
-    ]);
+/** Any plain db.select(...) in handler order. */
+function mockSelect(rows: unknown[]) {
+  chainOnce(selectImpl, rows);
+}
 
-    const result = (await tool.handler({})) as {
-      projects: Array<{ id: string; role: string }>;
-    };
-    expect(result.projects).toHaveLength(2);
-    expect(result.projects.find((p) => p.id === PROJECT_A)?.role).toBe('owner');
-    expect(result.projects.find((p) => p.id === PROJECT_B)?.role).toBe('admin');
-  });
-
-  it('member-row with role=member surfaces as member', async () => {
-    const tool = forgeProjectsListTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
-      projectSlug: null,
-    });
-    mockOwnedQuery([]);
-    mockMemberQuery([
-      { id: PROJECT_B, slug: 'b', name: 'B', ownerId: OTHER_OWNER_ID, role: 'member' },
-    ]);
-
-    const result = (await tool.handler({})) as { projects: Array<{ role: string }> };
-    expect(result.projects[0]?.role).toBe('member');
-  });
-
-  it('owner with co-existing member row keeps role=owner and is not duplicated', async () => {
-    const tool = forgeProjectsListTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
-      projectSlug: null,
-    });
-    mockOwnedQuery([{ id: PROJECT_A, slug: 'a', name: 'A', ownerId: OWNER_ID }]);
-    // The device owner happens to also have a projectMembers row on the
-    // project they own (e.g. seeded on project create). It must NOT cause a
-    // duplicate listing or downgrade the role.
-    mockMemberQuery([
-      { id: PROJECT_A, slug: 'a', name: 'A', ownerId: OWNER_ID, role: 'admin' },
-    ]);
-
-    const result = (await tool.handler({})) as {
-      projects: Array<{ id: string; role: string }>;
-    };
-    expect(result.projects).toHaveLength(1);
-    expect(result.projects[0]?.role).toBe('owner');
-  });
-
-  it('PAT principal with projectIds allowlist filters output to allowed projects only (ISS-150)', async () => {
-    const tool = forgeProjectsListTool({
-      principal: {
-        kind: 'pat',
-        userId: OWNER_ID,
-        tokenId: 'token-id',
-        scopes: ['read'],
-        projectIds: [PROJECT_A],
-      },
-      device: fakeDevice,
-      projectSlug: null,
-    });
-    mockOwnedQuery([{ id: PROJECT_A, slug: 'a', name: 'A', ownerId: OWNER_ID }]);
-    mockMemberQuery([
-      { id: PROJECT_B, slug: 'b', name: 'B', ownerId: OTHER_OWNER_ID, role: 'member' },
-    ]);
-
-    const result = (await tool.handler({})) as {
-      projects: Array<{ id: string }>;
-    };
-    // PROJECT_B is a real membership but NOT in the PAT's projectIds — must be filtered.
-    expect(result.projects).toHaveLength(1);
-    expect(result.projects[0]?.id).toBe(PROJECT_A);
-  });
-
-  it('PAT principal with null projectIds (global) sees everything the user can access', async () => {
-    const tool = forgeProjectsListTool({
-      principal: {
-        kind: 'pat',
-        userId: OWNER_ID,
-        tokenId: 'token-id',
-        scopes: ['read'],
-        projectIds: null,
-      },
-      device: fakeDevice,
-      projectSlug: null,
-    });
-    mockOwnedQuery([{ id: PROJECT_A, slug: 'a', name: 'A', ownerId: OWNER_ID }]);
-    mockMemberQuery([
-      { id: PROJECT_B, slug: 'b', name: 'B', ownerId: OTHER_OWNER_ID, role: 'member' },
-    ]);
-
-    const result = (await tool.handler({})) as { projects: unknown[] };
-    expect(result.projects).toHaveLength(2);
-  });
-
-  it('returns [] when the user owns and is a member of nothing', async () => {
-    const tool = forgeProjectsListTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
-      projectSlug: null,
-    });
-    mockOwnedQuery([]);
-    mockMemberQuery([]);
-
-    const result = (await tool.handler({})) as { projects: unknown[] };
-    expect(result.projects).toEqual([]);
-  });
-});
+/**
+ * effectiveProjectRole (lib/authz.ts) — ONE select with two leftJoins
+ * returning [{ orgId, memberRole, orgRole }]. Pass `null` to simulate a
+ * missing project (empty result).
+ */
+function mockAccess(
+  access: { memberRole: string | null; orgRole: string | null } | null,
+) {
+  mockSelect(access === null ? [] : [{ orgId: ORG_ID, ...access }]);
+}
 
 function deviceCtx() {
   return {
@@ -224,13 +136,99 @@ function patCtx(opts: {
   };
 }
 
+describe('forge_projects.list', () => {
+  it('returns visible projects with effective (org-aware) role mapping', async () => {
+    const tool = forgeProjectsListTool(deviceCtx());
+    mockVisibleIds([PROJECT_A, PROJECT_B]);
+    mockSelect([
+      { id: PROJECT_A, slug: 'a', name: 'A', orgId: ORG_ID },
+      { id: PROJECT_B, slug: 'b', name: 'B', orgId: ORG_ID },
+    ]);
+    // per-project effectiveProjectRole, in row order:
+    mockAccess({ memberRole: null, orgRole: 'owner' }); // org owner → implicit admin
+    mockAccess({ memberRole: 'member', orgRole: null }); // explicit member row
+
+    const result = (await tool.handler({})) as {
+      projects: Array<{ id: string; orgId: string; role: string }>;
+    };
+    expect(result.projects).toHaveLength(2);
+    expect(result.projects.find((p) => p.id === PROJECT_A)?.role).toBe('admin');
+    expect(result.projects.find((p) => p.id === PROJECT_B)?.role).toBe('member');
+    expect(result.projects[0]?.orgId).toBe(ORG_ID);
+  });
+
+  it('viewer-role member surfaces as viewer', async () => {
+    const tool = forgeProjectsListTool(deviceCtx());
+    mockVisibleIds([PROJECT_B]);
+    mockSelect([{ id: PROJECT_B, slug: 'b', name: 'B', orgId: ORG_ID }]);
+    mockAccess({ memberRole: 'viewer', orgRole: null });
+
+    const result = (await tool.handler({})) as { projects: Array<{ role: string }> };
+    expect(result.projects[0]?.role).toBe('viewer');
+  });
+
+  it('explicit admin row + org owner does not duplicate and stays admin', async () => {
+    const tool = forgeProjectsListTool(deviceCtx());
+    mockVisibleIds([PROJECT_A]);
+    mockSelect([{ id: PROJECT_A, slug: 'a', name: 'A', orgId: ORG_ID }]);
+    mockAccess({ memberRole: 'admin', orgRole: 'owner' });
+
+    const result = (await tool.handler({})) as {
+      projects: Array<{ id: string; role: string }>;
+    };
+    expect(result.projects).toHaveLength(1);
+    expect(result.projects[0]?.role).toBe('admin');
+  });
+
+  it('PAT principal with projectIds allowlist filters output to allowed projects only (ISS-150)', async () => {
+    const tool = forgeProjectsListTool(patCtx({ scopes: ['read'], projectIds: [PROJECT_A] }));
+    // user can see both projects, allowlist narrows to PROJECT_A
+    mockVisibleIds([PROJECT_A, PROJECT_B]);
+    mockSelect([{ id: PROJECT_A, slug: 'a', name: 'A', orgId: ORG_ID }]);
+    mockAccess({ memberRole: 'member', orgRole: null });
+
+    const result = (await tool.handler({})) as {
+      projects: Array<{ id: string }>;
+    };
+    expect(result.projects).toHaveLength(1);
+    expect(result.projects[0]?.id).toBe(PROJECT_A);
+  });
+
+  it('PAT principal with null projectIds (global) sees everything the user can access', async () => {
+    const tool = forgeProjectsListTool(patCtx({ scopes: ['read'], projectIds: null }));
+    mockVisibleIds([PROJECT_A, PROJECT_B]);
+    mockSelect([
+      { id: PROJECT_A, slug: 'a', name: 'A', orgId: ORG_ID },
+      { id: PROJECT_B, slug: 'b', name: 'B', orgId: ORG_ID },
+    ]);
+    mockAccess({ memberRole: 'admin', orgRole: null });
+    mockAccess({ memberRole: 'member', orgRole: null });
+
+    const result = (await tool.handler({})) as { projects: unknown[] };
+    expect(result.projects).toHaveLength(2);
+  });
+
+  it('returns [] when the user can see no projects', async () => {
+    const tool = forgeProjectsListTool(deviceCtx());
+    mockVisibleIds([]);
+
+    const result = (await tool.handler({})) as { projects: unknown[] };
+    expect(result.projects).toEqual([]);
+    expect(selectImpl).not.toHaveBeenCalled();
+  });
+});
+
 /**
  * Stub `db.transaction(fn)` for the create path. The factory's transaction
  * runs two inserts in order: (1) projects → returns the project row;
- * (2) projectMembers → returns nothing. We hand the factory a `tx` proxy
- * that dispenses two `insert()` shapes in that order.
+ * (2) projectMembers (role 'admin') → returns nothing. We hand the factory a
+ * `tx` proxy that dispenses two `insert()` shapes in that order and captures
+ * the projectMembers values for assertion.
  */
-function mockCreateTransaction(returnedProject: Record<string, unknown>) {
+function mockCreateTransaction(
+  returnedProject: Record<string, unknown>,
+  captured: { memberValues?: Record<string, unknown> } = {},
+) {
   transactionImpl.mockImplementationOnce(async (fn: (tx: unknown) => unknown) => {
     let n = 0;
     const tx = {
@@ -244,7 +242,10 @@ function mockCreateTransaction(returnedProject: Record<string, unknown>) {
           };
         }
         return {
-          values: () => Promise.resolve(undefined),
+          values: (v: Record<string, unknown>) => {
+            captured.memberValues = v;
+            return Promise.resolve(undefined);
+          },
         };
       },
     };
@@ -255,41 +256,87 @@ function mockCreateTransaction(returnedProject: Record<string, unknown>) {
 describe('forge_projects.create', () => {
   const NEW_PROJECT_ID = '66666666-6666-4666-8666-666666666666';
 
-  it('device principal creates project and receives apiKey back', async () => {
-    mockCreateTransaction({
-      id: NEW_PROJECT_ID,
-      slug: 'my-proj',
-      name: 'My Project',
-      ownerId: OWNER_ID,
-      apiKey: 'fk_abc123def456',
-      createdAt: new Date(),
-    });
+  it('device principal creates project in personal org and receives apiKey back', async () => {
+    // personal-org resolution: select organizations where createdBy + isPersonal
+    mockSelect([{ id: ORG_ID }]);
+    const captured: { memberValues?: Record<string, unknown> } = {};
+    mockCreateTransaction(
+      {
+        id: NEW_PROJECT_ID,
+        slug: 'my-proj',
+        name: 'My Project',
+        orgId: ORG_ID,
+        createdBy: OWNER_ID,
+        apiKey: 'fk_abc123def456',
+        createdAt: new Date(),
+      },
+      captured,
+    );
     const tool = forgeProjectsCreateTool(deviceCtx());
     const res = (await tool.handler({ slug: 'my-proj', name: 'My Project' })) as {
-      project: { id: string; slug: string; ownerId: string; apiKey: string };
+      project: { id: string; slug: string; orgId: string; createdBy: string; apiKey: string };
     };
     expect(res.project.id).toBe(NEW_PROJECT_ID);
     expect(res.project.slug).toBe('my-proj');
-    expect(res.project.ownerId).toBe(OWNER_ID);
-    // apiKey MUST be returned — caller is the owner and needs it for widget
-    // install / device pairing (matches REST POST /api/projects).
+    expect(res.project.orgId).toBe(ORG_ID);
+    expect(res.project.createdBy).toBe(OWNER_ID);
+    // apiKey MUST be returned — caller needs it for widget install / device
+    // pairing (matches REST POST /api/projects).
     expect(res.project.apiKey).toBe('fk_abc123def456');
+    // creator is seeded as a project ADMIN (no 'owner' role anymore)
+    expect(captured.memberValues).toMatchObject({
+      userId: OWNER_ID,
+      projectId: NEW_PROJECT_ID,
+      role: 'admin',
+    });
+  });
+
+  it('explicit orgId requires org membership — non-member is refused NOT_FOUND', async () => {
+    // loadOrgRole → no row
+    mockSelect([]);
+    const tool = forgeProjectsCreateTool(deviceCtx());
+    await expect(
+      tool.handler({ slug: 'org-proj', name: 'X', orgId: ORG_ID }),
+    ).rejects.toThrow(/NOT_FOUND: org not found or not accessible/);
+    expect(transactionImpl).not.toHaveBeenCalled();
+  });
+
+  it('explicit orgId with org membership creates the project in that org', async () => {
+    mockSelect([{ role: 'member' }]); // loadOrgRole
+    mockCreateTransaction({
+      id: NEW_PROJECT_ID,
+      slug: 'org-proj',
+      name: 'Org Project',
+      orgId: ORG_ID,
+      createdBy: OWNER_ID,
+      apiKey: 'fk_org',
+      createdAt: new Date(),
+    });
+    const tool = forgeProjectsCreateTool(deviceCtx());
+    const res = (await tool.handler({
+      slug: 'org-proj',
+      name: 'Org Project',
+      orgId: ORG_ID,
+    })) as { project: { orgId: string } };
+    expect(res.project.orgId).toBe(ORG_ID);
   });
 
   it('PAT principal with write scope and null allowlist creates project', async () => {
+    mockSelect([{ id: ORG_ID }]); // personal org
     mockCreateTransaction({
       id: NEW_PROJECT_ID,
       slug: 'pat-proj',
       name: 'PAT Project',
-      ownerId: OWNER_ID,
+      orgId: ORG_ID,
+      createdBy: OWNER_ID,
       apiKey: 'fk_xyz',
       createdAt: new Date(),
     });
     const tool = forgeProjectsCreateTool(patCtx({ scopes: ['read', 'write'] }));
     const res = (await tool.handler({ slug: 'pat-proj', name: 'PAT Project' })) as {
-      project: { ownerId: string };
+      project: { createdBy: string };
     };
-    expect(res.project.ownerId).toBe(OWNER_ID);
+    expect(res.project.createdBy).toBe(OWNER_ID);
     expect(transactionImpl).toHaveBeenCalledTimes(1);
   });
 
@@ -316,6 +363,7 @@ describe('forge_projects.create', () => {
     // SQLSTATE + constraint_name on the inner pg error; Drizzle wraps it in
     // `{ query, params, cause }`. Mock that nesting so the test matches
     // production rather than a fictional flat `.code` shape.
+    mockSelect([{ id: ORG_ID }]); // personal org
     transactionImpl.mockImplementationOnce(async () => {
       throw Object.assign(new Error('Failed query: insert into "projects"'), {
         query: 'insert into "projects"...',
@@ -333,15 +381,16 @@ describe('forge_projects.create', () => {
   });
 
   it('unique-violation on a non-slug constraint rethrows as-is (no false SLUG_TAKEN)', async () => {
-    // Simulates a future migration adding e.g. UNIQUE(owner_id, name), or
+    // Simulates a future migration adding e.g. UNIQUE(org_id, name), or
     // an apiKey collision. The handler must NOT lie about which constraint
     // failed — otherwise callers debug the wrong field.
+    mockSelect([{ id: ORG_ID }]); // personal org
     const collision = Object.assign(new Error('Failed query: insert into "projects"'), {
       query: 'insert into "projects"...',
       params: [],
       cause: Object.assign(new Error('duplicate key value'), {
         code: '23505',
-        constraint_name: 'projects_owner_id_name_unique',
+        constraint_name: 'projects_org_id_name_unique',
       }),
     });
     transactionImpl.mockImplementationOnce(async () => {
@@ -362,32 +411,10 @@ describe('forge_projects.create', () => {
 
 describe('forge_projects.update', () => {
   /**
-   * The owner-only gate runs two queries:
-   *   1) select({ ownerId }) from projects — short-circuits when caller is
-   *      the row's primary ownerId.
-   *   2) select({ role }) from project_members — only when (1) doesn't match;
-   *      `owner` role passes, anything else (incl. `admin`) is refused.
+   * The gate is ONE authz query (effectiveProjectRole) followed by an
+   * org-tier check: org owner/admin on the project's org may update; a
+   * merely-invited project admin may NOT.
    */
-  function mockOwnerLookup(ownerId: string | null) {
-    selectImpl.mockImplementationOnce(() => ({
-      from: () => ({
-        where: () => ({
-          limit: () => Promise.resolve(ownerId === null ? [] : [{ ownerId }]),
-        }),
-      }),
-    }));
-  }
-
-  function mockMemberRoleLookup(role: string | null) {
-    selectImpl.mockImplementationOnce(() => ({
-      from: () => ({
-        where: () => ({
-          limit: () => Promise.resolve(role === null ? [] : [{ role }]),
-        }),
-      }),
-    }));
-  }
-
   function mockUpdateReturning(row: Record<string, unknown>) {
     updateImpl.mockImplementationOnce(() => ({
       set: () => ({
@@ -398,13 +425,13 @@ describe('forge_projects.update', () => {
     }));
   }
 
-  it('primary-owner applies patch and returns the updated row (no member lookup needed)', async () => {
-    mockOwnerLookup(OWNER_ID);
+  it('org owner applies patch and returns the updated row', async () => {
+    mockAccess({ memberRole: null, orgRole: 'owner' });
     mockUpdateReturning({
       id: PROJECT_A,
       slug: 'a',
       name: 'A renamed',
-      ownerId: OWNER_ID,
+      orgId: ORG_ID,
       description: null,
       repoPath: '/srv/a',
       baseBranch: 'main',
@@ -422,19 +449,17 @@ describe('forge_projects.update', () => {
     for (const k of ['apiKey', 'webhookSecret', 'agentConfig', 'previewDeploy', 'defaultDeviceId']) {
       expect(res.project).not.toHaveProperty(k);
     }
-    // The owner-only short-circuit must skip the projectMembers lookup —
-    // exactly one select call (the ownerId lookup).
+    // exactly one select — the single org-aware authz query.
     expect(selectImpl).toHaveBeenCalledTimes(1);
   });
 
-  it('owner-role member (project has multiple owners) is accepted', async () => {
-    mockOwnerLookup(OTHER_OWNER_ID);
-    mockMemberRoleLookup('owner');
+  it('org admin (non-owner) is accepted', async () => {
+    mockAccess({ memberRole: null, orgRole: 'admin' });
     mockUpdateReturning({
       id: PROJECT_A,
       slug: 'a',
-      name: 'renamed by co-owner',
-      ownerId: OTHER_OWNER_ID,
+      name: 'renamed by org admin',
+      orgId: ORG_ID,
       description: null,
       repoPath: null,
       baseBranch: null,
@@ -443,37 +468,33 @@ describe('forge_projects.update', () => {
     const tool = forgeProjectsUpdateTool(deviceCtx());
     const res = (await tool.handler({
       projectId: PROJECT_A,
-      patch: { name: 'renamed by co-owner' },
+      patch: { name: 'renamed by org admin' },
     })) as { project: { name: string } };
-    expect(res.project.name).toBe('renamed by co-owner');
+    expect(res.project.name).toBe('renamed by org admin');
   });
 
-  it('admin-role member is REFUSED with FORBIDDEN (matches REST owner-only PATCH)', async () => {
-    // The fix for PR-128 finding #1 — pre-fix, admin members could mutate
-    // settings via MCP even though REST PATCH /api/projects/:id requires
-    // role==='owner'. Now MCP refuses too.
-    mockOwnerLookup(OTHER_OWNER_ID);
-    mockMemberRoleLookup('admin');
+  it('project-admin without org admin is REFUSED with FORBIDDEN (org gate)', async () => {
+    // An invited project admin can manage members/labels but must not
+    // mutate project settings — only org owner/admin can.
+    mockAccess({ memberRole: 'admin', orgRole: null });
     const tool = forgeProjectsUpdateTool(deviceCtx());
     await expect(
       tool.handler({ projectId: PROJECT_A, patch: { name: 'no' } }),
-    ).rejects.toThrow(/FORBIDDEN: requires project owner/);
+    ).rejects.toThrow(/FORBIDDEN: requires org admin \(project admin role is insufficient\)/);
     expect(updateImpl).not.toHaveBeenCalled();
   });
 
-  it('member role (not owner) is refused with FORBIDDEN', async () => {
-    mockOwnerLookup(OTHER_OWNER_ID);
-    mockMemberRoleLookup('member');
+  it('member role is refused with FORBIDDEN', async () => {
+    mockAccess({ memberRole: 'member', orgRole: 'member' });
     const tool = forgeProjectsUpdateTool(deviceCtx());
     await expect(
       tool.handler({ projectId: PROJECT_A, patch: { name: 'no' } }),
-    ).rejects.toThrow(/FORBIDDEN: requires project owner/);
+    ).rejects.toThrow(/FORBIDDEN: requires org admin/);
     expect(updateImpl).not.toHaveBeenCalled();
   });
 
   it('non-member device principal is refused with NOT_FOUND (no existence leak)', async () => {
-    mockOwnerLookup(OTHER_OWNER_ID);
-    mockMemberRoleLookup(null);
+    mockAccess({ memberRole: null, orgRole: null });
     const tool = forgeProjectsUpdateTool(deviceCtx());
     await expect(
       tool.handler({ projectId: PROJECT_A, patch: { name: 'no' } }),
@@ -483,14 +504,14 @@ describe('forge_projects.update', () => {
 
   it('non-existent project is refused with NOT_FOUND for both device and PAT', async () => {
     // Device path
-    mockOwnerLookup(null);
+    mockAccess(null);
     const deviceTool = forgeProjectsUpdateTool(deviceCtx());
     await expect(
       deviceTool.handler({ projectId: PROJECT_A, patch: { name: 'no' } }),
     ).rejects.toThrow(/NOT_FOUND/);
 
     // PAT path (also expects NOT_FOUND, not FORBIDDEN)
-    mockOwnerLookup(null);
+    mockAccess(null);
     const patTool = forgeProjectsUpdateTool(patCtx({ scopes: ['read', 'write'] }));
     await expect(
       patTool.handler({ projectId: PROJECT_A, patch: { name: 'no' } }),
@@ -551,12 +572,9 @@ describe('forge_projects.update', () => {
 describe('forge_projects.get', () => {
   /**
    * Handler issues queries in this fixed order:
-   *   1. SELECT project (always)
-   *   2. SELECT project_members (only when caller is NOT the primary owner;
-   *      a missing member row → NOT_FOUND)
-   *
-   * Each mock helper queues ONE `selectImpl` response, so tests must mirror
-   * that order exactly or the wrong `mockImplementationOnce` will resolve.
+   *   1. SELECT project row (always)
+   *   2. effectiveProjectRole — single org-aware authz select; a null
+   *      effective role → NOT_FOUND.
    */
   const CREATED_AT = new Date('2026-05-25T00:00:00.000Z');
 
@@ -565,7 +583,8 @@ describe('forge_projects.get', () => {
     slug: 'a',
     name: 'A',
     description: 'desc',
-    ownerId: OWNER_ID,
+    orgId: ORG_ID,
+    createdBy: OWNER_ID,
     repoPath: '/srv/a',
     baseBranch: 'main',
     productionBranch: 'main',
@@ -580,42 +599,28 @@ describe('forge_projects.get', () => {
   };
 
   function mockProjectSelect(row: unknown | null) {
-    selectImpl.mockImplementationOnce(() => ({
-      from: () => ({
-        where: () => ({
-          limit: () => Promise.resolve(row === null ? [] : [row]),
-        }),
-      }),
-    }));
+    mockSelect(row === null ? [] : [row]);
   }
 
-  function mockMemberSelect(role: string | null) {
-    selectImpl.mockImplementationOnce(() => ({
-      from: () => ({
-        where: () => ({
-          limit: () => Promise.resolve(role === null ? [] : [{ role }]),
-        }),
-      }),
-    }));
-  }
-
-  it('owner reads own project — role=owner, full shape returned', async () => {
+  it('org owner reads project — effective role admin, full shape returned', async () => {
     mockProjectSelect(FULL_PROJECT_ROW);
+    mockAccess({ memberRole: null, orgRole: 'owner' });
     const tool = forgeProjectsGetTool(deviceCtx());
     const res = (await tool.handler({ projectId: PROJECT_A })) as {
       project: Record<string, unknown>;
     };
-    expect(res.project.role).toBe('owner');
+    expect(res.project.role).toBe('admin');
     expect(res.project.id).toBe(PROJECT_A);
+    expect(res.project.orgId).toBe(ORG_ID);
+    expect(res.project.createdBy).toBe(OWNER_ID);
     expect(res.project.repoPath).toBe('/srv/a');
     expect(res.project.defaultDeviceId).toBe(DEVICE_ID);
-    // Member lookup must not fire — owner short-circuit.
-    expect(selectImpl).toHaveBeenCalledTimes(1);
+    expect(selectImpl).toHaveBeenCalledTimes(2);
   });
 
   it('admin-role member reads project', async () => {
-    mockProjectSelect({ ...FULL_PROJECT_ROW, ownerId: OTHER_OWNER_ID });
-    mockMemberSelect('admin');
+    mockProjectSelect(FULL_PROJECT_ROW);
+    mockAccess({ memberRole: 'admin', orgRole: null });
     const tool = forgeProjectsGetTool(deviceCtx());
     const res = (await tool.handler({ projectId: PROJECT_A })) as {
       project: { role: string };
@@ -625,8 +630,8 @@ describe('forge_projects.get', () => {
   });
 
   it('member-role member reads project', async () => {
-    mockProjectSelect({ ...FULL_PROJECT_ROW, ownerId: OTHER_OWNER_ID });
-    mockMemberSelect('member');
+    mockProjectSelect(FULL_PROJECT_ROW);
+    mockAccess({ memberRole: 'member', orgRole: null });
     const tool = forgeProjectsGetTool(deviceCtx());
     const res = (await tool.handler({ projectId: PROJECT_A })) as {
       project: { role: string };
@@ -634,9 +639,28 @@ describe('forge_projects.get', () => {
     expect(res.project.role).toBe('member');
   });
 
+  it('viewer-role member reads project', async () => {
+    mockProjectSelect(FULL_PROJECT_ROW);
+    mockAccess({ memberRole: 'viewer', orgRole: null });
+    const tool = forgeProjectsGetTool(deviceCtx());
+    const res = (await tool.handler({ projectId: PROJECT_A })) as {
+      project: { role: string };
+    };
+    expect(res.project.role).toBe('viewer');
+  });
+
   it('non-member returns NOT_FOUND (no existence leak)', async () => {
-    mockProjectSelect({ ...FULL_PROJECT_ROW, ownerId: OTHER_OWNER_ID });
-    mockMemberSelect(null);
+    mockProjectSelect(FULL_PROJECT_ROW);
+    mockAccess({ memberRole: null, orgRole: null });
+    const tool = forgeProjectsGetTool(deviceCtx());
+    await expect(tool.handler({ projectId: PROJECT_A })).rejects.toThrow(
+      /NOT_FOUND: project not found or not accessible/,
+    );
+  });
+
+  it('plain org member (no project row) returns NOT_FOUND — org member derives nothing', async () => {
+    mockProjectSelect(FULL_PROJECT_ROW);
+    mockAccess({ memberRole: null, orgRole: 'member' });
     const tool = forgeProjectsGetTool(deviceCtx());
     await expect(tool.handler({ projectId: PROJECT_A })).rejects.toThrow(
       /NOT_FOUND: project not found or not accessible/,
@@ -679,6 +703,7 @@ describe('forge_projects.get', () => {
       webhookSecret: 'wh',
       apiKey: 'fk_secret',
     });
+    mockAccess({ memberRole: 'admin', orgRole: null });
     const tool = forgeProjectsGetTool(deviceCtx());
     const res = (await tool.handler({ projectId: PROJECT_A })) as {
       project: Record<string, unknown>;
@@ -688,11 +713,12 @@ describe('forge_projects.get', () => {
       [
         'baseBranch',
         'createdAt',
+        'createdBy',
         'defaultDeviceId',
         'description',
         'id',
         'name',
-        'ownerId',
+        'orgId',
         'previewDeploy',
         'productionBranch',
         'repoPath',
@@ -707,6 +733,7 @@ describe('forge_projects.get', () => {
 
   it('previewDeploy=null returns normalized defaults instead of crashing', async () => {
     mockProjectSelect({ ...FULL_PROJECT_ROW, previewDeploy: null });
+    mockAccess({ memberRole: 'member', orgRole: null });
     const tool = forgeProjectsGetTool(deviceCtx());
     const res = (await tool.handler({ projectId: PROJECT_A })) as {
       project: { previewDeploy: Record<string, unknown> };
@@ -733,13 +760,11 @@ describe('forge_projects.get', () => {
 });
 
 describe('forge_projects.archive', () => {
-  // assertPrincipalIsAdmin → loadDeviceProjectRole/loadUserProjectRole:
-  // db.select({ownerId}).from(projects).where().limit(1).
-  function mockOwnerLookup(ownerId: string) {
-    selectImpl.mockImplementationOnce(() => ({
-      from: () => ({ where: () => ({ limit: () => Promise.resolve([{ ownerId }]) }) }),
-    }));
-  }
+  // Query order on the happy path:
+  //   1. effectiveProjectRole via assertPrincipalIsAdmin (effective admin gate)
+  //   2. effectiveProjectRole again for the org-tier gate (org owner/admin)
+  //   3. agentSessions count
+  //   4. delete().where().returning()
 
   it('without confirm:true throws BAD_REQUEST', async () => {
     const tool = forgeProjectsArchiveTool(deviceCtx());
@@ -757,27 +782,40 @@ describe('forge_projects.archive', () => {
     expect(selectImpl).not.toHaveBeenCalled();
   });
 
-  it('by a non-admin is refused', async () => {
-    // caller is neither owner nor a member → assertPrincipalIsAdmin throws
-    // before any delete.
-    selectImpl.mockImplementationOnce(() => ({
-      from: () => ({ where: () => ({ limit: () => Promise.resolve([{ ownerId: OTHER_OWNER_ID }]) }) }),
-    }));
-    // projectMembers lookup → no row
-    selectImpl.mockImplementationOnce(() => ({
-      from: () => ({ where: () => ({ limit: () => Promise.resolve([]) }) }),
-    }));
+  it('a PAT lacking the admin scope is refused with FORBIDDEN', async () => {
+    const tool = forgeProjectsArchiveTool(patCtx({ scopes: ['read', 'write'] }));
+    await expect(
+      tool.handler({ projectId: PROJECT_A, confirm: true }),
+    ).rejects.toThrow(/FORBIDDEN: this token lacks the admin scope/);
+    // the scope gate fires before the role lookup
+    expect(selectImpl).not.toHaveBeenCalled();
+    expect(deleteImpl).not.toHaveBeenCalled();
+  });
+
+  it('by a non-admin member is refused', async () => {
+    // member-but-not-admin → assertPrincipalIsAdmin throws before any delete.
+    mockAccess({ memberRole: 'member', orgRole: null });
     const tool = forgeProjectsArchiveTool(deviceCtx());
     await expect(
       tool.handler({ projectId: PROJECT_A, confirm: true }),
-    ).rejects.toThrow(/FORBIDDEN/);
+    ).rejects.toThrow(/FORBIDDEN: requires project admin access/);
+    expect(deleteImpl).not.toHaveBeenCalled();
+  });
+
+  it('project-admin without org admin is refused (org-tier gate)', async () => {
+    mockAccess({ memberRole: 'admin', orgRole: null }); // passes effective-admin gate
+    mockAccess({ memberRole: 'admin', orgRole: null }); // fails org gate
+    const tool = forgeProjectsArchiveTool(deviceCtx());
+    await expect(
+      tool.handler({ projectId: PROJECT_A, confirm: true }),
+    ).rejects.toThrow(/FORBIDDEN: requires org admin on the project/);
+    expect(deleteImpl).not.toHaveBeenCalled();
   });
 
   it('with in-flight sessions throws PROJECT_BUSY', async () => {
-    mockOwnerLookup(OWNER_ID); // caller is owner → admin
-    selectImpl.mockImplementationOnce(() => ({
-      from: () => ({ where: () => Promise.resolve([{ active: 2 }]) }),
-    }));
+    mockAccess({ memberRole: null, orgRole: 'owner' }); // effective admin
+    mockAccess({ memberRole: null, orgRole: 'owner' }); // org gate
+    mockSelect([{ active: 2 }]);
     const tool = forgeProjectsArchiveTool(deviceCtx());
     await expect(
       tool.handler({ projectId: PROJECT_A, confirm: true }),
@@ -785,10 +823,9 @@ describe('forge_projects.archive', () => {
   });
 
   it('happy path deletes and returns archived:true', async () => {
-    mockOwnerLookup(OWNER_ID); // caller is owner → admin
-    selectImpl.mockImplementationOnce(() => ({
-      from: () => ({ where: () => Promise.resolve([{ active: 0 }]) }),
-    }));
+    mockAccess({ memberRole: null, orgRole: 'admin' }); // effective admin
+    mockAccess({ memberRole: null, orgRole: 'admin' }); // org gate
+    mockSelect([{ active: 0 }]);
     deleteImpl.mockImplementationOnce(() => ({
       where: () => ({
         returning: () => Promise.resolve([{ id: PROJECT_A }]),

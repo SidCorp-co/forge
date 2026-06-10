@@ -22,7 +22,8 @@ export interface SpawnPmSessionInput {
   cause: SpawnCause;
   eventRef?: Record<string, unknown>;
   // Set for 'operator' / 'operator-reply'. Becomes the `jobs.created_by`
-  // FK; for non-operator causes we fall back to the project owner.
+  // FK; for non-operator causes we fall back to the project creator
+  // (audit `projects.created_by`).
   actorUserId?: string;
 }
 
@@ -99,7 +100,7 @@ export async function spawnPmSession(
   let createdBy = input.actorUserId;
   if (!createdBy) {
     const [project] = await db
-      .select({ ownerId: projects.ownerId })
+      .select({ createdBy: projects.createdBy })
       .from(projects)
       .where(eq(projects.id, input.projectId))
       .limit(1);
@@ -107,7 +108,7 @@ export async function spawnPmSession(
       // Project gone (race with delete). Treat as disabled — nothing to spawn.
       return { ok: false, reason: 'disabled' };
     }
-    createdBy = project.ownerId;
+    createdBy = project.createdBy;
   }
 
   const payload: Record<string, unknown> = {

@@ -36,7 +36,7 @@ vi.mock('../lib/chat-preamble.js', () => ({
   TOOL_REFERENCE: '<tool-reference>',
 }));
 
-const publishSpy = vi.fn(() => 1);
+const publishSpy = vi.fn((..._args: unknown[]) => 1);
 vi.mock('../ws/server.js', () => ({ roomManager: { publish: publishSpy } }));
 vi.mock('../ws/rooms.js', () => ({
   deviceRoom: (id: string) => `device:${id}`,

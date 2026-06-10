@@ -11,7 +11,10 @@ vi.mock('../../config/env.js', () => ({
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
-const selectFrom = vi.fn(() => ({ where: selectWhere }));
+// lib/authz.ts effectiveProjectRole chains TWO leftJoins before where().limit(1).
+const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
+const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
+const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
 
 vi.mock('../../db/client.js', () => ({
   db: {
@@ -36,6 +39,8 @@ const fakeDevice = {
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -82,7 +87,7 @@ describe('forge_jobs.list', () => {
   it('lists jobs scoped by project + filters when device owner is member', async () => {
     const tool = forgeJobsListTool(fakeDevice);
     // assertDeviceOwnerIsMember → projects.ownerId match
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     // jobs query
     selectLimit.mockResolvedValueOnce([baseJobRow]);
 
@@ -99,10 +104,8 @@ describe('forge_jobs.list', () => {
 
   it('rejects non-member with FORBIDDEN', async () => {
     const tool = forgeJobsListTool(fakeDevice);
-    // project owned by someone else
-    selectLimit.mockResolvedValueOnce([{ ownerId: 'other' }]);
-    // no member row
-    selectLimit.mockResolvedValueOnce([]);
+    // effective-role lookup: caller has no role
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
 
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
   });
@@ -136,7 +139,7 @@ describe('forge_jobs.get', () => {
     // load job
     selectLimit.mockResolvedValueOnce([baseJobRow]);
     // membership
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 
     const result = (await tool.handler({ jobId: JOB_ID })) as {
       job: { id: string; agentSessionId: string };
@@ -154,8 +157,7 @@ describe('forge_jobs.get', () => {
   it('throws FORBIDDEN cross-project', async () => {
     const tool = forgeJobsGetTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([{ ...baseJobRow, projectId: OTHER_PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([{ ownerId: 'other' }]); // not owner
-    selectLimit.mockResolvedValueOnce([]); // not member
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // not a member
     await expect(tool.handler({ jobId: JOB_ID })).rejects.toThrow(/FORBIDDEN/);
   });
 
@@ -174,7 +176,7 @@ describe('forge_jobs.events', () => {
     // load job
     selectLimit.mockResolvedValueOnce([baseJobRow]);
     // membership
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     // events query
     selectLimit.mockResolvedValueOnce([
       { id: 'e1', jobId: JOB_ID, ts: new Date(), kind: 'stdout', data: {}, seq: 5 },
@@ -192,7 +194,7 @@ describe('forge_jobs.events', () => {
   it('returns lastSeq = sinceSeq when no items match', async () => {
     const tool = forgeJobsEventsTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([baseJobRow]);
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     selectLimit.mockResolvedValueOnce([]);
 
     const result = (await tool.handler({ jobId: JOB_ID, sinceSeq: 42 })) as {
@@ -210,8 +212,7 @@ describe('forge_jobs.events', () => {
   it('throws FORBIDDEN cross-project', async () => {
     const tool = forgeJobsEventsTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([{ ...baseJobRow, projectId: OTHER_PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([{ ownerId: 'other' }]); // not owner
-    selectLimit.mockResolvedValueOnce([]); // not member
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // not a member
     await expect(tool.handler({ jobId: JOB_ID })).rejects.toThrow(/FORBIDDEN/);
   });
 

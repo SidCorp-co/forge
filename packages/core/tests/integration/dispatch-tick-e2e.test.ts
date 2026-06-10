@@ -110,7 +110,7 @@ describe('ISS-40 dispatch-tick E2E', () => {
       VALUES (
         ${id}, ${projectId}, ${args.issueId ?? null}, ${args.type ?? 'plan'},
         ${args.status ?? 'queued'}, '{}'::jsonb, ${pipelineRunId},
-        (SELECT owner_id FROM projects WHERE id = ${projectId})
+        (SELECT created_by FROM projects WHERE id = ${projectId})
       )
     `);
     return id;
@@ -138,7 +138,7 @@ describe('ISS-40 dispatch-tick E2E', () => {
       VALUES (
         ${id}, ${projectId}, ${issSeq + Math.floor(Math.random() * 100000)},
         ${'Issue'}, 'open',
-        (SELECT owner_id FROM projects WHERE id = ${projectId})
+        (SELECT created_by FROM projects WHERE id = ${projectId})
       )
     `);
     return id;

@@ -55,7 +55,11 @@ vi.mock('../db/client.js', () => ({
   db: { select: dbSelect, update: dbUpdate },
 }));
 
-const scheduleRetryMock = vi.fn(async () => ({ scheduled: false }));
+const scheduleRetryMock = vi.fn(
+  async (): Promise<{ scheduled: boolean; newJobId?: string; attempt?: number }> => ({
+    scheduled: false,
+  }),
+);
 vi.mock('./retry.js', () => ({
   scheduleAutoRetryWithVerify: (...args: unknown[]) => scheduleRetryMock(...(args as [])),
 }));
@@ -65,8 +69,9 @@ vi.mock('../ws/server.js', () => ({
   roomManager: { publish: publishMock },
 }));
 
-vi.mock('../lib/project-access.js', () => ({
-  loadProjectAccess: vi.fn(async () => ({ projectId: 'p1', ownerId: 'u-1', role: 'owner' })),
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
+  loadProjectAccess: vi.fn(async () => ({ projectId: 'p1', orgId: 'org-1', role: 'admin', orgRole: 'owner' })),
 }));
 
 // ISS-40 PR-E — lifecycle routes now fire-and-forget a per-project tick on

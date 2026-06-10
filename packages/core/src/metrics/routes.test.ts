@@ -67,10 +67,9 @@ function authVerified() {
   queryQueue.push([{ emailVerifiedAt: new Date() }]);
 }
 
-/** Push the two loadProjectAccess selects: project row, then membership row. */
+/** Push the single loadProjectAccess join row (projects ⨝ members ⨝ org members). */
 function accessAsOwner() {
-  queryQueue.push([{ id: PROJECT_ID, ownerId: USER_ID }]); // project
-  queryQueue.push([]); // membership (owner not in members → allowed via ownerId)
+  queryQueue.push([{ orgId: 'org-1', memberRole: 'admin', orgRole: 'owner' }]);
 }
 
 function url(metric: string, extra = '') {
@@ -118,8 +117,7 @@ describe('GET /api/projects/:id/metrics/timeseries — auth & validation', () =>
 
   it('403 when caller is neither owner nor member', async () => {
     authVerified();
-    queryQueue.push([{ id: PROJECT_ID, ownerId: OTHER_USER }]); // project
-    queryQueue.push([]); // membership empty
+    queryQueue.push([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // no access
     const res = await buildApp().request(url('cost'), {
       headers: { authorization: `Bearer ${await token()}` },
     });

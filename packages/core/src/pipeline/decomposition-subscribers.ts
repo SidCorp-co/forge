@@ -42,17 +42,18 @@ import { triggerPipelineStepManual } from './orchestrator.js';
 /**
  * Synthesise a device principal for system-initiated cascades. Mirrors the
  * orchestrator's `resolveSkipDevice` pattern — we attribute cascade
- * transitions to the project owner so `activity_log.actorId` and the WS
- * broadcast's `actorId` carry a real (non-null) user.
+ * transitions to the project creator (`projects.createdBy`, audit-only) so
+ * `activity_log.actorId` and the WS broadcast's `actorId` carry a real
+ * (non-null) user.
  */
 async function resolveDeviceForProject(projectId: string): Promise<DeviceLite | null> {
   const [row] = await db
-    .select({ ownerId: projects.ownerId })
+    .select({ createdBy: projects.createdBy })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  if (!row?.ownerId) return null;
-  return { id: row.ownerId, ownerId: row.ownerId };
+  if (!row?.createdBy) return null;
+  return { id: row.createdBy, ownerId: row.createdBy };
 }
 
 /**

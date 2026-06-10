@@ -13,6 +13,7 @@ const queue: unknown[] = [];
 // biome-ignore lint/suspicious/noExplicitAny: chainable mock proxy
 const chain: any = {};
 chain.from = () => chain;
+chain.leftJoin = () => chain;
 chain.where = () => chain;
 chain.orderBy = () => chain;
 chain.limit = () => chain;
@@ -66,6 +67,8 @@ const fakeDevice = {
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -82,7 +85,7 @@ const ctx = {
 };
 
 function pushPmActorOk() {
-  queue.push([{ ownerId: OWNER_ID }]); // assertDeviceOwnerIsMember: project (owner)
+  queue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // assertDeviceOwnerIsMember: project (owner)
   queue.push([{ capabilities: { pm: true } }]); // runner row
 }
 
@@ -95,7 +98,7 @@ beforeEach(() => {
 describe('forge_pm.dispatch', () => {
   it('rejects when device has no claude-code runner', async () => {
     const tool = forgePmDispatchTool(ctx);
-    queue.push([{ ownerId: OWNER_ID }]); // assertMember
+    queue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // assertMember
     queue.push([]); // no runner
     await expect(
       tool.handler({
@@ -109,7 +112,7 @@ describe('forge_pm.dispatch', () => {
 
   it('rejects when capabilities.pm is not true', async () => {
     const tool = forgePmDispatchTool(ctx);
-    queue.push([{ ownerId: OWNER_ID }]);
+    queue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     queue.push([{ capabilities: { pm: false } }]);
     await expect(
       tool.handler({

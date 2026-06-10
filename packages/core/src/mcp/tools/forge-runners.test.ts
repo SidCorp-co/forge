@@ -38,6 +38,8 @@ const fakeDevice = {
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -60,19 +62,29 @@ function mockVisible(ids: string[]) {
   selectDistinctImpl.mockImplementationOnce(() => ({
     from: () => ({
       leftJoin: () => ({
-        where: () => Promise.resolve(ids.map((id) => ({ id }))),
+        leftJoin: () => ({
+          where: () => Promise.resolve(ids.map((id) => ({ id }))),
+        }),
       }),
     }),
   }));
 }
 
-// select(...).from(...).where(...).limit(1) — used by the runner-project lookup
-// and by assertPrincipalIsAdmin → loadDeviceProjectRole.
+// select(...).from(...)[.leftJoin().leftJoin()].where(...).limit(1) — used by
+// the runner-project lookup and by assertPrincipalIsAdmin → effectiveProjectRole
+// (lib/authz.ts), which chains TWO leftJoins before where().limit(1).
 function mockLimitOnce(rows: unknown[]) {
-  selectImpl.mockImplementationOnce(() => ({
-    from: () => ({ where: () => ({ limit: () => Promise.resolve(rows) }) }),
-  }));
+  selectImpl.mockImplementationOnce(() => {
+    const tail = { where: () => ({ limit: () => Promise.resolve(rows) }) };
+    return {
+      from: () => ({ ...tail, leftJoin: () => ({ ...tail, leftJoin: () => tail }) }),
+    };
+  });
 }
+
+// effectiveProjectRole rows (lib/authz.ts) — effective admin vs plain member.
+const adminAccessRow = { orgId: 'org-1', memberRole: 'admin', orgRole: null };
+const memberAccessRow = { orgId: 'org-1', memberRole: 'member', orgRole: null };
 
 const runnerRow = {
   id: RUNNER_ID,
@@ -135,8 +147,8 @@ describe('forge_runners', () => {
     const res = (await tool.handler({ action: 'list' })) as {
       runners: Array<{ inFlightCount: number; config: { apiKey: string } }>;
     };
-    expect(res.runners[0].inFlightCount).toBe(2);
-    expect(res.runners[0].config.apiKey).toBe('***');
+    expect(res.runners[0]?.inFlightCount).toBe(2);
+    expect(res.runners[0]?.config.apiKey).toBe('***');
   });
 
   it('list returns empty when caller has no visible projects', async () => {
@@ -147,7 +159,7 @@ describe('forge_runners', () => {
   });
 
   it('register validates capabilities and inserts runner', async () => {
-    mockLimitOnce([{ ownerId: OWNER_ID }]); // assertPrincipalIsAdmin → owner
+    mockLimitOnce([adminAccessRow]); // assertPrincipalIsAdmin → effective admin
     insertImpl.mockImplementationOnce(() => ({
       values: () => ({
         returning: () =>
@@ -185,8 +197,7 @@ describe('forge_runners', () => {
   });
 
   it('register by a non-admin on the target project is refused', async () => {
-    mockLimitOnce([{ ownerId: OTHER_OWNER_ID }]); // not owner
-    mockLimitOnce([]); // projectMembers → no row
+    mockLimitOnce([memberAccessRow]); // member but not admin
     const tool = forgeRunnersTool(buildCtx());
     await expect(
       tool.handler({
@@ -197,7 +208,7 @@ describe('forge_runners', () => {
   });
 
   it('register rejects invalid capability shape with INVALID_CAPABILITIES', async () => {
-    mockLimitOnce([{ ownerId: OWNER_ID }]); // admin passes; caps validation fails next
+    mockLimitOnce([adminAccessRow]); // admin passes; caps validation fails next
     const tool = forgeRunnersTool(buildCtx());
     await expect(
       tool.handler({
@@ -215,7 +226,7 @@ describe('forge_runners', () => {
 
   it('retire with in-flight jobs and no force throws RUNNER_BUSY', async () => {
     mockLimitOnce([{ projectId: PROJECT_ID }]); // runner project lookup
-    mockLimitOnce([{ ownerId: OWNER_ID }]); // assertPrincipalIsAdmin → owner
+    mockLimitOnce([adminAccessRow]); // assertPrincipalIsAdmin → effective admin
     executeImpl.mockResolvedValueOnce([{ count: '2' }]); // countInFlightForRunner
     const tool = forgeRunnersTool(buildCtx());
     await expect(tool.handler({ action: 'retire', runnerId: RUNNER_ID })).rejects.toThrow(
@@ -225,7 +236,7 @@ describe('forge_runners', () => {
 
   it('retire with force:true transitions through draining → disabled', async () => {
     mockLimitOnce([{ projectId: PROJECT_ID }]);
-    mockLimitOnce([{ ownerId: OWNER_ID }]);
+    mockLimitOnce([adminAccessRow]);
     executeImpl.mockResolvedValueOnce([{ count: '1' }]);
     // draining update (no returning needed)
     updateImpl.mockImplementationOnce(() => ({
@@ -250,7 +261,7 @@ describe('forge_runners', () => {
 
   it('update_capabilities validates and writes new capabilities', async () => {
     mockLimitOnce([{ projectId: PROJECT_ID }]);
-    mockLimitOnce([{ ownerId: OWNER_ID }]);
+    mockLimitOnce([adminAccessRow]);
     updateImpl.mockImplementationOnce(() => ({
       set: () => ({
         where: () => ({

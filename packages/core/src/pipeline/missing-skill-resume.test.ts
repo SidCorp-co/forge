@@ -25,7 +25,7 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const reEnqueueMock = vi.fn(async () => undefined);
+const reEnqueueMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('./orchestrator.js', () => ({
   reEnqueueForIssue: (...a: unknown[]) => reEnqueueMock(...(a as [])),
 }));

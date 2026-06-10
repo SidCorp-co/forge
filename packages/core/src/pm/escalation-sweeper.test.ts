@@ -2,12 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const executeMock = vi.fn();
 const insertReturningMock = vi.fn();
-const insertValuesMock = vi.fn(() => ({ returning: insertReturningMock }));
-const insertMock = vi.fn(() => ({ values: insertValuesMock }));
+const insertValuesMock = vi.fn((..._args: unknown[]) => ({ returning: insertReturningMock }));
+const insertMock = vi.fn((..._args: unknown[]) => ({ values: insertValuesMock }));
 const selectLimitMock = vi.fn();
 const selectWhereMock = vi.fn(() => ({ limit: selectLimitMock }));
 const selectFromMock = vi.fn(() => ({ where: selectWhereMock }));
-const selectMock = vi.fn(() => ({ from: selectFromMock }));
+const selectMock = vi.fn((..._args: unknown[]) => ({ from: selectFromMock }));
 
 vi.mock('../db/client.js', () => ({
   db: {
@@ -17,7 +17,7 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const enqueueJobMock = vi.fn(async () => {});
+const enqueueJobMock = vi.fn(async (..._args: unknown[]) => {});
 vi.mock('../jobs/enqueue.js', () => ({
   enqueueJob: (...args: unknown[]) => enqueueJobMock(...(args as [string])),
 }));
@@ -91,7 +91,7 @@ function dispatchEscalationRow(overrides: Partial<Record<string, unknown>> = {})
 describe('runPmEscalationSweep', () => {
   it('dispatches the fallback job and records an escalation-timeout decision', async () => {
     executeMock.mockResolvedValueOnce({ rows: [dispatchEscalationRow()] });
-    selectLimitMock.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimitMock.mockResolvedValueOnce([{ createdBy: OWNER_ID }]);
     insertReturningMock
       .mockResolvedValueOnce([{ id: 'job-1' }])
       .mockResolvedValueOnce([{ id: 'decision-2' }]);
@@ -171,7 +171,7 @@ describe('runPmEscalationSweep', () => {
 
   it('treats a unique-violation on dispatch as already-active (executed)', async () => {
     executeMock.mockResolvedValueOnce({ rows: [dispatchEscalationRow()] });
-    selectLimitMock.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimitMock.mockResolvedValueOnce([{ createdBy: OWNER_ID }]);
     const uniqueErr = Object.assign(new Error('dup'), { code: '23505' });
     insertReturningMock
       .mockRejectedValueOnce(uniqueErr)
@@ -189,7 +189,7 @@ describe('runPmEscalationSweep', () => {
     });
     selectLimitMock
       .mockRejectedValueOnce(new Error('owner lookup blew up'))
-      .mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      .mockResolvedValueOnce([{ createdBy: OWNER_ID }]);
     insertReturningMock
       .mockResolvedValueOnce([{ id: 'job-good' }])
       .mockResolvedValueOnce([{ id: 'decision-good' }]);

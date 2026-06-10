@@ -31,6 +31,15 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
+// Org-level authz: stub the db-touching resolvers; pure helpers stay real.
+const effectiveRole = vi.fn();
+const visibleIds = vi.fn();
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
+  effectiveProjectRole: (...args: unknown[]) => effectiveRole(...args),
+  loadVisibleProjectIds: (...args: unknown[]) => visibleIds(...args),
+}));
+
 const routes = await import('./analytics-routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
@@ -48,22 +57,26 @@ function buildApp() {
 const PROJECT_UUID = '33333333-3333-4333-8333-333333333333';
 const ISSUE_UUID = '44444444-4444-4444-8444-444444444444';
 
-// Stack the lookups assertProjectMember performs after the email-verify
-// pre-check. Call order matters: (1) projects.ownerId, (2) projectMembers row
-// (skipped when caller is the owner).
+// Queue the effectiveProjectRole resolution assertProjectMember performs after
+// the email-verify pre-check. `ownerId: 'u-1'` (legacy shorthand for "caller
+// has access") and `memberOf: true` both resolve to an effective member role.
 function mockMembership(opts: {
   ownerId?: string;
   memberOf?: boolean;
   projectExists?: boolean;
 }) {
-  selectLimit
-    .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-    .mockResolvedValueOnce(
-      opts.projectExists === false ? [] : [{ ownerId: opts.ownerId ?? 'other-owner' }],
-    );
-  if (opts.ownerId !== 'u-1' && opts.projectExists !== false) {
-    selectLimit.mockResolvedValueOnce(opts.memberOf ? [{ userId: 'u-1' }] : []);
+  selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+  if (opts.projectExists === false) {
+    effectiveRole.mockResolvedValueOnce(null);
+    return;
   }
+  const hasAccess = opts.ownerId === 'u-1' || opts.memberOf === true;
+  effectiveRole.mockResolvedValueOnce({
+    projectId: PROJECT_UUID,
+    orgId: 'org-1',
+    role: hasAccess ? 'member' : null,
+    orgRole: null,
+  });
 }
 
 function req(path: string, init: RequestInit & { token?: string } = {}) {
@@ -96,7 +109,7 @@ describe('GET /api/pipeline/throughput', () => {
   it('returns [] when user has no visible projects', async () => {
     const token = await signUserToken('u-1');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    leftJoinWhere.mockResolvedValueOnce([]);
+    visibleIds.mockResolvedValueOnce([]);
 
     const app = buildApp();
     const res = await app.fetch(req('/api/pipeline/throughput', { token }));
@@ -107,7 +120,7 @@ describe('GET /api/pipeline/throughput', () => {
   it('returns daily counts grouped by project for member', async () => {
     const token = await signUserToken('u-1');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    leftJoinWhere.mockResolvedValueOnce([{ id: 'p-1' }]);
+    visibleIds.mockResolvedValueOnce(['p-1']);
     selectOrderBy.mockResolvedValueOnce([
       { projectId: 'p-1', date: '2026-04-26', count: 3 },
       { projectId: 'p-1', date: '2026-04-27', count: 5 },
@@ -125,7 +138,7 @@ describe('GET /api/pipeline/throughput', () => {
   it('scopes to projectId when caller has access', async () => {
     const token = await signUserToken('u-1');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    leftJoinWhere.mockResolvedValueOnce([{ id: 'p-1' }, { id: 'p-2' }]);
+    visibleIds.mockResolvedValueOnce(['p-1', 'p-2']);
     selectOrderBy.mockResolvedValueOnce([
       { projectId: 'p-1', date: '2026-04-27', count: 7 },
     ]);
@@ -143,7 +156,7 @@ describe('GET /api/pipeline/throughput', () => {
   it('returns [] when projectId is not in user visibility', async () => {
     const token = await signUserToken('u-1');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    leftJoinWhere.mockResolvedValueOnce([{ id: 'p-1' }]);
+    visibleIds.mockResolvedValueOnce(['p-1']);
 
     const app = buildApp();
     const res = await app.fetch(
@@ -176,7 +189,7 @@ describe('GET /api/pipeline/cycle-time', () => {
   it('returns [] when user has no visible projects', async () => {
     const token = await signUserToken('u-1');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    leftJoinWhere.mockResolvedValueOnce([]);
+    visibleIds.mockResolvedValueOnce([]);
 
     const app = buildApp();
     const res = await app.fetch(req('/api/pipeline/cycle-time', { token }));
@@ -187,7 +200,7 @@ describe('GET /api/pipeline/cycle-time', () => {
   it('returns avgHours per status', async () => {
     const token = await signUserToken('u-1');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    leftJoinWhere.mockResolvedValueOnce([{ id: 'p-1' }]);
+    visibleIds.mockResolvedValueOnce(['p-1']);
     dbExecute.mockResolvedValueOnce([
       { status: 'open', avg_hours: 4.5, n: 12 },
       { status: 'in_progress', avg_hours: 23.1, n: 8 },
@@ -214,7 +227,7 @@ describe('GET /api/pipeline/step-durations', () => {
   it('returns [] when user has no visible projects', async () => {
     const token = await signUserToken('u-1');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    leftJoinWhere.mockResolvedValueOnce([]);
+    visibleIds.mockResolvedValueOnce([]);
 
     const app = buildApp();
     const res = await app.fetch(req('/api/pipeline/step-durations', { token }));
@@ -252,7 +265,7 @@ describe('GET /api/pipeline/step-durations', () => {
   it('maps snake_case view rows to camelCase and coerces numbers', async () => {
     const token = await signUserToken('u-1');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    leftJoinWhere.mockResolvedValueOnce([{ id: 'p-1' }]);
+    visibleIds.mockResolvedValueOnce(['p-1']);
     dbExecute.mockResolvedValueOnce([
       {
         run_id: 'r-1',
@@ -307,7 +320,7 @@ describe('GET /api/pipeline/step-durations', () => {
   it('passes step filter into the SQL parameters', async () => {
     const token = await signUserToken('u-1');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    leftJoinWhere.mockResolvedValueOnce([{ id: 'p-1' }]);
+    visibleIds.mockResolvedValueOnce(['p-1']);
     dbExecute.mockResolvedValueOnce([]);
 
     const app = buildApp();

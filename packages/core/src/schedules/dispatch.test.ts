@@ -271,7 +271,7 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
   it('tick + no device online → no-device / skipped (no inserts, no publish)', async () => {
     findDeviceMock.mockResolvedValueOnce(null);
     // owner lookup happens before findDevice in current code path
-    selectLimit.mockResolvedValueOnce([{ ownerId: 'owner-1' }]); // ownerId
+    selectLimit.mockResolvedValueOnce([{ createdBy: 'owner-1' }]); // createdBy
     selectLimit.mockResolvedValueOnce([
       { id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' },
     ]);
@@ -316,7 +316,7 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
 
   it('targetProjectSlug → resolves and dispatches on target project', async () => {
     // 1st limit: project slug → target lookup
-    selectLimit.mockResolvedValueOnce([{ id: TARGET_PROJECT_ID, ownerId: 'target-owner' }]);
+    selectLimit.mockResolvedValueOnce([{ id: TARGET_PROJECT_ID, createdBy: 'target-owner' }]);
     // 2nd limit: target project slug+repoPath
     selectLimit.mockResolvedValueOnce([
       { id: TARGET_PROJECT_ID, slug: 'tgt', repoPath: '/tgt' },
@@ -430,9 +430,9 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
   });
 
   it('tick attribution → falls back to project owner when no actorUserId', async () => {
-    // First .limit: project ownerId lookup.
+    // First .limit: project createdBy lookup.
     // Second .limit: project slug+repoPath.
-    selectLimit.mockResolvedValueOnce([{ ownerId: 'owner-1' }]);
+    selectLimit.mockResolvedValueOnce([{ createdBy: 'owner-1' }]);
     selectLimit.mockResolvedValueOnce([
       { id: SOURCE_PROJECT_ID, slug: 'src', repoPath: '/repo' },
     ]);

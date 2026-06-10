@@ -5,7 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { appConfig } from '../db/schema.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
 const projectIdParamSchema = z.object({ projectId: z.uuid() });
@@ -24,9 +24,6 @@ const upsertSchema = z
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
 export const appConfigRoutes = new Hono<{ Variables: AuthVars }>();
 appConfigRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -40,7 +37,7 @@ appConfigRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'viewer', 'not a project member');
 
     const [row] = await db
       .select()
@@ -65,9 +62,7 @@ appConfigRoutes.put(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (access.ownerId !== userId && access.role !== 'owner' && access.role !== 'admin') {
-      throw forbidden('insufficient permission');
-    }
+    assertProjectRole(access, 'admin', 'insufficient permission');
 
     const updates: Record<string, unknown> = {};
     if (patch.chatProviderId !== undefined) updates.chatProviderId = patch.chatProviderId;

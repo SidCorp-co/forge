@@ -17,7 +17,10 @@ import {
   runners,
 } from '../db/schema.js';
 import { classifyGitRemote } from '../git/provision-credential.js';
+import { effectiveProjectRole, loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { projectRoom } from '../ws/rooms.js';
+import { roomManager } from '../ws/server.js';
 import { findDeliveryById } from './deliveries.js';
 import { enqueueCoolifyDispatch } from './queue.js';
 import { getAdapter } from './registry.js';
@@ -34,7 +37,7 @@ import {
   findConnectionById,
   listBindingsForConnection,
   listBindingsForProject,
-  listConnectionsForOwner,
+  listConnectionsForPrincipalUser,
   softDeleteBinding,
   softDeleteConnection,
   updateBinding,
@@ -42,8 +45,6 @@ import {
 } from './store.js';
 import { type IntegrationProvider, capabilitiesFor } from './types.js';
 import { isVaultConfigured } from './vault.js';
-import { projectRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
 
 // `assertVaultBootSafety` lets core boot when the integration tables are empty,
 // so the first create/update attempt is the moment the missing-key
@@ -69,25 +70,15 @@ const notFound = (entity = 'integration') =>
 async function assertProjectMember(
   projectId: string,
   userId: string,
-): Promise<'owner' | 'admin' | 'member'> {
-  const [project] = await db
-    .select({ id: projects.id, ownerId: projects.ownerId })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project) throw notFound('project');
-  if (project.ownerId === userId) return 'owner';
-  const [member] = await db
-    .select({ role: projectMembers.role })
-    .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
-    .limit(1);
-  if (!member) throw forbidden();
-  return member.role;
+): Promise<'admin' | 'member' | 'viewer'> {
+  const access = await effectiveProjectRole(userId, projectId);
+  if (!access) throw notFound('project');
+  if (!access.role) throw forbidden();
+  return access.role;
 }
 
-function assertAdmin(role: 'owner' | 'admin' | 'member'): void {
-  if (role === 'member') throw forbidden();
+function assertAdmin(role: 'admin' | 'member' | 'viewer'): void {
+  if (role !== 'admin') throw forbidden();
 }
 
 const environmentSchema = z.enum(integrationEnvironments);
@@ -308,7 +299,10 @@ integrationsRoutes.post(
         environment: body.environment,
         integrationSecret,
       });
-      broadcastIntegrationChanged(projectId, { bindingId: binding.id, connectionId: connection.id });
+      broadcastIntegrationChanged(projectId, {
+        bindingId: binding.id,
+        connectionId: connection.id,
+      });
       return c.json(
         { integration: summarizeBinding({ binding, connection }), integrationSecret },
         201,
@@ -860,18 +854,21 @@ const connectionCreateSchema = z.discriminatedUnion('provider', [
     displayName: z.string().min(1).max(200).optional(),
     config: coolifyConfigSchema,
     secrets: coolifySecretsSchema,
+    orgId: z.uuid().optional(),
   }),
   z.object({
     provider: z.literal('postman'),
     displayName: z.string().min(1).max(200).optional(),
     config: postmanConfigSchema,
     secrets: postmanSecretsSchema,
+    orgId: z.uuid().optional(),
   }),
   z.object({
     provider: z.literal('epodsystem'),
     displayName: z.string().min(1).max(200).optional(),
     config: epodsystemConfigBase,
     secrets: epodsystemSecretsSchema,
+    orgId: z.uuid().optional(),
   }),
 ]);
 
@@ -882,15 +879,23 @@ const connectionUpdateSchema = z.object({
   active: z.boolean().optional(),
 });
 
-async function loadOwnedConnection(
+async function loadManageableConnection(
   id: string,
   userId: string,
 ): Promise<IntegrationConnectionRow> {
   const connection = await findConnectionById(id);
-  // Treat a connection owned by someone else as not-found (don't leak existence).
-  if (!connection || connection.ownerType !== 'user' || connection.ownerId !== userId) {
-    throw notFound('connection');
+  if (!connection) throw notFound('connection');
+  if (connection.ownerType === 'user') {
+    // Treat a connection owned by someone else as not-found (don't leak existence).
+    if (connection.ownerId !== userId) throw notFound('connection');
+    return connection;
   }
+  // Org-owned: managing (update/rotate/delete/bind) requires org admin; a
+  // plain org member sees it in lists but reads a truthful 403 here, and a
+  // non-member reads not-found.
+  const orgRole = await loadOrgRole(connection.ownerId, userId);
+  if (!orgRole) throw notFound('connection');
+  if (!orgRoleAtLeast(orgRole, 'admin')) throw forbidden();
   return connection;
 }
 
@@ -899,7 +904,7 @@ integrationConnectionsRoutes.use('*', requireAuth(), assertEmailVerified());
 
 integrationConnectionsRoutes.get('/', async (c) => {
   const userId = c.get('userId');
-  const rows = await listConnectionsForOwner(userId);
+  const rows = await listConnectionsForPrincipalUser(userId);
   return c.json({ items: rows.map(summarizeConnection) });
 });
 
@@ -912,9 +917,16 @@ integrationConnectionsRoutes.post(
     const userId = c.get('userId');
     assertVaultConfigured();
     const body = c.req.valid('json');
+    // orgId present = an org-owned connection (shared across the org's
+    // projects); requires org admin. Absent = personal (user-owned).
+    if (body.orgId) {
+      const orgRole = await loadOrgRole(body.orgId, userId);
+      if (!orgRole) throw notFound('org');
+      if (!orgRoleAtLeast(orgRole, 'admin')) throw forbidden();
+    }
     const connection = await createConnection({
-      ownerType: 'user',
-      ownerId: userId,
+      ownerType: body.orgId ? 'org' : 'user',
+      ownerId: body.orgId ?? userId,
       provider: body.provider,
       displayName: body.displayName ?? null,
       config: body.config,
@@ -941,12 +953,26 @@ integrationConnectionsRoutes.post(
   async (c) => {
     const id = c.req.param('id');
     const userId = c.get('userId');
-    // Owner-only: a connection owned by someone else reads as not-found.
-    const connection = await loadOwnedConnection(id, userId);
+    // user-owned: owner-only; org-owned: org admin (not-found for outsiders).
+    const connection = await loadManageableConnection(id, userId);
     const body = c.req.valid('json');
     // Admin on the target project (mirrors the create path's authorization).
     const role = await assertProjectMember(body.projectId, userId);
     assertAdmin(role);
+    // An org-owned connection is shareable only within its own org.
+    if (connection.ownerType === 'org') {
+      const [targetProject] = await db
+        .select({ orgId: projects.orgId })
+        .from(projects)
+        .where(eq(projects.id, body.projectId))
+        .limit(1);
+      if (!targetProject || targetProject.orgId !== connection.ownerId) {
+        throw new HTTPException(409, {
+          message: 'org connection can only bind to projects in its own org',
+          cause: { code: 'ORG_MISMATCH' },
+        });
+      }
+    }
 
     const provider = connection.provider as IntegrationProvider;
     // One active binding per (project, provider, env).
@@ -992,7 +1018,7 @@ integrationConnectionsRoutes.post(
 integrationConnectionsRoutes.get('/:id/bindings', async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
-  await loadOwnedConnection(id, userId);
+  await loadManageableConnection(id, userId);
   const pairs = await listBindingsForConnection(id);
   return c.json({ items: pairs.map(summarizeBinding) });
 });
@@ -1005,7 +1031,7 @@ integrationConnectionsRoutes.patch(
   async (c) => {
     const id = c.req.param('id');
     const userId = c.get('userId');
-    const existing = await loadOwnedConnection(id, userId);
+    const existing = await loadManageableConnection(id, userId);
     const patch = c.req.valid('json');
 
     const connPatch: Parameters<typeof updateConnection>[1] = {};
@@ -1051,7 +1077,7 @@ integrationConnectionsRoutes.patch(
 integrationConnectionsRoutes.delete('/:id', async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
-  await loadOwnedConnection(id, userId);
+  await loadManageableConnection(id, userId);
   // Cascade: bindings reference the connection with ON DELETE CASCADE, but we
   // only soft-delete here (active=false) so existing bindings stop resolving via
   // findActiveBinding's `connection.active` filter without dropping audit rows.

@@ -32,6 +32,8 @@ const fakeDevice = {
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -68,7 +70,9 @@ function mockVisible(ids: string[]) {
   selectDistinctImpl.mockImplementationOnce(() => ({
     from: () => ({
       leftJoin: () => ({
-        where: () => Promise.resolve(ids.map((id) => ({ id }))),
+        leftJoin: () => ({
+          where: () => Promise.resolve(ids.map((id) => ({ id }))),
+        }),
       }),
     }),
   }));
@@ -90,8 +94,7 @@ beforeEach(() => {
 describe('forge_collaborators', () => {
   it('list returns memberships matrix and never exposes passwordHash', async () => {
     mockVisible([PROJECT_ID]);
-    mockDistinctIds([OWNER_ID]); // owners of visible projects
-    mockDistinctIds([USER_A]); // members of visible projects
+    mockDistinctIds([USER_A]); // explicit members of visible projects
     // count(*)
     selectImpl.mockImplementationOnce(() => ({
       from: () => ({ where: () => Promise.resolve([{ total: 1 }]) }),
@@ -139,15 +142,14 @@ describe('forge_collaborators', () => {
       total: number;
     };
     expect(res.total).toBe(1);
-    expect(res.users[0].memberships[0].role).toBe('admin');
+    expect(res.users[0]?.memberships[0]?.role).toBe('admin');
     expect(res.users[0]).not.toHaveProperty('passwordHash');
     expect(res.users[0]).not.toHaveProperty('isCeo');
   });
 
   it('list with search returns empty + total when no users match', async () => {
     mockVisible([PROJECT_ID]);
-    mockDistinctIds([OWNER_ID]);
-    mockDistinctIds([USER_A]);
+    mockDistinctIds([USER_A]); // explicit members of visible projects
     selectImpl.mockImplementationOnce(() => ({
       from: () => ({ where: () => Promise.resolve([{ total: 0 }]) }),
     }));

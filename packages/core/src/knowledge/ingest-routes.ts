@@ -2,7 +2,7 @@ import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { indexMemory } from '../memory/indexer.js';
@@ -30,9 +30,6 @@ const ingestSchema = z
 
 const badRequest = (message: string, details?: unknown) =>
   new HTTPException(400, { message, cause: { code: 'BAD_REQUEST', details } });
-
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
 interface RateLimitEntry {
   count: number;
@@ -85,7 +82,7 @@ knowledgeIngestRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     if (!checkRateLimit(`ingest:${projectId}`)) {
       throw new HTTPException(429, {

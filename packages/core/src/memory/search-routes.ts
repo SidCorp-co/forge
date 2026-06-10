@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import { memorySources } from '../db/schema.js';
 import { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError } from '../embeddings/index.js';
-import { assertProjectMemberAccess } from '../lib/project-access.js';
+import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { memorySearchStrategies, runMemorySearch } from './search-service.js';
@@ -43,7 +43,7 @@ memorySearchRoutes.post(
     const body = c.req.valid('json');
     const userId = c.get('userId');
 
-    await assertProjectMemberAccess(body.projectId, userId);
+    await assertProjectAccess(body.projectId, userId, 'viewer');
 
     let result: Awaited<ReturnType<typeof runMemorySearch>>;
     try {

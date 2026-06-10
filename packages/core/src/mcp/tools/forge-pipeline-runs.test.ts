@@ -24,7 +24,10 @@ const selectWhere = vi.fn(() => ({
   orderBy: selectOrderBy,
   groupBy: selectGroupBy,
 }));
-const selectFrom = vi.fn(() => ({ where: selectWhere }));
+// lib/authz.ts effectiveProjectRole chains TWO leftJoins before where().limit(1).
+const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
+const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
+const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
 
 vi.mock('../../db/client.js', () => ({
   db: {
@@ -61,6 +64,8 @@ const fakeDevice = {
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -104,7 +109,7 @@ function makeDeviceCtx() {
 describe('forge_pipeline_runs.list', () => {
   it('returns runs filtered by issueId/status when device owner is member', async () => {
     const tool = forgePipelineRunsListTool(makeDeviceCtx());
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]); // member check
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
     selectLimit.mockResolvedValueOnce([baseRun]); // runs query
 
     const result = (await tool.handler({
@@ -119,8 +124,7 @@ describe('forge_pipeline_runs.list', () => {
 
   it('rejects non-member with FORBIDDEN', async () => {
     const tool = forgePipelineRunsListTool(makeDeviceCtx());
-    selectLimit.mockResolvedValueOnce([{ ownerId: 'other' }]);
-    selectLimit.mockResolvedValueOnce([]);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
   });
 
@@ -129,7 +133,7 @@ describe('forge_pipeline_runs.list', () => {
   it('records deprecation on ctx.deprecations when invoked', async () => {
     const deprecations = new Set<string>();
     const tool = forgePipelineRunsListTool({ ...makeDeviceCtx(), deprecations });
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     selectLimit.mockResolvedValueOnce([]);
     await tool.handler({ projectId: PROJECT_ID });
     expect(deprecations.has('forge_pipeline_runs.list')).toBe(true);
@@ -154,7 +158,7 @@ describe('forge_pipeline_runs.get', () => {
   it('returns the run plus a per-status jobCounts breakdown', async () => {
     const tool = forgePipelineRunsGetTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([baseRun]); // run lookup
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]); // member check
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
     selectGroupBy.mockResolvedValueOnce([
       { status: 'queued', count: 1 },
       { status: 'dispatched', count: 1 },
@@ -180,8 +184,7 @@ describe('forge_pipeline_runs.get', () => {
   it('throws FORBIDDEN when the calling device is cross-project', async () => {
     const tool = forgePipelineRunsGetTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([baseRun]);
-    selectLimit.mockResolvedValueOnce([{ ownerId: 'other' }]);
-    selectLimit.mockResolvedValueOnce([]);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
     await expect(tool.handler({ runId: RUN_ID })).rejects.toThrow(/FORBIDDEN/);
   });
 
@@ -199,12 +202,18 @@ describe('forge_pipeline_runs.get', () => {
 describe('forge_pipeline_runs.pause/.resume/.cancel', () => {
   function memberRunLookup() {
     selectLimit.mockResolvedValueOnce([baseRun]); // run lookup
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]); // member check
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
+  }
+
+  /** pause/resume/cancel re-check WRITER access on the run's project. */
+  function writerCheck() {
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
   }
 
   it('pause delegates to pausePipelineRun and returns the run', async () => {
     const tool = forgePipelineRunsPauseTool(makeDeviceCtx());
     memberRunLookup();
+    writerCheck();
     pauseSpy.mockResolvedValueOnce({ ...baseRun, status: 'paused' });
     const result = (await tool.handler({ runId: RUN_ID })) as { run: { status: string } };
     expect(result.run.status).toBe('paused');
@@ -214,6 +223,7 @@ describe('forge_pipeline_runs.pause/.resume/.cancel', () => {
   it('resume delegates to resumePipelineRun and returns the run', async () => {
     const tool = forgePipelineRunsResumeTool(makeDeviceCtx());
     memberRunLookup();
+    writerCheck();
     resumeSpy.mockResolvedValueOnce({ ...baseRun, status: 'running' });
     const result = (await tool.handler({ runId: RUN_ID })) as { run: { status: string } };
     expect(result.run.status).toBe('running');
@@ -223,6 +233,7 @@ describe('forge_pipeline_runs.pause/.resume/.cancel', () => {
   it('cancel returns the full side-effect summary', async () => {
     const tool = forgePipelineRunsCancelTool(makeDeviceCtx());
     memberRunLookup();
+    writerCheck();
     cancelSpy.mockResolvedValueOnce({
       run: { ...baseRun, status: 'cancelled' },
       cancelledJobIds: ['j1', 'j2'],
@@ -242,8 +253,7 @@ describe('forge_pipeline_runs.pause/.resume/.cancel', () => {
   it('cancel rejects a non-member device with FORBIDDEN', async () => {
     const tool = forgePipelineRunsCancelTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([baseRun]); // run lookup
-    selectLimit.mockResolvedValueOnce([{ ownerId: 'other' }]);
-    selectLimit.mockResolvedValueOnce([]);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
     await expect(tool.handler({ runId: RUN_ID })).rejects.toThrow(/FORBIDDEN/);
     expect(cancelSpy).not.toHaveBeenCalled();
   });

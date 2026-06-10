@@ -55,7 +55,7 @@ vi.mock('drizzle-orm', () => ({
 // ISS-101 — agent-session-link now closes one-shot pipeline_runs on terminal
 // job lifecycles. Mock the runs helper so we can assert call shape without
 // dragging the real db.update chain through this test.
-const closeRunIfOneShotMock = vi.fn(async () => undefined);
+const closeRunIfOneShotMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('../pipeline/runs.js', () => ({
   closeRunIfOneShot: (...args: unknown[]) => closeRunIfOneShotMock(...args),
 }));
@@ -91,7 +91,7 @@ const baseJob = {
   agentSessionId: null,
   // ISS-101 — every job now belongs to a pipeline_run (NOT NULL in the DB).
   pipelineRunId: 'run-1',
-} as never;
+};
 
 describe('jobs/agent-session-link', () => {
   beforeEach(() => {

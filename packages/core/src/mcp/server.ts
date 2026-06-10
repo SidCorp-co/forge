@@ -49,6 +49,7 @@ import {
   forgeProjectsListTool,
   forgeProjectsUpdateTool,
 } from './tools/forge-projects.js';
+import { forgeOrgsListTool, forgeOrgsMembersTool } from './tools/forge-orgs.js';
 import { forgeRunnersTool } from './tools/forge-runners.js';
 import { forgeSkillFactsGetTool, forgeSkillFactsListTool } from './tools/forge-skill-facts.js';
 import {
@@ -228,6 +229,8 @@ export function createMcpServer(ctx: McpContext): Server {
     forgePipelineRunsCancelTool(ctx),
     forgeProjectsListTool(ctx),
     forgeProjectsCreateTool(ctx),
+    forgeOrgsListTool(ctx),
+    forgeOrgsMembersTool(ctx),
     forgeProjectsUpdateTool(ctx),
     forgeProjectsGetTool(ctx),
     forgeProjectsArchiveTool(ctx),

@@ -18,7 +18,7 @@ const selectWhere = vi.fn(() => ({
 }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 const insertReturning = vi.fn();
-const insertValues = vi.fn(() => ({ returning: insertReturning }));
+const insertValues = vi.fn((..._args: unknown[]) => ({ returning: insertReturning }));
 
 vi.mock('../db/client.js', () => ({
   db: {
@@ -28,7 +28,8 @@ vi.mock('../db/client.js', () => ({
 }));
 
 const projectAccess = vi.fn();
-vi.mock('../lib/project-access.js', () => ({
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
   loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
 }));
 
@@ -80,7 +81,7 @@ describe('POST /api/usage-records', () => {
 
   it('201 inserts record with computed cost', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'owner' });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'admin', orgRole: 'owner' });
     insertReturning.mockResolvedValueOnce([
       { id: RECORD_ID, model: 'claude-sonnet-4', estimatedCost: 0.1 },
     ]);
@@ -108,7 +109,7 @@ describe('POST /api/usage-records', () => {
 describe('POST /api/usage-records/bulk', () => {
   it('inserts batch + returns count', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'member' });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'member', orgRole: null });
     insertReturning.mockResolvedValueOnce([{ id: RECORD_ID }, { id: 'r2' }]);
 
     const res = await buildApp().request('/api/usage-records/bulk', {

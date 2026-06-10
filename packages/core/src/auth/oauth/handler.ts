@@ -11,6 +11,7 @@ import { HTTPException } from 'hono/http-exception';
 import { getCookie } from 'hono/cookie';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
+import { ensurePersonalOrg } from '../../orgs/service.js';
 import { oauthAccounts, users } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { setAuthCookie } from '../cookie.js';
@@ -170,6 +171,7 @@ async function findOrCreateUser(
       providerAccountId: identity.providerAccountId,
       email: identity.email,
     });
+    await ensurePersonalOrg(tx, user.id, identity.email!);
     return user;
   });
   logger.info({ userId: created.id, provider: cfg.id }, 'oauth: created new user');

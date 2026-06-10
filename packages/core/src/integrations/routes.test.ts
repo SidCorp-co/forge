@@ -57,12 +57,22 @@ vi.mock('./store.js', () => ({
   listBindingsForProject: (id: string) => listBindingsForProject(id),
   listBindingsForConnection: (id: string) => listBindingsForConnection(id),
   listConnectionsForOwner: (id: string) => listConnectionsForOwner(id),
+  listConnectionsForPrincipalUser: (id: string) => listConnectionsForOwner(id),
   buildContextFromBinding: vi.fn(),
   // Real overlay so summaries carry the effective config.
   effectiveConfig: (pair: { connection: { config?: object }; binding: { config?: object } }) => ({
     ...(pair.connection.config ?? {}),
     ...(pair.binding.config ?? {}),
   }),
+}));
+
+// Org-level authz: stub the db-touching resolvers; pure helpers stay real.
+const effectiveRole = vi.fn();
+const orgRoleMock = vi.fn();
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
+  effectiveProjectRole: (...args: unknown[]) => effectiveRole(...args),
+  loadOrgRole: (...args: unknown[]) => orgRoleMock(...args),
 }));
 
 const { integrationsRoutes, integrationConnectionsRoutes } = await import('./routes.js');
@@ -84,11 +94,15 @@ const USER_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 
 function mockOwnerMembership() {
-  // Stack: emailVerified row, then assertProjectMember's project row (owner).
-  // ownerId === USER_ID short-circuits the project_members lookup.
-  selectLimit
-    .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-    .mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: USER_ID }]);
+  // Stack: emailVerified row, then assertProjectMember's effectiveProjectRole
+  // resolution (project admin = the old "owner" shorthand).
+  selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+  effectiveRole.mockResolvedValueOnce({
+    projectId: PROJECT_ID,
+    orgId: 'org-1',
+    role: 'admin',
+    orgRole: 'owner',
+  });
 }
 
 function post(token: string, body: unknown) {
@@ -137,6 +151,8 @@ afterEach(() => {
 beforeEach(() => {
   vi.clearAllMocks();
   selectLimit.mockReset();
+  effectiveRole.mockReset();
+  orgRoleMock.mockReset();
 });
 
 describe('POST /api/projects/:projectId/integrations — vault guard', () => {
@@ -600,11 +616,14 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
 
   it('403 — caller is only a member (not admin) of the target project', async () => {
     const token = await signUserToken(USER_ID);
-    // emailVerified, then a target project owned by someone else, then a member row.
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: PROJECT_ID, ownerId: OTHER_USER }])
-      .mockResolvedValueOnce([{ role: 'member' }]);
+    // emailVerified, then an effective role below admin on the target project.
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    effectiveRole.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'member',
+      orgRole: null,
+    });
     findConnectionById.mockResolvedValueOnce(ownedConnection());
 
     const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, environment: 'staging' });

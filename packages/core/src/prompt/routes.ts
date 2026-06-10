@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type JobType, jobTypes } from '../db/schema.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import {
   type AuthVars,
   assertEmailVerified,
@@ -71,7 +71,7 @@ promptRoutes.post(
     // Project-member auth — same as jobRoutes.get('/:id').
     // loadProjectAccess throws 404 if the project does not exist.
     const access = await loadProjectAccess(body.projectId, userId);
-    if (!access.role && access.ownerId !== userId) {
+    if (!access.role) {
       throw forbidden('not a project member');
     }
 

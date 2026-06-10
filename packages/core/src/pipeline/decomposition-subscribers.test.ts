@@ -46,7 +46,7 @@ function installDefaultDbSelect(): void {
   // emit runs.
   dbSelect.mockImplementation(() => ({
     from: () => ({
-      where: () => ({ limit: async () => [{ ownerId: 'owner-1' }] }),
+      where: () => ({ limit: async () => [{ createdBy: 'owner-1' }] }),
     }),
   }));
 }
@@ -262,7 +262,7 @@ describe('watcher children → staging', () => {
       from: () => ({ where: () => ({ limit: async () => [] }) }), // idempotency: no prior comment
     }));
     dbSelect.mockImplementationOnce(() => ({
-      from: () => ({ where: () => ({ limit: async () => [{ ownerId: 'owner-1' }] }) }), // device
+      from: () => ({ where: () => ({ limit: async () => [{ createdBy: 'owner-1' }] }) }), // device
     }));
 
     findDecompositionParent.mockResolvedValueOnce({

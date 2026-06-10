@@ -10,7 +10,10 @@ vi.mock('../../config/env.js', () => ({
 
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
-const selectFrom = vi.fn(() => ({ where: selectWhere }));
+// lib/authz.ts effectiveProjectRole chains TWO leftJoins before where().limit(1).
+const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
+const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
+const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
 
 const updateWhere = vi.fn(async () => undefined);
 const updateSet = vi.fn(() => ({ where: updateWhere }));
@@ -31,12 +34,20 @@ const ISSUE_ID = '22222222-2222-4222-8222-222222222222';
 const OWNER_ID = '33333333-3333-4333-8333-333333333333';
 const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
 
+const ORG_ID = '88888888-8888-4888-8888-888888888888';
+
+// effectiveProjectRole (lib/authz.ts) result rows — ONE org-aware select.
+const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
+const adminAccessRow = { orgId: ORG_ID, memberRole: 'admin', orgRole: null };
+
 const fakeDevice = {
   id: DEVICE_ID,
   ownerId: OWNER_ID,
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -59,7 +70,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
 
     // assertDeviceOwnerIsMember: ownerId match short-circuits the membership query.
     selectLimit
-      .mockResolvedValueOnce([{ ownerId: OWNER_ID }]) // loadDeviceProjectRole project lookup
+      .mockResolvedValueOnce([memberAccessRow]) // assertPrincipalIsMember: effective-role lookup
       .mockResolvedValueOnce([
         {
           id: PROJECT_ID,
@@ -89,7 +100,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
     const tool = forgeConfigTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
 
     selectLimit
-      .mockResolvedValueOnce([{ ownerId: OWNER_ID }])
+      .mockResolvedValueOnce([memberAccessRow])
       .mockResolvedValueOnce([
         {
           id: PROJECT_ID,
@@ -115,7 +126,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
     const tool = forgeConfigTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
 
     selectLimit
-      .mockResolvedValueOnce([{ ownerId: OWNER_ID }]) // membership project lookup
+      .mockResolvedValueOnce([memberAccessRow]) // membership lookup
       .mockResolvedValueOnce([
         {
           id: PROJECT_ID,
@@ -145,7 +156,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
     const tool = forgeConfigTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
 
     selectLimit
-      .mockResolvedValueOnce([{ ownerId: OWNER_ID }])
+      .mockResolvedValueOnce([memberAccessRow])
       .mockResolvedValueOnce([
         {
           id: PROJECT_ID,
@@ -180,7 +191,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
     const tool = forgeConfigTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
 
     selectLimit
-      .mockResolvedValueOnce([{ ownerId: OWNER_ID }])
+      .mockResolvedValueOnce([memberAccessRow])
       .mockResolvedValueOnce([
         {
           id: PROJECT_ID,
@@ -209,7 +220,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
     const tool = forgeConfigTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
 
     selectLimit
-      .mockResolvedValueOnce([{ ownerId: OWNER_ID }]) // assertPrincipalIsAdmin: project lookup
+      .mockResolvedValueOnce([adminAccessRow]) // assertPrincipalIsAdmin: effective-role lookup
       .mockResolvedValueOnce([
         {
           agentConfig: {
@@ -277,7 +288,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
     const tool = forgeConfigTool({ principal: { kind: 'device', device: fakeDevice }, device: fakeDevice, projectSlug: null });
 
     selectLimit
-      .mockResolvedValueOnce([{ ownerId: OWNER_ID }])
+      .mockResolvedValueOnce([memberAccessRow])
       .mockResolvedValueOnce([
         {
           id: PROJECT_ID,

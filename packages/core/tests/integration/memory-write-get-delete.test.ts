@@ -88,7 +88,7 @@ describe('memory write/get/delete integration (Phase 0)', () => {
     await createTestProjectMember(harness.db, {
       userId: user.id,
       projectId: project.id,
-      role: 'owner',
+      role: 'admin',
     });
     const token = await signUserToken(user.id);
     return { userId: user.id, projectId: project.id, token };

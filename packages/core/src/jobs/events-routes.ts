@@ -5,7 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessions, jobEventKinds, jobEvents, jobs } from '../db/schema.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
@@ -76,9 +76,7 @@ jobEventsListRoutes.get(
     if (!job) throw notFound('job not found');
 
     const access = await loadProjectAccess(job.projectId, userId);
-    if (!access.role && access.ownerId !== userId) {
-      throw forbidden('not a project member');
-    }
+    assertProjectRole(access, 'viewer', 'not a project member');
 
     const whereClauses = [eq(jobEvents.jobId, jobId)];
     if (sinceSeq !== undefined) whereClauses.push(gt(jobEvents.seq, sinceSeq));

@@ -17,8 +17,12 @@ export interface ProjectListItem {
   id: string;
   slug: string;
   name: string;
-  ownerId: string;
-  role: ProjectMember['role'];
+  orgId: string;
+  createdBy: string;
+  /** Effective role (org owner/admin surface as 'admin'). */
+  role: ProjectMember['role'] | null;
+  /** Caller's role in the project's org — null when not an org member. */
+  orgRole: 'owner' | 'admin' | 'member' | null;
   apiKey: string;
   createdAt: string;
 }
@@ -93,7 +97,8 @@ export interface CreatedProject {
   id: string;
   slug: string;
   name: string;
-  ownerId: string;
+  orgId: string;
+  createdBy: string;
   apiKey: string;
   createdAt: string;
 }

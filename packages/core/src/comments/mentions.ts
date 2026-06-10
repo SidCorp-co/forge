@@ -1,6 +1,6 @@
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { projectMembers, projects, users } from '../db/schema.js';
+import { projectMembers, users } from '../db/schema.js';
 
 export { parseMentions } from './parse-mentions.js';
 
@@ -12,11 +12,11 @@ export interface ResolvedMention {
 
 /**
  * Resolve `@handle` strings to user IDs by matching the email local-part of
- * users who are members (or owner) of the given project. Unknown handles are
+ * users who are explicit members of the given project. Unknown handles are
  * silently dropped — POST /comments uses this so a typo never blocks a post.
  *
- * Membership cardinality is bounded (project members + 1 owner), so we pull
- * the candidate set into JS and match on the local-part there. That avoids
+ * Membership cardinality is bounded (project members), so we pull the
+ * candidate set into JS and match on the local-part there. That avoids
  * a portability fight with `LOWER(SPLIT_PART(email, '@', 1))` across
  * Drizzle's SQL builder.
  */
@@ -32,15 +32,8 @@ export async function resolveMentions(
     .innerJoin(users, eq(users.id, projectMembers.userId))
     .where(eq(projectMembers.projectId, projectId));
 
-  const ownerRows = await db
-    .select({ id: users.id, email: users.email })
-    .from(projects)
-    .innerJoin(users, eq(users.id, projects.ownerId))
-    .where(eq(projects.id, projectId))
-    .limit(1);
-
   const uniqUsers = new Map<string, { id: string; email: string }>();
-  for (const row of [...memberRows, ...ownerRows]) {
+  for (const row of memberRows) {
     if (!uniqUsers.has(row.id)) uniqUsers.set(row.id, row);
   }
 

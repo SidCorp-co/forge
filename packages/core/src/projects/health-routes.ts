@@ -10,6 +10,7 @@ import {
   runners,
   users,
 } from '../db/schema.js';
+import { loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
 interface ProjectHealthRow {
@@ -51,7 +52,20 @@ function emailInitials(email: string): string {
 
 const MEMBER_AVATAR_CAP = 5;
 
-const ACTIVE_STATUSES = ['open', 'confirmed', 'waiting', 'approved', 'in_progress', 'developed', 'deploying', 'testing', 'tested', 'pass', 'staging', 'reopen'] as const;
+const ACTIVE_STATUSES = [
+  'open',
+  'confirmed',
+  'waiting',
+  'approved',
+  'in_progress',
+  'developed',
+  'deploying',
+  'testing',
+  'tested',
+  'pass',
+  'staging',
+  'reopen',
+] as const;
 const BLOCKED_STATUSES = ['on_hold', 'needs_info'] as const;
 
 export const projectHealthRoutes = new Hono<{ Variables: AuthVars }>();
@@ -60,9 +74,11 @@ projectHealthRoutes.use('/health', requireAuth(), assertEmailVerified());
 projectHealthRoutes.get('/health', async (c) => {
   const userId = c.get('userId');
 
-  // Caller sees the projects they own + are a member of.
+  // Caller sees their visible projects (explicit member OR org owner/admin).
+  const visibleIds = await loadVisibleProjectIds(userId);
+  if (visibleIds.length === 0) return c.json([]);
   const visibleProjects = await db
-    .selectDistinct({
+    .select({
       id: projects.id,
       slug: projects.slug,
       name: projects.name,
@@ -71,8 +87,7 @@ projectHealthRoutes.get('/health', async (c) => {
       repoPath: projects.repoPath,
     })
     .from(projects)
-    .leftJoin(projectMembers, eq(projectMembers.projectId, projects.id))
-    .where(sql`${projects.ownerId} = ${userId} OR ${projectMembers.userId} = ${userId}`);
+    .where(inArray(projects.id, visibleIds));
 
   if (visibleProjects.length === 0) return c.json([]);
 
@@ -103,10 +118,7 @@ projectHealthRoutes.get('/health', async (c) => {
     })
     .from(issues)
     .where(
-      and(
-        inArray(issues.projectId, projectIds),
-        inArray(issues.status, [...BLOCKED_STATUSES]),
-      ),
+      and(inArray(issues.projectId, projectIds), inArray(issues.status, [...BLOCKED_STATUSES])),
     )
     .orderBy(issues.projectId, sql`${issues.updatedAt} DESC`);
 
@@ -152,9 +164,7 @@ projectHealthRoutes.get('/health', async (c) => {
   const cycleRows = await db
     .select({
       projectId: issues.projectId,
-      avgDays: sql<
-        number | null
-      >`avg(extract(epoch from (${activityLog.createdAt} - COALESCE((
+      avgDays: sql<number | null>`avg(extract(epoch from (${activityLog.createdAt} - COALESCE((
         SELECT min(al2.created_at) FROM activity_log al2
         WHERE al2.issue_id = ${activityLog.issueId}
           AND al2.action = 'issue.statusChanged'

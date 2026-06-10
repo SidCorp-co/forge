@@ -13,6 +13,7 @@ const queue: unknown[] = [];
 // biome-ignore lint/suspicious/noExplicitAny: chainable mock proxy
 const chain: any = {};
 chain.from = () => chain;
+chain.leftJoin = () => chain;
 chain.where = () => chain;
 chain.orderBy = () => chain;
 chain.limit = () => chain;
@@ -43,12 +44,14 @@ vi.mock('../../comments/attachment-service.js', () => ({
   listCommentAttachmentsForIssue: vi.fn(async () => new Map()),
 }));
 
-const applyStatusTransition = vi.fn(async () => {});
+const applyStatusTransition = vi.fn(async (..._args: unknown[]) => {});
 vi.mock('../../issues/apply-transition.js', () => ({
   applyStatusTransition: (...args: unknown[]) => applyStatusTransition(...args),
 }));
 
-const getIssueContexts = vi.fn(async () => [{ step: 'plan', payload: { planSummary: 'x' } }]);
+const getIssueContexts = vi.fn(async (..._args: unknown[]) => [
+  { step: 'plan', payload: { planSummary: 'x' } },
+]);
 vi.mock('../../pipeline/issue-context-store.js', () => ({
   getIssueContexts: (...args: unknown[]) => getIssueContexts(...args),
 }));
@@ -66,6 +69,8 @@ const fakeDevice = {
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -94,7 +99,7 @@ function makeIssue(overrides: Record<string, unknown> = {}) {
 
 /** Queue: membership assert → (handler) comments rows → projects row. */
 function queueHappyPath(opts?: { comments?: unknown[]; project?: unknown }) {
-  queue.push([{ ownerId: OWNER_ID }], opts?.comments ?? [], [
+  queue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }], opts?.comments ?? [], [
     opts?.project ?? { baseBranch: 'main', productionBranch: 'main' },
   ]);
 }
@@ -213,7 +218,7 @@ describe('forge_step_start', () => {
   it('requires explicit stage when the status alone is ambiguous', async () => {
     const tool = forgeStepStartTool(ctx);
     loadIssue.mockResolvedValue(makeIssue({ status: 'in_progress' }));
-    queue.push([{ ownerId: OWNER_ID }]);
+    queue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 
     await expect(tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })).rejects.toThrow(
       /BAD_REQUEST.*pass `stage`/,
@@ -223,7 +228,7 @@ describe('forge_step_start', () => {
   it('rejects an issue outside the project', async () => {
     const tool = forgeStepStartTool(ctx);
     loadIssue.mockResolvedValue(makeIssue({ projectId: 'other-project' }));
-    queue.push([{ ownerId: OWNER_ID }]);
+    queue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 
     await expect(tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })).rejects.toThrow(
       /NOT_FOUND/,

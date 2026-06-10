@@ -19,7 +19,8 @@ vi.mock('../db/client.js', () => ({
 }));
 
 const projectAccess = vi.fn();
-vi.mock('../lib/project-access.js', () => ({
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
   loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
 }));
 
@@ -76,7 +77,7 @@ describe('GET /api/issues/:id/activity', () => {
   it('403 when non-member', async () => {
     auth();
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]); // issue lookup
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: 'x', role: null });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: null, orgRole: null });
 
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/activity`, {
       headers: { authorization: `Bearer ${await token()}` },
@@ -97,8 +98,9 @@ describe('GET /api/issues/:id/activity', () => {
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: USER_ID,
-      role: 'owner',
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
     });
     const rows = Array.from({ length: 2 }, (_, i) => ({
       id: ACT_ID,
@@ -117,7 +119,7 @@ describe('GET /api/issues/:id/activity', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { items: unknown[]; nextBefore: string | null };
     expect(body.items).toHaveLength(2);
-    expect(body.nextBefore).toBe(rows[1].createdAt.toISOString());
+    expect(body.nextBefore).toBe(rows[1]?.createdAt.toISOString());
   });
 
   it('nextBefore is null when page is not full', async () => {
@@ -125,8 +127,9 @@ describe('GET /api/issues/:id/activity', () => {
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: USER_ID,
-      role: 'owner',
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
     });
     selectOrderByLimit.mockResolvedValueOnce([
       {
@@ -156,7 +159,7 @@ describe('GET /api/projects/:id/activity', () => {
 
   it('403 when non-member', async () => {
     auth();
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: 'x', role: null });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: null, orgRole: null });
     const res = await buildApp().request(`/api/projects/${PROJECT_ID}/activity`, {
       headers: { authorization: `Bearer ${await token()}` },
     });
@@ -175,8 +178,9 @@ describe('GET /api/projects/:id/activity', () => {
     auth();
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
-      ownerId: USER_ID,
-      role: 'owner',
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
     });
     selectOrderByLimit.mockResolvedValueOnce([
       {
@@ -195,6 +199,6 @@ describe('GET /api/projects/:id/activity', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { items: Array<{ action: string }> };
     expect(body.items).toHaveLength(1);
-    expect(body.items[0].action).toBe('comment.created');
+    expect(body.items[0]?.action).toBe('comment.created');
   });
 });

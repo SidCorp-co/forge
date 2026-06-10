@@ -112,7 +112,7 @@ export function useInviteMember(id: string | undefined) {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation({
-    mutationFn: ({ email, role }: { email: string; role: "admin" | "member" }) =>
+    mutationFn: ({ email, role }: { email: string; role: "admin" | "member" | "viewer" }) =>
       projectSettingsApi.inviteMember(id as string, email, role),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["project", id, "members"] });
@@ -153,7 +153,7 @@ export function useUpdateMemberRole(id: string | undefined) {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation({
-    mutationFn: ({ userId, role }: { userId: string; role: "admin" | "member" }) =>
+    mutationFn: ({ userId, role }: { userId: string; role: "admin" | "member" | "viewer" }) =>
       projectSettingsApi.updateMemberRole(id as string, userId, role),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["project", id, "members"] });

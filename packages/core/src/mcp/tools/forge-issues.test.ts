@@ -28,12 +28,15 @@ vi.mock('../../storage/index.js', () => ({
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
-const selectFrom = vi.fn(() => ({ where: selectWhere }));
+// lib/authz.ts effectiveProjectRole chains TWO leftJoins before where().limit(1).
+const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
+const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
+const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
 const insertReturning = vi.fn();
 const insertValues = vi.fn(() => ({ returning: insertReturning }));
 const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
-const updateSet = vi.fn(() => ({ where: updateWhere }));
+const updateSet = vi.fn((_set?: unknown) => ({ where: updateWhere }));
 
 // txUpdateWhere supports BOTH a direct await (manual-hold / activity write
 // flows) AND `.returning(...)` (the ISS-196 status-UPDATE that flows through
@@ -96,7 +99,7 @@ vi.mock('../../ws/server.js', () => ({
 // Keep the real create-path helpers (decode/persist) but stub the read-side
 // attachment join so get/transition/update/etc. don't need a programmed query
 // chain. The real join is its own concern (tested via the helper).
-const listIssueAttachmentsMock = vi.fn(async () => [] as unknown[]);
+const listIssueAttachmentsMock = vi.fn(async (..._args: unknown[]) => [] as unknown[]);
 vi.mock('../../issues/attachment-service.js', async (importActual) => {
   const actual = await importActual<typeof import('../../issues/attachment-service.js')>();
   return {
@@ -113,12 +116,18 @@ const ISSUE_ID = '22222222-2222-4222-8222-222222222222';
 const OWNER_ID = '33333333-3333-4333-8333-333333333333';
 const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
 
+// effectiveProjectRole (lib/authz.ts) result rows — ONE org-aware select.
+const ORG_ID = '99999999-9999-4999-8999-999999999999';
+const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
+
 const fakeDevice = {
   id: DEVICE_ID,
   ownerId: OWNER_ID,
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -182,7 +191,7 @@ describe('forge_issues tool', () => {
     // 1. resolveProjectIdFromSlug → projects.id
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
     // 2. assertDeviceOwnerIsMember → projects.ownerId (matches device.ownerId)
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
     // 3. issue list query
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
 
@@ -230,7 +239,7 @@ describe('forge_issues tool', () => {
     // 1. loadIssue → issues row
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
     // 2. assertDeviceOwnerIsMember → project owner row (owned by device.ownerId)
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
 
     const result = (await tool.handler({ action: 'get', documentId: ISSUE_ID })) as {
       documentId: string;
@@ -249,7 +258,7 @@ describe('forge_issues tool', () => {
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
     listIssueAttachmentsMock.mockResolvedValueOnce([
       {
         id: 'att-1',
@@ -277,10 +286,8 @@ describe('forge_issues tool', () => {
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
-    // project owned by someone else
-    selectLimit.mockResolvedValueOnce([{ ownerId: 'someone-else' }]);
-    // no project member row
-    selectLimit.mockResolvedValueOnce([]);
+    // effective-role lookup: project exists, caller has no role
+    selectLimit.mockResolvedValueOnce([{ orgId: ORG_ID, memberRole: null, orgRole: null }]);
 
     await expect(tool.handler({ action: 'get', documentId: ISSUE_ID })).rejects.toThrow(
       /FORBIDDEN/,
@@ -305,7 +312,7 @@ describe('forge_issues tool', () => {
     // resolve slug → project
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
     // membership check
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
     // insert returns row
     insertReturning.mockResolvedValueOnce([
       { ...baseIssueRow, plan: 'p1', acceptanceCriteria: 'ac1' },
@@ -330,7 +337,7 @@ describe('forge_issues tool', () => {
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
     insertReturning.mockResolvedValueOnce([{ ...baseIssueRow, status: 'on_hold' }]);
 
     const { hooks } = await import('../../pipeline/hooks.js');
@@ -355,7 +362,7 @@ describe('forge_issues tool', () => {
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
 
     await expect(
       tool.handler({
@@ -375,7 +382,7 @@ describe('forge_issues tool', () => {
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
     insertReturning.mockResolvedValueOnce([{ ...baseIssueRow, status: 'draft' }]);
 
     const { hooks } = await import('../../pipeline/hooks.js');
@@ -400,7 +407,7 @@ describe('forge_issues tool', () => {
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
     insertReturning.mockResolvedValueOnce([baseIssueRow]);
 
     const { hooks } = await import('../../pipeline/hooks.js');
@@ -440,7 +447,7 @@ describe('forge_issues tool', () => {
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]); // resolveProjectIdFromSlug
-      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]); // membership
+      selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership
       insertReturning.mockResolvedValueOnce([baseIssueRow]); // issue insert
       insertReturning.mockResolvedValueOnce([makeAttachmentRow(0)]); // attachment insert
 
@@ -472,7 +479,7 @@ describe('forge_issues tool', () => {
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
 
       const fourMb = Buffer.alloc(4 * 1024 * 1024, 7);
       const b64 = fourMb.toString('base64');
@@ -500,7 +507,7 @@ describe('forge_issues tool', () => {
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
 
       await expect(
         tool.handler({
@@ -521,7 +528,7 @@ describe('forge_issues tool', () => {
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
       insertReturning.mockResolvedValueOnce([baseIssueRow]); // issue insert succeeds
 
       const result = (await tool.handler({
@@ -554,7 +561,7 @@ describe('forge_issues tool', () => {
     // loadIssue
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
     // membership check
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
     // re-load fresh after update
     selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, plan: 'new plan' }]);
 
@@ -579,7 +586,7 @@ describe('forge_issues tool', () => {
     // loadIssue
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
     // membership check
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
     // re-load fresh
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
 
@@ -601,7 +608,7 @@ describe('forge_issues tool', () => {
     // loadIssue (status=open)
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
     // membership check
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
 
     // open → draft is illegal (draft is never a runtime transition target;
     // all other transitions are now permissive — guided by the system prompt)
@@ -623,7 +630,7 @@ describe('forge_issues tool', () => {
     // loadIssue (open)
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
     // membership
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
     // conditional UPDATE returning the new row
     updateReturning.mockResolvedValueOnce([
       { id: ISSUE_ID, reopenCount: 0, updatedAt: new Date() },
@@ -647,7 +654,7 @@ describe('forge_issues tool', () => {
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
     insertReturning.mockResolvedValueOnce([
       {
         ...baseIssueRow,
@@ -695,7 +702,7 @@ describe('forge_issues tool', () => {
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
     selectLimit.mockResolvedValueOnce([
       {
         ...baseIssueRow,
@@ -740,7 +747,7 @@ describe('forge_issues tool', () => {
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
     const rn = {
       section: 'Fixed' as const,
       userFacing: 'Logging in no longer logs you out instantly.',
@@ -764,7 +771,7 @@ describe('forge_issues tool', () => {
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
     const rn = { section: 'Added' as const, userFacing: 'You can now export issues to CSV.' };
     selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, releaseNotes: rn }]);
 
@@ -818,7 +825,7 @@ describe('forge_issues tool', () => {
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
     updateReturning.mockResolvedValueOnce([]);
 
     await expect(
@@ -891,8 +898,8 @@ describe('forge_issues tool', () => {
       const tool = makePatTool(null);
       // loadIssue
       selectLimit.mockResolvedValueOnce([baseIssueRow]);
-      // assertPrincipalIsMember (PAT path) → loadUserProjectRole → projects lookup
-      selectLimit.mockResolvedValueOnce([{ ownerId: PAT_USER }]);
+      // assertPrincipalIsMember (PAT path) → effective-role lookup
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
       const result = (await tool.handler({ action: 'get', documentId: ISSUE_ID })) as {
         documentId: string;
       };
@@ -903,7 +910,7 @@ describe('forge_issues tool', () => {
       const tool = makePatTool([PROJECT_ID]);
       selectLimit.mockResolvedValueOnce([baseIssueRow]);
       // PAT path still confirms the user is a member of the project.
-      selectLimit.mockResolvedValueOnce([{ ownerId: PAT_USER }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
       const result = (await tool.handler({ action: 'get', documentId: ISSUE_ID })) as {
         documentId: string;
       };
@@ -929,7 +936,7 @@ describe('forge_issues tool', () => {
       // loadIssue (merged_at currently null)
       selectLimit.mockResolvedValueOnce([baseIssueRow]);
       // membership
-      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
       // audit comment insert
       insertReturning.mockResolvedValueOnce([auditCommentRow]);
       // re-load fresh (now stamped)
@@ -993,7 +1000,7 @@ describe('forge_issues tool', () => {
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([baseIssueRow]); // loadIssue
-      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]); // membership
+      selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership
       insertReturning.mockResolvedValueOnce([auditCommentRow]); // audit comment
       selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, mergedAt: STAMPED }]); // fresh
 
@@ -1066,7 +1073,7 @@ describe('forge_issues tool', () => {
       // loadIssue (merged_at currently set)
       selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, mergedAt: STAMPED }]);
       // membership
-      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
       // audit comment insert
       insertReturning.mockResolvedValueOnce([{ ...auditCommentRow, body: 'unmark' }]);
       // re-load fresh (cleared)
@@ -1114,10 +1121,8 @@ describe('forge_issues tool', () => {
       });
       // loadIssue
       selectLimit.mockResolvedValueOnce([baseIssueRow]);
-      // project owned by someone else
-      selectLimit.mockResolvedValueOnce([{ ownerId: 'someone-else' }]);
-      // no member row
-      selectLimit.mockResolvedValueOnce([]);
+      // effective-role lookup: project exists, caller has no role
+      selectLimit.mockResolvedValueOnce([{ orgId: ORG_ID, memberRole: null, orgRole: null }]);
 
       await expect(
         tool.handler({ action: 'mark_merged', data: { issueId: ISSUE_ID, target: 'base' } }),
@@ -1171,7 +1176,7 @@ describe('forge_issues tool', () => {
       // loadIssueProjectId
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
       // assertPrincipalIsMember → project owner row
-      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
       // insert returns task row
       insertReturning.mockResolvedValueOnce([baseTaskRow]);
 
@@ -1225,7 +1230,7 @@ describe('forge_issues tool', () => {
       // loadIssueProjectId
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
       // membership
-      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
       // list query
       selectLimit.mockResolvedValueOnce([baseTaskRow]);
 
@@ -1245,7 +1250,7 @@ describe('forge_issues tool', () => {
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
-      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
       selectLimit.mockResolvedValueOnce([{ ...baseTaskRow, status: 'in_progress' }]);
 
       const result = (await tool.handler({
@@ -1273,7 +1278,7 @@ describe('forge_issues tool', () => {
       // loadTaskForAccess
       selectLimit.mockResolvedValueOnce([baseTaskRow]);
       // membership
-      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
       // update returns row
       updateReturning.mockResolvedValueOnce([{ ...baseTaskRow, status: 'done' }]);
 
@@ -1294,7 +1299,7 @@ describe('forge_issues tool', () => {
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([baseTaskRow]);
-      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
 
       const result = (await tool.handler({
         action: 'deleteTask',

@@ -11,7 +11,10 @@ vi.mock('../../config/env.js', () => ({
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
-const selectFrom = vi.fn(() => ({ where: selectWhere }));
+// lib/authz.ts effectiveProjectRole chains TWO leftJoins before where().limit(1).
+const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
+const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
+const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
 
 vi.mock('../../db/client.js', () => ({
   db: {
@@ -35,6 +38,8 @@ const fakeDevice = {
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -71,7 +76,7 @@ beforeEach(() => {
 describe('forge_agent_sessions.list', () => {
   it('returns sessions filtered by issueId/status when device owner is member', async () => {
     const tool = forgeAgentSessionsListTool(fakeDevice);
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]); // member check
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
     selectLimit.mockResolvedValueOnce([baseSessionRow]); // sessions query
 
     const result = (await tool.handler({
@@ -86,8 +91,7 @@ describe('forge_agent_sessions.list', () => {
 
   it('rejects non-member with FORBIDDEN', async () => {
     const tool = forgeAgentSessionsListTool(fakeDevice);
-    selectLimit.mockResolvedValueOnce([{ ownerId: 'other' }]); // not owner
-    selectLimit.mockResolvedValueOnce([]); // not member
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // not a member
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
   });
 });
@@ -105,7 +109,7 @@ describe('forge_agent_sessions.get', () => {
     const tool = forgeAgentSessionsGetTool(makeDeviceCtx());
     const messages = Array.from({ length: 35 }, (_, i) => ({ role: 'user', content: `m${i}` }));
     selectLimit.mockResolvedValueOnce([{ ...baseSessionRow, messages }]);
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 
     const result = (await tool.handler({ sessionId: SESSION_ID })) as {
       session: { id: string; messages: Array<{ content: string }>; totalMessages: number };
@@ -120,7 +124,7 @@ describe('forge_agent_sessions.get', () => {
   it('handles non-array messages gracefully', async () => {
     const tool = forgeAgentSessionsGetTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([{ ...baseSessionRow, messages: null }]);
-    selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 
     const result = (await tool.handler({ sessionId: SESSION_ID })) as {
       session: { messages: unknown[]; totalMessages: number };
@@ -138,8 +142,7 @@ describe('forge_agent_sessions.get', () => {
   it('throws FORBIDDEN cross-project', async () => {
     const tool = forgeAgentSessionsGetTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([baseSessionRow]);
-    selectLimit.mockResolvedValueOnce([{ ownerId: 'other' }]);
-    selectLimit.mockResolvedValueOnce([]);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
     await expect(tool.handler({ sessionId: SESSION_ID })).rejects.toThrow(/FORBIDDEN/);
   });
 
@@ -172,7 +175,7 @@ describe('forge_agent_sessions.get', () => {
     it('succeeds when PAT allowlist includes the session’s project and user is a project owner', async () => {
       const tool = makePatTool([PROJECT_ID]);
       selectLimit.mockResolvedValueOnce([baseSessionRow]);
-      selectLimit.mockResolvedValueOnce([{ ownerId: OWNER_ID }]);
+      selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
       const result = (await tool.handler({ sessionId: SESSION_ID })) as {
         session: { id: string };
       };

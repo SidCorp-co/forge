@@ -47,14 +47,14 @@ export interface PreviewDeployConfig {
 export interface ProjectMemberRow {
   userId: string;
   email: string;
-  role: "owner" | "admin" | "member";
+  role: "admin" | "member" | "viewer";
   createdAt: string;
 }
 
 /** One row of `GET /api/projects/:id/members/invitations` — a pending invite. */
 export interface ProjectInvitationRow {
   email: string;
-  role: "admin" | "member";
+  role: "admin" | "member" | "viewer";
   expiresAt: string;
   createdAt: string;
   inviterEmail: string;

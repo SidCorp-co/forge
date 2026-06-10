@@ -463,12 +463,14 @@ export async function decomposeParent(
   // subsequent (incremental) decompositions.
   if (!parentAlreadyDecomposed && result.createdEdges > 0 && preParent.status !== 'waiting') {
     try {
-      const [owner] = await db
-        .select({ ownerId: projects.ownerId })
+      // Attribution only — `projects.createdBy` is the audit column standing
+      // in as the system actor for this core-owned transition (no authz here).
+      const [project] = await db
+        .select({ createdBy: projects.createdBy })
         .from(projects)
         .where(eq(projects.id, preParent.projectId))
         .limit(1);
-      if (owner?.ownerId) {
+      if (project?.createdBy) {
         await applyStatusTransition(
           {
             id: result.parentId,
@@ -477,7 +479,7 @@ export async function decomposeParent(
             reopenCount: 0,
           },
           'waiting',
-          { id: owner.ownerId, ownerId: owner.ownerId },
+          { id: project.createdBy, ownerId: project.createdBy },
         );
       }
     } catch (err) {

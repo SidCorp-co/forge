@@ -89,7 +89,7 @@ describe('ISS-40 dispatcher pipeline E2E', () => {
       VALUES (
         ${id}, ${projectId}, ${Math.floor(Math.random() * 1_000_000)},
         'Issue', ${overrides.status ?? 'open'}, ${overrides.priority ?? 'medium'},
-        (SELECT owner_id FROM projects WHERE id = ${projectId})
+        (SELECT created_by FROM projects WHERE id = ${projectId})
       )
     `);
     return id;
@@ -156,7 +156,7 @@ describe('ISS-40 dispatcher pipeline E2E', () => {
       VALUES (
         ${id}, ${projectId}, ${args.issueId ?? null}, ${args.type ?? 'plan'},
         'queued', '{}'::jsonb, ${pipelineRunId},
-        (SELECT owner_id FROM projects WHERE id = ${projectId}),
+        (SELECT created_by FROM projects WHERE id = ${projectId}),
         ${args.agentSessionId ?? null}
       )
     `);

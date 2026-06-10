@@ -10,39 +10,39 @@ const dbInsert = vi.fn(() => ({
 }));
 
 const updateWhere = vi.fn(async () => undefined);
-const updateSet = vi.fn(() => ({ where: updateWhere }));
+const updateSet = vi.fn((..._args: unknown[]) => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
 vi.mock('../db/client.js', () => ({
   db: { insert: dbInsert, update: dbUpdate },
 }));
 
-const enqueueMock = vi.fn(async () => {});
+const enqueueMock = vi.fn(async (..._args: unknown[]) => {});
 vi.mock('./enqueue.js', () => ({
   enqueueJob: (...args: unknown[]) => enqueueMock(...args),
 }));
 
-const verifyRecoveryMock = vi.fn(async () => 'pending');
+const verifyRecoveryMock = vi.fn(async (..._args: unknown[]) => 'pending');
 vi.mock('../pipeline/recovery-verifier.js', () => ({
   verifyRecovery: (...args: unknown[]) => verifyRecoveryMock(...(args as [never])),
 }));
 
 // Round-robin candidate set. Default: a healthy 3-device project.
-const onlineDevicesMock = vi.fn(async () => ['device-A', 'device-B', 'device-C']);
+const onlineDevicesMock = vi.fn(async (..._args: unknown[]) => ['device-A', 'device-B', 'device-C']);
 vi.mock('../runners/select.js', () => ({
   onlineCapableDeviceIds: (...a: unknown[]) => onlineDevicesMock(...(a as [never])),
 }));
 
-const incrementRecoveryStatsMock = vi.fn(async () => undefined);
-const incrementAutoRetryCountMock = vi.fn(async () => undefined);
-const markSessionTerminalMock = vi.fn(async () => undefined);
+const incrementRecoveryStatsMock = vi.fn(async (..._args: unknown[]) => undefined);
+const incrementAutoRetryCountMock = vi.fn(async (..._args: unknown[]) => undefined);
+const markSessionTerminalMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('../agent-sessions/recovery-stats.js', () => ({
   incrementRecoveryStats: (...a: unknown[]) => incrementRecoveryStatsMock(...(a as [never])),
   incrementAutoRetryCount: (...a: unknown[]) => incrementAutoRetryCountMock(...(a as [never])),
   markSessionTerminal: (...a: unknown[]) => markSessionTerminalMock(...(a as [never])),
 }));
 
-const publishMock = vi.fn(async () => undefined);
+const publishMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('../agent-sessions/recovery-publish.js', () => ({
   publishSessionRecoveryChanged: (...a: unknown[]) => publishMock(...(a as [never])),
 }));

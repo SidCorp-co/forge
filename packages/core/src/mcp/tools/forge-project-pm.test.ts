@@ -50,6 +50,8 @@ const fakeDevice = {
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -76,7 +78,7 @@ describe('forge_project_pm (action=snapshot)', () => {
   it('routes to the pmSnapshot handler when device owner is project member', async () => {
     const tool = forgeProjectPmTool(makeDeviceCtx());
     queue.push(
-      [{ ownerId: OWNER_ID }], // assertDeviceOwnerIsMember
+      [{ orgId: 'org-1', memberRole: 'member', orgRole: null }], // assertDeviceOwnerIsMember
       [], // counts
       [], // activeJobs
       [], // stalled
@@ -93,7 +95,7 @@ describe('forge_project_pm (action=snapshot)', () => {
 
   it('re-applies project-member auth — non-member is rejected with FORBIDDEN', async () => {
     const tool = forgeProjectPmTool(makeDeviceCtx());
-    queue.push([{ ownerId: 'other' }], []); // project lookup + no member row
+    queue.push([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // project lookup + no member row
     await expect(
       tool.handler({ action: 'snapshot', projectId: PROJECT_ID }),
     ).rejects.toThrow(/FORBIDDEN/);
@@ -113,7 +115,7 @@ describe('forge_project_pm (action=graph)', () => {
       parentIssueId: null,
     }));
     queue.push(
-      [{ ownerId: OWNER_ID }], // assert
+      [{ orgId: 'org-1', memberRole: 'member', orgRole: null }], // assert
       [{ total: 250 }], // count() → 50 over cap
       stubNodes,
       [], // dep edges
@@ -132,7 +134,7 @@ describe('forge_project_pm (action=graph)', () => {
   it('accepts depth=5 at the input boundary', async () => {
     const tool = forgeProjectPmTool(makeDeviceCtx());
     queue.push(
-      [{ ownerId: OWNER_ID }], // assert
+      [{ orgId: 'org-1', memberRole: 'member', orgRole: null }], // assert
       // 5 BFS iterations × 4 queries (deps fwd/rev + children/parents)
       [],
       [],

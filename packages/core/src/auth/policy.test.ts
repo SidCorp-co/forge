@@ -68,14 +68,14 @@ describe('assertUserIsProjectMember', () => {
 });
 
 describe('assertUserIsProjectOwner', () => {
-  it('resolves when the project row matches (ownerId or role=owner)', async () => {
-    queuedResults = [[{ projectId: 'proj-1' }]];
+  it('resolves when the caller is org owner/admin on the project org', async () => {
+    queuedResults = [[{ orgId: 'org-1', memberRole: null, orgRole: 'owner' }]];
     await expect(assertUserIsProjectOwner(makeCtx('user-1'), 'proj-1')).resolves.toBeUndefined();
     expect(selectSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('throws 403 FORBIDDEN when the user is only a non-owner member', async () => {
-    queuedResults = [[]];
+  it('throws 403 FORBIDDEN when the user is only a project member (no org role)', async () => {
+    queuedResults = [[{ orgId: 'org-1', memberRole: 'member', orgRole: null }]];
     await expectForbidden(assertUserIsProjectOwner(makeCtx('user-1'), 'proj-1'));
     expect(selectSpy).toHaveBeenCalledTimes(1);
   });
@@ -86,7 +86,7 @@ describe('assertUserIsProjectOwner', () => {
   });
 
   it('issues exactly one query (no N+1)', async () => {
-    queuedResults = [[{ projectId: 'proj-1' }]];
+    queuedResults = [[{ orgId: 'org-1', memberRole: null, orgRole: 'admin' }]];
     await assertUserIsProjectOwner(makeCtx('user-1'), 'proj-1');
     expect(selectSpy).toHaveBeenCalledTimes(1);
   });

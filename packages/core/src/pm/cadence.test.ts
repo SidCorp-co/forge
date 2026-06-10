@@ -7,7 +7,7 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const spawnMock = vi.fn(async () => ({ ok: true, jobId: 'pm-1' }) as const);
+const spawnMock = vi.fn(async (..._args: unknown[]) => ({ ok: true, jobId: 'pm-1' }) as const);
 vi.mock('./spawner.js', () => ({
   spawnPmSession: (...args: unknown[]) => spawnMock(...(args as [unknown])),
 }));

@@ -19,7 +19,7 @@ import {
   usageRecords,
 } from '../db/schema.js';
 import { paginationSchema, setTotalCount } from '../lib/pagination.js';
-import { loadProjectAccess } from '../lib/project-access.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { deleteMemory } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -224,7 +224,7 @@ issueProjectRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     if (input.assigneeId) await assertAssigneeIsMember(projectId, input.assigneeId);
     if (input.labels && input.labels.length > 0)
@@ -327,7 +327,7 @@ issueProjectRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     const issSeq = Number(displayId.slice(4));
     const [row] = await db
@@ -371,7 +371,7 @@ issueProjectRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     const conditions = [eq(issues.projectId, projectId)];
     if (q.status) conditions.push(eq(issues.status, q.status));
@@ -454,7 +454,7 @@ issueRoutes.get(
 
     const issue = await loadIssue(id);
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     const labelRows = await db
       .select({ id: labels.id, name: labels.name, color: labels.color })
@@ -506,7 +506,7 @@ issueRoutes.get(
 
     const issue = await loadIssue(id);
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    if (!access.role) throw forbidden('not a project member');
 
     const rows = await db
       .select({
@@ -544,7 +544,7 @@ issueRoutes.patch(
 
     const issue = await loadIssue(id);
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     if (patch.assigneeId) await assertAssigneeIsMember(issue.projectId, patch.assigneeId);
     if (patch.labels && patch.labels.length > 0)
@@ -723,7 +723,7 @@ issueRoutes.post(
 
     const issue = await loadIssue(id);
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role && access.ownerId !== userId) throw forbidden('not a project member');
+    assertProjectRole(access, 'member');
 
     try {
       const result = await decomposeParent(
@@ -775,9 +775,7 @@ issueRoutes.delete(
 
     const issue = await loadIssue(id);
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (access.ownerId !== userId && access.role !== 'owner') {
-      throw forbidden('not a project owner');
-    }
+    assertProjectRole(access, 'admin', 'not a project admin');
 
     await db.delete(issues).where(eq(issues.id, id));
 

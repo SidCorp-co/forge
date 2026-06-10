@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { RequestIdVars } from '../../src/middleware/request-id.js';
 import {
   type TestDatabase,
   createTestProject,
@@ -17,7 +18,7 @@ import {
 
 describe('F2 skill routes integration', () => {
   let harness: TestDatabase;
-  let app: Hono;
+  let app: Hono<{ Variables: RequestIdVars }>;
   let issueDeviceToken: typeof import('../../src/auth/deviceToken.js').issueDeviceToken;
   let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
   let hooksModule: typeof import('../../src/pipeline/hooks.js');
@@ -45,7 +46,7 @@ describe('F2 skill routes integration', () => {
     issueDeviceToken = deviceTokenMod.issueDeviceToken;
     signUserToken = jwtMod.signUserToken;
 
-    app = new Hono();
+    app = new Hono<{ Variables: RequestIdVars }>();
     app.use('*', requestId());
     app.route('/api/projects', skillSyncRoutes);
     app.route('/api/projects', skillRegisterRoutes);
@@ -66,7 +67,7 @@ describe('F2 skill routes integration', () => {
     // Default factory leaves email_verified_at null; bulk-verify on truncate.
   }
 
-  async function seedProjectWith(role: 'owner' | 'admin' | 'member') {
+  async function seedProjectWith(role: 'admin' | 'member' | 'viewer') {
     const user = await createTestUser(harness.db);
     // The register endpoint runs assertEmailVerified — flip the flag on the user.
     await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
@@ -82,7 +83,7 @@ describe('F2 skill routes integration', () => {
   // ---------- SYNC ----------
 
   it('sync: 401 when Authorization header is missing', async () => {
-    const { project } = await seedProjectWith('owner');
+    const { project } = await seedProjectWith('admin');
     const res = await app.request(`/api/projects/${project.id}/skills/sync`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -92,7 +93,7 @@ describe('F2 skill routes integration', () => {
   });
 
   it('sync: inserts on first run, returns added', async () => {
-    const { user, project } = await seedProjectWith('owner');
+    const { user, project } = await seedProjectWith('admin');
     const { plaintext: deviceToken } = await issueDeviceToken({
       ownerId: user.id,
       name: 'test-device',
@@ -152,7 +153,7 @@ describe('F2 skill routes integration', () => {
   });
 
   it('sync: second run with same hash → all unchanged', async () => {
-    const { user, project } = await seedProjectWith('owner');
+    const { user, project } = await seedProjectWith('admin');
     const { plaintext: deviceToken } = await issueDeviceToken({
       ownerId: user.id,
       name: 'd',
@@ -183,7 +184,7 @@ describe('F2 skill routes integration', () => {
   });
 
   it('sync: hash change → updated', async () => {
-    const { user, project } = await seedProjectWith('owner');
+    const { user, project } = await seedProjectWith('admin');
     const { plaintext: deviceToken } = await issueDeviceToken({
       ownerId: user.id,
       name: 'd',
@@ -213,7 +214,7 @@ describe('F2 skill routes integration', () => {
   });
 
   it('sync: mode=full removes missing skills', async () => {
-    const { user, project } = await seedProjectWith('owner');
+    const { user, project } = await seedProjectWith('admin');
     const { plaintext: deviceToken } = await issueDeviceToken({
       ownerId: user.id,
       name: 'd',
@@ -253,7 +254,7 @@ describe('F2 skill routes integration', () => {
   });
 
   it('sync: device whose owner is not a project member → 403', async () => {
-    const { project } = await seedProjectWith('owner');
+    const { project } = await seedProjectWith('admin');
     const strangerUser = await createTestUser(harness.db);
     const { plaintext: strangerToken } = await issueDeviceToken({
       ownerId: strangerUser.id,
@@ -273,7 +274,7 @@ describe('F2 skill routes integration', () => {
   });
 
   it('sync: duplicate names in one payload → 400', async () => {
-    const { user, project } = await seedProjectWith('owner');
+    const { user, project } = await seedProjectWith('admin');
     const { plaintext: deviceToken } = await issueDeviceToken({
       ownerId: user.id,
       name: 'd',
@@ -296,7 +297,7 @@ describe('F2 skill routes integration', () => {
   });
 
   it("sync: mode='full' from member-role device → 403", async () => {
-    const { project } = await seedProjectWith('owner');
+    const { project } = await seedProjectWith('admin');
     const memberUser = await createTestUser(harness.db);
     await createTestProjectMember(harness.db, {
       userId: memberUser.id,
@@ -320,7 +321,7 @@ describe('F2 skill routes integration', () => {
   });
 
   it('sync: update bumps version + preserves description when omitted', async () => {
-    const { user, project } = await seedProjectWith('owner');
+    const { user, project } = await seedProjectWith('admin');
     const { plaintext: deviceToken } = await issueDeviceToken({
       ownerId: user.id,
       name: 'd',
@@ -365,7 +366,7 @@ describe('F2 skill routes integration', () => {
   });
 
   it('sync: payload above 500 skills → 400', async () => {
-    const { user, project } = await seedProjectWith('owner');
+    const { user, project } = await seedProjectWith('admin');
     const { plaintext: deviceToken } = await issueDeviceToken({
       ownerId: user.id,
       name: 'd',
@@ -409,7 +410,7 @@ describe('F2 skill routes integration', () => {
   }
 
   it('register: 401 without token', async () => {
-    const { project } = await seedProjectWith('owner');
+    const { project } = await seedProjectWith('admin');
     const skillId = await seedSkill(project.id);
     const res = await app.request(`/api/projects/${project.id}/skills/${skillId}/register`, {
       method: 'POST',
@@ -420,7 +421,7 @@ describe('F2 skill routes integration', () => {
   });
 
   it('register: 403 when caller is a plain member', async () => {
-    const { user, project } = await seedProjectWith('owner');
+    const { user, project } = await seedProjectWith('admin');
     // Add a second user as a plain member, act as that user.
     const memberUser = await createTestUser(harness.db);
     await harness.db.execute(
@@ -446,7 +447,7 @@ describe('F2 skill routes integration', () => {
   });
 
   it('register: owner success, returns registration', async () => {
-    const { user, project } = await seedProjectWith('owner');
+    const { user, project } = await seedProjectWith('admin');
     const skillId = await seedSkill(project.id);
     const token = await signUserToken(user.id);
 
@@ -482,7 +483,7 @@ describe('F2 skill routes integration', () => {
   });
 
   it('register: stage=null clears the registration', async () => {
-    const { user, project } = await seedProjectWith('owner');
+    const { user, project } = await seedProjectWith('admin');
     const skillId = await seedSkill(project.id);
     const token = await signUserToken(user.id);
     const headers = {
@@ -508,7 +509,7 @@ describe('F2 skill routes integration', () => {
   });
 
   it('register: 404 for unknown skill', async () => {
-    const { user, project } = await seedProjectWith('owner');
+    const { user, project } = await seedProjectWith('admin');
     const token = await signUserToken(user.id);
     const fakeSkillId = '00000000-0000-4000-8000-000000000000';
     const res = await app.request(`/api/projects/${project.id}/skills/${fakeSkillId}/register`, {
@@ -526,7 +527,7 @@ describe('F2 skill routes integration', () => {
     // ISS-388 — global skills are read-only templates. Registering one directly
     // is rejected with 400 SKILL_NOT_PROJECT_SCOPED; the project must adopt the
     // template (clone it into a project-scoped skill) before registering it.
-    const { user, project } = await seedProjectWith('owner');
+    const { user, project } = await seedProjectWith('admin');
     const globalSkillId = await seedSkill(null, 'forge-plan');
     const token = await signUserToken(user.id);
     const res = await app.request(`/api/projects/${project.id}/skills/${globalSkillId}/register`, {
@@ -543,7 +544,7 @@ describe('F2 skill routes integration', () => {
   });
 
   it('register: admin (non-owner) can register a skill', async () => {
-    const { project } = await seedProjectWith('owner');
+    const { project } = await seedProjectWith('admin');
     const adminUser = await createTestUser(harness.db);
     await harness.db.execute(
       sql`UPDATE users SET email_verified_at = now() WHERE id = ${adminUser.id}`,
@@ -567,7 +568,7 @@ describe('F2 skill routes integration', () => {
   });
 
   it('register: rejects arbitrary stage strings not in IssueStatus enum', async () => {
-    const { user, project } = await seedProjectWith('owner');
+    const { user, project } = await seedProjectWith('admin');
     const skillId = await seedSkill(project.id);
     const token = await signUserToken(user.id);
     const res = await app.request(`/api/projects/${project.id}/skills/${skillId}/register`, {
@@ -582,7 +583,7 @@ describe('F2 skill routes integration', () => {
   });
 
   it('register: moving a skill from stage A → B clears the old row', async () => {
-    const { user, project } = await seedProjectWith('owner');
+    const { user, project } = await seedProjectWith('admin');
     const skillId = await seedSkill(project.id);
     const token = await signUserToken(user.id);
     const headers = {
@@ -610,7 +611,7 @@ describe('F2 skill routes integration', () => {
   });
 
   it("sync endpoint rejects user JWT (401 'invalid device token')", async () => {
-    const { user, project } = await seedProjectWith('owner');
+    const { user, project } = await seedProjectWith('admin');
     const userToken = await signUserToken(user.id);
     const res = await app.request(`/api/projects/${project.id}/skills/sync`, {
       method: 'POST',
@@ -624,7 +625,7 @@ describe('F2 skill routes integration', () => {
   });
 
   it('register endpoint rejects device token (401 invalid user token)', async () => {
-    const { user, project } = await seedProjectWith('owner');
+    const { user, project } = await seedProjectWith('admin');
     const { plaintext: deviceToken } = await issueDeviceToken({
       ownerId: user.id,
       name: 'd',
@@ -643,7 +644,7 @@ describe('F2 skill routes integration', () => {
   });
 
   it('register: project-scoped skill from different project → 404', async () => {
-    const { user, project } = await seedProjectWith('owner');
+    const { user, project } = await seedProjectWith('admin');
     // Create a separate project and a skill scoped to it.
     const otherOwner = await createTestUser(harness.db);
     const otherProject = await createTestProject(harness.db, otherOwner.id);

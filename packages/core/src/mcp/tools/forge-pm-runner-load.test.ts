@@ -13,6 +13,7 @@ const queue: unknown[] = [];
 // biome-ignore lint/suspicious/noExplicitAny: chainable mock proxy
 const chain: any = {};
 chain.from = () => chain;
+chain.leftJoin = () => chain;
 chain.where = () => chain;
 chain.orderBy = () => chain;
 chain.limit = () => chain;
@@ -37,6 +38,8 @@ const fakeDevice = {
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -60,7 +63,7 @@ beforeEach(() => {
 describe('forge_pm.runner_load', () => {
   it('rejects non-member', async () => {
     const tool = forgePmRunnerLoadTool(ctx);
-    queue.push([{ ownerId: 'other' }], []);
+    queue.push([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
   });
 
@@ -71,7 +74,7 @@ describe('forge_pm.runner_load', () => {
   it('returns runner list with capacity=1 + inFlight', async () => {
     const tool = forgePmRunnerLoadTool(ctx);
     queue.push(
-      [{ ownerId: OWNER_ID }], // assert
+      [{ orgId: 'org-1', memberRole: 'member', orgRole: null }], // assert
       [
         // runner rows
         {

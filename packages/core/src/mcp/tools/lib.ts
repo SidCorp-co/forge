@@ -1,9 +1,14 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Device } from '../../auth/deviceToken.js';
 import { db } from '../../db/client.js';
+import { projects, runners } from '../../db/schema.js';
+import {
+  effectiveProjectRole,
+  loadVisibleProjectIds,
+  projectRoleAtLeast,
+} from '../../lib/authz.js';
 import type { McpPrincipal } from '../../middleware/require-pat-or-device.js';
-import { projectMembers, projects, runners } from '../../db/schema.js';
 import type { McpTool } from './forge-version.js';
 
 /**
@@ -66,35 +71,22 @@ export function zodToMcpSchema(schema: z.ZodTypeAny): Record<string, unknown> {
 }
 
 /**
- * Single DB lookup for both membership and owner-or-admin checks. Returns
- * `null` when the project does not exist; otherwise `isMember` implies the
- * device owner is an owner of the project OR in `projectMembers`, and
- * `isAdmin` implies that membership has role owner|admin.
- *
- * Note: this treats project owner as a member even without a `projectMembers`
- * row — REST `/transition` requires the row separately, so MCP is slightly
- * laxer for owners. Intentional and consistent with `forge_skills.*`.
+ * Effective-role lookup shared by the device and PAT paths. Returns `null`
+ * when the project does not exist. `isMember` = any effective role (viewer
+ * counts — use for READ tools); `isWriter` = member or admin (use for
+ * mutating tools — viewer is read-only); `isAdmin` = effective project admin
+ * (explicit row OR org owner/admin — lib/authz.ts).
  */
-async function loadDeviceProjectRole(
-  device: Device,
+async function loadUserProjectRoleFlags(
+  userId: string,
   projectId: string,
-): Promise<{ isMember: boolean; isAdmin: boolean } | null> {
-  const [project] = await db
-    .select({ ownerId: projects.ownerId })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project) return null;
-  if (project.ownerId === device.ownerId) return { isMember: true, isAdmin: true };
-  const [member] = await db
-    .select({ role: projectMembers.role })
-    .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, device.ownerId)))
-    .limit(1);
-  if (!member) return { isMember: false, isAdmin: false };
+): Promise<{ isMember: boolean; isWriter: boolean; isAdmin: boolean } | null> {
+  const access = await effectiveProjectRole(userId, projectId);
+  if (!access) return null;
   return {
-    isMember: true,
-    isAdmin: member.role === 'owner' || member.role === 'admin',
+    isMember: access.role !== null,
+    isWriter: projectRoleAtLeast(access.role, 'member'),
+    isAdmin: projectRoleAtLeast(access.role, 'admin'),
   };
 }
 
@@ -104,7 +96,7 @@ async function loadDeviceProjectRole(
  * `server.ts` error path.
  */
 export async function assertDeviceOwnerIsMember(device: Device, projectId: string): Promise<void> {
-  const role = await loadDeviceProjectRole(device, projectId);
+  const role = await loadUserProjectRoleFlags(device.ownerId, projectId);
   if (!role) throw new Error('FORBIDDEN: project not found or not accessible');
   if (!role.isMember) {
     throw new Error('FORBIDDEN: device owner is not a member of this project');
@@ -112,13 +104,25 @@ export async function assertDeviceOwnerIsMember(device: Device, projectId: strin
 }
 
 /**
- * Throw if the device's owner is not owner/admin of the project.
+ * Throw if the device's owner cannot WRITE (effective role below `member` —
+ * viewer is read-only across the MCP surface too).
+ */
+export async function assertDeviceOwnerIsWriter(device: Device, projectId: string): Promise<void> {
+  const role = await loadUserProjectRoleFlags(device.ownerId, projectId);
+  if (!role) throw new Error('FORBIDDEN: project not found or not accessible');
+  if (!role.isWriter) {
+    throw new Error('FORBIDDEN: requires project member access (viewer is read-only)');
+  }
+}
+
+/**
+ * Throw if the device's owner is not an effective project admin.
  */
 export async function assertDeviceOwnerIsAdmin(device: Device, projectId: string): Promise<void> {
-  const role = await loadDeviceProjectRole(device, projectId);
+  const role = await loadUserProjectRoleFlags(device.ownerId, projectId);
   if (!role) throw new Error('FORBIDDEN: project not found or not accessible');
   if (!role.isAdmin) {
-    throw new Error('FORBIDDEN: requires owner or admin on the project');
+    throw new Error('FORBIDDEN: requires project admin access');
   }
 }
 
@@ -134,7 +138,7 @@ export async function assertDeviceOwnerIsAdmin(device: Device, projectId: string
  * only path to enable PM tools for the device.
  */
 export async function assertPmActor(device: Device, projectId: string): Promise<void> {
-  await assertDeviceOwnerIsMember(device, projectId);
+  await assertDeviceOwnerIsWriter(device, projectId);
   const [runner] = await db
     .select({ capabilities: runners.capabilities })
     .from(runners)
@@ -173,12 +177,44 @@ export async function assertPrincipalIsMember(
   if (principal.projectIds !== null && !principal.projectIds.includes(projectId)) {
     throw new Error('NOT_FOUND: project not found or not accessible');
   }
-  const role = await loadUserProjectRole(principal.userId, projectId);
+  const role = await loadUserProjectRoleFlags(principal.userId, projectId);
   if (!role || !role.isMember) {
     throw new Error('NOT_FOUND: project not found or not accessible');
   }
 }
 
+/**
+ * Writer gate for mutating tools: effective role must be at least `member`
+ * (viewer is read-only). Same existence-hiding semantics as
+ * {@link assertPrincipalIsMember}; the below-member case gets a truthful
+ * FORBIDDEN since the caller can already see the project.
+ */
+export async function assertPrincipalIsWriter(
+  principal: McpPrincipal,
+  projectId: string,
+): Promise<void> {
+  if (principal.kind === 'device') {
+    await assertDeviceOwnerIsWriter(principal.device, projectId);
+    return;
+  }
+  if (principal.projectIds !== null && !principal.projectIds.includes(projectId)) {
+    throw new Error('NOT_FOUND: project not found or not accessible');
+  }
+  const role = await loadUserProjectRoleFlags(principal.userId, projectId);
+  if (!role || !role.isMember) {
+    throw new Error('NOT_FOUND: project not found or not accessible');
+  }
+  if (!role.isWriter) {
+    throw new Error('FORBIDDEN: requires project member access (viewer is read-only)');
+  }
+}
+
+/**
+ * Admin gate. For PAT principals this ALSO requires the `admin` scope on the
+ * token — the single enforcement point for the scope (it was declared since
+ * ISS-150 but never checked; pre-0106 tokens are grandfathered by migration).
+ * Device tokens carry no scopes: a paired desktop acts as the user.
+ */
 export async function assertPrincipalIsAdmin(
   principal: McpPrincipal,
   projectId: string,
@@ -190,34 +226,14 @@ export async function assertPrincipalIsAdmin(
   if (principal.projectIds !== null && !principal.projectIds.includes(projectId)) {
     throw new Error('NOT_FOUND: project not found or not accessible');
   }
-  const role = await loadUserProjectRole(principal.userId, projectId);
+  if (!principal.scopes.includes('admin')) {
+    throw new Error('FORBIDDEN: this token lacks the admin scope');
+  }
+  const role = await loadUserProjectRoleFlags(principal.userId, projectId);
   if (!role) throw new Error('NOT_FOUND: project not found or not accessible');
   if (!role.isAdmin) {
-    throw new Error('FORBIDDEN: requires owner or admin on the project');
+    throw new Error('FORBIDDEN: requires project admin access');
   }
-}
-
-async function loadUserProjectRole(
-  userId: string,
-  projectId: string,
-): Promise<{ isMember: boolean; isAdmin: boolean } | null> {
-  const [project] = await db
-    .select({ ownerId: projects.ownerId })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project) return null;
-  if (project.ownerId === userId) return { isMember: true, isAdmin: true };
-  const [member] = await db
-    .select({ role: projectMembers.role })
-    .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
-    .limit(1);
-  if (!member) return { isMember: false, isAdmin: false };
-  return {
-    isMember: true,
-    isAdmin: member.role === 'owner' || member.role === 'admin',
-  };
 }
 
 /**
@@ -242,13 +258,7 @@ export function principalUserId(principal: McpPrincipal): string {
 export async function loadVisibleProjectIdsForPrincipal(
   principal: McpPrincipal,
 ): Promise<string[]> {
-  const userId = principalUserId(principal);
-  const rows = await db
-    .selectDistinct({ id: projects.id })
-    .from(projects)
-    .leftJoin(projectMembers, eq(projectMembers.projectId, projects.id))
-    .where(sql`${projects.ownerId} = ${userId} OR ${projectMembers.userId} = ${userId}`);
-  let ids = rows.map((r) => r.id);
+  let ids = await loadVisibleProjectIds(principalUserId(principal));
   if (principal.kind === 'pat' && principal.projectIds !== null) {
     const allow = new Set(principal.projectIds);
     ids = ids.filter((id) => allow.has(id));

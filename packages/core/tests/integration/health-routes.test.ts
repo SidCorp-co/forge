@@ -65,7 +65,7 @@ describe('ISS-267 /api/projects/health integration', () => {
     await createTestProjectMember(harness.db, {
       userId: user.id,
       projectId: project.id,
-      role: 'owner',
+      role: 'admin',
     });
     const token = await signUserToken(user.id);
     return { user, project, token };
@@ -93,9 +93,7 @@ describe('ISS-267 /api/projects/health integration', () => {
     createdAt?: string;
   }) {
     const id = randomUUID();
-    const created = args.createdAt
-      ? sql`${args.createdAt}::timestamptz`
-      : sql`now()`;
+    const created = args.createdAt ? sql`${args.createdAt}::timestamptz` : sql`now()`;
     await harness.db.execute(sql`
       INSERT INTO activity_log (id, issue_id, actor_type, actor_id, action, payload, created_at)
       VALUES (${id}, ${args.issueId}, ${'user'}, ${args.actorId}, ${args.action}, ${JSON.stringify(args.payload)}::jsonb, ${created})

@@ -41,6 +41,8 @@ const fakeDevice = {
   name: 'fake',
   platform: 'linux' as const,
   agentVersion: null,
+  machineId: null,
+  gitCredentialRef: null,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   status: 'online' as const,
@@ -63,7 +65,9 @@ function mockVisible(ids: string[]) {
   selectDistinctImpl.mockImplementationOnce(() => ({
     from: () => ({
       leftJoin: () => ({
-        where: () => Promise.resolve(ids.map((id) => ({ id }))),
+        leftJoin: () => ({
+          where: () => Promise.resolve(ids.map((id) => ({ id }))),
+        }),
       }),
     }),
   }));
@@ -128,7 +132,7 @@ describe('forge_ops_health', () => {
     }));
     // in-flight aggregation: capture the where() predicate so we can assert the
     // job-status filter is applied (without it, terminal jobs would count).
-    const inFlightWhere = vi.fn(() => ({
+    const inFlightWhere = vi.fn((..._args: unknown[]) => ({
       groupBy: () => Promise.resolve([{ runnerId: RUNNER_ID, n: 3 }]),
     }));
     selectImpl.mockImplementationOnce(() => ({
@@ -173,14 +177,14 @@ describe('forge_ops_health', () => {
     expect(res.db).toBe('ok');
     expect(res.queue).toBe('ok');
     expect(res.ws).toBe('ok');
-    expect(res.runners[0].inFlightCount).toBe(3);
-    expect(res.projects[0].activeJobCount).toBe(5);
-    expect(res.stuckJobs[0].ageSeconds).toBe(1200);
+    expect(res.runners[0]?.inFlightCount).toBe(3);
+    expect(res.projects[0]?.activeJobCount).toBe(5);
+    expect(res.stuckJobs[0]?.ageSeconds).toBe(1200);
 
     // The in-flight aggregation must filter jobs by status so that done /
     // failed / cancelled jobs are excluded from inFlightCount.
     expect(inFlightWhere).toHaveBeenCalledTimes(1);
-    const wherePredicate = inFlightWhere.mock.calls[0][0];
+    const wherePredicate = inFlightWhere.mock.calls[0]?.[0];
     const sqlText = collectSqlFragments(wherePredicate);
     expect(sqlText).toContain('dispatched');
     expect(sqlText).toContain('running');
@@ -190,7 +194,7 @@ describe('forge_ops_health', () => {
     // JS array in the drizzle template expands it as a record tuple
     // ($1,$2,...), so ANY(tuple::uuid[]) is a malformed array literal that
     // 500s at query time (the mock can't bind Postgres, so assert the SQL).
-    const stuckSql = collectSqlFragments(executeImpl.mock.calls[1][0]);
+    const stuckSql = collectSqlFragments(executeImpl.mock.calls[1]?.[0]);
     expect(stuckSql).toContain('IN (');
     expect(stuckSql).not.toContain('ANY(');
     expect(stuckSql).not.toContain('::uuid[]');

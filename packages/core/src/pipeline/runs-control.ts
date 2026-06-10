@@ -127,7 +127,8 @@ export async function resumePipelineRun(runId: string): Promise<PipelineRunRow> 
  * no `STATUS_TO_JOB_TYPE` mapping). Without this, cancel silently re-dispatched
  * a fresh run seconds later. Runs AFTER the cancel commit (applyStatusTransition
  * opens its own transaction) and is best-effort: a failure here must not fail
- * the cancel itself. The transition uses the project owner as a `device` actor
+ * the cancel itself. The transition uses the project creator (`projects.createdBy`,
+ * audit-only) as a `device` actor
  * (mirrors the system-transition pattern in `jobs/finalize-failure.ts`), so the
  * orchestrator's ISS-411 guard treats a later non-`user` advance out of
  * `on_hold` as inert — only a human Resume re-engages the pipeline.
@@ -141,7 +142,7 @@ async function parkIssueOnCancel(run: PipelineRunRow): Promise<void> {
         projectId: issues.projectId,
         status: issues.status,
         reopenCount: issues.reopenCount,
-        ownerId: projects.ownerId,
+        createdBy: projects.createdBy,
       })
       .from(issues)
       .innerJoin(projects, eq(projects.id, issues.projectId))
@@ -150,7 +151,7 @@ async function parkIssueOnCancel(run: PipelineRunRow): Promise<void> {
     if (!row) return;
     if (CANCEL_PARK_SKIP_STATUSES.has(row.status)) return;
 
-    const actorId = row.ownerId ?? run.projectId;
+    const actorId = row.createdBy ?? run.projectId;
     const device: DeviceLite = { id: actorId, ownerId: actorId };
     await applyStatusTransition(
       { id: row.id, projectId: row.projectId, status: row.status, reopenCount: row.reopenCount },

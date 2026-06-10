@@ -24,7 +24,8 @@ vi.mock('../db/client.js', () => ({
 }));
 
 const projectAccess = vi.fn();
-vi.mock('../lib/project-access.js', () => ({
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
   loadProjectAccess: (...args: unknown[]) => projectAccess(...args),
 }));
 
@@ -68,7 +69,7 @@ async function token() {
 describe('GET /api/knowledge-edges', () => {
   it('lists edges for a project', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'member' });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'member', orgRole: null });
     selectLimit.mockResolvedValueOnce([
       { id: EDGE_ID, projectId: PROJECT_ID, subject: 's', predicate: 'p', object: 'o' },
     ]);
@@ -84,7 +85,7 @@ describe('GET /api/knowledge-edges', () => {
 describe('POST /api/knowledge-edges', () => {
   it('403 for non-admin/owner', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: 'x', role: 'member' });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'member', orgRole: null });
     const res = await buildApp().request('/api/knowledge-edges', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
@@ -95,7 +96,7 @@ describe('POST /api/knowledge-edges', () => {
 
   it('201 inserts edge', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'owner' });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'admin', orgRole: 'owner' });
     selectLimit.mockResolvedValueOnce([]); // dedup pre-check: no existing edge
     insertReturning.mockResolvedValueOnce([
       { id: EDGE_ID, projectId: PROJECT_ID, subject: 's', predicate: 'p', object: 'o' },
@@ -110,7 +111,7 @@ describe('POST /api/knowledge-edges', () => {
 
   it('200 returns existing edge on duplicate', async () => {
     authVerified();
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'owner' });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'admin', orgRole: 'owner' });
     selectLimit.mockResolvedValueOnce([
       { id: EDGE_ID, projectId: PROJECT_ID, subject: 's', predicate: 'p', object: 'o' },
     ]);
@@ -138,7 +139,7 @@ describe('DELETE /api/knowledge-edges/:id', () => {
   it('204 deletes for owner', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([{ id: EDGE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, ownerId: USER_ID, role: 'owner' });
+    projectAccess.mockResolvedValueOnce({ projectId: PROJECT_ID, orgId: 'org-1', role: 'admin', orgRole: 'owner' });
     deleteWhere.mockResolvedValueOnce(undefined);
     const res = await buildApp().request(`/api/knowledge-edges/${EDGE_ID}`, {
       method: 'DELETE',

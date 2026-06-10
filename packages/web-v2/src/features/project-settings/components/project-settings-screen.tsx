@@ -107,7 +107,10 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
   if (!project) return null;
 
   const glyph = projectGlyph(project.id);
-  const canEdit = listItem.role === "owner";
+  // Settings-level edits require org owner/admin on the project's org; member
+  // and label management only needs the effective project admin role.
+  const canEdit = listItem.orgRole === "owner" || listItem.orgRole === "admin";
+  const isProjectAdmin = listItem.role === "admin";
 
   return (
     <div className="flex min-h-full flex-col">
@@ -128,14 +131,14 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
                 <h1 className="fg-h2 truncate">Project settings</h1>
                 <div className="mt-1 flex items-center gap-2">
                   <MonoTag>{project.slug}</MonoTag>
-                  <Badge tone={canEdit ? "accent" : "neutral"}>{listItem.role}</Badge>
+                  <Badge tone={canEdit ? "accent" : "neutral"}>{listItem.role ?? "org"}</Badge>
                 </div>
               </div>
             </header>
 
             {!canEdit && (
               <p className="fg-body-sm mb-4 rounded-md border border-line bg-surface px-3 py-2 text-muted">
-                You have read-only access — only the project owner can change these settings.
+                You have read-only access — only an org owner/admin can change these settings.
               </p>
             )}
           </>
@@ -149,10 +152,10 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
         {tab === "pipeline" && (
           <PipelineTab projectId={project.id} canEdit={canEdit} slug={project.slug} />
         )}
-        {tab === "labels" && <LabelsTab projectId={project.id} canEdit={canEdit} />}
-        {tab === "members" && <MembersTab projectId={project.id} canEdit={canEdit} />}
+        {tab === "labels" && <LabelsTab projectId={project.id} canEdit={canEdit || isProjectAdmin} />}
+        {tab === "members" && <MembersTab projectId={project.id} canEdit={canEdit || isProjectAdmin} />}
         {tab === "agent" && (
-          <AgentTab projectId={project.id} canEdit={canEdit || listItem.role === "admin"} />
+          <AgentTab projectId={project.id} canEdit={canEdit || isProjectAdmin} />
         )}
         {tab === "integrations" && <IntegrationsTab projectId={project.id} canEdit={canEdit} />}
         {tab === "advanced" && <AdvancedTab project={project} canEdit={canEdit} />}
