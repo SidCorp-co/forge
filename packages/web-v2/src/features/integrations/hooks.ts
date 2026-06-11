@@ -1,5 +1,6 @@
 "use client";
 
+import { useOrgs } from "@/features/orgs/hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
@@ -242,6 +243,24 @@ export function useOrgConnectionLocked(
   return orgRole !== "owner" && orgRole !== "admin";
 }
 
+/**
+ * Can the caller MANAGE (rename/key/config/remove) a connection at the
+ * workspace directory? UX mirror of the server's `loadManageableConnection`:
+ * a user-owned row in the owner-scoped list is always the caller's own; an
+ * org-owned row needs org owner/admin (resolved from the orgs list, since the
+ * directory has no project context — contrast `useOrgConnectionLocked`).
+ * Fails closed while orgs load; the server 403s regardless.
+ */
+export function useCanManageConnection(
+  connection: { ownerType: string; ownerId: string } | null,
+): boolean {
+  const orgsQ = useOrgs();
+  if (!connection) return false;
+  if (connection.ownerType === "user") return true;
+  const role = orgsQ.data?.find((o) => o.id === connection.ownerId)?.role;
+  return role === "owner" || role === "admin";
+}
+
 function useInvalidateConnections() {
   const qc = useQueryClient();
   return () => qc.invalidateQueries({ queryKey: ["integration-connections"] });
@@ -261,6 +280,41 @@ export function useUpdateConnection() {
     onError: (err) =>
       toast({
         title: "Couldn't save connection",
+        description: formatApiError(err),
+        tone: "error",
+      }),
+  });
+}
+
+/** Connection-scoped Test at the directory (ISS-435). No toast — the caller
+ *  renders the result inline (mirrors `useTestIntegration`). Settled-time
+ *  invalidation refreshes the directory card AND every project-scoped
+ *  integrations view (the adapter persisted fresh health onto the shared
+ *  connection, and connection mutations have no project-room broadcast). */
+export function useTestConnection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => integrationConnectionsApi.test(id),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["integration-connections"] });
+      qc.invalidateQueries({ queryKey: ["integrations"] });
+    },
+  });
+}
+
+/** Soft-delete a connection (active=false — every binding stops resolving). */
+export function useRemoveConnection() {
+  const invalidate = useInvalidateConnections();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (id: string) => integrationConnectionsApi.remove(id),
+    onSuccess: () => {
+      invalidate();
+      toast({ title: "Connection removed", tone: "success" });
+    },
+    onError: (err) =>
+      toast({
+        title: "Couldn't remove connection",
         description: formatApiError(err),
         tone: "error",
       }),

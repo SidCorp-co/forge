@@ -27,6 +27,8 @@ export interface ProjectListItem {
   orgRole: 'owner' | 'admin' | 'member' | null;
   /** null for the read-only viewer tier (execution-grade key is withheld). */
   apiKey: string | null;
+  /** Non-null when the project is archived (rows appear via `?archived=1`). */
+  archivedAt: string | null;
   createdAt: string;
 }
 

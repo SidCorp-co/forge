@@ -256,6 +256,10 @@ function broadcastIntegrationChanged(
  *  adapter's own write + the next refetch (ISS-431). */
 const INITIAL_PROBE_TIMEOUT_MS = 5_000;
 
+/** Cap for the explicit connection Test (ISS-435) — matches the health
+ *  sweep's per-probe budget. */
+const TEST_PROBE_TIMEOUT_MS = 10_000;
+
 /**
  * Best-effort immediate healthcheck after a binding is created or bound
  * (ISS-429): the operator gets a REAL health state right away instead of an
@@ -1222,6 +1226,48 @@ integrationConnectionsRoutes.get('/:id/bindings', async (c) => {
   await loadManageableConnection(id, userId);
   const pairs = await listBindingsForConnection(id);
   return c.json({ items: pairs.map(summarizeBinding) });
+});
+
+// ISS-435 — connection-scoped healthcheck for the workspace directory drawer.
+// Health lives on the connection, but an AdapterContext needs a binding
+// (project/env/inbound-HMAC scope), so probe through a representative ACTIVE
+// binding — oldest first, the same deterministic pick the health sweep and the
+// MCP resolvers use. The adapter persists the result onto the connection
+// itself, so every bound project's card reflects it on the next read.
+integrationConnectionsRoutes.post('/:id/test', async (c) => {
+  const id = c.req.param('id');
+  const userId = c.get('userId');
+  await loadManageableConnection(id, userId);
+
+  // listBindingsForConnection is newest-first; walk from the back for the
+  // oldest active binding (health-sweep / resolver ordering).
+  const pairs = await listBindingsForConnection(id);
+  const pair = [...pairs].reverse().find((p) => p.binding.active);
+  if (!pair) {
+    throw new HTTPException(404, {
+      message: 'connection has no active binding to probe through — share it with a project first',
+      cause: { code: 'NO_BINDING' },
+    });
+  }
+
+  const adapter = getAdapter(pair.binding.provider);
+  if (!adapter) {
+    throw new HTTPException(400, {
+      message: `no adapter registered for provider=${pair.binding.provider}`,
+      cause: { code: 'NO_ADAPTER' },
+    });
+  }
+  // Time-boxed like the health sweep — a blackholed provider must not pin the
+  // HTTP request open indefinitely. A timeout is reported as a truthful error
+  // result, not a 5xx (the adapter keeps running and persists its own outcome).
+  const result = await raceWithTimeout(
+    adapter.healthcheck(buildContextFromBinding(pair)),
+    TEST_PROBE_TIMEOUT_MS,
+  );
+  if (result === null) {
+    return c.json({ status: 'error', message: 'healthcheck timed out after 10s' });
+  }
+  return c.json(result);
 });
 
 integrationConnectionsRoutes.patch(

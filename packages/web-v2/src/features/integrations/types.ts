@@ -104,6 +104,12 @@ export interface ProviderConfig {
   baseUrl?: string;
   resourceUuid?: string;
   branch?: string;
+  // postman
+  workspaceId?: string;
+  workspaceName?: string;
+  collectionId?: string;
+  region?: PostmanRegion;
+  mode?: PostmanMode;
   // epodsystem
   orgId?: string;
   scopes?: string[];

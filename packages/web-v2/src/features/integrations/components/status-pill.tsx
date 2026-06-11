@@ -21,6 +21,13 @@ export const PROVIDER_LABEL: Record<string, string> = {
   epodsystem: "Epodsystem",
 };
 
+/** One provider→icon map for every integrations surface (card, drawers, panel). */
+export const PROVIDER_ICON: Record<string, IconName> = {
+  coolify: "server",
+  postman: "command",
+  epodsystem: "command",
+};
+
 /** The bare icon + text + tinted pill; feed it any `{icon,label,fg,bg}` meta. */
 export function Pill({ icon, label, fg, bg }: { icon: IconName; label: string; fg: string; bg: string }) {
   return (

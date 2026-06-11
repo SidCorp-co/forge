@@ -4,13 +4,14 @@
 //
 // A connection is the credential (owned by the signed-in user); bindings link
 // it into projects. This page lists every connection the user owns — including
-// disabled ones — with truthful health, the projects using each connection,
-// and enable/disable controls. All PROJECT-scoped management (provider config,
-// Test/Rotate/Disconnect, delivery log, MCP preview) lives in project settings
-// → Integrations (`ProjectIntegrationsPanel`); this page deliberately does not
-// duplicate it.
+// disabled ones — with truthful health and enable/disable shortcuts; clicking
+// a card opens the connection edit drawer (ISS-435: rename, replace key,
+// provider config, Test, per-project drill-through, remove). BINDING-scoped
+// management (environment, webhook rotate, delivery log, disconnect) lives in
+// project settings → Integrations (`ProjectIntegrationsPanel`); this page
+// deliberately does not duplicate it.
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   Button,
   Card,
@@ -19,7 +20,6 @@ import {
   ErrorState,
   HelpButton,
   Icon,
-  type IconName,
   PageContainer,
   Skeleton,
 } from "@/design";
@@ -29,13 +29,8 @@ import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import { useConnectionBindings, useConnections, useUpdateConnection } from "../hooks";
 import { deriveConnectionStatus } from "../derive";
 import type { ConnectionSummary } from "../types";
-import { DirectoryStatusPill, ENV_LABEL, PROVIDER_LABEL } from "./status-pill";
-
-const PROVIDER_ICON: Record<string, IconName> = {
-  coolify: "server",
-  postman: "command",
-  epodsystem: "command",
-};
+import { ConnectionEditDrawer } from "./connection-edit-drawer";
+import { DirectoryStatusPill, ENV_LABEL, PROVIDER_ICON, PROVIDER_LABEL } from "./status-pill";
 
 function ConnectionStatusPill({ connection }: { connection: ConnectionSummary }) {
   return <DirectoryStatusPill status={deriveConnectionStatus(connection)} />;
@@ -93,7 +88,13 @@ function ConnectionBindings({ connectionId }: { connectionId: string }) {
   );
 }
 
-function ConnectionCard({ connection }: { connection: ConnectionSummary }) {
+function ConnectionCard({
+  connection,
+  onOpen,
+}: {
+  connection: ConnectionSummary;
+  onOpen: () => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const update = useUpdateConnection();
   const checked = formatRelativeTime(connection.lastHealthAt);
@@ -103,7 +104,25 @@ function ConnectionCard({ connection }: { connection: ConnectionSummary }) {
   return (
     <Card>
       <CardContent>
-        <div className="flex flex-col gap-2.5">
+        {/* The card body opens the edit drawer (ISS-435); inner buttons keep
+            their own actions via stopPropagation. div+role, not <button> —
+            the shortcuts inside are real buttons and can't nest. */}
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label={`Manage connection ${label}`}
+          className="flex cursor-pointer flex-col gap-2.5 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          onClick={onOpen}
+          onKeyDown={(e) => {
+            // Only when the card ITSELF is focused — Enter/Space on the inner
+            // buttons/links must keep their native activation.
+            if (e.target !== e.currentTarget) return;
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onOpen();
+            }
+          }}
+        >
           <div className="flex items-center justify-between gap-2">
             <span className="inline-flex min-w-0 items-center gap-2">
               <Icon
@@ -127,7 +146,14 @@ function ConnectionCard({ connection }: { connection: ConnectionSummary }) {
           </p>
 
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setExpanded((v) => !v)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpanded((v) => !v);
+              }}
+            >
               {expanded ? "Hide projects" : "Projects using it"}
             </Button>
             <span className="ml-auto" />
@@ -136,7 +162,10 @@ function ConnectionCard({ connection }: { connection: ConnectionSummary }) {
                 variant="ghost"
                 size="sm"
                 loading={update.isPending}
-                onClick={() => update.mutate({ id: connection.id, body: { active: false } })}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  update.mutate({ id: connection.id, body: { active: false } });
+                }}
               >
                 Disable
               </Button>
@@ -145,14 +174,22 @@ function ConnectionCard({ connection }: { connection: ConnectionSummary }) {
                 variant="secondary"
                 size="sm"
                 loading={update.isPending}
-                onClick={() => update.mutate({ id: connection.id, body: { active: true } })}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  update.mutate({ id: connection.id, body: { active: true } });
+                }}
               >
                 Enable
               </Button>
             )}
           </div>
 
-          {expanded && <ConnectionBindings connectionId={connection.id} />}
+          {expanded && (
+            // biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: stops bubbling only — the inner list has its own semantics
+            <div onClick={(e) => e.stopPropagation()}>
+              <ConnectionBindings connectionId={connection.id} />
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -162,6 +199,13 @@ function ConnectionCard({ connection }: { connection: ConnectionSummary }) {
 export function IntegrationsScreen() {
   const connections = useConnections();
   const items = connections.data?.items ?? [];
+  // Track the SELECTED ID and re-derive the row from the live query data, so
+  // the open drawer reflects every mutation (rename/health/active) without
+  // holding a stale snapshot. Stable onClose — SlideOver's focus effect keys
+  // on it, and a fresh identity per render would yank focus on every refetch.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = items.find((c) => c.id === selectedId) ?? null;
+  const closeDrawer = useCallback(() => setSelectedId(null), []);
 
   return (
     <PageContainer className="flex flex-col gap-5">
@@ -176,9 +220,9 @@ export function IntegrationsScreen() {
         <HelpButton
           summary="A connection is a credential you own (Coolify token, Postman key, Epodsystem key). Projects use a connection through bindings — share one connection with several projects without re-entering the secret. Health here is the connection's real last-known state; disabled connections stay listed so you can re-enable them."
           actions={[
-            "Projects using it — see every project + environment bound to a connection",
+            "Click a card — rename, replace the key, edit config, Test, drill into bound projects, or remove the connection",
             "Disable / Enable — switch a credential off (every binding stops resolving) and back on",
-            "Configure project integrations in the project's settings → Integrations tab",
+            "Binding-scoped settings (environment, webhooks, delivery log) stay in the project's settings → Integrations tab",
           ]}
           docPath="docs/guides/integrations.md"
         />
@@ -208,10 +252,14 @@ export function IntegrationsScreen() {
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {items.map((c) => (
-            <ConnectionCard key={c.id} connection={c} />
+            <ConnectionCard key={c.id} connection={c} onOpen={() => setSelectedId(c.id)} />
           ))}
         </div>
       )}
+
+      {/* Mounted only while open so its queries (bindings, archived projects,
+          orgs) never fire as a side effect of rendering the directory. */}
+      {selected && <ConnectionEditDrawer connection={selected} onClose={closeDrawer} />}
     </PageContainer>
   );
 }
