@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The Issues list gains Draft and Done filter tabs, and cost figures are now accurate: Claude Fable 5 usage is no longer recorded at $0 and Opus 4.5–4.8 usage is no longer over-counted 3× (history corrected).
 - Per-issue cost now includes pipeline work run on CLI runners — previously it always showed —/$0 — and historical runs since mid-May are backfilled.
 - API requests made with a device token to user-only endpoints now return a clean 403 instead of a 500 error.
+- Decision, audit, and spike issues whose only deliverable is a write-up now flow through the pipeline to completion — they produce a durable in-repo proposal document instead of looping unresolved.
 
 ## [0.3.0] - 2026-06-11
 
