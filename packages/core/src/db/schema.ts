@@ -1506,12 +1506,20 @@ export const usageRecords = pgTable(
     requestCount: integer('request_count').notNull().default(1),
     sessionId: text('session_id'),
     projectName: text('project_name'),
+    // ISS-439 — the job whose stored job_events this row was materialized from
+    // (CLI-runner path). Bare uuid (no FK, mirroring jobs.agent_session_id) so
+    // job retention/archival can't cascade-delete cost history. The partial
+    // unique index below makes it the idempotency key: a job's usage row is
+    // inserted ON CONFLICT DO NOTHING, so retries / sweeper-reaped terminals /
+    // re-running the backfill can never double-count.
+    jobId: uuid('job_id'),
     recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     projectRecordedIdx: index('usage_records_project_recorded_idx').on(t.projectId, t.recordedAt),
     sessionIdIdx: index('usage_records_session_id_idx').on(t.sessionId),
+    jobIdUq: uniqueIndex('usage_records_job_id_key').on(t.jobId).where(sql`job_id IS NOT NULL`),
   }),
 );
 

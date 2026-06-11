@@ -750,6 +750,20 @@
       "when": 1783296000000,
       "tag": "0108_usage_pricing_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1783382400000,
+      "tag": "0109_usage_records_job_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1783468800000,
+      "tag": "0110_usage_records_cli_backfill",
+      "breakpoints": true
     }
   ]
 }

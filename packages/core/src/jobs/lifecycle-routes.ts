@@ -11,6 +11,7 @@ import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { hooks } from '../pipeline/hooks.js';
+import { materializeJobUsage } from '../usage-records/materialize.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
@@ -122,6 +123,7 @@ jobLifecycleDeviceRoutes.post(
           if (reclaimed.agentSessionId) {
             void deriveSessionFinal(reclaimed.id, reclaimed.agentSessionId);
           }
+          void materializeJobUsage(reclaimed);
           await syncAgentSessionLifecycle(reclaimed, 'done');
           roomManager.publish(projectRoom(reclaimed.projectId), {
             event: 'job.completed',
@@ -179,6 +181,8 @@ jobLifecycleDeviceRoutes.post(
     if (updated.agentSessionId) {
       void deriveSessionFinal(updated.id, updated.agentSessionId);
     }
+    // ISS-439 — materialize the usage_records row from the stored job_events.
+    void materializeJobUsage(updated);
 
     // Step-handoff is best-effort context for the next step — NOT a completion
     // gate. A `done` job stays `done` whether or not the agent wrote its
@@ -298,6 +302,8 @@ jobLifecycleDeviceRoutes.post(
     if (updated.agentSessionId) {
       void deriveSessionFinal(updated.id, updated.agentSessionId);
     }
+    // ISS-439 — materialize the usage_records row from the stored job_events.
+    void materializeJobUsage(updated);
 
     // PR-5c — same resume-failed branching as the user-lifecycle path.
     let resumePolicy: 'fresh' | 'abort' | null = null;

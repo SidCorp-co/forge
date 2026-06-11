@@ -29,6 +29,7 @@ import { issueStepContexts, jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
+import { materializeJobUsage } from '../usage-records/materialize.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
@@ -85,6 +86,8 @@ export async function finalizeJobDone(job: JobRow, reason: string): Promise<bool
 
   // Best-effort transcript derive (CLI runner never PATCHes the session row).
   if (updated.agentSessionId) void deriveSessionFinal(updated.id, updated.agentSessionId);
+  // ISS-439 — materialize the usage_records row from the same stored job_events.
+  void materializeJobUsage(updated);
   await syncAgentSessionLifecycle(updated, 'done');
 
   roomManager.publish(projectRoom(updated.projectId), {
