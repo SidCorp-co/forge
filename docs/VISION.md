@@ -57,6 +57,8 @@ Plug into the configurable pipeline as new stage types when shipped:
 - No agent framework abstractions — orchestrate, not reimplement LangGraph/CrewAI.
 - Idea/Spec/Design stages not yet implemented — roadmap items.
 
+**Not *yet* — deliberately sequenced behind kernel trust (§6.10–11):** raising runner concurrency caps, skill marketplace, multi-model routing UI, UI polish beyond the core loop. Each of these multiplies the blast radius of a kernel bug; they unlock when *interventions per issue closed* trends down, not before. Parked ambitions live in [IDEAS.md](IDEAS.md) (non-authoritative).
+
 ## 6. Principles
 
 1. **Server never holds Claude credentials.** Architectural commitment; a breach must not expose any user's Claude token.
