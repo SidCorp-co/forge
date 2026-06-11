@@ -12,6 +12,9 @@ vi.mock('../jobs/dispatch-tick.js', () => ({
 
 const dbExecute = vi.fn(async (..._args: unknown[]) => [] as Array<Record<string, unknown>>);
 const sessionsWhere = vi.fn();
+// ISS-445 — db.select(...).from(...).where(...) result, used by
+// reapOrphanedOneShotRuns to read a run's session statuses for outcome.
+const selectWhere = vi.fn(async () => [] as Array<{ status: string }>);
 // Captures the WHERE expression of each agent_sessions UPDATE so a test can
 // assert the metadata-type guard that keeps interactive chat off the sweeper.
 const sweepWhereArgs: unknown[] = [];
@@ -28,6 +31,11 @@ vi.mock('../db/client.js', () => ({
         },
       }),
     }),
+    select: () => ({
+      from: () => ({
+        where: () => selectWhere(),
+      }),
+    }),
     selectDistinct: () => ({
       from: () => ({
         where: () => queuedProjectsRows,
@@ -36,14 +44,23 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
+// ISS-445 — reapOrphanedOneShotRuns closes runs through the shared
+// closeRunIfOneShot SSOT. Mock it so the sweeper test asserts the call
+// contract without pulling in the runs.ts → hooks → cascade graph.
+const closeRunIfOneShotMock = vi.fn(async (..._args: unknown[]) => {});
+vi.mock('./runs.js', () => ({
+  closeRunIfOneShot: (...args: unknown[]) => closeRunIfOneShotMock(...args),
+}));
+
 vi.mock('../queue/boss.js', () => ({ boss: {} }));
 
 vi.mock('../jobs/pgboss-health.js', () => ({
   recordPipelineSweeperTick: vi.fn(),
 }));
 
+const broadcastSessionEventMock = vi.fn();
 vi.mock('../jobs/agent-session-link.js', () => ({
-  broadcastSessionEvent: vi.fn(),
+  broadcastSessionEvent: (...args: unknown[]) => broadcastSessionEventMock(...args),
 }));
 
 // ISS-280 — reconcileOrphanedJobs routes reaped orphans through the shared
@@ -73,6 +90,7 @@ const {
   runPipelineSweep,
   reconcileOrphanedJobs,
   reconcileNeverClaimedDispatches,
+  reapOrphanedOneShotRuns,
   sweepZombieSessions,
 } = await import('./sweeper.js');
 
@@ -105,6 +123,10 @@ beforeEach(() => {
   dispatchTick.mockReset();
   sessionsWhere.mockReset();
   sessionsWhere.mockResolvedValue([]); // no zombies by default
+  selectWhere.mockReset();
+  selectWhere.mockResolvedValue([]);
+  closeRunIfOneShotMock.mockClear();
+  closeRunIfOneShotMock.mockResolvedValue(undefined);
   queuedProjectsRows.length = 0;
   sweepWhereArgs.length = 0;
   dbExecute.mockResolvedValue([]);
@@ -288,13 +310,84 @@ describe('reconcileNeverClaimedDispatches (ISS-378)', () => {
   });
 });
 
+describe('reapOrphanedOneShotRuns (ISS-445)', () => {
+  it('candidate SELECT scopes to job-less system/interactive runs with no live session past the age cutoff', async () => {
+    dbExecute.mockResolvedValueOnce([]); // no candidates
+    const result = await reapOrphanedOneShotRuns(new Date('2026-06-12T00:00:00Z'));
+
+    expect(result.reaped).toBe(0);
+    const text = sqlText(dbExecute.mock.calls[0]?.[0]);
+    // kind + status gates: only one-shot system/interactive runs still open.
+    expect(text).toMatch(/r\.kind\s+IN\s*\(\s*'system'\s*,\s*'interactive'\s*\)/);
+    expect(text).toMatch(/r\.status\s+IN\s*\(\s*'running'\s*,\s*'paused'\s*\)/);
+    // age guard so a freshly-opened run is never reaped before its heartbeat.
+    expect(text).toMatch(/started_at\s*</);
+    // job-less only — job-backed system runs close via the job lifecycle.
+    expect(text).toMatch(/NOT\s+EXISTS[\s\S]*FROM\s+jobs\s+j/);
+    // no live session: heartbeat-fresh queued/running/idle session blocks reap.
+    expect(text).toMatch(/NOT\s+EXISTS[\s\S]*FROM\s+agent_sessions\s+s/);
+    expect(text).toMatch(/COALESCE/i);
+    expect(closeRunIfOneShotMock).not.toHaveBeenCalled();
+  });
+
+  it('force-fails a lingering stale session then closes the run as failed', async () => {
+    dbExecute.mockResolvedValueOnce([{ id: 'run-stale' }]); // one candidate
+    // The CAS UPDATE flips one still-running session and returns it.
+    sessionsWhere.mockResolvedValueOnce([{ id: 'sess-1', projectId: 'p1', deviceId: 'd1' }]);
+    // Post-flip session statuses → failed (we just force-failed it).
+    selectWhere.mockResolvedValueOnce([{ status: 'failed' }]);
+
+    const result = await reapOrphanedOneShotRuns(new Date('2026-06-12T00:00:00Z'));
+
+    expect(result.reaped).toBe(1);
+    // The lingering session is force-failed (heartbeat_timeout) and broadcast.
+    expect(broadcastSessionEventMock).toHaveBeenCalledWith(
+      'sess-1',
+      'p1',
+      'd1',
+      'agent-session.status',
+      expect.objectContaining({ status: 'failed', failureReason: 'heartbeat_timeout' }),
+    );
+    expect(closeRunIfOneShotMock).toHaveBeenCalledTimes(1);
+    expect(closeRunIfOneShotMock).toHaveBeenCalledWith('run-stale', 'failed');
+  });
+
+  it('closes a run as completed when the session already finished (missed /desktop/status)', async () => {
+    dbExecute.mockResolvedValueOnce([{ id: 'run-done' }]);
+    sessionsWhere.mockResolvedValueOnce([]); // nothing left to flip
+    selectWhere.mockResolvedValueOnce([{ status: 'completed' }]);
+
+    const result = await reapOrphanedOneShotRuns(new Date('2026-06-12T00:00:00Z'));
+
+    expect(result.reaped).toBe(1);
+    expect(closeRunIfOneShotMock).toHaveBeenCalledWith('run-done', 'completed');
+  });
+
+  it('does not let one failing run abort the pass', async () => {
+    dbExecute.mockResolvedValueOnce([{ id: 'run-a' }, { id: 'run-b' }]);
+    sessionsWhere.mockResolvedValue([]);
+    selectWhere.mockResolvedValue([{ status: 'completed' }]);
+    closeRunIfOneShotMock.mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce(undefined);
+
+    const result = await reapOrphanedOneShotRuns(new Date('2026-06-12T00:00:00Z'));
+
+    // First run threw (not counted), second still processed.
+    expect(result.reaped).toBe(1);
+    expect(closeRunIfOneShotMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('runs as part of runPipelineSweep and reports the count', async () => {
+    const result = await runPipelineSweep();
+    expect(result).toHaveProperty('orphanedOneShotRuns');
+    expect(result.orphanedOneShotRuns.reaped).toBe(0); // default mock: no candidates
+  });
+});
+
 describe('runPipelineSweep — queue snapshots (ISS-381 2.2)', () => {
   it('emits a grouped per-project INSERT into queue_snapshots each tick', async () => {
     const result = await runPipelineSweep();
     expect(result.queueSnapshots).toBe(0); // default mock returns []
-    const insertCall = dbExecute.mock.calls.find((c) =>
-      sqlText(c[0]).includes('queue_snapshots'),
-    );
+    const insertCall = dbExecute.mock.calls.find((c) => sqlText(c[0]).includes('queue_snapshots'));
     expect(insertCall).toBeDefined();
     const text = sqlText(insertCall?.[0]);
     expect(text).toContain('INSERT INTO queue_snapshots');
