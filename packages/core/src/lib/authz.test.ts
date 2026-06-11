@@ -1,19 +1,29 @@
 import { HTTPException } from 'hono/http-exception';
 import { describe, expect, it, vi } from 'vitest';
 
-// Only the pure helpers are under test — stub the db client so importing the
-// module doesn't require a configured environment.
-vi.mock('../db/client.js', () => ({ db: {} }));
+// Stub the db client so importing the module doesn't require a configured
+// environment. Pure helpers never touch it; the falsy-userId guard tests
+// install a select chain per test via `dbMock.select`.
+const dbMock = vi.hoisted(() => ({}) as { select?: unknown });
+vi.mock('../db/client.js', () => ({ db: dbMock }));
 
 import {
   type ProjectAccess,
   assertOrgRoleOnProject,
   assertProjectRole,
+  effectiveProjectRole,
+  loadOrgRole,
+  loadPersonalOrgId,
+  loadVisibleProjectIds,
   maxProjectRole,
   orgDerivedProjectRole,
   orgRoleAtLeast,
   projectRoleAtLeast,
 } from './authz.js';
+
+/** One-shot `db.select().from().where().limit()` chain returning `rows`. */
+const selectChain = (rows: unknown[]) =>
+  vi.fn(() => ({ from: () => ({ where: () => ({ limit: async () => rows }) }) }));
 
 const access = (over: Partial<ProjectAccess> = {}): ProjectAccess => ({
   projectId: 'p-1',
@@ -85,6 +95,35 @@ describe('assertProjectRole', () => {
         expect((err as HTTPException).status).toBe(403);
       }
     }
+  });
+});
+
+// requireUserOrDevice() leaves `userId` unset for device principals — the
+// authz seam must fail CLOSED (no role / nothing visible), never bind the
+// undefined value into SQL (postgres-js throws UNDEFINED_VALUE → 500).
+describe('falsy-userId guards (device principal)', () => {
+  it('effectiveProjectRole resolves project existence but no role', async () => {
+    dbMock.select = selectChain([{ orgId: 'o-1' }]);
+    expect(await effectiveProjectRole(undefined, 'p-1')).toEqual({
+      projectId: 'p-1',
+      orgId: 'o-1',
+      role: null,
+      orgRole: null,
+    });
+  });
+
+  it('effectiveProjectRole still reports a missing project as null', async () => {
+    dbMock.select = selectChain([]);
+    expect(await effectiveProjectRole(undefined, 'p-missing')).toBeNull();
+  });
+
+  it('loadOrgRole / loadVisibleProjectIds / loadPersonalOrgId short-circuit without touching the db', async () => {
+    dbMock.select = vi.fn(() => {
+      throw new Error('db must not be queried for a falsy userId');
+    });
+    expect(await loadOrgRole('o-1', undefined)).toBeNull();
+    expect(await loadVisibleProjectIds(undefined)).toEqual([]);
+    expect(await loadPersonalOrgId(undefined)).toBeNull();
   });
 });
 
