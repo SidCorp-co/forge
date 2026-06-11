@@ -45,12 +45,51 @@ import {
 } from "../types";
 import { CostCell, DepBadges, type RowActions } from "./issue-table-row";
 
-// A live agent state (running/queued/failed) takes over the chip — show the
-// execution status, not the static lifecycle label (ISS-366 D2). When idle we
-// pass the issue's TRUE lifecycle label so an Approved/Confirmed/Developed issue
-// no longer all read as the collapsed "Queued"/"Review" bucket.
+// The two status axes are SEPARATE chips (ISS-436): the issue chip always
+// shows the TRUE lifecycle label (an in-progress issue never reads as just
+// "Running"), and a live agent (running/queued/failed) adds a session-domain
+// chip beside it instead of replacing the label (reverses the ISS-366 D2
+// take-over, which made the lifecycle invisible whenever an agent was active).
 const hasLiveAgent = (s: IssueRow["agentStatus"]): boolean =>
   s === "running" || s === "queued" || s === "failed";
+
+/** Compact execution-state chip — rendered only while an agent is live. */
+function AgentChip({
+  agentStatus,
+}: { agentStatus: IssueRow["agentStatus"] }) {
+  if (!hasLiveAgent(agentStatus)) return null;
+  const status =
+    agentStatus === "running"
+      ? "running"
+      : agentStatus === "queued"
+        ? "queued"
+        : "failed";
+  return <StatusChip status={status} domain="session" size="sm" />;
+}
+
+/** ISS-436 merged status cell: lifecycle chip (+ live agent chip) over the
+ *  mini stage tracker — replaces the old separate Pipeline/Status columns,
+ *  which rendered the same `status`+`agentStatus` pair twice. */
+function StatusCell({ row }: { row: IssueRow }) {
+  const stage = statusToStage(row.status);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <StatusChip
+          status={statusToChip(row.status)}
+          label={statusLabel(row.status)}
+          size="sm"
+        />
+        <AgentChip agentStatus={row.agentStatus} />
+      </div>
+      <PipelineTracker
+        stage={stage}
+        status={statusToRun(row.status, row.agentStatus)}
+        variant="mini"
+      />
+    </div>
+  );
+}
 
 // Priority badge tone — quiet for low/none, warm for the urgent end.
 const PRIORITY_TONE: Record<IssuePriority, "red" | "amber" | "neutral"> = {
@@ -187,7 +226,6 @@ export function IssueTableRow({
   actions: RowActions;
 }) {
   const router = useRouter();
-  const stage = statusToStage(row.status);
   const open = () => router.push(`/projects/${slug}/issues/${row.id}`);
 
   return (
@@ -219,19 +257,7 @@ export function IssueTableRow({
         </div>
       </TD>
       <TD>
-        <PipelineTracker
-          stage={stage}
-          status={statusToRun(row.status, row.agentStatus)}
-          variant="mini"
-        />
-      </TD>
-      <TD>
-        <StatusChip
-          status={statusToChip(row.status, row.agentStatus)}
-          label={
-            hasLiveAgent(row.agentStatus) ? undefined : statusLabel(row.status)
-          }
-        />
+        <StatusCell row={row} />
       </TD>
       <TD>
         <PriorityCell priority={row.priority} />
@@ -274,7 +300,6 @@ export function IssueMobileCard({
   actions: RowActions;
 }) {
   const router = useRouter();
-  const stage = statusToStage(row.status);
   const open = () => router.push(`/projects/${slug}/issues/${row.id}`);
 
   return (
@@ -307,23 +332,10 @@ export function IssueMobileCard({
         </div>
 
         <div className="mt-3">
-          <PipelineTracker
-            stage={stage}
-            status={statusToRun(row.status, row.agentStatus)}
-            variant="mini"
-          />
+          <StatusCell row={row} />
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <StatusChip
-            status={statusToChip(row.status, row.agentStatus)}
-            size="sm"
-            label={
-              hasLiveAgent(row.agentStatus)
-                ? undefined
-                : statusLabel(row.status)
-            }
-          />
           <PriorityCell priority={row.priority} />
           <ComplexityCell complexity={row.complexity} />
           <span className="ml-auto">

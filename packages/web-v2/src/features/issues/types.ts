@@ -167,10 +167,15 @@ export type IssueSort =
   | "priority:desc"
   | "priority:asc";
 
-/** Options passed to the search endpoint via the `useIssues` hook. */
+/** Options passed to the search endpoint via the `useIssues` hook. `priority`
+ *  and `assignee` map 1:1 onto the server search params (ISS-436 — the
+ *  endpoint always supported them; the UI just never exposed a control). */
 export interface IssueSearchOpts {
   q?: string;
   filter?: IssueFilter;
+  priority?: IssuePriority;
+  /** Member userId. */
+  assignee?: string;
   sort?: IssueSort;
   page?: number;
   pageSize?: number;

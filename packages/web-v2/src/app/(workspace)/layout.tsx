@@ -17,6 +17,7 @@ import {
   type Crumb,
 } from "@/design";
 import { cn } from "@/lib/utils/cn";
+import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { useAuth } from "@/providers/auth-provider";
 import { useToast } from "@/providers/toast-provider";
@@ -105,6 +106,9 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
 function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname() || "/";
+  // Reactive query string so the pinned-tab bar can exact-match a pin's
+  // deep-link (ISS-436 — pathname-only matching lit up EVERY pin on the route).
+  const locationSearch = useLocationSearch();
   const { user, isLoading, logout } = useAuth();
   const { toast } = useToast();
   const { data: projects } = useProjects();
@@ -685,7 +689,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
         <PinnedTabBar
           tabs={pinnedViews.views}
-          activeHref={pathname}
+          activeHref={`${pathname}${locationSearch}`}
           onSelect={(href) => router.push(href)}
           onRemove={pinnedViews.remove}
         />
