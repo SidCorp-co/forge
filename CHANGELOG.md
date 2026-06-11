@@ -14,7 +14,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Project settings, deletion and archiving now require an org owner/admin; invited project admins manage members, labels, runners and skills
 - API tokens: the admin scope is now actually enforced for administrative actions; existing tokens keep working unchanged
 - Integration connections can now be owned by an org and shared across all of its projects (bindable only within that org)
-- New Organizations tab in Settings to create orgs and manage their members
+- New Organizations tab in Settings to create orgs and manage their members — including the org's projects, shared connections and pending invitations
+- Add a teammate from your org to a project in one click — no email round trip; the email invite stays for people outside the org
+- Invite people who don't have a Forge account yet to an org by email; they accept after signing up (the invitation accept page is back)
+- Move a project to another organization from Advanced settings
+- Viewers no longer see editing controls anywhere (issue detail, board drawer, chat composers) and no longer receive the project API key
+- Org-shared credentials can only be changed by an org owner/admin — project admins see why instead of hitting an error
+- Filter the projects console by organization; team-org projects show their org on the card
+- New-project dialog lets you pick which organization the project belongs to
+- Integrations now show truthful per-project status, can be managed inside project settings, and unhealthy connections are re-probed automatically
+- Preview exactly which MCP servers will be injected into an agent run for a project
 
 ## [0.2.12] - 2026-06-09
 
