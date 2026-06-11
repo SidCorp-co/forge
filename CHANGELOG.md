@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Issues screen: List is now the default view, board cards show the real issue/run status, the run panel reads top-down (header → tracker → controls), pinned views restore their filters and can be named, and the list gains Priority/Assignee filters with a single merged Status column.
 - The Issues list now shows each issue's cost immediately with the page load instead of trickling in per row.
 - The Issues list gains Draft and Done filter tabs, and cost figures are now accurate: Claude Fable 5 usage is no longer recorded at $0 and Opus 4.5–4.8 usage is no longer over-counted 3× (history corrected).
+- Per-issue cost now includes pipeline work run on CLI runners — previously it always showed —/$0 — and historical runs since mid-May are backfilled.
 
 ## [0.3.0] - 2026-06-11
 
