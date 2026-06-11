@@ -15,7 +15,9 @@ Planned features that are not yet implemented. When a proposal ships, its doc mo
 
 ## Naming convention
 
-`proposal-{short-name}.md`. Short, topic-focused.
+`<topic>.md` — short, kebab-case, topic-focused (e.g. `cost-aware-model-routing.md`). No `proposal-` prefix; the directory already says "proposal."
+
+This is also the home for **no-code pipeline deliverables**: when an issue's only output is a decision/audit/spike, the pipeline materializes it here as `docs/proposals/<topic>.md` so it becomes a mergeable, reviewable artifact (see the forge-plan / forge-code skills).
 
 ## How this differs from `rfcs/`
 
