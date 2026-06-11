@@ -126,6 +126,15 @@ export const integrationConnectionsApi = {
       method: "DELETE",
     }),
 
+  /** `POST /api/integration-connections/:id/test` — connection-scoped
+   *  healthcheck (ISS-435). The server probes through a representative active
+   *  binding and persists the result onto the connection; 404 `NO_BINDING`
+   *  when the connection isn't bound to any project yet. */
+  test: (id: string) =>
+    apiClient<IntegrationTestResult>(`/integration-connections/${id}/test`, {
+      method: "POST",
+    }),
+
   // === ISS-408 / F3 — bindings for a connection + bind-existing flow ===
 
   /** `GET /api/integration-connections/:id/bindings` — every (project, env)

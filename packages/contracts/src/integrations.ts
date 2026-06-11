@@ -151,6 +151,15 @@ export interface IntegrationHealthResult {
   diagnostics?: Record<string, unknown>;
 }
 
+/**
+ * Result of `POST /integration-connections/:id/test` (ISS-435) — the
+ * connection-scoped healthcheck used by the workspace directory drawer. Same
+ * adapter result shape as the binding-scoped test; the server probes through a
+ * representative active binding and replies 404 `NO_BINDING` when the
+ * connection has no active binding to build a context from.
+ */
+export type ConnectionTestResult = IntegrationHealthResult;
+
 /** Result of `POST .../confirm-prod-deploy`. `integrationId` stays the binding id. */
 export interface ConfirmProdDeployResult {
   confirmed: boolean;

@@ -24,6 +24,7 @@ function listItem(over: Partial<ProjectListItem> & { id: string }): ProjectListI
     role: over.role ?? 'admin',
     orgRole: over.orgRole ?? 'owner',
     apiKey: over.apiKey ?? 'k',
+    archivedAt: over.archivedAt ?? null,
     createdAt: over.createdAt ?? '2026-01-01T00:00:00.000Z',
   };
 }
