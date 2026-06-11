@@ -45,6 +45,11 @@ const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
   { key: "overview", label: "Overview", icon: "grid", href: "/" },
   { key: "usage", label: "Usage", icon: "dollar", href: "/usage" },
   { key: "runners", label: "Runners", icon: "server", href: "/runners" },
+  // Promoted from SECONDARY_DESTINATIONS (ISS-433): since ISS-429/431 this is
+  // the owner CONNECTION DIRECTORY (manage shared credentials, enable/disable,
+  // projects-using-it) — a management surface, not a redundant status view, so
+  // it must be discoverable without ⌘K.
+  { key: "integrations", label: "Integrations", icon: "link", href: "/integrations" },
 ];
 
 /** Destinations dropped from the rail to keep it minimal — still reachable via
@@ -53,7 +58,6 @@ const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
 const SECONDARY_DESTINATIONS: Array<NavItem & { href: string }> = [
   { key: "attention", label: "Attention", icon: "inbox", href: "/attention" },
   { key: "settings", label: "Settings", icon: "settings", href: "/settings" },
-  { key: "integrations", label: "Integrations", icon: "link", href: "/integrations" },
   { key: "sessions", label: "Sessions", icon: "agent", href: "/sessions" },
   { key: "pipeline-ops", label: "Pipeline ops", icon: "pipeline", href: "/ops" },
 ];
