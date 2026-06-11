@@ -48,6 +48,12 @@ forge_comments → create → {
 
 Stop. Do NOT call `forge_issues → update`.
 
+### Step 0.5: Docs-only deliverable guard
+
+If the issue's change is a **no-code deliverable** (a `docs/proposals/<topic>.md` decision/audit/spike artifact) — detect mechanically: the diff for the issue's branch touches **only `docs/**`** (no `packages/**`) — there is no UI/API to QA. Do NOT try to walk acceptance criteria as a browser flow; that would FAIL on a doc that has no runtime surface and bounce the issue back into a loop.
+
+Instead verify the **artifact**: confirm the planned `docs/proposals/<topic>.md` exists, is non-trivial (the actual decision/rationale/recommendations, not a stub), and is indexed in `docs/proposals/README.md`. PASS on presence + substance. Post the report and set status as usual (Step 9). If any `packages/**` file is in the diff, this is not docs-only — run the normal QA below.
+
 ### Step 1: Fetch Issue + Pipeline Context
 
 ```

@@ -68,6 +68,8 @@ Read `references/complexity-rules.md` for detailed rules. Briefly:
 
 This assessment matters because `forge-plan` uses it to decide whether to auto-approve the implementation plan or require human review. Getting it wrong in the "too complex" direction wastes time on unnecessary human gates; too simple risks under-planning. When uncertain, lean toward Medium — `forge-plan` can upgrade after reading the actual codebase.
 
+**No-code deliverables** (decision/audit/spike — issues whose only output is a write-up, no source change): these flow through the pipeline by materializing a `docs/proposals/<topic>.md` artifact (forge-plan handles the routing). Do **NOT** flag them for decomposition no matter how many recommendations they list — a pure decision has nothing to integrate. Note the no-code nature in the triage comment so forge-plan plans the docs artifact rather than a code change.
+
 ### Step 4: Set Category
 
 If category is missing or empty, infer from description language:
