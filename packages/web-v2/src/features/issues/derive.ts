@@ -221,21 +221,27 @@ export function depCounts(deps: IssueDependencies | undefined): DepCounts {
  *   core/issues/search.ts). ISS-360: "all issues" means all issues, drafts
  *   included; this intentionally reverses the ISS-236 "All excludes drafts"
  *   rule and removes the separate Drafts tab the reporter flagged as confusing.
+ * - draft: only drafts (ISS-438 — there was no way to see just drafts)
  * - active: the in-flight lifecycle band
  * - review: developed/deploying/testing/tested
  * - blocked: on_hold + needs_info (work parked / waiting on input)
+ * - done: shipped work (released + closed)
  */
 export function filterToStatusParams(filter: IssueFilter): {
   status?: IssueStatus[];
   statusNot?: IssueStatus[];
 } {
   switch (filter) {
+    case "draft":
+      return { status: ["draft"] };
     case "active":
       return { status: ["open", "confirmed", "clarified", "waiting", "approved", "in_progress", "reopen"] };
     case "review":
       return { status: ["developed", "deploying", "testing", "tested", "pass", "staging"] };
     case "blocked":
       return { status: ["on_hold", "needs_info"] };
+    case "done":
+      return { status: ["released", "closed"] };
     default:
       return {};
   }
