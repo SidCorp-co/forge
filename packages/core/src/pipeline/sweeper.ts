@@ -36,6 +36,7 @@ import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { boss } from '../queue/boss.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import { closeRunIfOneShot } from './runs.js';
 
 export const PIPELINE_SWEEPER_QUEUE = 'pipeline-sweeper';
 
@@ -93,11 +94,17 @@ export interface OrphanReconcileResult {
   reconciled: number;
 }
 
+export interface OneShotRunReapResult {
+  // job-less system/interactive runs closed because no live session remained.
+  reaped: number;
+}
+
 export interface SweepResult {
   durationMs: number;
   zombieSessions: ZombieSweepResult;
   orphanedJobs: OrphanReconcileResult;
   neverClaimedDispatches: OrphanReconcileResult;
+  orphanedOneShotRuns: OneShotRunReapResult;
   backstopProjects: number;
   queueSnapshots: number;
 }
@@ -115,6 +122,11 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   // this pass they sit until runStaleSweep's 60-min backstop — long enough to
   // hold the cap=1 slot and block the next stage for hours.
   const neverClaimedDispatches = await reconcileNeverClaimedDispatches(now);
+  // ISS-445 — close job-less system/interactive runs (schedule.run + chat)
+  // whose backing agent_session is no longer live. These runs carry no `jobs`
+  // row, so none of the job/session-driven close paths above ever fire for
+  // them and they leak `running` forever (VISION §5.10 "state never lies").
+  const orphanedOneShotRuns = await reapOrphanedOneShotRuns(now);
   const backstopProjects = await runDispatcherBackstop();
   // ISS-381 (2.2) — snapshot per-project queue depth. Best-effort: a failure
   // here must never abort the tick or block the heartbeat below.
@@ -129,6 +141,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     zombieSessions,
     orphanedJobs,
     neverClaimedDispatches,
+    orphanedOneShotRuns,
     backstopProjects,
     queueSnapshots,
   };
@@ -501,6 +514,123 @@ export async function reconcileNeverClaimedDispatches(
   }
 
   return { reconciled };
+}
+
+/**
+ * ISS-445 — close job-less `system`/`interactive` runs whose session is dead.
+ *
+ * schedule.run and interactive chat open a one-shot run via `openOneShotRun`
+ * and execute it over an `agent:start` WS broadcast to the device room — they
+ * create NO `jobs` row, so the `agent_session` IS the unit of work. The only
+ * existing close paths are session/job-terminal events: the device POSTing
+ * `/agent-sessions/desktop/status` (→ `closeRunIfOneShot`) and the job
+ * lifecycle (`jobs/agent-session-link.ts`). When an unattended device finishes
+ * the turn but never reports terminal status (the dominant schedule.run case),
+ * both the session AND the run stay `running` forever — the zombie passes
+ * above don't catch it (Pass 1/2 are gated to `metadata.type IN (pipeline,pm)`;
+ * Pass 3 only reaps `claude_session_id IS NULL`), and `cascadeCancelChildJobs`
+ * keys session-terminal off linked *jobs*, of which there are none.
+ *
+ * This pass is the backstop: a run is reapable when it is a job-less
+ * `system`/`interactive` run older than the heartbeat threshold (age guard so
+ * a freshly-opened run is never touched) with NO live session — i.e. no linked
+ * session in `queued|running|idle` whose heartbeat is still fresh. Any
+ * lingering non-terminal session is force-failed (`heartbeat_timeout`) and
+ * broadcast first, then the run is closed through the shared
+ * `closeRunIfOneShot` SSOT (CAS-guarded; cascade is a no-op with zero jobs).
+ *
+ * Outcome honesty: `completed` only when a session genuinely reached a
+ * completed terminal and none failed (the missed-`/desktop/status` case);
+ * otherwise `failed` — never the false-`completed` mirror of ISS-352. The pass
+ * also drains the existing leaked backlog on the first ticks after deploy
+ * (their heartbeats are days stale), so no one-shot migration is needed.
+ *
+ * Best-effort per row: one failure is logged and skipped, never aborting the
+ * pass — same convention as `reconcileOrphanedJobs`.
+ */
+export async function reapOrphanedOneShotRuns(
+  now: Date = new Date(),
+  scope: SweepScope = {},
+): Promise<OneShotRunReapResult> {
+  const { heartbeatMs } = getZombieThresholds();
+  // postgres-js rejects raw Date params; serialise to ISO before binding.
+  const cutoffIso = new Date(now.getTime() - heartbeatMs).toISOString();
+  const projectClause = scope.projectId ? sql`AND r.project_id = ${scope.projectId}` : sql``;
+
+  const candidates = await db.execute<{ id: string }>(sql`
+    SELECT r.id
+    FROM pipeline_runs r
+    WHERE r.kind IN ('system', 'interactive')
+      AND r.status IN ('running', 'paused')
+      AND r.started_at < ${cutoffIso}
+      AND NOT EXISTS (
+        SELECT 1 FROM jobs j WHERE j.pipeline_run_id = r.id
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM agent_sessions s
+        WHERE s.pipeline_run_id = r.id
+          AND s.status IN ('queued', 'running', 'idle')
+          AND COALESCE(s.last_heartbeat_at, s.started_at, s.updated_at, s.created_at) >= ${cutoffIso}
+      )
+      ${projectClause}
+    ORDER BY r.started_at ASC
+    LIMIT 200
+  `);
+
+  let reaped = 0;
+  for (const row of candidates) {
+    try {
+      // Force-fail any lingering non-terminal session for this run. A session
+      // already completed/failed is left as-is — the run still needs closing
+      // (the missed-`/desktop/status` case).
+      const flipped = await db
+        .update(agentSessions)
+        .set({ status: 'failed', failureReason: 'heartbeat_timeout', updatedAt: now })
+        .where(
+          and(
+            eq(agentSessions.pipelineRunId, row.id),
+            inArray(agentSessions.status, ['queued', 'running', 'idle']),
+          ),
+        )
+        .returning({
+          id: agentSessions.id,
+          projectId: agentSessions.projectId,
+          deviceId: agentSessions.deviceId,
+        });
+      for (const s of flipped) {
+        broadcastZombieTransition(s.id, s.projectId, s.deviceId, 'heartbeat_timeout');
+      }
+
+      // Derive the run outcome from the post-flip session statuses: a genuine
+      // success-close (`completed`) only when some session reached a completed
+      // terminal and none is failed/cancelled_stale; otherwise `failed`.
+      const sessions = await db
+        .select({ status: agentSessions.status })
+        .from(agentSessions)
+        .where(eq(agentSessions.pipelineRunId, row.id));
+      const anyCompleted = sessions.some(
+        (s) => s.status === 'completed' || s.status === 'completed_via_recovery',
+      );
+      const anyFailed = sessions.some(
+        (s) => s.status === 'failed' || s.status === 'cancelled_stale',
+      );
+      const outcome: 'completed' | 'failed' = anyCompleted && !anyFailed ? 'completed' : 'failed';
+
+      await closeRunIfOneShot(row.id, outcome);
+      reaped++;
+    } catch (err) {
+      logger.error(
+        { err, runId: row.id },
+        'pipeline-sweeper: orphaned one-shot run reap failed (row skipped)',
+      );
+    }
+  }
+
+  if (reaped > 0) {
+    logger.info({ reaped }, 'pipeline-sweeper: orphaned one-shot runs closed');
+  }
+
+  return { reaped };
 }
 
 function broadcastZombieTransition(
