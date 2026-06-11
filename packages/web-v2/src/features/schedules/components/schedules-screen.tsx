@@ -10,6 +10,7 @@ import {
   EmptyState,
   ErrorState,
   MonoTag,
+  PageContainer,
   Skeleton,
   StatusChip,
   Table,
@@ -80,7 +81,7 @@ export function SchedulesScreen({ scope }: SchedulesScreenProps) {
   };
 
   return (
-    <div className="mx-auto w-full min-h-dvh max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
+    <PageContainer className="min-h-dvh">
       <header className="mb-6">
         <h1 className="fg-h2">Schedules</h1>
         <p className="fg-body-sm mt-1">Recurring agent runs for this project.</p>
@@ -140,7 +141,7 @@ export function SchedulesScreen({ scope }: SchedulesScreenProps) {
           </div>
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }
 

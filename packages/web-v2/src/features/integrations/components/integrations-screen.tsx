@@ -20,6 +20,7 @@ import {
   HelpButton,
   Icon,
   type IconName,
+  PageContainer,
   Skeleton,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
@@ -163,7 +164,7 @@ export function IntegrationsScreen() {
   const items = connections.data?.items ?? [];
 
   return (
-    <div className="mx-auto flex w-full max-w-[1080px] flex-col gap-5 px-6 py-6">
+    <PageContainer className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="fg-h2">Connections</h1>
@@ -184,7 +185,7 @@ export function IntegrationsScreen() {
       </div>
 
       {connections.isLoading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {[0, 1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-[148px] w-full" />
           ))}
@@ -205,12 +206,12 @@ export function IntegrationsScreen() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {items.map((c) => (
             <ConnectionCard key={c.id} connection={c} />
           ))}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

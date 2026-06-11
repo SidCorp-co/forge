@@ -10,6 +10,7 @@ import {
   EmptyState,
   ErrorState,
   MonoTag,
+  PageContainer,
   ProjectLoader,
   ProjectMark,
   ScreenTabs,
@@ -23,7 +24,6 @@ import {
 import { formatApiError } from "@/lib/api/error";
 import { useTabParam } from "@/lib/utils/use-tab-param";
 import { AdvancedTab } from "./advanced-tab";
-import { AgentTab } from "./agent-tab";
 import { BasicsTab } from "./basics-tab";
 import { IntegrationsTab } from "./integrations-tab";
 import { LabelsTab } from "./labels-tab";
@@ -39,7 +39,6 @@ const TAB_VALUES = [
   "pipeline",
   "labels",
   "members",
-  "agent",
   "integrations",
   "advanced",
 ] as const;
@@ -52,7 +51,6 @@ const TABS: TabItem[] = [
   { value: "pipeline", label: "Pipeline" },
   { value: "labels", label: "Labels" },
   { value: "members", label: "Members" },
-  { value: "agent", label: "Agent" },
   { value: "integrations", label: "Integrations" },
   { value: "advanced", label: "Advanced" },
 ];
@@ -150,7 +148,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
             {!canEdit && (
               <p className="fg-body-sm mb-4 rounded-md border border-line bg-surface px-3 py-2 text-muted">
                 {isProjectAdmin
-                  ? "Basics, Repo, Testing, Pipeline, Integrations and Advanced need an org owner/admin — you can still manage Members, Labels and Agent."
+                  ? "Basics, Repo, Testing, Pipeline, Integrations and Advanced need an org owner/admin — you can still manage Members and Labels."
                   : "You have read-only access to these settings."}
               </p>
             )}
@@ -158,44 +156,42 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
         }
       />
 
-      <div className="mx-auto w-full max-w-4xl px-4 pb-8 pt-6 sm:px-8">
-        {tab === "basics" && <BasicsTab project={project} canEdit={canEdit} />}
-        {tab === "repo" && <RepoTab project={project} canEdit={canEdit} />}
-        {tab === "testing" && (
-          <TestingTab project={project} canEdit={canEdit} />
-        )}
-        {tab === "pipeline" && (
-          <PipelineTab
-            projectId={project.id}
-            canEdit={canEdit}
-            slug={project.slug}
-          />
-        )}
-        {tab === "labels" && (
-          <LabelsTab
-            projectId={project.id}
-            canEdit={canEdit || isProjectAdmin}
-          />
-        )}
-        {tab === "members" && (
-          <MembersTab
-            projectId={project.id}
-            canEdit={canEdit || isProjectAdmin}
-          />
-        )}
-        {tab === "agent" && (
-          <AgentTab
-            projectId={project.id}
-            canEdit={canEdit || isProjectAdmin}
-          />
-        )}
-        {tab === "integrations" && (
-          <IntegrationsTab projectId={project.id} canEdit={canEdit} />
-        )}
-        {tab === "advanced" && (
-          <AdvancedTab project={project} canEdit={canEdit} />
-        )}
-      </div>
+      <PageContainer>
+        {/* Shell stays the shared wide column; form content capped (mirrors
+            the workspace SettingsScreen). */}
+        <div className="max-w-4xl">
+          {tab === "basics" && <BasicsTab project={project} canEdit={canEdit} />}
+          {tab === "repo" && <RepoTab project={project} canEdit={canEdit} />}
+          {tab === "testing" && (
+            <TestingTab project={project} canEdit={canEdit} />
+          )}
+          {tab === "pipeline" && (
+            <PipelineTab
+              projectId={project.id}
+              canEdit={canEdit}
+              slug={project.slug}
+            />
+          )}
+          {tab === "labels" && (
+            <LabelsTab
+              projectId={project.id}
+              canEdit={canEdit || isProjectAdmin}
+            />
+          )}
+          {tab === "members" && (
+            <MembersTab
+              projectId={project.id}
+              canEdit={canEdit || isProjectAdmin}
+            />
+          )}
+          {tab === "integrations" && (
+            <IntegrationsTab projectId={project.id} canEdit={canEdit} />
+          )}
+          {tab === "advanced" && (
+            <AdvancedTab project={project} canEdit={canEdit} />
+          )}
+        </div>
+      </PageContainer>
     </div>
   );
 }

@@ -12,6 +12,7 @@ import {
   Icon,
   type IconName,
   Kicker,
+  PageContainer,
   ProjectCardSkeleton,
 } from '@/design';
 import { formatApiError } from '@/lib/api/error';
@@ -105,7 +106,7 @@ export function ProjectsConsole() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1240px] px-6 py-6">
+    <PageContainer>
       {isError ? (
         <ErrorState
           title="Couldn't load projects"
@@ -174,6 +175,6 @@ export function ProjectsConsole() {
       )}
 
       <NewProjectDialog open={createOpen} onClose={() => setCreateOpen(false)} />
-    </div>
+    </PageContainer>
   );
 }

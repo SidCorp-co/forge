@@ -15,7 +15,7 @@
 // dialog itself lives on /projects, reached via ?new=1).
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { EmptyState, ErrorState, ProjectCardSkeleton } from '@/design';
+import { EmptyState, ErrorState, PageContainer, ProjectCardSkeleton } from '@/design';
 import { useActivity } from '@/features/activity/hooks';
 import { useAttention } from '@/features/attention/hooks';
 import { useProjectHealth, useProjectsConsole } from '@/features/projects/hooks';
@@ -67,43 +67,43 @@ export function OverviewScreen() {
 
   if (isError) {
     return (
-      <div className="mx-auto w-full max-w-[1240px] px-6 py-6">
+      <PageContainer>
         <ErrorState
           title="Couldn't load your workspace"
           message={formatApiError(error)}
           onRetry={() => refetch()}
         />
-      </div>
+      </PageContainer>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="mx-auto w-full max-w-[1240px] px-6 py-6">
+      <PageContainer>
         <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(326px,1fr))]">
           {Array.from({ length: 6 }).map((_, i) => (
             // eslint-disable-next-line react/no-array-index-key -- static skeletons
             <ProjectCardSkeleton key={i} />
           ))}
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (items.length === 0) {
     return (
-      <div className="mx-auto grid min-h-[60vh] w-full max-w-[1240px] place-items-center px-6 py-6">
+      <PageContainer className="grid min-h-[60vh] place-items-center">
         <EmptyState
           title="Welcome to Forge"
           message="Create your first project to start shipping issues through the pipeline. Your workspace dashboard fills in as work flows."
           action={{ label: 'New project', onClick: () => router.push('/projects?new=1') }}
         />
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1240px] flex-col gap-4 px-6 py-6">
+    <PageContainer className="flex flex-col gap-4">
       <header className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="fg-h2">Overview</h1>
@@ -147,6 +147,6 @@ export function OverviewScreen() {
           />
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }

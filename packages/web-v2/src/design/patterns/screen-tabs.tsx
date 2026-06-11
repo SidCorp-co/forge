@@ -15,7 +15,8 @@ import { cn } from "@/lib/utils/cn";
 import { Tabs, type TabsProps } from "../primitives/tabs";
 
 export interface ScreenTabsProps extends TabsProps {
-  /** Max-width utility for the strip column. Defaults to the shell width. */
+  /** Max-width utility for the strip column. Defaults to the shared wide
+   *  shell width (matches PageContainer). */
   width?: string;
   /** Optional content rendered above the strip, in the same centered column
    *  (e.g. a screen-level header). Settings screens use this; the merged shells
@@ -23,7 +24,7 @@ export interface ScreenTabsProps extends TabsProps {
   header?: React.ReactNode;
 }
 
-export function ScreenTabs({ tabs, value, onChange, width = "max-w-6xl", header }: ScreenTabsProps) {
+export function ScreenTabs({ tabs, value, onChange, width = "max-w-[1720px]", header }: ScreenTabsProps) {
   return (
     <div className={cn("mx-auto w-full px-4 pt-6 sm:px-8 sm:pt-8", width)}>
       {header}

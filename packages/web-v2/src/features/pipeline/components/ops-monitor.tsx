@@ -18,6 +18,7 @@ import {
   HealthDot,
   HelpButton,
   MonoTag,
+  PageContainer,
   ProgressBar,
   ProjectLoader,
   Stat,
@@ -104,7 +105,7 @@ export function OpsMonitor() {
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col px-4 py-6 sm:px-6">
+    <PageContainer className="flex min-h-dvh flex-col">
       {/* Cross-project live fan-out */}
       {projects.map((p) => (
         <RoomSub key={p.id} room={projectRoom(p.id)} />
@@ -155,7 +156,7 @@ export function OpsMonitor() {
       </div>
 
       <RunDetail open={!!runId} onClose={() => setRunId(null)} issue={null} runId={runId} />
-    </div>
+    </PageContainer>
   );
 }
 

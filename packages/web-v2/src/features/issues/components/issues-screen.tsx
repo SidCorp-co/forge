@@ -101,7 +101,7 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
           </div>
         </div>
       ) : (
-        <PageContainer width="wide" className="min-h-dvh">
+        <PageContainer className="min-h-dvh">
           {header}
           {view === "list" ? (
             <IssuesListView

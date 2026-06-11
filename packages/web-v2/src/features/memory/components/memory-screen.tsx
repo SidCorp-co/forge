@@ -13,6 +13,7 @@ import {
   ErrorState,
   Input,
   MonoTag,
+  PageContainer,
   Pagination,
   Select,
   Skeleton,
@@ -94,7 +95,7 @@ export function MemoryScreen({ scope }: MemoryScreenProps) {
   const ready = !active.isLoading && !active.isError;
 
   return (
-    <div className="mx-auto w-full min-h-dvh max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
+    <PageContainer className="min-h-dvh">
       <header className="mb-6">
         <h1 className="fg-h2">Memory</h1>
         <p className="fg-body-sm mt-1">
@@ -169,7 +170,7 @@ export function MemoryScreen({ scope }: MemoryScreenProps) {
           <Pagination page={page} pageCount={pageCount} onChange={setPage} />
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }
 
