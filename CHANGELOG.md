@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- Pipeline jobs that hit a transient failure now retry and recover correctly instead of getting stuck in a loop where every retry immediately fails
 
 ## [0.3.0] - 2026-06-11
 
