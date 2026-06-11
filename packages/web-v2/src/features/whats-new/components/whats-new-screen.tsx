@@ -90,9 +90,11 @@ export function WhatsNewScreen() {
                   <p className="fg-body-sm text-subtle">No notes for this release.</p>
                 ) : (
                   <div className="flex flex-col gap-3">
-                    {rel.sections.map((s) => (
-                      <div key={s.title}>
-                        <p className="fg-overline mb-1 font-mono text-subtle">{s.title}</p>
+                    {rel.sections.map((s, i) => (
+                      <div key={s.title || `flat-${i}`}>
+                        {s.title && (
+                          <p className="fg-overline mb-1 font-mono text-subtle">{s.title}</p>
+                        )}
                         <Markdown>{s.body}</Markdown>
                       </div>
                     ))}
