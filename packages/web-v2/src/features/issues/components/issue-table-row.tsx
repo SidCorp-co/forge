@@ -17,7 +17,7 @@ import {
 import { useRouter } from "next/navigation";
 import type { PatchIssueInput } from "../api";
 import { COMPLEXITY_LABELS, PRIORITY_LABELS } from "../derive";
-import { useIssueCost, useIssueDeps } from "../hooks";
+import { useIssueDeps } from "../hooks";
 import type { IssueDependencyEdge, IssueStatus, ProjectMember } from "../types";
 
 export interface RowActions {
@@ -170,10 +170,12 @@ export function DepBadges({ id, slug }: { id: string; slug: string }) {
   );
 }
 
-/** Lazy per-issue cost. */
-export function CostCell({ id }: { id: string }) {
-  const { data, isLoading } = useIssueCost(id);
-  if (isLoading) return <span className="fg-caption">…</span>;
-  const cost = data?.estimatedCost ?? 0;
-  return <Stat icon="dollar">{cost > 0 ? `$${cost.toFixed(2)}` : "—"}</Stat>;
+/** Per-issue cost from the search row itself (`withCost=1`, ISS-437) — the
+ *  old per-row `useIssueCost` lazy fetch was a 25-request N+1 whose silent
+ *  failures rendered as "—" exactly like a real zero. `<$0.01` marks a
+ *  non-zero cost that would otherwise round down to a misleading dash. */
+export function CostCell({ value }: { value: number | undefined }) {
+  const cost = value ?? 0;
+  const text = cost <= 0 ? "—" : cost < 0.01 ? "<$0.01" : `$${cost.toFixed(2)}`;
+  return <Stat icon="dollar">{text}</Stat>;
 }

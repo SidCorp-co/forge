@@ -266,7 +266,7 @@ export function IssueTableRow({
         <ComplexityCell complexity={row.complexity} />
       </TD>
       <TD className="text-right">
-        <CostCell id={row.id} />
+        <CostCell value={row.estimatedCost} />
       </TD>
       <TD>
         <div className="flex items-center gap-2">
@@ -339,7 +339,7 @@ export function IssueMobileCard({
           <PriorityCell priority={row.priority} />
           <ComplexityCell complexity={row.complexity} />
           <span className="ml-auto">
-            <CostCell id={row.id} />
+            <CostCell value={row.estimatedCost} />
           </span>
         </div>
 
