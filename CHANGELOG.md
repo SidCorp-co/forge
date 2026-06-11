@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Per-issue cost now includes pipeline work run on CLI runners — previously it always showed —/$0 — and historical runs since mid-May are backfilled.
 - API requests made with a device token to user-only endpoints now return a clean 403 instead of a 500 error.
 - Decision, audit, and spike issues whose only deliverable is a write-up now flow through the pipeline to completion — they produce a durable in-repo proposal document instead of looping unresolved.
+- Scheduled and chat runs no longer stay stuck showing "running" indefinitely after they finish — a backstop now closes these job-less runs once their session is no longer live.
 
 ## [0.3.0] - 2026-06-11
 
