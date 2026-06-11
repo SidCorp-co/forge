@@ -108,12 +108,27 @@ describe('scheduleAutoRetryWithVerify — uniform round-robin', () => {
     expect(inserted.retryOf).toBe('j1');
     expect(inserted.attempts).toBe(2);
     expect(inserted.status).toBe('queued');
-    expect(inserted.agentSessionId).toBe('s1');
+    // ISS-434 — the clone must NOT carry the parent's (terminal) session: it is
+    // born NULL so ensureAgentSessionForJob re-links + resets at dispatch.
+    expect(inserted.agentSessionId).toBeUndefined();
     expect(inserted.retryAfterAt).toEqual(new Date(FIXED_NOW + RETRY_COOLDOWN_MS));
 
     expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'j2' }), {
       startAfterSeconds: 60,
     });
+  });
+
+  it('ISS-434 — clone never inherits a (terminal) session even though stats still use the parent link', async () => {
+    insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
+    // baseJob.agentSessionId='s1' is the parent's terminal session.
+    await scheduleAutoRetryWithVerify({ ...baseJob } as never, 'crashed');
+    const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
+    // The clone must carry no session link (born NULL) — otherwise
+    // reconcileOrphanedJobs reaps it session_lost on the next sweeper tick.
+    expect('agentSessionId' in inserted ? inserted.agentSessionId : undefined).toBeUndefined();
+    // Display-only recovery stats still target the PARENT session, unaffected.
+    expect(incrementRecoveryStatsMock).toHaveBeenCalledWith('s1', expect.any(String));
+    expect(incrementAutoRetryCountMock).toHaveBeenCalledWith('s1');
   });
 
   it('ALWAYS uses 60s — ignores any Retry-After hint (no per-error handling)', async () => {

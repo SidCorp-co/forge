@@ -132,6 +132,28 @@ describe('jobs/agent-session-link', () => {
       expect(insertCalls).toHaveLength(0);
     });
 
+    it('ISS-434 — a NULL-session retry clone resets its (terminal) parent session at dispatch (no early-return, no new session)', async () => {
+      // The retry clone is born with agentSessionId=null (retry.ts) and its
+      // retryOf parent carries the prior attempt's now-terminal session. The
+      // early-return must NOT fire; the reuse+reset branch must revive that
+      // session so reconcileOrphanedJobs cannot reap the dispatched clone.
+      pushSelect({ agentSessionId: 'sess-terminal' });
+      const result = await ensureAgentSessionForJob(
+        { ...baseJob, agentSessionId: null, retryOf: 'job-prev' } as never,
+        { repoPath: '/r' },
+      );
+      expect(result).toBe('sess-terminal');
+      // Same session row revived to a non-terminal, never-started state.
+      expect(updateCalls.map((c) => c.table)).toEqual(['agent_sessions', 'jobs']);
+      expect(updateCalls[0]?.set.status).toBe('queued');
+      expect(updateCalls[0]?.set.startedAt).toBeNull();
+      expect(updateCalls[0]?.set.lastHeartbeatAt).toBeNull();
+      expect(updateCalls[0]?.set.failureReason).toBeNull();
+      // Clone re-linked to the SAME row — no fresh session minted.
+      expect(updateCalls[1]?.set.agentSessionId).toBe('sess-terminal');
+      expect(insertCalls).toHaveLength(0);
+    });
+
     it('creates a new agent_sessions row when the job has no parent session', async () => {
       pushSelect({ title: 'Fix login bug', createdById: 'user-1' });
       const result = await ensureAgentSessionForJob({ ...baseJob, issueId: 'iss-1' } as never, {
