@@ -114,7 +114,7 @@ export default function ProjectOverviewPage() {
   const schedules = upcomingSchedules(schedulesQ.data);
 
   return (
-    <PageContainer width="wide" className="min-h-dvh">
+    <PageContainer className="min-h-dvh">
       <header className="mb-6 flex items-center gap-4">
         <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={projectInitials(project.name)} size={48} />
         <div className="flex-1">

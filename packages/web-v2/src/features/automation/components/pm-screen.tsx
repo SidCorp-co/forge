@@ -20,6 +20,7 @@ import {
   Field,
   Input,
   MonoTag,
+  PageContainer,
   Pagination,
   Skeleton,
   Textarea,
@@ -342,7 +343,7 @@ function PmDecisionsCard({ projectId }: { projectId: string }) {
 export function PmScreen({ scope }: PmScreenProps) {
   const { projectId, canManage } = scope;
   return (
-    <div className="mx-auto w-full min-h-dvh max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
+    <PageContainer className="min-h-dvh">
       <header className="mb-6">
         <h1 className="fg-h2">PM Agent</h1>
         <p className="fg-body-sm mt-1">
@@ -353,6 +354,6 @@ export function PmScreen({ scope }: PmScreenProps) {
         <PmConfigCard projectId={projectId} canManage={canManage} />
         <PmDecisionsCard projectId={projectId} />
       </div>
-    </div>
+    </PageContainer>
   );
 }

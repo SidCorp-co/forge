@@ -9,6 +9,7 @@ import {
   EmptyState,
   ErrorState,
   Input,
+  PageContainer,
   ProjectCardSkeleton,
   SegmentedControl,
   Stat,
@@ -89,7 +90,7 @@ export function SkillsScreen({ scope }: SkillsScreenProps) {
   }, [visible]);
 
   return (
-    <div className="mx-auto w-full min-h-dvh max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
+    <PageContainer className="min-h-dvh">
       <header className="mb-6 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="fg-h2">Skills</h1>
@@ -187,6 +188,6 @@ export function SkillsScreen({ scope }: SkillsScreenProps) {
           skill={studio?.skill}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }

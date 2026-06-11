@@ -14,6 +14,7 @@ import {
   Icon,
   type IconName,
   MonoTag,
+  PageContainer,
   ProjectLoader,
 } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
@@ -126,7 +127,7 @@ export function AttentionScreen() {
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-4xl flex-col px-4 py-6 sm:px-6">
+    <PageContainer className="flex min-h-dvh flex-col">
       {/* Cross-project live fan-out so attention updates arrive over WS. */}
       {(projects ?? []).map((p) => (
         <RoomSub key={p.id} room={projectRoom(p.id)} />
@@ -153,6 +154,6 @@ export function AttentionScreen() {
           <Group title="Offline runners" items={view.offlineRunners} onOpen={open} />
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

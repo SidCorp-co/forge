@@ -43,7 +43,7 @@ export function SocialLogin({ redirectTo = '/' }: { redirectTo?: string }) {
             className="fg-label inline-flex w-full items-center justify-center gap-2 rounded-md border border-line-strong bg-surface px-4 py-2.5 text-fg transition-colors hover:bg-hover focus-visible:border-[color:var(--link)] focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none"
           >
             <Icon name={PROVIDER_ICON[p.id] ?? 'github'} size={18} />
-            Continue with {p.label}
+            {p.label}
           </a>
         ))}
       </div>

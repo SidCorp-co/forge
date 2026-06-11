@@ -293,7 +293,7 @@ export function IssueDetailScreen({
             : null;
 
   return (
-    <PageContainer width="wide" className="min-h-dvh">
+    <PageContainer className="min-h-dvh">
       {/* Sticky action + state bar — keeps the id, live status, and the primary
           actions reachable while scrolling a long issue (ISS-347). The shell's
           TopBar now carries the breadcrumb trail (ISS-358/359), so the in-page

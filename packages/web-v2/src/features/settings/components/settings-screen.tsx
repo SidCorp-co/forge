@@ -4,8 +4,8 @@
 // Tokens, MCP, Notifications. The unimplemented 'Sessions' tab is intentionally
 // dropped (ISS-299 AC). Tab state lives in `?tab=` via the shared `useTabParam`
 // hook (ISS-349) so a tab is linkable and the strip matches the other tabbed
-// screens; the form body stays in a narrower reading column.
-import { ScreenTabs, type TabItem } from "@/design";
+// screens; the body uses the shared wide PageContainer like every screen.
+import { PageContainer, ScreenTabs, type TabItem } from "@/design";
 import { useTabParam } from "@/lib/utils/use-tab-param";
 import { OrgsTab } from "@/features/orgs/components/orgs-tab";
 import { AccountTab } from "./account-tab";
@@ -41,13 +41,17 @@ export function SettingsScreen() {
         }
       />
 
-      <div className="mx-auto w-full max-w-4xl px-4 pb-8 pt-6 sm:px-8">
-        {tab === "account" && <AccountTab />}
-        {tab === "orgs" && <OrgsTab />}
-        {tab === "tokens" && <TokensTab />}
-        {tab === "mcp" && <McpTab />}
-        {tab === "notifications" && <NotificationsTab />}
-      </div>
+      <PageContainer>
+        {/* Shell (strip + padding) is the shared wide column; the form content
+            itself stays capped — full-width inputs at 1700px are unusable. */}
+        <div className="max-w-4xl">
+          {tab === "account" && <AccountTab />}
+          {tab === "orgs" && <OrgsTab />}
+          {tab === "tokens" && <TokensTab />}
+          {tab === "mcp" && <McpTab />}
+          {tab === "notifications" && <NotificationsTab />}
+        </div>
+      </PageContainer>
     </div>
   );
 }

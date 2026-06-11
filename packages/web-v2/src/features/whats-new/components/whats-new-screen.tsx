@@ -9,6 +9,7 @@ import {
   ErrorState,
   HelpButton,
   Markdown,
+  PageContainer,
   Skeleton,
 } from "@/design";
 import { FORGE_RELEASES_URL } from "@/lib/changelog";
@@ -30,7 +31,10 @@ export function WhatsNewScreen() {
   }, [topId]);
 
   return (
-    <div className="mx-auto flex w-full max-w-[860px] flex-col gap-4 px-6 py-6">
+    // Shared wide shell; the feed itself keeps a centered reading column —
+    // changelog prose at 1700px is unreadable.
+    <PageContainer className="flex flex-col gap-4">
+      <div className="mx-auto flex w-full max-w-[860px] flex-col gap-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="fg-h2">What&apos;s New</h1>
@@ -103,6 +107,7 @@ export function WhatsNewScreen() {
           ))}
         </div>
       )}
-    </div>
+      </div>
+    </PageContainer>
   );
 }

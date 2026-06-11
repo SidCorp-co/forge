@@ -15,6 +15,7 @@ import {
   IconButton,
   Input,
   MonoTag,
+  PageContainer,
   SlideOver,
   Skeleton,
   Table,
@@ -46,7 +47,7 @@ export function KnowledgeScreen({ scope }: KnowledgeScreenProps) {
   const edges = edgesQ.data ?? [];
 
   return (
-    <div className="mx-auto w-full min-h-dvh max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
+    <PageContainer className="min-h-dvh">
       <header className="mb-6 flex flex-wrap items-start gap-3">
         <div className="min-w-0">
           <h1 className="fg-h2">Knowledge</h1>
@@ -158,7 +159,7 @@ export function KnowledgeScreen({ scope }: KnowledgeScreenProps) {
           ingest={ingest}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }
 
