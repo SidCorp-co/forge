@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 - Pipeline jobs that hit a transient failure now retry and recover correctly instead of getting stuck in a loop where every retry immediately fails
+- The workspace Integrations page (your shared connections directory) is now on the left navigation rail instead of being reachable only through the command palette.
 
 ## [0.3.0] - 2026-06-11
 
