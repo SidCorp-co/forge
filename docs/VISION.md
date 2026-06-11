@@ -2,7 +2,7 @@
 
 > Single source of truth. README, landing, GitHub description, site metadata derive from §1. On contradiction, this doc wins — update the other.
 
-Last updated: 2026-04-29 · Status: Alpha — breaking changes across `v0.x`
+Last updated: 2026-06-11 · Status: Alpha — breaking changes across `v0.x` · Current: v0.3.x
 
 ---
 
@@ -11,6 +11,7 @@ Last updated: 2026-04-29 · Status: Alpha — breaking changes across `v0.x`
 - Open-source AI-powered software lifecycle platform, powered by Claude Code, running on devices you control.
 - Vision: every stage idea→maintenance. Today: Build, Review, Launch, Maintain. Roadmap: Idea, Spec, Design.
 - Pipelines user-configurable per project (not hardcoded). Apache-2.0, self-hostable. Server never holds your Claude credentials.
+- **North star: work you can hand to agents without watching — and trust what the system reports back.** The metric is *human interventions per issue closed*, trending to zero. Every roadmap item is scored by how much it moves that number.
 
 ## 2. Why it exists
 
@@ -30,8 +31,8 @@ Not for: users without Claude Code; teams wanting chat UI as primary surface; en
 
 ### 4a. Current scope — Build → Maintain
 
-- **Pipeline engine** — issues flow through user-configurable stages, per-stage auto-run or human-gate. Default 14-status pipeline: triage → clarify → plan → code → review → test → release → staging. Shorten/extend/replace per project.
-- **Device-runner architecture** — pair laptops/desktops/CI boxes; each project binds a device pool, one runs at a time; devices spawn `claude` locally, stream stdout/tool-calls/diffs to server.
+- **Pipeline engine** — issues flow through user-configurable stages, per-stage auto-run or human-gate. Default 18-status pipeline driving stages triage → clarify → plan → code → review → test → release (legacy `staging` stage is soft-skipped). Shorten/extend/replace per project.
+- **Device-runner architecture** — pair laptops/desktops/CI boxes; each project binds a device pool, one runs at a time; devices spawn `claude` locally, stream stdout/tool-calls/diffs to server. Two form factors: Tauri desktop app (`packages/dev`) and headless Rust `forge-runner` daemon (`packages/runner`).
 - **Webhook ingestion** — GitHub, Sentry, Stripe, custom → events become pipeline issues. This is how Maintain works in v0.1: alerts auto-create maintenance issues.
 - **Session capture** — every job's full event log retained 30 days post-termination, replayable.
 - **Skills** — built-in per-stage skills (forge-triage, forge-plan, forge-code, forge-review, etc.); user-authored skills register into stages.
@@ -52,8 +53,7 @@ Plug into the configurable pipeline as new stage types when shipped:
 - Not a chat UI — primary surface is the lifecycle dashboard.
 - Not a tool using the Anthropic API — never hold Claude credentials.
 - No multi-tenant SaaS in core repo (hosted/managed tier may emerge separately if valuable).
-- No enterprise RBAC, no team/org model in `v0.x` — separate RFC.
-- No Linux headless agent in `v0.x` — follow-up RFC.
+- No enterprise RBAC in `v0.x` — separate RFC.
 - No agent framework abstractions — orchestrate, not reimplement LangGraph/CrewAI.
 - Idea/Spec/Design stages not yet implemented — roadmap items.
 
@@ -68,6 +68,8 @@ Plug into the configurable pipeline as new stage types when shipped:
 7. **Security & migration > features.** Data loss / unmigrated breaks beat any roadmap item.
 8. **Apache-2.0 for core.** Commercial features (if any) live in separate repos under separate licenses.
 9. **Provider-agnostic where cheap, Claude-Code-first where needed.** Other runners pluggable; Claude Code CLI is the optimized default.
+10. **State never lies.** Every visible status (issue, run, job, session) reflects reality even when an agent dies mid-run. A silent wedge, a false failure, or a stuck state with no escalation is a kernel bug — highest-priority class, above features.
+11. **Kernel hard, policy soft.** The execution kernel (job/session/run lifecycle, dispatch, cleanup) is strict, invariant-guarded, slow-changing. Pipelines, skills, and prompts are user-shaped policy meant to change freely. Stabilize the kernel; never "stabilize" the policy.
 
 ## 7. Strategic themes
 
@@ -86,8 +88,9 @@ T1+T2+T5 core in `v0.x`. T6 ramps from `v0.3+`. T3+T4 important but not blocking
 
 Versions ship when ready. No dates.
 
-- **Now (v0.1.x)** — stabilize Build/Review/Launch/Maintain on default pipeline. User-configurable pipeline per project. Device-runner control plane. Webhook ingestion. Built-in skills (forge-triage/clarify/plan/code/review/test/release/fix). Session replay. MCP at `/mcp`. Apache-2.0 quickstart.
-- **Next (v0.2)** — mobile returns (read-only), skill library UI, session replay diff timeline, webhook templates, onboarding wizard. Early Spec stage exploration.
+- **Shipped through v0.3** — configurable pipeline + device-runner control plane (desktop + headless `forge-runner`). Webhook ingestion. Built-in skills + skill-facts preamble. Session capture. MCP at `/mcp`. web-v2 UI (canonical at root since 2026-06-07). Memory v2 cognitive layer. Skill Studio.
+- **Now (v0.3.x)** — harden the execution kernel (principles 10–11): close the orphan-job lifecycle gaps, kill false failures, classify failures so retries are smart — drive *interventions per issue closed* toward zero before widening throughput.
+- **Next (v0.4)** — mobile returns (read-only), session replay diff timeline, webhook templates, onboarding wizard. Early Spec stage exploration.
 - **Later (v0.3 → v0.5)** — **Spec** stage shipped (AI-assisted PRD), **Design** stage (mock + ADR), deep GitHub/GitLab integration, external MCP registry, user-contributed skill marketplace, multi-user projects with roles, Prometheus/OpenTelemetry, audit log export, public security review.
 - **v1.0** — API + skill format + device-agent protocol + lifecycle stage contracts frozen, SemVer strict, LTS policy.
 - **Someday** — **Idea** stage, Linux headless agent (separate RFC), plugin marketplace, optional managed tier (separate repo).

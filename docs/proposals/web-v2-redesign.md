@@ -4,8 +4,8 @@ Clean reskin + IA cleanup as parallel `packages/web-v2`, big-bang cutover; backe
 
 > v1-retirement gate: the decided port-or-drop matrix for every legacy `packages/web` surface lives in [web-v2-v1-retirement-parity.md](web-v2-v1-retirement-parity.md).
 
-- **Status:** Draft proposal (pre-RFC)
-- **Date:** 2026-05-30
+- **Status:** SHIPPED — delivered 2026-06-07 (ISS-397): v2 is the canonical UI at root `/`, v1 `packages/web` retired/deleted. The `/v2` parallel-mount + toggle mechanics below are historical.
+- **Date:** 2026-05-30 (proposed) · 2026-06-07 (cutover)
 - **Design reference:** `packages/web-redesign-plan/` (design-system tokens + hi-fi ui-kit prototype + INTEGRATION.md)
 - **Approach:** new `packages/web-v2` in parallel, UI-switchable, **big-bang cutover** when core loop is covered. Backend (`core` REST/WS) + `@forge/contracts` unchanged.
 
@@ -69,7 +69,7 @@ Rule: `design/` never touches data → `features/` wires data → `app/` compose
 - Tailwind v4 `@theme inline` maps utilities → semantic vars (no `tailwind.config.ts`).
 - Dark later = one `[data-theme="dark"] { … }` override of semantic layer; raw scale + components untouched. Enforced by review rule: *no hex / no raw-scale in `features/` & `app/`*.
 
-## Release on `/v2` + cutover (A)
+## Release on `/v2` + cutover (A) — *executed; kept as historical record*
 
 `web-v2` is its own Next.js app sharing `@forge/contracts` + `core` REST/WS (no DB/contract change), **served under `/v2` on the same origin** — no second domain, cookies/auth shared.
 

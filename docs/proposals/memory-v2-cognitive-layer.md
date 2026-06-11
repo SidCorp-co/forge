@@ -1,6 +1,6 @@
 # Memory v2 — Cognitive Layer (forge-agents parity)
 
-**Status:** Phases 0–4 implemented (branch `memory-v2-cognitive-layer`, 2026-06-10); Phase 5 not started
+**Status:** SHIPPED — Phases 0–4 merged to main 2026-06-10 (PR #175, `ae21f14e`); Phase 5 (graph retrieval, global scope) not started. Live behaviour: [modules/memory-knowledge](../modules/memory-knowledge/README.md); this doc remains as design rationale.
 **Target:** v0.2 (Phases 0–2) → v0.3 (Phases 3–4) → later (Phase 5)
 
 > Implementation deviations from the plan below:

@@ -1,8 +1,9 @@
-# Forge Skill Facts — Design
+# Forge Skill Facts
 
-> Status: implemented in core (2026-06-04). Goal: skill authors write **business logic only**;
-> all fixed Forge mechanics + project context are injected into the **system prompt** at dispatch,
-> from one versioned registry. Skill files are pure user content — no template syntax.
+> Status: SHIPPED (2026-06-04, `8ae43673`) — moved here from `docs/skill-facts-design.md`.
+> Skill authors write **business logic only**; all fixed Forge mechanics + project context are
+> injected into the **system prompt** at dispatch, from one versioned registry
+> (`packages/core/src/prompt/facts/registry.ts`). Skill files are pure user content — no template syntax.
 
 ## Problem (evidence)
 
@@ -132,15 +133,9 @@ Write the skill body free-form: the stage's mechanics arrive via the system prom
 status ladders, enums, decompose rules, or handoff schemas in skill text — they will drift; the
 preamble version is canonical and always current.
 
-## Rollout
+## Open follow-ups
 
-```
-DONE  registry + resolve + projectFacts + forge_config + REST/MCP + preamble injection
-P3    codemod the 3 projects' skills: strip hand-written Forge-mechanics prose
-      (now redundant — the preamble carries it); keep business logic only
-P4    bootstrap/domain-template seeds minimal business-logic-only skills
-TODO  Skill Studio web UI (facts palette + resolved preamble preview)  — issue to be filed
-```
+Core (registry + resolve + projectFacts + forge_config + REST/MCP + preamble injection) is shipped. Still open, tracked as issues — not here: bootstrap/domain-template seeding of business-logic-only skills; Skill Studio facts palette + resolved-preamble preview.
 
 ## Decisions log
 

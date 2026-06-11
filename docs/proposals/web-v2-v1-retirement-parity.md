@@ -2,8 +2,8 @@
 
 Companion to [web-v2-redesign.md](web-v2-redesign.md). The decided port-or-drop matrix for every legacy `packages/web` (v1) surface, so v1 can be retired without losing a live surface. This is the durable record of the ISS-394 parity audit; the actual porting/deletion is owned by the ISS-395 v1-retirement track.
 
-- **Status:** Decided (matrix), pending product sign-off on the two flagged calls (C2, C3)
-- **Verified against:** `packages/web-v2` HEAD `f53853fd` (route trees + feature modules)
+- **Status:** Decided and EXECUTED (2026-06-07, ISS-397) — v1 `packages/web` deleted, v2 canonical at root. This doc is the historical record of the parity audit.
+- **Verified against:** `packages/web-v2` HEAD `f53853fd` (route trees + feature modules); decisions implemented via ISS-397
 - **Out of scope:** Coolify + Epodsystem integration config (owned by the ISS-395 integrations-port track); `packages/web` deletion + cutover routing (ISS-395 Part 2)
 
 ## Background
