@@ -1,10 +1,10 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, count, eq, exists, inArray, notInArray, or, sql } from 'drizzle-orm';
+import { and, count, eq, exists, inArray, isNotNull, notInArray, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { issueLabels, issuePriorities, issueStatuses, issues } from '../db/schema.js';
+import { issueLabels, issuePriorities, issueStatuses, issues, jobs, usageRecords } from '../db/schema.js';
 import { setTotalCount } from '../lib/pagination.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -45,6 +45,9 @@ const searchQuerySchema = z
     offset: z.coerce.number().int().min(0).default(0),
     // ISS-128 — opt-in hydration of `agentSessions[]` + derived `agentStatus`.
     withAgentSessions: z.coerce.boolean().optional().default(false),
+    // ISS-437 — opt-in per-issue `estimatedCost` rollup (one grouped query for
+    // the whole page; replaces the web list's per-row cost-summary N+1).
+    withCost: z.coerce.boolean().optional().default(false),
   })
   .strict();
 
@@ -63,6 +66,37 @@ const forbidden = () =>
 export function buildIlikePattern(q: string): string {
   const escaped = q.replace(/[\\%_]/g, (m) => `\\${m}`);
   return `%${escaped}%`;
+}
+
+/**
+ * ISS-437 — per-issue estimated cost for one page of issues, in ONE grouped
+ * query. Session resolution mirrors `GET /api/issues/:id/cost-summary`
+ * (extras-routes.ts): DISTINCT (issue_id, agent_session_id) pairs from `jobs`,
+ * then `usage_records.estimated_cost` summed over those session ids per issue
+ * — the DISTINCT keeps a session that backed several jobs of the same issue
+ * from multiplying its cost (the fan-out the cost-summary route fixed in
+ * ISS-308 B4). `usage_records.session_id` is a uuid-shaped TEXT column; the
+ * regex guards the cast so a stray non-uuid value can't 500 the rollup.
+ */
+async function sumCostByIssue(issueIds: string[]): Promise<Map<string, number>> {
+  if (issueIds.length === 0) return new Map();
+  const pairs = db
+    .selectDistinct({ issueId: jobs.issueId, sessionId: jobs.agentSessionId })
+    .from(jobs)
+    .where(and(inArray(jobs.issueId, issueIds), isNotNull(jobs.agentSessionId)))
+    .as('issue_sessions');
+  const rows = await db
+    .select({
+      issueId: pairs.issueId,
+      estimatedCost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
+    })
+    .from(pairs)
+    .innerJoin(
+      usageRecords,
+      sql`${usageRecords.sessionId} ~ '^[0-9a-fA-F-]{36}$' AND ${usageRecords.sessionId}::uuid = ${pairs.sessionId}`,
+    )
+    .groupBy(pairs.issueId);
+  return new Map(rows.map((r) => [r.issueId as string, r.estimatedCost]));
 }
 
 export const searchRoutes = new Hono<{ Variables: AuthVars }>();
@@ -139,22 +173,33 @@ searchRoutes.get(
 
     setTotalCount(c, Number(n));
 
-    const serialized = rows.map((r) => ({
+    let serialized: Record<string, unknown>[] = rows.map((r) => ({
       ...r,
       displayId: `ISS-${(r as { issSeq: number }).issSeq}`,
     }));
+
+    // ISS-437 — attach `estimatedCost` when requested. Issues with no usage
+    // (never ran, or sessions produced no usage rows) report 0, so the field
+    // is always numeric when `withCost=1`.
+    if (q.withCost && serialized.length > 0) {
+      const costMap = await sumCostByIssue(serialized.map((r) => r.id as string));
+      serialized = serialized.map((r) => ({
+        ...r,
+        estimatedCost: costMap.get(r.id as string) ?? 0,
+      }));
+    }
+
     if (!q.withAgentSessions || serialized.length === 0) {
       return c.json(serialized);
     }
 
     const map = await hydrateAgentSessionsForIssues(
       projectId,
-      serialized.map((r) => (r as { id: string }).id),
+      serialized.map((r) => r.id as string),
     );
     return c.json(
       serialized.map((r) => {
-        const id = (r as { id: string }).id;
-        const bucket = map.get(id);
+        const bucket = map.get(r.id as string);
         return {
           ...r,
           agentSessions: bucket?.agentSessions ?? [],

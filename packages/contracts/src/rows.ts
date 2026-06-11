@@ -57,6 +57,9 @@ export type Issue = typeof schema.issues.$inferSelect & {
     title: string | null;
   }>;
   agentStatus?: 'running' | 'queued' | 'completed' | 'failed' | null;
+  // ISS-437 — search endpoint only, when the caller opts in with `?withCost=1`:
+  // per-issue usage rollup in USD (0 when the issue never produced usage).
+  estimatedCost?: number;
   // ISS-164 — list + single + by-display endpoints always populate this.
   pipelineHealth: PipelineHealth;
 };

@@ -63,6 +63,9 @@ export const issuesApi = {
     params.set("offset", String((page - 1) * pageSize));
     params.set("sort", opts.sort ?? "createdAt:desc");
     params.set("withAgentSessions", "1");
+    // ISS-437 — server-side per-issue cost rollup on the same response (one
+    // grouped query) instead of the old per-row cost-summary N+1.
+    params.set("withCost", "1");
     if (opts.q) params.set("q", opts.q);
     if (opts.priority) params.set("priority", opts.priority);
     if (opts.assignee) params.set("assignee", opts.assignee);

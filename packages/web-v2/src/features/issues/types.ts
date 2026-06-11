@@ -96,6 +96,9 @@ export interface IssueRow {
   updatedAt: string;
   agentSessions?: IssueAgentSession[];
   agentStatus?: IssueAgentStatus;
+  /** ISS-437 — per-issue usage rollup in USD, present when the search call
+   *  opts in with `withCost=1` (the list always does). 0 = no usage recorded. */
+  estimatedCost?: number;
 }
 
 /** Project member row from `GET /api/projects/:projectId/members`. */
