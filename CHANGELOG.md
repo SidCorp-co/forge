@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-11
+
+Organizations arrive: a two-tier permission model (org + project roles), org-shared integration connections, email invitations, and a read-only viewer role.
+
 - Organizations: every project now lives in an org; each user gets a personal org automatically, and team orgs share projects and integration connections
 - Org roles (owner/admin/member): org owners and admins manage every project in their org without per-project invites; plain org members still need an invite per project
 - New read-only "viewer" project role for stakeholders who should see boards, runs and sessions without being able to change anything
