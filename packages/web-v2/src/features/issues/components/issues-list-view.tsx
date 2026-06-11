@@ -55,16 +55,19 @@ import {
 import { IssueMobileCard, IssueTableRow } from "./issue-row-actions";
 import type { RowActions } from "./issue-table-row";
 
-// ISS-360: four tabs only. "All" now includes drafts (no separate Drafts /
-// "All + drafts" tabs — that split was the confusing behaviour the reporter
-// flagged). Stale `?filter=everything|drafts` deep-links fall back to "all".
+// "All" includes drafts (ISS-360 — no "All + drafts" split). Draft and Done are
+// explicit narrowing buckets (ISS-438): pipeline order left→right, with the
+// not-yet-started and shipped ends on the edges. Stale
+// `?filter=everything|drafts` deep-links fall back to "all".
 const FILTERS: SegmentOption<IssueFilter>[] = [
   { value: "all", label: "All" },
+  { value: "draft", label: "Draft" },
   { value: "active", label: "Active" },
   { value: "review", label: "Review" },
   { value: "blocked", label: "Blocked" },
+  { value: "done", label: "Done" },
 ];
-const VALID_FILTERS: IssueFilter[] = ["all", "active", "review", "blocked"];
+const VALID_FILTERS: IssueFilter[] = ["all", "draft", "active", "review", "blocked", "done"];
 
 const GROUP_OPTIONS: SelectOption[] = [
   { value: "none", label: "No grouping" },

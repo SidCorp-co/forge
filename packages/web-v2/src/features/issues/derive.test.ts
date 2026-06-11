@@ -196,6 +196,13 @@ describe("filterToStatusParams", () => {
   it("blocked targets parked statuses", () => {
     expect(filterToStatusParams("blocked")).toEqual({ status: ["on_hold", "needs_info"] });
   });
+  // ISS-438 — explicit Draft + Done buckets.
+  it("draft targets only drafts", () => {
+    expect(filterToStatusParams("draft")).toEqual({ status: ["draft"] });
+  });
+  it("done targets shipped work (released + closed)", () => {
+    expect(filterToStatusParams("done")).toEqual({ status: ["released", "closed"] });
+  });
 });
 
 describe("groupRows", () => {

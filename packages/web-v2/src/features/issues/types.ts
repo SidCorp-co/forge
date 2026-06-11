@@ -156,8 +156,10 @@ export interface IssueDependencies {
 
 /** Client-side filter tabs → server `status`/`statusNot` arrays. `all` means
  *  literally every issue INCLUDING drafts (ISS-360 reverses the ISS-236 "All
- *  excludes drafts" rule); there is no separate drafts tab. */
-export type IssueFilter = "all" | "active" | "review" | "blocked";
+ *  excludes drafts" rule). `draft` and `done` are explicit buckets (ISS-438) —
+ *  unlike the removed ISS-236 "All + drafts" split, they narrow rather than
+ *  change what "All" means. */
+export type IssueFilter = "all" | "draft" | "active" | "review" | "blocked" | "done";
 
 /** Client-side grouping for the list. */
 export type GroupBy = "none" | "status" | "priority" | "assignee";
