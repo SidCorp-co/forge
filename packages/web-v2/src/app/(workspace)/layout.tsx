@@ -303,12 +303,17 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         : null,
     [railProject, projectMark, railConsole],
   );
+  // Derived from WORKSPACE_ITEMS so the compact and expanded rails can never
+  // drift (ISS-433 live-E2E caught this list as a stale hardcoded duplicate —
+  // it was missing the promoted Integrations row).
   const compactWorkspaceItems = useMemo<RailItem[]>(
-    () => [
-      { key: "overview", label: "Overview", icon: "grid", badge: attentionCount },
-      { key: "usage", label: "Usage", icon: "dollar" },
-      { key: "runners", label: "Runners", icon: "server" },
-    ],
+    () =>
+      WORKSPACE_ITEMS.map((it) => ({
+        key: it.key,
+        label: it.label,
+        icon: it.icon,
+        ...(it.key === "overview" ? { badge: attentionCount } : {}),
+      })),
     [attentionCount],
   );
   // Project tier with the Issues queue badge (= open issues). Agents would carry
