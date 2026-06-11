@@ -11,7 +11,9 @@ Last updated: 2026-06-11 · Status: Alpha — breaking changes across `v0.x` · 
 - Open-source AI-powered software lifecycle platform, powered by Claude Code, running on devices you control.
 - Vision: every stage idea→maintenance. Today: Build, Review, Launch, Maintain. Roadmap: Idea, Spec, Design.
 - Pipelines user-configurable per project (not hardcoded). Apache-2.0, self-hostable. Server never holds your Claude credentials.
-- **North star: work you can hand to agents without watching — and trust what the system reports back.** The metric is *human interventions per issue closed*, trending to zero. Every roadmap item is scored by how much it moves that number.
+- **North star: one senior operating N projects through agents — watching, not working; joining only when an agent is truly stuck.**
+- **The core system is a closed loop, not any single part:** the pipeline *guarantees* skills + memory actually get used (no shelf-ware); *correct* skills + memory make the pipeline competent (wrong memory is fatal); every run compounds the next. The dashboard exists to serve **control** — see, audit, stop, and know exactly where to join. Speed is a side effect, never the goal.
+- **Two metrics, both trending toward zero, score every roadmap item:** (1) *time from user request → issue running in the right project's pipeline* (intake + onboarding friction); (2) *human interventions per issue closed* (operating friction).
 
 ## 2. Why it exists
 
