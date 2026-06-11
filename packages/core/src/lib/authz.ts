@@ -71,11 +71,24 @@ export function maxProjectRole(
 /**
  * Non-throwing resolver — the single query behind every gate. Returns null
  * when the project does not exist.
+ *
+ * `userId` may be absent: `requireUserOrDevice()` leaves it unset for device
+ * principals, which must fail CLOSED (role null → 403 at the assert), not
+ * crash — postgres-js throws UNDEFINED_VALUE on an undefined bind param.
  */
 export async function effectiveProjectRole(
-  userId: string,
+  userId: string | null | undefined,
   projectId: string,
 ): Promise<ProjectAccess | null> {
+  if (!userId) {
+    const [row] = await db
+      .select({ orgId: projects.orgId })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    if (!row) return null;
+    return { projectId, orgId: row.orgId, role: null, orgRole: null };
+  }
   const [row] = await db
     .select({
       orgId: projects.orgId,
@@ -105,7 +118,7 @@ export async function effectiveProjectRole(
 /** Throwing variant for REST routes: 404 on missing project. */
 export async function loadProjectAccess(
   projectId: string,
-  userId: string,
+  userId: string | null | undefined,
   notFoundMessage = 'project not found',
 ): Promise<ProjectAccess> {
   const access = await effectiveProjectRole(userId, projectId);
@@ -132,7 +145,7 @@ export function assertProjectRole(
  */
 export async function assertProjectAccess(
   projectId: string,
-  userId: string,
+  userId: string | null | undefined,
   min: ProjectMemberRole = 'member',
 ): Promise<ProjectAccess> {
   const access = await effectiveProjectRole(userId, projectId);
@@ -159,7 +172,11 @@ export function assertOrgRoleOnProject(
   }
 }
 
-export async function loadOrgRole(orgId: string, userId: string): Promise<OrgMemberRole | null> {
+export async function loadOrgRole(
+  orgId: string,
+  userId: string | null | undefined,
+): Promise<OrgMemberRole | null> {
+  if (!userId) return null;
   const [row] = await db
     .select({ role: organizationMembers.role })
     .from(organizationMembers)
@@ -171,7 +188,7 @@ export async function loadOrgRole(orgId: string, userId: string): Promise<OrgMem
 /** Throwing org gate: 404 when the org is missing, 403 below `min`. */
 export async function assertOrgAccess(
   orgId: string,
-  userId: string,
+  userId: string | null | undefined,
   min: OrgMemberRole,
 ): Promise<{ orgId: string; role: OrgMemberRole; isPersonal: boolean }> {
   const [org] = await db
@@ -193,7 +210,8 @@ export async function assertOrgAccess(
  * does not surface the org's projects. Single source for REST project lists,
  * MCP visible-project scoping, and analytics.
  */
-export async function loadVisibleProjectIds(userId: string): Promise<string[]> {
+export async function loadVisibleProjectIds(userId: string | null | undefined): Promise<string[]> {
+  if (!userId) return [];
   const rows = await db
     .selectDistinct({ id: projects.id })
     .from(projects)
@@ -212,7 +230,8 @@ export async function loadVisibleProjectIds(userId: string): Promise<string[]> {
 }
 
 /** The user's personal org (auto-created at signup / by migration 0106). */
-export async function loadPersonalOrgId(userId: string): Promise<string | null> {
+export async function loadPersonalOrgId(userId: string | null | undefined): Promise<string | null> {
+  if (!userId) return null;
   const [row] = await db
     .select({ id: organizations.id })
     .from(organizations)
