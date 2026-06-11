@@ -1,14 +1,17 @@
 "use client";
 
 // RunDetail SlideOver (ISS-295) — an issue's pipeline run opens here rather
-// than navigating away. Header → controls → full PipelineTracker → Timeline /
-// Tasks / Cost tabs, all driven by `GET /api/pipeline-runs/:id` (`useRun`,
-// WS-live via key `['pipeline-run', id]`). Pause/Resume/Cancel hit real
-// endpoints; Rerun/Fork have NO backend (info toast, no phantom call). Mirrors
-// the prototype `web-redesign-plan/ui-kit/RunDetail.jsx`.
+// than navigating away. Reordered for ISS-436 so it reads top-down as a
+// status panel: header (title + issue meta) → full PipelineTracker → run
+// controls → Timeline / Tasks / Cost tabs, all driven by
+// `GET /api/pipeline-runs/:id` (`useRun`, WS-live via key
+// `['pipeline-run', id]`). Pause/Resume/Cancel hit real endpoints; Rerun/Fork
+// have NO backend (info toast, no phantom call).
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Avatar,
+  Badge,
   Button,
   EmptyState,
   ErrorState,
@@ -29,10 +32,12 @@ import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
 import { IssueQuickActions } from "@/features/issues/components/issue-quick-actions";
+import { priorityLabel } from "@/features/issues/derive";
 import type { IssuePriority, IssueStatus } from "@/features/issues/types";
 import {
   formatDurationMs,
   formatUsd,
+  initialsFor,
   issueStatusToStatusKey,
   jobTypeToStage,
   runStatusToStatusKey,
@@ -68,6 +73,15 @@ const TABS = [
   { value: "tasks", label: "Tasks" },
   { value: "cost", label: "Cost" },
 ];
+
+// Priority badge tone — mirrors the issues table's PriorityCell.
+const PRIORITY_TONE: Record<string, "red" | "amber" | "neutral"> = {
+  critical: "red",
+  high: "amber",
+  medium: "neutral",
+  low: "neutral",
+  none: "neutral",
+};
 
 export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }: RunDetailProps) {
   const [tab, setTab] = useState("timeline");
@@ -203,10 +217,25 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
             </div>
           )}
 
-          {/* Header */}
+          {/* Header — title + the issue's own meta (priority / assignee /
+              branch / run cost), so the panel answers "what is this and where
+              does it stand" before offering controls (ISS-436). */}
           <div className="flex flex-col gap-2.5">
             <h2 className="fg-h2 leading-tight">{title}</h2>
             <div className="flex flex-wrap items-center gap-2.5">
+              {issue && issue.priority !== "none" && (
+                <Badge tone={PRIORITY_TONE[issue.priority] ?? "neutral"}>
+                  {priorityLabel(issue.priority as IssuePriority)}
+                </Badge>
+              )}
+              {issue?.assigneeId && (
+                <span
+                  className="inline-flex items-center"
+                  title={issue.assigneeId}
+                >
+                  <Avatar initials={initialsFor(issue.assigneeId) ?? "?"} size={20} />
+                </span>
+              )}
               {branch && (
                 <MonoTag>
                   <Icon name="branch" size={12} className="mr-1 align-[-1px]" />
@@ -215,6 +244,12 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
               )}
               {run && <Stat icon="dollar">{formatUsd(run.cost.estimatedCost)} this run</Stat>}
             </div>
+          </div>
+
+          {/* Full tracker — where the pipeline stands, ahead of the controls
+              that act on it (ISS-436 panel reorder). */}
+          <div className="rounded-lg border border-line-subtle bg-sunken p-4">
+            <PipelineTracker stage={stage} status={trackerStatus} variant="full" />
           </div>
 
           {/* Controls — Pause (finish-then-halt) and Stop now (abort) are
@@ -283,11 +318,6 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
             {isHalted && (
               <p className="fg-body-sm text-muted">Run halted — no active session.</p>
             )}
-          </div>
-
-          {/* Full tracker */}
-          <div className="rounded-lg border border-line-subtle bg-sunken p-4">
-            <PipelineTracker stage={stage} status={trackerStatus} variant="full" />
           </div>
 
           {/* Tabs */}

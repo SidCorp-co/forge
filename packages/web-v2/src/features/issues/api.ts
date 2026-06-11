@@ -64,6 +64,8 @@ export const issuesApi = {
     params.set("sort", opts.sort ?? "createdAt:desc");
     params.set("withAgentSessions", "1");
     if (opts.q) params.set("q", opts.q);
+    if (opts.priority) params.set("priority", opts.priority);
+    if (opts.assignee) params.set("assignee", opts.assignee);
     const { status, statusNot } = filterToStatusParams(opts.filter ?? "all");
     for (const s of status ?? []) params.append("status", s);
     for (const s of statusNot ?? []) params.append("statusNot", s);

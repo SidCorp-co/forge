@@ -20,7 +20,10 @@ import {
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { formatApiError } from "@/lib/api/error";
+import { statusLabel as issueStatusLabel } from "@/features/issues/derive";
+import type { IssueStatus } from "@/features/issues/types";
 import {
+  formatUsd,
   groupIssuesByStage,
   initialsFor,
   issueStatusToStatusKey,
@@ -117,9 +120,15 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
             <KanbanColumn key={group.stage} stage={group.stage} count={group.issues.length}>
               {group.issues.map((issue) => {
                 const run = issue.id ? runIndex.get(issue.id) : undefined;
+                // Live run → execution status (session vocabulary). No run →
+                // the issue's TRUE lifecycle label on the chip (ISS-436), not
+                // the collapsed bucket label.
                 const status = run
                   ? runStatusToStatusKey(run.status)
                   : issueStatusToStatusKey(issue.status);
+                const statusLabel = run
+                  ? undefined
+                  : issueStatusLabel(issue.status as IssueStatus);
                 const initials = initialsFor(issue.assigneeId);
                 return (
                   <KanbanCard
@@ -128,6 +137,14 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
                     title={issue.title}
                     stage={group.stage}
                     status={status}
+                    statusLabel={statusLabel}
+                    statusDomain={run ? "session" : "issue"}
+                    held={issue.status === "on_hold"}
+                    cost={
+                      run && run.cost.estimatedCost > 0
+                        ? formatUsd(run.cost.estimatedCost)
+                        : undefined
+                    }
                     assignee={initials ? { initials } : undefined}
                     onClick={() => setSelected({ issue, runId: run?.id ?? null })}
                   />
