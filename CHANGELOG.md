@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The workspace Integrations page (your shared connections directory) is now on the left navigation rail instead of being reachable only through the command palette.
 - The shared Integrations directory now opens a detail panel for each connection where you can rename it, rotate its key, edit its config, run a live connection test, and jump straight to any project that uses it.
 - Issues screen: List is now the default view, board cards show the real issue/run status, the run panel reads top-down (header → tracker → controls), pinned views restore their filters and can be named, and the list gains Priority/Assignee filters with a single merged Status column.
+- The Issues list now shows each issue's cost immediately with the page load instead of trickling in per row.
 
 ## [0.3.0] - 2026-06-11
 
