@@ -5,21 +5,6 @@
 > injected into the **system prompt** at dispatch, from one versioned registry
 > (`packages/core/src/prompt/facts/registry.ts`). Skill files are pure user content — no template syntax.
 
-## Problem (evidence)
-
-Audited 3 live skill sets. Per skill, the share that is **copy-pasted, drift-prone Forge mechanics**:
-
-| Project | Forge-mechanics boilerplate | Genuine business logic | Status ladder |
-|---|---|---|---|
-| jarvis-agents | 65–75% | 25–35% | `developed → testing → released` |
-| dodgeprint-api | ~35% (+57% scaffold) | 5–8% | `tested → staging` (terminal) |
-| anhome | 45–50% | 50–55% | `deploying → testing → staging → released` |
-
-Authors had to rediscover + hand-copy, and a wrong copy fails silently: per-project status ladders,
-decompose D1–D4, complexity/priority enums, relation kinds (skills wrote `blocked_by`/`depends_on`
-— real kinds are `blocks/relates/duplicates/parent/decomposes`), handoff schemas, build/test
-commands, integrations.
-
 ## Architecture
 
 ```
@@ -137,16 +122,4 @@ preamble version is canonical and always current.
 
 Core (registry + resolve + projectFacts + forge_config + REST/MCP + preamble injection) is shipped. Still open, tracked as issues — not here: bootstrap/domain-template seeding of business-logic-only skills; Skill Studio facts palette + resolved-preamble preview.
 
-## Decisions log
-
-- 2026-06-04: two namespaces (forge/project) ✓ · unknown handling n/a (no template vars) ·
-  issue-detail enums incl. priority/category ✓ · project facts = free-text guides ✓ ·
-  **facts delivered via system prompt, not skill-file templating** (user decision after verifying
-  the CLI honors `--append-system-prompt`; earlier `{{forge:}}`/`{{project:}}` file-expansion +
-  frontmatter `facts:` directive were implemented then removed in favor of this).
-- 2026-06-04 final review (vs Claude Code system-prompt research): ladder precedence made explicit
-  (pipeline-rules defers to `### Status ladder`) · issue-bound facts scoped off `pm` via
-  `appliesTo` · fact headers demoted to `###` inside the block · `DONE` marker self-contained in
-  the handoff fact · **inline-vs-pointer policy** (user decision): tool-fetchable settings/config
-  are indexed + pointed-to, never dumped — projectFacts bodies and test URLs left to
-  `forge_config`/`forge_projects.get`.
+Two standing policies from the 2026-06-04 design review: facts are delivered via **system prompt** (never skill-file templating — no `{{forge:}}` syntax exists), and tool-fetchable settings are **pointed to, never inlined** (projectFacts bodies / test URLs stay behind `forge_config` / `forge_projects.get`).

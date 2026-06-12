@@ -4,7 +4,7 @@ Postgres `pgvector` + FTS memory with a cognitive layer: hybrid retrieval, usage
 
 > Sub-doc: [step-handoffs.md](step-handoffs.md) — per-step structured handoff context passed between pipeline stages (own table, not `memories`).
 >
-> Origin: [../../proposals/memory-v2-cognitive-layer.md](../../proposals/memory-v2-cognitive-layer.md) — phases 0–4 of the forge-agents parity plan are implemented; phase 5 (graph retrieval strategy, global scope) is future.
+> Phases 0–4 of the memory-v2 plan are implemented (proposal deleted on ship, 2026-06-10); phase 5 (graph retrieval strategy, global scope) is future — see Known gaps.
 
 ## Overview
 

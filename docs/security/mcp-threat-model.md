@@ -92,10 +92,6 @@ REVOKE UPDATE, DELETE ON mcp_audit_log FROM forge_app;
 - **Auto-revoke on password change** — changing a user's password must revoke every live PAT. Helper `revokeAllPatsForUser(userId, 'password_changed')` exported from `packages/core/src/auth/pat.ts`. Password-change endpoint not yet implemented; when it lands it MUST call this helper in the same transaction as the `users.password_hash` update.
 - **Auto-revoke on suspicious IP fan-out** — plan sketches revoking any PAT whose last N audit rows show > 3 distinct IPs in 60 seconds. Feasible against `mcp_audit_token_idx`, left to a follow-up PR; core path already supports the auto-revoke action (`forceRevokePat(id)`), so this is pure detection logic.
 
-## Out of scope for ISS-150
+## Out of scope
 
-- HTTPS-only enforcement on `/mcp` — handled at deploy layer (Traefik/Coolify); no app-layer redirect.
-- Granular scope semantics beyond `read`/`write` — array reserved on the row, but verifier doesn't yet refuse a tool by declared scope; `scopes` is a forward-compat hook for a future ISS mapping each MCP tool to a required scope.
-- Cross-user admin audit page — `POST /api/admin/tokens/audit` not in this PR. Operators with DB access can `SELECT * FROM mcp_audit_log`.
-- CI mutation test for `assertPrincipalIsMember` — infra (separate `vitest.mutation.config.ts`, monkey-patched helper, CI step) sketched in the issue plan, deferred for reviewability.
-- Load-test job with `p95 < 50ms` assertion — verifier on a warm process measures comfortably under 50ms locally; primitives ship, gated CI step deferred.
+HTTPS enforcement on `/mcp` (deploy layer: Traefik/Coolify) · per-tool scope mapping (the `scopes` array is a forward-compat hook; verifier doesn't refuse by scope yet) · cross-user admin audit page (operators query `mcp_audit_log` directly) · mutation/load-test CI gates (deferred).
