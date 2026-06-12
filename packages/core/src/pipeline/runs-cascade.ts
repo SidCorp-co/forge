@@ -68,7 +68,7 @@ export async function cascadeCancelChildJobs(
       : {
           finishedAt: now,
           cancellationRequested: true,
-          failureKind: 'transient',
+          failureKind: 'infra',
           failureReason: reason,
         },
     where: and(

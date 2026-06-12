@@ -1,34 +1,29 @@
 /**
- * ISS-258 — runStaleSweep coverage.
+ * ISS-449 (ISS-442 C3) — runStaleSweep is DEMOTED to alarm-only.
  *
- * The sweep used to filter to `status='running'` only, so a job that landed
- * in `dispatched` and never emitted `job_events:started` (runner
- * crash/disconnect before claim) sat forever. Combined with the cap=1
- * runner gate, one such row stalled the project queue indefinitely.
- *
- * These tests assert the generated SELECT + per-row UPDATE both cover
- * `dispatched` and `running`, that the per-row UPDATE actually flips a
- * `dispatched` row, and that each reaped row routes through the shared
- * `finalizeFailedJob` tail (ISS-393 — replaces the old setManualHoldBlock).
+ * The loop monitor's result hop (`loop-monitor.ts` `reapResultMisses`) owns
+ * the no-progress reap now. These tests assert the alarm contract: the
+ * detection SELECT keeps the dispatched+running coverage and the
+ * result-event false-positive guard (ISS-258), runs at the loop threshold
+ * PLUS the alarm margin (65 min), performs NO terminal write, and surfaces
+ * every match as a `loop-miss` log + `pipeline_wedge` event.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const executeMock = vi.fn(async (..._args: unknown[]) => [] as unknown[]);
-// ISS-447 — the per-row flip now routes through applyKernelTransition, i.e.
-// db.update(jobs).set().where().returning() (camelCase JobRow, no re-select)
-// followed by the kernel_transitions audit insert. `updateReturning` supplies
-// the flipped rows.
-const updateReturning = vi.fn<() => unknown[]>(() => []);
-const insertValues = vi.fn(async () => undefined);
+const updateMock = vi.fn();
 
 vi.mock('../db/client.js', () => ({
   db: {
     execute: executeMock,
-    update: () => ({
-      set: () => ({ where: () => ({ returning: async () => updateReturning() }) }),
-    }),
-    insert: () => ({ values: insertValues }),
+    update: (...args: unknown[]) => {
+      updateMock(...args);
+      throw new Error('alarm pass must not write');
+    },
+    insert: () => {
+      throw new Error('alarm pass must not write');
+    },
   },
 }));
 
@@ -36,17 +31,25 @@ vi.mock('../queue/boss.js', () => ({
   boss: { createQueue: vi.fn(), work: vi.fn(), schedule: vi.fn() },
 }));
 
-vi.mock('../ws/server.js', () => ({
-  roomManager: { publish: vi.fn() },
+const emitWedgeMock = vi.fn(async (..._args: unknown[]) => undefined);
+vi.mock('../pipeline/wedge.js', () => ({
+  emitPipelineWedge: (...args: unknown[]) => emitWedgeMock(...(args as [])),
 }));
 
-const finalizeFailedJobMock = vi.fn(async () => ({ scheduled: false }));
-vi.mock('./finalize-failure.js', () => ({
-  finalizeFailedJob: (...args: unknown[]) => finalizeFailedJobMock(...(args as [])),
+// stale-detector only needs the loop's threshold constant; mocking the module
+// keeps its finalize/agent-session import graph (→ config/env) out of the test.
+vi.mock('./loop-monitor.js', () => ({
+  RESULT_QUIET_MINUTES: 60,
 }));
 
+const loggerWarn = vi.fn();
 vi.mock('../logger.js', () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  logger: {
+    info: vi.fn(),
+    warn: (...a: unknown[]) => loggerWarn(...a),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
 }));
 
 const { runStaleSweep } = await import('./stale-detector.js');
@@ -77,95 +80,54 @@ function lastSqlText(callIndex: number): string {
 
 beforeEach(() => {
   executeMock.mockReset();
-  updateReturning.mockReset();
-  updateReturning.mockReturnValue([]);
-  insertValues.mockClear();
-  finalizeFailedJobMock.mockClear();
+  emitWedgeMock.mockClear();
+  loggerWarn.mockClear();
+  updateMock.mockClear();
 });
 
 afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('runStaleSweep', () => {
-  it('SELECT covers both dispatched and running, with 60-minute threshold and skips jobs that already emitted a result event', async () => {
-    executeMock.mockResolvedValueOnce([]); // empty result → no per-row UPDATEs
+describe('runStaleSweep (alarm-only)', () => {
+  it('SELECT covers dispatched+running at loop threshold + margin (65 min) and keeps the result-event guard', async () => {
+    executeMock.mockResolvedValueOnce([]);
     await runStaleSweep();
     const text = lastSqlText(0);
     expect(text).toMatch(/j\.status\s+IN\s*\(\s*'dispatched'\s*,\s*'running'\s*\)/);
-    expect(text).toMatch(/interval\s+'60 minutes'/);
+    expect(text).toMatch(/interval\s+'65 minutes'/);
     expect(text).toMatch(/COALESCE\(le\.max_ts,\s*j\.dispatched_at\)/);
-    expect(text).toMatch(/now\(\)\s*-\s*interval\s+'60 minutes'/);
     expect(text).toMatch(/NOT\s+EXISTS[\s\S]*job_events[\s\S]*kind\s*=\s*'result'/);
   });
 
-  it('per-row flip (via applyKernelTransition) reaps the row and routes through finalizeFailedJob', async () => {
-    executeMock.mockResolvedValueOnce([
-      {
-        id: '11111111-1111-4111-8111-111111111111',
-        project_id: '22222222-2222-4222-8222-222222222222',
-        attempts: 1,
-        status: 'dispatched',
-        type: 'code',
-        issue_id: '33333333-3333-4333-8333-333333333333',
-        agent_session_id: null,
-        dispatched_at: new Date(Date.now() - 65 * 60_000),
-      },
-    ]);
-    // applyKernelTransition's CAS UPDATE returns the flipped JobRow directly.
-    const flipped = {
-      id: '11111111-1111-4111-8111-111111111111',
-      projectId: '22222222-2222-4222-8222-222222222222',
-      issueId: '33333333-3333-4333-8333-333333333333',
-      type: 'code',
-      status: 'failed',
-    };
-    updateReturning.mockReturnValue([flipped]);
+  it('a match is ALARMED (loop-miss log + wedge), never reaped', async () => {
+    executeMock.mockResolvedValueOnce([{ id: 'job-1', project_id: 'p1', issue_id: 'i1' }]);
     const result = await runStaleSweep();
+
+    // `failed` now counts alarmed loop misses; no terminal write happened.
     expect(result.failed).toBe(1);
-    // The audit row is written and the reaped row routes through the shared tail.
-    expect(insertValues).toHaveBeenCalledTimes(1);
-    expect(finalizeFailedJobMock).toHaveBeenCalledTimes(1);
-    expect(finalizeFailedJobMock).toHaveBeenCalledWith(flipped, expect.objectContaining({ error: expect.stringContaining('stale') }));
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(loggerWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ hop: 'result', ids: ['job-1'] }),
+      'loop-miss',
+    );
+    expect(emitWedgeMock).toHaveBeenCalledTimes(1);
+    expect(emitWedgeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: 'p1',
+        issueId: 'i1',
+        hop: 'result',
+        entity: 'job',
+        entityId: 'job-1',
+      }),
+    );
   });
 
-  it('skips a row whose CAS lost the race (no flipped row returned)', async () => {
-    executeMock.mockResolvedValueOnce([
-      {
-        id: 'job-x',
-        project_id: 'p1',
-        attempts: 1,
-        status: 'dispatched',
-        type: 'code',
-        issue_id: null,
-        agent_session_id: null,
-        dispatched_at: new Date(Date.now() - 65 * 60_000),
-      },
-    ]);
-    updateReturning.mockReturnValue([]); // CAS lost — a lifecycle call finalized it
+  it('quiet pass: no matches → no log, no wedge', async () => {
+    executeMock.mockResolvedValueOnce([]);
     const result = await runStaleSweep();
     expect(result.failed).toBe(0);
-    expect(finalizeFailedJobMock).not.toHaveBeenCalled();
-  });
-
-  it('routes system jobs (no issue_id) through finalizeFailedJob too', async () => {
-    executeMock.mockResolvedValueOnce([
-      {
-        id: 'job-sys',
-        project_id: 'p1',
-        attempts: 1,
-        status: 'dispatched',
-        type: 'custom',
-        issue_id: null,
-        agent_session_id: null,
-        dispatched_at: new Date(Date.now() - 65 * 60_000),
-      },
-    ]);
-    updateReturning.mockReturnValue([
-      { id: 'job-sys', projectId: 'p1', issueId: null, type: 'custom', status: 'failed' },
-    ]);
-    const r = await runStaleSweep();
-    expect(r.failed).toBe(1);
-    expect(finalizeFailedJobMock).toHaveBeenCalledTimes(1);
+    expect(loggerWarn).not.toHaveBeenCalled();
+    expect(emitWedgeMock).not.toHaveBeenCalled();
   });
 });

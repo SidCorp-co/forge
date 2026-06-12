@@ -8,6 +8,7 @@
 
 pub mod chat;
 pub mod dispatch;
+pub mod preflight;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;

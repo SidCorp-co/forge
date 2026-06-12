@@ -5,8 +5,8 @@ import type { JobType, RunnerType } from '../db/schema.js';
 import { applyEpodsystemMcpServers } from '../integrations/epodsystem/resolver.js';
 import { applyPostmanMcpServers } from '../integrations/postman/resolver.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
-import { applyKernelTransition } from '../lifecycle/transition.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
+import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import {
   recordDispatchBarrierSkip,
@@ -106,7 +106,7 @@ export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched'
       to: 'failed',
       set: {
         finishedAt: new Date(),
-        failureKind: 'permanent',
+        failureKind: 'code',
         failureReason: 'monthly_budget_exhausted',
         failureMeta: {
           spent: budgetCheck.spent,
@@ -374,7 +374,7 @@ async function dispatchViaRunner(
       to: 'failed',
       set: {
         error: errorMsg,
-        failureKind: 'permanent',
+        failureKind: 'code',
         failureReason: errorMsg,
       },
       where: eq(jobs.id, job.id),
@@ -517,15 +517,15 @@ async function dispatchViaRunner(
       set: {
         finishedAt: new Date(),
         error: errorReason,
-        failureKind: 'unknown',
+        // ISS-450 — adapter dispatch failures are environment problems by
+        // construction (claim/spawn path); flag for review since no classifier
+        // pattern matched a structured cause.
+        failureKind: 'infra',
         failureReason: errorReason,
-        classifierVersion: 1,
+        failureMeta: { needsReview: true } as never,
+        classifierVersion: 3,
       },
-      where: and(
-        eq(jobs.id, job.id),
-        eq(jobs.status, 'dispatched'),
-        eq(jobs.runnerId, runner.id),
-      ),
+      where: and(eq(jobs.id, job.id), eq(jobs.status, 'dispatched'), eq(jobs.runnerId, runner.id)),
       fromStatus: 'dispatched',
       reason: errorReason,
       actor: { type: 'system' },

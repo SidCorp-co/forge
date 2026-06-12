@@ -634,6 +634,11 @@ export const jobs = pgTable(
     status: text('status', { enum: jobStatuses }).notNull().default('queued'),
     queuedAt: timestamp('queued_at', { withTimezone: true }).notNull().defaultNow(),
     dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
+    // ISS-449 (ISS-442 C3 / I3) — runner ACK: stamped when the runner
+    // explicitly claims the job (POST /jobs/:id/ack) or, as fallback, when its
+    // first job_event arrives. The loop monitor's dispatch→ack hop reaps
+    // dispatched rows that never get one.
+    ackedAt: timestamp('acked_at', { withTimezone: true }),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
     exitCode: integer('exit_code'),
     error: text('error'),
@@ -650,13 +655,14 @@ export const jobs = pgTable(
     // jobs alongside interactive sessions. Bare uuid (no FK) to match the
     // notifications.agent_session_id pattern — adding the FK later is additive.
     agentSessionId: uuid('agent_session_id'),
-    // Pipeline self-healing (Phase H, ISS-306). Set when the job ends in
-    // `failed`. failureKind drives whether the issue-state sweeper should
-    // re-fire (transient/unknown) or escalate (permanent). classifierVersion
+    // Pipeline self-healing (Phase H, ISS-306; taxonomy rebuilt by ISS-450 /
+    // ISS-442 C4). Set when the job ends in `failed`. failureKind drives the
+    // per-class retry policy (code = no retry, transient-cc = immediate
+    // device failover, infra/timeout = bounded round-robin). classifierVersion
     // pins the classifier rules at write time so old rows survive future
     // pattern changes without silent reclassification.
     failureKind: text('failure_kind', {
-      enum: ['transient', 'permission', 'permanent', 'timeout', 'unknown'],
+      enum: ['code', 'infra', 'transient-cc', 'timeout'],
     }),
     failureReason: text('failure_reason'),
     failureMeta: jsonb('failure_meta'),
@@ -1606,6 +1612,9 @@ export const notificationTypes = [
   'agent_completed',
   'mention',
   'pm_escalation',
+  // ISS-452 (ISS-442 C6 / I7) — a loop-monitor hop miss / non-progressing
+  // pipeline state surfaced to the project owner (see pipeline/wedge.ts).
+  'pipeline_wedge',
 ] as const;
 export type NotificationType = (typeof notificationTypes)[number];
 

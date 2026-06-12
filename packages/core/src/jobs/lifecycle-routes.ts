@@ -1,13 +1,13 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
-import { applyKernelTransition } from '../lifecycle/transition.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
@@ -73,6 +73,62 @@ async function loadJob(jobId: string) {
 }
 
 export const jobLifecycleDeviceRoutes = new Hono<{ Variables: DeviceVars }>();
+
+// ISS-449 (ISS-442 C3 / I3) — explicit runner ACK for the dispatch→ack hop.
+// The runner calls this right after its pre-claim preflight passes (ISS-451)
+// and before spawning the agent; the first job_event batch doubles as a
+// fallback ack for older runners (events-routes.ts). Idempotent: a repeat
+// call (or a call racing the event fallback) keeps the first timestamp and
+// reports `acked:false`. A terminal job is NOT an error — the runner treats
+// ack as best-effort and must not abort the job over a late/lost ack.
+jobLifecycleDeviceRoutes.post(
+  '/:id/ack',
+  requireDevice(),
+  zValidator('param', jobIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const device = c.get('device');
+
+    const job = await loadJob(id);
+    if (job.deviceId !== device.id) throw forbidden('job is not dispatched to this device');
+
+    if (job.ackedAt) {
+      return c.json({
+        jobId: job.id,
+        status: job.status,
+        ackedAt: job.ackedAt.toISOString(),
+        acked: false,
+      });
+    }
+
+    const now = new Date();
+    const [updated] = await db
+      .update(jobs)
+      .set({ ackedAt: now })
+      .where(
+        and(eq(jobs.id, id), isNull(jobs.ackedAt), inArray(jobs.status, ['dispatched', 'running'])),
+      )
+      .returning({ id: jobs.id, status: jobs.status, ackedAt: jobs.ackedAt });
+    if (!updated) {
+      // Terminal or concurrently acked — idempotent OK, report current state.
+      const fresh = await loadJob(id);
+      return c.json({
+        jobId: fresh.id,
+        status: fresh.status,
+        ackedAt: fresh.ackedAt ? fresh.ackedAt.toISOString() : null,
+        acked: false,
+      });
+    }
+    return c.json({
+      jobId: updated.id,
+      status: updated.status,
+      ackedAt: now.toISOString(),
+      acked: true,
+    });
+  },
+);
 
 jobLifecycleDeviceRoutes.post(
   '/:id/complete',
@@ -222,7 +278,7 @@ jobLifecycleDeviceRoutes.post(
       if (resumePolicy === 'abort') {
         const [reclassified] = await db
           .update(jobs)
-          .set({ failureReason: 'resume_failed', failureKind: 'permanent', classifierVersion: 1 })
+          .set({ failureReason: 'resume_failed', failureKind: 'code', classifierVersion: 3 })
           .where(eq(jobs.id, updated.id))
           .returning();
         if (reclassified) updated = reclassified;
@@ -339,7 +395,7 @@ jobLifecycleDeviceRoutes.post(
     if (resumePolicy === 'abort') {
       const [reclassified] = await db
         .update(jobs)
-        .set({ failureReason: 'resume_failed', failureKind: 'permanent', classifierVersion: 1 })
+        .set({ failureReason: 'resume_failed', failureKind: 'code', classifierVersion: 3 })
         .where(eq(jobs.id, updated.id))
         .returning();
       if (reclassified) updated = reclassified;

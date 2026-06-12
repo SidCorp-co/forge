@@ -9,6 +9,7 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 
 use crate::config::Config;
+use crate::daemon::preflight;
 use crate::error::{Error, Result};
 use crate::runner::claude_code::ClaudeCodeRunner;
 use crate::runner::{JobSpec, Runner, RunnerEvent, ToolPhase};
@@ -144,6 +145,25 @@ pub async fn handle(
         }
     };
     let slug = resolved.slug;
+
+    // ISS-451 (ISS-442 C5, invariant I6): fail fast BEFORE claiming the job
+    // when the repo / push credentials / hooks are broken, instead of a
+    // 40-minute mid-run discovery. The `preflight_failed` prefix is
+    // load-bearing — core's classifier maps it to failureKind=infra for fast
+    // device failover.
+    if let Err(err) = preflight::preflight(&resolved.repo_path).await {
+        let msg = format!("preflight_failed: {err}");
+        tracing::error!("[job {job_id}] {msg}");
+        let _ = lifecycle::fail(client, &job_id, &msg).await;
+        return Ok(());
+    }
+
+    // ISS-449 (Decision B): explicit claim ack once preflight passes.
+    // Best-effort — the server falls back to treating the first job_event as
+    // the ack, so an ack failure must never abort the job.
+    if let Err(e) = lifecycle::ack(client, &job_id).await {
+        tracing::warn!("[job {job_id}] ack: {e}");
+    }
 
     // Only create a worktree when core explicitly hands us a feature branch
     // (e.g. code/fix stages). Triage/plan/review run in the repo root. Never

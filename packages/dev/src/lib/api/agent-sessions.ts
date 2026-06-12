@@ -12,19 +12,16 @@ export type AgentSessionStatus =
   | "completed_via_recovery"
   | "cancelled_stale";
 
-export type FailureKind =
-  | "transient"
-  | "permission"
-  | "permanent"
-  | "timeout"
-  | "unknown";
+// ISS-450 (ISS-442 C4) — classifier v3 taxonomy; mirrors
+// packages/core/src/pipeline/failure-classifier.ts.
+export type FailureKind = "code" | "infra" | "transient-cc" | "timeout";
 
 export interface RecoveryStats {
   totalFailures: number;
   byKind: {
-    transient: number;
-    permission: number;
-    permanent: number;
+    code: number;
+    infra: number;
+    "transient-cc": number;
     timeout: number;
   };
   lastFailureAt: string;

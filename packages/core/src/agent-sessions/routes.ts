@@ -784,8 +784,10 @@ agentSessionRoutes.post(
     const access = await loadProjectAccess(projectId, userId);
     assertProjectRole(access, 'admin', 'owner or admin role required');
 
-    const { sweepZombieSessions } = await import('../pipeline/sweeper.js');
-    const result = await sweepZombieSessions(new Date(), { projectId });
+    // ISS-449 — the loop monitor owns session reaps now; the sweeper's
+    // sweepZombieSessions was demoted to an alarm pass.
+    const { reapZombieSessions } = await import('../jobs/loop-monitor.js');
+    const result = await reapZombieSessions(new Date(), { projectId });
     return c.json(result);
   },
 );
