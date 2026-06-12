@@ -1,16 +1,22 @@
 -- ISS-450 (ISS-442 C4 / invariant I4) — failure taxonomy rebuild.
 -- Hand-written migration (applied from meta/_journal.json, follows the 0073 shape).
 -- Replaces the v2 kind set (transient|permission|permanent|timeout|unknown) with
--- the v3 set (code|infra|transient-cc|timeout). Data remap runs FIRST, while the
--- old CHECK constraint (which permits the old values) is still in place; the
--- constraint swap then locks in the new set. Idempotent: the UPDATE's CASE only
--- touches old-value rows (a re-run matches zero), and the constraint swap is
+-- the v3 set (code|infra|transient-cc|timeout). The OLD check is dropped FIRST —
+-- it does not permit the v3 remap TARGETS ('code'/'infra'), so running the
+-- UPDATE under it aborts the whole migration on any DB that actually has old
+-- rows (this exact ordering crashlooped forge-beta on 2026-06-12; empty dev DBs
+-- never caught it because a 0-row UPDATE violates nothing). The new check is
+-- added LAST, locking in the v3 set. Idempotent: the UPDATE's CASE only touches
+-- old-value rows (a re-run matches zero), and the constraint swap is
 -- DROP IF EXISTS + ADD.
 --
 -- NOTE: historical `transient` rows cannot be retro-split into `transient-cc`
 -- (the cc-startup signal is not derivable from archived rows) — they collapse
 -- to `infra`. Acceptable: both classes are bounded-retryable; only the failover
 -- aggressiveness differs, and that only matters for live rows.
+ALTER TABLE "jobs"
+  DROP CONSTRAINT IF EXISTS "jobs_failure_kind_check";--> statement-breakpoint
+
 UPDATE "jobs" SET "failure_kind" = CASE "failure_kind"
   WHEN 'permanent' THEN 'code'
   WHEN 'permission' THEN 'infra'
@@ -19,9 +25,6 @@ UPDATE "jobs" SET "failure_kind" = CASE "failure_kind"
   ELSE "failure_kind"
 END
 WHERE "failure_kind" IN ('permanent', 'permission', 'transient', 'unknown');--> statement-breakpoint
-
-ALTER TABLE "jobs"
-  DROP CONSTRAINT IF EXISTS "jobs_failure_kind_check";--> statement-breakpoint
 
 ALTER TABLE "jobs"
   ADD CONSTRAINT "jobs_failure_kind_check"
