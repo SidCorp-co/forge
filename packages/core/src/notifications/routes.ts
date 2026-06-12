@@ -176,7 +176,7 @@ notificationRoutes.delete(
 export async function createNotification(input: {
   userId: string;
   projectId?: string | null;
-  type: 'issue_status_changed' | 'comment_added' | 'agent_completed' | 'mention';
+  type: 'issue_status_changed' | 'comment_added' | 'agent_completed' | 'mention' | 'pipeline_wedge';
   title: string;
   body?: string | null;
   issueId?: string | null;

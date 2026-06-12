@@ -212,6 +212,88 @@ pipelineAnalyticsRoutes.get(
 );
 
 /**
+ * ISS-452 (ISS-442 C6 / I7 amendment 1) — queryable interventions metric.
+ * Reads the `issue_intervention_events` view (migration 0117): one row per
+ * intervention-class event — `wedge` (pipeline_wedge notifications),
+ * `manual_cancel` (C0's audited job_events.kind='intervention'),
+ * `user_run_flip` (C1 kernel_transitions, entity='run', actor_type='user').
+ * Returns the per-issue rollup plus the raw events so VISION §1 metric ②
+ * (interventions per issue closed) is chartable. `issueId: null` groups the
+ * project-scoped events (pm/system runs).
+ */
+pipelineAnalyticsRoutes.get(
+  '/interventions',
+  zValidator('query', querySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { days, projectId } = c.req.valid('query');
+    const userId = c.get('userId');
+
+    const projectIds = await loadVisibleProjectIdsScoped(userId, projectId);
+    if (projectIds.length === 0) return c.json({ total: 0, byIssue: [], events: [] });
+
+    const rows = await db.execute(sql`
+      SELECT source, project_id, issue_id, occurred_at, detail
+      FROM issue_intervention_events
+      WHERE project_id IN ${projectIds}
+        AND occurred_at >= now() - (${days}::int * interval '1 day')
+      ORDER BY occurred_at DESC
+      LIMIT 2000
+    `);
+
+    type Row = {
+      source: 'wedge' | 'manual_cancel' | 'user_run_flip';
+      project_id: string;
+      issue_id: string | null;
+      occurred_at: string;
+      detail: string | null;
+    };
+    const events = (rows as unknown as Row[]).map((r) => ({
+      source: r.source,
+      projectId: r.project_id,
+      issueId: r.issue_id,
+      occurredAt: r.occurred_at,
+      detail: r.detail,
+    }));
+
+    const byIssueMap = new Map<
+      string,
+      {
+        issueId: string | null;
+        projectId: string;
+        wedges: number;
+        manualCancels: number;
+        userRunFlips: number;
+        total: number;
+        lastAt: string;
+      }
+    >();
+    for (const e of events) {
+      const key = `${e.projectId}:${e.issueId ?? ''}`;
+      const agg = byIssueMap.get(key) ?? {
+        issueId: e.issueId,
+        projectId: e.projectId,
+        wedges: 0,
+        manualCancels: 0,
+        userRunFlips: 0,
+        total: 0,
+        lastAt: e.occurredAt,
+      };
+      if (e.source === 'wedge') agg.wedges++;
+      else if (e.source === 'manual_cancel') agg.manualCancels++;
+      else agg.userRunFlips++;
+      agg.total++;
+      if (e.occurredAt > agg.lastAt) agg.lastAt = e.occurredAt;
+      byIssueMap.set(key, agg);
+    }
+    const byIssue = [...byIssueMap.values()].sort((a, b) => b.total - a.total);
+
+    return c.json({ total: events.length, byIssue, events });
+  },
+);
+
+/**
  * W2.2.1 — per-project cost analytics. Mounted under `/api/projects/:id` so
  * the URL reads as a project-scoped sub-resource. Project-member-only; CEO
  * bypass mirrors `loadVisibleProjectIds`. Data sourced from the

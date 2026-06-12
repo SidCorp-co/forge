@@ -273,10 +273,13 @@ describe('jobs/events-routes POST /:id/events', () => {
     );
     expect(r.status).toBe(200);
 
-    // 1 update call (CAS queued→running) — the heartbeat-only fallback path
-    // is skipped because the CAS returned a row.
-    expect(dbUpdate).toHaveBeenCalledTimes(1);
-    const setArg = updateSet.mock.calls[0]?.[0] as { status?: string; startedAt?: Date };
+    // 2 update calls: the ISS-449 ack-fallback stamp (jobs.ackedAt) + the
+    // session CAS queued→running. The heartbeat-only fallback path is skipped
+    // because the CAS returned a row.
+    expect(dbUpdate).toHaveBeenCalledTimes(2);
+    const ackSetArg = updateSet.mock.calls[0]?.[0] as { ackedAt?: Date };
+    expect(ackSetArg?.ackedAt).toBeInstanceOf(Date);
+    const setArg = updateSet.mock.calls[1]?.[0] as { status?: string; startedAt?: Date };
     expect(setArg?.status).toBe('running');
     expect(setArg?.startedAt).toBeInstanceOf(Date);
 
@@ -315,9 +318,9 @@ describe('jobs/events-routes POST /:id/events', () => {
     );
     expect(r.status).toBe(200);
 
-    // 2 update calls: failed CAS + heartbeat-only bump.
-    expect(dbUpdate).toHaveBeenCalledTimes(2);
-    const heartbeatSetArg = updateSet.mock.calls[1]?.[0] as {
+    // 3 update calls: ack-fallback stamp + failed CAS + heartbeat-only bump.
+    expect(dbUpdate).toHaveBeenCalledTimes(3);
+    const heartbeatSetArg = updateSet.mock.calls[2]?.[0] as {
       status?: string;
       lastHeartbeatAt?: Date;
     };
@@ -350,7 +353,12 @@ describe('jobs/events-routes POST /:id/events', () => {
     );
     expect(r.status).toBe(200);
 
-    expect(dbUpdate).not.toHaveBeenCalled();
+    // Only the ISS-449 ack-fallback stamp fires (jobs.ackedAt) — no
+    // agent_sessions update without a linked session.
+    expect(dbUpdate).toHaveBeenCalledTimes(1);
+    const ackOnlySetArg = updateSet.mock.calls[0]?.[0] as { ackedAt?: Date; status?: string };
+    expect(ackOnlySetArg?.ackedAt).toBeInstanceOf(Date);
+    expect(ackOnlySetArg?.status).toBeUndefined();
     expect(publishMock).toHaveBeenCalledTimes(1);
   });
 
