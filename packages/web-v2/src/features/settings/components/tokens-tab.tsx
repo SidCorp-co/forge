@@ -3,7 +3,14 @@
 // Settings → API Tokens. List + create (one-time plaintext reveal) + revoke.
 // Create/revoke require fresh auth (≤5 min); a 403 FRESH_AUTH_REQUIRED swaps the
 // form for an inline re-auth prompt, then retries the pending create.
-import { useState } from "react";
+//
+// Two re-auth paths, branched on `user.hasPassword`:
+//   - password users confirm inline via POST /api/auth/reauth;
+//   - SSO-only users (passwordHash NULL) full-page-redirect through
+//     `:provider/reauth-start` (ISS-167). The form draft survives the redirect
+//     via sessionStorage; the callback returns with `?reauth=ok` /
+//     `?reauth_error=<code>` which this tab consumes on mount.
+import { useEffect, useState } from "react";
 import {
   Badge,
   Button,
@@ -24,8 +31,10 @@ import {
   THead,
   TR,
 } from "@/design";
+import { reauthStartUrl } from "@/features/auth/oauth-api";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
+import { useAuth } from "@/providers/auth-provider";
 import { useToast } from "@/providers/toast-provider";
 import { useCreateToken, useReauth, useRevokeToken, useTokens } from "../hooks";
 import {
@@ -48,12 +57,35 @@ function isFreshAuthError(err: unknown): boolean {
   return err instanceof ApiError && (err.code === "FRESH_AUTH_REQUIRED" || err.status === 403);
 }
 
+// Where the SSO reauth round-trip returns to (this tab).
+const RETURN_PATH = "/settings?tab=tokens";
+
+// Form draft persisted across the SSO reauth full-page redirect.
+const DRAFT_KEY = "forge.settings.token-draft";
+
+const PROVIDER_LABELS: Record<string, string> = {
+  github: "GitHub",
+  google: "Google",
+  oidc: "SSO",
+};
+
+const REAUTH_ERROR_MESSAGES: Record<string, string> = {
+  oauth_not_linked: "Your account isn't linked to that provider.",
+  identity_mismatch: "The provider account doesn't match the one linked to your Forge account.",
+};
+
 export function TokensTab() {
   const tokensQ = useTokens();
   const create = useCreateToken();
   const revoke = useRevokeToken();
   const reauth = useReauth();
   const { toast } = useToast();
+  const { user } = useAuth();
+
+  // Default to the password prompt while /auth/me is still resolving — a
+  // password user seeing it a beat early beats an SSO user seeing nothing.
+  const hasPassword = user?.hasPassword ?? true;
+  const linkedProviders = user?.oauthProviders ?? [];
 
   const [name, setName] = useState("");
   const [scopes, setScopes] = useState<PatScope[]>(["read"]);
@@ -68,6 +100,60 @@ export function TokensTab() {
   const [password, setPassword] = useState("");
 
   const tokens = tokensQ.data?.tokens ?? [];
+
+  // Consume the SSO reauth outcome on return: restore the draft on success,
+  // surface the typed error on failure, and strip the params either way so a
+  // refresh doesn't replay the toast.
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const ok = sp.get("reauth") === "ok";
+    const errCode = sp.get("reauth_error");
+    if (!ok && !errCode) return;
+
+    sp.delete("reauth");
+    sp.delete("reauth_error");
+    const qs = sp.toString();
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${qs ? `?${qs}` : ""}`,
+    );
+
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    sessionStorage.removeItem(DRAFT_KEY);
+
+    if (ok) {
+      if (raw) {
+        try {
+          const draft = JSON.parse(raw) as { name?: string; scopes?: PatScope[]; expiresAt?: string };
+          setName(draft.name ?? "");
+          if (draft.scopes?.length) setScopes(draft.scopes);
+          setExpiresAt(draft.expiresAt ?? "");
+        } catch {
+          // corrupt draft — start clean
+        }
+      }
+      toast({
+        title: "Re-authenticated",
+        description: "You're verified for the next few minutes — create your token now.",
+        tone: "success",
+      });
+    } else if (errCode) {
+      toast({
+        title: "Re-authentication failed",
+        description: REAUTH_ERROR_MESSAGES[errCode] ?? errCode,
+        tone: "error",
+      });
+    }
+  }, [toast]);
+
+  /** Validate, stash the draft, and hand the browser to the provider. */
+  function startSsoReauth(provider: string) {
+    const input = buildInput();
+    if (!input) return;
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ name, scopes, expiresAt }));
+    window.location.href = reauthStartUrl(provider, RETURN_PATH);
+  }
 
   function toggleScope(scope: PatScope) {
     setScopes((prev) =>
@@ -110,7 +196,9 @@ export function TokensTab() {
           setNeedsReauth(true);
           toast({
             title: "Re-authenticate to continue",
-            description: "Confirm your password to create a token.",
+            description: hasPassword
+              ? "Confirm your password to create a token."
+              : "Confirm with your sign-in provider to create a token.",
             tone: "info",
           });
         } else {
@@ -176,7 +264,7 @@ export function TokensTab() {
               <Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
             </Field>
 
-            {needsReauth && (
+            {needsReauth && hasPassword && (
               <Field
                 label="Confirm password"
                 required
@@ -192,17 +280,43 @@ export function TokensTab() {
               </Field>
             )}
 
+            {needsReauth && !hasPassword && (
+              <Field
+                label="Re-authenticate"
+                hint={
+                  linkedProviders.length > 0
+                    ? "Token creation requires a recent sign-in. Confirm with your sign-in provider — you'll come right back here with the form intact."
+                    : "Token creation requires a recent sign-in, but this account has no password and no linked sign-in provider. Ask an administrator for help."
+                }
+              >
+                <div className="flex flex-wrap gap-3 pt-1">
+                  {linkedProviders.map((p) => (
+                    <Button
+                      key={p}
+                      variant="primary"
+                      onClick={() => startSsoReauth(p)}
+                      className="min-h-11"
+                    >
+                      Continue with {PROVIDER_LABELS[p] ?? p}
+                    </Button>
+                  ))}
+                </div>
+              </Field>
+            )}
+
             <div className="flex flex-wrap gap-3">
               {needsReauth ? (
-                <Button
-                  variant="primary"
-                  loading={reauth.isPending || create.isPending}
-                  disabled={!password}
-                  onClick={onConfirmReauth}
-                  className="min-h-11"
-                >
-                  Confirm &amp; create
-                </Button>
+                hasPassword && (
+                  <Button
+                    variant="primary"
+                    loading={reauth.isPending || create.isPending}
+                    disabled={!password}
+                    onClick={onConfirmReauth}
+                    className="min-h-11"
+                  >
+                    Confirm &amp; create
+                  </Button>
+                )
               ) : (
                 <Button
                   variant="primary"

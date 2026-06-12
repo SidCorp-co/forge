@@ -75,10 +75,10 @@ oauthRoutes.get('/oauth/:provider/reauth-start', requireAuth(), async (c) => {
 
   if (!linked) {
     // Top-level browser navigation, so a JSON 4xx would leave the user on a
-    // raw error page. Redirect back to /settings/tokens with a typed code so
-    // the page can render a banner.
+    // raw error page. Redirect back to the tokens settings tab with a typed
+    // code so the page can render a banner.
     return c.redirect(
-      `${appBase}/settings/tokens?reauth_error=oauth_not_linked`,
+      `${appBase}/settings?tab=tokens&reauth_error=oauth_not_linked`,
       302,
     );
   }

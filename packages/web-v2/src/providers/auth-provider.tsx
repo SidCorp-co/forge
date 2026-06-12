@@ -5,14 +5,15 @@
 // An unauthenticated mount is still tolerated: `user` stays `null` while
 // `/auth/me` resolves, and the (workspace) layout owns the redirect-to-login
 // guard so this provider never redirect-loops on first load.
-import type { LoginInput, RegisterInput, User as CoreUser } from '@forge/contracts';
+import type { LoginInput, MeResponse, RegisterInput } from '@forge/contracts';
 
 /**
  * The legacy `chatLogAccess` flag remains exposed as an optional field for the
  * readers carried over from v1. There is no system-admin / CEO flag anymore —
- * access is purely owner/member per project.
+ * access is purely owner/member per project. Based on `MeResponse` so settings
+ * surfaces can branch on `hasPassword` / `oauthProviders` (SSO reauth).
  */
-export type User = CoreUser & {
+export type User = MeResponse & {
   chatLogAccess?: boolean;
 };
 import { useRouter } from 'next/navigation';

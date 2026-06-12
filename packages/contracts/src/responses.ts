@@ -2,9 +2,21 @@
 // with an `X-Total-Count` header; `apiClientList` in web-v2 reads that
 // header and wraps the payload into `ListResponse<T>` for ergonomics.
 
+import type { User } from './rows.js';
+
 export interface ListResponse<T> {
   items: T[];
   totalCount: number;
+}
+
+// `GET /api/auth/me` — the canonical user row plus the auth-surface metadata
+// the settings UI branches on: `hasPassword` decides between the password
+// re-auth prompt and the SSO `reauth-start` redirect; `oauthProviders` lists
+// the linked providers a password-less user can re-authenticate with.
+export interface MeResponse extends User {
+  lastFreshAuthAt: string | null;
+  hasPassword: boolean;
+  oauthProviders: string[];
 }
 
 // Login response from `POST /api/auth/local`. The access token is set as
