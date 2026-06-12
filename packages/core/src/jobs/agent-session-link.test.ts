@@ -21,8 +21,10 @@ function tagTable(name: string) {
 const agentSessions = tagTable('agent_sessions');
 const issues = tagTable('issues');
 const jobs = tagTable('jobs');
+// ISS-447 — applyKernelTransition writes the audit row here on the session sync.
+const kernelTransitions = tagTable('kernel_transitions');
 
-vi.mock('../db/schema.js', () => ({ agentSessions, issues, jobs }));
+vi.mock('../db/schema.js', () => ({ agentSessions, issues, jobs, kernelTransitions }));
 
 vi.mock('../db/client.js', () => ({
   db: {
@@ -36,7 +38,14 @@ vi.mock('../db/client.js', () => ({
     update: (tbl: object) => ({
       set: (s: Record<string, unknown>) => {
         updateCalls.push({ table: tableNames.get(tbl) ?? '?', set: s });
-        return { where: () => Promise.resolve(undefined) };
+        // The non-terminal ensure-path awaits `.where()` directly; the terminal
+        // session sync routes through applyKernelTransition, which chains
+        // `.where().returning()`. Return a thenable that supports both.
+        const p = Promise.resolve(undefined) as Promise<unknown> & {
+          returning: () => Promise<Array<{ id: string }>>;
+        };
+        p.returning = () => Promise.resolve([{ id: 'sess-1' }]);
+        return { where: () => p };
       },
     }),
     insert: (tbl: object) => ({

@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, issues, jobs } from '../db/schema.js';
+import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
@@ -201,12 +202,18 @@ export async function syncAgentSessionLifecycle(
     // leaves the running state. The job row keeps the precise terminal status.
     const status: 'completed' | 'failed' =
       outcome === 'done' || outcome === 'cancelled' ? 'completed' : 'failed';
-    const updates: Record<string, unknown> = { status, updatedAt: new Date() };
-    if (status === 'failed') updates.failureReason = 'job_failed';
-    await db
-      .update(agentSessions)
-      .set(updates)
-      .where(eq(agentSessions.id, job.agentSessionId));
+    await applyKernelTransition(db, {
+      entity: 'session',
+      to: status,
+      set:
+        status === 'failed'
+          ? { failureReason: 'job_failed', updatedAt: new Date() }
+          : { updatedAt: new Date() },
+      where: eq(agentSessions.id, job.agentSessionId),
+      reason: `job_${outcome}`,
+      actor: { type: 'system' },
+      source: 'lifecycle-sync',
+    });
     broadcastSessionStatus(job.agentSessionId, job.projectId, job.deviceId, status);
 
     // ISS-101 — close one-shot (pm/interactive) runs when their backing

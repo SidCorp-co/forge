@@ -6,6 +6,7 @@ import {
 } from '../agent-sessions/chat-turn.js';
 import { db } from '../db/client.js';
 import { agentSessions, projects, schedules } from '../db/schema.js';
+import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
 
@@ -181,10 +182,16 @@ export async function dispatchScheduleRun(
       'schedule.dispatch: chat-turn dispatch failed',
     );
     try {
-      await db
-        .update(agentSessions)
-        .set({ status: 'failed', failureReason: 'ws-publish-failed' })
-        .where(eq(agentSessions.id, session.id));
+      await applyKernelTransition(db, {
+        entity: 'session',
+        to: 'failed',
+        set: { failureReason: 'ws-publish-failed' },
+        where: eq(agentSessions.id, session.id),
+        fromStatus: session.status,
+        reason: 'ws-publish-failed',
+        actor: { type: 'system' },
+        source: 'schedule',
+      });
     } catch (cleanupErr) {
       logger.error(
         { err: cleanupErr, sessionId: session.id },

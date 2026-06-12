@@ -51,23 +51,35 @@ const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn(() => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
+// ISS-447 — the /complete, /fail and late-reclaim job flips now route through
+// applyKernelTransition(db, …), which writes the kernel_transitions audit row
+// on the same db handle right after the status UPDATE.
+const dbInsertValues = vi.fn(async () => undefined);
+const dbInsert = vi.fn(() => ({ values: dbInsertValues }));
+
 // ISS-442 C0 — cancelJob() runs the status flip + audit insert inside a
 // transaction (advisory-lock seq frontier via tx.execute). Mirror the db
 // chain on `tx`; `txUpdateReturning` is the cancel path's CAS result.
 const txUpdateReturning = vi.fn();
 const txUpdateWhere = vi.fn(() => ({ returning: txUpdateReturning }));
 const txUpdateSet = vi.fn(() => ({ where: txUpdateWhere }));
+// The intervention (job_events) insert passes a single object; ISS-447's
+// kernel_transitions audit insert passes an array of rows. Route them to
+// separate spies so the "exactly one intervention" assertion stays precise.
 const txInsertValues = vi.fn(async () => undefined);
+const txAuditValues = vi.fn(async () => undefined);
 const txExecute = vi.fn(async () => [{ max_seq: 0 }]);
 const tx = {
   update: vi.fn(() => ({ set: txUpdateSet })),
-  insert: vi.fn(() => ({ values: txInsertValues })),
+  insert: vi.fn(() => ({
+    values: (v: unknown) => (Array.isArray(v) ? txAuditValues(v) : txInsertValues(v)),
+  })),
   execute: txExecute,
 };
 const dbTransaction = vi.fn(async (cb: (t: typeof tx) => unknown) => cb(tx));
 
 vi.mock('../db/client.js', () => ({
-  db: { select: dbSelect, update: dbUpdate, transaction: dbTransaction },
+  db: { select: dbSelect, update: dbUpdate, insert: dbInsert, transaction: dbTransaction },
 }));
 
 const scheduleRetryMock = vi.fn(

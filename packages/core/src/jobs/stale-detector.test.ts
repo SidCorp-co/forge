@@ -15,20 +15,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const executeMock = vi.fn(async (..._args: unknown[]) => [] as unknown[]);
-const selectJobRow = vi.fn<() => unknown[]>(() => []);
-
-// db.select().from().where().limit() → re-select of the just-failed job row.
-function selectChain() {
-  const chain = {
-    from: () => chain,
-    where: () => chain,
-    limit: async () => selectJobRow(),
-  };
-  return chain;
-}
+// ISS-447 — the per-row flip now routes through applyKernelTransition, i.e.
+// db.update(jobs).set().where().returning() (camelCase JobRow, no re-select)
+// followed by the kernel_transitions audit insert. `updateReturning` supplies
+// the flipped rows.
+const updateReturning = vi.fn<() => unknown[]>(() => []);
+const insertValues = vi.fn(async () => undefined);
 
 vi.mock('../db/client.js', () => ({
-  db: { execute: executeMock, select: () => selectChain() },
+  db: {
+    execute: executeMock,
+    update: () => ({
+      set: () => ({ where: () => ({ returning: async () => updateReturning() }) }),
+    }),
+    insert: () => ({ values: insertValues }),
+  },
 }));
 
 vi.mock('../queue/boss.js', () => ({
@@ -76,8 +77,9 @@ function lastSqlText(callIndex: number): string {
 
 beforeEach(() => {
   executeMock.mockReset();
-  selectJobRow.mockReset();
-  selectJobRow.mockReturnValue([]);
+  updateReturning.mockReset();
+  updateReturning.mockReturnValue([]);
+  insertValues.mockClear();
   finalizeFailedJobMock.mockClear();
 });
 
@@ -97,7 +99,7 @@ describe('runStaleSweep', () => {
     expect(text).toMatch(/NOT\s+EXISTS[\s\S]*job_events[\s\S]*kind\s*=\s*'result'/);
   });
 
-  it('per-row UPDATE flips dispatched rows and routes through finalizeFailedJob', async () => {
+  it('per-row flip (via applyKernelTransition) reaps the row and routes through finalizeFailedJob', async () => {
     executeMock.mockResolvedValueOnce([
       {
         id: '11111111-1111-4111-8111-111111111111',
@@ -110,25 +112,40 @@ describe('runStaleSweep', () => {
         dispatched_at: new Date(Date.now() - 65 * 60_000),
       },
     ]);
-    executeMock.mockResolvedValueOnce([{ id: '11111111-1111-4111-8111-111111111111' }]);
-    selectJobRow.mockReturnValue([
-      {
-        id: '11111111-1111-4111-8111-111111111111',
-        projectId: '22222222-2222-4222-8222-222222222222',
-        issueId: '33333333-3333-4333-8333-333333333333',
-        type: 'code',
-        status: 'failed',
-      },
-    ]);
+    // applyKernelTransition's CAS UPDATE returns the flipped JobRow directly.
+    const flipped = {
+      id: '11111111-1111-4111-8111-111111111111',
+      projectId: '22222222-2222-4222-8222-222222222222',
+      issueId: '33333333-3333-4333-8333-333333333333',
+      type: 'code',
+      status: 'failed',
+    };
+    updateReturning.mockReturnValue([flipped]);
     const result = await runStaleSweep();
     expect(result.failed).toBe(1);
-    const updateText = lastSqlText(1);
-    expect(updateText).toMatch(/UPDATE\s+jobs/);
-    expect(updateText).toMatch(/status\s+IN\s*\(\s*'dispatched'\s*,\s*'running'\s*\)/);
-    expect(updateText).toMatch(/failure_kind\s*=\s*'transient'/);
-    expect(updateText).toMatch(/failure_reason\s*=\s*'runner stale.*'/);
-    expect(updateText).toMatch(/error\s*=\s*'stale'/);
+    // The audit row is written and the reaped row routes through the shared tail.
+    expect(insertValues).toHaveBeenCalledTimes(1);
     expect(finalizeFailedJobMock).toHaveBeenCalledTimes(1);
+    expect(finalizeFailedJobMock).toHaveBeenCalledWith(flipped, expect.objectContaining({ error: expect.stringContaining('stale') }));
+  });
+
+  it('skips a row whose CAS lost the race (no flipped row returned)', async () => {
+    executeMock.mockResolvedValueOnce([
+      {
+        id: 'job-x',
+        project_id: 'p1',
+        attempts: 1,
+        status: 'dispatched',
+        type: 'code',
+        issue_id: null,
+        agent_session_id: null,
+        dispatched_at: new Date(Date.now() - 65 * 60_000),
+      },
+    ]);
+    updateReturning.mockReturnValue([]); // CAS lost — a lifecycle call finalized it
+    const result = await runStaleSweep();
+    expect(result.failed).toBe(0);
+    expect(finalizeFailedJobMock).not.toHaveBeenCalled();
   });
 
   it('routes system jobs (no issue_id) through finalizeFailedJob too', async () => {
@@ -144,8 +161,7 @@ describe('runStaleSweep', () => {
         dispatched_at: new Date(Date.now() - 65 * 60_000),
       },
     ]);
-    executeMock.mockResolvedValueOnce([{ id: 'job-sys' }]);
-    selectJobRow.mockReturnValue([
+    updateReturning.mockReturnValue([
       { id: 'job-sys', projectId: 'p1', issueId: null, type: 'custom', status: 'failed' },
     ]);
     const r = await runStaleSweep();

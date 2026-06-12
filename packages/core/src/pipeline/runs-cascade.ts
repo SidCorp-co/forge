@@ -17,6 +17,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
+import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { deviceRoom } from '../ws/rooms.js';
 
@@ -53,23 +54,32 @@ export async function cascadeCancelChildJobs(
 ): Promise<CascadeResult> {
   const now = new Date();
 
-  const cancelledJobs = await tx
-    .update(jobs)
-    .set({
-      status: 'cancelled',
-      finishedAt: now,
-      cancellationRequested: true,
-      failureKind: 'transient',
-      failureReason: reason,
-    })
-    .where(
-      and(eq(jobs.pipelineRunId, runId), inArray(jobs.status, ['queued', 'dispatched', 'running'])),
-    )
-    .returning({
-      id: jobs.id,
-      agentSessionId: jobs.agentSessionId,
-      deviceId: jobs.deviceId,
-    });
+  // ISS-444 amendment 2 — the JOB axis mirrors the ISS-352 session branch
+  // below: a run closing as `pipeline_completed` is the cascade's SUCCESS
+  // sentinel, so the step's own still-active job resolves to `done` (NOT
+  // cancelled). Genuine cancel/fail closes still cancel their active children.
+  const completedSuccess = reason === 'pipeline_completed';
+  const jobTarget: 'done' | 'cancelled' = completedSuccess ? 'done' : 'cancelled';
+  const cancelledJobs = await applyKernelTransition(tx, {
+    entity: 'job',
+    to: jobTarget,
+    set: completedSuccess
+      ? { finishedAt: now, exitCode: 0, error: null, failureKind: null, failureReason: null }
+      : {
+          finishedAt: now,
+          cancellationRequested: true,
+          failureKind: 'transient',
+          failureReason: reason,
+        },
+    where: and(
+      eq(jobs.pipelineRunId, runId),
+      inArray(jobs.status, ['queued', 'dispatched', 'running']),
+    ),
+    fromStatus: 'active',
+    reason,
+    actor: { type: 'system' },
+    source: 'cascade',
+  });
 
   const cancelledJobIds = cancelledJobs.map((j) => j.id);
   const abortedSessionIds = cancelledJobs
@@ -88,19 +98,22 @@ export async function cascadeCancelChildJobs(
     // Mapping a success-close to `failed` produced the false-failed badge the
     // reporter saw on ISS-351's forge-test / forge-release sessions. Only
     // genuine failure/cancel closes should mark the leftover sessions failed.
-    const sessionTerminal =
-      reason === 'pipeline_completed'
-        ? { status: 'completed' as const, failureReason: null, updatedAt: now }
-        : { status: 'failed' as const, failureReason: reason, updatedAt: now };
-    await tx
-      .update(agentSessions)
-      .set(sessionTerminal)
-      .where(
-        and(
-          inArray(agentSessions.id, abortedSessionIds),
-          inArray(agentSessions.status, ['queued', 'running', 'idle']),
-        ),
-      );
+    const sessionTarget: 'completed' | 'failed' = completedSuccess ? 'completed' : 'failed';
+    await applyKernelTransition(tx, {
+      entity: 'session',
+      to: sessionTarget,
+      set: completedSuccess
+        ? { failureReason: null, updatedAt: now }
+        : { failureReason: reason, updatedAt: now },
+      where: and(
+        inArray(agentSessions.id, abortedSessionIds),
+        inArray(agentSessions.status, ['queued', 'running', 'idle']),
+      ),
+      fromStatus: 'active',
+      reason,
+      actor: { type: 'system' },
+      source: 'cascade',
+    });
   }
 
   return { cancelledJobIds, abortedSessionIds, deviceBySession };

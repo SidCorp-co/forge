@@ -44,6 +44,7 @@ import {
   projectRoleAtLeast,
 } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
+import { applyKernelTransition } from '../lifecycle/transition.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { deviceRoom } from '../ws/rooms.js';
@@ -534,20 +535,22 @@ agentSessionRoutes.post(
     // CAS on the active statuses we observed: a worker write that lands
     // between the SELECT and this UPDATE will not be in queued/running
     // anymore, and we'd silently no-op rather than stomp it.
-    const [updated] = await db
-      .update(agentSessions)
-      .set({
-        status: 'failed',
+    const [updated] = await applyKernelTransition(db, {
+      entity: 'session',
+      to: 'failed',
+      set: {
         failureReason: 'user_cancelled',
         updatedAt: cancelNow,
-      })
-      .where(
-        and(
-          eq(agentSessions.id, id),
-          inArray(agentSessions.status, ['queued', 'running', 'idle']),
-        ),
-      )
-      .returning();
+      },
+      where: and(
+        eq(agentSessions.id, id),
+        inArray(agentSessions.status, ['queued', 'running', 'idle']),
+      ),
+      fromStatus: session.status,
+      reason: 'user_cancelled',
+      actor: { type: 'user', id: userId },
+      source: 'session-cancel',
+    });
     if (!updated) {
       // CAS lost — return the current row so the client can re-render.
       const [current] = await db

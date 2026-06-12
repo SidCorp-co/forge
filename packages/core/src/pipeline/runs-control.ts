@@ -26,6 +26,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
 import { type DeviceLite, applyStatusTransition } from '../issues/apply-transition.js';
+import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -179,11 +180,19 @@ export async function cancelPipelineRun(runId: string): Promise<CancelPipelineRu
   const cancelNow = new Date();
 
   const result = await db.transaction(async (tx) => {
-    const [updatedRun] = await tx
-      .update(pipelineRuns)
-      .set({ status: 'cancelled', finishedAt: cancelNow, updatedAt: cancelNow })
-      .where(and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])))
-      .returning();
+    const [updatedRun] = await applyKernelTransition(tx, {
+      entity: 'run',
+      to: 'cancelled',
+      set: { finishedAt: cancelNow, updatedAt: cancelNow },
+      where: and(
+        eq(pipelineRuns.id, runId),
+        inArray(pipelineRuns.status, ['running', 'paused']),
+      ),
+      fromStatus: 'open',
+      reason: FAILURE_REASON_PIPELINE_CANCELLED,
+      actor: { type: 'user' },
+      source: 'runs-control',
+    });
 
     if (!updatedRun) {
       const [current] = await tx

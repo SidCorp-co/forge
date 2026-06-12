@@ -10,6 +10,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type PipelineRunKind, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
+import { applyKernelTransition } from '../lifecycle/transition.js';
 import { hooks } from './hooks.js';
 import { broadcastAbortEvents, cascadeCancelChildJobs, reasonForOutcome } from './runs-cascade.js';
 
@@ -152,23 +153,24 @@ export async function closeRun(
   outcome: 'completed' | 'failed' | 'cancelled',
 ): Promise<void> {
   const { rows, cascade } = await db.transaction(async (tx) => {
-    const updated = await tx
-      .update(pipelineRuns)
-      .set({ status: outcome, finishedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])))
-      .returning({
-        id: pipelineRuns.id,
-        projectId: pipelineRuns.projectId,
-        issueId: pipelineRuns.issueId,
-        kind: pipelineRuns.kind,
-        currentStep: pipelineRuns.currentStep,
-      });
-    const updatedRows = updated ?? [];
+    const updated = await applyKernelTransition(tx, {
+      entity: 'run',
+      to: outcome,
+      set: { finishedAt: new Date(), updatedAt: new Date() },
+      where: and(
+        eq(pipelineRuns.id, runId),
+        inArray(pipelineRuns.status, ['running', 'paused']),
+      ),
+      fromStatus: 'open',
+      reason: reasonForOutcome(outcome),
+      actor: { type: 'system' },
+      source: 'runs',
+    });
     const c =
-      updatedRows.length > 0
+      updated.length > 0
         ? await cascadeCancelChildJobs(tx, runId, reasonForOutcome(outcome))
         : null;
-    return { rows: updatedRows, cascade: c };
+    return { rows: updated, cascade: c };
   });
   if (cascade)
     await broadcastAbortEvents(cascade.deviceBySession, reasonForOutcome(outcome), runId);
@@ -209,29 +211,25 @@ export async function closeRunIfOneShot(
   outcome: 'completed' | 'failed' | 'cancelled',
 ): Promise<void> {
   const { rows, cascade } = await db.transaction(async (tx) => {
-    const updated = await tx
-      .update(pipelineRuns)
-      .set({ status: outcome, finishedAt: new Date(), updatedAt: new Date() })
-      .where(
-        and(
-          eq(pipelineRuns.id, runId),
-          inArray(pipelineRuns.kind, ['pm', 'interactive', 'system']),
-          inArray(pipelineRuns.status, ['running', 'paused']),
-        ),
-      )
-      .returning({
-        id: pipelineRuns.id,
-        projectId: pipelineRuns.projectId,
-        issueId: pipelineRuns.issueId,
-        kind: pipelineRuns.kind,
-        currentStep: pipelineRuns.currentStep,
-      });
-    const updatedRows = updated ?? [];
+    const updated = await applyKernelTransition(tx, {
+      entity: 'run',
+      to: outcome,
+      set: { finishedAt: new Date(), updatedAt: new Date() },
+      where: and(
+        eq(pipelineRuns.id, runId),
+        inArray(pipelineRuns.kind, ['pm', 'interactive', 'system']),
+        inArray(pipelineRuns.status, ['running', 'paused']),
+      ),
+      fromStatus: 'open',
+      reason: reasonForOutcome(outcome),
+      actor: { type: 'system' },
+      source: 'runs',
+    });
     const c =
-      updatedRows.length > 0
+      updated.length > 0
         ? await cascadeCancelChildJobs(tx, runId, reasonForOutcome(outcome))
         : null;
-    return { rows: updatedRows, cascade: c };
+    return { rows: updated, cascade: c };
   });
   if (cascade)
     await broadcastAbortEvents(cascade.deviceBySession, reasonForOutcome(outcome), runId);
@@ -249,24 +247,20 @@ export async function closeOpenRunForIssue(
   outcome: 'completed' | 'failed' | 'cancelled',
 ): Promise<void> {
   const { rows, cascades } = await db.transaction(async (tx) => {
-    const updated = await tx
-      .update(pipelineRuns)
-      .set({ status: outcome, finishedAt: new Date(), updatedAt: new Date() })
-      .where(
-        and(
-          eq(pipelineRuns.kind, 'issue'),
-          eq(pipelineRuns.issueId, issueId),
-          inArray(pipelineRuns.status, ['running', 'paused']),
-        ),
-      )
-      .returning({
-        id: pipelineRuns.id,
-        projectId: pipelineRuns.projectId,
-        issueId: pipelineRuns.issueId,
-        kind: pipelineRuns.kind,
-        currentStep: pipelineRuns.currentStep,
-      });
-    const updatedRows = updated ?? [];
+    const updatedRows = await applyKernelTransition(tx, {
+      entity: 'run',
+      to: outcome,
+      set: { finishedAt: new Date(), updatedAt: new Date() },
+      where: and(
+        eq(pipelineRuns.kind, 'issue'),
+        eq(pipelineRuns.issueId, issueId),
+        inArray(pipelineRuns.status, ['running', 'paused']),
+      ),
+      fromStatus: 'open',
+      reason: reasonForOutcome(outcome),
+      actor: { type: 'system' },
+      source: 'runs',
+    });
     const cs = await Promise.all(
       updatedRows.map(async (r) => ({
         runId: r.id,
