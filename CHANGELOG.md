@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Pipeline job, session, and run state changes now flow through one guarded path, eliminating a class of successful steps that were mislabeled as failed or cancelled (and existing mislabeled records were corrected).
 - People who sign in with GitHub, Google or SSO can now create API tokens — re-authentication goes through your sign-in provider instead of asking for a password you don't have.
 - The MCP settings tab now shows clearer connection errors with recovery hints, links to the API Tokens tab, submits the test on Enter, and highlights the token placeholder in the config snippet.
+- Jobs can no longer be left stranded under a finished pipeline run — the database now auto-closes such orphans, and existing stranded jobs were swept clean.
 
 ## [0.3.0] - 2026-06-11
 
