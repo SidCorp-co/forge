@@ -717,6 +717,10 @@ export const jobEventKinds = [
   'tool_result',
   'progress',
   'result',
+  // ISS-442 C0 — audited manual intervention (e.g. single-job cancel). `kind`
+  // is a plain text column, so this is additive with no migration; the
+  // interventions metric (C6) counts rows with this kind.
+  'intervention',
 ] as const;
 export type JobEventKind = (typeof jobEventKinds)[number];
 
