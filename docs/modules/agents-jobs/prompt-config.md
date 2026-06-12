@@ -95,8 +95,4 @@ The `claude-code` adapter (`packages/core/src/runners/adapters/claude-code.ts`) 
 
 ## Not Yet Shipped
 
-From the former pipeline-prompt-SSOT proposal, NOT in place:
-
-- **State Editor / Preview UI (PR-7b)** — Monaco raw-JSON editor + side-by-side prompt-diff UI in Project Settings → Pipeline. Only the backend `POST /api/prompts/preview` exists; no editor.
-- **`systemPromptMode` on the Inspector** — `extractResolvedFlags` reads `payload.systemPromptMode`, but the dispatcher does not stamp it, so the Inspector always renders it null (defaults to append). The preview endpoint does report `resolvedFlags.systemPromptMode`.
-- **Empirical `--resume` flag-override verification (PR-5/A6)** — session group code ships with the `injectTurnLevelRules` fallback, but the CLI's honoring of `--model` / `--append-system-prompt` / `--allowed-tools` on resume was not empirically confirmed.
+State Editor UI (only `POST /api/prompts/preview` backend exists) · dispatcher doesn't stamp `systemPromptMode` (Inspector renders null) · CLI flag-override behavior on `--resume` never empirically verified (the `injectTurnLevelRules` fallback covers it).

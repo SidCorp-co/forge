@@ -46,3 +46,14 @@ export function startUrl(providerId: OAuthProviderId, redirectTo = '/'): string 
   const qs = new URLSearchParams({ redirect: redirectTo });
   return `${API_BASE}/auth/oauth/${providerId}/start?${qs.toString()}`;
 }
+
+/**
+ * SSO reauth for password-less users (ISS-167): full-page navigation through
+ * the provider with `mode=reauth` — the callback stamps `lastFreshAuthAt`
+ * (satisfying `requireFreshAuth` gates like PAT creation) and lands back on
+ * `returnTo` with `?reauth=ok` or `?reauth_error=<code>` appended.
+ */
+export function reauthStartUrl(providerId: string, returnTo: string): string {
+  const qs = new URLSearchParams({ redirect: returnTo });
+  return `${API_BASE}/auth/oauth/${providerId}/reauth-start?${qs.toString()}`;
+}

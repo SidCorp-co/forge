@@ -135,9 +135,6 @@ All under `/api/projects/:projectId/integrations` (`integrations/routes.ts`, aut
 6. Add a provider Zod schema in `integrations/routes.ts` (config + secrets) — config validation lives here, since the adapter has no `validateConfig`.
 7. Record every call via `recordDelivery`/`updateDelivery` for audit + idempotency.
 
-## Not yet (proposed, unshipped)
+## Not yet (unshipped)
 
-- **Sentry / Human-Task as per-project adapters**, and their DB-backed config — proposal §7.2/§7.3. No binding provider for them exists.
-- **Typed event bus** (`ForgeEvent` union, `events[]` subscriptions). Outbound is triggered directly by the release-job hook, not a generic bus.
-- **`validateConfig` / `pollState`** adapter hooks; **health-poll worker**; **secret-rotation `webhook_secret_previous`** (only the Coolify *API token* has a rotation window); **delivery replay / test-event UI**; **outbound coalescing**; **payload versioning**; **`generic_webhook` migration** of `projectWebhooks`.
-- A **generalized outbound worker** (today it only knows `coolify.dispatch`).
+Outbound is release-hook-triggered and Coolify-only (no typed event bus, no generalized worker); no per-project Sentry/Human-Task adapters; no `validateConfig`/`pollState` hooks, health-poll worker, webhook-secret rotation window, delivery replay UI, or payload versioning. Future work lives in [../IDEAS.md](../IDEAS.md) / issues — not here.
