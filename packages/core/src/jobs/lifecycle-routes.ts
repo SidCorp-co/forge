@@ -12,9 +12,10 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { hooks } from '../pipeline/hooks.js';
 import { materializeJobUsage } from '../usage-records/materialize.js';
-import { deviceRoom, projectRoom } from '../ws/rooms.js';
+import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
+import { JobCancelError, cancelJob } from './cancel-job.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import { handleResumeFailed, isResumeFailedError } from './handle-resume-failed.js';
@@ -49,7 +50,12 @@ const failBodySchema = z
   })
   .strict();
 
-const ACTIVE_STATUSES = new Set(['queued', 'dispatched', 'running']);
+const cancelBodySchema = z
+  .object({
+    reason: z.string().max(500).optional(),
+  })
+  .strict();
+
 const RUNNABLE_STATUSES = new Set(['dispatched', 'running']);
 
 // ISS-378 — `jobs.error` markers written by the SERVER-side reapers (never by
@@ -360,64 +366,25 @@ jobLifecycleUserRoutes.post(
     const access = await loadProjectAccess(job.projectId, userId);
     assertProjectRole(access, 'member', 'not a project member');
 
-    if (!ACTIVE_STATUSES.has(job.status)) {
-      throw conflict('job is not cancellable', 'NOT_CANCELLABLE');
-    }
+    // Optional `{ reason }` body; tolerate an empty/absent body (the cancel
+    // button sends none) by defaulting to {} before schema-validating.
+    const rawBody = await c.req.json().catch(() => ({}));
+    const parsedBody = cancelBodySchema.safeParse(rawBody ?? {});
+    if (!parsedBody.success) throw badRequest(z.flattenError(parsedBody.error));
 
-    // Queued, no device yet → transition straight to cancelled.
-    if (job.status === 'queued') {
-      const [updated] = await db
-        .update(jobs)
-        .set({ status: 'cancelled', finishedAt: new Date(), cancellationRequested: true })
-        .where(and(eq(jobs.id, id), eq(jobs.status, 'queued')))
-        .returning();
-      if (!updated) throw conflict('job state changed mid-request', 'NOT_CANCELLABLE');
-
-      await syncAgentSessionLifecycle(updated, 'cancelled');
-
-      roomManager.publish(projectRoom(updated.projectId), {
-        event: 'job.cancelled',
-        data: { jobId: updated.id, status: 'cancelled' },
+    try {
+      const result = await cancelJob(id, {
+        actorUserId: userId,
+        reason: parsedBody.data.reason ?? 'manual cancel (REST)',
+        source: 'rest',
       });
-
-      // Cancelling a queued job frees a slot — re-tick.
-      void dispatchTickForProject(updated.projectId);
-
-      // ISS-164 — see /complete comment.
-      if (updated.issueId) {
-        await publishPipelineHealthChanged(updated.projectId, [updated.issueId]);
+      return c.json(result);
+    } catch (e) {
+      if (e instanceof JobCancelError) {
+        if (e.code === 'NOT_FOUND') throw notFound(e.message);
+        throw conflict(e.message, e.code);
       }
-
-      return c.json({
-        jobId: updated.id,
-        status: updated.status,
-        cancellationRequested: updated.cancellationRequested,
-      });
+      throw e;
     }
-
-    // Dispatched/running → mark request, push to device, let /complete finalize.
-    const [updated] = await db
-      .update(jobs)
-      .set({ cancellationRequested: true })
-      .where(eq(jobs.id, id))
-      .returning();
-    if (!updated) throw notFound('job not found');
-
-    if (updated.deviceId) {
-      roomManager.publish(deviceRoom(updated.deviceId), {
-        event: 'job.cancel',
-        data: { jobId: updated.id },
-      });
-    }
-    roomManager.publish(projectRoom(updated.projectId), {
-      event: 'job.cancelRequested',
-      data: { jobId: updated.id },
-    });
-
-    return c.json({
-      jobId: updated.id,
-      status: updated.status,
-      cancellationRequested: updated.cancellationRequested,
-    });
   },
 );

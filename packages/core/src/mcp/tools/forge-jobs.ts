@@ -2,11 +2,14 @@ import { type SQL, and, asc, desc, eq, gt } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { jobEvents, jobStatuses, jobTypes, jobs } from '../../db/schema.js';
+import { JobCancelError, cancelJob } from '../../jobs/cancel-job.js';
 import {
   type ContextScopedMcpToolFactory,
   type DeviceScopedMcpToolFactory,
   assertDeviceOwnerIsMember,
   assertPrincipalIsMember,
+  assertPrincipalIsWriter,
+  principalUserId,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -35,6 +38,13 @@ const eventsInputSchema = z
     jobId: z.uuid(),
     sinceSeq: z.number().int().min(0).optional(),
     limit: z.number().int().min(1).max(500).optional(),
+  })
+  .strict();
+
+const cancelInputSchema = z
+  .object({
+    jobId: z.uuid(),
+    reason: z.string().max(500).optional(),
   })
   .strict();
 
@@ -99,8 +109,40 @@ export const forgeJobsEventsTool: ContextScopedMcpToolFactory = ({ principal }) 
       .orderBy(asc(jobEvents.seq))
       .limit(limit ?? 200);
 
-    const lastSeq =
-      items.length > 0 ? Number(items[items.length - 1]?.seq ?? 0) : (sinceSeq ?? 0);
+    const lastSeq = items.length > 0 ? Number(items[items.length - 1]?.seq ?? 0) : (sinceSeq ?? 0);
     return { items, lastSeq };
+  },
+});
+
+/**
+ * ISS-442 C0 — the audited manual single-job cancel escape hatch. Delegates to
+ * the shared {@link cancelJob} helper (same logic as REST `POST /jobs/:id/cancel`),
+ * so it works even when the parent pipeline_run is already terminal — the case
+ * that previously forced raw-SQL surgery. Writer-gated (this is a destructive
+ * mutation), unlike the read-only forge_jobs.* tools which use the member gate.
+ * Every cancel writes one `job_events` row (`kind='intervention'`) for the C6
+ * interventions metric.
+ */
+export const forgeJobsCancelTool: ContextScopedMcpToolFactory = ({ principal }) => ({
+  name: 'forge_jobs.cancel',
+  description:
+    'Cancel a single job (audited manual intervention). queued → cancelled; dispatched/running → cancellation requested + device push. Works even when the parent pipeline_run is already terminal (orphan escape hatch). Requires writer access (member/admin; PAT write scope).',
+  inputSchema: zodToMcpSchema(cancelInputSchema),
+  handler: async (args) => {
+    const { jobId, reason } = cancelInputSchema.parse(args);
+    const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+    if (!job) throw new Error('NOT_FOUND: job not found');
+    await assertPrincipalIsWriter(principal, job.projectId);
+
+    try {
+      return await cancelJob(jobId, {
+        actorUserId: principalUserId(principal),
+        reason: reason ?? 'manual cancel (MCP)',
+        source: 'mcp',
+      });
+    } catch (e) {
+      if (e instanceof JobCancelError) throw new Error(`${e.code}: ${e.message}`);
+      throw e;
+    }
   },
 });
