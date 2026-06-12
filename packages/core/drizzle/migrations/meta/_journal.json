@@ -813,6 +813,13 @@
       "when": 1784073600000,
       "tag": "0117_intervention_events_view",
       "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1784160000000,
+      "tag": "0118_i1_trigger_failure_kind_v3",
+      "breakpoints": true
     }
   ]
 }
