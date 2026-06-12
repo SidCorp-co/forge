@@ -19,6 +19,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Scheduled and chat runs no longer stay stuck showing "running" indefinitely after they finish — a backstop now closes these job-less runs once their session is no longer live.
 - Operators can now cancel a single stuck pipeline job from the API or MCP — including jobs orphaned under an already-finished run — with each cancel recorded for audit.
 - Pipeline job, session, and run state changes now flow through one guarded path, eliminating a class of successful steps that were mislabeled as failed or cancelled (and existing mislabeled records were corrected).
+- People who sign in with GitHub, Google or SSO can now create API tokens — re-authentication goes through your sign-in provider instead of asking for a password you don't have.
+- The MCP settings tab now shows clearer connection errors with recovery hints, links to the API Tokens tab, submits the test on Enter, and highlights the token placeholder in the config snippet.
 
 ## [0.3.0] - 2026-06-11
 
