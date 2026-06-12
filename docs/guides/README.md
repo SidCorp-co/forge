@@ -4,7 +4,13 @@ How-to guides for specific developer tasks. Each guide is task-oriented — "how
 
 ## Available guides
 
-_(None yet. The Diátaxis quickstart lives at [../quickstart.md](../quickstart.md); deeper how-tos get added here as patterns stabilize in v0.2+.)_
+| Guide | Covers |
+|-------|--------|
+| [trunk-based-development.md](trunk-based-development.md) | Branching model, naming, pre-push hook, who ships how (contributors + maintainers; the pipeline has its own docs) |
+| [release.md](release.md) | Cutting a release |
+| [integrations.md](integrations.md) | Wiring external integrations |
+
+The Diátaxis quickstart lives at [../quickstart.md](../quickstart.md).
 
 ## Planned guides (v0.1 → v0.2)
 
