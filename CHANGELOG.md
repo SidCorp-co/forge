@@ -22,6 +22,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - People who sign in with GitHub, Google or SSO can now create API tokens — re-authentication goes through your sign-in provider instead of asking for a password you don't have.
 - The MCP settings tab now shows clearer connection errors with recovery hints, links to the API Tokens tab, submits the test on Enter, and highlights the token placeholder in the config snippet.
 - Jobs can no longer be left stranded under a finished pipeline run — the database now auto-closes such orphans, and existing stranded jobs were swept clean.
+- Stuck pipeline jobs are now caught by a single closed-loop monitor at each step (dispatch, claim, heartbeat, result) instead of overlapping background sweepers, so nothing hangs unnoticed.
+- Pipeline failures are now classified precisely (no more catch-all "unknown"): a Claude startup death fails over to another device immediately, and failures caused by the work itself stop retrying and ask for review instead of burning retries.
+- Runners verify the workspace (repo, git, push credentials, hooks) before taking a job, so credential or setup problems fail over fast instead of stalling a run for 40 minutes.
+- When a pipeline job does get stuck, Forge now raises a notification saying where it stalled, why, and what to do — and manual interventions per issue are tracked so they can be charted.
 
 ## [0.3.0] - 2026-06-11
 
