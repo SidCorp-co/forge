@@ -10,8 +10,12 @@ const selectFrom = vi.fn((_payload: unknown) => ({
 // `createChatSessionRow` inserts the EMPTY session via `db.insert(...).values(...).returning()`.
 const insertReturning = vi.fn();
 const insertValues = vi.fn((_payload: unknown) => ({ returning: insertReturning }));
-// schedule's publish-failure cleanup uses `db.update(...).set(...).where(...)`.
-const updateWhere = vi.fn(async (_payload: unknown) => undefined);
+// schedule's publish-failure cleanup marks the session failed via
+// applyKernelTransition (ISS-447): db.update(...).set(...).where(...).returning()
+// then the kernel_transitions audit insert.
+const updateWhere = vi.fn((_payload: unknown) => ({
+  returning: async () => [{ id: 'sess-1' }],
+}));
 const updateSet = vi.fn((_payload: unknown) => ({ where: updateWhere }));
 
 // `dispatchChatTurn` appends the turn inside `db.transaction(async (tx) => ...)`

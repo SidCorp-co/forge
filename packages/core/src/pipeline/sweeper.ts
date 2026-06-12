@@ -31,6 +31,7 @@ import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
 import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import { finalizeFailedJob } from '../jobs/finalize-failure.js';
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
+import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { boss } from '../queue/boss.js';
@@ -230,25 +231,24 @@ export async function sweepZombieSessions(
   // Pass 1: queued past timeout. CAS via WHERE status='queued' so a worker
   // that claims concurrently isn't stomped. dispatchedAt falls back to
   // createdAt for rows that pre-date the migration.
-  const queuedFailed = await db
-    .update(agentSessions)
-    .set({ status: 'failed', failureReason: 'queue_timeout', updatedAt: now })
-    .where(
-      and(
-        eq(agentSessions.status, 'queued'),
-        or(
-          and(isNotNull(agentSessions.dispatchedAt), lt(agentSessions.dispatchedAt, queueCutoff)),
-          and(sql`${agentSessions.dispatchedAt} IS NULL`, lt(agentSessions.createdAt, queueCutoff)),
-        ),
-        sql`${agentSessions.metadata}->>'type' IN ${PIPELINE_METADATA_TYPES}`,
-        ...(projectFilter ? [projectFilter] : []),
+  const queuedFailed = await applyKernelTransition(db, {
+    entity: 'session',
+    to: 'failed',
+    set: { failureReason: 'queue_timeout', updatedAt: now },
+    where: and(
+      eq(agentSessions.status, 'queued'),
+      or(
+        and(isNotNull(agentSessions.dispatchedAt), lt(agentSessions.dispatchedAt, queueCutoff)),
+        and(sql`${agentSessions.dispatchedAt} IS NULL`, lt(agentSessions.createdAt, queueCutoff)),
       ),
-    )
-    .returning({
-      id: agentSessions.id,
-      projectId: agentSessions.projectId,
-      deviceId: agentSessions.deviceId,
-    });
+      sql`${agentSessions.metadata}->>'type' IN ${PIPELINE_METADATA_TYPES}`,
+      ...(projectFilter ? [projectFilter] : []),
+    ),
+    fromStatus: 'queued',
+    reason: 'queue_timeout',
+    actor: { type: 'sweeper' },
+    source: 'sweeper',
+  });
 
   for (const z of queuedFailed) {
     broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'queue_timeout');
@@ -258,39 +258,38 @@ export async function sweepZombieSessions(
   // updatedAt → createdAt so a rolling deploy with workers still running
   // older code (no heartbeat columns set) doesn't over-sweep — `updatedAt`
   // bumps on every legacy worker write so a >3min-busy job stays alive.
-  const heartbeatFailed = await db
-    .update(agentSessions)
-    .set({ status: 'failed', failureReason: 'heartbeat_timeout', updatedAt: now })
-    .where(
-      and(
-        eq(agentSessions.status, 'running'),
-        or(
-          and(
-            isNotNull(agentSessions.lastHeartbeatAt),
-            lt(agentSessions.lastHeartbeatAt, heartbeatCutoff),
-          ),
-          and(
-            sql`${agentSessions.lastHeartbeatAt} IS NULL`,
-            isNotNull(agentSessions.startedAt),
-            lt(agentSessions.startedAt, heartbeatCutoff),
-            lt(agentSessions.updatedAt, heartbeatCutoff),
-          ),
-          and(
-            sql`${agentSessions.lastHeartbeatAt} IS NULL`,
-            sql`${agentSessions.startedAt} IS NULL`,
-            lt(agentSessions.updatedAt, heartbeatCutoff),
-            lt(agentSessions.createdAt, heartbeatCutoff),
-          ),
+  const heartbeatFailed = await applyKernelTransition(db, {
+    entity: 'session',
+    to: 'failed',
+    set: { failureReason: 'heartbeat_timeout', updatedAt: now },
+    where: and(
+      eq(agentSessions.status, 'running'),
+      or(
+        and(
+          isNotNull(agentSessions.lastHeartbeatAt),
+          lt(agentSessions.lastHeartbeatAt, heartbeatCutoff),
         ),
-        sql`${agentSessions.metadata}->>'type' IN ${PIPELINE_METADATA_TYPES}`,
-        ...(projectFilter ? [projectFilter] : []),
+        and(
+          sql`${agentSessions.lastHeartbeatAt} IS NULL`,
+          isNotNull(agentSessions.startedAt),
+          lt(agentSessions.startedAt, heartbeatCutoff),
+          lt(agentSessions.updatedAt, heartbeatCutoff),
+        ),
+        and(
+          sql`${agentSessions.lastHeartbeatAt} IS NULL`,
+          sql`${agentSessions.startedAt} IS NULL`,
+          lt(agentSessions.updatedAt, heartbeatCutoff),
+          lt(agentSessions.createdAt, heartbeatCutoff),
+        ),
       ),
-    )
-    .returning({
-      id: agentSessions.id,
-      projectId: agentSessions.projectId,
-      deviceId: agentSessions.deviceId,
-    });
+      sql`${agentSessions.metadata}->>'type' IN ${PIPELINE_METADATA_TYPES}`,
+      ...(projectFilter ? [projectFilter] : []),
+    ),
+    fromStatus: 'running',
+    reason: 'heartbeat_timeout',
+    actor: { type: 'sweeper' },
+    source: 'sweeper',
+  });
 
   for (const z of heartbeatFailed) {
     broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'heartbeat_timeout');
@@ -305,32 +304,31 @@ export async function sweepZombieSessions(
   // sets claudeSessionId within seconds of spawn — so neither is touched.
   // COALESCE so a NULL/absent metadata.type (plain chat, schedule.run) counts
   // as "not pipeline/pm" and is reaped.
-  const noClientFailed = await db
-    .update(agentSessions)
-    .set({ status: 'failed', failureReason: 'no_client_ack', updatedAt: now })
-    .where(
-      and(
-        eq(agentSessions.status, 'running'),
-        sql`${agentSessions.claudeSessionId} IS NULL`,
-        sql`COALESCE(${agentSessions.metadata}->>'type','') NOT IN ${PIPELINE_METADATA_TYPES}`,
-        or(
-          and(
-            isNotNull(agentSessions.lastHeartbeatAt),
-            lt(agentSessions.lastHeartbeatAt, heartbeatCutoff),
-          ),
-          and(
-            sql`${agentSessions.lastHeartbeatAt} IS NULL`,
-            lt(agentSessions.createdAt, heartbeatCutoff),
-          ),
+  const noClientFailed = await applyKernelTransition(db, {
+    entity: 'session',
+    to: 'failed',
+    set: { failureReason: 'no_client_ack', updatedAt: now },
+    where: and(
+      eq(agentSessions.status, 'running'),
+      sql`${agentSessions.claudeSessionId} IS NULL`,
+      sql`COALESCE(${agentSessions.metadata}->>'type','') NOT IN ${PIPELINE_METADATA_TYPES}`,
+      or(
+        and(
+          isNotNull(agentSessions.lastHeartbeatAt),
+          lt(agentSessions.lastHeartbeatAt, heartbeatCutoff),
         ),
-        ...(projectFilter ? [projectFilter] : []),
+        and(
+          sql`${agentSessions.lastHeartbeatAt} IS NULL`,
+          lt(agentSessions.createdAt, heartbeatCutoff),
+        ),
       ),
-    )
-    .returning({
-      id: agentSessions.id,
-      projectId: agentSessions.projectId,
-      deviceId: agentSessions.deviceId,
-    });
+      ...(projectFilter ? [projectFilter] : []),
+    ),
+    fromStatus: 'running',
+    reason: 'no_client_ack',
+    actor: { type: 'sweeper' },
+    source: 'sweeper',
+  });
 
   for (const z of noClientFailed) {
     broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'no_client_ack');
@@ -405,19 +403,23 @@ export async function reconcileOrphanedJobs(
       // CAS on status so a concurrent late `/complete` / `/fail` wins instead
       // of being double-finalized. RETURNING gives the typed JobRow that
       // finalizeFailedJob expects (camelCase, with failureKind/reason set).
-      const [updated] = await db
-        .update(jobs)
-        .set({
-          status: 'failed',
+      const [updated] = await applyKernelTransition(db, {
+        entity: 'job',
+        to: 'failed',
+        set: {
           error: 'session_lost',
           finishedAt: new Date(),
           failureKind: 'transient',
           failureReason:
             'agent session terminated without job completion (silent runner/agent death)',
           classifierVersion: 1,
-        })
-        .where(and(eq(jobs.id, row.id), inArray(jobs.status, ['dispatched', 'running'])))
-        .returning();
+        },
+        where: and(eq(jobs.id, row.id), inArray(jobs.status, ['dispatched', 'running'])),
+        fromStatus: 'active',
+        reason: 'session_lost',
+        actor: { type: 'sweeper' },
+        source: 'sweeper',
+      });
       if (!updated) continue; // lost the CAS race — a lifecycle call finalized it
       reconciled++;
       await finalizeFailedJob(updated, { error: 'session_lost' });
@@ -485,19 +487,23 @@ export async function reconcileNeverClaimedDispatches(
   let reconciled = 0;
   for (const row of candidates) {
     try {
-      const [updated] = await db
-        .update(jobs)
-        .set({
-          status: 'failed',
+      const [updated] = await applyKernelTransition(db, {
+        entity: 'job',
+        to: 'failed',
+        set: {
           error: 'dispatch_unclaimed',
           finishedAt: new Date(),
           failureKind: 'transient',
           failureReason:
             'dispatch never claimed by a runner (no started event within grace window)',
           classifierVersion: 1,
-        })
-        .where(and(eq(jobs.id, row.id), eq(jobs.status, 'dispatched')))
-        .returning();
+        },
+        where: and(eq(jobs.id, row.id), eq(jobs.status, 'dispatched')),
+        fromStatus: 'dispatched',
+        reason: 'dispatch_unclaimed',
+        actor: { type: 'sweeper' },
+        source: 'sweeper',
+      });
       if (!updated) continue; // lost the CAS race — the runner just claimed it
       reconciled++;
       await finalizeFailedJob(updated, { error: 'dispatch_unclaimed' });
@@ -583,20 +589,19 @@ export async function reapOrphanedOneShotRuns(
       // Force-fail any lingering non-terminal session for this run. A session
       // already completed/failed is left as-is — the run still needs closing
       // (the missed-`/desktop/status` case).
-      const flipped = await db
-        .update(agentSessions)
-        .set({ status: 'failed', failureReason: 'heartbeat_timeout', updatedAt: now })
-        .where(
-          and(
-            eq(agentSessions.pipelineRunId, row.id),
-            inArray(agentSessions.status, ['queued', 'running', 'idle']),
-          ),
-        )
-        .returning({
-          id: agentSessions.id,
-          projectId: agentSessions.projectId,
-          deviceId: agentSessions.deviceId,
-        });
+      const flipped = await applyKernelTransition(db, {
+        entity: 'session',
+        to: 'failed',
+        set: { failureReason: 'heartbeat_timeout', updatedAt: now },
+        where: and(
+          eq(agentSessions.pipelineRunId, row.id),
+          inArray(agentSessions.status, ['queued', 'running', 'idle']),
+        ),
+        fromStatus: 'active',
+        reason: 'heartbeat_timeout',
+        actor: { type: 'sweeper' },
+        source: 'sweeper',
+      });
       for (const s of flipped) {
         broadcastZombieTransition(s.id, s.projectId, s.deviceId, 'heartbeat_timeout');
       }

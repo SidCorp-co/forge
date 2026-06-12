@@ -2,6 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobEvents, jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
+import { applyKernelTransition } from '../lifecycle/transition.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
@@ -75,11 +76,16 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
   // Queued, no device yet → transition straight to cancelled.
   if (job.status === 'queued') {
     const updated = await db.transaction(async (tx) => {
-      const [row] = await tx
-        .update(jobs)
-        .set({ status: 'cancelled', finishedAt: new Date(), cancellationRequested: true })
-        .where(and(eq(jobs.id, jobId), eq(jobs.status, 'queued')))
-        .returning();
+      const [row] = await applyKernelTransition(tx, {
+        entity: 'job',
+        to: 'cancelled',
+        set: { finishedAt: new Date(), cancellationRequested: true },
+        where: and(eq(jobs.id, jobId), eq(jobs.status, 'queued')),
+        fromStatus: 'queued',
+        reason: opts.reason,
+        actor: { type: 'user', id: opts.actorUserId },
+        source: 'cancel',
+      });
       if (!row) return null;
       await insertInterventionEvent(tx, row.id, row.issueId, previousStatus, opts);
       return row;

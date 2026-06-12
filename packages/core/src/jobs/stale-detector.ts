@@ -1,6 +1,7 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
+import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
 import { projectRoom } from '../ws/rooms.js';
@@ -81,28 +82,29 @@ export async function runStaleSweep(): Promise<{
 
   let failedCount = 0;
 
+  const STALE_REASON = 'runner stale (no progress / no started event for >60min)';
   for (const row of stale) {
-    // CAS-flip to failed, then re-select the camelCase Drizzle row so the
-    // shared finalize tail (verify-first retry / park-to-waiting) runs against
-    // a typed JobRow rather than the raw snake_case sweep row.
-    const updated = await db.execute<StaleJobRow>(
-      sql.raw(`
-      UPDATE jobs
-      SET status = 'failed',
-          error = 'stale',
-          finished_at = now(),
-          failure_kind = 'transient',
-          failure_reason = 'runner stale (no progress / no started event for >60min)',
-          classifier_version = 1
-      WHERE id = '${row.id}' AND status IN ('dispatched', 'running')
-      RETURNING id
-    `),
-    );
-    if (!updated[0]) continue;
-    failedCount++;
-
-    const [jobRow] = await db.select().from(jobs).where(eq(jobs.id, row.id)).limit(1);
+    // CAS-flip to failed through the single kernel transition point (ISS-447);
+    // the returned camelCase JobRow feeds the shared finalize tail (verify-first
+    // retry / park-to-waiting) directly — no re-select needed.
+    const [jobRow] = await applyKernelTransition(db, {
+      entity: 'job',
+      to: 'failed',
+      set: {
+        error: 'stale',
+        finishedAt: new Date(),
+        failureKind: 'transient',
+        failureReason: STALE_REASON,
+        classifierVersion: 1,
+      },
+      where: and(eq(jobs.id, row.id), inArray(jobs.status, ['dispatched', 'running'])),
+      fromStatus: 'active',
+      reason: 'stale',
+      actor: { type: 'sweeper' },
+      source: 'stale-detector',
+    });
     if (!jobRow) continue;
+    failedCount++;
 
     roomManager.publish(projectRoom(jobRow.projectId), {
       event: 'job.failed',
@@ -110,9 +112,7 @@ export async function runStaleSweep(): Promise<{
     });
 
     try {
-      await finalizeFailedJob(jobRow, {
-        error: 'runner stale (no progress / no started event for >60min)',
-      });
+      await finalizeFailedJob(jobRow, { error: STALE_REASON });
     } catch (err) {
       logger.error(
         { err, jobId: jobRow.id, issueId: jobRow.issueId },

@@ -30,6 +30,9 @@ vi.mock('../db/client.js', () => {
   const dbStub = {
     select: vi.fn(() => ({ from: selectFrom })),
     update: vi.fn(() => ({ set: updateSet })),
+    // ISS-447 — applyKernelTransition writes the kernel_transitions audit row
+    // on the same executor after the run flip.
+    insert: vi.fn(() => ({ values: vi.fn(async () => undefined) })),
     transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(dbStub)),
   };
   return { db: dbStub };
@@ -159,7 +162,9 @@ describe('cancelPipelineRun', () => {
       { id: 'job-2', agentSessionId: null, deviceId: 'dev-A' },
       { id: 'job-3', agentSessionId: 'sess-2', deviceId: 'dev-B' },
     ]);
-    // Note: agent_sessions update has no .returning() — no third mock needed.
+    // ISS-447 — the session cascade now also flows through applyKernelTransition,
+    // which calls `.returning()`; supply the flipped session rows it audits.
+    updateReturning.mockResolvedValueOnce([{ id: 'sess-1' }, { id: 'sess-2' }]);
 
     const result = await cancelPipelineRun(RUN_ID);
 

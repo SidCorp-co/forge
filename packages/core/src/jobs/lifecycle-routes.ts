@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
+import { applyKernelTransition } from '../lifecycle/transition.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -116,11 +117,16 @@ jobLifecycleDeviceRoutes.post(
         )
         .limit(1);
       if (activeRetry.length === 0) {
-        const [reclaimed] = await db
-          .update(jobs)
-          .set({ status: 'done', exitCode: 0, error: null, finishedAt: new Date() })
-          .where(and(eq(jobs.id, id), eq(jobs.status, 'failed'), eq(jobs.error, job.error)))
-          .returning();
+        const [reclaimed] = await applyKernelTransition(db, {
+          entity: 'job',
+          to: 'done',
+          set: { exitCode: 0, error: null, finishedAt: new Date() },
+          where: and(eq(jobs.id, id), eq(jobs.status, 'failed'), eq(jobs.error, job.error)),
+          fromStatus: 'failed',
+          reason: 'reconciled_late_complete',
+          actor: { type: 'runner', id: device.id },
+          source: 'lifecycle',
+        });
         if (reclaimed) {
           logger.warn(
             { jobId: reclaimed.id, reapedError: job.error },
@@ -167,16 +173,20 @@ jobLifecycleDeviceRoutes.post(
     // validated input object.
     const effectiveError: string | null = input.error ?? null;
 
-    let [updated] = await db
-      .update(jobs)
-      .set({
-        status,
+    let [updated] = await applyKernelTransition(db, {
+      entity: 'job',
+      to: status,
+      set: {
         exitCode: input.exitCode,
         error: effectiveError,
         finishedAt: new Date(),
-      })
-      .where(and(eq(jobs.id, id), eq(jobs.status, job.status)))
-      .returning();
+      },
+      where: and(eq(jobs.id, id), eq(jobs.status, job.status)),
+      fromStatus: job.status,
+      reason: status === 'failed' ? (effectiveError ?? 'exit nonzero') : `lifecycle_${status}`,
+      actor: { type: 'runner', id: device.id },
+      source: 'lifecycle',
+    });
 
     if (!updated) throw conflict('job state changed mid-request', 'INVALID_STATE');
 
@@ -292,15 +302,19 @@ jobLifecycleDeviceRoutes.post(
       throw conflict('job is not in a runnable state', 'INVALID_STATE');
     }
 
-    let [updated] = await db
-      .update(jobs)
-      .set({
-        status: 'failed',
+    let [updated] = await applyKernelTransition(db, {
+      entity: 'job',
+      to: 'failed',
+      set: {
         error: input.error,
         finishedAt: new Date(),
-      })
-      .where(and(eq(jobs.id, id), eq(jobs.status, job.status)))
-      .returning();
+      },
+      where: and(eq(jobs.id, id), eq(jobs.status, job.status)),
+      fromStatus: job.status,
+      reason: input.error,
+      actor: { type: 'runner', id: device.id },
+      source: 'lifecycle',
+    });
 
     if (!updated) throw conflict('job state changed mid-request', 'INVALID_STATE');
 

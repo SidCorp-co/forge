@@ -31,6 +31,9 @@ vi.mock('../db/client.js', () => ({
         },
       }),
     }),
+    // ISS-447 — applyKernelTransition writes the kernel_transitions audit row
+    // on the same db handle after each terminal flip.
+    insert: () => ({ values: async () => undefined }),
     select: () => ({
       from: () => ({
         where: () => selectWhere(),

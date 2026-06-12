@@ -753,6 +753,8 @@ describe('db/schema — job_events', () => {
       'tool_result',
       'progress',
       'result',
+      // ISS-442 C0 — audited manual intervention (single-job cancel).
+      'intervention',
     ]);
   });
 

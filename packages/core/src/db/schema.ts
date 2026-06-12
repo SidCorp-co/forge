@@ -742,6 +742,41 @@ export const jobEvents = pgTable(
   }),
 );
 
+// ISS-447 (ISS-442 C1, I2) — append-only audit of every TERMINAL status flip on
+// the three kernel tables (jobs / agent_sessions / pipeline_runs). Written by
+// the single chokepoint `lifecycle/transition.ts:applyKernelTransition`; one row
+// per flipped entity per transition. Queryable so the C6 interventions /
+// throughput metrics can count transitions by entity/reason/source without
+// scraping logs. `from_status` is the declared prior status (the CAS guard's
+// expected value); `actor_id` is a bare uuid (no FK) so a system/sweeper actor
+// with no principal records NULL without a join target.
+export const kernelTransitionEntities = ['job', 'session', 'run'] as const;
+export type KernelTransitionEntity = (typeof kernelTransitionEntities)[number];
+
+export const kernelTransitionActorTypes = ['user', 'system', 'runner', 'sweeper'] as const;
+export type KernelTransitionActorType = (typeof kernelTransitionActorTypes)[number];
+
+export const kernelTransitions = pgTable(
+  'kernel_transitions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    entity: text('entity', { enum: kernelTransitionEntities }).notNull(),
+    entityId: uuid('entity_id').notNull(),
+    fromStatus: text('from_status'),
+    toStatus: text('to_status').notNull(),
+    reason: text('reason'),
+    actorType: text('actor_type', { enum: kernelTransitionActorTypes }).notNull(),
+    actorId: uuid('actor_id'),
+    source: text('source').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    entityIdx: index('kernel_transitions_entity_idx').on(t.entity, t.entityId),
+    createdAtIdx: index('kernel_transitions_created_at_idx').on(t.createdAt),
+    reasonIdx: index('kernel_transitions_reason_idx').on(t.reason),
+  }),
+);
+
 export const devicesRelations = relations(devices, ({ one, many }) => ({
   owner: one(users, { fields: [devices.ownerId], references: [users.id] }),
   jobs: many(jobs),

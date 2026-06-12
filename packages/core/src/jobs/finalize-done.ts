@@ -27,6 +27,7 @@ import { and, eq, gte } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStepContexts, jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
+import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
 import { materializeJobUsage } from '../usage-records/materialize.js';
@@ -72,11 +73,16 @@ export async function hasTerminalHandoffForAttempt(job: JobRow): Promise<boolean
  * of double-finalizing.
  */
 export async function finalizeJobDone(job: JobRow, reason: string): Promise<boolean> {
-  const [updated] = await db
-    .update(jobs)
-    .set({ status: 'done', exitCode: 0, error: null, finishedAt: new Date() })
-    .where(and(eq(jobs.id, job.id), eq(jobs.status, job.status)))
-    .returning();
+  const [updated] = await applyKernelTransition(db, {
+    entity: 'job',
+    to: 'done',
+    set: { exitCode: 0, error: null, finishedAt: new Date() },
+    where: and(eq(jobs.id, job.id), eq(jobs.status, job.status)),
+    fromStatus: job.status,
+    reason,
+    actor: { type: 'system' },
+    source: 'finalize-done',
+  });
   if (!updated) return false; // lost the race; another writer owns the terminal state
 
   logger.warn(
