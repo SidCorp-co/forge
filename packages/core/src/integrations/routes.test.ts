@@ -528,6 +528,163 @@ describe('PATCH — apiKey-provider rotation persists previousApiKey + expiry (I
   });
 });
 
+// === Coolify config tier split — resourceUuid/branch are BINDING-tier (per
+// project), baseUrl stays CONNECTION-tier with the credential. ===
+
+describe('coolify config tier split (binding-scoped deploy target)', () => {
+  function mockCoolifyPair(connOverrides: Record<string, unknown> = {}) {
+    findBindingWithConnectionById.mockResolvedValue({
+      binding: {
+        id: 'int-cl',
+        projectId: PROJECT_ID,
+        provider: 'coolify',
+        environment: 'staging',
+        config: {},
+        integrationSecret: null,
+        active: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      connection: {
+        id: 'conn-cl',
+        ownerType: 'user',
+        ownerId: USER_ID,
+        provider: 'coolify',
+        config: {
+          baseUrl: 'https://coolify.example',
+          resourceUuid: 'res-legacy',
+          branch: 'main',
+          environment: 'staging',
+        },
+        secretsEnc: Buffer.from('enc'),
+        active: true,
+        lastHealthStatus: null,
+        lastHealthAt: null,
+        breakerOpenedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        ...connOverrides,
+      },
+    });
+  }
+
+  it('PATCH — resourceUuid/branch land on the binding, baseUrl on the connection', async () => {
+    process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    mockCoolifyPair();
+    updateConnection.mockResolvedValueOnce({ id: 'conn-cl' });
+    updateBinding.mockResolvedValueOnce({ id: 'int-cl' });
+
+    const res = await patch(token, 'int-cl', {
+      config: { baseUrl: 'https://new.example', resourceUuid: 'res-2', branch: 'dev' },
+    });
+    expect(res.status).toBe(200);
+
+    expect(updateConnection).toHaveBeenCalledTimes(1);
+    const [, connPatch] = updateConnection.mock.calls[0] as [
+      string,
+      { config: Record<string, unknown> },
+    ];
+    expect(connPatch.config.baseUrl).toBe('https://new.example');
+    // The legacy connection-level resourceUuid stays untouched — the new value
+    // must NOT leak into the shared connection config.
+    expect(connPatch.config.resourceUuid).toBe('res-legacy');
+
+    expect(updateBinding).toHaveBeenCalledTimes(1);
+    const [bindId, bindPatch] = updateBinding.mock.calls[0] as [
+      string,
+      { config: Record<string, unknown> },
+    ];
+    expect(bindId).toBe('int-cl');
+    expect(bindPatch.config).toEqual({ resourceUuid: 'res-2', branch: 'dev' });
+  });
+
+  it('PATCH — org-locked project admin CAN set the per-project deploy target', async () => {
+    process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
+    const token = await signUserToken(USER_ID);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    // Project admin but NOT an org admin — the org gate must not fire for
+    // binding-tier fields.
+    effectiveRole.mockResolvedValue({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'member',
+    });
+    mockCoolifyPair({ ownerType: 'org', ownerId: 'org-1' });
+    updateBinding.mockResolvedValueOnce({ id: 'int-cl' });
+
+    const res = await patch(token, 'int-cl', { config: { resourceUuid: 'res-mine' } });
+    expect(res.status).toBe(200);
+    expect(updateConnection).not.toHaveBeenCalled();
+    const [, bindPatch] = updateBinding.mock.calls[0] as [string, { config: object }];
+    expect(bindPatch.config).toEqual({ resourceUuid: 'res-mine' });
+  });
+
+  it('PATCH — org-locked project admin still CANNOT touch the shared baseUrl (403)', async () => {
+    process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
+    const token = await signUserToken(USER_ID);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    effectiveRole.mockResolvedValue({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'member',
+    });
+    mockCoolifyPair({ ownerType: 'org', ownerId: 'org-1' });
+
+    const res = await patch(token, 'int-cl', { config: { baseUrl: 'https://evil.example' } });
+    expect(res.status).toBe(403);
+    expect(updateConnection).not.toHaveBeenCalled();
+    expect(updateBinding).not.toHaveBeenCalled();
+  });
+
+  it('POST create — connection gets baseUrl, binding gets resourceUuid/branch', async () => {
+    process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    findActiveBinding.mockResolvedValueOnce(null);
+    createConnection.mockResolvedValueOnce({
+      id: 'conn-1',
+      provider: 'coolify',
+      config: { baseUrl: VALID_BODY.config.baseUrl, environment: 'staging' },
+      active: true,
+      lastHealthStatus: null,
+      lastHealthAt: null,
+      breakerOpenedAt: null,
+      secretsEnc: Buffer.from('enc'),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    createBinding.mockResolvedValueOnce({
+      id: 'int-1',
+      projectId: PROJECT_ID,
+      provider: 'coolify',
+      environment: 'staging',
+      config: { resourceUuid: VALID_BODY.config.resourceUuid, branch: 'main' },
+      integrationSecret: 'whsec_xxx',
+      active: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const res = await post(token, VALID_BODY);
+    expect(res.status).toBe(201);
+
+    const connArg = createConnection.mock.calls[0]?.[0] as { config: Record<string, unknown> };
+    expect(connArg.config).toEqual({
+      baseUrl: VALID_BODY.config.baseUrl,
+      environment: 'staging',
+    });
+    const bindArg = createBinding.mock.calls[0]?.[0] as { config: Record<string, unknown> };
+    expect(bindArg.config).toEqual({
+      resourceUuid: VALID_BODY.config.resourceUuid,
+      branch: VALID_BODY.config.branch,
+    });
+  });
+});
+
 // === ISS-406 F2 — bind-existing + bindings-list + delivery-retry ===
 
 const CONN_ID = '33333333-3333-4333-8333-333333333333';
@@ -605,6 +762,36 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
     const arg = createBinding.mock.calls[0]?.[0] as { connectionId: string; provider: string };
     expect(arg.connectionId).toBe(CONN_ID);
     expect(arg.provider).toBe('coolify');
+  });
+
+  it('201 — optional config keeps binding-tier overrides and drops connection-tier keys', async () => {
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    findConnectionById.mockResolvedValueOnce(ownedConnection());
+    findActiveBinding.mockResolvedValueOnce(null);
+    createBinding.mockResolvedValueOnce({
+      id: 'bind-2',
+      connectionId: CONN_ID,
+      projectId: PROJECT_ID,
+      provider: 'coolify',
+      environment: 'staging',
+      config: { resourceUuid: 'res-b', branch: 'release' },
+      integrationSecret: 'whsec_x',
+      active: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    findBindingWithConnectionById.mockResolvedValueOnce(undefined);
+
+    const res = await bindReq(token, CONN_ID, {
+      projectId: PROJECT_ID,
+      environment: 'staging',
+      config: { baseUrl: 'https://other.example.com', resourceUuid: 'res-b', branch: 'release' },
+    });
+    expect(res.status).toBe(201);
+    const arg = createBinding.mock.calls[0]?.[0] as { config: Record<string, unknown> };
+    // baseUrl must NOT shadow the shared connection endpoint per-binding.
+    expect(arg.config).toEqual({ resourceUuid: 'res-b', branch: 'release' });
   });
 
   it('409 — provider+env clash on an existing active binding', async () => {

@@ -296,14 +296,14 @@ function ConfigSection({
             />
           </Field>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="Resource UUID">
+            <Field label="Default resource UUID">
               <Input
                 value={form.resourceUuid ?? ""}
                 onChange={(e) => set("resourceUuid", e.target.value)}
                 disabled={!canManage}
               />
             </Field>
-            <Field label="Branch">
+            <Field label="Default branch">
               <Input
                 value={form.branch ?? ""}
                 onChange={(e) => set("branch", e.target.value)}
@@ -311,6 +311,11 @@ function ConfigSection({
               />
             </Field>
           </div>
+          <p className="fg-body-sm text-muted">
+            Resource UUID + branch here are connection-wide defaults. Each project bound to this
+            connection can override its own deploy target in project settings → Integrations, and
+            that per-project value takes precedence.
+          </p>
         </>
       ) : (
         <>

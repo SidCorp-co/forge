@@ -68,6 +68,10 @@ export interface BindingSummary {
   provider: IntegrationProvider;
   environment: IntegrationEnvironment;
   config: Record<string, unknown>;
+  /** Raw binding-tier overrides (e.g. coolify resourceUuid/branch) — `config`
+   *  is the merged connection+binding view; this distinguishes a per-project
+   *  value from one inherited off the shared connection. */
+  bindingConfig: Record<string, unknown>;
   active: boolean;
   lastHealthStatus: string | null;
   lastHealthAt: string | null;
@@ -290,6 +294,10 @@ export interface ConnectionUpdateInput {
 export interface BindExistingConnectionRequest {
   projectId: string;
   environment: IntegrationEnvironment;
+  /** Optional binding-tier overrides (coolify resourceUuid/branch) so the
+   *  shared connection targets a different deploy resource in this project.
+   *  Connection-tier keys (baseUrl) are dropped server-side. */
+  config?: Record<string, unknown>;
 }
 
 // === Response envelopes ===

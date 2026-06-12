@@ -93,6 +93,31 @@ const coolifyConfigSchema = z.object({
   branch: z.string().min(1).max(200),
 });
 
+// Coolify's deploy target is BINDING-tier: two projects sharing one connection
+// (org-shared credential) each deploy their own Coolify resource, so
+// resourceUuid/branch live on binding.config (overlaid over connection.config
+// at dispatch — binding wins). Everything else (baseUrl) stays connection-tier
+// with the credential.
+const COOLIFY_BINDING_CONFIG_KEYS = ['resourceUuid', 'branch'] as const;
+
+/** Split a validated provider config into its connection-tier and binding-tier
+ *  halves. Non-coolify providers have no binding-tier fields today. */
+function splitProviderConfig(
+  provider: string,
+  config: Record<string, unknown>,
+): { connection: Record<string, unknown>; binding: Record<string, unknown> } {
+  if (provider !== 'coolify') return { connection: config, binding: {} };
+  const connection: Record<string, unknown> = { ...config };
+  const binding: Record<string, unknown> = {};
+  for (const key of COOLIFY_BINDING_CONFIG_KEYS) {
+    if (key in connection) {
+      binding[key] = connection[key];
+      delete connection[key];
+    }
+  }
+  return { connection, binding };
+}
+
 const coolifySecretsSchema = z.object({
   apiToken: z.string().min(8).max(2000),
 });
@@ -200,6 +225,9 @@ function summarizeBinding(pair: BindingWithConnection) {
     provider: binding.provider as IntegrationProvider,
     environment: binding.environment as IntegrationEnvironment,
     config: effectiveConfig(pair),
+    // Raw binding-tier overrides so clients can tell a per-project value from
+    // one inherited off the shared connection (`config` is the merged view).
+    bindingConfig: (binding.config ?? {}) as Record<string, unknown>,
     active: binding.active && connection.active,
     lastHealthStatus: connection.lastHealthStatus,
     lastHealthAt: connection.lastHealthAt,
@@ -355,8 +383,10 @@ integrationsRoutes.post(
     const integrationSecret = `whsec_${randomBytes(24).toString('hex')}`;
 
     // Create the credential (connection) then bind it into this project+env.
-    // Config lives on the connection; the binding carries the env + inbound
-    // HMAC. orgId present = org-owned credential: it must be the project's own
+    // Connection-tier config (e.g. coolify baseUrl) lives on the connection;
+    // binding-tier deploy-target fields (coolify resourceUuid/branch) live on
+    // the binding so a later share to another project can override them.
+    // orgId present = org-owned credential: it must be the project's own
     // org and the caller must be an org admin (org connections only bind
     // within their org).
     if (body.orgId) {
@@ -369,11 +399,12 @@ integrationsRoutes.post(
       }
       if (!orgRoleAtLeast(access.orgRole, 'admin')) throw forbidden();
     }
+    const tiers = splitProviderConfig(body.provider, body.config);
     const connection = await createConnection({
       ownerType: body.orgId ? 'org' : 'user',
       ownerId: body.orgId ?? userId,
       provider: body.provider,
-      config: { ...body.config, environment: body.environment },
+      config: { ...tiers.connection, environment: body.environment },
       secrets: body.secrets,
     });
     let binding: Awaited<ReturnType<typeof createBinding>>;
@@ -383,6 +414,7 @@ integrationsRoutes.post(
         projectId,
         provider: body.provider,
         environment: body.environment,
+        config: tiers.binding,
         integrationSecret,
       });
     } catch (err) {
@@ -426,27 +458,44 @@ integrationsRoutes.patch(
 
     const patch = c.req.valid('json');
 
-    // Connection-level fields (config/secrets/active) of an ORG-owned
-    // credential are managed at the org tier — a project admin alone must not
-    // rotate or reconfigure a credential shared across the org's projects.
-    if (
-      connection.ownerType === 'org' &&
-      (patch.config !== undefined || patch.secrets !== undefined || patch.active !== undefined)
-    ) {
-      const access = await effectiveProjectRole(userId, projectId);
-      if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
-    }
-
     // Re-validate the loose config against the existing provider so a PATCH can
-    // never strip the wrong provider's fields. Config lives on the connection.
+    // never strip the wrong provider's fields, then split it into tiers:
+    // coolify resourceUuid/branch are BINDING-scoped (the deploy target follows
+    // the project), the rest merges into the shared connection config.
     let mergedConfig: Record<string, unknown> | undefined;
+    let mergedBindingConfig: Record<string, unknown> | undefined;
     if (patch.config) {
       const parsed = configSchemaForProvider(binding.provider).safeParse(patch.config);
       if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-      mergedConfig = {
-        ...((connection.config ?? {}) as object),
-        ...(parsed.data as Record<string, unknown>),
-      };
+      const tiers = splitProviderConfig(
+        binding.provider,
+        parsed.data as Record<string, unknown>,
+      );
+      if (Object.keys(tiers.connection).length > 0) {
+        mergedConfig = {
+          ...((connection.config ?? {}) as object),
+          ...tiers.connection,
+        };
+      }
+      if (Object.keys(tiers.binding).length > 0) {
+        mergedBindingConfig = {
+          ...((binding.config ?? {}) as object),
+          ...tiers.binding,
+        };
+      }
+    }
+
+    // Connection-level fields (connection-tier config/secrets/active) of an
+    // ORG-owned credential are managed at the org tier — a project admin alone
+    // must not rotate or reconfigure a credential shared across the org's
+    // projects. Binding-tier deploy-target fields stay project-admin editable:
+    // they only affect THIS project's binding.
+    if (
+      connection.ownerType === 'org' &&
+      (mergedConfig !== undefined || patch.secrets !== undefined || patch.active !== undefined)
+    ) {
+      const access = await effectiveProjectRole(userId, projectId);
+      if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
     }
 
     let mergedSecrets: Record<string, unknown> | null | undefined = undefined;
@@ -478,16 +527,20 @@ integrationsRoutes.patch(
       }
     }
 
-    // Config + secrets live on the connection; `active` toggles the binding
-    // (disabling resolution for this project without touching the credential).
+    // Connection-tier config + secrets live on the connection; binding-tier
+    // config (deploy target) + `active` live on the binding (disabling
+    // resolution for this project without touching the credential).
     if (mergedConfig !== undefined || mergedSecrets !== undefined) {
       const connPatch: Parameters<typeof updateConnection>[1] = {};
       if (mergedConfig !== undefined) connPatch.config = mergedConfig;
       if (mergedSecrets !== undefined) connPatch.secrets = mergedSecrets;
       await updateConnection(connection.id, connPatch);
     }
-    if (patch.active !== undefined) {
-      await updateBinding(binding.id, { active: patch.active });
+    if (mergedBindingConfig !== undefined || patch.active !== undefined) {
+      const bindingPatch: Parameters<typeof updateBinding>[1] = {};
+      if (mergedBindingConfig !== undefined) bindingPatch.config = mergedBindingConfig;
+      if (patch.active !== undefined) bindingPatch.active = patch.active;
+      await updateBinding(binding.id, bindingPatch);
     }
 
     const refreshed = await findBindingWithConnectionById(id);
@@ -1146,6 +1199,10 @@ integrationConnectionsRoutes.post(
 const bindExistingSchema = z.object({
   projectId: z.string().min(1),
   environment: environmentSchema,
+  // Binding-tier overrides (coolify resourceUuid/branch) so a shared connection
+  // can target a different Coolify resource per project. Connection-tier keys
+  // are validated then dropped — a bind must not shadow the shared baseUrl.
+  config: z.record(z.string(), z.unknown()).optional(),
 });
 
 integrationConnectionsRoutes.post(
@@ -1187,6 +1244,15 @@ integrationConnectionsRoutes.post(
       });
     }
 
+    // Optional per-project deploy-target overrides, validated against the
+    // provider's partial schema then reduced to binding-tier keys only.
+    let bindingConfig: Record<string, unknown> = {};
+    if (body.config) {
+      const parsed = configSchemaForProvider(provider).safeParse(body.config);
+      if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
+      bindingConfig = splitProviderConfig(provider, parsed.data as Record<string, unknown>).binding;
+    }
+
     // Auto-mint a per-binding HMAC secret for inbound webhook verification.
     const integrationSecret = `whsec_${randomBytes(24).toString('hex')}`;
     let binding: Awaited<ReturnType<typeof createBinding>>;
@@ -1196,6 +1262,7 @@ integrationConnectionsRoutes.post(
         projectId: body.projectId,
         provider,
         environment: body.environment,
+        config: bindingConfig,
         integrationSecret,
       });
     } catch (err) {
