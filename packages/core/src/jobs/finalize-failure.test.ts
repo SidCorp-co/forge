@@ -107,8 +107,8 @@ function makeJob(overrides: Record<string, unknown> = {}) {
     status: 'failed',
     exitCode: 1,
     error: 'boom',
-    failureKind: 'transient',
-    failureReason: 'transient blip',
+    failureKind: 'infra',
+    failureReason: 'infra blip',
     agentSessionId: 's1',
     ...overrides,
     // biome-ignore lint/suspicious/noExplicitAny: test stand-in for JobRow
@@ -152,7 +152,7 @@ describe('finalizeFailedJob', () => {
     );
     expect(hooksEmitMock).toHaveBeenCalledWith(
       'jobFailed',
-      expect.objectContaining({ jobId: 'j1', failureKind: 'transient' }),
+      expect.objectContaining({ jobId: 'j1', failureKind: 'infra' }),
     );
     expect(publishHealthMock).toHaveBeenCalledWith('p1', ['i1']);
   });

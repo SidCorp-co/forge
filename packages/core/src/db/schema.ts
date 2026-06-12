@@ -650,13 +650,15 @@ export const jobs = pgTable(
     // jobs alongside interactive sessions. Bare uuid (no FK) to match the
     // notifications.agent_session_id pattern — adding the FK later is additive.
     agentSessionId: uuid('agent_session_id'),
-    // Pipeline self-healing (Phase H, ISS-306). Set when the job ends in
-    // `failed`. failureKind drives whether the issue-state sweeper should
-    // re-fire (transient/unknown) or escalate (permanent). classifierVersion
-    // pins the classifier rules at write time so old rows survive future
-    // pattern changes without silent reclassification.
+    // Pipeline self-healing (Phase H, ISS-306; reshaped ISS-450 Decision C).
+    // Set when the job ends in `failed`. failureKind drives the per-class retry
+    // policy in retry.ts: `code` → no retry (park at waiting); `transient-cc`
+    // → immediate different-device failover (Claude-CLI startup death);
+    // `infra`/`timeout` → bounded round-robin retry. classifierVersion pins the
+    // classifier rules at write time so old rows survive future pattern changes
+    // without silent reclassification. (CHECK constraint set in migration 0115.)
     failureKind: text('failure_kind', {
-      enum: ['transient', 'permission', 'permanent', 'timeout', 'unknown'],
+      enum: ['code', 'infra', 'transient-cc', 'timeout'],
     }),
     failureReason: text('failure_reason'),
     failureMeta: jsonb('failure_meta'),

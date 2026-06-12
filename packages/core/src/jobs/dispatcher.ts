@@ -106,7 +106,7 @@ export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched'
       to: 'failed',
       set: {
         finishedAt: new Date(),
-        failureKind: 'permanent',
+        failureKind: 'code',
         failureReason: 'monthly_budget_exhausted',
         failureMeta: {
           spent: budgetCheck.spent,
@@ -374,7 +374,7 @@ async function dispatchViaRunner(
       to: 'failed',
       set: {
         error: errorMsg,
-        failureKind: 'permanent',
+        failureKind: 'code',
         failureReason: errorMsg,
       },
       where: eq(jobs.id, job.id),
@@ -517,8 +517,9 @@ async function dispatchViaRunner(
       set: {
         finishedAt: new Date(),
         error: errorReason,
-        failureKind: 'unknown',
+        failureKind: 'infra',
         failureReason: errorReason,
+        failureMeta: { needsReview: true } as never,
         classifierVersion: 1,
       },
       where: and(

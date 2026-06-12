@@ -93,7 +93,7 @@ export async function runStaleSweep(): Promise<{
       set: {
         error: 'stale',
         finishedAt: new Date(),
-        failureKind: 'transient',
+        failureKind: 'timeout',
         failureReason: STALE_REASON,
         classifierVersion: 1,
       },

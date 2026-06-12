@@ -47,15 +47,16 @@ export interface HookPayloads {
     reopenCount: number;
   };
   // ISS-20 (Epic 4) — terminal job lifecycle events. PM subscribers branch on
-  // `failureKind` so they react differently to transient/permanent/unknown
-  // classifications. Emitted from `jobs/lifecycle-routes.ts` after
-  // `scheduleRetry` writes the classification onto the row.
+  // `failureKind` so they react differently to code/infra/transient-cc/timeout
+  // classifications (Decision C, ISS-450). Emitted from
+  // `jobs/lifecycle-routes.ts` after `scheduleRetry` writes the classification
+  // onto the row.
   jobFailed: {
     jobId: string;
     projectId: string;
     issueId: string | null;
     type: JobType;
-    failureKind: 'transient' | 'permission' | 'permanent' | 'timeout' | 'unknown' | null;
+    failureKind: 'code' | 'infra' | 'transient-cc' | 'timeout' | null;
     failureReason: string | null;
   };
   jobCompleted: {

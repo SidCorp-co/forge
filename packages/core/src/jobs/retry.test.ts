@@ -28,7 +28,11 @@ vi.mock('../pipeline/recovery-verifier.js', () => ({
 }));
 
 // Round-robin candidate set. Default: a healthy 3-device project.
-const onlineDevicesMock = vi.fn(async (..._args: unknown[]) => ['device-A', 'device-B', 'device-C']);
+const onlineDevicesMock = vi.fn(async (..._args: unknown[]) => [
+  'device-A',
+  'device-B',
+  'device-C',
+]);
 vi.mock('../runners/select.js', () => ({
   onlineCapableDeviceIds: (...a: unknown[]) => onlineDevicesMock(...(a as [never])),
 }));
@@ -146,16 +150,17 @@ describe('scheduleAutoRetryWithVerify — uniform round-robin', () => {
     expect(enqueueMock).toHaveBeenCalledWith(expect.anything(), { startAfterSeconds: 60 });
   });
 
-  it('RETRIES every error kind uniformly — even a "permanent" classification', async () => {
-    insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
+  it('does NOT retry a "code" classification — parks instead (Decision C)', async () => {
     const result = await scheduleAutoRetryWithVerify(
       { ...baseJob, error: 'invalid_request_error' } as never,
       'crashed',
     );
-    expect(result.scheduled).toBe(true);
+    expect(result.scheduled).toBe(false);
+    expect(result.reason).toBe('non_retryable_code');
+    expect(dbInsert).not.toHaveBeenCalled();
   });
 
-  it('RETRIES a "permission" classification too (no error-type branching)', async () => {
+  it('RETRIES an "infra" classification (permission text → infra → bounded retry)', async () => {
     insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
     const result = await scheduleAutoRetryWithVerify(
       { ...baseJob, error: '401 Unauthorized' } as never,
@@ -164,19 +169,48 @@ describe('scheduleAutoRetryWithVerify — uniform round-robin', () => {
     expect(result.scheduled).toBe(true);
   });
 
-  it('RETRIES a weekly-limit / unknown-command failure uniformly', async () => {
+  it('RETRIES a weekly-limit (infra fallback) failure', async () => {
     insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
     const r1 = await scheduleAutoRetryWithVerify(
       { ...baseJob, error: "You've hit your weekly limit" } as never,
       'limit',
     );
     expect(r1.scheduled).toBe(true);
+  });
+
+  it('transient-cc (Unknown command) fails over to a DIFFERENT device with ~0 cooldown', async () => {
     insertReturning.mockResolvedValueOnce([{ id: 'j3' }]);
-    const r2 = await scheduleAutoRetryWithVerify(
+    // baseJob ran on device-A; online set is A/B/C → failover picks B.
+    const r = await scheduleAutoRetryWithVerify(
       { ...baseJob, error: 'Unknown command: /forge-review' } as never,
       'unknown-cmd',
     );
-    expect(r2.scheduled).toBe(true);
+    expect(r.scheduled).toBe(true);
+    const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
+    // Immediate failover: no cooldown, target a different device, fresh tries.
+    expect(inserted.retryAfterAt).toEqual(new Date(FIXED_NOW));
+    expect((inserted.payload as Record<string, unknown>)._autoRetry).toEqual({
+      round: 1,
+      target: 'device-B',
+      tries: 1,
+      done: ['device-A'],
+    });
+    expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'j3' }), {
+      startAfterSeconds: 0,
+    });
+  });
+
+  it('transient-cc with no OTHER online device falls back to the standard cooldown rotation', async () => {
+    onlineDevicesMock.mockResolvedValueOnce(['device-A']);
+    insertReturning.mockResolvedValueOnce([{ id: 'j3' }]);
+    const r = await scheduleAutoRetryWithVerify(
+      { ...baseJob, deviceId: 'device-A', error: 'Unknown command: /forge-review' } as never,
+      'unknown-cmd',
+    );
+    expect(r.scheduled).toBe(true);
+    const inserted = insertValues.mock.calls[0]?.[0] as Record<string, unknown>;
+    // No failover target → standard 60s cooldown rotation applies.
+    expect(inserted.retryAfterAt).toEqual(new Date(FIXED_NOW + RETRY_COOLDOWN_MS));
   });
 
   it('skips retry + marks completed_via_recovery when verifier says advanced', async () => {
@@ -206,13 +240,12 @@ describe('scheduleAutoRetryWithVerify — uniform round-robin', () => {
     expect(dbInsert).not.toHaveBeenCalled();
   });
 
-  it('always increments recoveryStats (display label) — even though it always retries', async () => {
-    insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
+  it('increments recoveryStats with the effective kind even for a non-retryable code failure', async () => {
     await scheduleAutoRetryWithVerify(
       { ...baseJob, error: 'invalid_request_error' } as never,
       'crashed',
     );
-    expect(incrementRecoveryStatsMock).toHaveBeenCalledWith('s1', 'permanent');
+    expect(incrementRecoveryStatsMock).toHaveBeenCalledWith('s1', 'code');
     expect(publishMock).toHaveBeenCalledWith('p1', 's1');
   });
 
@@ -237,7 +270,7 @@ describe('scheduleAutoRetryWithVerify — uniform round-robin', () => {
     await scheduleAutoRetryWithVerify({ ...baseJob } as never, 'crashed');
     expect(updateSet).toHaveBeenCalled();
     const setArg = updateSet.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
-    expect(setArg?.failureKind).toBe('transient');
+    expect(setArg?.failureKind).toBe('infra');
   });
 
   describe('round-robin rotation state', () => {

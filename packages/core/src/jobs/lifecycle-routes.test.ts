@@ -461,7 +461,7 @@ describe('jobFailed / jobCompleted hook emits', () => {
         status: 'failed',
         exitCode: 1,
         error: 'crashed',
-        failureKind: 'transient',
+        failureKind: 'infra',
         failureReason: 'classified',
       },
     ]);
@@ -477,7 +477,7 @@ describe('jobFailed / jobCompleted hook emits', () => {
     expect(r.status).toBe(200);
     expect(failedSpy).toHaveBeenCalledTimes(1);
     expect(failedSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ failureKind: 'transient', failureReason: 'classified' }),
+      expect.objectContaining({ failureKind: 'infra', failureReason: 'classified' }),
     );
     expect(completedSpy).not.toHaveBeenCalled();
   });
@@ -505,7 +505,7 @@ describe('jobFailed / jobCompleted hook emits', () => {
         ...jobRow,
         status: 'failed',
         error: 'segfault',
-        failureKind: 'unknown',
+        failureKind: 'infra',
         failureReason: 'unmapped',
       },
     ]);
@@ -521,7 +521,7 @@ describe('jobFailed / jobCompleted hook emits', () => {
     expect(r.status).toBe(200);
     expect(failedSpy).toHaveBeenCalledTimes(1);
     expect(failedSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ failureKind: 'unknown', failureReason: 'unmapped' }),
+      expect.objectContaining({ failureKind: 'infra', failureReason: 'unmapped' }),
     );
   });
 });

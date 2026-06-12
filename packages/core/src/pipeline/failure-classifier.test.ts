@@ -3,17 +3,17 @@ import { CLASSIFIER_VERSION, classifyFailure } from './failure-classifier.js';
 
 describe('failure-classifier', () => {
   it('returns CLASSIFIER_VERSION on every result so callers can pin it', () => {
-    expect(CLASSIFIER_VERSION).toBe(2);
+    expect(CLASSIFIER_VERSION).toBe(3);
     expect(classifyFailure({}).version).toBe(CLASSIFIER_VERSION);
     expect(classifyFailure({ error: 'whatever' }).version).toBe(CLASSIFIER_VERSION);
   });
 
-  it('classifies content-filter blocks as permanent (Anthropic real-world)', () => {
+  it('classifies content-filter blocks as code (Decision C: permanent→code)', () => {
     const r = classifyFailure({
       error:
         'API Error: {"type":"error","error":{"type":"invalid_request_error","message":"Output blocked by content filtering policy"}}',
     });
-    expect(r.kind).toBe('permanent');
+    expect(r.kind).toBe('code');
     expect(r.reason).toMatch(/content/i);
   });
 
@@ -22,55 +22,53 @@ describe('failure-classifier', () => {
       error: 'API Error',
       meta: { type: 'error', error: { type: 'invalid_request_error', message: 'bad input' } },
     });
-    expect(r.kind).toBe('permanent');
+    expect(r.kind).toBe('code');
     expect(r.reason).toContain('invalid_request_error');
   });
 
-  it('classifies authentication_error meta as permission (v2 split)', () => {
+  it('classifies authentication_error meta as infra (Decision C: permission→infra)', () => {
     const r = classifyFailure({
       meta: { error: { type: 'authentication_error', message: 'invalid api key' } },
     });
-    expect(r.kind).toBe('permission');
+    expect(r.kind).toBe('infra');
   });
 
-  it('classifies permission_error meta as permission', () => {
+  it('classifies permission_error meta as infra', () => {
     const r = classifyFailure({
       meta: { error: { type: 'permission_error', message: 'no access' } },
     });
-    expect(r.kind).toBe('permission');
+    expect(r.kind).toBe('infra');
   });
 
-  it('classifies rate_limit_error from meta as transient', () => {
+  it('classifies rate_limit_error from meta as infra (Decision C: transient→infra)', () => {
     const r = classifyFailure({
       meta: { error: { type: 'rate_limit_error', message: 'slow down' } },
     });
-    expect(r.kind).toBe('transient');
+    expect(r.kind).toBe('infra');
   });
 
-  it('classifies overloaded_error as transient', () => {
+  it('classifies overloaded_error as infra', () => {
     const r = classifyFailure({ meta: { error: { type: 'overloaded_error' } } });
-    expect(r.kind).toBe('transient');
+    expect(r.kind).toBe('infra');
   });
 
-  it('classifies "401 Unauthorized" text as permission (v2 split)', () => {
-    expect(classifyFailure({ error: 'HTTP 401 Unauthorized' }).kind).toBe('permission');
+  it('classifies "401 Unauthorized" text as infra (permission→infra)', () => {
+    expect(classifyFailure({ error: 'HTTP 401 Unauthorized' }).kind).toBe('infra');
   });
 
-  it('classifies "Forbidden" text as permission (v2 split)', () => {
-    expect(classifyFailure({ error: 'Forbidden access to resource' }).kind).toBe('permission');
+  it('classifies "Forbidden" text as infra (permission→infra)', () => {
+    expect(classifyFailure({ error: 'Forbidden access to resource' }).kind).toBe('infra');
   });
 
-  it('classifies permission_denied as permission', () => {
-    expect(classifyFailure({ error: 'permission_denied' }).kind).toBe('permission');
+  it('classifies permission_denied as infra', () => {
+    expect(classifyFailure({ error: 'permission_denied' }).kind).toBe('infra');
   });
 
-  it('classifies validation_error text as permanent', () => {
-    expect(classifyFailure({ error: 'schema validation_error: missing field' }).kind).toBe(
-      'permanent',
-    );
+  it('classifies validation_error text as code (permanent→code)', () => {
+    expect(classifyFailure({ error: 'schema validation_error: missing field' }).kind).toBe('code');
   });
 
-  it('classifies ETIMEDOUT as timeout (v2 split)', () => {
+  it('classifies ETIMEDOUT as timeout (unchanged)', () => {
     expect(classifyFailure({ error: 'connect ETIMEDOUT 1.2.3.4:443' }).kind).toBe('timeout');
   });
 
@@ -78,45 +76,74 @@ describe('failure-classifier', () => {
     expect(classifyFailure({ error: 'no progress for 5m' }).kind).toBe('timeout');
   });
 
-  it('classifies "heartbeat stale" as timeout (v2 split)', () => {
+  it('classifies "heartbeat stale" as timeout', () => {
     expect(classifyFailure({ error: 'heartbeat stale' }).kind).toBe('timeout');
     expect(classifyFailure({ error: 'heartbeat missing' }).kind).toBe('timeout');
   });
 
-  it('classifies "runner stale" as transient (legacy phrasing)', () => {
-    // The "runner (offline|stale|disconnected)" branch lives in the
-    // transient bucket; mixed phrasings like "runner stale heartbeat" can
-    // legitimately land on either side of the split and are not asserted.
-    expect(classifyFailure({ error: 'runner stale' }).kind).toBe('transient');
+  it('classifies "runner stale" as infra (transient→infra, legacy phrasing)', () => {
+    expect(classifyFailure({ error: 'runner stale' }).kind).toBe('infra');
   });
 
-  it('classifies ECONNRESET as transient', () => {
-    expect(classifyFailure({ error: 'socket ECONNRESET' }).kind).toBe('transient');
+  it('classifies ECONNRESET as infra (transient→infra)', () => {
+    expect(classifyFailure({ error: 'socket ECONNRESET' }).kind).toBe('infra');
   });
 
-  it('classifies "503 Service Unavailable" as transient', () => {
-    expect(classifyFailure({ error: 'HTTP 503 Service Unavailable' }).kind).toBe('transient');
+  it('classifies "503 Service Unavailable" as infra', () => {
+    expect(classifyFailure({ error: 'HTTP 503 Service Unavailable' }).kind).toBe('infra');
   });
 
-  it('classifies HTTP 429 / rate limit as transient', () => {
-    expect(classifyFailure({ error: 'rate limit exceeded' }).kind).toBe('transient');
-    expect(classifyFailure({ error: '429 too many requests' }).kind).toBe('transient');
+  it('classifies HTTP 429 / rate limit as infra', () => {
+    expect(classifyFailure({ error: 'rate limit exceeded' }).kind).toBe('infra');
+    expect(classifyFailure({ error: '429 too many requests' }).kind).toBe('infra');
   });
 
-  it('classifies "runner offline" as transient', () => {
-    expect(classifyFailure({ error: 'runner offline (server unreachable)' }).kind).toBe(
-      'transient',
-    );
+  it('classifies "runner offline" as infra', () => {
+    expect(classifyFailure({ error: 'runner offline (server unreachable)' }).kind).toBe('infra');
   });
 
-  it('classifies unmatched text as unknown (gets cautious retry)', () => {
-    const r = classifyFailure({ error: 'unknown weirdness' });
-    expect(r.kind).toBe('unknown');
-    expect(r.reason).toContain('unknown weirdness');
+  describe('cc-startup-death → transient-cc (ISS-450 / ISS-402)', () => {
+    it('classifies a tiny session that died before first tool use via structured signal', () => {
+      const r = classifyFailure({
+        error: 'agent session terminated',
+        signals: { diedBeforeFirstToolUse: true, sessionMessageCount: 2 },
+      });
+      expect(r.kind).toBe('transient-cc');
+      expect(r.reason).toMatch(/cc-startup/i);
+    });
+
+    it('does NOT treat a long-running session as a startup death (message threshold)', () => {
+      const r = classifyFailure({
+        error: 'socket ECONNRESET',
+        signals: { diedBeforeFirstToolUse: true, sessionMessageCount: 42 },
+      });
+      expect(r.kind).toBe('infra');
+    });
+
+    it('does NOT treat a session that used a tool as a startup death', () => {
+      const r = classifyFailure({
+        error: 'socket ECONNRESET',
+        signals: { diedBeforeFirstToolUse: false, sessionMessageCount: 1 },
+      });
+      expect(r.kind).toBe('infra');
+    });
+
+    it('falls back to the "Unknown command" error signature when no signal', () => {
+      expect(classifyFailure({ error: 'Unknown command: /forge-review' }).kind).toBe(
+        'transient-cc',
+      );
+    });
   });
 
-  it('classifies empty input as unknown with a stable reason', () => {
-    expect(classifyFailure({}).kind).toBe('unknown');
+  it('classifies unmatched text as infra + flags needsReview (gets cautious retry)', () => {
+    const r = classifyFailure({ error: 'inscrutable weirdness' });
+    expect(r.kind).toBe('infra');
+    expect(r.reason).toContain('inscrutable weirdness');
+    expect(r.meta).toMatchObject({ needsReview: true });
+  });
+
+  it('classifies empty input as infra with a stable reason', () => {
+    expect(classifyFailure({}).kind).toBe('infra');
     expect(classifyFailure({}).reason).toBe('unclassified');
   });
 
@@ -133,11 +160,11 @@ describe('failure-classifier', () => {
     expect(r.reason).toMatch(/…$/);
   });
 
-  it('prefers permanent when both pattern groups match (permanent is more specific)', () => {
+  it('prefers code when both pattern groups match (permanent→code is more specific)', () => {
     const r = classifyFailure({
       error: 'invalid_request_error: rate limit-shaped phrasing but auth was the real cause',
     });
-    expect(r.kind).toBe('permanent');
+    expect(r.kind).toBe('code');
   });
 
   describe('retryAfter extraction', () => {
@@ -155,7 +182,7 @@ describe('failure-classifier', () => {
         error: '429 too many requests',
         meta: { headers: { 'retry-after': '600' } },
       });
-      expect(r.kind).toBe('transient');
+      expect(r.kind).toBe('infra');
       expect(r.retryAfter).toEqual(new Date(FIXED_NOW + 600 * 1000));
     });
 

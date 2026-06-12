@@ -28,14 +28,14 @@ describe('registerPmSubscribers', () => {
       projectId: 'p-1',
       issueId: 'i-1',
       type: 'plan',
-      failureKind: 'transient',
+      failureKind: 'infra',
       failureReason: 'timeout',
     });
     expect(spawnMock).toHaveBeenCalledTimes(1);
     expect(spawnMock).toHaveBeenCalledWith({
       projectId: 'p-1',
       cause: 'job-failed',
-      eventRef: { jobId: 'j-1', jobType: 'plan', failureKind: 'transient', issueId: 'i-1' },
+      eventRef: { jobId: 'j-1', jobType: 'plan', failureKind: 'infra', issueId: 'i-1' },
     });
     expect(autoDisableMock).not.toHaveBeenCalled();
   });
@@ -48,7 +48,7 @@ describe('registerPmSubscribers', () => {
       projectId: 'p-1',
       issueId: null,
       type: 'pm',
-      failureKind: 'transient',
+      failureKind: 'infra',
       failureReason: null,
     });
     expect(autoDisableMock).toHaveBeenCalledTimes(1);

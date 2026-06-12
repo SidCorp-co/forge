@@ -409,7 +409,7 @@ export async function reconcileOrphanedJobs(
         set: {
           error: 'session_lost',
           finishedAt: new Date(),
-          failureKind: 'transient',
+          failureKind: 'infra',
           failureReason:
             'agent session terminated without job completion (silent runner/agent death)',
           classifierVersion: 1,
@@ -493,7 +493,7 @@ export async function reconcileNeverClaimedDispatches(
         set: {
           error: 'dispatch_unclaimed',
           finishedAt: new Date(),
-          failureKind: 'transient',
+          failureKind: 'infra',
           failureReason:
             'dispatch never claimed by a runner (no started event within grace window)',
           classifierVersion: 1,

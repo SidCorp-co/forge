@@ -28,7 +28,7 @@ describe('publishSessionRecoveryChanged', () => {
   it('publishes recoveryStats snapshot to the project room', async () => {
     const recoveryStats = {
       totalFailures: 2,
-      byKind: { transient: 1, permission: 0, permanent: 0, timeout: 1 },
+      byKind: { code: 0, infra: 1, 'transient-cc': 0, timeout: 1 },
       lastFailureAt: '2026-05-23T12:00:00.000Z',
       lastFailureKind: 'timeout',
       autoRetries: 1,
@@ -53,9 +53,9 @@ describe('publishSessionRecoveryChanged', () => {
     const call = publishSpy.mock.calls[0]?.[1] as { data: { recoveryStats: unknown } };
     expect(call.data.recoveryStats).toEqual({
       totalFailures: 0,
-      byKind: { transient: 0, permission: 0, permanent: 0, timeout: 0 },
+      byKind: { code: 0, infra: 0, 'transient-cc': 0, timeout: 0 },
       lastFailureAt: new Date(0).toISOString(),
-      lastFailureKind: 'unknown',
+      lastFailureKind: 'infra',
       autoRetries: 0,
     });
   });

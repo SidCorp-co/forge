@@ -222,7 +222,7 @@ jobLifecycleDeviceRoutes.post(
       if (resumePolicy === 'abort') {
         const [reclassified] = await db
           .update(jobs)
-          .set({ failureReason: 'resume_failed', failureKind: 'permanent', classifierVersion: 1 })
+          .set({ failureReason: 'resume_failed', failureKind: 'code', classifierVersion: 1 })
           .where(eq(jobs.id, updated.id))
           .returning();
         if (reclassified) updated = reclassified;
@@ -339,7 +339,7 @@ jobLifecycleDeviceRoutes.post(
     if (resumePolicy === 'abort') {
       const [reclassified] = await db
         .update(jobs)
-        .set({ failureReason: 'resume_failed', failureKind: 'permanent', classifierVersion: 1 })
+        .set({ failureReason: 'resume_failed', failureKind: 'code', classifierVersion: 1 })
         .where(eq(jobs.id, updated.id))
         .returning();
       if (reclassified) updated = reclassified;

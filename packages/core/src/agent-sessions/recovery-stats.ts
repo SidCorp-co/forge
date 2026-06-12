@@ -26,14 +26,9 @@ import {
   normaliseRecoveryStats,
 } from './pipeline-control-types.js';
 
-/** Failure kinds that have a `byKind` bucket. `unknown` is counted in
- * `totalFailures` and `lastFailureKind` but not in `byKind`. */
-const BUCKETED_KINDS: ReadonlyArray<FailureKind> = [
-  'transient',
-  'permission',
-  'permanent',
-  'timeout',
-];
+/** Failure kinds that have a `byKind` bucket. All four classifier v3 kinds
+ * (ISS-450 Decision C) now bucket — there is no more catch-all `unknown`. */
+const BUCKETED_KINDS: ReadonlyArray<FailureKind> = ['code', 'infra', 'transient-cc', 'timeout'];
 
 async function loadHealth(sessionId: string): Promise<PipelineHealth | null> {
   const [row] = await db
@@ -64,7 +59,7 @@ export async function incrementRecoveryStats(
 
   const byKind = { ...baseStats.byKind };
   if (BUCKETED_KINDS.includes(kind)) {
-    byKind[kind as Exclude<FailureKind, 'unknown'>] += 1;
+    byKind[kind] += 1;
   }
 
   const next: RecoveryStats = {

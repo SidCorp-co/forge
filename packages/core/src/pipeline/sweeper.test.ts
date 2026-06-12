@@ -227,7 +227,7 @@ describe('reconcileOrphanedJobs (ISS-280)', () => {
       projectId: 'p1',
       issueId: 'i1',
       status: 'failed',
-      failureKind: 'transient',
+      failureKind: 'infra',
     };
     sessionsWhere.mockResolvedValueOnce([updatedRow]);
 

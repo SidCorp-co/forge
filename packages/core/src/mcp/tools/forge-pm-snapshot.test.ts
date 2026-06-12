@@ -109,7 +109,7 @@ describe('forge_pm.snapshot', () => {
         {
           id: 'j2',
           type: 'review',
-          failureKind: 'transient',
+          failureKind: 'infra',
           failureReason: 'x'.repeat(500),
           finishedAt: new Date('2026-05-01T00:00:00Z'),
         },
