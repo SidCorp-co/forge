@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Decision, audit, and spike issues whose only deliverable is a write-up now flow through the pipeline to completion — they produce a durable in-repo proposal document instead of looping unresolved.
 - Scheduled and chat runs no longer stay stuck showing "running" indefinitely after they finish — a backstop now closes these job-less runs once their session is no longer live.
 - Operators can now cancel a single stuck pipeline job from the API or MCP — including jobs orphaned under an already-finished run — with each cancel recorded for audit.
+- Pipeline job, session, and run state changes now flow through one guarded path, eliminating a class of successful steps that were mislabeled as failed or cancelled (and existing mislabeled records were corrected).
 
 ## [0.3.0] - 2026-06-11
 
