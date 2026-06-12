@@ -40,10 +40,17 @@ test/<slug>     perf/<slug>
 
 ## Pre-push hook
 
-`.githooks/pre-push` validates the branch name and builds the packages with changed files before every push. Installed via `git config core.hooksPath .githooks` (auto-set by `pnpm install`).
+`.githooks/pre-push` — cheap guards only; CI (`ci-passed`) is the authoritative gate. Installed via `git config core.hooksPath .githooks` (auto-set by `pnpm install`).
 
-- `SKIP_PREPUSH=1 git push` — bypass (emergency, or pre-existing flaky tests on unrelated work; file a follow-up for the flake)
-- `PREPUSH_FULL=1 git push` — also run the affected packages' test suites
+| Check | Default |
+|---|---|
+| Branch name (ADR 0014) | warn only, never blocks |
+| `tauri.conf.json` `bundle.active=true` | hard fail (a `false` silently produces zero release artifacts) |
+| Builds / tests | skipped |
+
+- `PREPUSH_BUILD=1 git push` — build affected packages
+- `PREPUSH_FULL=1 git push` — build + run their test suites
+- `SKIP_PREPUSH=1 git push` — skip everything
 
 ## Commits
 

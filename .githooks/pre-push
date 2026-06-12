@@ -1,17 +1,17 @@
 #!/bin/bash
-# pre-push hook — fast local feedback for Trunk-Based Development.
+# pre-push hook — cheap guards only. CI (`ci-passed` aggregate check) is the
+# AUTHORITATIVE merge gate; this hook just catches obvious mistakes fast and
+# stays out of the way.
 #
-# CI (.github/workflows/ci.yml, aggregated by the `ci-passed` required check)
-# is the AUTHORITATIVE merge gate. This hook just catches a build break before
-# you push — contributors may not have it installed and can bypass it, so it
-# must never be the only thing standing between a bad commit and main.
-#
-# By default it runs the cheap guards + `pnpm build` for the affected packages
-# (no DB needed, ~couple min). The full package test suites are opt-in.
+# Default behavior:
+#   - branch-name check (ADR 0014)  → WARN only, never blocks
+#   - tauri bundle.active guard     → hard FAIL (silently kills release artifacts)
+#   - package builds/tests          → SKIPPED
 #
 # Controls:
-#   - SKIP_PREPUSH=1 git push   — bypass entirely (e.g. emergency revert)
-#   - PREPUSH_FULL=1 git push   — also run the affected packages' test suites
+#   PREPUSH_BUILD=1 git push   — also build affected packages
+#   PREPUSH_FULL=1  git push   — build + run affected packages' test suites
+#   SKIP_PREPUSH=1  git push   — skip everything
 
 set -e
 
@@ -20,43 +20,57 @@ if [ "$SKIP_PREPUSH" = "1" ]; then
   exit 0
 fi
 
-# Capture stdin once — git only writes the ref list to the hook's stdin once,
-# so subsequent loops have to read from a saved copy.
+# Capture stdin once — git only writes the ref list to the hook's stdin once.
 stdin_input="$(cat)"
-
-# Branch name validation per ADR 0014. Cheap; runs before the expensive
-# build/test cycle so a bad name fails fast.
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null)
+
+# Branch name per ADR 0014 — advisory. The pipeline generates compliant names
+# itself and CI gates the merge, so a human/owner push is never blocked on
+# naming.
 if [ -x "$repo_root/scripts/check-branch-name.sh" ]; then
   while read -r local_ref _ _ _; do
     case "$local_ref" in
       refs/heads/*)
-        local_branch="${local_ref#refs/heads/}"
-        if ! "$repo_root/scripts/check-branch-name.sh" "$local_branch"; then
-          echo "[pre-push] FAIL: branch name violates ADR 0014. Push aborted."
-          echo "[pre-push] To bypass (e.g. emergency revert): SKIP_PREPUSH=1 git push"
-          exit 1
+        branch="${local_ref#refs/heads/}"
+        if ! "$repo_root/scripts/check-branch-name.sh" "$branch" >/dev/null 2>&1; then
+          echo "[pre-push] WARN: branch '$branch' violates ADR 0014 naming — push continues (pipeline-tracked branches need ISS-<seq>-<slug>)"
         fi
         ;;
     esac
   done <<< "$stdin_input"
 fi
 
+# Guard: tauri.conf.json bundle.active must stay true. Without it `tauri build`
+# emits only the raw binary — release.yml's tauri-action then fails with
+# "No artifacts were found." (every release v0.1.9..v0.1.16 hit this silently.)
+tauri_conf="$repo_root/packages/dev/src-tauri/tauri.conf.json"
+if [ -f "$tauri_conf" ] && command -v jq >/dev/null 2>&1; then
+  if ! jq -e '.bundle.active == true' "$tauri_conf" >/dev/null; then
+    echo "[pre-push] FAIL: packages/dev/src-tauri/tauri.conf.json must have bundle.active=true."
+    echo "[pre-push] Without it, release builds skip bundling and produce zero installer artifacts."
+    exit 1
+  fi
+fi
+
+if [ "$PREPUSH_BUILD" != "1" ] && [ "$PREPUSH_FULL" != "1" ]; then
+  echo "[pre-push] cheap guards passed — builds/tests skipped (CI gates; PREPUSH_BUILD=1 / PREPUSH_FULL=1 to run locally)"
+  exit 0
+fi
+
+# ---- opt-in build/test path ------------------------------------------------
+
 # Read pushed refs from the captured stdin (format:
 # <local-ref> <local-sha> <remote-ref> <remote-sha>)
 range=""
 while read -r local_ref local_sha remote_ref remote_sha; do
   if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
-    # Branch deletion — nothing to validate
-    continue
+    continue # branch deletion
   fi
   if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
-    # New branch — diff against main as the merge-base reference
     base=$(git merge-base "$local_sha" main 2>/dev/null || echo "")
     if [ -n "$base" ]; then
       range="$range $base..$local_sha"
     else
-      # No merge-base (truly fresh) — diff entire branch
       range="$range $local_sha"
     fi
   else
@@ -69,7 +83,6 @@ if [ -z "$range" ]; then
   exit 0
 fi
 
-# Collect changed files across all push ranges
 changed=$(git diff --name-only $range 2>/dev/null | sort -u)
 
 if [ -z "$changed" ]; then
@@ -77,35 +90,19 @@ if [ -z "$changed" ]; then
   exit 0
 fi
 
-# Map changed files to affected packages
 packages=""
 echo "$changed" | grep -q '^packages/core/' && packages="$packages core"
-echo "$changed" | grep -q '^packages/web/' && packages="$packages web"
+echo "$changed" | grep -q '^packages/web-v2/' && packages="$packages web-v2"
 echo "$changed" | grep -q '^packages/dev/' && packages="$packages dev"
-echo "$changed" | grep -q '^packages/widget/' && packages="$packages widget"
 echo "$changed" | grep -q '^packages/contracts/' && packages="$packages contracts"
 
 if [ -z "$packages" ]; then
-  echo "[pre-push] no source-package files changed (docs/skills/etc only) — skipping build/test"
+  echo "[pre-push] no source-package files changed — nothing to build"
   exit 0
-fi
-
-# Guard: tauri.conf.json bundle.active must stay true. Without it `tauri build`
-# emits only the raw binary — release.yml's tauri-action then fails with
-# "No artifacts were found." (every release v0.1.9..v0.1.16 hit this silently.)
-repo_root=$(git rev-parse --show-toplevel)
-tauri_conf="$repo_root/packages/dev/src-tauri/tauri.conf.json"
-if [ -f "$tauri_conf" ] && command -v jq >/dev/null 2>&1; then
-  if ! jq -e '.bundle.active == true' "$tauri_conf" >/dev/null; then
-    echo "[pre-push] FAIL: packages/dev/src-tauri/tauri.conf.json must have bundle.active=true."
-    echo "[pre-push] Without it, release builds skip bundling and produce zero installer artifacts."
-    exit 1
-  fi
 fi
 
 echo "[pre-push] validating packages:$packages"
 
-repo_root=$(git rev-parse --show-toplevel)
 for pkg in $packages; do
   pkg_dir="$repo_root/packages/$pkg"
   if [ ! -d "$pkg_dir" ]; then
@@ -113,14 +110,8 @@ for pkg in $packages; do
     continue
   fi
   echo "[pre-push] $pkg → pnpm build (with workspace deps prebuilt)"
-  # Workspace packages that emit compiled JS (e.g. @forge/observability
-  # → dist/) MUST run their own build before any consumer's build kicks
-  # off, otherwise the consumer's import resolves to a non-existent
-  # file. pnpm's `--filter pkg...` selectors don't reliably walk into
-  # those deps and run their build script (verified empirically with
-  # pnpm 9.15: `--filter ...web` selects only web, not its deps).
-  # Pre-build the known emit-only deps as a small explicit list — cheap
-  # (single tsc) and leaves no room for ordering bugs.
+  # Emit-only workspace deps (e.g. @forge/observability → dist/) must build
+  # before any consumer, or the consumer's import resolves to a missing file.
   if [ -d "$repo_root/packages/observability" ]; then
     (cd "$repo_root" && pnpm --filter @forge/observability build) || {
       echo "[pre-push] FAIL: @forge/observability build broke (consumer of $pkg)."
@@ -132,15 +123,12 @@ for pkg in $packages; do
     exit 1
   }
   if [ "$PREPUSH_FULL" != "1" ]; then
-    echo "[pre-push] $pkg → tests skipped (build-only default; CI gates tests — use PREPUSH_FULL=1 to run them locally)"
     continue
   fi
-  # `dev` and `contracts` may not have a meaningful test command — skip if absent
   if (cd "$pkg_dir" && grep -q '"test":' package.json); then
     echo "[pre-push] $pkg → pnpm test"
     (cd "$pkg_dir" && pnpm test) || {
       echo "[pre-push] FAIL: $pkg tests broke. Push aborted."
-      echo "[pre-push] To bypass (e.g. emergency revert): SKIP_PREPUSH=1 git push"
       exit 1
     }
   else
