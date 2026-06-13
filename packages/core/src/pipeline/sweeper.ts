@@ -41,7 +41,7 @@ import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
-import { closeRunIfOneShot } from './runs.js';
+import { closeOpenRunForIssue, closeRunIfOneShot } from './runs.js';
 import { emitPipelineWedge } from './wedge.js';
 
 export const PIPELINE_SWEEPER_QUEUE = 'pipeline-sweeper';
@@ -71,6 +71,11 @@ export interface OneShotRunReapResult {
   reaped: number;
 }
 
+export interface IssueRunReapResult {
+  // issue runs closed because their backing issue already reached a terminal status.
+  reaped: number;
+}
+
 export interface SweepResult {
   durationMs: number;
   /** ISS-449 — the primary closed-loop pass (reaps). */
@@ -80,6 +85,8 @@ export interface SweepResult {
   orphanedJobs: OrphanReconcileResult;
   neverClaimedDispatches: OrphanReconcileResult;
   orphanedOneShotRuns: OneShotRunReapResult;
+  /** ISS-461 — issue runs closed because their backing issue is terminal (reaps). */
+  orphanedIssueRuns: IssueRunReapResult;
   backstopProjects: number;
   queueSnapshots: number;
 }
@@ -99,6 +106,12 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   // row, so the job loop never fires for them and they would leak `running`
   // forever (VISION §5.10 "state never lies"). Still an ACTIVE reaper.
   const orphanedOneShotRuns = await reapOrphanedOneShotRuns(now);
+  // ISS-461 — close `issue`-kind runs whose backing issue already reached a
+  // terminal status (closed/released) but whose run never closed. closeOpenRunForIssue
+  // fires only via applyTransition; a terminal write that bypasses it (or closes
+  // predating that wiring) leaks the run `running`/`paused` forever and inflates
+  // the dashboard live-run count. Run-axis backstop; still an ACTIVE reaper.
+  const orphanedIssueRuns = await reapOrphanedIssueRuns(now);
   const backstopProjects = await runDispatcherBackstop();
   // ISS-381 (2.2) — snapshot per-project queue depth. Best-effort: a failure
   // here must never abort the tick or block the heartbeat below.
@@ -115,6 +128,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     orphanedJobs,
     neverClaimedDispatches,
     orphanedOneShotRuns,
+    orphanedIssueRuns,
     backstopProjects,
     queueSnapshots,
   };
@@ -444,6 +458,73 @@ export async function reapOrphanedOneShotRuns(
 
   if (reaped > 0) {
     logger.info({ reaped }, 'pipeline-sweeper: orphaned one-shot runs closed');
+  }
+
+  return { reaped };
+}
+
+/**
+ * ISS-461 — close `issue`-kind runs left `running`/`paused` after their backing
+ * issue already reached a TERMINAL status (closed/released).
+ *
+ * `closeOpenRunForIssue` is wired in exactly one place — `apply-transition.ts`'s
+ * terminal block — so a terminal-status write that bypasses `applyTransition`
+ * (or a close predating that wiring) orphans the issue run: it stays
+ * `running`/`paused` forever, and none of the other reapers cover `kind='issue'`
+ * (`reapOrphanedOneShotRuns` is scoped to `system`/`interactive`). The dashboard
+ * live-run count (`derive.ts liveRuns()`) renders every `running`/`paused` run,
+ * so each leak inflates it.
+ *
+ * Run-axis backstop (sibling of `reapOrphanedOneShotRuns`): it closes each
+ * candidate through the shared SSOT `closeOpenRunForIssue` (CAS-guarded on
+ * `status IN (running,paused)`, sets `finishedAt`, cascades child-job cancel,
+ * emits the close hook). Outcome `'completed'` mirrors `apply-transition.ts`,
+ * which passes `'completed'` for both `released` and `closed` — never a false
+ * `failed`. The age guard (`started_at` older than the heartbeat threshold)
+ * avoids racing a just-fired `applyTransition` close, and also drains the
+ * existing leaked backlog on the first ticks after deploy (their `started_at`
+ * is days old) — no one-shot migration needed.
+ *
+ * Best-effort per row: one failure is logged and skipped, never aborting the
+ * pass — same convention as `reapOrphanedOneShotRuns`.
+ */
+export async function reapOrphanedIssueRuns(
+  now: Date = new Date(),
+  scope: SweepScope = {},
+): Promise<IssueRunReapResult> {
+  const { heartbeatMs } = getZombieThresholds();
+  // postgres-js rejects raw Date params; serialise to ISO before binding.
+  const cutoffIso = new Date(now.getTime() - heartbeatMs).toISOString();
+  const projectClause = scope.projectId ? sql`AND r.project_id = ${scope.projectId}` : sql``;
+
+  const candidates = await db.execute<{ id: string; issue_id: string }>(sql`
+    SELECT r.id, r.issue_id
+    FROM pipeline_runs r
+    JOIN issues i ON i.id = r.issue_id
+    WHERE r.kind = 'issue'
+      AND r.status IN ('running', 'paused')
+      AND i.status IN ('closed', 'released')
+      AND r.started_at < ${cutoffIso}
+      ${projectClause}
+    ORDER BY r.started_at ASC
+    LIMIT 200
+  `);
+
+  let reaped = 0;
+  for (const row of candidates) {
+    try {
+      await closeOpenRunForIssue(row.issue_id, 'completed');
+      reaped++;
+    } catch (err) {
+      logger.error(
+        { err, runId: row.id, issueId: row.issue_id },
+        'pipeline-sweeper: orphaned issue-run reap failed (row skipped)',
+      );
+    }
+  }
+
+  if (reaped > 0) {
+    logger.info({ reaped }, 'pipeline-sweeper: orphaned issue runs closed');
   }
 
   return { reaped };

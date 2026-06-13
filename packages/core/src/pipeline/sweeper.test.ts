@@ -64,8 +64,12 @@ vi.mock('../db/client.js', () => ({
 // closeRunIfOneShot SSOT. Mock it so the sweeper test asserts the call
 // contract without pulling in the runs.ts → hooks → cascade graph.
 const closeRunIfOneShotMock = vi.fn(async (..._args: unknown[]) => {});
+// ISS-461 — reapOrphanedIssueRuns closes issue runs through the shared
+// closeOpenRunForIssue SSOT; mocked for the same reason as closeRunIfOneShot.
+const closeOpenRunForIssueMock = vi.fn(async (..._args: unknown[]) => {});
 vi.mock('./runs.js', () => ({
   closeRunIfOneShot: (...args: unknown[]) => closeRunIfOneShotMock(...args),
+  closeOpenRunForIssue: (...args: unknown[]) => closeOpenRunForIssueMock(...args),
 }));
 
 vi.mock('../queue/boss.js', () => ({ boss: {} }));
@@ -95,6 +99,7 @@ const {
   alarmOrphanedJobs,
   alarmNeverClaimedDispatches,
   reapOrphanedOneShotRuns,
+  reapOrphanedIssueRuns,
 } = await import('./sweeper.js');
 
 /** Flatten a drizzle `sql` template into its raw text for fragment assertions. */
@@ -130,6 +135,8 @@ beforeEach(() => {
   selectWhere.mockResolvedValue([]);
   closeRunIfOneShotMock.mockClear();
   closeRunIfOneShotMock.mockResolvedValue(undefined);
+  closeOpenRunForIssueMock.mockClear();
+  closeOpenRunForIssueMock.mockResolvedValue(undefined);
   queuedProjectsRows.length = 0;
   dbExecute.mockResolvedValue([]);
   emitWedgeMock.mockClear();
@@ -355,6 +362,57 @@ describe('reapOrphanedOneShotRuns (ISS-445 — still an ACTIVE reaper)', () => {
     const result = await runPipelineSweep();
     expect(result).toHaveProperty('orphanedOneShotRuns');
     expect(result.orphanedOneShotRuns.reaped).toBe(0); // default mock: no candidates
+  });
+});
+
+describe('reapOrphanedIssueRuns (ISS-461 — issue runs leaked past a terminal issue)', () => {
+  it('candidate SELECT scopes to issue runs whose backing issue is terminal, past the age cutoff', async () => {
+    dbExecute.mockResolvedValueOnce([]); // no candidates
+    const result = await reapOrphanedIssueRuns(new Date('2026-06-12T00:00:00Z'));
+
+    expect(result.reaped).toBe(0);
+    const text = sqlText(dbExecute.mock.calls[0]?.[0]);
+    expect(text).toMatch(/r\.kind\s*=\s*'issue'/);
+    expect(text).toMatch(/r\.status\s+IN\s*\(\s*'running'\s*,\s*'paused'\s*\)/);
+    expect(text).toMatch(/i\.status\s+IN\s*\(\s*'closed'\s*,\s*'released'\s*\)/);
+    expect(text).toMatch(/JOIN\s+issues\s+i/);
+    expect(text).toMatch(/started_at\s*</);
+    expect(closeOpenRunForIssueMock).not.toHaveBeenCalled();
+  });
+
+  it('closes each candidate via closeOpenRunForIssue(issueId, "completed")', async () => {
+    dbExecute.mockResolvedValueOnce([
+      { id: 'run-1', issue_id: 'iss-1' },
+      { id: 'run-2', issue_id: 'iss-2' },
+    ]);
+
+    const result = await reapOrphanedIssueRuns(new Date('2026-06-12T00:00:00Z'));
+
+    expect(result.reaped).toBe(2);
+    expect(closeOpenRunForIssueMock).toHaveBeenCalledTimes(2);
+    expect(closeOpenRunForIssueMock).toHaveBeenNthCalledWith(1, 'iss-1', 'completed');
+    expect(closeOpenRunForIssueMock).toHaveBeenNthCalledWith(2, 'iss-2', 'completed');
+  });
+
+  it('does not let one failing close abort the pass', async () => {
+    dbExecute.mockResolvedValueOnce([
+      { id: 'run-a', issue_id: 'iss-a' },
+      { id: 'run-b', issue_id: 'iss-b' },
+    ]);
+    closeOpenRunForIssueMock
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce(undefined);
+
+    const result = await reapOrphanedIssueRuns(new Date('2026-06-12T00:00:00Z'));
+
+    expect(result.reaped).toBe(1);
+    expect(closeOpenRunForIssueMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('runs as part of runPipelineSweep and reports the count', async () => {
+    const result = await runPipelineSweep();
+    expect(result).toHaveProperty('orphanedIssueRuns');
+    expect(result.orphanedIssueRuns.reaped).toBe(0); // default mock: no candidates
   });
 });
 
