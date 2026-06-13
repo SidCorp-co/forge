@@ -5,6 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { oauthAccounts, userPreferences, users } from '../db/schema.js';
+import { assertOrgAccess } from '../lib/authz.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 
 export const meRoutes = new Hono<{ Variables: AuthVars }>();
@@ -69,6 +70,10 @@ const preferencesSchema = z
     // Identity of the newest "What's New" entry the user has seen (changelog
     // version or `unreleased:<hash>`). Opaque to the server (ISS-384).
     lastSeenWhatsNew: z.string().max(200).optional(),
+    // The org the user is currently "working in" (ISS-469). `null` clears it
+    // back to "no explicit choice" (the client resolves that to the personal
+    // org). A non-null value is membership-checked below before it is stored.
+    activeOrgId: z.string().uuid().nullable().optional(),
   })
   .strict();
 
@@ -77,6 +82,7 @@ const DEFAULT_PREFS = {
   language: 'en' as const,
   notifyOnMention: true,
   lastSeenWhatsNew: null as string | null,
+  activeOrgId: null as string | null,
 };
 
 meRoutes.get('/me/preferences', async (c) => {
@@ -87,6 +93,7 @@ meRoutes.get('/me/preferences', async (c) => {
       language: userPreferences.language,
       notifyOnMention: userPreferences.notifyOnMention,
       lastSeenWhatsNew: userPreferences.lastSeenWhatsNew,
+      activeOrgId: userPreferences.activeOrgId,
       updatedAt: userPreferences.updatedAt,
     })
     .from(userPreferences)
@@ -118,6 +125,13 @@ meRoutes.patch(
       });
     }
 
+    // Setting an active org requires the caller to actually be a member of it
+    // (ISS-469 AC7). assertOrgAccess throws 404 (org missing) / 403 (not a
+    // member). `null` clears the pointer and skips the check.
+    if (patch.activeOrgId != null) {
+      await assertOrgAccess(patch.activeOrgId, userId, 'member');
+    }
+
     // Insert a row if missing, otherwise patch only the keys the caller sent.
     // postgres `INSERT ... ON CONFLICT DO UPDATE` keeps this single round-trip.
     const [row] = await db
@@ -128,6 +142,7 @@ meRoutes.patch(
         language: patch.language ?? DEFAULT_PREFS.language,
         notifyOnMention: patch.notifyOnMention ?? DEFAULT_PREFS.notifyOnMention,
         lastSeenWhatsNew: patch.lastSeenWhatsNew ?? DEFAULT_PREFS.lastSeenWhatsNew,
+        activeOrgId: patch.activeOrgId ?? DEFAULT_PREFS.activeOrgId,
       })
       .onConflictDoUpdate({
         target: userPreferences.userId,
@@ -140,6 +155,9 @@ meRoutes.patch(
           ...(patch.lastSeenWhatsNew !== undefined
             ? { lastSeenWhatsNew: patch.lastSeenWhatsNew }
             : {}),
+          ...(patch.activeOrgId !== undefined
+            ? { activeOrgId: patch.activeOrgId }
+            : {}),
           updatedAt: new Date(),
         },
       })
@@ -148,6 +166,7 @@ meRoutes.patch(
         language: userPreferences.language,
         notifyOnMention: userPreferences.notifyOnMention,
         lastSeenWhatsNew: userPreferences.lastSeenWhatsNew,
+        activeOrgId: userPreferences.activeOrgId,
         updatedAt: userPreferences.updatedAt,
       });
 

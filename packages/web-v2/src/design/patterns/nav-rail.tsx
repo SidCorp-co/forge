@@ -54,6 +54,9 @@ export interface NavRailProps {
   onSignOut?: () => void;
   project?: { name: string; initials: string; tint: string; ink: string };
   user?: { initials: string };
+  /** Global org switcher slot (ISS-469), pinned under the brand. Presentational
+   *  here — the caller supplies the wired control. Hidden while collapsed. */
+  orgSwitcher?: React.ReactNode;
   /** Icon-only collapsed rail. */
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
@@ -202,6 +205,7 @@ export function NavRail({
   onSignOut,
   project,
   user,
+  orgSwitcher,
   collapsed = false,
   onToggleCollapsed,
   groupOpen,
@@ -307,6 +311,10 @@ export function NavRail({
           </button>
         </Tooltip>
       )}
+
+      {/* Global org switcher (ISS-469) — broadest scope, pinned above the
+          project switcher. Only in the expanded rail. */}
+      {!collapsed && orgSwitcher}
 
       {/* Project-first (ISS-358): the switcher is pinned directly under the
           brand, with the PROJECT cluster above the WORKSPACE cluster. */}

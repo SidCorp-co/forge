@@ -52,6 +52,9 @@ export interface NavRailCompactProps {
   onAccount?: () => void;
   onSignOut?: () => void;
   userInitials?: string;
+  /** Global org switcher (ISS-469) — rendered under the brand, above the
+   *  project switcher. Presentational slot; the layout supplies the control. */
+  orgSwitcher?: React.ReactNode;
   /** Switch to the expanded (labeled, 232px) rail. */
   onExpand?: () => void;
   /** Footer: jump to the What's New feed. `whatsNewBadge` shows a "new" dot. */
@@ -143,6 +146,7 @@ export function NavRailCompact({
   onAccount,
   onSignOut,
   userInitials,
+  orgSwitcher,
   onExpand,
   onWhatsNew,
   whatsNewBadge,
@@ -202,6 +206,9 @@ export function NavRailCompact({
           <Icon name="panelLeft" size={18} className="absolute hidden text-subtle group-hover:block" />
         )}
       </button>
+
+      {/* Global org switcher (ISS-469) — broadest scope, above the project tier. */}
+      {orgSwitcher && <div className="mb-3">{orgSwitcher}</div>}
 
       {/* Project-first (ISS-358): the switcher + project tier sit directly under
           the brand, above the WORKSPACE tier (divider between the two). */}

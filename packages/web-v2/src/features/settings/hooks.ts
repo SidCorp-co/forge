@@ -19,7 +19,9 @@ export function useUpdatePreferences() {
   const { toast } = useToast();
   return useMutation({
     mutationFn: (
-      patch: Partial<Pick<Preferences, "theme" | "language" | "notifyOnMention" | "lastSeenWhatsNew">>,
+      patch: Partial<
+        Pick<Preferences, "theme" | "language" | "notifyOnMention" | "lastSeenWhatsNew" | "activeOrgId">
+      >,
     ) => settingsApi.updatePreferences(patch),
     onSuccess: (data) => {
       qc.setQueryData(["settings", "preferences"], data);
