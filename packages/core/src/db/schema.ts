@@ -549,6 +549,10 @@ export const jobTypes = [
   'fix',
   'custom',
   'pm',
+  // ISS-455 — skill smoke-verify canary (tier-2). Issue-less one-shot job on a
+  // 'system' pipeline_run; PASS/FAIL is read from the job's terminal status
+  // (which still flips only via applyKernelTransition, like every job).
+  'smoke',
 ] as const;
 export type JobType = (typeof jobTypes)[number];
 
@@ -702,6 +706,11 @@ export const jobs = pgTable(
     finishedArchiveIdx: index('jobs_finished_archive_idx')
       .on(t.finishedAt)
       .where(sql`archive_path IS NULL AND finished_at IS NOT NULL`),
+    // ISS-455 — the smoke-verify report reads "latest canary per stage" for a
+    // project; the partial index keeps that read off the hot jobs rows.
+    smokeProjectQueuedIdx: index('jobs_smoke_project_queued_idx')
+      .on(t.projectId, t.queuedAt)
+      .where(sql`type = 'smoke'`),
   }),
 );
 

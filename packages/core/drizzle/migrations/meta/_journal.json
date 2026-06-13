@@ -820,6 +820,13 @@
       "when": 1784160000000,
       "tag": "0118_i1_trigger_failure_kind_v3",
       "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1784246400000,
+      "tag": "0119_jobs_smoke_type",
+      "breakpoints": true
     }
   ]
 }

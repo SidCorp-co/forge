@@ -23,7 +23,10 @@ export class ActiveJobConflictError extends Error {
 
 interface InsertAndEnqueueArgs {
   projectId: string;
-  issueId: string;
+  /** NULL for issue-less one-shot jobs (e.g. `smoke` canaries on a 'system'
+   *  run, ISS-455). The active-job unique index is per (issueId, type), so
+   *  null-issue callers must dedupe themselves. */
+  issueId: string | null;
   pipelineRunId: string;
   createdBy: string;
   type: JobType;

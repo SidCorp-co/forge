@@ -34,6 +34,8 @@ export const PIPELINE_JOB_TYPES = [
   "fix",
   "custom",
   "pm",
+  // ISS-455 — skill smoke-verify canary (issue-less, one-shot 'system' run).
+  "smoke",
 ] as const;
 export type PipelineJobType = (typeof PIPELINE_JOB_TYPES)[number];
 

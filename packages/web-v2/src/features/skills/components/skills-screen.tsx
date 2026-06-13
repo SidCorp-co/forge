@@ -25,6 +25,7 @@ import {
 import { mergeSkills, projectSkillNames, type SkillScope, type SkillView } from "../types";
 import { SkillCard } from "./skill-card";
 import { SkillStudioDrawer } from "./skill-studio-drawer";
+import { SmokeVerifyPanel } from "./smoke-verify-panel";
 
 interface SkillsScreenProps {
   scope: { projectId: string; canManage: boolean };
@@ -105,6 +106,12 @@ export function SkillsScreen({ scope }: SkillsScreenProps) {
           </Button>
         )}
       </header>
+
+      {/* ISS-455 — per-stage smoke-verify report (execution/static evidence,
+          not the `synced` badge). The tier-2 canary is gated on canManage. */}
+      <div className="mb-4">
+        <SmokeVerifyPanel projectId={projectId} canManage={canManage} />
+      </div>
 
       {!isLoading && !isError && skills.length > 0 && (
         <div className="mb-4 flex flex-wrap items-center gap-3">

@@ -98,6 +98,65 @@ export interface SkillRegistration {
   createdAt: string;
 }
 
+// ── Smoke-verify (ISS-455) — shapes verified against
+// `packages/core/src/skills/smoke-verify.ts` ─────────────────────────────────
+
+/** Tier-1 static-check verdict for one pipeline stage. Evidence-based:
+ *  registration → usable project skill → a device reported the matching
+ *  installed hash. `no_device_report` is the honest WARN-style FAIL for
+ *  desktop runners that never report installs. */
+export interface SmokeTier1Entry {
+  stage: string;
+  jobType: string;
+  skillId: string | null;
+  skillName: string | null;
+  status: "PASS" | "FAIL";
+  reason:
+    | "not_registered"
+    | "no_project_skill"
+    | "no_bound_runner"
+    | "no_device_report"
+    | "stale_on_runner"
+    | null;
+  detail: string | null;
+  /** When the static check ran — the report is always computed fresh. */
+  checkedAt: string;
+  /** For PASS: the newest device `syncedAt` backing the evidence. */
+  evidenceAt: string | null;
+}
+
+/** Latest tier-2 canary outcome for one stage — the smoke job's terminal
+ *  status (`done` → PASS, `failed`/`cancelled` → FAIL, active → PENDING). */
+export interface SmokeTier2Entry {
+  stage: string;
+  jobId: string;
+  status: "PASS" | "FAIL" | "PENDING";
+  reason: string | null;
+  queuedAt: string;
+  /** The job's `finishedAt` — "PASS as of <checkedAt>". Null while PENDING. */
+  checkedAt: string | null;
+}
+
+/** `GET /api/projects/:id/skills/smoke-verify` response. */
+export interface SkillSmokeVerifyReport {
+  projectId: string;
+  generatedAt: string;
+  tier1: SmokeTier1Entry[];
+  tier2: SmokeTier2Entry[];
+}
+
+/** Tier-2 dispatch summary (POST `{tier: 2}` only; null on tier-1 runs). */
+export interface SmokeCanaryDispatch {
+  dispatched: { stage: string; jobId: string; skillName: string }[];
+  skipped: { stage: string; reason: string }[];
+}
+
+/** `POST /api/projects/:id/skills/smoke-verify` response. */
+export interface SmokeVerifyRunResponse {
+  report: SkillSmokeVerifyReport;
+  canary: SmokeCanaryDispatch | null;
+}
+
 /** List row joined with its sync status — what the card renders. */
 export interface SkillView extends SkillRow {
   registeredStages: string[];

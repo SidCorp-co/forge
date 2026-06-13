@@ -43,6 +43,8 @@ export const REGISTRY_JOB_TYPES = [
   'fix',
   'custom',
   'pm',
+  // ISS-455 — skill smoke-verify canary (issue-less, one-shot 'system' run).
+  'smoke',
 ] as const;
 
 export const REGISTRY_RUNNER_TYPES = ['claude-code', 'antigravity'] as const;

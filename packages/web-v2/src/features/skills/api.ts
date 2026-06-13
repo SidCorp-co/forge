@@ -2,7 +2,15 @@
 // shared `apiClient` (no raw fetch). Routes verified against
 // `packages/core/src/skills/{crud-routes,routes}.ts` for ISS-299.
 import { apiClient } from "@/lib/api/client";
-import type { SkillFile, SkillRegistration, SkillRow, SkillSyncStatus, SkillTarget } from "./types";
+import type {
+  SkillFile,
+  SkillRegistration,
+  SkillRow,
+  SkillSmokeVerifyReport,
+  SkillSyncStatus,
+  SkillTarget,
+  SmokeVerifyRunResponse,
+} from "./types";
 
 /** Body for `POST /api/skills` (project skill — `isGlobal` omitted). */
 export interface SkillCreateInput {
@@ -70,5 +78,21 @@ export const skillsApi = {
     apiClient<unknown>(
       `/projects/${encodeURIComponent(projectId)}/skills/registrations/${encodeURIComponent(stage)}`,
       { method: "DELETE" },
+    ),
+
+  /** `GET /api/projects/:projectId/skills/smoke-verify` — per-stage PASS/FAIL
+   *  report (tier-1 always fresh + latest tier-2 canary outcomes). ISS-455. */
+  smokeVerify: (projectId: string) =>
+    apiClient<SkillSmokeVerifyReport>(
+      `/projects/${encodeURIComponent(projectId)}/skills/smoke-verify`,
+    ),
+
+  /** `POST /api/projects/:projectId/skills/smoke-verify` — tier 1 re-runs the
+   *  static checks; tier 2 (admin) additionally dispatches a `smoke` canary
+   *  job per registered stage. */
+  runSmokeVerify: (projectId: string, body: { tier: 1 | 2; stages?: string[] }) =>
+    apiClient<SmokeVerifyRunResponse>(
+      `/projects/${encodeURIComponent(projectId)}/skills/smoke-verify`,
+      { method: "POST", body: JSON.stringify(body) },
     ),
 };

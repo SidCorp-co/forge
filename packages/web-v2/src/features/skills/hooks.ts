@@ -36,6 +36,48 @@ export function useSkillRegistrations(projectId: string | undefined) {
   });
 }
 
+/** Per-stage smoke-verify report (`GET /skills/smoke-verify`). Keyed under
+ *  `['skills', projectId]` so register/unregister/push mutations invalidate it
+ *  together with the list. While a tier-2 canary is PENDING the report polls
+ *  so the verdict lands without a manual refresh. */
+export function useSkillSmokeVerify(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["skills", projectId, "smoke-verify"],
+    queryFn: () => skillsApi.smokeVerify(projectId as string),
+    enabled: !!projectId,
+    refetchInterval: (query) =>
+      query.state.data?.tier2.some((e) => e.status === "PENDING") ? 5_000 : false,
+  });
+}
+
+/** Run smoke-verify: tier 1 = synchronous static checks; tier 2 = dispatch a
+ *  real canary job per registered stage (admin, spends agent budget). */
+export function useRunSmokeVerify(projectId: string | undefined) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (body: { tier: 1 | 2; stages?: string[] }) =>
+      skillsApi.runSmokeVerify(projectId as string, body),
+    onSuccess: (data, body) => {
+      qc.setQueryData(["skills", projectId, "smoke-verify"], data.report);
+      qc.invalidateQueries({ queryKey: ["skills", projectId, "smoke-verify"] });
+      const n = data.canary?.dispatched.length ?? 0;
+      toast({
+        title:
+          body.tier === 2
+            ? n > 0
+              ? `Canary dispatched on ${n} stage${n === 1 ? "" : "s"}`
+              : "No canary dispatched (no eligible stage)"
+            : "Skill checks refreshed",
+        tone: "success",
+      });
+    },
+    onError: (err) => {
+      toast({ title: "Smoke-verify failed", description: formatApiError(err), tone: "error" });
+    },
+  });
+}
+
 function useSkillMutation<TArgs, TData = unknown>(
   fn: (args: TArgs) => Promise<TData>,
   projectId: string | undefined,
