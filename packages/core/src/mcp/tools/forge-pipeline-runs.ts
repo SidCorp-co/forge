@@ -68,8 +68,21 @@ export async function pipelineRunsListHandler(
   if (input.issueId) conds.push(eq(pipelineRuns.issueId, input.issueId));
   if (input.status) conds.push(eq(pipelineRuns.status, input.status));
 
+  // ISS-428 — scalar projection; OMIT the `metadata` jsonb (unbounded) so a
+  // large list stays under the MCP response token cap. Full row via `get`.
   const rows = await db
-    .select()
+    .select({
+      id: pipelineRuns.id,
+      projectId: pipelineRuns.projectId,
+      issueId: pipelineRuns.issueId,
+      kind: pipelineRuns.kind,
+      status: pipelineRuns.status,
+      currentStep: pipelineRuns.currentStep,
+      startedAt: pipelineRuns.startedAt,
+      finishedAt: pipelineRuns.finishedAt,
+      createdAt: pipelineRuns.createdAt,
+      updatedAt: pipelineRuns.updatedAt,
+    })
     .from(pipelineRuns)
     .where(and(...conds))
     .orderBy(desc(pipelineRuns.startedAt))

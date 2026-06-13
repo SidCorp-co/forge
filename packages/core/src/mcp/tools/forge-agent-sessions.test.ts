@@ -15,10 +15,11 @@ const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy })
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
+const selectSpy = vi.fn(() => ({ from: selectFrom }));
 
 vi.mock('../../db/client.js', () => ({
   db: {
-    select: vi.fn(() => ({ from: selectFrom })),
+    select: selectSpy,
   },
 }));
 
@@ -93,6 +94,36 @@ describe('forge_agent_sessions.list', () => {
     const tool = forgeAgentSessionsListTool(fakeDevice);
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // not a member
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
+  });
+
+  // ISS-428 — the list query must use a body-free column projection (never a
+  // bare db.select()) so the multi-MB `messages` transcript can't overflow the
+  // MCP token cap. Assert the projection map of the final (sessions) select.
+  it('projects a body-free column set (no messages/diff jsonb; exposes messageCount)', async () => {
+    const tool = forgeAgentSessionsListTool(fakeDevice);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
+    selectLimit.mockResolvedValueOnce([{ ...baseSessionRow, messageCount: 0 }]); // sessions query
+
+    await tool.handler({ projectId: PROJECT_ID });
+
+    // last db.select() call is the sessions list projection
+    const lastCall = selectSpy.mock.calls.at(-1) as unknown[] | undefined;
+    const projection = lastCall?.[0] as Record<string, unknown> | undefined;
+    expect(projection).toBeDefined();
+    const keys = Object.keys(projection ?? {});
+    expect(keys).toContain('id');
+    expect(keys).toContain('status');
+    expect(keys).toContain('messageCount');
+    for (const heavy of [
+      'messages',
+      'diff',
+      'usage',
+      'pipelineTelemetry',
+      'pipelineHealth',
+      'pipelineControl',
+    ]) {
+      expect(keys).not.toContain(heavy);
+    }
   });
 });
 

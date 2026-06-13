@@ -202,6 +202,54 @@ describe('forge_issues tool', () => {
     expect(result.issues[0]?.documentId).toBe(ISSUE_ID);
   });
 
+  // ISS-428 — list must return a body-free projection so it never overflows
+  // the MCP token cap; heavy fields stay reachable via action=get.
+  it('list omits heavy body fields and keeps the light summary fields', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    selectLimit.mockResolvedValueOnce([
+      {
+        ...baseIssueRow,
+        description: 'x'.repeat(5000),
+        plan: 'p'.repeat(5000),
+        acceptanceCriteria: 'a'.repeat(5000),
+        suggestedSolution: 's'.repeat(5000),
+        sessionContext: { big: 'c'.repeat(5000) },
+        aiSummary: 'ai'.repeat(2500),
+        releaseNotes: { section: 'Fixed', userFacing: 'note' },
+      },
+    ]);
+
+    const result = (await tool.handler({ action: 'list' })) as {
+      issues: Array<Record<string, unknown>>;
+    };
+    const row = result.issues[0] as Record<string, unknown>;
+    // light fields present
+    expect(row.documentId).toBe(ISSUE_ID);
+    expect(row.issueId).toBe('ISS-1');
+    expect(row.title).toBe('Test issue');
+    expect(row.status).toBe('open');
+    // heavy fields omitted
+    for (const heavy of [
+      'description',
+      'plan',
+      'acceptanceCriteria',
+      'suggestedSolution',
+      'sessionContext',
+      'aiSummary',
+      'aiSuggestedSolution',
+      'aiAcceptanceCriteria',
+      'releaseNotes',
+    ]) {
+      expect(row).not.toHaveProperty(heavy);
+    }
+  });
+
   it('list throws BAD_REQUEST when no slug and no projectId', async () => {
     const tool = forgeIssuesTool({
       principal: { kind: 'device', device: fakeDevice },

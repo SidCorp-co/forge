@@ -33,7 +33,7 @@ const getInputSchema = z.object({ sessionId: z.uuid() }).strict();
 export const forgeAgentSessionsListTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_agent_sessions.list',
   description:
-    'List agent sessions for a project. Optional issueId/status filters. Requires device owner to be a project member.',
+    'List agent sessions for a project. Optional issueId/status filters. Returns a lightweight projection per session: the heavy jsonb columns (messages transcript, diff, usage, pipelineTelemetry, pipelineHealth, pipelineControl) are OMITTED to stay under the response token cap — `messageCount` exposes the transcript length; fetch the messages (last-20 tail) via forge_agent_sessions.get. Requires device owner to be a project member.',
   inputSchema: zodToMcpSchema(listInputSchema),
   handler: async (args) => {
     const { projectId, issueId, status, limit } = listInputSchema.parse(args);
@@ -45,8 +45,29 @@ export const forgeAgentSessionsListTool: DeviceScopedMcpToolFactory = (device) =
       conds.push(sql`${agentSessions.metadata}->>'issueId' = ${issueId}`);
     }
 
+    // ISS-428 — explicit body-free projection. NEVER `db.select()` here: the
+    // `messages` jsonb is a full transcript (multi-MB) that overflows the MCP
+    // token cap and crashes fragile agents. Heavy jsonb stays in `.get`.
     const rows = await db
-      .select()
+      .select({
+        id: agentSessions.id,
+        projectId: agentSessions.projectId,
+        userId: agentSessions.userId,
+        deviceId: agentSessions.deviceId,
+        pipelineRunId: agentSessions.pipelineRunId,
+        title: agentSessions.title,
+        status: agentSessions.status,
+        claudeSessionId: agentSessions.claudeSessionId,
+        repoPath: agentSessions.repoPath,
+        metadata: agentSessions.metadata,
+        messageCount: sql<number>`coalesce(jsonb_array_length(${agentSessions.messages}), 0)`,
+        failureReason: agentSessions.failureReason,
+        dispatchedAt: agentSessions.dispatchedAt,
+        startedAt: agentSessions.startedAt,
+        lastHeartbeatAt: agentSessions.lastHeartbeatAt,
+        createdAt: agentSessions.createdAt,
+        updatedAt: agentSessions.updatedAt,
+      })
       .from(agentSessions)
       .where(and(...conds))
       .orderBy(desc(agentSessions.updatedAt))
