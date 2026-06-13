@@ -137,21 +137,6 @@ export function filterProjects(
   });
 }
 
-/** Distinct orgs across the console items (for the toolbar org filter). */
-export function distinctOrgs(
-  items: ProjectConsoleItem[],
-): Array<{ id: string; name: string; isPersonal: boolean }> {
-  const byId = new Map<string, { id: string; name: string; isPersonal: boolean }>();
-  for (const p of items) {
-    if (!byId.has(p.orgId)) {
-      byId.set(p.orgId, { id: p.orgId, name: p.orgName, isPersonal: p.orgIsPersonal });
-    }
-  }
-  return [...byId.values()].sort(
-    (a, b) => Number(b.isPersonal) - Number(a.isPersonal) || a.name.localeCompare(b.name),
-  );
-}
-
 /** `$13.38` — trailing-24h spend, two decimals. */
 export function formatSpend(usd: number): string {
   return `$${usd.toFixed(2)}`;

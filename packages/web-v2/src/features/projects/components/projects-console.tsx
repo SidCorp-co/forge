@@ -60,8 +60,12 @@ export function ProjectsConsole() {
   const [attentionOnly, setAttentionOnly] = useState(false);
   // Org scope is driven by the global active-org switcher (ISS-469), not a
   // local toolbar filter — so the chrome selection and the console never
-  // contradict. null while orgs load → show all (no scoping yet).
-  const { activeOrgId } = useActiveOrg();
+  // contradict. The console is HARD-SCOPED to the active org (ISS-470): it
+  // lists only that org's projects and names it as the scope label; there is
+  // no "all organizations" view. null only while orgs load → show all for one
+  // tick (avoids a flash of empty), then snaps to scope.
+  const { activeOrg, activeOrgId } = useActiveOrg();
+  const scopeLabel = activeOrg ? (activeOrg.isPersonal ? 'Personal' : activeOrg.name) : null;
 
   // Relative timestamps: 0 on the server + first paint (renders "just now"),
   // then the real clock after mount — hydration-safe.
@@ -133,6 +137,13 @@ export function ProjectsConsole() {
         />
       ) : (
         <>
+          {/* Org scope label (ISS-470) — names the active org so the hard scope
+              is obvious; this console lists only that org's projects. */}
+          <div className="mx-0.5 mb-4 flex items-center gap-2">
+            <Icon name="users" size={16} className="text-subtle" />
+            <h1 className="fg-h3">{scopeLabel ?? 'Projects'}</h1>
+            <span className="fg-body-sm text-subtle">· projects</span>
+          </div>
           <StatsBand totals={totals} />
           <ProjectsToolbar
             query={query}
@@ -164,7 +175,9 @@ export function ProjectsConsole() {
             renderGroup(rest)
           ) : (
             <div className="px-10 py-10 text-center text-[13.5px] text-subtle">
-              No projects match your filters.
+              {searching
+                ? 'No projects match your filters.'
+                : `No projects in ${scopeLabel ?? 'this organization'} yet.`}
             </div>
           )}
 
