@@ -933,6 +933,16 @@ projectRoutes.get(
 // the call after the project is already bootstrapped is a no-op.
 const bootstrapParamSchema = z.object({ id: z.uuid() });
 
+// ISS-453 — named skill template sets. Each entry is a stage→skill binding the
+// bootstrap materialises via clone-on-first-use. `forge-default` is derived
+// from STATUS_TO_JOB_TYPE so it reproduces the original inline loop exactly
+// (regression-safe); adding a set is a data entry here, not new code.
+const TEMPLATE_SETS: Record<string, ReadonlyArray<{ stage: string; skillName: string }>> = {
+  'forge-default': Object.entries(STATUS_TO_JOB_TYPE).flatMap(([status, mapping]) =>
+    mapping ? [{ stage: status, skillName: `forge-${mapping.type}` }] : [],
+  ),
+};
+
 const BALANCED_PRESET = {
   enabled: true,
   autoTriage: true,
@@ -948,6 +958,20 @@ const BALANCED_PRESET = {
   autoRelease: false,
 } as const;
 
+// ISS-453 — named pipelineConfig presets. Only `balanced` is wired today;
+// Stable/Aggressive plug in later as new entries (data only, no handler code).
+type PipelinePreset = Readonly<Record<keyof typeof BALANCED_PRESET, boolean>>;
+const PIPELINE_PRESETS: Record<string, PipelinePreset> = {
+  balanced: BALANCED_PRESET,
+};
+
+// Optional body — an absent/empty POST keeps today's defaults, so existing
+// callers (web bootstrap button, MCP) are unaffected.
+const bootstrapBodySchema = z.object({
+  templateSet: z.string().optional(),
+  preset: z.string().optional(),
+});
+
 projectRoutes.post(
   '/:id/skills/bootstrap',
   zValidator('param', bootstrapParamSchema, (result) => {
@@ -956,6 +980,21 @@ projectRoutes.post(
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
+
+    // ISS-453 — the body is optional (an empty POST keeps the defaults), so
+    // it is parsed by hand instead of zValidator('json'), which rejects a
+    // bodyless request. Unknown names fail fast before any mutation.
+    const rawBody: unknown = await c.req.json().catch(() => ({}));
+    const parsedBody = bootstrapBodySchema.safeParse(rawBody ?? {});
+    if (!parsedBody.success) throw badRequest(z.flattenError(parsedBody.error));
+    const templateSetName = parsedBody.data.templateSet ?? 'forge-default';
+    const presetName = parsedBody.data.preset ?? 'balanced';
+    const templateSet = TEMPLATE_SETS[templateSetName];
+    if (!templateSet) {
+      throw badRequest({ templateSet: `unknown template set '${templateSetName}'` });
+    }
+    const preset = PIPELINE_PRESETS[presetName];
+    if (!preset) throw badRequest({ preset: `unknown preset '${presetName}'` });
 
     const access = await loadProjectAccess(id, userId);
     assertProjectRole(access, 'admin', 'project admin required');
@@ -1010,11 +1049,10 @@ projectRoutes.post(
       stage: string;
       registeredBy: string;
     }> = [];
-    for (const [status, mapping] of Object.entries(STATUS_TO_JOB_TYPE)) {
-      if (!mapping) continue;
-      const skillId = await resolveOrAdoptProjectSkill(id, `forge-${mapping.type}`);
+    for (const { stage, skillName } of templateSet) {
+      const skillId = await resolveOrAdoptProjectSkill(id, skillName);
       if (!skillId) continue;
-      toInsert.push({ projectId: id, skillId, stage: status, registeredBy: userId });
+      toInsert.push({ projectId: id, skillId, stage, registeredBy: userId });
     }
 
     if (toInsert.length === 0) {
@@ -1026,15 +1064,16 @@ projectRoutes.post(
 
     await db.insert(skillRegistrations).values(toInsert);
 
-    // Apply the Balanced preset only when no pipelineConfig.enabled flag has
-    // been set yet — never clobber a user's deliberate config.
+    // Apply the selected preset (Balanced by default) only when no
+    // pipelineConfig.enabled flag has been set yet — never clobber a user's
+    // deliberate config.
     const shouldSetPreset = currentPipeline.enabled === undefined;
     if (shouldSetPreset) {
       const merged = {
         ...currentAc,
         pipelineConfig: {
           ...currentPipeline,
-          ...BALANCED_PRESET,
+          ...preset,
           states: defaultStatesConfig(),
         },
       };
@@ -1050,9 +1089,7 @@ projectRoutes.post(
     }
 
     const skillsBound = toInsert.length;
-    const pipelineEnabled = shouldSetPreset
-      ? BALANCED_PRESET.enabled
-      : currentPipeline.enabled === true;
+    const pipelineEnabled = shouldSetPreset ? preset.enabled : currentPipeline.enabled === true;
 
     return c.json(
       {

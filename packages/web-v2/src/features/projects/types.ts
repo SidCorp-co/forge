@@ -110,6 +110,17 @@ export interface CreatedProject {
   createdAt: string;
 }
 
+/**
+ * Response of `POST /api/projects/:id/skills/bootstrap` (ISS-2A / ISS-453) —
+ * mirrors the bootstrap route in `packages/core/src/projects/routes.ts`.
+ * 201 on first run, 200 with `alreadyBootstrapped: true` on re-runs (idempotent).
+ */
+export interface BootstrapResult {
+  alreadyBootstrapped: boolean;
+  skillsBound: number;
+  pipelineEnabled: boolean;
+}
+
 /** Sort options for the projects console toolbar. */
 export type ProjectSort = 'recent' | 'name' | 'health';
 

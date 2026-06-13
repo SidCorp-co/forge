@@ -1110,8 +1110,12 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     'testing',
   ].sort();
 
-  function bootstrap(token: string) {
-    return req(`/${PID}/skills/bootstrap`, { method: 'POST', token });
+  function bootstrap(token: string, body?: unknown) {
+    return req(`/${PID}/skills/bootstrap`, {
+      method: 'POST',
+      token,
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
   }
 
   it('403 FORBIDDEN when caller is not a project admin', async () => {
@@ -1258,6 +1262,61 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     const patched = updateCalls[0]![0];
     expect(patched.agentConfig.pipelineConfig.enabled).toBe(false);
     expect(Object.keys(patched.agentConfig.pipelineConfig.states)).toContain('approved');
+  });
+
+  // ISS-453 — skill seeding is data-driven via named template sets + presets.
+  it('400 BAD_REQUEST on an unknown templateSet, before any mutation', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+
+    const res = await bootstrap(token, { templateSet: 'no-such-set' });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('BAD_REQUEST');
+    expect(insertValues).not.toHaveBeenCalled();
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('400 BAD_REQUEST on an unknown preset, before any mutation', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+
+    const res = await bootstrap(token, { preset: 'aggressive' });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('BAD_REQUEST');
+    expect(insertValues).not.toHaveBeenCalled();
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('explicit { templateSet: forge-default, preset: balanced } matches the bodyless default', async () => {
+    const token = await signUserToken('uuid-owner');
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([]) // existing registrations -> none
+      .mockResolvedValueOnce([{ agentConfig: null }]);
+
+    resolveOrAdoptProjectSkillMock.mockImplementation(async (_p: string, name: string) =>
+      name === 'forge-clarify' ? null : `proj-${name}`,
+    );
+    insertValues.mockReturnValueOnce(Promise.resolve() as never);
+
+    const res = await bootstrap(token, { templateSet: 'forge-default', preset: 'balanced' });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { skillsBound: number; pipelineEnabled: boolean };
+    expect(body.skillsBound).toBe(7);
+    expect(body.pipelineEnabled).toBe(true);
+
+    const inserted = insertValues.mock.calls[0]?.[0] as Array<{ stage: string }>;
+    expect(inserted.map((r) => r.stage).sort()).toEqual(
+      ['approved', 'clarified', 'developed', 'open', 'released', 'reopen', 'testing'].sort(),
+    );
+
+    const setArg = updateSet.mock.calls[0]?.[0] as {
+      agentConfig: { pipelineConfig: Record<string, unknown> };
+    };
+    expect(setArg.agentConfig.pipelineConfig).toMatchObject({ enabled: true, autoTriage: true });
   });
 
   it('503 NO_GLOBAL_SKILLS when the seeder has not run', async () => {

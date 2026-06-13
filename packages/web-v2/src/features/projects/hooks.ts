@@ -14,6 +14,7 @@ import { projectApi } from './api';
 import { mergeProjects, workspaceTotals } from './derive';
 import { usePinnedProjects } from './pins';
 import type {
+  BootstrapResult,
   CreatedProject,
   CreateProjectInput,
   ProjectConsoleItem,
@@ -108,6 +109,26 @@ export function useCreateProject() {
   return useMutation<CreatedProject, unknown, CreateProjectInput>({
     mutationFn: (body) => projectApi.create(body),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+}
+
+/**
+ * ISS-453 — seed a fresh project's pipeline: binds the stage-mapped `forge-*`
+ * skills and applies the Balanced preset via
+ * `POST /api/projects/:id/skills/bootstrap`. Idempotent server-side, so the
+ * onboarding wizard can safely re-fire it. Invalidates the project detail (so
+ * Settings → Pipeline/Library reflect the seeded config) plus `['projects']`
+ * for the console health rollup. Errors surface through the mutation for the
+ * caller to render inline — the wizard owns the failure UI, not a toast here.
+ */
+export function useBootstrapProject(projectId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation<BootstrapResult, unknown, void>({
+    mutationFn: () => projectApi.bootstrap(projectId as string),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project', projectId] });
       qc.invalidateQueries({ queryKey: ['projects'] });
     },
   });

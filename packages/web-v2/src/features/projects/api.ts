@@ -3,6 +3,7 @@
 // `packages/core/src/projects/routes.ts` for ISS-288.
 import { apiClient } from '@/lib/api/client';
 import type {
+  BootstrapResult,
   CreatedProject,
   CreateProjectInput,
   ProjectDetail,
@@ -31,4 +32,11 @@ export const projectApi = {
 
   /** `GET /api/projects/:id` — full project detail (members/labels/devices). */
   getById: (id: string) => apiClient<ProjectDetail>(`/projects/${id}`),
+
+  /** `POST /api/projects/:id/skills/bootstrap` — seed the stage-mapped
+   *  `forge-*` skills + the Balanced pipeline preset (ISS-453 onboarding).
+   *  Idempotent: re-running returns `alreadyBootstrapped: true`. The server
+   *  owns `pipelineConfig.states` — never send a partial config from here. */
+  bootstrap: (id: string) =>
+    apiClient<BootstrapResult>(`/projects/${id}/skills/bootstrap`, { method: 'POST' }),
 };
