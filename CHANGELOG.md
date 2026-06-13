@@ -38,6 +38,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - You can now see which organization you're working in and switch between your organizations from anywhere in the app; your choice is remembered and scopes the projects you see.
 - List-returning agent tools (issues, agent sessions, skills, pipeline runs) now return lightweight summaries instead of full bodies, so agents no longer crash on oversized results.
 - Switching your active organization now re-scopes the whole workspace: the projects console shows only that org's projects (with its name as the scope label), New project defaults to it, a new org home shows the org's projects and members, and opening a project from another org switches you into it.
+- Fixed a crash ("This page couldn't load") on the project settings page and other project-tier pages caused by an infinite render loop after switching organizations.
 
 ## [0.3.0] - 2026-06-11
 
