@@ -47,9 +47,13 @@ export function AgentsScreen({ scope }: AgentsScreenProps) {
 
   const sessionsScope = { projectId: scope.projectId, ...(issueId ? { issueId } : {}) };
 
-  // Per-user open/closed state for the desktop chat dock — closed by default,
-  // persisted across reloads + tabs (ISS-378 AC#7).
-  const [chatOpen, setChatOpen] = usePersistedState("web-v2:agents-chat-open", false);
+  // Per-tab open/closed state for the desktop chat dock — closed by default,
+  // persisted across reloads of THIS tab (ISS-378 AC#7). `syncTabs: false` keeps
+  // each tab independent: opening the dock in one tab must not pop it open in
+  // every other Chrome tab (the storage-event sync did exactly that).
+  const [chatOpen, setChatOpen] = usePersistedState("web-v2:agents-chat-open", false, {
+    syncTabs: false,
+  });
 
   return (
     <div className="flex min-h-full flex-col">

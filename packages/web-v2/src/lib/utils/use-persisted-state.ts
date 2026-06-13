@@ -27,11 +27,19 @@ function read<T>(key: string, initial: T): T {
  * `usePersistedState('web-v2:density', 'comfortable')` → `[value, setValue]`.
  * `setValue` accepts a value or an updater, like `useState`. Writes are
  * best-effort (quota / disabled storage is swallowed). Other tabs stay in sync.
+ *
+ * `opts.syncTabs` (default `true`) controls whether writes made in OTHER tabs
+ * are adopted into this tab via the `storage` event. Set it `false` for
+ * per-tab UI state that should survive a reload of *this* tab but NOT follow
+ * other open tabs — e.g. an on-demand drawer/dock open flag, where adopting a
+ * sibling tab's "open" would pop the panel up in every tab at once.
  */
 export function usePersistedState<T>(
   key: string,
   initial: T,
+  opts?: { syncTabs?: boolean },
 ): [T, (value: T | ((prev: T) => T)) => void] {
+  const syncTabs = opts?.syncTabs ?? true;
   const [value, setValue] = useState<T>(initial);
   // Keep the freshest value in a ref so the functional updater can read it
   // without re-subscribing the storage listener.
@@ -46,7 +54,9 @@ export function usePersistedState<T>(
   }, [key]);
 
   // Cross-tab sync: adopt writes made to the same key in other tabs.
+  // Skipped when `syncTabs` is false so per-tab UI state stays independent.
   useEffect(() => {
+    if (!syncTabs) return;
     function onStorage(e: StorageEvent) {
       if (e.key !== key) return;
       if (e.newValue == null) {
@@ -62,7 +72,7 @@ export function usePersistedState<T>(
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, syncTabs]);
 
   const set = useCallback(
     (next: T | ((prev: T) => T)) => {
