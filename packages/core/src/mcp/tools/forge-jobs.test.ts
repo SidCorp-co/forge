@@ -15,10 +15,12 @@ const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy })
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
+// Named spy so tests can inspect the projection map passed to db.select(...).
+const selectSpy = vi.fn(() => ({ from: selectFrom }));
 
 vi.mock('../../db/client.js', () => ({
   db: {
-    select: vi.fn(() => ({ from: selectFrom })),
+    select: selectSpy,
   },
 }));
 
@@ -126,6 +128,37 @@ describe('forge_jobs.list', () => {
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
 
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
+  });
+
+  // ISS-478 (sibling of ISS-428) — the list query must use a body-free column
+  // projection (never a bare db.select()) so the heavy payload/promptBlocks/
+  // failureMeta jsonb + unbounded userPromptSnapshot/error text can't overflow
+  // the MCP token cap. Assert the projection map of the final (jobs) select.
+  it('projects a body-free column set (no payload/promptBlocks/failureMeta/userPromptSnapshot/error)', async () => {
+    const tool = forgeJobsListTool(fakeDevice);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
+    selectLimit.mockResolvedValueOnce([baseJobRow]); // jobs query
+
+    await tool.handler({ projectId: PROJECT_ID });
+
+    // last db.select() call is the jobs list projection
+    const lastCall = selectSpy.mock.calls.at(-1) as unknown[] | undefined;
+    const projection = lastCall?.[0] as Record<string, unknown> | undefined;
+    expect(projection).toBeDefined();
+    const keys = Object.keys(projection ?? {});
+    expect(keys).toContain('id');
+    expect(keys).toContain('type');
+    expect(keys).toContain('status');
+    expect(keys).toContain('issueId');
+    for (const heavy of [
+      'payload',
+      'promptBlocks',
+      'failureMeta',
+      'userPromptSnapshot',
+      'error',
+    ]) {
+      expect(keys).not.toContain(heavy);
+    }
   });
 });
 
