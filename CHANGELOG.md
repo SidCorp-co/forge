@@ -34,6 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Organization settings are safer and clearer: removing a member or revoking an invite now asks for confirmation, role changes and removals show a success message, your own row is marked "You", and you can rename or delete team organizations you own.
 - You can now rename, archive, and delete agent chat conversations, and find past chats more easily with a searchable, date-grouped history — and opening a new chat no longer leaves behind empty 'New chat' entries.
 - You can now run multiple forge-runner instances on one machine (one per account) by setting FORGE_RUNNER_MACHINE_ID, and a rotated-away device token no longer silently restart-loops the daemon — it auto-restarts to pick up new credentials.
+- You can now see which organization you're working in and switch between your organizations from anywhere in the app; your choice is remembered and scopes the projects you see.
 
 ## [0.3.0] - 2026-06-11
 
