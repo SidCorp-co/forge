@@ -4,7 +4,9 @@
 // conversation primitives as the run thread — Conversation + Composer + the
 // `['agent-session', …]` hooks — but lighter: no pipeline rail, no fork/rerun.
 // Bootstrap = resume the latest interactive `agent` session for the project,
-// else create one on first send (ISS-292).
+// else create one on first send (ISS-292). ISS-465 adds explicit "draft" mode
+// so "New chat" no longer leaves a ghost row, plus rename/archive/delete via
+// the conversation-list panel.
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -13,11 +15,9 @@ import {
   Button,
   EmptyState,
   ErrorState,
-  Menu,
   ProjectLoader,
   StatusChip,
   useElapsed,
-  type MenuItem,
 } from "@/design";
 import {
   classifySessionOutcome,
@@ -41,6 +41,7 @@ import {
 import { parseTurns } from "../types";
 import { Composer } from "./composer";
 import { Conversation } from "./conversation";
+import { ConversationList, EditableTitle } from "./conversation-list";
 
 const AGENT_TYPE = "agent";
 
@@ -48,7 +49,8 @@ export function ChatScreen({ projectId }: { projectId: string }) {
   useRoom(projectRoom(projectId));
 
   // Resume the latest interactive agent session for this project, and list a
-  // page of recent ones to drive the history switcher (ISS-421).
+  // page of recent ones to drive the history switcher (ISS-421). Archived
+  // chats are excluded server-side (ISS-465).
   const latestQ = useQuery({
     queryKey: ["agent-sessions", "chat", projectId],
     queryFn: () => sessionApi.listByType(projectId, AGENT_TYPE, 20),
@@ -56,8 +58,14 @@ export function ChatScreen({ projectId }: { projectId: string }) {
   });
 
   const [activeId, setActiveId] = useState<string | undefined>();
+  // ISS-465 — explicit "draft" state so "New chat" doesn't fall through to
+  // recentSessions[0]. A draft never touches the server; the send-path lazy-
+  // creates the row on first message (handleSend).
+  const [draft, setDraft] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
   const recentSessions = latestQ.data?.items ?? [];
-  const resolvedId = activeId ?? recentSessions[0]?.id;
+  const resolvedId = draft ? undefined : activeId ?? recentSessions[0]?.id;
 
   const sessionQ = useSession(resolvedId);
   const turnsQ = useSessionTurns(resolvedId);
@@ -80,22 +88,20 @@ export function ChatScreen({ projectId }: { projectId: string }) {
   const outcome = session && display ? classifySessionOutcome(display, session.failureReason) : undefined;
   const isFailed = outcome?.bucket === "failed";
 
-  // Start a fresh chat WITHOUT deleting the current one. useCreateSession's
-  // onSuccess invalidates ['agent-sessions'], which prefix-matches this list
-  // query, so the history switcher refetches with the new session.
-  const handleNewChat = async () => {
-    const created = await create.mutateAsync({
-      projectId,
-      title: "Chat",
-      metadata: { type: AGENT_TYPE },
-    });
-    setActiveId(created.id);
+  // Start a fresh draft chat — no server row until the user sends a message
+  // (ISS-465). useSendMessage's onSuccess will invalidate ['agent-sessions']
+  // so the history rail picks up the new session once it materialises.
+  const handleNewChat = () => {
+    setDraft(true);
+    setActiveId(undefined);
+    setHistoryOpen(false);
   };
 
-  const historyItems: MenuItem[] = recentSessions.map((s) => ({
-    label: `${s.id === resolvedId ? "● " : ""}${s.title?.trim() || `Chat ${s.id.slice(0, 8)}`}`,
-    onSelect: () => setActiveId(s.id),
-  }));
+  const handlePick = (id: string) => {
+    setDraft(false);
+    setActiveId(id);
+    setHistoryOpen(false);
+  };
 
   const handleSend = async (message: string) => {
     let id = resolvedId;
@@ -106,6 +112,7 @@ export function ChatScreen({ projectId }: { projectId: string }) {
         metadata: { type: AGENT_TYPE },
       });
       id = created.id;
+      setDraft(false);
       setActiveId(id);
     }
     send.mutate({ sessionId: id, message });
@@ -137,31 +144,42 @@ export function ChatScreen({ projectId }: { projectId: string }) {
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-line bg-app/95 px-4 py-4 backdrop-blur sm:px-8">
         <div className="min-w-0">
-          <h1 className="fg-h2">Agent chat</h1>
+          {/* Title row: editable per-conversation title once a real row exists.
+              In draft / no-conversation state, fall back to the section label. */}
+          {session ? (
+            <h1 className="fg-h2 truncate">
+              <EditableTitle session={session} />
+            </h1>
+          ) : (
+            <h1 className="fg-h2">My conversations</h1>
+          )}
           <p className="fg-body-sm mt-1 text-muted">Ask the agent anything about this project.</p>
         </div>
         <div className="ml-auto flex items-center gap-2">
           {session && display && (
             <StatusChip status={statusToChip(display)} stage={deriveStage(session.metadata)} size="sm" domain="session" />
           )}
-          {historyItems.length > 1 && (
-            <Menu
-              align="right"
-              items={historyItems}
-              trigger={
-                <Button variant="secondary" size="sm" icon="clock">
-                  History
-                </Button>
-              }
+          <div className="relative">
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="clock"
+              onClick={() => setHistoryOpen((v) => !v)}
+              aria-expanded={historyOpen}
+              aria-haspopup="dialog"
+            >
+              History
+            </Button>
+            <ConversationList
+              open={historyOpen}
+              onClose={() => setHistoryOpen(false)}
+              projectId={projectId}
+              rows={recentSessions}
+              activeId={resolvedId}
+              onPick={(s) => handlePick(s.id)}
             />
-          )}
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="plus"
-            loading={create.isPending}
-            onClick={handleNewChat}
-          >
+          </div>
+          <Button variant="secondary" size="sm" icon="plus" onClick={handleNewChat}>
             New chat
           </Button>
         </div>
@@ -174,7 +192,7 @@ export function ChatScreen({ projectId }: { projectId: string }) {
               <Banner
                 tone="danger"
                 action={
-                  <Button variant="secondary" size="sm" icon="plus" loading={create.isPending} onClick={handleNewChat}>
+                  <Button variant="secondary" size="sm" icon="plus" onClick={handleNewChat}>
                     Start new chat
                   </Button>
                 }
