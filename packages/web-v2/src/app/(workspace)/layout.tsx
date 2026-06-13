@@ -81,7 +81,6 @@ const PROJECT_ITEMS: ProjItem[] = [
   { key: "proj-overview", label: "Dashboard", icon: "grid", sub: "" },
   { key: "proj-issues", label: "Issues", icon: "list", sub: "/issues" },
   { key: "proj-agents", label: "Agents", icon: "agent", sub: "/agents" },
-  { key: "proj-runners", label: "Runners", icon: "server", sub: "/runners" },
   { key: "proj-library", label: "Library", icon: "book", sub: "/library" },
   { key: "proj-automation", label: "Automation", icon: "calendar", sub: "/automation" },
 ];

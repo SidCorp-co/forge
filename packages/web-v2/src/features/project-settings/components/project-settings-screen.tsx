@@ -31,10 +31,12 @@ import { MembersTab } from "./members-tab";
 import { PipelineTab } from "./pipeline-tab";
 import { RepoTab } from "./repo-tab";
 import { TestingTab } from "./testing-tab";
+import { ProjectRunnersScreen } from "@/features/runners/components/project-runners-screen";
 
 const TAB_VALUES = [
   "basics",
   "repo",
+  "runners",
   "testing",
   "pipeline",
   "labels",
@@ -47,6 +49,7 @@ type ProjectSettingsTab = (typeof TAB_VALUES)[number];
 const TABS: TabItem[] = [
   { value: "basics", label: "Basics" },
   { value: "repo", label: "Repository" },
+  { value: "runners", label: "Runners" },
   { value: "testing", label: "Testing" },
   { value: "pipeline", label: "Pipeline" },
   { value: "labels", label: "Labels" },
@@ -162,6 +165,13 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
         <div className="max-w-4xl">
           {tab === "basics" && <BasicsTab project={project} canEdit={canEdit} />}
           {tab === "repo" && <RepoTab project={project} canEdit={canEdit} />}
+          {tab === "runners" && (
+            <ProjectRunnersScreen
+              projectId={project.id}
+              canEdit={canEdit || isProjectAdmin}
+              embedded
+            />
+          )}
           {tab === "testing" && (
             <TestingTab project={project} canEdit={canEdit} />
           )}

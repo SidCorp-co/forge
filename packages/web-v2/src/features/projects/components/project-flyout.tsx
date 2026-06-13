@@ -151,6 +151,17 @@ export function ProjectFlyout({
                 </button>
                 <button
                   type="button"
+                  onClick={() => {
+                    onClose();
+                    router.push(`/projects/${p.slug}/settings`);
+                  }}
+                  aria-label={`${p.name} settings`}
+                  className="inline-flex size-7 flex-none items-center justify-center rounded-md text-subtle opacity-0 transition-colors hover:text-fg focus-visible:opacity-100 focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none group-hover:opacity-100"
+                >
+                  <Icon name="settings" size={15} />
+                </button>
+                <button
+                  type="button"
                   onClick={() => toggle(p.id)}
                   aria-label={pinned ? `Unpin ${p.name}` : `Pin ${p.name}`}
                   aria-pressed={pinned}

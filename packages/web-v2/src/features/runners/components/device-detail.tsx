@@ -125,8 +125,9 @@ function DeviceSummary({ device }: { device: DeviceRow }) {
 
 /**
  * One project this device serves — READ-ONLY here. Per-project assignment,
- * repo path/branch, and provisioning moved to the project's own Runners screen
- * (`/projects/<slug>/runners`); this is the device-side roll-up that links there.
+ * repo path/branch, and provisioning moved to the project's Settings → Runners
+ * tab (`/projects/<slug>/settings?tab=runners`); this is the device-side roll-up
+ * that links there.
  */
 function ProjectPoolRow({
 	assignment,
@@ -135,7 +136,9 @@ function ProjectPoolRow({
 	return (
 		<button
 			type="button"
-			onClick={() => router.push(`/projects/${assignment.slug}/runners`)}
+			onClick={() =>
+				router.push(`/projects/${assignment.slug}/settings?tab=runners`)
+			}
 			className="flex w-full items-center justify-between gap-2 rounded-lg border border-line bg-surface p-3 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
 		>
 			<div className="flex min-w-0 items-center gap-2">

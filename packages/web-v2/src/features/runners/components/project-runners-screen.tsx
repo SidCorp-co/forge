@@ -1,10 +1,11 @@
 "use client";
 
-// Project-centric Runners screen (`/projects/[slug]/runners`). The project is
-// the primary control surface: configure the repo URL + deploy key, assign
-// devices, and watch each device's workspace provision (clone → skills → mcp)
-// as a live stepper. Workspace-level `/runners` is the device-global roll-up
-// (pair / rename / revoke); project membership (admin) gates the writes here.
+// Project-centric Runners screen. Rendered as the Project Settings → Runners
+// tab (`/projects/[slug]/settings?tab=runners`, `embedded`). The project is the
+// primary control surface: configure the repo URL + deploy key, assign devices,
+// and watch each device's workspace provision (clone → skills → mcp) as a live
+// stepper. Workspace-level `/runners` is the device-global roll-up (pair /
+// rename / revoke); project membership (admin) gates the writes here.
 
 import {
 	Banner,
@@ -524,9 +525,13 @@ function AssignDevice({
 export function ProjectRunnersScreen({
 	projectId,
 	canEdit,
+	embedded = false,
 }: {
 	projectId: string;
 	canEdit: boolean;
+	/** True when rendered inside the Project Settings "Runners" tab — the tab
+	 * strip already supplies page chrome, so skip PageContainer + the header. */
+	embedded?: boolean;
 }) {
 	useRoom(projectRoom(projectId));
 	const project = useProject(projectId);
@@ -539,25 +544,27 @@ export function ProjectRunnersScreen({
 		[rows],
 	);
 
-	return (
-		<PageContainer className="flex flex-col gap-5">
-			<div className="flex items-center justify-between gap-3">
-				<div>
-					<h1 className="fg-h2">Runners</h1>
-					<p className="fg-body-sm text-muted">
-						Devices that run this project&apos;s pipeline jobs. Status &amp;
-						provisioning update live.
-					</p>
+	const body = (
+		<>
+			{!embedded && (
+				<div className="flex items-center justify-between gap-3">
+					<div>
+						<h1 className="fg-h2">Runners</h1>
+						<p className="fg-body-sm text-muted">
+							Devices that run this project&apos;s pipeline jobs. Status &amp;
+							provisioning update live.
+						</p>
+					</div>
+					<HelpButton
+						summary="Assign paired devices to this project. Each gets its own checkout; with a repo URL + deploy key, a freshly-assigned device auto-clones, syncs skills, and writes its MCP config."
+						actions={[
+							"Set Git access (repo URL + deploy key) for hands-off provisioning",
+							"Assign a device — watch it clone → sync skills → ready",
+							"Manage devices account-wide on the Runners page",
+						]}
+					/>
 				</div>
-				<HelpButton
-					summary="Assign paired devices to this project. Each gets its own checkout; with a repo URL + deploy key, a freshly-assigned device auto-clones, syncs skills, and writes its MCP config."
-					actions={[
-						"Set Git access (repo URL + deploy key) for hands-off provisioning",
-						"Assign a device — watch it clone → sync skills → ready",
-						"Manage devices account-wide on the Runners page",
-					]}
-				/>
-			</div>
+			)}
 
 			<GitConfigCard
 				projectId={projectId}
@@ -608,6 +615,11 @@ export function ProjectRunnersScreen({
 					)}
 				</CardContent>
 			</Card>
-		</PageContainer>
+		</>
 	);
+
+	if (embedded) {
+		return <div className="flex flex-col gap-5">{body}</div>;
+	}
+	return <PageContainer className="flex flex-col gap-5">{body}</PageContainer>;
 }
