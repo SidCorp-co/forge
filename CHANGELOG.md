@@ -32,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - You can now select multiple issues on the Issues list and bulk-update their status or priority at once.
 - The agent chat panel now widens to use more of the screen on large monitors instead of staying a narrow fixed drawer, while staying readable on small screens.
 - Organization settings are safer and clearer: removing a member or revoking an invite now asks for confirmation, role changes and removals show a success message, your own row is marked "You", and you can rename or delete team organizations you own.
+- You can now rename, archive, and delete agent chat conversations, and find past chats more easily with a searchable, date-grouped history — and opening a new chat no longer leaves behind empty 'New chat' entries.
 
 ## [0.3.0] - 2026-06-11
 
