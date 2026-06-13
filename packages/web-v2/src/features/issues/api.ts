@@ -38,6 +38,12 @@ export interface CreateIssueInput {
   /** Inline base64 attachments — mirrors core's `issueCreateSchema.attachments`
    *  (max 10, server-validated for size/mime). Omit when none are staged. */
   attachments?: { name: string; mime: string; dataBase64: string }[];
+  /** ISS-454 quick-capture intake — operator-entered context persisted onto
+   *  the issue's ai* columns so triage can act without bouncing to
+   *  needs_info. All optional; omit to preserve plain-create behaviour. */
+  aiSummary?: string;
+  aiSuggestedSolution?: string;
+  aiAcceptanceCriteria?: string[];
 }
 
 export const issuesApi = {

@@ -92,6 +92,13 @@ export const issueCreateSchema = z
     // atomically with the insert. ISS-236 — also `draft` for AI-generated
     // proposals (Dream / Doc-Sync) that wait for human promote/discard.
     status: z.enum(['open', 'on_hold', 'draft']).optional(),
+    // ISS-454 — quick-capture intake. Operator-entered context so triage can
+    // act without bouncing to needs_info. Shapes mirror the MCP create tool
+    // (forge-issues.ts); all optional + nullable, default null preserves the
+    // pre-ISS-454 behaviour. No LLM populates these on create.
+    aiSummary: z.string().max(100_000).nullable().optional(),
+    aiSuggestedSolution: z.string().max(100_000).nullable().optional(),
+    aiAcceptanceCriteria: z.array(z.string().max(2_000)).max(50).nullable().optional(),
   })
   .strict();
 
@@ -261,6 +268,9 @@ issueProjectRoutes.post(
           reportedBy: input.reportedBy ?? null,
           assigneeId: input.assigneeId ?? null,
           parentIssueId: input.parentIssueId ?? null,
+          aiSummary: input.aiSummary ?? null,
+          aiSuggestedSolution: input.aiSuggestedSolution ?? null,
+          aiAcceptanceCriteria: input.aiAcceptanceCriteria ?? null,
           createdById: userId,
         })
         .returning();
