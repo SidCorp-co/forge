@@ -37,6 +37,7 @@ import {
 } from "@/features/skills/hooks";
 import { usableSkillOptions, type UsableSkillOption } from "@/features/skills/types";
 import { isFeatureOff, usePipelineConfig, useUpdatePipelineConfig } from "../hooks";
+import { McpServersSection } from "./mcp-servers-section";
 import {
   STEP_TOGGLE_KEYS,
   STEP_TOGGLE_LABELS,
@@ -362,6 +363,9 @@ export function PipelineTab({
             </Button>
           </div>
         )}
+
+        {/* Project-default MCP servers — round-trips the full fetched config. */}
+        <McpServersSection projectId={projectId} config={server} canEdit={canEdit} />
       </CardContent>
     </Card>
   );

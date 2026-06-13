@@ -20,6 +20,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { expandMcpServers } from '../pipeline/mcp-catalog.js';
 import type {
   BudgetConfig,
   StageConfig,
@@ -85,6 +86,39 @@ async function loadStageMap(
       'stage-overrides: failed to load pipelineConfig.states, dispatching with defaults',
     );
     return null;
+  }
+}
+
+/**
+ * Load the project-default MCP servers from
+ * `pipelineConfig.mcpServers` and expand the catalog shorthand into full
+ * specs. This is the BASE of the dispatch mcpServers merge: per-state
+ * `mcpServers` and the integration servers (postman/epodsystem) layer on top.
+ *
+ * Best-effort like {@link resolveStageOverrides}: a DB hiccup or absent config
+ * returns an empty map (no project defaults this dispatch). Always returns a
+ * fresh object — never a shared reference into the cached drizzle row.
+ */
+export async function resolveProjectDefaultMcpServers(
+  projectId: string,
+): Promise<Record<string, unknown>> {
+  try {
+    const [row] = await db
+      .select({ agentConfig: projects.agentConfig })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    const ac = (row?.agentConfig ?? null) as Record<string, unknown> | null;
+    const pc = ac?.pipelineConfig as Record<string, unknown> | undefined;
+    const raw = (pc as { mcpServers?: unknown } | undefined)?.mcpServers;
+    if (!raw || typeof raw !== 'object') return {};
+    return expandMcpServers(raw as Record<string, unknown>);
+  } catch (err) {
+    logger.warn(
+      { err, projectId },
+      'stage-overrides: failed to load pipelineConfig.mcpServers, dispatching without project defaults',
+    );
+    return {};
   }
 }
 

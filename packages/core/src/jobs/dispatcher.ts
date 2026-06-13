@@ -28,7 +28,11 @@ import { persistPromptSnapshot } from './prompt-snapshot.js';
 import { JOB_QUEUE_NAME, PM_QUEUE_NAME } from './queue-name.js';
 import { readAutoRetryPayload } from './retry.js';
 import { findPriorSessionInGroup } from './session-resume.js';
-import { type StageOverrides, resolveStageOverrides } from './stage-overrides.js';
+import {
+  type StageOverrides,
+  resolveProjectDefaultMcpServers,
+  resolveStageOverrides,
+} from './stage-overrides.js';
 
 interface DispatchMessage {
   jobId: string;
@@ -443,6 +447,24 @@ async function dispatchViaRunner(
   // dispatch for any other project (cross-tenant) and breaking the
   // active=false/deleted → drop-entry guarantee. (ISS-336 review blocker.)
   const runnerStageOverrides = { ...preDispatchOverrides };
+  // Project-default MCP servers are the BASE of the merge: load + expand
+  // `pipelineConfig.mcpServers` (catalog shorthand → full specs) and lay the
+  // per-state `mcpServers` ON TOP (a per-state entry overrides the default by
+  // server name). Both maps are already fresh clones (expandMcpServers returns
+  // a new object; resolveStageOverrides shallow-clones the per-state map), so
+  // this assignment cannot pollute the cached drizzle row or the EMPTY
+  // singleton. Integration servers (postman/epodsystem) then layer on top
+  // below, unchanged. Net order: project-default < per-state < integrations.
+  const projectDefaultMcpServers = await resolveProjectDefaultMcpServers(job.projectId);
+  if (
+    Object.keys(projectDefaultMcpServers).length > 0 ||
+    runnerStageOverrides.mcpServers !== null
+  ) {
+    runnerStageOverrides.mcpServers = {
+      ...projectDefaultMcpServers,
+      ...(runnerStageOverrides.mcpServers ?? {}),
+    };
+  }
   // ISS-336 — inject the project's Postman MCP entry (when an active postman
   // integration exists) into the per-project mcpServers override on EVERY
   // dispatch: project-default, all stages, not pinned to one. The API key is

@@ -333,6 +333,15 @@ export const pipelineConfigSchema = z
     onResumeFail: z.enum(['fresh', 'abort']).optional(),
     // ISS-232 — git-aware L2 dependency gate config.
     mergeStates: mergeStatesSchema.optional(),
+    // Project-default MCP servers seeded into EVERY job's temp `--mcp-config`
+    // (forge-runner --strict-mcp-config makes Claude ignore the runner box's
+    // own MCP config, so the project must declare the secret-free servers it
+    // wants — playwright, etc.). Same shape as the per-state `mcpServers`; the
+    // dispatcher uses this as the BASE, with per-state mcpServers merged on top
+    // and integration servers (postman/epodsystem) on top of that. Values may
+    // use the catalog shorthand (`name: true`) or a raw custom spec object —
+    // see `pipeline/mcp-catalog.ts` `expandMcpServers`.
+    mcpServers: z.record(z.string(), z.unknown()).optional(),
   })
   // PR-5 — cross-field validation: every `states[x].sessionGroup` must be a
   // declared group in `sessionGroups`. Without this, a typo

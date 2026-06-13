@@ -387,4 +387,18 @@ describe('mergePipelineConfig', () => {
   it('handles null current', () => {
     expect(mergePipelineConfig(null, { enabled: true })).toEqual({ enabled: true });
   });
+
+  it('round-trips the top-level mcpServers project-default through parse + merge', () => {
+    const doc = {
+      enabled: true,
+      mcpServers: {
+        playwright: true,
+        custom: { type: 'stdio', command: 'foo', args: [], env: {} },
+      },
+    };
+    const parsed = pipelineConfigSchema.parse(doc);
+    expect(parsed.mcpServers).toEqual(doc.mcpServers);
+    const merged = mergePipelineConfig({ enabled: false }, parsed);
+    expect((merged as { mcpServers?: unknown }).mcpServers).toEqual(doc.mcpServers);
+  });
 });

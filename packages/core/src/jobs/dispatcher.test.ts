@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../db/client.js', () => {
-  const select = vi.fn();
+  // Base impl returns an empty-row chain so an unmatched select (e.g. the
+  // project-default mcpServers lookup `resolveProjectDefaultMcpServers`, which
+  // runs LAST in the dispatch after all `mockSelectOnce` queues are drained)
+  // resolves to `[]` instead of throwing on `undefined.from`. Per-test
+  // `mockSelectOnce` (mockImplementationOnce) still takes precedence in order.
+  const select = vi.fn(() => ({
+    from: () => ({ where: () => ({ limit: async () => [] as Record<string, unknown>[] }) }),
+  }));
   const update = vi.fn();
   // ISS-40 PR-E — Layer 4 gate runs db.execute against the jobs table.
   // Default to "0 in-flight" so the gate passes; tests that exercise the

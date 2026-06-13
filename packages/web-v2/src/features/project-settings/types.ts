@@ -100,8 +100,38 @@ export type StepToggleKey = (typeof STEP_TOGGLE_KEYS)[number];
  */
 export interface PipelineConfig {
   enabled?: boolean;
+  /**
+   * Project-default MCP servers seeded into every dispatched job's temp
+   * `--mcp-config` (forge-runner `--strict-mcp-config` ignores the runner
+   * box's own MCP config, so the project must declare the secret-free servers
+   * it wants). Shorthand: `name: true` enables a catalog default (see
+   * `MCP_CATALOG`); an object value is a raw custom spec; `false`/absent omits.
+   * The dispatcher merges this as the base, with per-state `states[x].mcpServers`
+   * and integration servers (postman/epodsystem) layering on top.
+   */
+  mcpServers?: Record<string, unknown>;
   [key: string]: unknown;
 }
+
+/**
+ * Built-in catalog of known secret-free MCP servers, mirrored from core's
+ * `pipeline/mcp-catalog.ts` for the settings UI. Cross-app parity: when a new
+ * secret-free catalog entry is added in core, add the matching descriptor here
+ * so the toggle list surfaces it. Anything needing a token/API key is NOT a
+ * catalog default (those flow through the integrations resolvers).
+ */
+export const MCP_CATALOG: Record<
+  string,
+  { label: string; hint: string; spec: Record<string, unknown> }
+> = {
+  playwright: {
+    label: "Playwright",
+    hint: "Headless browser automation for live E2E / UI verification.",
+    spec: { type: "stdio", command: "npx", args: ["@playwright/mcp@latest"], env: {} },
+  },
+};
+
+export const MCP_CATALOG_NAMES = Object.keys(MCP_CATALOG);
 
 /**
  * Per-toggle metadata. `stage` is the SOURCE `issueStatus` the toggle dispatches

@@ -9,7 +9,13 @@ vi.mock('../db/client.js', () => ({
   db: { select: vi.fn(() => ({ from })) },
 }));
 
-const { extractStageStatus, resolveStageOverrides } = await import('./stage-overrides.js');
+vi.mock('../logger.js', () => ({
+  logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
+}));
+
+const { extractStageStatus, resolveStageOverrides, resolveProjectDefaultMcpServers } = await import(
+  './stage-overrides.js'
+);
 
 beforeEach(() => {
   limitResults.length = 0;
@@ -84,5 +90,42 @@ describe('resolveStageOverrides', () => {
     limit.mockRejectedValueOnce(new Error('db down'));
     const r = await resolveStageOverrides('p-1', { stageStatus: 'developed' });
     expect(r.model).toBeNull();
+  });
+});
+
+describe('resolveProjectDefaultMcpServers', () => {
+  it('returns empty when project has no agentConfig', async () => {
+    limitResults.push([{ agentConfig: null }]);
+    expect(await resolveProjectDefaultMcpServers('p-1')).toEqual({});
+  });
+
+  it('returns empty when pipelineConfig has no mcpServers', async () => {
+    limitResults.push([{ agentConfig: { pipelineConfig: { states: {} } } }]);
+    expect(await resolveProjectDefaultMcpServers('p-1')).toEqual({});
+  });
+
+  it('expands the catalog shorthand from pipelineConfig.mcpServers', async () => {
+    limitResults.push([
+      { agentConfig: { pipelineConfig: { mcpServers: { playwright: true } } } },
+    ]);
+    const out = await resolveProjectDefaultMcpServers('p-1');
+    expect(out.playwright).toEqual({
+      type: 'stdio',
+      command: 'npx',
+      args: ['@playwright/mcp@latest'],
+      env: {},
+    });
+  });
+
+  it('passes a raw custom spec object through verbatim', async () => {
+    const custom = { type: 'http', url: 'https://x' };
+    limitResults.push([{ agentConfig: { pipelineConfig: { mcpServers: { mine: custom } } } }]);
+    const out = await resolveProjectDefaultMcpServers('p-1');
+    expect(out.mine).toEqual(custom);
+  });
+
+  it('swallows DB errors and returns empty', async () => {
+    limit.mockRejectedValueOnce(new Error('db down'));
+    expect(await resolveProjectDefaultMcpServers('p-1')).toEqual({});
   });
 });
