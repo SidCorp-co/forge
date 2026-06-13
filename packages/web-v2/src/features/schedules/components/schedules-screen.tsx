@@ -1,17 +1,23 @@
 "use client";
 
-// Project-tier Schedules (`/projects/[slug]/schedules`). Full-width table on
-// desktop, stacked cards on mobile. Real `/api/schedules` data with an enable
-// Toggle + manual run. ISS-299.
+// Project-tier Schedules (rendered inside the Automation tab). Full-width table
+// on desktop, stacked cards on mobile. Real `/api/schedules` data with an enable
+// Toggle, manual run, and an expandable run-history panel (ISS-299 + history).
+import { useParams } from "next/navigation";
+import Link from "next/link";
+import { useState } from "react";
 import {
+  Badge,
   Button,
   Card,
   CardContent,
   EmptyState,
   ErrorState,
+  IconButton,
   MonoTag,
   PageContainer,
   Skeleton,
+  Spinner,
   StatusChip,
   Table,
   TBody,
@@ -20,10 +26,16 @@ import {
   THead,
   TR,
   Toggle,
+  Tooltip,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { useRunSchedule, useSchedules, useSetScheduleEnabled } from "../hooks";
-import { lastStatusToChip, type ScheduleRow } from "../types";
+import { useRunSchedule, useScheduleRuns, useSchedules, useSetScheduleEnabled } from "../hooks";
+import {
+  lastStatusToChip,
+  sessionStatusToChip,
+  type ScheduleRow,
+  type ScheduleRun,
+} from "../types";
 
 interface SchedulesScreenProps {
   scope: { projectId: string; canManage: boolean };
@@ -42,49 +54,159 @@ function fmtTime(iso: string | null): string {
   });
 }
 
+/** Human run duration: "45s" / "2m 03s" / em dash when unknown. */
+function fmtDuration(seconds: number | null): string {
+  if (seconds == null) return "—";
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}m ${String(s).padStart(2, "0")}s`;
+}
+
 /**
- * Condensed last-result: status chip + the time it ran, inline. Renders nothing
- * when a schedule has never run (no chip, no em dash).
+ * Condensed last-result: status chip + the time it ran, inline. When the last
+ * run has a session, the whole thing links to that session's detail. Renders a
+ * muted "Never run" when a schedule has no run yet.
  */
-function LastResult({ status, at }: { status: ScheduleRow["lastStatus"]; at: string | null }) {
+function LastResult({
+  status,
+  at,
+  sessionId,
+  slug,
+}: {
+  status: ScheduleRow["lastStatus"];
+  at: string | null;
+  sessionId: string | null;
+  slug: string | undefined;
+}) {
   const chip = lastStatusToChip(status);
   if (!chip) {
     return <span className="fg-caption text-subtle">Never run</span>;
   }
-  return (
+  const inner = (
     <span className="inline-flex items-center gap-2">
       <StatusChip status={chip} size="sm" domain="session" />
       {at && <span className="fg-caption text-subtle">{fmtTime(at)}</span>}
     </span>
   );
+  if (slug && sessionId) {
+    return (
+      <Link
+        href={`/projects/${slug}/agents/${sessionId}`}
+        className="rounded-md hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+      >
+        {inner}
+      </Link>
+    );
+  }
+  return inner;
+}
+
+/** One past run inside the expanded history panel. Links to its session. */
+function ScheduleRunItem({ run, slug }: { run: ScheduleRun; slug: string | undefined }) {
+  const body = (
+    <div className="flex flex-wrap items-center gap-2 py-1.5">
+      <Badge tone={run.trigger === "manual" ? "accent" : "neutral"}>{run.trigger}</Badge>
+      <StatusChip status={sessionStatusToChip(run.status)} size="sm" domain="session" />
+      <span className="fg-caption text-subtle">{fmtTime(run.startedAt)}</span>
+      <span className="fg-caption font-mono text-subtle">{fmtDuration(run.durationSeconds)}</span>
+      {run.failureReason && (
+        <Tooltip label={run.failureReason}>
+          <span className="fg-caption text-danger underline decoration-dotted">why?</span>
+        </Tooltip>
+      )}
+      {slug && <span className="fg-caption text-accent">View session →</span>}
+    </div>
+  );
+  if (slug) {
+    return (
+      <Link
+        href={`/projects/${slug}/agents/${run.sessionId}`}
+        className="block rounded-md px-1 hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+      >
+        {body}
+      </Link>
+    );
+  }
+  return body;
+}
+
+/** Expanded panel: the schedule's prompt + runner/target meta + recent runs. */
+function ScheduleHistory({ row, slug }: { row: ScheduleRow; slug: string | undefined }) {
+  const runsQ = useScheduleRuns(row.projectId, row.id, true);
+  const runs = runsQ.data?.runs ?? [];
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        {row.runner && <Badge tone="neutral">{row.runner}</Badge>}
+        {row.targetProjectSlug && (
+          <span className="fg-caption font-mono text-subtle">→ {row.targetProjectSlug}</span>
+        )}
+      </div>
+      <p className="fg-caption whitespace-pre-wrap break-words text-muted line-clamp-3">
+        {row.prompt}
+      </p>
+
+      <div>
+        <p className="fg-label mb-1 text-subtle">Recent runs</p>
+        {runsQ.isLoading && (
+          <span className="inline-flex items-center gap-2 fg-caption text-subtle">
+            <Spinner size={14} /> Loading runs…
+          </span>
+        )}
+        {runsQ.isError && (
+          <span className="fg-caption text-danger">
+            Couldn&apos;t load run history — {formatApiError(runsQ.error)}
+          </span>
+        )}
+        {!runsQ.isLoading && !runsQ.isError && runs.length === 0 && (
+          <span className="fg-caption text-subtle">No runs yet.</span>
+        )}
+        {runs.length > 0 && (
+          <div className="divide-y divide-line-subtle">
+            {runs.map((r) => (
+              <ScheduleRunItem key={r.sessionId} run={r} slug={slug} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 interface RowActions {
   setEnabled: (id: string, enabled: boolean) => void;
-  run: (id: string) => void;
+  /** Returns a promise so the row can reveal history once the run is queued. */
+  run: (id: string) => Promise<unknown>;
   pending: boolean;
   canManage: boolean;
+  slug: string | undefined;
 }
 
 export function SchedulesScreen({ scope }: SchedulesScreenProps) {
   const { projectId, canManage } = scope;
+  const params = useParams<{ slug: string }>();
+  const slug = params?.slug;
   const schedulesQ = useSchedules(projectId);
   const setEnabled = useSetScheduleEnabled(projectId);
-  const run = useRunSchedule(projectId);
+  const runMut = useRunSchedule(projectId);
 
   const rows = schedulesQ.data ?? [];
   const actions: RowActions = {
     setEnabled: (id, enabled) => setEnabled.mutate({ id, enabled }),
-    run: (id) => run.mutate(id),
-    pending: setEnabled.isPending || run.isPending,
+    run: (id) => runMut.mutateAsync(id),
+    pending: setEnabled.isPending || runMut.isPending,
     canManage,
+    slug,
   };
 
   return (
     <PageContainer className="min-h-dvh">
       <header className="mb-6">
         <h1 className="fg-h2">Schedules</h1>
-        <p className="fg-body-sm mt-1">Recurring agent runs for this project.</p>
+        <p className="fg-body-sm mt-1">
+          Recurring agent runs for this project. Expand a row to see its run history.
+        </p>
       </header>
 
       {schedulesQ.isLoading && (
@@ -117,6 +239,7 @@ export function SchedulesScreen({ scope }: SchedulesScreenProps) {
             <Table>
               <THead>
                 <TR>
+                  <TH className="w-8" aria-label="Expand" />
                   <TH className="w-12">On</TH>
                   <TH>Name · target</TH>
                   <TH>Cadence</TH>
@@ -146,52 +269,98 @@ export function SchedulesScreen({ scope }: SchedulesScreenProps) {
 }
 
 function ScheduleTableRow({ row, actions }: { row: ScheduleRow; actions: RowActions }) {
+  const [open, setOpen] = useState(false);
+
+  async function handleRun() {
+    try {
+      await actions.run(row.id);
+      setOpen(true); // reveal history so the new run shows up
+    } catch {
+      // error is surfaced by the mutation's onError toast
+    }
+  }
+
   return (
-    <TR>
-      <TD>
-        <Toggle
-          checked={row.enabled}
-          disabled={!actions.canManage || actions.pending}
-          aria-label={`${row.enabled ? "Disable" : "Enable"} ${row.name}`}
-          onChange={(next) => actions.setEnabled(row.id, next)}
-        />
-      </TD>
-      <TD className="max-w-[280px]">
-        <p className="fg-body-sm truncate text-fg">{row.name}</p>
-        {row.targetProjectSlug && (
-          <span className="fg-caption font-mono">→ {row.targetProjectSlug}</span>
-        )}
-      </TD>
-      <TD>
-        <MonoTag>{row.cron}</MonoTag>
-      </TD>
-      <TD className="font-mono text-muted">
-        {row.enabled ? (
-          fmtTime(row.nextRunAt)
-        ) : (
-          <span className="fg-caption font-sans text-subtle">Off</span>
-        )}
-      </TD>
-      <TD>
-        <LastResult status={row.lastStatus} at={row.lastRunAt} />
-      </TD>
-      <TD className="text-right">
-        <Button
-          variant="secondary"
-          size="sm"
-          icon="play"
-          disabled={!actions.canManage || actions.pending}
-          onClick={() => actions.run(row.id)}
-          className="min-h-11"
-        >
-          Run
-        </Button>
-      </TD>
-    </TR>
+    <>
+      <TR>
+        <TD className="pr-0">
+          <IconButton
+            icon="chevronRight"
+            size="sm"
+            aria-label={open ? "Collapse history" : "Expand history"}
+            aria-expanded={open}
+            onClick={() => setOpen((o) => !o)}
+            style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform 150ms" }}
+          />
+        </TD>
+        <TD>
+          <Toggle
+            checked={row.enabled}
+            disabled={!actions.canManage || actions.pending}
+            aria-label={`${row.enabled ? "Disable" : "Enable"} ${row.name}`}
+            onChange={(next) => actions.setEnabled(row.id, next)}
+          />
+        </TD>
+        <TD className="max-w-[280px]">
+          <p className="fg-body-sm truncate text-fg">{row.name}</p>
+          {row.targetProjectSlug && (
+            <span className="fg-caption font-mono">→ {row.targetProjectSlug}</span>
+          )}
+        </TD>
+        <TD>
+          <MonoTag>{row.cron}</MonoTag>
+        </TD>
+        <TD className="font-mono text-muted">
+          {row.enabled ? (
+            fmtTime(row.nextRunAt)
+          ) : (
+            <span className="fg-caption font-sans text-subtle">Off</span>
+          )}
+        </TD>
+        <TD>
+          <LastResult
+            status={row.lastStatus}
+            at={row.lastRunAt}
+            sessionId={row.lastSessionId}
+            slug={actions.slug}
+          />
+        </TD>
+        <TD className="text-right">
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="play"
+            disabled={!actions.canManage || actions.pending}
+            onClick={handleRun}
+            className="min-h-11"
+          >
+            Run
+          </Button>
+        </TD>
+      </TR>
+      {open && (
+        <TR>
+          <TD colSpan={7} className="bg-surface-subtle">
+            <ScheduleHistory row={row} slug={actions.slug} />
+          </TD>
+        </TR>
+      )}
+    </>
   );
 }
 
 function ScheduleMobileCard({ row, actions }: { row: ScheduleRow; actions: RowActions }) {
+  const [open, setOpen] = useState(false);
+
+  async function handleRun() {
+    try {
+      await actions.run(row.id);
+      setOpen(true);
+    } catch {
+      // error surfaced by the mutation's onError toast
+    }
+  }
+
   return (
     <Card>
       <CardContent>
@@ -211,13 +380,16 @@ function ScheduleMobileCard({ row, actions }: { row: ScheduleRow; actions: RowAc
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <MonoTag>{row.cron}</MonoTag>
-          <LastResult status={row.lastStatus} at={row.lastRunAt} />
+          <LastResult
+            status={row.lastStatus}
+            at={row.lastRunAt}
+            sessionId={row.lastSessionId}
+            slug={actions.slug}
+          />
         </div>
         <div className="mt-3 flex items-center justify-between gap-3">
           {row.enabled ? (
-            <span className="fg-caption font-mono text-subtle">
-              Next: {fmtTime(row.nextRunAt)}
-            </span>
+            <span className="fg-caption font-mono text-subtle">Next: {fmtTime(row.nextRunAt)}</span>
           ) : (
             <span className="fg-caption text-subtle">Off</span>
           )}
@@ -226,12 +398,25 @@ function ScheduleMobileCard({ row, actions }: { row: ScheduleRow; actions: RowAc
             size="sm"
             icon="play"
             disabled={!actions.canManage || actions.pending}
-            onClick={() => actions.run(row.id)}
+            onClick={handleRun}
             className="min-h-11"
           >
             Run
           </Button>
         </div>
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+          className="mt-3 inline-flex items-center gap-1 fg-caption text-accent focus-visible:outline-none"
+        >
+          {open ? "Hide history" : "Show history"}
+        </button>
+        {open && (
+          <div className="mt-3 border-t border-line-subtle pt-3">
+            <ScheduleHistory row={row} slug={actions.slug} />
+          </div>
+        )}
       </CardContent>
     </Card>
   );

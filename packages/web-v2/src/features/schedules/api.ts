@@ -1,7 +1,7 @@
 // web-v2 feature module: schedules — REST surface. All calls go through the
 // shared `apiClient`. Routes verified against `packages/core/src/schedules/routes.ts`.
 import { apiClient } from "@/lib/api/client";
-import type { ScheduleRow } from "./types";
+import type { ScheduleRow, ScheduleRun } from "./types";
 
 export const schedulesApi = {
   /** `GET /api/schedules?projectId=` — flat rows (no X-Total-Count). */
@@ -18,6 +18,12 @@ export const schedulesApi = {
   /** `POST /api/schedules/:id/run` — trigger a manual run now. */
   run: (id: string) =>
     apiClient<{ sessionId: string; message: string }>(`/schedules/${id}/run`, { method: "POST" }),
+
+  /** `GET /api/schedules/:id/runs?limit=` — recent run history (newest first). */
+  runs: (id: string, limit = 20) =>
+    apiClient<{ runs: ScheduleRun[] }>(
+      `/schedules/${id}/runs?limit=${encodeURIComponent(limit)}`,
+    ),
 
   /** `DELETE /api/schedules/:id` — 204 No Content. */
   remove: (id: string) => apiClient<void>(`/schedules/${id}`, { method: "DELETE" }),

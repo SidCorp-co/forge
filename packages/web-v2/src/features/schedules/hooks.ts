@@ -15,6 +15,21 @@ export function useSchedules(projectId: string | undefined) {
   });
 }
 
+/** Run history for one schedule. Lazy — only fetches when `enabled` (the row is
+ *  expanded). Keyed under `['schedules', projectId, …]` so a run mutation's
+ *  `invalidateQueries(['schedules', projectId])` refreshes it too. */
+export function useScheduleRuns(
+  projectId: string | undefined,
+  scheduleId: string,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ["schedules", projectId, "runs", scheduleId],
+    queryFn: () => schedulesApi.runs(scheduleId),
+    enabled: enabled && !!projectId,
+  });
+}
+
 function useScheduleMutation<TArgs>(
   fn: (args: TArgs) => Promise<unknown>,
   projectId: string | undefined,

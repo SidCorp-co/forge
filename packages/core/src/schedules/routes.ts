@@ -1,10 +1,10 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, asc, eq, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, lte, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { projects, schedules } from '../db/schema.js';
+import { agentSessions, pipelineRuns, projects, schedules } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -17,6 +17,12 @@ const listQuerySchema = z
   .object({
     projectId: z.uuid(),
     enabled: z.enum(['true', 'false']).optional(),
+  })
+  .strict();
+
+const runsQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(50).optional(),
   })
   .strict();
 
@@ -142,6 +148,85 @@ scheduleRoutes.get(
     assertProjectRole(access, 'viewer', 'not a project member');
 
     return c.json(row);
+  },
+);
+
+// Run history for a schedule. Schedule runs are not their own table — each
+// dispatch creates an `agent_sessions` row tagged `metadata.scheduleId` (+
+// `metadata.tick:true` when cron-driven, absent for a manual `/run`) under a
+// `system`-kind `pipeline_run`. We join the run for its clean started/finished
+// span + terminal status, newest first.
+scheduleRoutes.get(
+  '/:id/runs',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('query', runsQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { limit } = c.req.valid('query');
+    const userId = c.get('userId');
+
+    const [schedule] = await db
+      .select({ projectId: schedules.projectId })
+      .from(schedules)
+      .where(eq(schedules.id, id))
+      .limit(1);
+    if (!schedule) throw notFound('schedule not found');
+
+    const access = await loadProjectAccess(schedule.projectId, userId);
+    assertProjectRole(access, 'viewer', 'not a project member');
+
+    const rows = await db
+      .select({
+        sessionId: agentSessions.id,
+        pipelineRunId: agentSessions.pipelineRunId,
+        status: agentSessions.status,
+        title: agentSessions.title,
+        failureReason: agentSessions.failureReason,
+        sessionStartedAt: agentSessions.startedAt,
+        createdAt: agentSessions.createdAt,
+        tick: sql<boolean>`(${agentSessions.metadata} ->> 'tick') = 'true'`,
+        runStatus: pipelineRuns.status,
+        runStartedAt: pipelineRuns.startedAt,
+        runFinishedAt: pipelineRuns.finishedAt,
+      })
+      .from(agentSessions)
+      .leftJoin(pipelineRuns, eq(agentSessions.pipelineRunId, pipelineRuns.id))
+      .where(sql`${agentSessions.metadata} ->> 'scheduleId' = ${id}`)
+      .orderBy(desc(agentSessions.createdAt))
+      .limit(limit ?? 20);
+
+    const toIso = (d: Date | string | null): string | null =>
+      d == null ? null : d instanceof Date ? d.toISOString() : d;
+
+    const runs = rows.map((r) => {
+      const start = r.sessionStartedAt ?? r.runStartedAt ?? r.createdAt;
+      const end = r.runFinishedAt ?? null;
+      const durationSeconds =
+        start && end
+          ? Math.max(
+              0,
+              Math.round((new Date(end).getTime() - new Date(start).getTime()) / 1000),
+            )
+          : null;
+      return {
+        sessionId: r.sessionId,
+        pipelineRunId: r.pipelineRunId,
+        status: r.status,
+        runStatus: r.runStatus,
+        trigger: r.tick ? ('scheduled' as const) : ('manual' as const),
+        title: r.title,
+        failureReason: r.failureReason,
+        startedAt: toIso(start),
+        finishedAt: toIso(end),
+        durationSeconds,
+      };
+    });
+
+    return c.json({ runs });
   },
 );
 

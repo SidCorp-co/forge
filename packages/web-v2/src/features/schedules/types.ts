@@ -37,3 +37,38 @@ export function lastStatusToChip(status: ScheduleLastStatus): StatusKey | null {
       return null;
   }
 }
+
+export type ScheduleRunTrigger = "manual" | "scheduled";
+
+/** One past run of a schedule (an agent session under a system pipeline run).
+ *  Shape verified against `GET /api/schedules/:id/runs` in
+ *  `packages/core/src/schedules/routes.ts`. */
+export interface ScheduleRun {
+  sessionId: string;
+  pipelineRunId: string | null;
+  /** agent_session status: idle|queued|running|completed|failed|completed_via_recovery|cancelled_stale */
+  status: string;
+  runStatus: string | null;
+  trigger: ScheduleRunTrigger;
+  title: string | null;
+  failureReason: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  durationSeconds: number | null;
+}
+
+/** Map an agent-session status to a design-kit StatusChip key (session domain). */
+export function sessionStatusToChip(status: string): StatusKey {
+  switch (status) {
+    case "completed":
+    case "completed_via_recovery":
+      return "passed";
+    case "failed":
+    case "cancelled_stale":
+      return "failed";
+    case "running":
+      return "running";
+    default:
+      return "queued";
+  }
+}
