@@ -18,6 +18,7 @@ import { useRouter } from 'next/navigation';
 import { EmptyState, ErrorState, PageContainer, ProjectCardSkeleton } from '@/design';
 import { useActivity } from '@/features/activity/hooks';
 import { useAttention } from '@/features/attention/hooks';
+import type { AttentionItem } from '@/features/attention/types';
 import { useActiveOrg } from '@/features/orgs/active-org';
 import { workspaceTotals } from '@/features/projects/derive';
 import { useProjectHealth, useProjectsConsole } from '@/features/projects/hooks';
@@ -59,9 +60,16 @@ export function OverviewScreen() {
     return health.data.filter((r) => ids.has(r.id));
   }, [health.data, items]);
   const orgLabel = activeOrg ? (activeOrg.isPersonal ? 'Personal' : activeOrg.name) : null;
-  // `pageSize` only narrows the page; the key stays under the `['chat-logs']`
-  // prefix the event-router invalidates, so live refresh is preserved.
-  const activity = useActivity({ pageSize: ACTIVITY_LIMIT });
+  // Slugs of the in-scope projects — drives client-side org-scoping of the
+  // Attention + Activity panels below (ISS-476). Both payloads carry a
+  // `projectSlug`, so we filter by this set instead of refetching; the set
+  // changes whenever `activeOrgId` flips, so the switch re-scopes live.
+  const scopedSlugs = useMemo(() => new Set(items.map((p) => p.slug)), [items]);
+  // Over-fetch then client-filter+slice: the feed is server-paginated and not
+  // org-scoped, so a single ACTIVITY_LIMIT page could be entirely other orgs.
+  // The key stays under the `['chat-logs']` prefix the event-router
+  // invalidates, so live refresh is preserved.
+  const activity = useActivity({ pageSize: ACTIVITY_LIMIT * 5 });
 
   // Relative timestamps: 0 on server + first paint ("just now"), real clock
   // after mount — hydration-safe (mirrors ProjectsConsole).
@@ -77,9 +85,38 @@ export function OverviewScreen() {
     [scopedHealth],
   );
   const spotlight = useMemo(() => pickSpotlightProjects(items, SPOTLIGHT_LIMIT), [items]);
+  // Scope "Needs attention" to the active org: keep only items whose project is
+  // in scope. Slug-less items (offline runners) are workspace-level infra with
+  // no project association on the client, so they stay. Recompute `total` from
+  // the filtered buckets so the panel header matches what it shows.
+  const scopedAttention = useMemo(() => {
+    const v = attention.view;
+    const keep = (it: AttentionItem) => !it.projectSlug || scopedSlugs.has(it.projectSlug);
+    const needsReview = v.needsReview.filter(keep);
+    const awaitingInput = v.awaitingInput.filter(keep);
+    const mentions = v.mentions.filter(keep);
+    const failedJobs = v.failedJobs.filter(keep);
+    const offlineRunners = v.offlineRunners;
+    return {
+      needsReview,
+      awaitingInput,
+      mentions,
+      failedJobs,
+      offlineRunners,
+      total:
+        needsReview.length +
+        awaitingInput.length +
+        mentions.length +
+        failedJobs.length +
+        offlineRunners.length,
+    };
+  }, [attention.view, scopedSlugs]);
   const activityRows = useMemo(
-    () => (activity.data?.items ?? []).slice(0, ACTIVITY_LIMIT),
-    [activity.data],
+    () =>
+      (activity.data?.items ?? [])
+        .filter((r) => scopedSlugs.has(r.projectSlug))
+        .slice(0, ACTIVITY_LIMIT),
+    [activity.data, scopedSlugs],
   );
 
   const openProject = (slug: string) => router.push(`/projects/${slug}`);
@@ -144,7 +181,7 @@ export function OverviewScreen() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <div className="lg:col-span-7">
           <AttentionPanel
-            view={attention.view}
+            view={scopedAttention}
             now={now}
             onOpen={(link) => router.push(link)}
             onViewAll={() => router.push('/attention')}

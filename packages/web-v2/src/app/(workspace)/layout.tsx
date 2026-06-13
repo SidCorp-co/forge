@@ -176,22 +176,41 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     [projects, slug],
   );
 
-  // Cross-org navigation consistency (ISS-470, AC6): opening a project that
+  // Cross-org navigation consistency (ISS-470, AC6): OPENING a project that
   // belongs to a different org re-scopes the workspace to that project's org,
   // so the chrome label + console never lie about where you are. setActiveOrg
-  // self-guards on no-op and persists via /me/preferences. Keyed on the
-  // project's orgId so deep-linking to any project-tier route re-scopes too.
+  // self-guards on no-op and persists via /me/preferences.
+  //
+  // CRITICAL (ISS-476): this must fire ONLY when the open project actually
+  // CHANGES — not on every divergence between the project's org and activeOrgId.
+  // A continuous reconcile makes the rail's org switcher dead while a project is
+  // open: a deliberate manual switch flips activeOrgId, the effect sees it differ
+  // from the (unchanged) open project's org, and snaps it straight back. We track
+  // the last slug we re-scoped for so a manual switch on the SAME project sticks;
+  // leaving the project (slug → null) resets it so re-entering re-scopes again.
   const { orgs, activeOrgId, setActiveOrg } = useActiveOrg();
+  const lastScopedSlugRef = useRef<string | null>(null);
   useEffect(() => {
-    // Only re-scope to an org the caller actually belongs to. activeOrg can
-    // never resolve to an org outside `orgs`, so attempting to switch to one
-    // would persist a preference that resolves straight back — leaving the
-    // guard permanently true and storming setActiveOrg (ISS-472).
+    if (!slug) {
+      lastScopedSlugRef.current = null;
+      return;
+    }
     const target = activeProject?.orgId;
-    if (target && target !== activeOrgId && orgs.some((o) => o.id === target)) {
+    if (!target) return; // project row not resolved yet — don't mark as handled
+    // `orgs` (useOrgs) and `projects` (useProjects) are independent parallel
+    // queries with no ordering guarantee. If projects wins the cold-load race,
+    // `orgs` is still [] and membership can't be decided yet — don't mark the
+    // slug handled, so the effect retries once orgs arrives. Otherwise a
+    // cross-org deep-link would skip the re-scope permanently (ISS-476 review).
+    if (orgs.length === 0) return;
+    if (slug === lastScopedSlugRef.current) return; // same project: don't fight a manual switch
+    lastScopedSlugRef.current = slug;
+    // Only re-scope to an org the caller actually belongs to (ISS-472: an org
+    // outside `orgs` would resolve straight back and storm setActiveOrg).
+    if (target !== activeOrgId && orgs.some((o) => o.id === target)) {
       setActiveOrg(target);
     }
-  }, [activeProject?.orgId, activeOrgId, orgs, setActiveOrg]);
+  }, [slug, activeProject?.orgId, activeOrgId, orgs, setActiveOrg]);
 
   // Remember the last project visited so the rail can keep showing a project
   // context (mark + tier) even on workspace screens — no vanishing block.
