@@ -25,6 +25,8 @@ import { useProjects, useProjectsConsole } from "@/features/projects/hooks";
 import { usePinnedProjects } from "@/features/projects/pins";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import { ProjectFlyout } from "@/features/projects/components/project-flyout";
+import { ActiveOrgProvider } from "@/features/orgs/active-org";
+import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
 import { useAttention } from "@/features/attention/hooks";
 import { useWhatsNewStatus } from "@/features/whats-new/hooks";
 import {
@@ -101,7 +103,11 @@ function matchesSub(rest: string, sub: string): boolean {
 }
 
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
-  return <WorkspaceShell>{children}</WorkspaceShell>;
+  return (
+    <ActiveOrgProvider>
+      <WorkspaceShell>{children}</WorkspaceShell>
+    </ActiveOrgProvider>
+  );
 }
 
 function WorkspaceShell({ children }: { children: React.ReactNode }) {
@@ -554,6 +560,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             onAccount={() => router.push("/settings")}
             onSignOut={logout}
             userInitials={userInitials}
+            orgSwitcher={<OrgSwitcher variant="compact" />}
             onExpand={sidebar.toggleCollapsed}
             onWhatsNew={() => router.push("/whats-new")}
             whatsNewBadge={whatsNewUnseen ? 1 : 0}
@@ -576,6 +583,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
               onAccount={() => router.push("/settings")}
               onSignOut={logout}
               user={userInitials ? { initials: userInitials } : undefined}
+              orgSwitcher={<OrgSwitcher variant="expanded" />}
               onToggleCollapsed={sidebar.toggleCollapsed}
             />
             {/* Searchable project switcher for the expanded rail. */}
@@ -609,6 +617,11 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             aria-modal="true"
             aria-label="Switch project"
           >
+            {/* Org context + switcher (ISS-469) — the rail is hidden below md,
+                so the drawer carries the current-org control on mobile. */}
+            <div className="px-1.5 pb-3">
+              <OrgSwitcher variant="expanded" />
+            </div>
             <div className="flex items-center justify-between px-1.5 pb-2">
               <span className="fg-label text-fg">Projects</span>
               <div className="flex items-center gap-3">

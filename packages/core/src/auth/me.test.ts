@@ -35,6 +35,14 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
+// assertOrgAccess is the membership gate for activeOrgId (ISS-469). Mocked so
+// tests drive the member / non-member / missing-org branches without a real db.
+const assertOrgAccess = vi.fn();
+vi.mock('../lib/authz.js', () => ({
+  assertOrgAccess: (...args: unknown[]) => assertOrgAccess(...args),
+}));
+
+const { HTTPException } = await import('hono/http-exception');
 const { meRoutes } = await import('./me.js');
 const { signUserToken } = await import('./jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
@@ -54,6 +62,8 @@ beforeEach(() => {
   insertReturning.mockReset();
   oauthWhereResult.mockReset();
   oauthWhereResult.mockResolvedValue([]);
+  assertOrgAccess.mockReset();
+  assertOrgAccess.mockResolvedValue({ orgId: 'x', role: 'member', isPersonal: false });
 });
 
 describe('GET /api/auth/me', () => {
@@ -165,6 +175,7 @@ describe('GET /api/auth/me/preferences', () => {
       language: 'en',
       notifyOnMention: true,
       lastSeenWhatsNew: null,
+      activeOrgId: null,
       updatedAt: null,
     });
   });
@@ -264,6 +275,81 @@ describe('PATCH /api/auth/me/preferences', () => {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ theme: 'dark', secret: 'haha' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  // ISS-469 AC7 — activeOrgId membership authorization.
+  const ORG = '11111111-1111-4111-8111-111111111111';
+
+  it('sets activeOrgId when the caller is a member of the org', async () => {
+    const token = await signUserToken('00000000-0000-0000-0000-000000000003');
+    insertReturning.mockResolvedValueOnce([
+      { theme: 'system', language: 'en', notifyOnMention: true, lastSeenWhatsNew: null, activeOrgId: ORG, updatedAt: null },
+    ]);
+    const res = await buildApp().request('/api/auth/me/preferences', {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ activeOrgId: ORG }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.activeOrgId).toBe(ORG);
+    expect(assertOrgAccess).toHaveBeenCalledWith(ORG, '00000000-0000-0000-0000-000000000003', 'member');
+    expect(dbInsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects setting activeOrgId to an org the caller is not a member of (403)', async () => {
+    const token = await signUserToken('00000000-0000-0000-0000-000000000003');
+    assertOrgAccess.mockRejectedValueOnce(
+      new HTTPException(403, { message: 'requires org member access', cause: { code: 'FORBIDDEN' } }),
+    );
+    const res = await buildApp().request('/api/auth/me/preferences', {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ activeOrgId: ORG }),
+    });
+    expect(res.status).toBe(403);
+    expect(dbInsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects setting activeOrgId to a non-existent org (404)', async () => {
+    const token = await signUserToken('00000000-0000-0000-0000-000000000003');
+    assertOrgAccess.mockRejectedValueOnce(
+      new HTTPException(404, { message: 'organization not found', cause: { code: 'NOT_FOUND' } }),
+    );
+    const res = await buildApp().request('/api/auth/me/preferences', {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ activeOrgId: ORG }),
+    });
+    expect(res.status).toBe(404);
+    expect(dbInsert).not.toHaveBeenCalled();
+  });
+
+  it('clears activeOrgId on null without a membership check', async () => {
+    const token = await signUserToken('00000000-0000-0000-0000-000000000003');
+    insertReturning.mockResolvedValueOnce([
+      { theme: 'system', language: 'en', notifyOnMention: true, lastSeenWhatsNew: null, activeOrgId: null, updatedAt: null },
+    ]);
+    const res = await buildApp().request('/api/auth/me/preferences', {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ activeOrgId: null }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.activeOrgId).toBeNull();
+    expect(assertOrgAccess).not.toHaveBeenCalled();
+    expect(dbInsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a non-uuid activeOrgId (strict schema)', async () => {
+    const token = await signUserToken('00000000-0000-0000-0000-000000000003');
+    const res = await buildApp().request('/api/auth/me/preferences', {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ activeOrgId: 'not-a-uuid' }),
     });
     expect(res.status).toBe(400);
   });

@@ -168,6 +168,13 @@ export const userPreferences = pgTable('user_preferences', {
   // the nav badge: shown while this differs from the current top entry. Nullable
   // — absent means the user has never opened the feed (ISS-384).
   lastSeenWhatsNew: text('last_seen_whats_new'),
+  // The org the user is currently "working in" (ISS-469 global org switcher).
+  // Nullable — null means no explicit choice yet; the client resolves that to
+  // the personal org. `set null` on org delete so a removed org clears the
+  // pointer rather than blocking the delete or dangling.
+  activeOrgId: uuid('active_org_id').references(() => organizations.id, {
+    onDelete: 'set null',
+  }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

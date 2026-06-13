@@ -1,7 +1,9 @@
 'use client';
 
 // Console toolbar: search · sort · Cards⇄List · New project.
-import Link from 'next/link';
+// Org scope lives in the global org switcher (app chrome, ISS-469) — not here —
+// so there is no standalone org filter or "Manage organizations" link; that
+// would contradict the global active-org selection.
 import { Button, Input, SegmentedControl, Select, type SegmentOption } from '@/design';
 import type { ProjectSort, ProjectView } from '../types';
 
@@ -17,10 +19,6 @@ const VIEW_OPTIONS: SegmentOption<ProjectView>[] = [
 ];
 
 export interface ProjectsToolbarProps {
-  /** null = all orgs; hidden unless the user sees >1 org. */
-  orgs: Array<{ id: string; name: string; isPersonal: boolean }>;
-  orgId: string | null;
-  onOrgId: (id: string | null) => void;
   query: string;
   onQuery: (q: string) => void;
   sort: ProjectSort;
@@ -33,9 +31,6 @@ export interface ProjectsToolbarProps {
 export function ProjectsToolbar({
   query,
   onQuery,
-  orgs,
-  orgId,
-  onOrgId,
   sort,
   onSort,
   view,
@@ -52,26 +47,6 @@ export function ProjectsToolbar({
         value={query}
         onChange={(e) => onQuery(e.target.value)}
       />
-      {orgs.length > 1 && (
-        <>
-          <Select
-            className="w-[180px]"
-            options={[
-              { value: '', label: 'All organizations' },
-              ...orgs.map((o) => ({ value: o.id, label: o.isPersonal ? 'Personal' : o.name })),
-            ]}
-            value={orgId ?? ''}
-            onChange={(v) => onOrgId(v === '' ? null : v)}
-            aria-label="Filter by organization"
-          />
-          <Link
-            href="/settings?tab=orgs"
-            className="fg-body-sm text-accent hover:underline"
-          >
-            Manage organizations
-          </Link>
-        </>
-      )}
       <Select
         className="w-[188px]"
         options={SORT_OPTIONS}

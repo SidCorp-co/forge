@@ -16,7 +16,8 @@ import {
   ProjectCardSkeleton,
 } from '@/design';
 import { formatApiError } from '@/lib/api/error';
-import { distinctOrgs, filterProjects, isAttention, sortProjects } from '../derive';
+import { useActiveOrg } from '@/features/orgs/active-org';
+import { filterProjects, isAttention, sortProjects } from '../derive';
 import { useProjectsConsole } from '../hooks';
 import type { ProjectConsoleItem, ProjectSort, ProjectView } from '../types';
 import { AttentionBanner } from './attention-banner';
@@ -57,7 +58,10 @@ export function ProjectsConsole() {
   const [sort, setSort] = useState<ProjectSort>('recent');
   const [view, setView] = useState<ProjectView>('cards');
   const [attentionOnly, setAttentionOnly] = useState(false);
-  const [orgId, setOrgId] = useState<string | null>(null);
+  // Org scope is driven by the global active-org switcher (ISS-469), not a
+  // local toolbar filter — so the chrome selection and the console never
+  // contradict. null while orgs load → show all (no scoping yet).
+  const { activeOrgId } = useActiveOrg();
 
   // Relative timestamps: 0 on the server + first paint (renders "just now"),
   // then the real clock after mount — hydration-safe.
@@ -66,15 +70,16 @@ export function ProjectsConsole() {
 
   const attentionCount = useMemo(() => items.filter(isAttention).length, [items]);
 
-  const orgs = useMemo(() => distinctOrgs(items), [items]);
   const visible = useMemo(
-    () => sortProjects(filterProjects(items, query, attentionOnly, orgId), sort),
-    [items, query, attentionOnly, sort, orgId],
+    () => sortProjects(filterProjects(items, query, attentionOnly, activeOrgId), sort),
+    [items, query, attentionOnly, sort, activeOrgId],
   );
 
   // When searching/filtering/sorting, collapse the pinned section into one flat
-  // result list (so a pinned match isn't hidden from the "rest").
-  const searching = query.trim() !== '' || attentionOnly || sort !== 'recent' || orgId !== null;
+  // result list (so a pinned match isn't hidden from the "rest"). Org scope is
+  // NOT a "search" — it's the ambient workspace scope, so it doesn't collapse
+  // the pinned section.
+  const searching = query.trim() !== '' || attentionOnly || sort !== 'recent';
   const pinned = useMemo(() => visible.filter((p) => p.pinned), [visible]);
   const rest = useMemo(
     () => (searching ? visible : visible.filter((p) => !p.pinned)),
@@ -132,9 +137,6 @@ export function ProjectsConsole() {
           <ProjectsToolbar
             query={query}
             onQuery={setQuery}
-            orgs={orgs}
-            orgId={orgId}
-            onOrgId={setOrgId}
             sort={sort}
             onSort={setSort}
             view={view}
